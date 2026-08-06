@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::{Method, Request, StatusCode, header::AUTHORIZATION},
+    http::{HeaderValue, Method, Request, StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -14,6 +14,9 @@ use crate::extractors::auth::resolve_current_user;
 use crate::host_authority::{take_host_authority, with_host_authority_scope};
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
+
+const PAGES_AUTHORING_CACHE_CONTROL: &str = "private, no-store";
+const PAGES_AUTHORING_ROBOTS_POLICY: &str = "noindex, nofollow, noarchive";
 
 pub async fn resolve_optional(
     State(ctx): State<ServerAuthRuntime>,
@@ -40,7 +43,9 @@ pub async fn resolve_optional(
                 .into_response();
         }
     };
-    let pages_inline_authoring = is_pages_inline_authoring_path(parts.uri.path());
+    let pages_inline_authoring_surface = is_pages_inline_authoring_surface(parts.uri.path());
+    let pages_inline_authoring =
+        pages_inline_authoring_surface || is_pages_inline_authoring_server_fn(parts.uri.path());
     let human_user_only =
         is_human_user_self_service_path(parts.uri.path()) || pages_inline_authoring;
     let request_method = parts.method.clone();
@@ -123,11 +128,22 @@ pub async fn resolve_optional(
         parts.extensions.insert(host_authority);
     }
     let req = Request::from_parts(parts, body);
-    with_host_authority_scope(
+    let mut response = with_host_authority_scope(
         host_authority,
         with_rbac_request_scope(rbac_scope, next.run(req)),
     )
-    .await
+    .await;
+    if pages_inline_authoring_surface {
+        response.headers_mut().insert(
+            "cache-control",
+            HeaderValue::from_static(PAGES_AUTHORING_CACHE_CONTROL),
+        );
+        response.headers_mut().insert(
+            "x-robots-tag",
+            HeaderValue::from_static(PAGES_AUTHORING_ROBOTS_POLICY),
+        );
+    }
+    response
 }
 
 fn is_human_user_self_service_path(path: &str) -> bool {
@@ -145,14 +161,7 @@ fn is_human_user_self_service_path(path: &str) -> bool {
         || path.starts_with("/api/fn/ai/")
 }
 
-fn is_pages_inline_authoring_path(path: &str) -> bool {
-    if matches!(
-        path,
-        "/api/fn/pages/inline-edit/bootstrap" | "/api/fn/pages/inline-edit/commit"
-    ) {
-        return true;
-    }
-
+fn is_pages_inline_authoring_surface(path: &str) -> bool {
     let segments = path
         .trim_matches('/')
         .split('/')
@@ -161,6 +170,13 @@ fn is_pages_inline_authoring_path(path: &str) -> bool {
     matches!(
         segments.as_slice(),
         ["modules", "pages-authoring"] | [_, "modules", "pages-authoring"]
+    )
+}
+
+fn is_pages_inline_authoring_server_fn(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/fn/pages/inline-edit/bootstrap" | "/api/fn/pages/inline-edit/commit"
     )
 }
 
@@ -221,11 +237,19 @@ fn service_forum_boundary_violation(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_human_user_self_service_path, is_pages_inline_authoring_path,
-        service_forum_boundary_violation,
+        PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
+        is_human_user_self_service_path, is_pages_inline_authoring_server_fn,
+        is_pages_inline_authoring_surface, resolve_optional, service_forum_boundary_violation,
     };
-    use axum::http::{HeaderMap, Method, header::AUTHORIZATION};
+    use axum::{
+        Router,
+        body::Body,
+        http::{HeaderMap, Method, Request, StatusCode, header::AUTHORIZATION},
+        middleware,
+        routing::get,
+    };
     use rustok_api::Permission;
+    use tower::ServiceExt;
     use uuid::Uuid;
 
     #[test]
@@ -257,22 +281,34 @@ mod tests {
 
     #[test]
     fn pages_inline_authoring_paths_are_explicit_and_bounded() {
-        assert!(is_pages_inline_authoring_path(
+        assert!(is_pages_inline_authoring_surface(
             "/modules/pages-authoring"
         ));
-        assert!(is_pages_inline_authoring_path(
+        assert!(is_pages_inline_authoring_surface(
             "/en/modules/pages-authoring"
         ));
-        assert!(is_pages_inline_authoring_path(
+        assert!(is_pages_inline_authoring_server_fn(
             "/api/fn/pages/inline-edit/bootstrap"
         ));
-        assert!(is_pages_inline_authoring_path(
+        assert!(is_pages_inline_authoring_server_fn(
             "/api/fn/pages/inline-edit/commit"
         ));
-        assert!(!is_pages_inline_authoring_path("/modules/pages"));
-        assert!(!is_pages_inline_authoring_path(
+        assert!(!is_pages_inline_authoring_surface("/modules/pages"));
+        assert!(!is_pages_inline_authoring_surface(
             "/en/modules/pages-authoring/extra"
         ));
+        assert!(!is_pages_inline_authoring_server_fn(
+            "/api/fn/pages/inline-edit/other"
+        ));
+    }
+
+    #[test]
+    fn pages_authoring_response_policy_is_private_and_non_indexable() {
+        assert_eq!(PAGES_AUTHORING_CACHE_CONTROL, "private, no-store");
+        assert_eq!(
+            PAGES_AUTHORING_ROBOTS_POLICY,
+            "noindex, nofollow, noarchive"
+        );
     }
 
     #[test]
