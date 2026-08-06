@@ -102,6 +102,7 @@ the category slug model:
   `/{locale}/forum/c/{slug}`;
 - `slug` remains a locale-aware translation field and the category UUID remains
   internal identity;
+- category hierarchy is not embedded in the canonical path, so hierarchy moves do not change this route;
 - reverse lookup uses the shared order
   `requested -> explicit fallback -> en -> first available`;
 - first-available lookup is accepted only when all remaining active candidates
