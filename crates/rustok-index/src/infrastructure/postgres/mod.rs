@@ -1,5 +1,6 @@
 mod drift_candidate_observer;
 mod drift_candidate_reader;
+mod drift_confirmed_candidate_writer;
 mod drift_digest_recorder;
 mod drift_finding_inspector;
 mod drift_finding_writer;
@@ -51,6 +52,11 @@ pub use drift_candidate_observer::{
 pub use drift_candidate_reader::{
     IndexDriftCandidateCompositionError, PostgresIndexDriftCandidateReader,
     materialize_postgres_index_drift_candidate_reader,
+};
+pub use drift_confirmed_candidate_writer::{
+    IndexDriftConfirmedCandidateNotRecordedReason, IndexDriftConfirmedCandidateRecordError,
+    IndexDriftConfirmedCandidateRecordOutcome, PostgresIndexDriftConfirmedCandidateWriter,
+    materialize_postgres_index_drift_confirmed_candidate_writer,
 };
 pub use drift_finding_inspector::{
     IndexDriftFindingInspection, IndexDriftFindingInspectionError, IndexDriftFindingScope,
