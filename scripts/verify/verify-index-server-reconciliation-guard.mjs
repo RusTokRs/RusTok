@@ -22,10 +22,12 @@ const compositionPath = 'apps/server/src/services/index_replay_runtime_compositi
 const operatorPath = 'apps/server/src/services/index_reconciliation_operator.rs';
 const diagnosisPath = 'apps/server/src/services/index_drift_diagnosis_operator.rs';
 const pageDiagnosisPath = 'apps/server/src/services/index_drift_source_page_diagnosis.rs';
+const continuationPath = 'crates/rustok-index/src/application/source_continuation.rs';
 const graphqlTransportPath = 'apps/server/src/graphql/index_drift_diagnosis.rs';
 const docsPath = 'apps/server/docs/index-reconciliation-operator-runtime.md';
 const graphqlDocsPath = 'apps/server/docs/index-drift-diagnosis-graphql-transport.md';
 const pageDocsPath = 'apps/server/docs/index-drift-source-page-diagnosis.md';
+const continuationDocsPath = 'crates/rustok-index/docs/m6-source-continuation-codec.md';
 const planPath = 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md';
 const recheckPath =
   'crates/rustok-index/docs/implementation-recheck-2026-08-05-explicit-absence-watermark.md';
@@ -68,6 +70,15 @@ if (
     `${compositionPath} must freeze replay before reconciliation, exact diagnosis, and page diagnosis publication`,
   );
 }
+for (const pending of [
+  'IndexSourceContinuationCodec',
+  'IndexSourceContinuationToken',
+  'IndexSourceContinuationScope',
+]) {
+  if (composition.includes(pending)) {
+    fail(`${compositionPath} prematurely composes pending continuation capability ${pending}`);
+  }
+}
 
 const operator = requireMarkers(operatorPath, [
   'pub struct IndexReconciliationOperatorContext',
@@ -106,6 +117,7 @@ for (const forbidden of [
   'IndexDriftDigestProducer',
   'PostgresIndexDriftFindingWriter',
   'SharedIndexSourceAbsenceRegistry',
+  'IndexSourceContinuationCodec',
 ]) {
   if (operatorProduction.includes(forbidden)) fail(`${operatorPath} contains ${forbidden}`);
 }
@@ -197,6 +209,7 @@ for (const forbidden of [
   'Router::new',
   'async_graphql',
   '.scan(',
+  'IndexSourceContinuationCodec',
   'repair_finding',
   'targeted_repair',
   'resolve_finding',
@@ -317,11 +330,40 @@ for (const forbidden of [
   'while ',
   'loop {',
   'ModuleWorkScheduler',
+  'IndexSourceContinuationCodec',
+  'IndexSourceContinuationToken',
   'repair_finding',
   'resolve_finding',
   'ignore_finding',
 ]) {
   if (pageProduction.includes(forbidden)) fail(`${pageDiagnosisPath} contains ${forbidden}`);
+}
+
+const continuation = requireMarkers(continuationPath, [
+  'pub struct IndexSourceContinuationScope',
+  'pub fn from_registry(',
+  '.source_for_schema(&schema)',
+  'pub struct IndexSourceContinuationToken(String);',
+  'pub struct IndexSourceContinuationCodec',
+  'Aes256Gcm::new_from_slice',
+  'OsRng.fill_bytes(&mut nonce);',
+  'pub fn seal(',
+  'pub fn open_encoded(',
+  'pub fn open(',
+  'validate_claims(&claims, expected_scope, now)?;',
+]);
+const continuationProduction = continuation.split('\n#[cfg(test)]')[0];
+for (const forbidden of [
+  'DatabaseConnection',
+  'sea_orm',
+  'async_graphql',
+  'std::env',
+  'SecretResolverRegistry',
+  'tokio::spawn',
+]) {
+  if (continuationProduction.includes(forbidden)) {
+    fail(`${continuationPath} contains pending server dependency ${forbidden}`);
+  }
 }
 
 const graphql = requireMarkers(graphqlTransportPath, [
@@ -349,6 +391,8 @@ for (const forbidden of [
   '.scan(',
   'IndexDriftSourcePageDiagnosisRuntime',
   'IndexSourceCursor',
+  'IndexSourceContinuationCodec',
+  'IndexSourceContinuationToken',
   'diagnose_missing_entity_candidate',
   'repair_finding',
   'resolve_finding',
@@ -376,7 +420,9 @@ requireMarkers(docsPath, [
   '`IndexDriftSourcePageDiagnosisRuntime`',
   '`diagnose_source_page(context, schema, cursor, limit)`',
   'maximum page size of 32',
-  'one-page internal missing-entity diagnosis are source complete',
+  '`IndexSourceContinuationCodec`',
+  'does **not** yet compose that codec',
+  'resolve exact 32-byte keys',
   '`diagnoseIndexEntity(input: IndexDriftDiagnosisInput!)`',
   '`SharedIndexSourceAbsenceRegistry`',
   'positive `products.index_revision`',
@@ -396,17 +442,27 @@ requireMarkers(pageDocsPath, [
   'one page limit in `1..=32`',
   'source `Upsert` plus materialized `Missing`',
   'non-missing candidate count',
-  'The cursor is not attached to GraphQL',
-  'server-owned continuation envelope',
+  'The raw cursor is not attached to GraphQL',
+  'Confidential continuation prerequisite',
+  'The codec is not yet composed into this server runtime',
+  'server continuation-key configuration',
+]);
+requireMarkers(continuationDocsPath, [
+  'Status: `source_complete_server_key_composition_pending`.',
+  'AES-256-GCM',
+  'fresh 96-bit operating-system nonce',
+  'A token naming a removed or otherwise unavailable key fails closed',
+  'server configuration or `SecretResolverRegistry` composition',
 ]);
 requireMarkers(recheckPath, [
   'Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.',
-  '`main@1e31db0149618369d35cc0d2ae3494634bfee573`',
+  '`main@5bbaaaf6cb17b846a5c6c280b8b2501c229cdc64`',
   '`product-locale-absence-postgres`',
   'absence version is domain-tagged into the opaque boundary only for source `Missing`',
   'index_drift_source_changed_during_capture',
   'index_drift_source_watermark_missing',
   'Missing-only outcome continuation',
+  'Confidential source continuation',
   'did not run tests,',
 ]);
 requireMarkers(planPath, [
@@ -414,11 +470,13 @@ requireMarkers(planPath, [
   'M6 bounded GraphQL exact-entity diagnosis transport',
   'M6 missing-only entity candidate outcome',
   'M6 bounded source-page missing-entity diagnosis',
-  'source_complete_transport_and_owner_execution_pending',
+  'M6 authenticated and confidential source continuation codec',
+  'source_complete_server_key_composition_pending',
   '[x] Register the Product locale absence provider',
   '[x] Add a database-neutral missing-only selector',
   '[x] Add one internal server-owned source-page missing-entity diagnosis runtime',
-  'M6 - seal source-page continuation before transport',
+  '[x] Add an authenticated and confidential transport-neutral source continuation codec',
+  'M6 - compose source-continuation keys and seal the internal page boundary',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add drift diagnosis, targeted repair commands, and admitted repair evidence.',
@@ -428,6 +486,7 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-server-reconciliation-guard.mjs'",
   "'verify-index-drift-diagnosis-graphql-transport.mjs'",
   "'verify-index-drift-source-page-diagnosis.mjs'",
+  "'verify-index-source-continuation.mjs'",
   "'verify-index-reconciliation-host-scheduler.mjs'",
   "'verify-index-drift-finding-inspection.mjs'",
   "'verify-index-source-absence-watermark.mjs'",
