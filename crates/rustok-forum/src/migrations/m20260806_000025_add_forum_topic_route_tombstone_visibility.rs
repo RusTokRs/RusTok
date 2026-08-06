@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS forum_topic_route_tombstone_visibility (
     topic_id UUID NOT NULL,
     publicly_disclosable BOOLEAN NOT NULL,
     route_channel_restricted BOOLEAN NOT NULL,
+    route_channel_count BIGINT NOT NULL,
+    route_channel_digest VARCHAR(64) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT pk_forum_topic_route_tombstone_visibility
         PRIMARY KEY (tenant_id, topic_id),
@@ -49,7 +51,14 @@ CREATE TABLE IF NOT EXISTS forum_topic_route_tombstone_visibility (
         REFERENCES forum_topics (tenant_id, id)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT ck_forum_topic_route_tombstone_visibility_topic
-        CHECK (topic_id <> '00000000-0000-0000-0000-000000000000'::uuid)
+        CHECK (topic_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CONSTRAINT ck_forum_topic_route_tombstone_visibility_channel_count CHECK (
+        route_channel_count >= 0
+        AND route_channel_restricted = (route_channel_count > 0)
+    ),
+    CONSTRAINT ck_forum_topic_route_tombstone_visibility_channel_digest CHECK (
+        route_channel_digest ~ '^[0-9a-f]{64}$'
+    )
 );
 
 CREATE TABLE IF NOT EXISTS forum_topic_route_tombstone_channels (
@@ -128,6 +137,8 @@ CREATE TABLE IF NOT EXISTS forum_topic_route_tombstone_visibility (
     topic_id TEXT NOT NULL,
     publicly_disclosable INTEGER NOT NULL,
     route_channel_restricted INTEGER NOT NULL,
+    route_channel_count INTEGER NOT NULL,
+    route_channel_digest TEXT NOT NULL,
     created_at TEXT NOT NULL,
     PRIMARY KEY (tenant_id, topic_id),
     FOREIGN KEY (tenant_id, topic_id)
@@ -135,7 +146,16 @@ CREATE TABLE IF NOT EXISTS forum_topic_route_tombstone_visibility (
         ON UPDATE RESTRICT ON DELETE RESTRICT,
     CHECK (topic_id <> '00000000-0000-0000-0000-000000000000'),
     CHECK (publicly_disclosable IN (0, 1)),
-    CHECK (route_channel_restricted IN (0, 1))
+    CHECK (route_channel_restricted IN (0, 1)),
+    CHECK (
+        route_channel_count >= 0
+        AND route_channel_restricted = CASE WHEN route_channel_count > 0 THEN 1 ELSE 0 END
+    ),
+    CHECK (
+        length(route_channel_digest) = 64
+        AND route_channel_digest = lower(route_channel_digest)
+        AND route_channel_digest NOT GLOB '*[^0-9a-f]*'
+    )
 );
 
 CREATE TABLE IF NOT EXISTS forum_topic_route_tombstone_channels (
