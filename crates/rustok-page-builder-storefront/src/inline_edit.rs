@@ -320,7 +320,7 @@ fn collect_editable_ids(
 }
 
 fn runtime_owned_component_ids(document: &ProjectDocument) -> BTreeSet<String> {
-    let mut ids = BTreeSet::new();
+    let mut direct = BTreeSet::new();
     for collection in RUNTIME_COMPONENT_COLLECTIONS {
         let Some(entries) = document
             .project
@@ -338,11 +338,39 @@ fn runtime_owned_component_ids(document: &ProjectDocument) -> BTreeSet<String> {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
             {
-                ids.insert(component_id.to_string());
+                direct.insert(component_id.to_string());
             }
         }
     }
-    ids
+
+    let mut blocked = direct.clone();
+    for page in &document.project.pages {
+        if let Some(root) = page.component.as_ref() {
+            collect_runtime_owned_subtree(root, false, &direct, &mut blocked);
+        }
+    }
+    blocked
+}
+
+fn collect_runtime_owned_subtree(
+    component: &ComponentNode,
+    ancestor_blocked: bool,
+    direct: &BTreeSet<String>,
+    blocked: &mut BTreeSet<String>,
+) {
+    let Some(component) = component.as_object() else {
+        return;
+    };
+    let id = component.id();
+    let blocked_here = ancestor_blocked || id.is_some_and(|id| direct.contains(id));
+    if blocked_here
+        && let Some(id) = id
+    {
+        blocked.insert(id.to_string());
+    }
+    for child in component.children() {
+        collect_runtime_owned_subtree(child, blocked_here, direct, blocked);
+    }
 }
 
 fn selected_page_index(
@@ -517,10 +545,18 @@ mod tests {
                         "type": "text",
                         "content": "Fallback"
                     }, {
-                        "id": "nested",
+                        "id": "composite",
                         "type": "text",
                         "content": "Parent",
-                        "components": [{ "id": "child", "type": "text", "content": "Child" }]
+                        "components": [{ "id": "static-child", "type": "text", "content": "Child" }]
+                    }, {
+                        "id": "repeated",
+                        "type": "wrapper",
+                        "components": [{
+                            "id": "repeated-child",
+                            "type": "text",
+                            "content": "Repeated child"
+                        }]
                     }]
                 }
             }],
@@ -530,6 +566,12 @@ mod tests {
                 "path": "page.title",
                 "target": "field",
                 "name": "content"
+            }],
+            "flyRuntimeRepeaters": [{
+                "id": "items",
+                "component_id": "repeated",
+                "path": "entries",
+                "item_alias": "entry"
             }]
         })
     }
@@ -548,10 +590,10 @@ mod tests {
     }
 
     #[test]
-    fn only_static_leaf_text_components_are_exposed_to_real_dom_editing() {
+    fn only_static_leaf_text_components_outside_runtime_subtrees_are_editable() {
         let ids = inline_editable_component_ids(&project(), &PageSelection::First)
             .expect("editable ids");
-        assert_eq!(ids, vec!["heading", "child"]);
+        assert_eq!(ids, vec!["heading", "static-child"]);
     }
 
     #[test]
@@ -585,7 +627,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_replay_dynamic_bound_and_rejected_authorization_fail_closed() {
+    fn stale_replay_dynamic_bound_repeated_and_rejected_authorization_fail_closed() {
         let project = project();
         let grant = grant(&project);
         let mut session = AuthenticatedInlineEditSession::new(
@@ -603,7 +645,7 @@ mod tests {
             Err(InlineEditError::AuthorizationRejected(_))
         ));
 
-        for component_id in ["dynamic", "bound"] {
+        for component_id in ["dynamic", "bound", "repeated-child"] {
             let request = grant
                 .bind_request(1_000, 1, component_id, "Changed")
                 .expect("request");
