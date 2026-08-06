@@ -11,6 +11,7 @@ const files = {
   migrationsMod: 'crates/rustok-index/src/migrations/mod.rs',
   lib: 'crates/rustok-index/src/lib.rs',
   doc: 'crates/rustok-index/docs/m6-drift-finding-lifecycle.md',
+  repairDoc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -192,22 +193,27 @@ for (const forbidden of [
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_repair_pending`.',
+  'Status: `source_complete_targeted_repair_boundary_complete`.',
   'Fail-closed authorization',
   '`IndexDriftFindingAuthorizedLifecycleCommand`',
   '`SERIALIZABLE READ WRITE`',
   '`AlreadyApplied`',
-  'Audit rows follow the existing finding/tenant cascade retention behavior.',
-  'targeted repair boundary',
+  'm6-targeted-drift-repair.md',
+  'does not automatically resolve a finding',
   'No tests, verifiers, formatting, Cargo checks',
 ]);
+requireMarkers('repairDoc', [
+  'Status: `source_complete_owner_composition_pending`.',
+  'prepared -> completed',
+]);
 requireMarkers('plan', [
-  'M6 - add targeted drift repair',
-  'M6 drift finding lifecycle commands',
-  'source_complete_repair_pending',
+  'M6 - compose targeted repair evidence and owner',
+  'M6 drift finding lifecycle commands: `source_complete`',
+  'source_complete_owner_composition_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-drift-finding-lifecycle.mjs'",
+  "'verify-index-targeted-drift-repair.mjs'",
 ]);
 
 console.log('Index drift finding lifecycle boundary verified');
