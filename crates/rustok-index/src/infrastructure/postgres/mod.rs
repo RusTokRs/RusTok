@@ -7,6 +7,7 @@ mod drift_finding_lifecycle;
 mod drift_finding_writer;
 mod drift_missing_entity_repair;
 mod drift_repair;
+mod drift_repair_recovery;
 mod drift_snapshot_reader;
 mod mutation_store;
 mod partition_admission;
@@ -81,6 +82,11 @@ pub use drift_missing_entity_repair::{
 pub use drift_repair::{
     PostgresIndexDriftRepairStore, materialize_postgres_index_drift_repair_store,
 };
+pub use drift_repair_recovery::{
+    PostgresIndexDriftRepairRecoveryStore, RecoveryAwareIndexDriftRepairOwner,
+    RecoveryAwareIndexDriftRepairStore,
+    materialize_postgres_index_drift_repair_recovery_store,
+};
 pub use drift_snapshot_reader::{
     IndexDriftSnapshotCompositionError, PostgresIndexDriftSnapshotReader,
     materialize_postgres_index_drift_snapshot_reader,
@@ -134,8 +140,8 @@ pub use source_reconciliation_retry::{
     PostgresIndexReconciliationRetryStore,
 };
 pub use source_reconciliation_runner::{
-    IndexReconciliationCancelOutcome, IndexReconciliationRunError,
-    IndexReconciliationRunOutcome, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
+    IndexReconciliationCancelOutcome, IndexReconciliationRunError, IndexReconciliationRunOutcome,
+    IndexReconciliationRunRequest, IndexReconciliationRunStatus,
     IndexReconciliationTerminalState, PostgresIndexReconciliationRunner,
 };
 pub use source_reconciliation_scheduler::{
