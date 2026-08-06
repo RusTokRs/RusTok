@@ -19,6 +19,14 @@ mod cart_context_boundary {
         }
     }
 
+    struct StoreContextDiagnosticError;
+
+    impl std::fmt::Debug for StoreContextDiagnosticError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("redacted")
+        }
+    }
+
     fn public_graphql_error(message: &'static str, code: &'static str, retryable: bool) -> Error {
         Error::new(message).extend_with(|_, extensions| {
             extensions.set("code", code);
@@ -68,6 +76,7 @@ mod cart_context_boundary {
     impl From<StoreContextError> for BoundaryError {
         fn from(error: StoreContextError) -> Self {
             let (message, code, retryable, error_kind) = store_context_error_envelope(&error);
+            let error = StoreContextDiagnosticError;
             tracing::error!(
                 error = ?error,
                 owner = "rustok_commerce.store_context",
