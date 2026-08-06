@@ -7,7 +7,7 @@ use rustok_page_builder::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, TransactionTrait,
+    QueryFilter, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
