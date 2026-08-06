@@ -3,6 +3,7 @@ mod create;
 mod document;
 mod helpers;
 mod inline_edit;
+mod inline_edit_runtime;
 mod lifecycle;
 mod metadata;
 mod persistence;
@@ -36,6 +37,10 @@ pub use inline_edit::{
     PageInlineEditConfigError, PageInlineEditDocument, PageInlineEditGrantClaims,
     PageInlineEditGrantContext, PageInlineEditKeyId, PageInlineEditKeyring, PageInlineEditSecret,
     inline_edit_context_mismatch,
+};
+pub use inline_edit_runtime::{
+    PAGES_INLINE_EDIT_GRANT_TTL_MS_ENV, PAGES_INLINE_EDIT_HMAC_KEY_ENV,
+    PAGES_INLINE_EDIT_HMAC_KEY_ID_ENV, page_inline_edit_keyring_from_environment,
 };
 pub use lifecycle::PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED;
 pub use route::{
