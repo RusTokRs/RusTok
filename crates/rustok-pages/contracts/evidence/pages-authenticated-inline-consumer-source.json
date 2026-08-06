@@ -20,6 +20,7 @@
     "bounded_key_rotation_contract_added": true,
     "host_keyring_has_no_insecure_default": true,
     "secret_keyring_and_proof_debug_are_redacted": true,
+    "native_server_function_transport_added": true,
     "proof_is_reverified_immediately_before_mutation": true,
     "canonical_page_builder_inline_session_is_reused": true,
     "canonical_fly_patch_remains_the_only_document_mutation": true,
