@@ -30,6 +30,7 @@ rustok-events.workspace = true
 rustok-notifications-api.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles.workspace = true
+rustok-reactions-api.workspace = true
 rustok-seo-targets.workspace = true
 rustok-media.workspace = true
 rustok-taxonomy.workspace = true

@@ -3,6 +3,7 @@ use rustok_api::Permission;
 use rustok_core::search_projection::register_search_projection_source;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_notifications_api::register_notification_source_provider_factory;
+use rustok_reactions_api::register_reaction_subject_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
@@ -22,6 +23,7 @@ mod moderation_transport;
 pub mod notification_recipient;
 mod notification_source;
 pub mod openapi;
+mod reaction_subject;
 mod reply_create_transport;
 pub mod reply_read_transport;
 pub mod richtext;
@@ -58,6 +60,10 @@ pub use notification_recipient::{
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY_UNAVAILABLE, ForumNotificationRecipientContext,
     ForumNotificationRecipientContextPort, ForumNotificationRecipientContextRequest,
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
+};
+pub use reaction_subject::{
+    FORUM_REACTION_SOURCE, FORUM_REACTION_V1_KEY, FORUM_REPLY_REACTION_KIND,
+    FORUM_TOPIC_REACTION_KIND, ForumReactionSubjectProviderFactory,
 };
 pub use reply_read_transport::{
     ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
@@ -233,6 +239,15 @@ impl RusToKModule for ForumModule {
         .map_err(|error| {
             rustok_core::Error::Validation(format!(
                 "forum topic SEO target registration failed: {error}"
+            ))
+        })?;
+        register_reaction_subject_provider_factory(
+            extensions,
+            reaction_subject::ForumReactionSubjectProviderFactory,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "forum reaction subject factory registration failed: {error}"
             ))
         })?;
         register_notification_source_provider_factory(

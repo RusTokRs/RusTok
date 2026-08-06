@@ -109,9 +109,11 @@ integrate them instead of cloning their data models.
 The Reactions owner now has neutral bounded API contracts, unique source
 provider/factory registries, PostgreSQL/SQLite-compatible tenant-composite
 persistence, immutable catalog snapshots, shared Outbox command receipts and
-atomic actor-state/aggregate updates. Maintainer lockfile generation and runtime
-execution remain pending. No producer adapter, event/reconciliation layer,
-transport or UI exists yet.
+atomic actor-state/aggregate updates. Forum now publishes a source-ready
+`topic`/`reply` provider factory with exact active-state, visibility and current-
+revision authorization plus a bounded single-`like` v1 catalog. Maintainer
+lockfile generation, executable host materialization and runtime evidence remain
+pending. No reaction event/reconciliation layer, transport or UI exists yet.
 
 ## Program ledger
 
@@ -135,7 +137,7 @@ transport or UI exists yet.
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`. Finish member-card composition, privacy/block behavior, Forum-stat enrichment and no-N+1 evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
-| `FORUM-18` | `in_progress` | Neutral API, optional owner registration, provider registry, tenant-composite persistence, immutable catalog snapshots, shared receipts and atomic actor aggregates are source-ready. Regenerate `Cargo.lock`, retain owner evidence, add events/reconciliation, then Forum provider, transports/UI and evidence; Forum votes remain separate. |
+| `FORUM-18` | `in_progress` | Neutral API, optional owner registration, tenant-composite persistence, shared receipts, atomic actor aggregates and the Forum topic/reply provider factory are source-ready. Add optional distribution/host materialization and enabled/disabled evidence, regenerate `Cargo.lock`, retain owner evidence, then add events/reconciliation, transports/UI and runtime proof; Forum votes remain separate. |
 | `FORUM-19` | `planned` | Integrate `rustok-moderation-api` subject/effect adapters and Forum-local restrictions. Moderation owns cases and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
@@ -191,10 +193,20 @@ command execution and aggregate projections. Forum owns topic/reply existence,
 current revision, visibility and reaction-policy authorization through its
 provider.
 
-The next integration slice is a Forum `topic` and `reply`
-`ReactionSubjectProvider`. It must use Forum-owned services, return the exact
-current revision and bounded catalog, hide private denial reasons and never let
-Reactions read Forum tables.
+The Forum provider factory supports `topic` and `reply`, checks tenant/source/
+kind, active soft-delete state, approved/open lifecycle and the existing rich
+audience visibility service, and returns one bounded single-selection `like`
+catalog. Its current revision is `latest captured Forum revision id + 1`, so the
+identity advances with captured topic translation/metadata and reply-body edits.
+Missing and denied targets share one `Unavailable` result; revision conflict is
+returned only after current visibility succeeds. Delegated service/system access
+uses the existing exact recipient-context port rather than inventing profile or
+authority storage.
+
+Forum registers only the neutral provider factory. It does not depend on the
+Reactions owner, does not add Reactions to Forum module dependencies, and remains
+fully usable when Reactions is absent. Executable distribution selection and
+host registry materialization remain a separate composition slice.
 
 Reputation and achievements remain separate shared capabilities consuming
 semantic facts. Forum trust remains Forum-owned because it controls Forum
@@ -219,10 +231,11 @@ Hosts register/mount packages and do not absorb policy.
 
 1. Reactions neutral API/optional module foundation: source-ready, maintainer verification pending.
 2. Reactions owner persistence/atomic aggregates: source-ready, lockfile and runtime evidence pending.
-3. Add the Forum `topic` and `reply` `ReactionSubjectProvider` and degraded profile.
-4. Add semantic events/reconciliation and a second producer before freezing shared presentation contracts.
-5. Introduce Reputation/Achievements only after at least two producers agree.
-6. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
+3. Forum `topic`/`reply` provider factory and disabled Forum profile: source-ready, maintainer verification pending.
+4. Add optional distribution/server selection, materialize providers after host facts, and retain enabled/disabled composition evidence.
+5. Add semantic events/reconciliation and a second producer before freezing shared presentation contracts.
+6. Introduce Reputation/Achievements only after at least two producers agree.
+7. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
 
 ### Track 2 — close existing Forum work
 
@@ -252,6 +265,8 @@ Hosts register/mount packages and do not absorb policy.
   adapters and degraded profiles are executable and verified.
 - Reactions owner tables contain no Forum routes, content, visibility or copied
   profile data.
+- Forum's neutral Reactions API dependency does not make the Reactions owner a
+  required Forum module dependency.
 
 ## Required verification
 
@@ -259,8 +274,10 @@ Hosts register/mount packages and do not absorb policy.
 node scripts/verify/verify-forum-shared-capability-ownership.mjs
 node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
+node scripts/verify/verify-forum-reaction-subject-provider.mjs
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
+cargo test -p rustok-forum reaction_subject
 cargo xtask module validate forum
 npm run verify:forum:admin-boundary
 npm run verify:forum:storefront-boundary
@@ -289,7 +306,7 @@ runtime claims without retained executable evidence.
 
 ## Immediate next action
 
-Add the Forum `topic` and `reply` `ReactionSubjectProvider` in its own PR. The
-adapter must validate current revision, visibility and catalog policy through
-Forum owners, expose no private denial reason, support an explicit Reactions-
-disabled profile and preserve existing vote behavior.
+Add optional `mod-reactions` selection to the distribution and executable host,
+materialize the registered Forum provider only after host audience/recipient
+facts exist, keep it outside default profiles, and retain source/runtime evidence
+for both Reactions-enabled and Reactions-disabled Forum composition.

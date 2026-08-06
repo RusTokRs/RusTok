@@ -17,7 +17,7 @@ last_reviewed: 2026-08-06
 | `REACTIONS-00` | `in_progress` | Neutral API, optional module registration and provider registry are source-ready; maintainer Cargo/Node verification remains. |
 | `REACTIONS-01` | `in_progress` | Tenant-composite owner schema, immutable catalog snapshots, actor uniqueness and shared Outbox command receipts are source-ready. Regenerate `Cargo.lock` and retain SQLite/PostgreSQL execution evidence. |
 | `REACTIONS-02` | `in_progress` | Actor state and aggregate deltas commit atomically behind one subject serialization row. Add semantic events, repair/reconciliation and retained concurrency evidence. |
-| `REACTIONS-03` | `planned` | Forum topic/reply subject provider and explicit disabled/unavailable profile. |
+| `REACTIONS-03` | `in_progress` | Forum topic/reply provider factory, exact current-revision/visibility authorization and the Reactions-disabled Forum profile are source-ready. Add optional distribution/host materialization and retain enabled/disabled runtime evidence. |
 | `REACTIONS-04` | `planned` | Second real producer adapter and neutral-contract review. |
 | `REACTIONS-05` | `planned` | Bounded read/write transports and module-owned UI. |
 | `REACTIONS-06` | `planned` | Runtime evidence, FBA contracts, import/reconciliation and release profiles. |
@@ -47,12 +47,31 @@ of command correctness.
 The initial catalog revision is the producer subject revision. Independent
 catalog revisioning is a later explicit API/migration change.
 
+## Forum producer boundary
+
+Forum registers a neutral `ReactionSubjectProviderFactory` for `topic` and
+`reply` without depending on the Reactions owner. The provider:
+
+- validates exact tenant/source/kind identity;
+- hides missing, deleted, lifecycle-denied and audience-denied subjects behind
+  one unavailable result;
+- checks existing Forum rich-audience visibility before returning revision
+  conflicts;
+- uses `latest captured Forum revision id + 1` as the current subject revision;
+- allows only approved replies whose parent topic is currently open and visible;
+- publishes one bounded single-selection `like` catalog for the initial contract;
+- resolves delegated actors through the existing exact recipient-context port;
+- does not read or reinterpret existing Forum vote state.
+
+Forum remains fully usable when Reactions is absent. The neutral factory may be
+registered without materializing a Reactions owner runtime.
+
 ## Immediate next action
 
-Add the Forum `topic` and `reply` `ReactionSubjectProvider` in a separate PR.
-It must resolve current owner revision, visibility and catalog policy through
-Forum-owned services, expose no private denial reason, preserve existing Forum
-vote behavior and support an explicit Reactions-disabled profile.
+Add optional `mod-reactions` selection to `rustok-distribution` and the server,
+materialize source factories after host facts providers exist, keep Reactions
+outside default profiles, and retain both enabled and disabled Forum composition
+evidence.
 
 Before release, regenerate `Cargo.lock`, execute SQLite and PostgreSQL migrations,
 retain replay/concurrency/rollback evidence, add semantic reaction events and
@@ -63,10 +82,13 @@ provide reconciliation for catalog and aggregate drift.
 ```bash
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
+cargo test -p rustok-forum reaction_subject
 cargo check -p rustok-reactions-api --all-targets
 cargo check -p rustok-reactions --all-targets
+cargo check -p rustok-forum --all-targets
 node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
+node scripts/verify/verify-forum-reaction-subject-provider.mjs
 git diff --check
 ```
 

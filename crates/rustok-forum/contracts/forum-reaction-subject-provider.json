@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "module": "forum",
+  "contract": "forum_reaction_subject_provider_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "source": "forum",
+  "supported_kinds": ["topic", "reply"],
+  "catalog": {
+    "selection": "single",
+    "keys": ["like"]
+  },
+  "required_files": [
+    "crates/rustok-forum/src/reaction_subject.rs",
+    "crates/rustok-forum/src/lib.rs",
+    "crates/rustok-forum/Cargo.toml",
+    "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/rustok-reactions/docs/implementation-plan.md",
+    "scripts/verify/verify-forum-reaction-subject-provider.mjs"
+  ],
+  "required_source_fragments": [
+    "ForumReactionSubjectProviderFactory",
+    "ReactionSubjectProviderFactory",
+    "ReactionSubjectProvider",
+    "FORUM_TOPIC_REACTION_KIND",
+    "FORUM_REPLY_REACTION_KIND",
+    "FORUM_REACTION_V1_KEY",
+    "ForumTopicAudienceVisibilityService",
+    "ForumNotificationRecipientContextResolver",
+    "deleted_at IS NULL",
+    "current_topic_revision",
+    "current_reply_revision",
+    "ReactionProviderError::Conflict",
+    "ReactionSubjectAuthorization::Unavailable"
+  ],
+  "forbidden_source_fragments": [
+    "forum_votes",
+    "ForumVote",
+    "VoteService",
+    "async_graphql",
+    "axum::",
+    "leptos"
+  ],
+  "ownership": {
+    "forum_owns": [
+      "subject existence",
+      "current revision",
+      "visibility",
+      "lifecycle",
+      "reaction policy"
+    ],
+    "reactions_owns": [
+      "actor state",
+      "command receipts",
+      "aggregate counts"
+    ]
+  },
+  "deliberate_limits": [
+    "no executable host materialization",
+    "no default enablement",
+    "no transport",
+    "no UI",
+    "no semantic reaction events",
+    "no reconciliation",
+    "no Forum vote migration"
+  ],
+  "verification": [
+    "cargo test -p rustok-forum reaction_subject",
+    "cargo check -p rustok-forum --all-targets",
+    "node scripts/verify/verify-forum-reaction-subject-provider.mjs",
+    "git diff --check"
+  ]
+}
