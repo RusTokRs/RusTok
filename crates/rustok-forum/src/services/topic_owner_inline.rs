@@ -1,3 +1,7 @@
+pub(crate) mod route_tombstone_visibility {
+    include!("topic_route_tombstone_visibility.rs");
+}
+
 use crate::dto::{CreateTopicCommandInput, UpdateTopicCommandInput};
 
 impl TopicService {
