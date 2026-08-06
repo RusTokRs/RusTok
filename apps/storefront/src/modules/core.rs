@@ -136,8 +136,12 @@ pub fn start_pages_inline_edit_client() {
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "en".to_string());
     let admin_page_href = format!("/admin/pages/{page_id}");
+    let Some(body) = document.body() else {
+        return;
+    };
 
     console_error_panic_hook::set_once();
+    body.set_inner_html("");
     mount_to_body(move || {
         view! {
             <main class="min-h-screen bg-background px-4 py-6 text-foreground">
