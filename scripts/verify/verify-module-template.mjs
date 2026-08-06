@@ -12,6 +12,14 @@ const cargoTemplate = fs.readFileSync(
   path.join(templateRoot, 'assets/Cargo.toml.template'),
   'utf8',
 );
+const readmeTemplate = fs.readFileSync(
+  path.join(templateRoot, 'assets/README.md.template'),
+  'utf8',
+);
+const indexIntegrationGuide = fs.readFileSync(
+  path.join(templateRoot, 'assets/docs/index-integration.md.template'),
+  'utf8',
+);
 const guestTemplate = fs.readFileSync(
   path.join(templateRoot, 'assets/src/lib.rs.template'),
   'utf8',
@@ -32,6 +40,10 @@ const sdkManifest = fs.readFileSync(
   path.join(root, 'crates/rustok-module-sdk/Cargo.toml'),
   'utf8',
 );
+const nativeIndexGuide = fs.readFileSync(
+  path.join(root, 'crates/rustok-index/docs/module-source-integration.md'),
+  'utf8',
+);
 
 for (const marker of [
   'ModuleArtifactSourceManifest::parse(&bytes)',
@@ -42,6 +54,8 @@ for (const marker of [
   'pub const TEMPLATE_VERSION: &str = env!("CARGO_PKG_VERSION")',
   'pub const RUST_TOOLCHAIN: &str = "1.96.0"',
   'LocalSandboxScenario::parse(sandbox_scenario.as_bytes())',
+  'INDEX_INTEGRATION_GUIDE_TEMPLATE',
+  '"docs/index-integration.md"',
 ]) {
   assert.ok(source.includes(marker), `template renderer is missing ${marker}`);
 }
@@ -77,6 +91,31 @@ assert.ok(
     !cargoTemplate.includes('cargo-component'),
   'template must not duplicate WIT bindings or retain cargo-component',
 );
+
+assert.ok(
+  readmeTemplate.includes('docs/index-integration.md') &&
+    readmeTemplate.includes('not an automatic Index bridge') &&
+    guestTemplate.includes('does not register an') &&
+    indexIntegrationGuide.includes('does not publish a `platform.index` capability') &&
+    indexIntegrationGuide.includes('Index integration not yet available') &&
+    indexIntegrationGuide.includes('crates/rustok-index/docs/module-source-integration.md'),
+  'standalone template must explain the fail-closed Index compatibility boundary',
+);
+assert.ok(
+  !cargoTemplate.includes('rustok-index') &&
+    !guestTemplate.includes('"platform.index"') &&
+    !sandboxScenario.includes('"platform.index"'),
+  'standalone component template must not invent a direct rustok-index dependency or capability',
+);
+assert.ok(
+  nativeIndexGuide.includes('register_index_schema_source') &&
+    nativeIndexGuide.includes('IndexSource for ClassifiedsIndexSource') &&
+    nativeIndexGuide.includes('commit-before-ack') &&
+    nativeIndexGuide.includes('writes directly to `index_entities`'),
+  'native module guide must retain schema, replay, ingestion, and ownership requirements',
+);
 assert.match(sdkManifest, /^version = "0\.1\.0"$/m);
 
-console.log('[verify-module-template] canonical standalone Rust module template verified');
+console.log(
+  '[verify-module-template] canonical standalone template and Index boundary verified',
+);

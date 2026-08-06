@@ -16,3 +16,17 @@ through declared brokered capabilities.
 The build worker derives `module-artifact-descriptor.json` after it verifies
 the Component payload. Source code must never create that final descriptor or
 declare `artifact_digest`.
+
+## Index compatibility
+
+`platform.events` is a constrained event broker, not an automatic Index bridge.
+This standalone component cannot depend on the host's `rustok-index` crate,
+register `ModuleRuntimeExtensions`, access PostgreSQL, or write Index-owned
+tables. Do not declare Index compatibility until the host publishes a documented
+and admitted capability or event-to-Index bridge.
+
+Read the generated integration boundary guide:
+
+```text
+docs/index-integration.md
+```
