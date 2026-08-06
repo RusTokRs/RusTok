@@ -40,9 +40,8 @@ pub struct AuditPageArtifactsInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct PageArtifactIntegrityFinding {
     pub artifact_id: Uuid,
-    pub locale: String,
-    pub build_hash: String,
-    pub materialization_hash: Option<String>,
+    pub locale_hash: String,
+    pub record_identity_hash: String,
     pub code: String,
     pub diagnostic_hash: String,
 }
@@ -62,23 +61,21 @@ pub struct PageArtifactIntegrityAuditResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct ArtifactAuditEntry<'a> {
+struct ArtifactAuditEntry {
     artifact_id: Uuid,
-    locale: &'a str,
-    build_hash: &'a str,
-    artifact_hash: &'a str,
-    materialization_hash: Option<&'a str>,
+    locale_hash: String,
+    record_identity_hash: String,
     status: &'static str,
-    diagnostic_hash: Option<&'a str>,
+    diagnostic_hash: Option<String>,
 }
 
 impl PageService {
     /// Audits immutable Page Builder artifacts for one Pages page without mutating any record.
     ///
     /// The command is tenant-scoped, requires tenant-wide `pages:manage`, reads through one
-    /// transaction, and intentionally returns only bounded artifact identity and hashed diagnostics.
-    /// It never returns document HTML, CSS, runtime snapshots, materialization identity payloads or
-    /// internal errors.
+    /// transaction, and intentionally returns only bounded hashed identity and diagnostics. It never
+    /// returns locale text, stored hashes, document HTML, CSS, runtime snapshots, materialization
+    /// identity payloads or internal errors.
     #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id, page_id = %page_id))]
     pub async fn audit_immutable_artifact_integrity(
         &self,
@@ -138,51 +135,43 @@ impl PageService {
         let mut invalid_artifact_count = 0_u32;
         let mut findings = Vec::new();
         let mut findings_truncated = false;
-        let mut diagnostic_hashes = Vec::with_capacity(records.len());
-        let mut statuses = Vec::with_capacity(records.len());
+        let mut entries = Vec::with_capacity(records.len());
 
         for record in &records {
-            match verify_artifact_record(record, tenant_id, page_id) {
+            let locale_hash = hex_sha256(record.locale.as_bytes());
+            let record_identity_hash = artifact_record_identity_hash(record)?;
+            let (status, diagnostic_hash) = match verify_artifact_record(record, tenant_id, page_id)
+            {
                 Ok(()) => {
                     valid_artifact_count = valid_artifact_count.saturating_add(1);
-                    statuses.push("valid");
-                    diagnostic_hashes.push(None);
+                    ("valid", None)
                 }
                 Err(error) => {
                     invalid_artifact_count = invalid_artifact_count.saturating_add(1);
-                    statuses.push("invalid");
                     let diagnostic_hash = hex_sha256(error.to_string().as_bytes());
-                    diagnostic_hashes.push(Some(diagnostic_hash.clone()));
                     if findings.len() < MAX_PAGE_ARTIFACT_AUDIT_FINDINGS {
                         findings.push(PageArtifactIntegrityFinding {
                             artifact_id: record.id,
-                            locale: record.locale.clone(),
-                            build_hash: record.build_hash.clone(),
-                            materialization_hash: record.materialization_hash.clone(),
+                            locale_hash: locale_hash.clone(),
+                            record_identity_hash: record_identity_hash.clone(),
                             code: PAGE_ARTIFACT_INTEGRITY_INVALID.to_string(),
-                            diagnostic_hash,
+                            diagnostic_hash: diagnostic_hash.clone(),
                         });
                     } else {
                         findings_truncated = true;
                     }
+                    ("invalid", Some(diagnostic_hash))
                 }
-            }
+            };
+            entries.push(ArtifactAuditEntry {
+                artifact_id: record.id,
+                locale_hash,
+                record_identity_hash,
+                status,
+                diagnostic_hash,
+            });
         }
 
-        let entries = records
-            .iter()
-            .zip(statuses.iter())
-            .zip(diagnostic_hashes.iter())
-            .map(|((record, status), diagnostic_hash)| ArtifactAuditEntry {
-                artifact_id: record.id,
-                locale: &record.locale,
-                build_hash: &record.build_hash,
-                artifact_hash: &record.artifact_hash,
-                materialization_hash: record.materialization_hash.as_deref(),
-                status: *status,
-                diagnostic_hash: diagnostic_hash.as_deref(),
-            })
-            .collect::<Vec<_>>();
         let audit_hash = stable_hash(&(
             PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT,
             tenant_id,
@@ -232,6 +221,22 @@ fn normalize_max_records(value: Option<u32>) -> PagesResult<u32> {
         )));
     }
     Ok(value)
+}
+
+fn artifact_record_identity_hash(
+    record: &page_static_landing_artifact::Model,
+) -> PagesResult<String> {
+    stable_hash(&(
+        record.id,
+        record.tenant_id,
+        record.page_id,
+        &record.locale,
+        &record.source_hash,
+        &record.build_hash,
+        &record.artifact_hash,
+        record.materialization_hash.as_deref(),
+        &record.content_hash,
+    ))
 }
 
 fn verify_artifact_record(
@@ -392,10 +397,8 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let entries = vec![ArtifactAuditEntry {
             artifact_id: Uuid::new_v4(),
-            locale: "en",
-            build_hash: "build",
-            artifact_hash: "artifact",
-            materialization_hash: Some("materialized"),
+            locale_hash: hex_sha256(b"en"),
+            record_identity_hash: hex_sha256(b"record"),
             status: "valid",
             diagnostic_hash: None,
         }];
