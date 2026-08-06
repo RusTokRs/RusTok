@@ -90,10 +90,29 @@ pub(crate) async fn render_forum_category_route_response(
     }
 }
 
-fn safe_owner_path(path: &str) -> bool {
-    path.starts_with('/')
-        && !path.starts_with("//")
-        && !path.chars().any(char::is_control)
+fn safe_route_segment(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment == segment.trim()
+        && !matches!(segment, "." | "..")
+        && !segment.chars().any(|character| {
+            character.is_control()
+                || character.is_whitespace()
+                || matches!(character, '/' | '\\' | '?' | '#' | '%')
+        })
+}
+
+fn valid_category_descriptor(
+    canonical: &rustok_forum_storefront::StorefrontForumCategoryRouteDescriptor,
+) -> bool {
+    let locale = canonical.locale.trim();
+    let slug = canonical.slug.trim();
+
+    !canonical.category_id.trim().is_empty()
+        && canonical.locale == locale
+        && canonical.slug == slug
+        && rustok_api::normalize_locale_tag(locale).as_deref() == Some(locale)
+        && safe_route_segment(slug)
+        && canonical.path == format!("/{locale}/forum/c/{slug}")
 }
 
 fn forum_category_host_action(
@@ -101,11 +120,7 @@ fn forum_category_host_action(
     resolution: &StorefrontForumCategoryRouteResolution,
 ) -> ForumCategoryHostAction {
     let canonical = &resolution.canonical;
-    if canonical.category_id.trim().is_empty()
-        || canonical.locale.trim().is_empty()
-        || canonical.slug.trim().is_empty()
-        || !safe_owner_path(canonical.path.as_str())
-    {
+    if !valid_category_descriptor(canonical) {
         return ForumCategoryHostAction::Invalid;
     }
 
@@ -197,6 +212,18 @@ mod tests {
         protocol_relative.canonical.path = "//example.invalid/forum".to_string();
         let mut header_injection = resolution(StorefrontForumCategoryRouteDisposition::Redirect);
         header_injection.canonical.path = "/en/forum/c/general\r\nX-Test: injected".to_string();
+        let mut internal_target = resolution(StorefrontForumCategoryRouteDisposition::Redirect);
+        internal_target.canonical.path = "/admin".to_string();
+        let mut mismatched_slug = resolution(StorefrontForumCategoryRouteDisposition::Redirect);
+        mismatched_slug.canonical.path = "/en/forum/c/another-category".to_string();
+        let mut query_target = resolution(StorefrontForumCategoryRouteDisposition::Redirect);
+        query_target.canonical.path = "/en/forum/c/general?preview=true".to_string();
+        let mut invalid_locale = resolution(StorefrontForumCategoryRouteDisposition::Redirect);
+        invalid_locale.canonical.locale = "EN".to_string();
+        invalid_locale.canonical.path = "/EN/forum/c/general".to_string();
+        let mut invalid_slug = resolution(StorefrontForumCategoryRouteDisposition::Redirect);
+        invalid_slug.canonical.slug = "../admin".to_string();
+        invalid_slug.canonical.path = "/en/forum/c/../admin".to_string();
 
         for resolution in [
             missing_path,
@@ -204,6 +231,11 @@ mod tests {
             external_target,
             protocol_relative,
             header_injection,
+            internal_target,
+            mismatched_slug,
+            query_target,
+            invalid_locale,
+            invalid_slug,
         ] {
             assert_eq!(
                 forum_category_host_action("/en/forum/c/general", &resolution),
