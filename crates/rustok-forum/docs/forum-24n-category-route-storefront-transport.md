@@ -53,7 +53,7 @@ The transport does not infer a canonical path or redirect locally. It maps only 
 
 ## Visibility boundary
 
-Route identity is evaluated first, but no route is disclosed until the resolved canonical category passes the exact existing category read owner.
+Route identity is evaluated first, but no route is disclosed until the resolved canonical category passes the exact existing category read owner. Alias ownership is not visibility authorization.
 
 For anonymous requests, both transports use:
 
