@@ -1,7 +1,7 @@
 # Page Builder / Pages Parity Actualization
 
 Date: 2026-08-06
-Status: current-source-overlay / execution-and-rollout-open
+Status: current-source-overlay / rebuild-provenance-source-ready / execution-and-rollout-open
 
 This overlay reconciles the Page Builder programme with current `main`. It supersedes stale open-checkbox wording in older broad plans where that wording conflicts with merged source. It does not convert source-ready work into executed evidence.
 
@@ -128,12 +128,30 @@ The broad Phase 6 wording should now be read as follows:
 
 Any local Pages heading claiming that all remaining work is execution evidence only is still stale because repair/rebuild remains an open source task.
 
+### Reviewed publish rebuild provenance
+
+Marker:
+
+```text
+publish-rebuild-provenance-source-ready
+```
+
+New reviewed publish receipts now retain one locale-specific immutable source row in `page_publish_rebuild_sources` in the same owner transaction as the publish operation and immutable artifact manifest.
+
+The source row records the exact selected page-body identity, format and revision, the canonical sanitized Page Builder project and sanitized hash, the reviewed runtime hash, artifact source/artifact/materialization hashes, materialization identity, runtime snapshots and a deterministic provenance hash.
+
+The existing publish-receipt hook re-reads the exact locale binding and body, re-sanitizes through the canonical Page Builder policy, verifies the sanitization envelope, requires complete reviewed materialization evidence and recomputes both locale-ordered `sanitized_set_hash` and `artifact_set_hash`. Any mismatch aborts the surrounding publication transaction.
+
+Existing publish operations are not backfilled. Existing artifact rows and bindings are not changed. The provenance row deliberately survives loss of its referenced artifact row and therefore remains usable as investigation input. The complete runtime context is not duplicated; a future command must obtain an explicitly reviewed context and prove its review/context hashes against retained evidence.
+
+This closes the immutable source provenance prerequisite only. The repair/rebuild command remains open, as do authorization, idempotency, append-only replacement, explicit binding switch, lifecycle/cache effects and transports. No automatic repair is introduced.
+
 ### Status boundary
 
 Source parity has advanced, but execution and rollout remain open.
 
-- No new test, verifier, Cargo, database, GraphQL, HTTP, browser, workflow or CI execution is claimed here.
-- No audit database or transport scenario, publish/materialization scenario or repair was executed.
+- No new test, verifier, Cargo, formatting, migration, database, GraphQL, HTTP, browser, workflow or CI execution is claimed here.
+- No audit database or transport scenario, provenance migration/publish scenario, publish/materialization scenario or repair was executed.
 - No FFA/FBA promotion is made.
 
 ## Current next cursor
@@ -141,6 +159,8 @@ Source parity has advanced, but execution and rollout remain open.
 1. Run the immutable artifact audit command and transport source guards plus focused Pages tests.
 2. Retain SQLite/PostgreSQL audit evidence for valid legacy/current records, corruption, partial evidence, tenant-wide versus owner-scoped authorization and 513-row truncation.
 3. Retain GraphQL/HTTP/OpenAPI evidence for current-tenant fencing, static public errors and bounded result parity.
-4. Design repair/rebuild as a separate explicit command with immutable source provenance and no in-place artifact mutation.
-5. Run the static publish resource-limit source guard and retain accepted real-project policy evidence.
-6. Execute the existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
+4. Run the reviewed publish rebuild-provenance source guard and retain SQLite/PostgreSQL evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
+5. Design an explicit tenant-wide repair/rebuild command that selects one provenance row, reauthorizes the exact runtime context, appends a new immutable artifact and never updates the damaged artifact in place.
+6. Keep any binding switch separately authorized and idempotent, with lifecycle/cache effects only after the explicit switch.
+7. Run the static publish resource-limit source guard and retain accepted real-project policy evidence.
+8. Execute the existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
