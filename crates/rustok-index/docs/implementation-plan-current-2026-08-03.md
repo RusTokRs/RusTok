@@ -1,8 +1,11 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked through
-`main@8417ee67750606b5fc72e6fa2d11f7ef6cc6e103` and active branch
+`main@d890fd6f29a3c1dc2b883d570af9b3e9c094342d` and active branch
 `agent/index-m6-prepared-repair-recovery-20260806`.
+
+The non-overlapping merge-base-to-main review is retained in
+`implementation-main-delta-2026-08-06-1240.md`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
