@@ -1,5 +1,5 @@
 use rustok_api::{Action, Resource};
-use rustok_core::SecurityContext;
+use rustok_core::{PermissionScope, SecurityContext};
 use rustok_page_builder::{
     ComponentRegistryManifest, LandingSectionSnapshot,
     PageBuilderMaterializedStaticLandingArtifact, PageBuilderStaticLandingMaterializationIdentity,
@@ -18,7 +18,6 @@ use uuid::Uuid;
 
 use crate::entities::{page, page_static_landing_artifact};
 use crate::error::{PagesError, PagesResult};
-use crate::services::rbac::enforce_scope;
 
 use super::PageService;
 
@@ -76,9 +75,10 @@ struct ArtifactAuditEntry<'a> {
 impl PageService {
     /// Audits immutable Page Builder artifacts for one Pages page without mutating any record.
     ///
-    /// The command is tenant-scoped, requires `pages:manage`, reads through one transaction, and
-    /// intentionally returns only bounded artifact identity and hashed diagnostics. It never returns
-    /// document HTML, CSS, runtime snapshots, materialization identity payloads or internal errors.
+    /// The command is tenant-scoped, requires tenant-wide `pages:manage`, reads through one
+    /// transaction, and intentionally returns only bounded artifact identity and hashed diagnostics.
+    /// It never returns document HTML, CSS, runtime snapshots, materialization identity payloads or
+    /// internal errors.
     #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id, page_id = %page_id))]
     pub async fn audit_immutable_artifact_integrity(
         &self,
@@ -87,7 +87,7 @@ impl PageService {
         page_id: Uuid,
         input: AuditPageArtifactsInput,
     ) -> PagesResult<PageArtifactIntegrityAuditResult> {
-        enforce_scope(&security, Resource::Pages, Action::Manage)?;
+        enforce_tenant_wide_manage(&security)?;
         if tenant_id.is_nil() {
             return Err(PagesError::validation(
                 "Immutable artifact audit tenant must not be nil",
@@ -208,6 +208,19 @@ impl PageService {
             findings,
             audit_hash,
         })
+    }
+}
+
+fn enforce_tenant_wide_manage(security: &SecurityContext) -> PagesResult<()> {
+    if matches!(
+        security.get_scope(Resource::Pages, Action::Manage),
+        PermissionScope::All
+    ) {
+        Ok(())
+    } else {
+        Err(PagesError::forbidden(
+            "Immutable artifact audit requires tenant-wide pages:manage",
+        ))
     }
 }
 
