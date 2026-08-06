@@ -10,6 +10,10 @@ import type {
   ForumTopicMergeReceipt
 } from '../core/topic-merge';
 import type {
+  ForumTopicSlugRenameCommand,
+  ForumTopicSlugRenameReceipt
+} from '../core/topic-slug-rename';
+import type {
   ForumTopicSplitCommand,
   ForumTopicSplitReceipt,
   ForumTopicSplitReplyPage
@@ -273,6 +277,63 @@ export async function mergeForumTopics(
   return data.mergeForumTopic;
 }
 
+export async function renameForumTopicSlug(
+  command: ForumTopicSlugRenameCommand,
+  opts: GqlOpts = {}
+): Promise<ForumTopicSlugRenameReceipt> {
+  const mutation = `
+    mutation RenameForumTopicSlug(
+      $tenantId: UUID
+      $topicId: UUID!
+      $input: RenameForumTopicSlugGraphqlInput!
+    ) {
+      renameForumTopicSlug(
+        tenantId: $tenantId
+        topicId: $topicId
+        input: $input
+      ) {
+        topicId
+        locale
+        previousSlug
+        slug
+        previousPath
+        canonical {
+          topicId
+          locale
+          shortId
+          slug
+          path
+        }
+        aliasId
+        changed
+      }
+    }
+  `;
+
+  const data = await graphqlRequest<
+    {
+      tenantId?: string | null;
+      topicId: string;
+      input: { locale: string; slug: string };
+    },
+    { renameForumTopicSlug: ForumTopicSlugRenameReceipt }
+  >(
+    mutation,
+    {
+      tenantId: opts.tenantId,
+      topicId: command.topicId,
+      input: {
+        locale: command.locale,
+        slug: command.slug
+      }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.renameForumTopicSlug;
+}
+
 export async function splitForumTopicReplies(
   command: ForumTopicSplitCommand,
   opts: GqlOpts = {}
@@ -413,4 +474,3 @@ export async function forkForumTopicReplyBranch(
 
   return data.forkForumTopicReplyBranch;
 }
-
