@@ -71,6 +71,7 @@ impl ForumCategoryVisibilityPolicyService {
         enforce_scope(&security, Resource::ForumCategories, Action::Manage)?;
 
         let txn = self.db.begin().await?;
+        super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?;
         let snapshot = CategoryVisibilitySnapshot::load(&txn, tenant_id).await?;
         snapshot.policy(category_id)?;
 
@@ -163,12 +164,23 @@ impl ForumCategoryVisibilityPolicyService {
                 .is_some());
         }
 
-        let snapshot = CategoryVisibilitySnapshot::load(&self.db, tenant_id).await?;
-        match snapshot.resolve(category_id) {
-            Ok(resolved) => Ok(resolved.effective_visibility == ForumCategoryVisibility::Public),
-            Err(ForumError::CategoryNotFound(_)) => Ok(false),
-            Err(error) => Err(error),
-        }
+        is_category_public_to_anonymous(&self.db, tenant_id, category_id).await
+    }
+}
+
+pub(crate) async fn is_category_public_to_anonymous<C>(
+    db: &C,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<bool>
+where
+    C: ConnectionTrait,
+{
+    let snapshot = CategoryVisibilitySnapshot::load(db, tenant_id).await?;
+    match snapshot.resolve(category_id) {
+        Ok(resolved) => Ok(resolved.effective_visibility == ForumCategoryVisibility::Public),
+        Err(ForumError::CategoryNotFound(_)) => Ok(false),
+        Err(error) => Err(error),
     }
 }
 
