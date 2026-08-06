@@ -50,7 +50,7 @@ for (const fragment of contract.forbidden_source_fragments) {
 }
 
 for (const fragment of [
-  "rustok-reactions-api.workspace = true",
+  'rustok-reactions-api = { path = "../rustok-reactions-api" }',
   "rustok-notifications-api.workspace = true",
 ]) {
   if (!forumCargo.includes(fragment)) fail(`Forum Cargo boundary is missing ${fragment}`);
@@ -76,7 +76,7 @@ if (/"reactions"/u.test(defaultEnabled)) {
 for (const fragment of [
   "topic`/`reply` provider factory",
   "latest captured Forum revision id + 1",
-  "Executable distribution selection and",
+  "optional owner selection and host materialization",
   "node scripts/verify/verify-forum-reaction-subject-provider.mjs",
 ]) {
   if (!forumPlan.includes(fragment)) fail(`Forum plan is missing ${fragment}`);
