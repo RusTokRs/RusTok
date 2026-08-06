@@ -1,5 +1,11 @@
 use crate::landing::LandingProjectError;
-use crate::static_landing::StaticLandingCompiler;
+use crate::static_landing::{
+    StaticLandingCompiler,
+    static_publish_resource_limits::{
+        PageBuilderStaticPublishResourceLimitError, PageBuilderStaticPublishResourceLimits,
+        validate_static_publish_resource_limits,
+    },
+};
 use crate::static_publish_policy::{
     PageBuilderStaticPublishPolicyError, PageBuilderStaticPublishPolicyEvidence,
     validate_static_publish_document,
@@ -7,13 +13,6 @@ use crate::static_publish_policy::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-
-#[path = "static_publish_resource_limits.rs"]
-pub mod static_publish_resource_limits;
-
-use static_publish_resource_limits::{
-    PageBuilderStaticPublishResourceLimitError, validate_static_publish_resource_limits,
-};
 
 pub const PAGE_BUILDER_STATIC_SANITIZATION_FORMAT: &str =
     "page_builder_static_publish_sanitization_v2";
@@ -213,7 +212,7 @@ mod tests {
 
     #[test]
     fn sanitization_rejects_excess_global_resources() {
-        let pages = (0..=static_publish_resource_limits::PageBuilderStaticPublishResourceLimits::default().max_pages)
+        let pages = (0..=PageBuilderStaticPublishResourceLimits::default().max_pages)
             .map(|index| json!({ "id": format!("page-{index}") }))
             .collect::<Vec<_>>();
         let project = json!({ "pages": pages });
