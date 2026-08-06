@@ -385,6 +385,24 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         extensions.insert(recipient_context);
     }
 
+    #[cfg(feature = "mod-reactions")]
+    {
+        if rustok_reactions::api::reaction_subject_registry_from_extensions(&extensions).is_none() {
+            return Err(Error::Message(
+                "Reactions feature is selected but ReactionsModule is missing from ModuleRegistry"
+                    .to_string(),
+            ));
+        }
+        let host =
+            extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
+        rustok_reactions::api::materialize_reaction_subject_registry(&mut extensions, &host)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "reaction subject provider materialization failed: {error}"
+                ))
+            })?;
+    }
+
     #[cfg(feature = "mod-notifications")]
     {
         let host =
@@ -461,6 +479,8 @@ mod tests {
     #[tokio::test]
     async fn host_runtime_extensions_register_admin_mutation_providers() {
         let registry = ModuleRegistry::new();
+        #[cfg(feature = "mod-reactions")]
+        let registry = registry.register(rustok_reactions::ReactionsModule);
         let settings = RustokSettings::default();
         let db = Database::connect("sqlite::memory:")
             .await
@@ -536,6 +556,11 @@ mod tests {
         assert!(extensions.contains::<
             crate::services::forum_posting_policy_facts::SharedForumPostingPolicyFactsComposer,
         >());
+        #[cfg(feature = "mod-reactions")]
+        assert!(
+            rustok_reactions::api::reaction_subject_registry_from_extensions(extensions.as_ref())
+                .is_some()
+        );
         #[cfg(feature = "mod-notifications")]
         assert!(
             rustok_notifications::api::notification_source_registry_from_extensions(

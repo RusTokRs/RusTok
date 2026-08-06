@@ -1,9 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
-Status overlay rechecked against the current main snapshot retained in
-`implementation-main-delta-2026-08-06-1525.md`, stacked parent PR #3083 at
-`aab4f9418317f965d540adf538ede2e1660785d1`, and active branch
-`agent/index-m6-repair-evidence-admission-20260806`.
+Status overlay rechecked against current `main` after exact source-refresh worker merge #3106 and
+active branch `agent/index-m5-product-locale-refresh-ledger-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
@@ -32,6 +30,25 @@ The clean-commit retained-evidence admission boundary is
 commands, current source hashes, required case names, bounded database/toolchain metadata, complete
 credential-redacted stdout/stderr, and an atomic terminal pass packet. The packet and logs remain
 absent until the repository owner executes the capture runner.
+
+An independent M5 slice registers Social Graph as the first exact production mutation route. It adds
+one bounded authoritative replay source over `social_graph_relations`, reuses the existing Iggy
+consumer source identity, and atomically materializes the immutable mutation event registry with the
+staged source catalog. This does not advance or bypass the concrete-repair evidence cursor.
+
+A second independent M5 slice adds exact source-refresh orchestration for thin owner change events.
+One event identifies an exact `EntityKey`, owner event UUID, and positive minimum source version. The
+worker resolves the immutable route and source, performs one bounded exact load, requires an upsert
+or tombstone at or beyond the event fence, rebinds the canonical mutation to the broker event UUID,
+durably applies it, and only then acknowledges.
+
+A third independent M5 slice makes Product locale owner changes recoverable before the public wire
+contract exists. Product lifecycle publication now retains the exact root envelope UUID and writes
+bounded append-only `(tenant, product, locale, source_version)` refresh rows in the same transaction.
+Live rows use final trigger-owned Product revisions; removed locales and hard deletes use retained
+tombstone revisions. A bounded Product-owned source exposes the ledger without importing Index.
+Typed Product events, route registration, relay/consumer composition, and ProductVariant ownership
+remain open. This source-only work does not advance or bypass the repair evidence cursor.
 
 Concrete missing-entity repair:
 
@@ -71,7 +88,13 @@ remain open.
 - M4 query planning/compiler/runtime and privacy shadow: `source_complete_owner_execution_pending`
 - M5 inbox deduplication and monotonic source versions: `complete`
 - M5 mutation event registry and commit-before-ack orchestration:
-  `source_complete_broker_wiring_pending`
+  `generic_source_complete_social_graph_route_runtime_execution_pending`
+- M5 exact source-refresh event worker:
+  `source_complete_owner_event_publication_and_runtime_wiring_pending`
+- M5 Product locale append-only refresh owner ledger and bounded owner source:
+  `owner_source_complete_wire_and_consumer_pending`
+- M5 Social Graph bounded replay source and exact production event route:
+  `source_complete_runtime_execution_pending`
 - M5/M6 bounded source replay contract: `source_complete_owner_execution_pending`
 - M6 replay jobs, checkpoints, multi-page execution, cancellation, retry/dead-letter, and generic
   host scheduling: `source_complete_owner_execution_pending`
@@ -112,10 +135,23 @@ remain open.
 - [x] Add a source replay registry with bounded failure classification.
 - [x] Add inbox deduplication and monotonic source versions.
 - [x] Add a database-neutral mutation-source event registry and commit-before-ack orchestration.
-- [ ] Register production owner event routes and compose a concrete broker consumer/acknowledger.
-- [ ] Add batch transactions, bounded backoff, dead-letter state, and lag metrics around production
-      event routes.
-- [ ] Retain crash-between-commit-and-ack and redelivery evidence.
+- [x] Add exact one-key source-refresh orchestration with minimum owner revision fencing.
+- [x] Register the Social Graph production event route and bounded replay source.
+- [x] Reuse the concrete Social Graph Iggy consumer/acknowledger, bounded retry/backoff, DLQ and
+      poison receipts, graceful shutdown, and lag/outcome metrics.
+- [x] Materialize selected PostgreSQL sources and mutation event routes atomically.
+- [x] Retain exact Product locale identities and owner revisions in an append-only transactional
+      ledger causally linked to the existing Product lifecycle envelope.
+- [x] Expose the Product locale ledger through one bounded tenant/sequence owner source.
+- [ ] Define the reviewed Product locale refresh event family and update the committed release
+      digests through the canonical generator.
+- [ ] Relay Product locale rows as typed write-once events with `refresh_id` envelope identity.
+- [ ] Register the Product locale production route and concrete consumer/acknowledger.
+- [ ] Add ProductVariant parent identity to retained tombstones and implement the equivalent owner
+      ledger, typed event, route, and consumer path.
+- [ ] Add equivalent concrete consumer policy for every remaining selected owner route.
+- [ ] Retain crash-between-commit-and-ack and redelivery evidence against the generic registered
+      route boundary.
 
 ## M6 replay and scheduling
 
@@ -190,7 +226,11 @@ remain open.
 - [x] Add Product, ProductVariant, and SalesChannel schemas and bounded current-state sources.
 - [x] Add stable replay identities and retained deletes.
 - [x] Add Product-to-ProductVariant graph materialization.
-- [ ] Add production owner event routes and concrete incremental consumer wiring.
+- [x] Add the generic exact-source refresh worker required by Product/ProductVariant notifications.
+- [x] Add Product locale append-only owner refresh publication and bounded owner source.
+- [ ] Add Product locale typed event, production route, relay, and concrete incremental consumer.
+- [ ] Add ProductVariant parent-aware tombstones, owner refresh publication, typed event, route, and
+      concrete incremental consumer.
 - [ ] Persist and enforce per-tenant schema readiness.
 - [ ] Complete durable Product-to-SalesChannel relation semantics and retained evidence.
 - [ ] Admit tombstone purge, freshness/outage/restart/backlog recovery, and delete/recreate evidence.
@@ -214,12 +254,23 @@ The owner must run the locked capture command from a clean commit. The retained 
 - normal full-mutation versus exact edge-owner serialization results;
 - complete credential-redacted stdout/stderr and final pass status.
 
-Public authorization transport, automatic iteration, time-derived leases, and lifecycle
-auto-resolution remain separate later slices.
+Independent source-only work may continue on the Product locale typed relay, ProductVariant owner
+identity, and remaining M5/M7 owner routes, but public repair authorization transport, automatic
+iteration, time-derived leases, and lifecycle auto-resolution remain blocked until admission.
 
-## Owner verification for this slice
+## Owner verification for current source boundaries
 
 ```bash
+node scripts/verify/verify-index-product-locale-refresh-ledger.mjs
+cargo check -p rustok-product --all-targets
+
+cargo test -p rustok-index source_refresh_event --lib -- --nocapture
+node scripts/verify/verify-index-source-refresh-event.mjs
+
+cargo test -p rustok-social-graph --features index-consumer index_source -- --nocapture
+cargo test -p rustok-index source_factory -- --nocapture
+node scripts/verify/verify-index-social-graph-mutation-route.mjs
+
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   node scripts/evidence/capture-index-repair-postgres.mjs
 
@@ -230,9 +281,10 @@ node scripts/verify/verify-index-missing-entity-repair-composition.mjs
 node scripts/verify/verify-index-orphan-link-repair-composition.mjs
 node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-query-contract.mjs
+cargo check -p rustok-social-graph --features index-consumer --all-targets
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, Node verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite scenarios,
+No tests, Node verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite/Iggy scenarios,
 workflows, or CI were executed by the implementation agent.

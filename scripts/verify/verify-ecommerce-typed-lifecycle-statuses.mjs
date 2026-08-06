@@ -23,7 +23,13 @@ const orderRecovery = read('crates/rustok-order/src/checkout_order_recovery.rs')
 const orderStage = read('crates/rustok-commerce/src/services/checkout_order_stages.rs');
 const payment = read('crates/rustok-payment/src/dto/payment.rs');
 const paymentPorts = read('crates/rustok-payment/src/ports.rs');
-const paymentStage = read('crates/rustok-commerce/src/services/checkout_payment_stages.rs');
+const paymentStageFacade = read(
+  'crates/rustok-commerce/src/services/checkout_payment_stages.rs',
+);
+const paymentStageLegacy = read(
+  'crates/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
+);
+const paymentStage = `${paymentStageFacade}\n${paymentStageLegacy}`;
 const fulfillment = read('crates/rustok-fulfillment/src/status.rs');
 const fulfillmentTypedExecution = read(
   'crates/rustok-fulfillment/src/checkout_execution_typed.rs',
@@ -35,6 +41,17 @@ const fulfillmentStage = read(
 const finalization = read('crates/rustok-commerce/src/services/checkout_finalization.rs');
 const compensation = read(
   'crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs',
+);
+
+requireText(
+  paymentStageFacade,
+  'include!("checkout_payment_stages_legacy.rs");',
+  'mounted payment-stage facade',
+);
+requireText(
+  paymentStageFacade,
+  'struct SanitizingCheckoutPaymentExecutionPort',
+  'mounted payment-stage typed owner adapter',
 );
 
 for (const [source, value, label] of [

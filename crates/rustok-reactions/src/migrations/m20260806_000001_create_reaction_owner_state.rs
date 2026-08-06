@@ -1,0 +1,387 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(ReactionSubjects::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ReactionSubjects::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionSubjects::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionSubjects::SourceSlug)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionSubjects::SubjectKind)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionSubjects::SubjectId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionSubjects::SubjectRevision)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionSubjects::CurrentCatalogRevision)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionSubjects::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionSubjects::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        for index in [
+            Index::create()
+                .name("ux_reaction_subjects_tenant_identity")
+                .table(ReactionSubjects::Table)
+                .col(ReactionSubjects::TenantId)
+                .col(ReactionSubjects::SourceSlug)
+                .col(ReactionSubjects::SubjectKind)
+                .col(ReactionSubjects::SubjectId)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("ux_reaction_subjects_tenant_id")
+                .table(ReactionSubjects::Table)
+                .col(ReactionSubjects::TenantId)
+                .col(ReactionSubjects::Id)
+                .unique()
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ReactionCatalogs::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ReactionCatalogs::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionCatalogs::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionCatalogs::ReactionSubjectId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionCatalogs::CatalogRevision)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionCatalogs::CatalogJson)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionCatalogs::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_reaction_catalogs_tenant_subject")
+                            .from(ReactionCatalogs::Table, ReactionCatalogs::TenantId)
+                            .from_col(ReactionCatalogs::ReactionSubjectId)
+                            .to(ReactionSubjects::Table, ReactionSubjects::TenantId)
+                            .to_col(ReactionSubjects::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("ux_reaction_catalogs_tenant_subject_revision")
+                    .table(ReactionCatalogs::Table)
+                    .col(ReactionCatalogs::TenantId)
+                    .col(ReactionCatalogs::ReactionSubjectId)
+                    .col(ReactionCatalogs::CatalogRevision)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ReactionActorStates::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ReactionActorStates::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionActorStates::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionActorStates::ReactionSubjectId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionActorStates::ActorId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionActorStates::Revision)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionActorStates::SelectedJson)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionActorStates::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionActorStates::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_reaction_actor_states_tenant_subject")
+                            .from(
+                                ReactionActorStates::Table,
+                                ReactionActorStates::TenantId,
+                            )
+                            .from_col(ReactionActorStates::ReactionSubjectId)
+                            .to(ReactionSubjects::Table, ReactionSubjects::TenantId)
+                            .to_col(ReactionSubjects::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("ux_reaction_actor_states_tenant_subject_actor")
+                    .table(ReactionActorStates::Table)
+                    .col(ReactionActorStates::TenantId)
+                    .col(ReactionActorStates::ReactionSubjectId)
+                    .col(ReactionActorStates::ActorId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ReactionAggregates::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ReactionAggregates::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionAggregates::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionAggregates::ReactionSubjectId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionAggregates::ReactionKey)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionAggregates::Count)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionAggregates::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ReactionAggregates::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_reaction_aggregates_tenant_subject")
+                            .from(ReactionAggregates::Table, ReactionAggregates::TenantId)
+                            .from_col(ReactionAggregates::ReactionSubjectId)
+                            .to(ReactionSubjects::Table, ReactionSubjects::TenantId)
+                            .to_col(ReactionSubjects::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("ux_reaction_aggregates_tenant_subject_key")
+                    .table(ReactionAggregates::Table)
+                    .col(ReactionAggregates::TenantId)
+                    .col(ReactionAggregates::ReactionSubjectId)
+                    .col(ReactionAggregates::ReactionKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ReactionAggregates::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ReactionActorStates::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ReactionCatalogs::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ReactionSubjects::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(DeriveIden)]
+enum ReactionSubjects {
+    Table,
+    Id,
+    TenantId,
+    SourceSlug,
+    SubjectKind,
+    SubjectId,
+    SubjectRevision,
+    CurrentCatalogRevision,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum ReactionCatalogs {
+    Table,
+    Id,
+    TenantId,
+    ReactionSubjectId,
+    CatalogRevision,
+    CatalogJson,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum ReactionActorStates {
+    Table,
+    Id,
+    TenantId,
+    ReactionSubjectId,
+    ActorId,
+    Revision,
+    SelectedJson,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum ReactionAggregates {
+    Table,
+    Id,
+    TenantId,
+    ReactionSubjectId,
+    ReactionKey,
+    Count,
+    CreatedAt,
+    UpdatedAt,
+}

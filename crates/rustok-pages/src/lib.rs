@@ -72,9 +72,12 @@ pub use entities::{
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
+    AuditPageArtifactsInput, DEFAULT_PAGE_ARTIFACT_AUDIT_RECORDS,
     DEFAULT_PAGE_INLINE_EDIT_CLOCK_SKEW_MS, DEFAULT_PAGE_INLINE_EDIT_GRANT_TTL_MS,
-    ImportPageRouteHistoryInput, IssuedPageInlineEditGrant, MAX_PAGE_INLINE_EDIT_GRANT_TTL_MS,
+    ImportPageRouteHistoryInput, IssuedPageInlineEditGrant, MAX_PAGE_ARTIFACT_AUDIT_FINDINGS,
+    MAX_PAGE_ARTIFACT_AUDIT_RECORDS, MAX_PAGE_INLINE_EDIT_GRANT_TTL_MS,
     MAX_PAGE_INLINE_EDIT_KEYS, MAX_PAGE_ROUTE_HISTORY_IMPORT_ITEMS,
+    PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT, PAGE_ARTIFACT_INTEGRITY_INVALID,
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED, PAGE_DOCUMENT_REVISION_CONFLICT,
@@ -86,13 +89,14 @@ pub use services::{
     PAGE_ROLLBACK_TARGET_UNAVAILABLE, PAGE_ROUTE_HISTORY_IMPORT_CONFLICT, PAGE_ROUTE_NOT_FOUND,
     PAGE_ROUTE_RESOLUTION_CONFLICT, PAGES_INLINE_EDIT_GRANT_TTL_MS_ENV,
     PAGES_INLINE_EDIT_HMAC_KEY_ENV, PAGES_INLINE_EDIT_HMAC_KEY_ID_ENV,
-    PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageInlineEditConfigError,
-    PageInlineEditDocument, PageInlineEditGrantClaims, PageInlineEditGrantContext,
-    PageInlineEditKeyId, PageInlineEditKeyring, PageInlineEditSecret, PageRouteDescriptor,
-    PageRouteDisposition, PageRouteHistoryImportItem, PageRouteHistoryImportResult,
-    PageRouteHistoryImportService, PageRouteResolution, PageRouteService, PageService,
-    PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
-    inline_edit_context_mismatch, page_inline_edit_keyring_from_environment,
+    PageArtifactIntegrityAuditResult, PageArtifactIntegrityFinding, PageBuilderArtifactService,
+    PageBuilderScenarioBaselineService, PageInlineEditConfigError, PageInlineEditDocument,
+    PageInlineEditGrantClaims, PageInlineEditGrantContext, PageInlineEditKeyId,
+    PageInlineEditKeyring, PageInlineEditSecret, PageRouteDescriptor, PageRouteDisposition,
+    PageRouteHistoryImportItem, PageRouteHistoryImportResult, PageRouteHistoryImportService,
+    PageRouteResolution, PageRouteService, PageService, PublishedLandingArtifact,
+    SaveIfCurrentScenarioBaselineRequest, inline_edit_context_mismatch,
+    page_inline_edit_keyring_from_environment,
 };
 
 use async_trait::async_trait;

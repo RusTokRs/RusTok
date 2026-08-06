@@ -1,39 +1,18 @@
-use std::sync::Arc;
+pub mod entities;
+pub mod migrations;
+mod service;
 
 use async_trait::async_trait;
-use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
-use rustok_reactions_api::{
-    ReactionSubjectRegistry, ReactionSubjectRegistryEntry,
-    ensure_reaction_subject_factory_registry, ensure_reaction_subject_registry,
-    reaction_subject_registry_from_extensions,
+use rustok_core::{
+    MigrationDependencyDescriptor, MigrationSource, ModuleRuntimeExtensions, RusToKModule,
 };
+use rustok_reactions_api::{
+    ensure_reaction_subject_factory_registry, ensure_reaction_subject_registry,
+};
+use sea_orm_migration::MigrationTrait;
 
 pub use rustok_reactions_api as api;
-
-#[derive(Clone)]
-pub struct ReactionsService {
-    subjects: Arc<ReactionSubjectRegistry>,
-}
-
-impl ReactionsService {
-    pub fn from_runtime_extensions(extensions: &ModuleRuntimeExtensions) -> Self {
-        let subjects = reaction_subject_registry_from_extensions(extensions)
-            .unwrap_or_else(|| Arc::new(ReactionSubjectRegistry::default()));
-        Self { subjects }
-    }
-
-    pub fn subject_sources(&self) -> Vec<ReactionSubjectRegistryEntry> {
-        self.subjects.entries()
-    }
-
-    pub fn subject_source_count(&self) -> usize {
-        self.subjects.len()
-    }
-
-    pub fn has_subject_sources(&self) -> bool {
-        !self.subjects.is_empty()
-    }
-}
+pub use service::ReactionsService;
 
 pub struct ReactionsModule;
 
@@ -69,21 +48,33 @@ impl RusToKModule for ReactionsModule {
     }
 }
 
+impl MigrationSource for ReactionsModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
+    use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
     use rustok_reactions_api::{
         reaction_subject_factory_registry_from_extensions,
         reaction_subject_registry_from_extensions,
     };
 
-    use super::{ReactionsModule, ReactionsService};
+    use super::ReactionsModule;
 
     #[test]
-    fn module_initializes_empty_subject_registries() {
+    fn module_initializes_registries_and_declares_owner_schema() {
         let module = ReactionsModule;
         assert_eq!(module.slug(), "reactions");
         assert_eq!(module.dependencies(), &["outbox"]);
+        assert_eq!(module.migrations().len(), 1);
+        assert_eq!(module.migration_dependencies().len(), 1);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module
@@ -92,9 +83,5 @@ mod tests {
 
         assert!(reaction_subject_registry_from_extensions(&extensions).is_some());
         assert!(reaction_subject_factory_registry_from_extensions(&extensions).is_some());
-
-        let service = ReactionsService::from_runtime_extensions(&extensions);
-        assert_eq!(service.subject_source_count(), 0);
-        assert!(!service.has_subject_sources());
     }
 }

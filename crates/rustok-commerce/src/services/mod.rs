@@ -1,5 +1,5 @@
 pub mod checkout;
-#[path = "checkout_compensation_owner_ports.rs"]
+#[path = "checkout_compensation_payment_safe.rs"]
 mod checkout_compensation;
 mod checkout_compensation_sweep;
 mod checkout_finalization;

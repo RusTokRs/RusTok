@@ -30,9 +30,10 @@ pub use public_error::{ProductPublicError, map_product_public_error};
 pub use runtime::{ProductCatalogReadProfile, ProductCatalogReadRuntime};
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
-    ProductAttributeFilter, ProductCatalogSchemaService, StorefrontProductList,
-    StorefrontProductListItem, StorefrontProductListQuery, StorefrontProductSortBy,
-    StorefrontProductSortDirection,
+    MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, ProductAttributeFilter,
+    ProductCatalogSchemaService, ProductIndexLocaleRefreshRecord,
+    ProductIndexLocaleRefreshSource, StorefrontProductList, StorefrontProductListItem,
+    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 
 /// Typed marker proving that `ProductModule` participated in runtime extension registration.

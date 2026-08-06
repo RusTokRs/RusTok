@@ -19,9 +19,9 @@ function read(relativePath) {
   return readFileSync(absolute, "utf8");
 }
 
-if (contract.schema_version !== 1) fail("unsupported contract schema version");
+if (contract.schema_version !== 2) fail("unsupported contract schema version");
 if (contract.module !== "reactions") fail("contract module must be reactions");
-if (contract.contract !== "reactions_foundation_v1") {
+if (contract.contract !== "reactions_foundation_v2") {
   fail("unexpected contract identity");
 }
 
@@ -34,7 +34,10 @@ const apiSource = [
   read("crates/rustok-reactions-api/src/provider.rs"),
 ].join("\n");
 const ownerCargo = read("crates/rustok-reactions/Cargo.toml");
-const ownerSource = read("crates/rustok-reactions/src/lib.rs");
+const ownerSource = [
+  read("crates/rustok-reactions/src/lib.rs"),
+  read("crates/rustok-reactions/src/service.rs"),
+].join("\n");
 
 for (const symbol of contract.required_api_symbols) {
   if (!apiSource.includes(symbol)) fail(`neutral API is missing ${symbol}`);
@@ -49,7 +52,7 @@ for (const dependency of contract.forbidden_api_dependencies) {
 }
 for (const dependency of contract.forbidden_owner_dependencies) {
   if (ownerCargo.includes(dependency)) {
-    fail(`foundation owner imports forbidden dependency ${dependency}`);
+    fail(`owner imports forbidden producer/transport dependency ${dependency}`);
   }
 }
 
@@ -69,15 +72,14 @@ for (const fragment of [
   "ReactionsModule",
   "ensure_reaction_subject_registry",
   "ensure_reaction_subject_factory_registry",
-  "&[\"outbox\"]",
+  '&["outbox"]',
+  "impl ReactionReadPort for ReactionsService",
+  "impl ReactionWritePort for ReactionsService",
 ]) {
-  if (!ownerSource.includes(fragment)) fail(`owner foundation is missing ${fragment}`);
+  if (!ownerSource.includes(fragment)) fail(`owner boundary is missing ${fragment}`);
 }
 
 for (const forbiddenPath of [
-  "crates/rustok-reactions/src/entities",
-  "crates/rustok-reactions/src/migrations",
-  "crates/rustok-reactions/migrations",
   "crates/rustok-reactions/admin",
   "crates/rustok-reactions/storefront",
 ]) {
@@ -92,7 +94,7 @@ if (!/^reactions\s*=\s*\{[^\n]*crate\s*=\s*"rustok-reactions"/mu.test(modules)) 
 }
 const defaultEnabled = modules.match(/default_enabled\s*=\s*\[[\s\S]*?\]/mu)?.[0] ?? "";
 if (/"reactions"/u.test(defaultEnabled)) {
-  fail("reactions must remain outside default_enabled in this foundation slice");
+  fail("reactions must remain outside default_enabled");
 }
 
 const manifest = read("crates/rustok-reactions/rustok-module.toml");
@@ -108,7 +110,8 @@ const forumPlan = read("crates/rustok-forum/docs/implementation-plan.md");
 for (const fragment of [
   "| Reaction catalog, actor reactions and aggregate reaction counts | `rustok-reactions` |",
   "| `FORUM-18` | `in_progress` |",
-  "Add the Forum topic/reply `ReactionSubjectProvider` adapter",
+  "Forum provider factory supports `topic` and `reply`",
+  "optional `mod-reactions`",
   "Existing Forum votes remain Forum semantics",
 ]) {
   if (!forumPlan.includes(fragment)) fail(`Forum plan is missing ${fragment}`);

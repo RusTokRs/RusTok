@@ -4,7 +4,10 @@ use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::DatabaseConnection;
 use thiserror::Error;
 
-use crate::IndexSourceCatalog;
+use crate::{
+    IndexMutationEventError, IndexSourceCatalog, SharedIndexMutationEventRegistry,
+    materialize_index_mutation_event_registry,
+};
 
 const MAX_FACTORY_ID_BYTES: usize = 128;
 
@@ -133,6 +136,8 @@ pub enum PostgresIndexSourceFactoryError {
         owner_module: String,
         factory_name: String,
     },
+    #[error("PostgreSQL Index mutation event registry materialization failed")]
+    MutationEventRegistry(#[source] IndexMutationEventError),
 }
 
 /// Publishes one host-database-aware source constructor during module registration.
@@ -152,16 +157,21 @@ where
         .register(owner_module.into(), factory_name.into(), factory)
 }
 
-/// Constructs every selected PostgreSQL replay source and commits the source catalog atomically.
+/// Constructs every selected PostgreSQL replay source and commits the source/event catalogs
+/// atomically.
 ///
 /// The function performs no SQL and starts no task. A cloned source catalog is staged separately so
-/// one failing owner factory cannot leave earlier sources partially registered in the live runtime
-/// extensions. The returned count is the number of factories that were invoked successfully.
+/// one failing owner factory or mutation-route validation cannot leave earlier sources partially
+/// registered in the live runtime extensions. Exact mutation routes are frozen only after every
+/// source exists, allowing the event registry to verify owner, source, and schema identity against
+/// the same staged catalog. The returned count is the number of factories invoked successfully.
 pub fn materialize_postgres_index_sources(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
 ) -> Result<usize, PostgresIndexSourceFactoryError> {
-    if extensions.contains::<PostgresIndexSourcesMaterialized>() {
+    if extensions.contains::<PostgresIndexSourcesMaterialized>()
+        || extensions.contains::<SharedIndexMutationEventRegistry>()
+    {
         return Err(PostgresIndexSourceFactoryError::AlreadyMaterialized);
     }
 
@@ -193,6 +203,12 @@ pub fn materialize_postgres_index_sources(
                 factory_name: descriptor.factory_name.clone(),
             });
         }
+    }
+
+    let event_registry = materialize_index_mutation_event_registry(&staged)
+        .map_err(PostgresIndexSourceFactoryError::MutationEventRegistry)?;
+    if let Some(event_registry) = event_registry {
+        staged.insert(event_registry);
     }
 
     let count = factories.len();
@@ -229,8 +245,9 @@ mod tests {
     use sea_orm::Database;
 
     use crate::{
-        IndexSource, IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest,
-        IndexSourcePage, IndexSourceScanRequest, IndexSourceCatalog, register_index_source,
+        IndexMutationEventCatalog, IndexSource, IndexSourceCatalog, IndexSourceFailure,
+        IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
+        SharedIndexMutationEventRegistry, register_index_mutation_event, register_index_source,
     };
 
     use super::*;
@@ -254,6 +271,14 @@ mod tests {
         }
     }
 
+    fn factory_schema() -> crate::SchemaRef {
+        crate::SchemaRef {
+            module: crate::ModuleName::new("factory-owner").unwrap(),
+            entity: crate::EntityName::new("item").unwrap(),
+            version: crate::SchemaVersion::INITIAL,
+        }
+    }
+
     struct NoopFactory;
 
     impl PostgresIndexSourceFactory for NoopFactory {
@@ -262,16 +287,11 @@ mod tests {
             extensions: &mut ModuleRuntimeExtensions,
             _db: DatabaseConnection,
         ) -> Result<(), String> {
-            let schema = crate::SchemaRef {
-                module: crate::ModuleName::new("factory-owner").map_err(|error| error.to_string())?,
-                entity: crate::EntityName::new("item").map_err(|error| error.to_string())?,
-                version: crate::SchemaVersion::INITIAL,
-            };
             register_index_source(
                 extensions,
                 "factory_owner",
                 "factory-owner-primary",
-                [schema],
+                [factory_schema()],
                 NoopSource,
             )
             .map_err(|error| error.to_string())
@@ -309,6 +329,7 @@ mod tests {
             .get::<IndexSourceCatalog>()
             .expect("source catalog")
             .is_empty());
+        assert!(!extensions.contains::<SharedIndexMutationEventRegistry>());
     }
 
     #[tokio::test]
@@ -334,6 +355,74 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn valid_event_routes_freeze_with_the_staged_source_catalog() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(IndexSourceCatalog::new());
+        extensions.insert(IndexMutationEventCatalog::new());
+        register_postgres_index_source_factory(
+            &mut extensions,
+            "factory_owner",
+            "primary",
+            NoopFactory,
+        )
+        .unwrap();
+        register_index_mutation_event(
+            &mut extensions,
+            "factory_owner",
+            "factory_owner.item.changed.v1",
+            "factory-owner-primary",
+            factory_schema(),
+        )
+        .unwrap();
+
+        materialize_postgres_index_sources(&mut extensions, connection().await).unwrap();
+
+        let registry = extensions
+            .get::<SharedIndexMutationEventRegistry>()
+            .expect("event registry should be materialized with sources");
+        let route = registry
+            .get("factory_owner.item.changed.v1")
+            .expect("exact event route");
+        assert_eq!(route.owner_module(), "factory_owner");
+        assert_eq!(route.source_name(), "factory-owner-primary");
+        assert_eq!(route.schema(), &factory_schema());
+    }
+
+    #[tokio::test]
+    async fn invalid_event_route_aborts_the_staged_source_catalog() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(IndexSourceCatalog::new());
+        extensions.insert(IndexMutationEventCatalog::new());
+        register_postgres_index_source_factory(
+            &mut extensions,
+            "factory_owner",
+            "primary",
+            NoopFactory,
+        )
+        .unwrap();
+        register_index_mutation_event(
+            &mut extensions,
+            "another_owner",
+            "factory_owner.item.changed.v1",
+            "factory-owner-primary",
+            factory_schema(),
+        )
+        .unwrap();
+
+        let error = materialize_postgres_index_sources(&mut extensions, connection().await)
+            .expect_err("route owner mismatch must abort composition");
+        assert!(matches!(
+            error,
+            PostgresIndexSourceFactoryError::MutationEventRegistry(_)
+        ));
+        assert!(extensions
+            .get::<IndexSourceCatalog>()
+            .expect("source catalog")
+            .is_empty());
+        assert!(!extensions.contains::<SharedIndexMutationEventRegistry>());
     }
 
     #[tokio::test]

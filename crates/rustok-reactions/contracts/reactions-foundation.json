@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "reactions",
-  "contract": "reactions_foundation_v1",
+  "contract": "reactions_foundation_v2",
   "status": "source_ready_maintainer_execution_pending",
   "api_crate": "crates/rustok-reactions-api",
   "owner_crate": "crates/rustok-reactions",
@@ -15,6 +15,7 @@
     "crates/rustok-reactions-api/docs/implementation-plan.md",
     "crates/rustok-reactions/Cargo.toml",
     "crates/rustok-reactions/src/lib.rs",
+    "crates/rustok-reactions/src/service.rs",
     "crates/rustok-reactions/rustok-module.toml",
     "crates/rustok-reactions/README.md",
     "crates/rustok-reactions/docs/README.md",
@@ -58,16 +59,15 @@
     "rustok-comments",
     "rustok-profiles",
     "rustok-media",
-    "sea-orm",
-    "sea-orm-migration",
+    "rustok-groups",
+    "rustok-commerce",
     "async-graphql",
     "axum",
     "leptos"
   ],
   "deliberate_limits": [
-    "no persistence",
-    "no migrations",
     "no producer-private table reads",
+    "no producer adapters",
     "no transports",
     "no UI",
     "no Forum vote migration",
@@ -79,6 +79,7 @@
     "cargo check -p rustok-reactions-api --all-targets",
     "cargo check -p rustok-reactions --all-targets",
     "node scripts/verify/verify-reactions-foundation.mjs",
+    "node scripts/verify/verify-reactions-owner-persistence.mjs",
     "git diff --check"
   ]
 }

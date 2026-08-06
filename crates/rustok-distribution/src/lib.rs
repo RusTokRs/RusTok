@@ -222,6 +222,10 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_blog::BlogModule);
     }
+    #[cfg(feature = "mod-reactions")]
+    {
+        registry = registry.register(rustok_reactions::ReactionsModule);
+    }
     #[cfg(feature = "mod-forum")]
     {
         registry = registry.register(rustok_forum::ForumModule);
@@ -410,6 +414,8 @@ mod tests {
                 .iter()
                 .any(|module| module.slug == "social_graph")
         );
+        #[cfg(feature = "mod-reactions")]
+        assert!(first.modules.iter().any(|module| module.slug == "reactions"));
         #[cfg(feature = "mod-ai")]
         assert!(first.modules.iter().any(|module| module.slug == "ai"));
     }

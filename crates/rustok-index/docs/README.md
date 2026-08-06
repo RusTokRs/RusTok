@@ -28,6 +28,10 @@ This directory contains the detailed technical architecture documentation for `r
 
 - [Source Module Integration Contract](./module-source-integration.md)
 - [Live Implementation Plan](./implementation-plan.md)
+- [M5 Mutation Event Commit/Ack Contract](./m5-mutation-event-ack-contract.md)
+- [M5 Exact Source Refresh Event Worker](./m5-source-refresh-event.md)
+- [M5 Product Locale Refresh Owner Ledger](../../rustok-product/docs/index-locale-refresh-ledger.md)
+- [M5 Social Graph Production Mutation Route](./m5-social-graph-mutation-route.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
 - [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
 - [M6 Confidential Source Continuation Codec](./m6-source-continuation-codec.md)

@@ -1,5 +1,10 @@
 use crate::landing::LandingProjectError;
-use crate::static_landing::StaticLandingCompiler;
+use crate::static_landing::{
+    StaticLandingCompiler,
+    static_publish_resource_limits::{
+        PageBuilderStaticPublishResourceLimitError, validate_static_publish_resource_limits,
+    },
+};
 use crate::static_publish_policy::{
     PageBuilderStaticPublishPolicyError, PageBuilderStaticPublishPolicyEvidence,
     validate_static_publish_document,
@@ -73,6 +78,7 @@ impl PageBuilderSanitizedStaticLandingProject {
                 "sanitized static landing policy evidence mismatch".to_string(),
             ));
         }
+        validate_static_publish_resource_limits(&document)?;
         Ok(())
     }
 }
@@ -83,6 +89,8 @@ pub enum PageBuilderStaticLandingSanitizationError {
     Landing(#[from] LandingProjectError),
     #[error(transparent)]
     Policy(#[from] PageBuilderStaticPublishPolicyError),
+    #[error(transparent)]
+    Resource(#[from] PageBuilderStaticPublishResourceLimitError),
     #[error("static publish sanitization encoding failed: {0}")]
     Encode(String),
     #[error("static publish sanitization integrity failed: {0}")]
@@ -93,8 +101,8 @@ pub enum PageBuilderStaticLandingSanitizationError {
 ///
 /// The returned project is a compiler-owned clone. It contains deterministic stable component ids,
 /// preserves current Fly extension fields and has passed structural validation, the complete
-/// fail-closed static publish policy and secure-resource validation. The original editor source and
-/// runtime context remain untouched.
+/// fail-closed static publish policy, secure-resource validation and bounded global resource limits.
+/// The original editor source and runtime context remain untouched.
 pub fn sanitize_static_landing_project(
     project_data: &Value,
 ) -> Result<PageBuilderSanitizedStaticLandingProject, PageBuilderStaticLandingSanitizationError> {
@@ -103,6 +111,7 @@ pub fn sanitize_static_landing_project(
         format: policy_format,
         policy_hash,
     } = validate_static_publish_document(&document)?;
+    validate_static_publish_resource_limits(&document)?;
     let sanitized_project = serde_json::to_value(document.project)
         .map_err(|error| PageBuilderStaticLandingSanitizationError::Encode(error.to_string()))?;
     let sanitized_hash = sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?;
@@ -148,6 +157,7 @@ fn is_sha256(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::static_landing::static_publish_resource_limits::PageBuilderStaticPublishResourceLimits;
     use crate::static_publish_policy::PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT;
     use serde_json::json;
 
@@ -198,6 +208,25 @@ mod tests {
                 .is_some_and(|id| id.starts_with("fly-static-"))
         );
         first.verify_integrity().expect("sanitization integrity");
+    }
+
+    #[test]
+    fn sanitization_rejects_excess_global_resources() {
+        let pages = (0..=PageBuilderStaticPublishResourceLimits::default().max_pages)
+            .map(|index| json!({ "id": format!("page-{index}") }))
+            .collect::<Vec<_>>();
+        let project = json!({ "pages": pages });
+
+        let error = sanitize_static_landing_project(&project).expect_err("resource rejection");
+        let PageBuilderStaticLandingSanitizationError::Resource(error) = error else {
+            panic!("expected resource-limit rejection");
+        };
+        assert!(
+            error
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.code == "landing_page_count_exceeded")
+        );
     }
 
     #[test]
