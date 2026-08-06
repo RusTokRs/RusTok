@@ -25,6 +25,7 @@
     "fixed_js_and_wasm_asset_paths_are_declared": true,
     "wasm_export_is_feature_and_target_gated": true,
     "ssr_shell_is_removed_before_client_mount": true,
+    "client_only_codegen_excludes_optional_server_modules": true,
     "dedicated_client_artifact_builder_source_added": true,
     "client_builder_enables_only_pages_inline_edit_hydrate": true,
     "anonymous_pages_route_is_unchanged": true,
