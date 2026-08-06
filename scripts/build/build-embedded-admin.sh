@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: build-embedded-admin.sh [--tool-root DIR] [--target-dir DIR] [--public-url /path/] [--skip-tool-install]
+Usage: build-embedded-admin.sh [--tool-root DIR] [--target-dir DIR] [--public-url /path/] [--pages-inline-edit-launch] [--skip-tool-install]
 USAGE
 }
 
@@ -11,6 +11,7 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 tool_root="$repo_root/.tools/trunk-0.21.14"
 target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
 public_url="/admin/"
+pages_inline_edit_launch=0
 skip_tool_install=0
 
 while [[ $# -gt 0 ]]; do
@@ -29,6 +30,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { usage >&2; exit 2; }
       public_url=$2
       shift 2
+      ;;
+    --pages-inline-edit-launch)
+      pages_inline_edit_launch=1
+      shift
       ;;
     --skip-tool-install)
       skip_tool_install=1
@@ -57,7 +62,7 @@ trunk="$tool_root/bin/trunk"
 
 if [[ $skip_tool_install -eq 0 ]]; then
   CARGO_TARGET_DIR="$tool_root/target" \
-    cargo install trunk --version 0.21.14 --locked --root "$tool_root"
+    cargo install trunk --version "=0.21.14" --locked --root "$tool_root"
 fi
 [[ -x "$trunk" ]] || {
   echo "exact Trunk binary is missing: $trunk" >&2
@@ -72,12 +77,25 @@ rustup target add wasm32-unknown-unknown
 npm ci --prefix "$repo_root/apps/admin" --no-audit --no-fund
 rm -rf "$repo_root/apps/admin/dist"
 
+trunk_args=(build --release)
+trunk_env=(env -u RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN)
+if [[ $pages_inline_edit_launch -eq 1 ]]; then
+  trunk_args=(
+    --no-default-features
+    --features hydrate,pages-inline-edit-launch
+    build
+    --release
+  )
+  trunk_env=(env RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN=true)
+fi
+
 (
   cd "$repo_root/apps/admin"
-  CARGO_TARGET_DIR="$target_dir" \
-  TRUNK_BUILD_PUBLIC_URL="$public_url" \
-  TRUNK_BUILD_LOCKED="true" \
-  "$trunk" build --release
+  "${trunk_env[@]}" \
+    CARGO_TARGET_DIR="$target_dir" \
+    TRUNK_BUILD_PUBLIC_URL="$public_url" \
+    TRUNK_BUILD_LOCKED="true" \
+    "$trunk" "${trunk_args[@]}"
 )
 
 index="$repo_root/apps/admin/dist/index.html"
@@ -103,4 +121,8 @@ if [[ "$public_url" != "/" ]]; then
   }
 fi
 
-echo "✔ built deterministic admin assets for $public_url with Trunk 0.21.14"
+mode="standard"
+if [[ $pages_inline_edit_launch -eq 1 ]]; then
+  mode="pages-inline-edit-launch"
+fi
+echo "✔ built deterministic admin assets for $public_url with Trunk 0.21.14 ($mode)"

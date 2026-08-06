@@ -17,6 +17,7 @@ doc = false
 
 [features]
 default = ["ssr"]
+pages-inline-edit-launch = ["rustok-pages-admin/inline-edit-launch"]
 csr = [
   "leptos/csr",
   "leptos_i18n/csr",

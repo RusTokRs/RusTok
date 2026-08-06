@@ -1,0 +1,46 @@
+{
+  "status": "commerce_storefront_shipping_public_envelope_source_reviewed_unvalidated",
+  "scope": [
+    "crates/rustok-commerce/src/storefront_shipping.rs",
+    "scripts/verify/verify-commerce-storefront-shipping-public-envelope-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-shipping-enrichment-context.mjs",
+    "scripts/verify/verify-commerce-storefront-cart-shipping-http-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-shipping-enrichment-diagnostic-safety.mjs",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_review": {
+    "compatibility_signature_preserved": true,
+    "compatibility_result_preserved": true,
+    "typed_delegation_preserved": true,
+    "typed_argument_order_preserved": true,
+    "diagnostic_runs_before_mapping": true,
+    "owner_text_returned_to_caller": false,
+    "stable_message_returned": true,
+    "validation_variant_preserved": true,
+    "diagnostic_redaction_preserved": true,
+    "diagnostic_shapes_preserved": true,
+    "owner_classification_preserved": true,
+    "severity_split_preserved": true,
+    "filtering_and_projection_preserved": true,
+    "callers_changed": false,
+    "http_shipping_mapper_complete": false,
+    "shared_http_mappers_complete": false,
+    "tax_cleanup_complete": false,
+    "promotion_cleanup_complete": false,
+    "native_cleanup_complete": false,
+    "remaining_adapter_cleanup_complete": false,
+    "broad_cleanup_complete": false,
+    "runtime_claimed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflows_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "disclosure": "No tests, Node verifiers, Cargo commands, formatting, mounted scenarios, workflows, or CI were executed."
+}

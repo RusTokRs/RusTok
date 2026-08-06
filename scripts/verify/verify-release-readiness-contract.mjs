@@ -62,8 +62,11 @@ requireMarkers(checklistPath, [
   "cryptographically verified **annotated** tag",
   "release-infra-approved",
   "signed-tag ancestry validation uses the local ref without a post-checkout credentialed fetch",
-  "embedded admin bundle was built from locked npm inputs with Trunk `0.21.14` for public URL `/admin/`",
-  "Both isolated build jobs prepare the same locked embedded admin input",
+  "same-origin Pages inline-edit deployment composition was built from locked npm and Cargo inputs",
+  "Cargo.lock-selected `wasm-bindgen-cli`",
+  "Both isolated build jobs run the same locked Pages inline-edit deployment composition",
+  "separately bounded Rust flags for embedded admin WASM, dedicated authoring WASM and the native server binary",
+  "verify-pages-inline-edit-release-composition.mjs",
   "Deploy the image by immutable digest",
   "Do not move, recreate or overwrite a published SemVer tag",
   "Failure after the version image tag is pushed but before GitHub Release publication",
@@ -93,7 +96,8 @@ requireMarkers("docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md", [
 
 requireMarkers(".github/workflows/release.yml", [
   "git show-ref --verify --quiet refs/remotes/origin/main",
-  "scripts/build/build-embedded-admin.sh",
+  "scripts/build/build-pages-inline-edit-deployment.sh",
+  "RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS",
   "verify-release-collisions.mjs",
   'test "${#assets[@]}" -eq 5',
   "sha256sum --check SHA256SUMS",
@@ -121,5 +125,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `✔ release readiness, local ancestry evidence, locked admin inputs, exact assets, digest rollback and failed-release recovery are bound in ${repoRoot}`,
+  `✔ release readiness, local ancestry evidence, locked same-origin Pages inline-edit composition, exact assets, digest rollback and failed-release recovery are bound in ${repoRoot}`,
 );

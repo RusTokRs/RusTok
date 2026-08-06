@@ -174,9 +174,15 @@ for (const value of [
 for (const [value, label] of [
   ['-> CommerceResult<CartResponse>', 'legacy commerce return contract'],
   ['enrich_cart_delivery_groups_typed(', 'typed implementation delegation'],
-  ['.map_err(|error| crate::CommerceError::Validation(error.to_string()))', 'legacy GraphQL compatibility mapping'],
+  [
+    'crate::CommerceError::Validation(\n            "Cart shipping details are temporarily unavailable".to_string(),\n        )',
+    'stable GraphQL compatibility mapping',
+  ],
 ]) {
   requireText(compatibilityWrapper, value, label);
+}
+for (const value of ['error.to_string()', 'err.to_string()', 'format!("{error:?}")']) {
+  forbidText(compatibilityWrapper, value, 'unsafe legacy GraphQL compatibility mapping');
 }
 
 for (const [content, value, label] of [

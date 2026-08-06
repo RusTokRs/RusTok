@@ -18,6 +18,8 @@ pub mod shared;
 pub mod widgets;
 
 #[cfg(feature = "ssr")]
+mod forum_category_route;
+#[cfg(feature = "ssr")]
 mod forum_topic_route;
 
 #[cfg(feature = "ssr")]
@@ -559,6 +561,30 @@ pub fn router() -> Router {
                     let locale =
                         resolve_storefront_locale(Some(locale_path_prefix.as_str()), &params);
                     render_shell_response(locale.as_str(), params).await
+                },
+            ),
+        )
+        .route(
+            "/{locale}/forum/c/{slug}",
+            get(
+                |Path((locale_path_prefix, slug)): Path<(String, String)>,
+                 original_uri: axum::extract::OriginalUri,
+                 nonce: Option<Extension<CspNonce>>,
+                 axum::extract::Query(params): axum::extract::Query<
+                    std::collections::HashMap<String, String>,
+                >| async move {
+                    let effective_locale =
+                        resolve_storefront_locale(Some(locale_path_prefix.as_str()), &params);
+                    let nonce = nonce.as_ref().map(|Extension(value)| value);
+                    forum_category_route::render_forum_category_route_response(
+                        original_uri.0.path().to_string(),
+                        locale_path_prefix,
+                        effective_locale,
+                        slug,
+                        params,
+                        nonce,
+                    )
+                    .await
                 },
             ),
         )
