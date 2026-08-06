@@ -139,6 +139,13 @@ impl AuthenticatedInlineEditSession {
                 request.component_id.clone(),
             ));
         }
+        if component.extensions.get("content").and_then(Value::as_str)
+            == Some(request.value.as_str())
+        {
+            return Err(InlineEditError::NoContentChange(
+                request.component_id.clone(),
+            ));
+        }
         authorization
             .authorize(&request)
             .map_err(InlineEditError::AuthorizationRejected)?;
@@ -193,6 +200,7 @@ pub enum InlineEditError {
     ComponentNotFound(String),
     ComponentOutsideSelectedPage(String),
     ComponentNotInlineEditable(String),
+    NoContentChange(String),
 }
 
 impl Display for InlineEditError {
@@ -235,6 +243,10 @@ impl Display for InlineEditError {
             Self::ComponentNotInlineEditable(component_id) => write!(
                 formatter,
                 "component `{component_id}` is not eligible for plain-text inline editing"
+            ),
+            Self::NoContentChange(component_id) => write!(
+                formatter,
+                "inline edit component `{component_id}` did not change"
             ),
         }
     }
@@ -624,6 +636,28 @@ mod tests {
                 .as_str(),
             Some("Updated")
         );
+    }
+
+    #[test]
+    fn unchanged_focusout_does_not_consume_the_one_commit_grant() {
+        let project = project();
+        let grant = grant(&project);
+        let mut session = AuthenticatedInlineEditSession::new(
+            project,
+            PageSelection::First,
+            grant.clone(),
+            1_000,
+        )
+        .expect("session");
+        let unchanged = grant
+            .bind_request(1_000, 1, "heading", "Hello")
+            .expect("request");
+        assert!(matches!(
+            session.apply_authorized(unchanged, 1_000, &|_| Ok(())),
+            Err(InlineEditError::NoContentChange(_))
+        ));
+        assert_eq!(session.last_sequence, 0);
+        assert_eq!(session.current_project_hash(), grant.expected_project_hash());
     }
 
     #[test]
