@@ -2,14 +2,14 @@
 
 Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.
 Latest default-branch delta checked through
-`main@5bbaaaf6cb17b846a5c6c280b8b2501c229cdc64`.
+`main@9822131a59619805dc34b67fdcecf44f9bbcd766`.
 
-Forty commits are present on `main` after this branch merge base. They touch Commerce diagnostics,
-Forum GraphQL/admin and route ownership, Pages/Page Builder route and delivery work, event-delivery
-settings, and general server configuration. They do not modify `crates/rustok-index`, Product Index
-composition, the server Index GraphQL files, Index diagnosis/page composition, or Index verifier
-files changed by this branch. `apps/server/Cargo.toml` changed on `main`; this continuation-codec
-slice changes `crates/rustok-index/Cargo.toml`, not the server manifest.
+Forty-four commits are present on `main` after this branch merge base. They touch Commerce
+diagnostics, Forum GraphQL/admin and route ownership, Pages/Page Builder route and delivery work,
+event-delivery settings, and general server configuration. They do not modify `crates/rustok-index`,
+Product Index composition, the server Index GraphQL files, Index diagnosis/page composition, or
+Index verifier files changed by this branch. `apps/server/Cargo.toml` changed on `main`; this branch
+does not modify the server manifest in the continuation slice.
 
 Rechecked predecessor: PR #2983 at
 `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
@@ -25,8 +25,8 @@ The guarded exact-entity diagnosis remains internally consistent at source level
 - missing-only discovery remains separate from general caller-known exact mismatch diagnosis;
 - no repair, lifecycle, scheduler, raw registry, or database handle is exposed.
 
-PR #2986 had no conversation comments or review threads at this recheck. Tests and retained execution
-evidence remain owner-owned and pending.
+PR #2986 had no conversation comments, submitted reviews, or review threads at this recheck. Tests
+and retained execution evidence remain owner-owned and pending.
 
 ## Explicit absence contract
 
@@ -93,13 +93,13 @@ missing-only path:
 
 `IndexDriftSourcePageDiagnosisRuntime` scans at most one owner page with limit `1..=32`, skips
 retained source deletes, sequentially invokes missing-only exact diagnosis, and returns only aggregate
-counts, missing finding receipts, and one internal server-held cursor. It owns no loop, checkpoint,
-scheduler, public transport, lifecycle, or repair capability.
+counts, missing finding receipts, and one internal server-held cursor through its historical raw
+method. It owns no loop, checkpoint, scheduler, public transport, lifecycle, or repair capability.
 
 ## Confidential source continuation
 
-`IndexSourceContinuationCodec` is now source complete as a database-neutral transport prerequisite.
-It is intentionally distinct from the query `CursorCodec`, whose checksum is not keyed encryption.
+`IndexSourceContinuationCodec` is source complete as a database-neutral transport prerequisite. It
+is intentionally distinct from the query `CursorCodec`, whose checksum is not keyed encryption.
 
 The source continuation contract:
 
@@ -116,21 +116,56 @@ The source continuation contract:
   issuance, expiry, and unavailable or retired keys before returning raw cursor state;
 - redacts key bytes and token content from `Debug`.
 
-The codec itself reads no environment, configuration, database, or secret resolver. Server keyring
-composition is intentionally still open, so the existing page runtime remains internal and raw-cursor
-only. Neither the codec nor the page runtime is mounted into GraphQL.
+The codec itself reads no environment, configuration, database, or secret resolver.
+
+## Server continuation keyring and sealed page boundary
+
+The server now composes a deployment-owned keyring from
+`RUSTOK_INDEX_SOURCE_CONTINUATION_KEYRING_JSON` when a frozen source registry exists.
+
+The configuration contains only:
+
+- one active key ID;
+- one bounded lifetime;
+- at most 16 key-ID-to-`SecretRef` mappings.
+
+This slice admits only deployment-owned `env` and `mounted_file` aliases. References are validated
+against exact resolver policy. Duplicate references, missing active key, invalid key IDs, unsupported
+resolver aliases, and out-of-range lifetime fail synchronous composition with one generic server
+message.
+
+Secret resolution is asynchronous. Therefore actual values are resolved inside
+`diagnose_source_page_sealed` after authorization and page-limit validation but before token parsing
+or source scan. Every secret must be URL-safe unpadded base64 and decode to exactly 32 bytes. Missing,
+forbidden, malformed, or wrong-length material returns a bounded continuation-keyring error without
+resolver cause, reference key, or secret value.
+
+The decoded map constructs one short-lived `IndexSourceContinuationCodec`. The sealed method then:
+
+1. derives canonical tenant/schema/owner/source scope from the frozen registry;
+2. opens the incoming token before `IndexSourceScanRequest` construction;
+3. executes exactly one existing missing-only page path;
+4. seals any outgoing raw cursor;
+5. returns `IndexDriftSourcePageDiagnosisSealedOutcome` containing only bounded counters, receipts,
+   completion state, and one optional opaque token.
+
+Raw key bytes, the local codec, and the decoded map are dropped after the request. The keyring is
+passed privately into the page runtime and is not inserted as its own `ModuleRuntimeExtensions`
+capability. Its `Debug` output excludes secret references and key values.
+
+The sealed method is not attached to GraphQL, HTTP, CLI, MCP, or native admin by this slice. The
+existing exact-entity GraphQL mutation remains unchanged.
 
 ## Open cursor
 
-The next implementation step is server-owned continuation key composition from bounded secret
-references, followed by one internal sealed page method. The server must resolve exact 32-byte AES
-keys, expose only the opaque codec, authorize before parsing an incoming token, open before building
-the source scan request, and seal the outgoing continuation before returning from the service
-boundary.
+The next implementation step is one bounded source-page transport over
+`diagnose_source_page_sealed` only. It must derive authority from authenticated context, authorize
+before parsing schema/limit/token input, accept no tenant, actor, source identity, raw cursor, or
+entity ID list, delegate once, and return only bounded aggregate counters, receipts, completion state,
+and an opaque token.
 
-Public source-page transport, cursor persistence, multi-page lifecycle, stale Index-only discovery,
-orphan-link diagnosis, automatic finding resolution, resolve/ignore commands, and repair remain
-open.
+Cursor persistence, multi-page lifecycle, stale Index-only discovery, orphan-link diagnosis,
+automatic finding resolution, resolve/ignore commands, and repair remain open.
 
 ## Validation ownership
 
