@@ -1,9 +1,7 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumError, ForumModule, UpdateCategoryInput,
-    services::{
-        ForumCategoryRouteDisposition, ForumCategoryRouteService,
-    },
+    services::{ForumCategoryRouteDisposition, ForumCategoryRouteService},
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
@@ -130,6 +128,16 @@ async fn localized_routes_follow_exact_and_shared_fallback_precedence() -> TestR
         "discussions",
     )
     .await?;
+    add_translation(
+        &db,
+        tenant_id,
+        category_id,
+        security,
+        "ru",
+        "Общее",
+        "obshchee",
+    )
+    .await?;
 
     let routes = ForumCategoryRouteService::new(db.clone());
     let canonical_fr = routes
@@ -152,12 +160,21 @@ async fn localized_routes_follow_exact_and_shared_fallback_precedence() -> TestR
     );
     assert_eq!(fallback_slug.canonical.path, "/fr/forum/c/discussions");
 
-    let missing_locale = routes.resolve(tenant_id, "de", "general", None).await?;
+    let explicit_fallback = routes
+        .resolve(tenant_id, "de", "obshchee", Some("ru"))
+        .await?;
     assert_eq!(
-        missing_locale.disposition,
+        explicit_fallback.disposition,
         ForumCategoryRouteDisposition::Redirect
     );
-    assert_eq!(missing_locale.canonical.path, "/en/forum/c/general");
+    assert_eq!(explicit_fallback.canonical.path, "/ru/forum/c/obshchee");
+
+    let platform_fallback = routes.resolve(tenant_id, "de", "general", None).await?;
+    assert_eq!(
+        platform_fallback.disposition,
+        ForumCategoryRouteDisposition::Redirect
+    );
+    assert_eq!(platform_fallback.canonical.path, "/en/forum/c/general");
 
     Ok(())
 }
@@ -241,6 +258,51 @@ async fn first_available_reverse_lookup_fails_closed_across_category_identities(
         routes.resolve(tenant_id, "fr", "missing", None).await,
         Err(ForumError::CategoryRouteNotFound)
     ));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn identical_locale_slug_routes_are_isolated_by_tenant() -> TestResult<()> {
+    let db = setup().await?;
+    let tenant_a = Uuid::new_v4();
+    let tenant_b = Uuid::new_v4();
+    let category_a = create_category(
+        &db,
+        tenant_a,
+        admin(),
+        "en",
+        "Tenant A",
+        "general",
+    )
+    .await?;
+    let category_b = create_category(
+        &db,
+        tenant_b,
+        admin(),
+        "en",
+        "Tenant B",
+        "general",
+    )
+    .await?;
+
+    let routes = ForumCategoryRouteService::new(db);
+    assert_eq!(
+        routes
+            .resolve(tenant_a, "en", "general", None)
+            .await?
+            .canonical
+            .category_id,
+        category_a
+    );
+    assert_eq!(
+        routes
+            .resolve(tenant_b, "en", "general", None)
+            .await?
+            .canonical
+            .category_id,
+        category_b
+    );
 
     Ok(())
 }
