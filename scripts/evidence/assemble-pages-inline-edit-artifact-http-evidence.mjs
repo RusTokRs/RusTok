@@ -16,6 +16,7 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
   "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json";
 const contract = JSON.parse(readFileSync(path.join(repoRoot, contractPath), "utf8"));
+const emptySha256 = createHash("sha256").update(Buffer.alloc(0)).digest("hex");
 
 function fail(message) {
   throw new Error(`Pages inline edit artifact/HTTP evidence assembly failed: ${message}`);
@@ -33,7 +34,16 @@ function parseArguments(argv) {
       );
       process.exit(0);
     }
-    if (["--build-a", "--build-b", "--docker", "--http", "--anonymous", "--output"].includes(argument)) {
+    if (
+      [
+        "--build-a",
+        "--build-b",
+        "--docker",
+        "--http",
+        "--anonymous",
+        "--output",
+      ].includes(argument)
+    ) {
       const value = argv[index + 1];
       if (!value) fail(`${argument} requires a value`);
       const key = argument
@@ -70,10 +80,9 @@ function readJson(file, label) {
   } catch (error) {
     fail(`${label} is not valid JSON: ${error.message}`);
   }
+  const relative = path.relative(repoRoot, location);
   return {
-    path: path.relative(repoRoot, location).startsWith("..")
-      ? location
-      : path.relative(repoRoot, location),
+    path: relative.startsWith("..") ? location : relative,
     bytes,
     sha256: sha256(bytes),
     document,
@@ -104,6 +113,18 @@ function requireObject(value, label) {
   return value;
 }
 
+function requireString(value, label, maximumLength = 4096) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximumLength ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)
+  ) {
+    fail(`${label} must be a bounded non-empty string`);
+  }
+  return value;
+}
+
 function requireDigest(value, label) {
   if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
     fail(`${label} must be a lowercase SHA-256 digest`);
@@ -115,6 +136,19 @@ function requirePositiveInteger(value, label) {
   if (!Number.isSafeInteger(value) || value <= 0) {
     fail(`${label} must be a positive safe integer`);
   }
+  return value;
+}
+
+function requireNonNegativeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    fail(`${label} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
+function requireIsoTimestamp(value, label) {
+  requireString(value, label, 128);
+  if (!Number.isFinite(Date.parse(value))) fail(`${label} must be an ISO timestamp`);
   return value;
 }
 
@@ -134,11 +168,20 @@ function same(left, right) {
   return JSON.stringify(stable(left)) === JSON.stringify(stable(right));
 }
 
+function requireExactKeys(object, expected, label) {
+  requireObject(object, label);
+  const actual = Object.keys(object).sort();
+  const wanted = [...expected].sort();
+  if (!same(actual, wanted)) {
+    fail(`${label} keys drifted: expected ${wanted.join(", ")}, got ${actual.join(", ")}`);
+  }
+}
+
 function validateArtifact(record, label) {
   requireObject(record, label);
+  requireString(record.path, `${label}.path`, 16_384);
   requirePositiveInteger(record.bytes, `${label}.bytes`);
   requireDigest(record.sha256, `${label}.sha256`);
-  if (typeof record.path !== "string" || !record.path) fail(`${label}.path is required`);
   return record;
 }
 
@@ -152,26 +195,68 @@ function validateBuild(input, expectedProfile, head) {
   ) {
     fail(`${expectedProfile} identity, status, or source commit drifted`);
   }
-  requireObject(build.toolchain, `${expectedProfile}.toolchain`);
-  for (const name of ["node", "cargo", "rustc", "trunk", "wasm_bindgen"]) {
-    if (typeof build.toolchain[name] !== "string" || !build.toolchain[name]) {
-      fail(`${expectedProfile}.toolchain.${name} is required`);
-    }
+  requireIsoTimestamp(build.captured_at, `${expectedProfile}.captured_at`);
+
+  requireExactKeys(
+    build.toolchain,
+    ["node", "cargo", "rustc", "trunk", "wasm_bindgen"],
+    `${expectedProfile}.toolchain`,
+  );
+  for (const [name, value] of Object.entries(build.toolchain)) {
+    requireString(value, `${expectedProfile}.toolchain.${name}`, 2048);
   }
+
+  requireObject(build.build_command_log, `${expectedProfile}.build_command_log`);
+  requirePositiveInteger(
+    build.build_command_log.bytes,
+    `${expectedProfile}.build_command_log.bytes`,
+  );
+  requireDigest(
+    build.build_command_log.sha256,
+    `${expectedProfile}.build_command_log.sha256`,
+  );
+  if (build.build_command_log.raw_output_persisted !== false) {
+    fail(`${expectedProfile} persisted raw build command output`);
+  }
+
   requireObject(build.source_sha256, `${expectedProfile}.source_sha256`);
+  requireExactKeys(
+    build.source_sha256,
+    contract.required_source_files,
+    `${expectedProfile}.source_sha256`,
+  );
   for (const sourcePath of contract.required_source_files) {
-    requireDigest(build.source_sha256[sourcePath], `${expectedProfile}.source_sha256.${sourcePath}`);
+    requireDigest(
+      build.source_sha256[sourcePath],
+      `${expectedProfile}.source_sha256.${sourcePath}`,
+    );
   }
-  requireObject(build.artifacts, `${expectedProfile}.artifacts`);
+
+  requireExactKeys(
+    build.artifacts,
+    contract.build_snapshots.required_artifacts,
+    `${expectedProfile}.artifacts`,
+  );
   for (const id of contract.build_snapshots.required_artifacts) {
     validateArtifact(build.artifacts[id], `${expectedProfile}.artifacts.${id}`);
   }
+  if (build.artifacts.server_binary.executable !== true) {
+    fail(`${expectedProfile}.artifacts.server_binary must be executable`);
+  }
+
   if (!Array.isArray(build.admin_dist_manifest) || build.admin_dist_manifest.length === 0) {
     fail(`${expectedProfile}.admin_dist_manifest must be non-empty`);
   }
+  const manifestPaths = [];
   for (const [index, artifact] of build.admin_dist_manifest.entries()) {
     validateArtifact(artifact, `${expectedProfile}.admin_dist_manifest[${index}]`);
+    manifestPaths.push(artifact.path);
   }
+  const sortedPaths = [...manifestPaths].sort((left, right) => left.localeCompare(right));
+  if (!same(manifestPaths, sortedPaths) || new Set(manifestPaths).size !== manifestPaths.length) {
+    fail(`${expectedProfile}.admin_dist_manifest must be sorted and unique`);
+  }
+
   if (
     build.privacy?.raw_command_log_persisted !== false ||
     build.privacy?.credentials_persisted !== false ||
@@ -210,26 +295,107 @@ function validateDocker(input, head) {
   ) {
     fail("Docker evidence identity, status, or source commit drifted");
   }
+  requireIsoTimestamp(document.captured_at, "Docker captured_at");
+  requireString(document.requested_image, "Docker requested_image", 512);
+  if (!/^sha256:[0-9a-f]{64}$/u.test(document.image_id ?? "")) {
+    fail("Docker image_id must be a canonical SHA-256 digest");
+  }
+  requirePositiveInteger(document.size_bytes, "Docker size_bytes");
   if (document.platform !== contract.docker_capture.required_platform) {
     fail("Docker platform drifted");
   }
   if (document.runtime?.user !== contract.docker_capture.required_user) {
     fail("Docker runtime user drifted");
   }
-  if (!document.runtime?.entrypoint?.includes(contract.docker_capture.required_entrypoint)) {
+  if (
+    !Array.isArray(document.runtime?.entrypoint) ||
+    !document.runtime.entrypoint.includes(contract.docker_capture.required_entrypoint)
+  ) {
     fail("Docker entrypoint drifted");
   }
-  if (document.oci?.revision !== head) fail("Docker OCI revision does not match source commit");
+  if (document.oci?.revision !== head) {
+    fail("Docker OCI revision does not match source commit");
+  }
   if (!Array.isArray(document.repo_digests) || document.repo_digests.length === 0) {
     fail("Docker immutable repo digest is missing");
   }
-  for (const digest of document.repo_digests) {
-    if (!/@sha256:[0-9a-f]{64}$/u.test(digest)) fail(`invalid Docker RepoDigest ${digest}`);
+  const sortedDigests = [...document.repo_digests].sort();
+  if (!same(document.repo_digests, sortedDigests) || new Set(sortedDigests).size !== sortedDigests.length) {
+    fail("Docker RepoDigests must be sorted and unique");
   }
-  if (document.privacy?.docker_inspect_document_persisted !== false) {
+  for (const digest of document.repo_digests) {
+    if (!/@sha256:[0-9a-f]{64}$/u.test(digest)) {
+      fail(`invalid Docker RepoDigest ${digest}`);
+    }
+  }
+  requireObject(document.inspect_output, "Docker inspect_output");
+  requirePositiveInteger(document.inspect_output.bytes, "Docker inspect_output.bytes");
+  requireDigest(document.inspect_output.sha256, "Docker inspect_output.sha256");
+  if (document.inspect_output.raw_document_persisted !== false) {
     fail("Docker capture persisted the raw inspect document");
   }
+  if (
+    document.privacy?.docker_inspect_document_persisted !== false ||
+    document.privacy?.environment_values_persisted !== false ||
+    document.privacy?.credentials_persisted !== false
+  ) {
+    fail("Docker privacy boundary drifted");
+  }
   return document;
+}
+
+function validateResponseRecord(record, label, allowEmpty) {
+  requireObject(record, label);
+  requireNonNegativeInteger(record.body_bytes, `${label}.body_bytes`);
+  requireDigest(record.body_sha256, `${label}.body_sha256`);
+  if (!allowEmpty && record.body_bytes === 0) fail(`${label} body must be non-empty`);
+  if (record.body_bytes === 0 && record.body_sha256 !== emptySha256) {
+    fail(`${label} empty body SHA-256 drifted`);
+  }
+  if (record.raw_body_persisted !== false) fail(`${label} persisted a raw response body`);
+  requireObject(record.headers, `${label}.headers`);
+}
+
+function validateConditionalResponse(assetId, label, response, etag) {
+  validateResponseRecord(response, `${assetId}.${label}`, true);
+  if (response.status !== 304 || response.body_bytes !== 0) {
+    fail(`${assetId} ${label} conditional response must be empty 304`);
+  }
+  if (response.headers.etag !== etag) fail(`${assetId} ${label} ETag drifted`);
+  if (response.headers["cache-control"] !== contract.http_capture.asset_cache_control) {
+    fail(`${assetId} ${label} cache control drifted`);
+  }
+  if (
+    response.headers["cross-origin-resource-policy"] !==
+    contract.http_capture.asset_cross_origin_resource_policy
+  ) {
+    fail(`${assetId} ${label} CORP drifted`);
+  }
+}
+
+function validateCredentialEnvironmentNames(scenario, specification) {
+  if (!Array.isArray(scenario.credential_environment_names)) {
+    fail(`${specification.id} credential_environment_names must be an array`);
+  }
+  const names = scenario.credential_environment_names;
+  if (new Set(names).size !== names.length || !same(names, [...names].sort())) {
+    fail(`${specification.id} credential environment names must be sorted and unique`);
+  }
+  const allowed = new Set([
+    "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_COMMON_HEADERS_JSON",
+    specification.authorization_env,
+    specification.cookie_env,
+  ].filter(Boolean));
+  for (const name of names) {
+    if (!allowed.has(name)) fail(`${specification.id} contains unexpected credential environment ${name}`);
+  }
+  if (
+    specification.id !== "anonymous" &&
+    !names.includes(specification.authorization_env) &&
+    !names.includes(specification.cookie_env)
+  ) {
+    fail(`${specification.id} has no scenario credential environment name`);
+  }
 }
 
 function validateHttp(input, head, build) {
@@ -241,8 +407,21 @@ function validateHttp(input, head, build) {
   ) {
     fail("HTTP evidence identity, status, or source commit drifted");
   }
-  if (!Array.isArray(document.assets) || document.assets.length !== contract.http_capture.asset_paths.length) {
+  requireIsoTimestamp(document.captured_at, "HTTP captured_at");
+  requireString(document.target?.origin, "HTTP target origin", 2048);
+  requireString(document.target?.locale, "HTTP target locale", 64);
+  if (document.target?.page_id_shape !== "uuid") fail("HTTP target page id shape drifted");
+
+  if (
+    !Array.isArray(document.assets) ||
+    document.assets.length !== contract.http_capture.asset_paths.length
+  ) {
     fail("HTTP asset evidence count drifted");
+  }
+  const assetIds = document.assets.map(({ id }) => id);
+  const expectedAssetIds = contract.http_capture.asset_paths.map(({ id }) => id);
+  if (!same([...assetIds].sort(), [...expectedAssetIds].sort())) {
+    fail("HTTP asset identities drifted");
   }
   const buildMapping = {
     authoring_bootstrap: "authoring_bootstrap",
@@ -251,63 +430,125 @@ function validateHttp(input, head, build) {
   };
   for (const specification of contract.http_capture.asset_paths) {
     const asset = document.assets.find((candidate) => candidate.id === specification.id);
-    if (!asset || asset.path !== specification.path) fail(`HTTP asset ${specification.id} is missing`);
-    if (asset.initial?.status !== 200) fail(`${specification.id} initial status must be 200`);
-    if (asset.initial?.headers?.["content-type"] !== specification.content_type) {
+    if (!asset || asset.path !== specification.path) {
+      fail(`HTTP asset ${specification.id} is missing or has the wrong path`);
+    }
+    validateResponseRecord(asset.initial, `${specification.id}.initial`, false);
+    if (asset.initial.status !== 200) fail(`${specification.id} initial status must be 200`);
+    if (asset.initial.headers["content-type"] !== specification.content_type) {
       fail(`${specification.id} content type drifted`);
     }
-    if (asset.initial?.headers?.["cache-control"] !== contract.http_capture.asset_cache_control) {
+    if (asset.initial.headers["cache-control"] !== contract.http_capture.asset_cache_control) {
       fail(`${specification.id} cache control drifted`);
     }
     if (
-      asset.initial?.headers?.["cross-origin-resource-policy"] !==
+      asset.initial.headers["cross-origin-resource-policy"] !==
       contract.http_capture.asset_cross_origin_resource_policy
     ) {
       fail(`${specification.id} CORP drifted`);
     }
-    requireDigest(asset.initial?.body_sha256, `${specification.id}.initial.body_sha256`);
-    requirePositiveInteger(asset.initial?.body_bytes, `${specification.id}.initial.body_bytes`);
-    if (asset.initial.body_sha256 !== build.artifacts[buildMapping[specification.id]].sha256) {
+    const etag = asset.initial.headers.etag;
+    if (etag !== `"${asset.initial.body_sha256}"`) {
+      fail(`${specification.id} strong body-bound ETag drifted`);
+    }
+    if (
+      asset.initial.body_sha256 !== build.artifacts[buildMapping[specification.id]].sha256 ||
+      asset.initial.body_bytes !== build.artifacts[buildMapping[specification.id]].bytes
+    ) {
       fail(`${specification.id} HTTP body does not match the built artifact`);
     }
-    for (const [label, response] of [
-      ["exact", asset.exact_if_none_match],
-      ["weak", asset.weak_if_none_match],
-    ]) {
-      if (response?.status !== 304 || response?.body_bytes !== 0) {
-        fail(`${specification.id} ${label} conditional response must be empty 304`);
-      }
-    }
+    validateConditionalResponse(
+      specification.id,
+      "exact_if_none_match",
+      asset.exact_if_none_match,
+      etag,
+    );
+    validateConditionalResponse(
+      specification.id,
+      "weak_if_none_match",
+      asset.weak_if_none_match,
+      etag,
+    );
   }
 
-  if (!Array.isArray(document.authoring) || document.authoring.length !== contract.http_capture.authoring_scenarios.length) {
+  if (
+    !Array.isArray(document.authoring) ||
+    document.authoring.length !== contract.http_capture.authoring_scenarios.length
+  ) {
     fail("HTTP authoring scenario count drifted");
+  }
+  const scenarioIds = document.authoring.map(({ id }) => id);
+  const expectedScenarioIds = contract.http_capture.authoring_scenarios.map(({ id }) => id);
+  if (!same([...scenarioIds].sort(), [...expectedScenarioIds].sort())) {
+    fail("HTTP authoring scenario identities drifted");
   }
   for (const specification of contract.http_capture.authoring_scenarios) {
     const scenario = document.authoring.find((candidate) => candidate.id === specification.id);
-    if (!scenario || scenario.response?.status !== specification.expected_status) {
+    if (!scenario || scenario.expected_status !== specification.expected_status) {
+      fail(`${specification.id} expected status declaration drifted`);
+    }
+    validateResponseRecord(scenario.response, `${specification.id}.response`, false);
+    if (scenario.response.status !== specification.expected_status) {
       fail(`${specification.id} authoring status drifted`);
     }
-    if (scenario.response?.headers?.["cache-control"] !== contract.http_capture.authoring_route_cache_control) {
+    if (
+      scenario.response.headers["cache-control"] !==
+      contract.http_capture.authoring_route_cache_control
+    ) {
       fail(`${specification.id} authoring cache control drifted`);
     }
-    if (scenario.response?.headers?.["x-robots-tag"] !== contract.http_capture.authoring_route_robots) {
+    if (
+      scenario.response.headers["x-robots-tag"] !==
+      contract.http_capture.authoring_route_robots
+    ) {
       fail(`${specification.id} authoring robots policy drifted`);
     }
-    requireDigest(scenario.response?.body_sha256, `${specification.id}.response.body_sha256`);
     if (scenario.credential_values_persisted !== false) {
       fail(`${specification.id} persisted credential values`);
     }
+    validateCredentialEnvironmentNames(scenario, specification);
+
     if (specification.id === "direct_user") {
-      for (const value of Object.values(scenario.required_markers_present ?? {})) {
-        if (value !== true) fail("direct_user required HTML marker is missing");
+      const requiredKeys = [
+        ...contract.http_capture.direct_user_required_markers,
+        "page_id",
+        "locale",
+      ];
+      requireExactKeys(
+        scenario.required_markers_present,
+        requiredKeys,
+        "direct_user.required_markers_present",
+      );
+      for (const key of requiredKeys) {
+        if (scenario.required_markers_present[key] !== true) {
+          fail(`direct_user required HTML marker is missing: ${key}`);
+        }
       }
-      for (const value of Object.values(scenario.forbidden_markers_present ?? {})) {
-        if (value !== false) fail("direct_user forbidden HTML marker was observed");
+      requireExactKeys(
+        scenario.forbidden_markers_present,
+        contract.http_capture.direct_user_forbidden_markers,
+        "direct_user.forbidden_markers_present",
+      );
+      for (const key of contract.http_capture.direct_user_forbidden_markers) {
+        if (scenario.forbidden_markers_present[key] !== false) {
+          fail(`direct_user forbidden HTML marker was observed: ${key}`);
+        }
       }
+    } else {
+      requireExactKeys(
+        scenario.required_markers_present,
+        [],
+        `${specification.id}.required_markers_present`,
+      );
+      requireExactKeys(
+        scenario.forbidden_markers_present,
+        [],
+        `${specification.id}.forbidden_markers_present`,
+      );
     }
   }
   if (
+    document.privacy?.credential_environment_names_only !== true ||
     document.privacy?.credential_values_persisted !== false ||
     document.privacy?.raw_response_bodies_persisted !== false ||
     document.privacy?.grants_or_proofs_persisted !== false
@@ -326,12 +567,29 @@ function validateAnonymous(input, head) {
   ) {
     fail("anonymous artifact evidence identity, status, or source commit drifted");
   }
+  requireIsoTimestamp(document.generated_at, "anonymous generated_at");
+  if (document.graph_verifier?.status !== "passed") {
+    fail("anonymous dependency graph verifier did not pass");
+  }
+  requireString(document.graph_verifier?.command, "anonymous graph command", 4096);
+  if (
+    document.artifact_contract?.explicit_artifact_paths_required !== true ||
+    document.artifact_contract
+      ?.byte_scan_is_combined_with_feature_resolved_dependency_graph !== true ||
+    document.artifact_contract
+      ?.absence_of_a_client_bundle_is_not_reported_as_a_passing_client_bundle !== true
+  ) {
+    fail("anonymous artifact contract drifted");
+  }
   if (!Array.isArray(document.artifacts) || document.artifacts.length === 0) {
     fail("anonymous artifact evidence has no inspected artifacts");
   }
   for (const artifact of document.artifacts) {
     validateArtifact(artifact, `anonymous artifact ${artifact.path ?? "<unknown>"}`);
-    if (!Array.isArray(artifact.forbidden_markers_found) || artifact.forbidden_markers_found.length !== 0) {
+    if (
+      !Array.isArray(artifact.forbidden_markers_found) ||
+      artifact.forbidden_markers_found.length !== 0
+    ) {
       fail(`anonymous artifact ${artifact.path ?? "<unknown>"} contains authoring markers`);
     }
   }
@@ -353,7 +611,9 @@ function writeAtomic(output, document) {
 
 const options = parseArguments(process.argv.slice(2));
 for (const required of ["buildA", "buildB", "docker", "http", "anonymous", "output"]) {
-  if (!options[required]) fail(`--${required.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+  if (!options[required]) {
+    fail(`--${required.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+  }
 }
 
 const head = currentCommit();
@@ -395,6 +655,10 @@ const document = {
     profiles: contract.build_snapshots.profiles,
     toolchain: buildA.toolchain,
     source_sha256: buildA.source_sha256,
+    build_command_logs: {
+      build_a: buildA.build_command_log,
+      build_b: buildB.build_command_log,
+    },
     critical_artifacts: artifactManifest,
     admin_dist_manifest: buildA.admin_dist_manifest,
     critical_hashes_match: true,
@@ -407,6 +671,7 @@ const document = {
     platform: docker.platform,
     runtime: docker.runtime,
     oci: docker.oci,
+    inspect_output: docker.inspect_output,
   },
   http: {
     origin: http.target.origin,
@@ -416,6 +681,7 @@ const document = {
   },
   anonymous_artifact: {
     profile: anonymous.profile,
+    graph_verifier: anonymous.graph_verifier,
     artifacts: anonymous.artifacts,
     findings: anonymous.findings,
   },
