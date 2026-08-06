@@ -459,8 +459,7 @@ pub(crate) async fn resolve_storefront_line_item_input(
     public_channel_slug: Option<&str>,
     input: AddStorefrontCartLineItemInput,
 ) -> Result<ResolvedStorefrontLineItemInput> {
-    let variant_id = input.variant_id;
-    super::legacy_helpers::resolve_storefront_line_item_input(
+    super::typed_line_item_helpers::resolve_storefront_line_item_input(
         db,
         tenant_id,
         pricing_read_port,
@@ -472,44 +471,6 @@ pub(crate) async fn resolve_storefront_line_item_input(
         input,
     )
     .await
-    .map_err(|error| {
-        let detail = format!("{error:?}");
-        let (message, code, retryable) =
-            if detail.contains("Variant not found") || detail.contains("Product not found") {
-                (
-                    "Product is not available",
-                    "CART_PRODUCT_UNAVAILABLE",
-                    false,
-                )
-            } else if detail.contains("does not have enough available inventory") {
-                (
-                    "Requested quantity is not available",
-                    "CART_INVENTORY_INSUFFICIENT",
-                    false,
-                )
-            } else if detail.contains("Invalid JSON metadata payload") {
-                (
-                    "Cart line item input is invalid",
-                    "CART_LINE_ITEM_INVALID",
-                    false,
-                )
-            } else {
-                (
-                    "Cart line item could not be resolved",
-                    "CART_LINE_ITEM_RESOLUTION_FAILED",
-                    true,
-                )
-            };
-        legacy_graphql_error(
-            error,
-            tenant_id,
-            Some(variant_id),
-            "resolve_storefront_line_item_input",
-            message,
-            code,
-            retryable,
-        )
-    })
 }
 
 pub(crate) async fn reprice_storefront_cart_line_items(
@@ -550,7 +511,7 @@ pub(crate) async fn validate_storefront_line_item_quantity(
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
 ) -> Result<()> {
-    super::legacy_helpers::validate_storefront_line_item_quantity(
+    super::typed_line_item_helpers::validate_storefront_line_item_quantity(
         db,
         tenant_id,
         variant_id,
@@ -558,35 +519,4 @@ pub(crate) async fn validate_storefront_line_item_quantity(
         public_channel_slug,
     )
     .await
-    .map_err(|error| {
-        let detail = format!("{error:?}");
-        let (message, code, retryable) = if detail.contains("Variant not found") {
-            (
-                "Product is not available",
-                "CART_PRODUCT_UNAVAILABLE",
-                false,
-            )
-        } else if detail.contains("does not have enough available inventory") {
-            (
-                "Requested quantity is not available",
-                "CART_INVENTORY_INSUFFICIENT",
-                false,
-            )
-        } else {
-            (
-                "Inventory availability could not be verified",
-                "CART_INVENTORY_UNAVAILABLE",
-                true,
-            )
-        };
-        legacy_graphql_error(
-            error,
-            tenant_id,
-            Some(variant_id),
-            "validate_storefront_line_item_quantity",
-            message,
-            code,
-            retryable,
-        )
-    })
 }
