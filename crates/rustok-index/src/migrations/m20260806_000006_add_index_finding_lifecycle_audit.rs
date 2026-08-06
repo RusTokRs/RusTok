@@ -1,0 +1,232 @@
+use sea_orm_migration::{
+    prelude::*,
+    sea_orm::{ConnectionTrait, DbBackend},
+};
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+const TABLE_NAME: &str = "index_consistency_finding_lifecycle_events";
+const POSTGRES_GUARD_FUNCTION: &str = "rustok_index_reject_finding_lifecycle_event_mutation";
+const POSTGRES_GUARD_TRIGGER: &str = "trg_index_finding_lifecycle_events_append_only";
+const SQLITE_UPDATE_TRIGGER: &str = "trg_index_finding_lifecycle_events_no_update";
+const SQLITE_DELETE_TRIGGER: &str = "trg_index_finding_lifecycle_events_no_delete";
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(IndexFindingLifecycleEvents::Table)
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::CommandId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::FindingId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::Action)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::FromState)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::ToState)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::ActorKind)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::ActorSubject)
+                            .string_len(191)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::Reason)
+                            .string_len(512)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexFindingLifecycleEvents::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .name("pk_index_finding_lifecycle_events")
+                            .col(IndexFindingLifecycleEvents::TenantId)
+                            .col(IndexFindingLifecycleEvents::CommandId),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_index_finding_lifecycle_event_finding")
+                            .from(
+                                IndexFindingLifecycleEvents::Table,
+                                IndexFindingLifecycleEvents::TenantId,
+                            )
+                            .from(
+                                IndexFindingLifecycleEvents::Table,
+                                IndexFindingLifecycleEvents::FindingId,
+                            )
+                            .to(
+                                IndexConsistencyFindings::Table,
+                                IndexConsistencyFindings::TenantId,
+                            )
+                            .to(
+                                IndexConsistencyFindings::Table,
+                                IndexConsistencyFindings::FindingId,
+                            )
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .check(Expr::cust("action IN ('resolve', 'ignore')"))
+                    .check(Expr::cust("from_state = 'open'"))
+                    .check(Expr::cust(
+                        "(action = 'resolve' AND to_state = 'resolved') OR (action = 'ignore' AND to_state = 'ignored')",
+                    ))
+                    .check(Expr::cust(
+                        "length(actor_kind) BETWEEN 1 AND 32 AND actor_kind = trim(actor_kind)",
+                    ))
+                    .check(Expr::cust(
+                        "length(actor_subject) BETWEEN 1 AND 191 AND actor_subject = trim(actor_subject)",
+                    ))
+                    .check(Expr::cust(
+                        "length(reason) BETWEEN 1 AND 512 AND reason = trim(reason)",
+                    ))
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_index_finding_lifecycle_events_finding")
+                    .table(IndexFindingLifecycleEvents::Table)
+                    .col(IndexFindingLifecycleEvents::TenantId)
+                    .col(IndexFindingLifecycleEvents::FindingId)
+                    .col(IndexFindingLifecycleEvents::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        install_append_only_guards(manager).await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        remove_append_only_guards(manager).await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(IndexFindingLifecycleEvents::Table)
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+async fn install_append_only_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let connection = manager.get_connection();
+    match connection.get_database_backend() {
+        DbBackend::Postgres => {
+            connection
+                .execute_unprepared(&format!(
+                    "CREATE FUNCTION {POSTGRES_GUARD_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Index finding lifecycle audit is append-only'; END $$"
+                ))
+                .await?;
+            connection
+                .execute_unprepared(&format!(
+                    "CREATE TRIGGER {POSTGRES_GUARD_TRIGGER} BEFORE UPDATE OR DELETE ON {TABLE_NAME} FOR EACH ROW EXECUTE FUNCTION {POSTGRES_GUARD_FUNCTION}()"
+                ))
+                .await?;
+            Ok(())
+        }
+        DbBackend::Sqlite => {
+            connection
+                .execute_unprepared(&format!(
+                    "CREATE TRIGGER {SQLITE_UPDATE_TRIGGER} BEFORE UPDATE ON {TABLE_NAME} BEGIN SELECT RAISE(ABORT, 'Index finding lifecycle audit is append-only'); END"
+                ))
+                .await?;
+            connection
+                .execute_unprepared(&format!(
+                    "CREATE TRIGGER {SQLITE_DELETE_TRIGGER} BEFORE DELETE ON {TABLE_NAME} BEGIN SELECT RAISE(ABORT, 'Index finding lifecycle audit is append-only'); END"
+                ))
+                .await?;
+            Ok(())
+        }
+        DbBackend::MySql => Err(DbErr::Custom(
+            "rustok-index finding lifecycle audit supports PostgreSQL and SQLite".to_owned(),
+        )),
+    }
+}
+
+async fn remove_append_only_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let connection = manager.get_connection();
+    match connection.get_database_backend() {
+        DbBackend::Postgres => {
+            connection
+                .execute_unprepared(&format!(
+                    "DROP TRIGGER IF EXISTS {POSTGRES_GUARD_TRIGGER} ON {TABLE_NAME}"
+                ))
+                .await?;
+            connection
+                .execute_unprepared(&format!(
+                    "DROP FUNCTION IF EXISTS {POSTGRES_GUARD_FUNCTION}()"
+                ))
+                .await?;
+            Ok(())
+        }
+        DbBackend::Sqlite => {
+            connection
+                .execute_unprepared(&format!("DROP TRIGGER IF EXISTS {SQLITE_UPDATE_TRIGGER}"))
+                .await?;
+            connection
+                .execute_unprepared(&format!("DROP TRIGGER IF EXISTS {SQLITE_DELETE_TRIGGER}"))
+                .await?;
+            Ok(())
+        }
+        DbBackend::MySql => Err(DbErr::Custom(
+            "rustok-index finding lifecycle audit supports PostgreSQL and SQLite".to_owned(),
+        )),
+    }
+}
+
+#[derive(DeriveIden)]
+enum IndexFindingLifecycleEvents {
+    Table,
+    TenantId,
+    CommandId,
+    FindingId,
+    Action,
+    FromState,
+    ToState,
+    ActorKind,
+    ActorSubject,
+    Reason,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum IndexConsistencyFindings {
+    Table,
+    TenantId,
+    FindingId,
+}
