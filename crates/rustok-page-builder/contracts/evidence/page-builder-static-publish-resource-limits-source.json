@@ -5,8 +5,8 @@
   "scope": "Provider-owned global resource budgets on the reviewed static publish sanitization path",
   "source_contract": {
     "resource_limits_format": "page_builder_static_publish_resource_limits_v1",
-    "current_sanitization_format": "page_builder_static_publish_sanitization_v3",
-    "legacy_sanitization_format": "page_builder_static_publish_sanitization_v2",
+    "sanitization_format": "page_builder_static_publish_sanitization_v2",
+    "sanitization_hash_payload_unchanged": true,
     "max_project_bytes": 16777216,
     "max_pages": 128,
     "max_components": 50000,
@@ -18,11 +18,11 @@
     "component_count_and_depth_use_the_current_pages_component_authority": true,
     "page_asset_and_style_counts_are_bounded": true,
     "limit_rejections_are_typed_and_path_bound": true,
-    "resource_evidence_is_bound_into_the_v3_sanitization_hash": true,
-    "resource_evidence_is_recomputed_during_integrity_verification": true,
-    "legacy_v2_hash_and_integrity_remain_supported": true,
-    "legacy_v2_does_not_gain_retroactive_resource_evidence": true,
+    "resource_validation_runs_before_sanitized_project_hashing": true,
+    "resource_validation_is_repeated_during_integrity_verification": true,
     "reviewed_publish_calls_resource_validation_before_materialization": true,
+    "pages_sanitized_set_hash_contract_is_unchanged": true,
+    "database_graphql_rest_event_and_artifact_schemas_are_unchanged": true,
     "anonymous_rendering_persistence_and_public_routes_are_unchanged": true,
     "tests_run": false,
     "static_verifiers_run": false,
@@ -39,6 +39,6 @@
     "cargo_check": false,
     "real_project_policy": false,
     "reviewed_publish": false,
-    "legacy_v2_fixture": false
+    "sanitization_identity_contract": false
   }
 }
