@@ -119,20 +119,20 @@ for (const leak of [
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_postgres_reader_pending`.',
+  'Status: `source_complete_downstream_confirmation_and_persistence_complete`.',
   'page limit in `1..=32`',
   'bounded to 512 bytes',
   'bounded to 4 KiB',
   'Stale entity',
   'Orphan link',
   'strict and deterministic',
-  'does not add:',
-  'PostgreSQL `IndexDriftCandidateReader`',
+  'PostgresIndexDriftConfirmedCandidateWriter',
+  'The candidate contract itself still does not add:',
 ]);
 requireMarkers('plan', [
-  'M6 - compose the bounded PostgreSQL drift candidate reader',
+  'M6 - add drift finding lifecycle commands',
   'M6 bounded stale-entity and orphan-link candidate contract',
-  'source_complete_postgres_reader_pending',
+  'source_complete_lifecycle_pending',
   '[x] Add a database-neutral bounded candidate contract',
 ]);
 requireMarkers('recheck', [
