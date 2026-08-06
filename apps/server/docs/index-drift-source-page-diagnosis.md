@@ -66,8 +66,9 @@ returned.
 It does not copy source entity IDs, source records, indexed records, fields, links, tenant IDs,
 actor IDs, database errors, SQL, registry handles, or snapshot state into the outcome.
 
-The raw cursor is not attached to GraphQL, HTTP, CLI, MCP, or native admin. No public identifier
-discovery surface is added by this slice.
+The raw cursor is not attached to GraphQL, HTTP, CLI, MCP, or native admin. The cursor is not
+attached to GraphQL by the current internal method. No public identifier discovery surface is added
+by this slice.
 
 ## Confidential continuation prerequisite
 
@@ -82,7 +83,9 @@ binds authenticated claims to:
 - issued-at time and bounded expiry.
 
 It rejects tampering, wrong scope, unsupported version, expiry, excessive future clock skew,
-oversized tokens, and unavailable or retired key material before returning raw cursor state.
+oversized tokens, and unavailable or retired key material before returning raw cursor state. This
+is the source-complete server-owned continuation envelope contract; server key composition remains
+open.
 
 The codec is not yet composed into this server runtime. The current page method therefore remains an
 internal-only raw-cursor boundary. A future sealed page method must authorize before token parsing,
