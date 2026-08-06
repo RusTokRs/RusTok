@@ -254,63 +254,81 @@ mod browser {
         role: Option<String>,
         tabindex: Option<String>,
         spellcheck: Option<String>,
+        restored: bool,
     }
 
     impl MarkedElement {
         fn mark(element: Element) -> Result<Self, InlineEditContractError> {
-            let snapshot = Self {
+            let mut snapshot = Self {
                 contenteditable: element.get_attribute("contenteditable"),
                 inline_marker: element.get_attribute(FLY_REAL_DOM_INLINE_ATTRIBUTE),
                 role: element.get_attribute("role"),
                 tabindex: element.get_attribute("tabindex"),
                 spellcheck: element.get_attribute("spellcheck"),
                 element: element.clone(),
+                restored: false,
             };
-            element
-                .set_attribute("contenteditable", "plaintext-only")
-                .map_err(browser_error)?;
-            element
-                .set_attribute(FLY_REAL_DOM_INLINE_ATTRIBUTE, "content")
-                .map_err(browser_error)?;
-            if snapshot.role.is_none() {
-                element.set_attribute("role", "textbox").map_err(browser_error)?;
-            }
-            if snapshot.tabindex.is_none() {
-                element.set_attribute("tabindex", "0").map_err(browser_error)?;
-            }
-            if snapshot.spellcheck.is_none() {
-                element.set_attribute("spellcheck", "true").map_err(browser_error)?;
+            let result = (|| {
+                element
+                    .set_attribute("contenteditable", "plaintext-only")
+                    .map_err(browser_error)?;
+                element
+                    .set_attribute(FLY_REAL_DOM_INLINE_ATTRIBUTE, "content")
+                    .map_err(browser_error)?;
+                if snapshot.role.is_none() {
+                    element.set_attribute("role", "textbox").map_err(browser_error)?;
+                }
+                if snapshot.tabindex.is_none() {
+                    element.set_attribute("tabindex", "0").map_err(browser_error)?;
+                }
+                if snapshot.spellcheck.is_none() {
+                    element.set_attribute("spellcheck", "true").map_err(browser_error)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                snapshot.restore();
+                return Err(error);
             }
             Ok(snapshot)
         }
 
-        fn restore(self) {
-            restore_attribute(&self.element, "contenteditable", self.contenteditable);
+        fn restore(&mut self) {
+            if self.restored {
+                return;
+            }
+            restore_attribute(&self.element, "contenteditable", self.contenteditable.take());
             restore_attribute(
                 &self.element,
                 FLY_REAL_DOM_INLINE_ATTRIBUTE,
-                self.inline_marker,
+                self.inline_marker.take(),
             );
-            restore_attribute(&self.element, "role", self.role);
-            restore_attribute(&self.element, "tabindex", self.tabindex);
-            restore_attribute(&self.element, "spellcheck", self.spellcheck);
+            restore_attribute(&self.element, "role", self.role.take());
+            restore_attribute(&self.element, "tabindex", self.tabindex.take());
+            restore_attribute(&self.element, "spellcheck", self.spellcheck.take());
+            self.restored = true;
+        }
+    }
+
+    impl Drop for MarkedElement {
+        fn drop(&mut self) {
+            self.restore();
         }
     }
 
     pub struct RealDomInlineEditSubscription {
         root: Element,
-        input: Closure<dyn FnMut(Event)>,
+        focusout: Closure<dyn FnMut(Event)>,
         marked: Vec<MarkedElement>,
     }
 
     impl Drop for RealDomInlineEditSubscription {
         fn drop(&mut self) {
-            let _ = self
-                .root
-                .remove_event_listener_with_callback("input", self.input.as_ref().unchecked_ref());
-            for marked in self.marked.drain(..) {
-                marked.restore();
-            }
+            let _ = self.root.remove_event_listener_with_callback(
+                "focusout",
+                self.focusout.as_ref().unchecked_ref(),
+            );
+            self.marked.clear();
         }
     }
 
@@ -354,7 +372,7 @@ mod browser {
         let sequence = Rc::new(Cell::new(0_u64));
         let on_request = Rc::new(on_request);
         let on_error = Rc::new(on_error);
-        let input = Closure::<dyn FnMut(Event)>::new({
+        let focusout = Closure::<dyn FnMut(Event)>::new({
             let allowed = allowed.clone();
             let sequence = sequence.clone();
             let on_request = on_request.clone();
@@ -401,12 +419,17 @@ mod browser {
                 }
             }
         });
-        root.add_event_listener_with_callback("input", input.as_ref().unchecked_ref())
-            .map_err(browser_error)?;
+        if let Err(error) = root.add_event_listener_with_callback(
+            "focusout",
+            focusout.as_ref().unchecked_ref(),
+        ) {
+            marked.clear();
+            return Err(browser_error(error));
+        }
 
         Ok(RealDomInlineEditSubscription {
             root,
-            input,
+            focusout,
             marked,
         })
     }
