@@ -8,10 +8,10 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::{
-    IndexDriftFindingLifecycleCommand, IndexDriftFindingLifecycleFailure,
-    IndexDriftFindingLifecycleNotAppliedReason, IndexDriftFindingLifecycleReceipt,
-    IndexDriftFindingLifecycleStore, IndexDriftFindingLifecycleStoreOutcome,
-    IndexDriftFindingState,
+    IndexDriftFindingAuthorizedLifecycleCommand, IndexDriftFindingLifecycleCommand,
+    IndexDriftFindingLifecycleFailure, IndexDriftFindingLifecycleNotAppliedReason,
+    IndexDriftFindingLifecycleReceipt, IndexDriftFindingLifecycleStore,
+    IndexDriftFindingLifecycleStoreOutcome, IndexDriftFindingState,
 };
 
 const STORAGE_UNAVAILABLE: &str = "index_drift_finding_lifecycle_storage_unavailable";
@@ -104,13 +104,14 @@ impl PostgresIndexDriftFindingLifecycleStore {
 
 #[async_trait]
 impl IndexDriftFindingLifecycleStore for PostgresIndexDriftFindingLifecycleStore {
-    async fn apply_lifecycle_command(
+    async fn apply_authorized_lifecycle_command(
         &self,
-        command: &IndexDriftFindingLifecycleCommand,
+        authorized: &IndexDriftFindingAuthorizedLifecycleCommand,
     ) -> Result<IndexDriftFindingLifecycleStoreOutcome, IndexDriftFindingLifecycleFailure> {
         if self.db.get_database_backend() != DbBackend::Postgres {
             return Err(permanent_failure(UNSUPPORTED_BACKEND));
         }
+        let command = authorized.command();
         let transaction = self
             .db
             .begin_with_config(
