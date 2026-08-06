@@ -9,6 +9,8 @@ mod contribution_browser_intent;
 mod contributions;
 mod core;
 mod i18n;
+#[cfg(feature = "inline-edit-launch")]
+mod inline_edit_launch;
 mod metadata_properties;
 mod model;
 mod rollback_control;
@@ -16,6 +18,8 @@ mod standalone_metadata;
 mod transport;
 
 use composition::PagesAdmin as PagesWorkspace;
+#[cfg(feature = "inline-edit-launch")]
+use inline_edit_launch::PagesInlineEditLaunch;
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::use_route_query_value;
@@ -80,10 +84,22 @@ pub fn PagesAdmin() -> impl IntoView {
         refresh_generation.update(|generation| *generation = generation.wrapping_add(1));
     });
 
+    #[cfg(feature = "inline-edit-launch")]
+    let inline_edit_launch = view! {
+        <PagesInlineEditLaunch
+            selected_page
+            locale=default_locale.clone()
+        />
+    }
+    .into_any();
+    #[cfg(not(feature = "inline-edit-launch"))]
+    let inline_edit_launch = ().into_any();
+
     view! {
         <div class="space-y-4">
             <PagesRollbackControl on_rolled_back />
             <PagesPublishedMetadataSurface refresh_generation />
+            {inline_edit_launch}
             {move || {
                 let generation = refresh_generation.get();
                 view! {
