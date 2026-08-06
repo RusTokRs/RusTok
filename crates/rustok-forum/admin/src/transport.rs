@@ -4,6 +4,7 @@ mod topic_fork_graphql_adapter;
 mod topic_merge_graphql_adapter;
 mod topic_merge_native_server_adapter;
 mod topic_reply_range_graphql_adapter;
+mod topic_slug_rename_graphql_adapter;
 mod topic_split_graphql_adapter;
 
 use rustok_ui_transport::{UiTransportPath, execute_selected_transport};
@@ -21,6 +22,9 @@ use crate::topic_merge_model::{
 };
 use crate::topic_reply_range_model::{
     ForumReplyRangeMoveCandidate, ForumReplyRangeMoveCommand, ForumReplyRangeMoveReceipt,
+};
+use crate::topic_slug_rename_model::{
+    ForumTopicSlugRenameCandidate, ForumTopicSlugRenameCommand, ForumTopicSlugRenameReceipt,
 };
 use crate::topic_split_model::{
     ForumTopicSplitCandidate, ForumTopicSplitCommand, ForumTopicSplitReceipt,
@@ -213,6 +217,21 @@ pub async fn merge_topic(
     .map_err(|error| error.to_string())
 }
 
+pub async fn fetch_topic_slug_rename_candidates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<ForumTopicSlugRenameCandidate>, ApiError> {
+    topic_slug_rename_graphql_adapter::fetch_candidates(token, tenant_slug, locale).await
+}
+
+pub async fn rename_topic_slug(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: ForumTopicSlugRenameCommand,
+) -> Result<ForumTopicSlugRenameReceipt, ApiError> {
+    topic_slug_rename_graphql_adapter::rename_topic_slug(token, tenant_slug, command).await
+}
 
 pub async fn fetch_topic_fork_candidates(
     token: Option<String>,
@@ -345,6 +364,19 @@ mod tests {
         assert!(SOURCE.contains("UiTransportPath::Graphql"));
     }
 
+    #[test]
+    fn topic_slug_rename_uses_the_update_graphql_transport_without_fallback() {
+        for operation in [
+            "fetch_topic_slug_rename_candidates",
+            "rename_topic_slug",
+        ] {
+            let source = function_source(operation);
+            assert!(source.contains("topic_slug_rename_graphql_adapter::"));
+            assert!(!source.contains("native_server_adapter"));
+            assert!(!source.contains("execute_selected_transport"));
+            assert!(!source.contains("fallback"));
+        }
+    }
 
     #[test]
     fn topic_fork_uses_the_manager_graphql_transport_without_fallback() {
