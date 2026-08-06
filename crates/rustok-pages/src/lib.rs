@@ -65,9 +65,10 @@ pub use cache_invalidation::{
 };
 pub use dto::*;
 pub use entities::{
-    Page, PageBuilderScenarioBaseline, PagePublishOperation, PagePublishOperationArtifact,
-    PagePublishedLandingArtifact, PageRollbackOperation, PageRouteAlias, PageRouteHistoryImport,
-    PageRoutePublication, PageStaticLandingArtifact,
+    Page, PageArtifactRebuildOperation, PageBuilderScenarioBaseline, PagePublishOperation,
+    PagePublishOperationArtifact, PagePublishRebuildSource, PagePublishedLandingArtifact,
+    PageRollbackOperation, PageRouteAlias, PageRouteHistoryImport, PageRoutePublication,
+    PageStaticLandingArtifact,
 };
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
@@ -78,6 +79,8 @@ pub use services::{
     MAX_PAGE_ARTIFACT_AUDIT_RECORDS, MAX_PAGE_INLINE_EDIT_GRANT_TTL_MS,
     MAX_PAGE_INLINE_EDIT_KEYS, MAX_PAGE_ROUTE_HISTORY_IMPORT_ITEMS,
     PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT, PAGE_ARTIFACT_INTEGRITY_INVALID,
+    PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT, PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT,
+    PAGE_ARTIFACT_REBUILD_SOURCE_INVALID,
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED, PAGE_DOCUMENT_REVISION_CONFLICT,
