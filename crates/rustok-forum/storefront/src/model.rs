@@ -136,9 +136,42 @@ pub struct ForumReplyDetail {
     pub updated_at: String,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum StorefrontForumTopicRouteDisposition {
+    Canonical,
+    Redirect,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StorefrontForumTopicRouteDescriptor {
+    #[serde(rename = "topicId")]
+    pub topic_id: String,
+    pub locale: String,
+    #[serde(rename = "shortId")]
+    pub short_id: String,
+    pub slug: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StorefrontForumTopicRouteResolution {
+    #[serde(rename = "requestedLocale")]
+    pub requested_locale: String,
+    #[serde(rename = "requestedShortId")]
+    pub requested_short_id: String,
+    #[serde(rename = "requestedSlug")]
+    pub requested_slug: String,
+    pub disposition: StorefrontForumTopicRouteDisposition,
+    pub canonical: StorefrontForumTopicRouteDescriptor,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ForumCategoryListItem, ForumTopicListItem};
+    use super::{
+        ForumCategoryListItem, ForumTopicListItem, StorefrontForumTopicRouteDisposition,
+        StorefrontForumTopicRouteResolution,
+    };
 
     fn category_json(color: &str) -> String {
         serde_json::json!({
@@ -188,5 +221,30 @@ mod tests {
         .expect("topic");
         assert_eq!(topic.is_unread, None);
         assert_eq!(topic.unread_count, None);
+    }
+
+    #[test]
+    fn route_payload_uses_graphql_enum_and_field_names() {
+        let route: StorefrontForumTopicRouteResolution = serde_json::from_value(
+            serde_json::json!({
+                "requestedLocale": "en",
+                "requestedShortId": "123456789abc",
+                "requestedSlug": "old-welcome",
+                "disposition": "REDIRECT",
+                "canonical": {
+                    "topicId": "12345678-9abc-4def-8123-456789abcdef",
+                    "locale": "en",
+                    "shortId": "123456789abc",
+                    "slug": "welcome",
+                    "path": "/en/forum/t/123456789abc/welcome"
+                }
+            }),
+        )
+        .expect("route payload");
+        assert_eq!(
+            route.disposition,
+            StorefrontForumTopicRouteDisposition::Redirect
+        );
+        assert_eq!(route.canonical.slug, "welcome");
     }
 }
