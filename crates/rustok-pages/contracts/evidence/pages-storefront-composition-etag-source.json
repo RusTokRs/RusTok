@@ -24,6 +24,7 @@
     "composition_etag_uses_sha256": true,
     "composition_etag_is_canonical_only": true,
     "terminal_routes_never_claim_composition_etag": true,
+    "nonce_bearing_html_never_claims_composition_etag": true,
     "strong_weak_and_list_if_none_match_are_supported": true,
     "matching_if_none_match_returns_304": true,
     "conditional_304_uses_fully_rendered_document_identity": true,
