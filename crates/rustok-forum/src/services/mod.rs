@@ -29,6 +29,7 @@ mod category_moderation_audience;
 mod category_owner;
 mod category_policy;
 mod category_reply_create_audience;
+mod category_route;
 mod category_search_audience_scope;
 mod category_search_scope {
     include!("category_search_scope_visible.rs");
@@ -155,6 +156,11 @@ pub use category_owner::CategoryService;
 pub use category_reply_create_audience::{
     ForumCategoryReplyCreateAudiencePolicy, ForumCategoryReplyCreateAudiencePolicyLayer,
     ForumCategoryReplyCreateAudiencePolicyService, SetForumCategoryReplyCreateAudiencePolicyInput,
+};
+pub use category_route::{
+    ForumCategoryRouteDescriptor, ForumCategoryRouteDisposition, ForumCategoryRouteResolution,
+    ForumCategoryRouteService, MAX_FORUM_CATEGORY_ROUTE_CANDIDATES,
+    MAX_FORUM_CATEGORY_ROUTE_LOCALE_LEN, MAX_FORUM_CATEGORY_ROUTE_SLUG_LEN,
 };
 pub use category_search_audience_scope::ForumSearchCategoryAudienceScopeService;
 pub use category_search_scope::{
