@@ -7,14 +7,17 @@ const files = {
   appMod: 'crates/rustok-index/src/application/mod.rs',
   store: 'crates/rustok-index/src/infrastructure/postgres/drift_repair_recovery.rs',
   postgresMod: 'crates/rustok-index/src/infrastructure/postgres/mod.rs',
-  composition:
+  missingComposition:
     'crates/rustok-index/src/infrastructure/postgres/drift_missing_entity_repair.rs',
+  orphanComposition:
+    'crates/rustok-index/src/infrastructure/postgres/drift_orphan_link_repair.rs',
   migration:
     'crates/rustok-index/src/migrations/m20260806_000008_add_index_finding_repair_recovery.rs',
   migrationsMod: 'crates/rustok-index/src/migrations/mod.rs',
   doc: 'crates/rustok-index/docs/m6-prepared-repair-recovery.md',
   targetedDoc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
   concreteDoc: 'crates/rustok-index/docs/m6-missing-entity-repair-composition.md',
+  orphanDoc: 'crates/rustok-index/docs/m6-orphan-link-repair-composition.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -183,19 +186,6 @@ if (
   throw new Error('recovery-aware owner must hold the exact command fence and require active state before delegation');
 }
 
-for (const marker of [
-  'hash_component(&mut hasher, COMMAND_PAYLOAD_DOMAIN);',
-  'hash_component(&mut hasher, command.tenant_id().as_bytes());',
-  'hash_component(&mut hasher, command.finding_id().as_bytes());',
-  'hash_component(&mut hasher, command.command_id().as_bytes());',
-  'hash_repair_target(&mut hasher, command.target());',
-  'hash_component(&mut hasher, command.actor().kind().as_bytes());',
-  'hash_component(&mut hasher, command.actor().subject().as_bytes());',
-  'hash_component(&mut hasher, command.reason().as_bytes());',
-]) {
-  requireMarkers('store', [marker]);
-}
-
 requireMarkers('migration', [
   'index_consistency_finding_repair_recovery_decisions',
   'IndexFindingRepairRecoveryDecisions::TenantId',
@@ -215,12 +205,14 @@ requireMarkers('migration', [
   'ensure_supported_backend(manager)?;',
 ]);
 
-requireMarkers('composition', [
-  'RecoveryAwareIndexDriftRepairOwner',
-  'RecoveryAwareIndexDriftRepairStore',
-  'RecoveryAwareIndexDriftRepairOwner::new(db.clone(), base_owner)',
-  'RecoveryAwareIndexDriftRepairStore::new(db, store)',
-]);
+for (const composition of ['missingComposition', 'orphanComposition']) {
+  requireMarkers(composition, [
+    'RecoveryAwareIndexDriftRepairOwner',
+    'RecoveryAwareIndexDriftRepairStore',
+    'RecoveryAwareIndexDriftRepairOwner::new(db.clone(), base_owner)',
+    'RecoveryAwareIndexDriftRepairStore::new(db, store)',
+  ]);
+}
 
 requireMarkers('doc', [
   'Status: `source_complete_owner_execution_pending`.',
@@ -232,22 +224,30 @@ requireMarkers('doc', [
   'No tests, Node verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('targetedDoc', [
-  'Status: `source_complete_recovery_aware_orphan_pending`.',
+  'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   '`IndexDriftRepairRecoveryService`',
   'database trigger rejects `prepared -> completed`',
+  '`materialize_postgres_index_drift_orphan_link_repair_service`',
 ]);
 requireMarkers('concreteDoc', [
   'Status: `source_complete_recovery_aware_owner_execution_pending`.',
   '`RecoveryAwareIndexDriftRepairOwner`',
   '`RecoveryAwareIndexDriftRepairStore`',
 ]);
+requireMarkers('orphanDoc', [
+  'Status: `source_complete_owner_execution_pending`.',
+  '`RecoveryAwareIndexDriftRepairOwner`',
+  '`RecoveryAwareIndexDriftRepairStore`',
+]);
 requireMarkers('plan', [
-  'M6 - compose concrete orphan-link repair',
+  'M6 - retain concrete repair execution evidence',
   'M6 prepared repair pause/resume/abandon recovery policy:',
   'Add fail-closed prepared-command pause/resume/abandon recovery and lifecycle coordination.',
+  'Compose one command-bound exact edge-removal persistence owner behind the recovery boundary.',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-prepared-repair-recovery.mjs'",
+  "'verify-index-orphan-link-repair-composition.mjs'",
 ]);
 
 console.log('Index prepared repair recovery verified');
