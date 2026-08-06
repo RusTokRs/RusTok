@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "module": "reactions",
+  "contract": "reactions_owner_persistence_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "migration": "m20260806_000001_create_reaction_owner_state",
+  "migration_dependency": "m20260803_000001_create_owner_operation_receipts",
+  "tables": [
+    "reaction_subjects",
+    "reaction_catalogs",
+    "reaction_actor_states",
+    "reaction_aggregates"
+  ],
+  "required_invariants": [
+    "tenant-composite subject identity",
+    "tenant-composite child foreign keys",
+    "immutable catalog revision binding",
+    "one actor state per subject and actor",
+    "bounded single or multiple selection",
+    "non-negative aggregate counts",
+    "actor state and aggregates in one transaction",
+    "command UUID equals port idempotency key",
+    "shared rustok-outbox owner-operation receipts",
+    "producer authorization before owner persistence",
+    "no producer-private table reads"
+  ],
+  "initial_catalog_revision": "producer_authorized_subject_revision",
+  "deliberate_limits": [
+    "no semantic reaction events",
+    "no reconciliation worker",
+    "no Forum or other producer adapter",
+    "no GraphQL REST native transport",
+    "no admin or storefront UI",
+    "no default enablement",
+    "Cargo.lock regeneration pending maintainer Cargo execution",
+    "no runtime evidence claimed"
+  ],
+  "verification": [
+    "cargo test -p rustok-reactions",
+    "cargo check -p rustok-reactions --all-targets",
+    "node scripts/verify/verify-reactions-owner-persistence.mjs",
+    "git diff --check"
+  ]
+}

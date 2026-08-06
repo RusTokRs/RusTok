@@ -7,8 +7,17 @@ description = "Shared reaction catalog, actor state, aggregate, and subject orch
 
 [dependencies]
 async-trait.workspace = true
+chrono.workspace = true
+rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-outbox.workspace = true
 rustok-reactions-api = { path = "../rustok-reactions-api" }
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
-uuid.workspace = true
+tokio.workspace = true
