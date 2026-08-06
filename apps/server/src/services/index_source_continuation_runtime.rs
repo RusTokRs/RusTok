@@ -20,12 +20,15 @@ const SECRET_MOUNT_ROOT_ENV: &str = "RUSTOK_INDEX_SOURCE_CONTINUATION_SECRET_MOU
 const ENV_RESOLVER_ALIAS: &str = "env";
 const MOUNTED_FILE_RESOLVER_ALIAS: &str = "mounted_file";
 const KEY_BYTES: usize = 32;
+const ENCODED_KEY_BYTES: usize = 43;
+const MAX_CONFIG_BYTES: usize = 16 * 1024;
 const MAX_KEYS: usize = 16;
 const MAX_KEY_ID_BYTES: usize = 64;
+const MAX_SECRET_REFERENCE_BYTES: usize = 256;
 const MIN_LIFETIME_SECONDS: u64 = 1;
 const MAX_LIFETIME_SECONDS: u64 = 15 * 60;
 const DEFAULT_LIFETIME_SECONDS: u64 = 5 * 60;
-const DEPLOYMENT_SECRET_SCOPE: Uuid = Uuid::nil();
+const DEPLOYMENT_SECRET_SCOPE: Uuid = Uuid::from_u128(0);
 
 #[derive(Clone, Deserialize)]
 struct IndexSourceContinuationKeyringConfig {
@@ -70,10 +73,12 @@ impl IndexSourceContinuationKeyringRuntime {
         let Some(raw) = std::env::var_os(KEYRING_ENV) else {
             return Ok(None);
         };
-        let config = serde_json::from_str::<IndexSourceContinuationKeyringConfig>(
-            raw.to_string_lossy().as_ref(),
-        )
-        .map_err(|_| IndexSourceContinuationKeyringError::InvalidConfiguration)?;
+        let raw = raw.to_string_lossy();
+        if raw.len() > MAX_CONFIG_BYTES {
+            return Err(IndexSourceContinuationKeyringError::InvalidConfiguration);
+        }
+        let config = serde_json::from_str::<IndexSourceContinuationKeyringConfig>(raw.as_ref())
+            .map_err(|_| IndexSourceContinuationKeyringError::InvalidConfiguration)?;
         let secrets = local_secret_registry(&config)?;
         Self::from_config(config, secrets).map(Some)
     }
@@ -111,8 +116,12 @@ impl IndexSourceContinuationKeyringRuntime {
                 .resolve_for_tenant(DEPLOYMENT_SECRET_SCOPE, reference)
                 .await
                 .map_err(|_| IndexSourceContinuationKeyringError::SecretUnavailable)?;
+            let encoded = secret.expose_secret().trim();
+            if encoded.len() != ENCODED_KEY_BYTES {
+                return Err(IndexSourceContinuationKeyringError::InvalidKeyMaterial);
+            }
             let decoded = URL_SAFE_NO_PAD
-                .decode(secret.expose_secret().trim())
+                .decode(encoded)
                 .map_err(|_| IndexSourceContinuationKeyringError::InvalidKeyMaterial)?;
             let key = <[u8; KEY_BYTES]>::try_from(decoded.as_slice())
                 .map_err(|_| IndexSourceContinuationKeyringError::InvalidKeyMaterial)?;
@@ -153,8 +162,7 @@ fn validate_config(
     let mut references = BTreeSet::new();
     for (key_id, reference) in &config.keys {
         if !valid_key_id(key_id)
-            || reference.resolver.trim().is_empty()
-            || reference.key.trim().is_empty()
+            || !valid_secret_reference(reference)
             || !references.insert((reference.resolver.clone(), reference.key.clone()))
         {
             return Err(IndexSourceContinuationKeyringError::InvalidConfiguration);
@@ -170,6 +178,17 @@ fn valid_key_id(value: &str) -> bool {
             byte.is_ascii_lowercase()
                 || byte.is_ascii_digit()
                 || matches!(byte, b'-' | b'_' | b'.')
+        })
+}
+
+fn valid_secret_reference(reference: &SecretRef) -> bool {
+    let key = reference.key.as_str();
+    !reference.resolver.trim().is_empty()
+        && !key.is_empty()
+        && key.len() <= MAX_SECRET_REFERENCE_BYTES
+        && key == key.trim()
+        && key.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/')
         })
 }
 
@@ -217,9 +236,7 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use async_trait::async_trait;
-    use rustok_secrets::{
-        SecretAccessPolicy, SecretError, SecretResolver, SecretString,
-    };
+    use rustok_secrets::{SecretAccessPolicy, SecretError, SecretResolver, SecretString};
 
     use super::*;
 
@@ -295,7 +312,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_decoded_key_material_that_is_not_exactly_32_bytes() {
+    async fn rejects_encoded_key_material_that_is_not_canonical_32_bytes() {
         let values = HashMap::from([(
             "short-key".to_string(),
             URL_SAFE_NO_PAD.encode([5_u8; KEY_BYTES - 1]),
@@ -322,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_duplicate_references_and_out_of_range_lifetime() {
+    fn rejects_duplicate_references_out_of_range_lifetime_and_unbounded_keys() {
         let duplicate = config("current", &[("current", "same"), ("old", "same")]);
         assert!(matches!(
             validate_config(&duplicate),
@@ -333,6 +350,13 @@ mod tests {
         lifetime.lifetime_seconds = MAX_LIFETIME_SECONDS + 1;
         assert!(matches!(
             validate_config(&lifetime),
+            Err(IndexSourceContinuationKeyringError::InvalidConfiguration)
+        ));
+
+        let oversized = "x".repeat(MAX_SECRET_REFERENCE_BYTES + 1);
+        let unbounded = config("current", &[("current", oversized.as_str())]);
+        assert!(matches!(
+            validate_config(&unbounded),
             Err(IndexSourceContinuationKeyringError::InvalidConfiguration)
         ));
     }
