@@ -1,8 +1,8 @@
 # Pages / Page Builder Rebuild Provenance Continuation
 
 Date: 2026-08-07  
-Status: source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / execution-pending
-Scope: Pages immutable artifact audit, reviewed publication provenance, append-only rebuild, explicit activation and the next tenant-admin repair transport boundary
+Status: source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / explicit-artifact-repair-transport-source-ready / execution-pending
+Scope: Pages immutable artifact audit, reviewed publication provenance, append-only rebuild, explicit activation, bounded tenant-admin repair transports and the next execution-evidence boundary
 
 ## Rechecked parity cursor
 
@@ -12,11 +12,12 @@ Current `main` before this slice contains:
 - the bounded Pages immutable artifact integrity audit from PR #3103;
 - tenant-admin GraphQL, HTTP and OpenAPI audit adapters from PR #3107;
 - one immutable sanitized rebuild source per locale for new reviewed publications from PR #3112;
-- the explicit append-only immutable artifact rebuild command from PR #3115.
+- the explicit append-only immutable artifact rebuild command from PR #3115;
+- the explicit rebuilt-artifact binding activation command from PR #3126.
 
-The audit can identify invalid, partial or oversized retained artifacts. Rebuild provenance supplies the exact historical sanitized source and reviewed artifact/runtime identities without treating the mutable current draft as authority. Rebuild can retain a second verified immutable copy without overwriting the damaged row or changing what is public.
+The audit can identify invalid, partial or oversized retained artifacts. Rebuild provenance supplies the exact historical sanitized source and reviewed artifact/runtime identities without treating the mutable current draft as authority. Rebuild can retain a second verified immutable copy without overwriting the damaged row or changing what is public. Activation can switch one exact locale binding only after explicit current-state fences.
 
-The remaining source gap was the separate explicit decision that may activate that rebuilt copy.
+The remaining source gap was a bounded tenant-admin transport surface that delegates to those separate owner commands without combining them into automatic repair.
 
 ## Explicit append-only rebuild
 
@@ -47,7 +48,7 @@ Marker:
 explicit-artifact-binding-replacement-source-ready
 ```
 
-Pages now exposes `replace_rebuilt_artifact_binding` around one exact:
+Pages exposes `replace_rebuilt_artifact_binding` around one exact:
 
 ```text
 tenant
@@ -58,11 +59,11 @@ expected current artifact id
 idempotency key
 ```
 
-The command requires tenant-wide `pages:manage` and a currently published page. The selected rebuild receipt must be valid and its source artifact must equal the caller's expected current artifact. The locked locale binding must still reference that exact source id.
+The command requires tenant-wide `pages:manage` and a currently published page. The selected rebuild receipt and retained provenance must be valid and mutually consistent. Its source artifact must equal the caller's expected current artifact. The locked locale binding must still reference that exact source id and retained body.
 
 The replacement row must belong to the same tenant, page and locale and match the rebuild receipt's operation-bound instance key, artifact hash and materialization hash. `bind_existing_body_in_tx` then applies the existing complete Page Builder static artifact and materialization verifier before updating the binding.
 
-The damaged source payload is not required to pass full integrity because that would make recovery from detected corruption impossible. Its exact identity remains fenced by the request, rebuild receipt and locked binding.
+The damaged source payload is not required to pass full integrity because that would make recovery from detected corruption impossible. Its exact identity remains fenced by the request, retained provenance, rebuild receipt and locked binding.
 
 ## Atomic activation and lifecycle effects
 
@@ -71,7 +72,7 @@ The owner transaction:
 1. locks the page;
 2. resolves exact idempotent replay;
 3. checks the expected version and published state;
-4. verifies the rebuild receipt;
+4. verifies the rebuild receipt and retained provenance;
 5. locks the exact locale binding;
 6. verifies the replacement artifact;
 7. updates one binding only;
@@ -84,18 +85,50 @@ Cache generations are never mutated inline. Existing committed lifecycle process
 
 An exact replay returns the stored result without repeating the binding, version or events. One rebuild receipt may receive only one activation receipt, preventing silent reuse after later publish or rollback state changes.
 
+## Bounded tenant-admin repair transports
+
+Marker:
+
+```text
+explicit-artifact-repair-transport-source-ready
+```
+
+`PagesMutation` now mounts two separate explicit mutations:
+
+```text
+rebuildPageArtifact
+activateRebuiltPageArtifact
+```
+
+The Pages Axum router mounts:
+
+```text
+POST /api/admin/pages/{id}/artifacts/rebuild
+POST /api/admin/pages/{id}/artifacts/activate
+```
+
+Both GraphQL and HTTP adapters require the Pages module, current-tenant identity and an effective `pages:manage` grant before delegation. The owner services independently retain the authoritative tenant-wide `PermissionScope::All` check before writes.
+
+The adapters delegate once to the owner commands. They do not import entities, query artifact/provenance/binding tables, emit events or touch cache generations. Public errors use fixed codes and messages and never copy `PagesError` text.
+
+HTTP accepts the existing explicit owner inputs. GraphQL mirrors those command fields. Bounded transport results expose receipt, page, locale, relevant artifact identities, verified artifact/materialization hashes, replay state and timestamps. They omit provenance source id, source publish operation id, internal storage instance key, idempotency keys, runtime context, materialization identity JSON and runtime snapshots.
+
+`PagesApiDoc` registers both routes and bounded result schemas.
+
+The transports do not select repair inputs for the caller, chain audit into rebuild, chain rebuild into activation or add a combined repair endpoint.
+
 ## Preserved boundaries
 
-The activation command does not:
+The repair path still does not:
 
-- sanitize, compile or rebuild a project;
-- read the mutable current body;
+- read mutable current body as rebuild authority;
 - update or delete the damaged source artifact;
 - mutate the replacement artifact;
 - replace more than one locale binding;
 - publish an unpublished page;
 - run automatically from an audit finding;
-- add GraphQL, HTTP, OpenAPI, admin UI or worker transport;
+- expose raw provenance, sanitized project or runtime payloads;
+- add admin UI or worker scheduling;
 - promote FFA or FBA.
 
 ## Parity matrix
@@ -113,7 +146,8 @@ The activation command does not:
 | Explicit binding replacement | Source-ready | Database/fence/lifecycle execution pending |
 | Binding replacement tenant-wide authorization | Source-ready | Scope execution pending |
 | Binding replacement exact idempotent receipt | Source-ready | Replay/conflict execution pending |
-| Tenant-admin repair transports | Open | Not implemented |
+| Bounded tenant-admin repair transports | Source-ready | GraphQL/HTTP/OpenAPI execution pending |
+| Static public repair errors and bounded results | Source-ready | Response-shape execution pending |
 | Automatic repair | Deliberately absent | Not allowed |
 | FFA/FBA promotion | Open | Not promoted |
 
@@ -123,27 +157,29 @@ The activation command does not:
 - Page Builder owns sanitizer, runtime materialization, renderer and deterministic artifact integrity.
 - The rebuild caller owns the fresh reviewed runtime context; retained hashes constrain it but do not replace authorization.
 - The activation caller owns the explicit public switch decision and optimistic current-state fences.
+- GraphQL/HTTP adapters own only current-tenant/effective-permission fencing, command conversion and static public errors.
 - Existing Pages lifecycle handlers own cache generation effects after committed activation events.
 - Audit remains read-only and never schedules rebuild or activation.
 
 ## Next cursor
 
-1. Execute the provenance, explicit-rebuild and explicit-binding-replacement source guards.
+1. Execute the provenance, explicit-rebuild, explicit-binding-replacement and repair-transport source guards.
 2. Retain SQLite/PostgreSQL migration evidence for canonical defaults, operation-bound duplicate identities and activation receipt constraints.
-3. Prove tenant-wide Manage succeeds and owner-scoped Manage rejects before rebuild or activation writes.
-4. Prove rebuild exact replay/conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction behavior.
-5. Prove rebuild appends one artifact while binding, page version, events and cache generations remain unchanged.
-6. Prove Explicit binding replacement rejects stale version, stale current artifact, reused rebuild, missing/invalid replacement and unpublished state atomically.
-7. Prove successful activation changes one locale binding, advances one version, retains both artifact rows and produces one lifecycle pair plus one receipt.
-8. Observe committed event processing and route/page/artifact generation changes only after activation commit.
-9. Design bounded tenant-admin repair transports for explicit rebuild and activation with static public errors, current-tenant fencing and no raw provenance/runtime payload exposure.
-10. Keep automatic audit-to-repair behavior absent and complete browser/tenant evidence before FFA/FBA promotion.
+3. Prove tenant-wide Manage succeeds and owner-scoped Manage rejects before rebuild or activation writes through both GraphQL and HTTP.
+4. Prove GraphQL schema mounting, current-tenant override rejection, bounded result fields and static public errors.
+5. Prove HTTP route mounting, current-tenant rejection, status/code mapping, bounded result fields and OpenAPI registration.
+6. Retain rebuild exact replay/conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction evidence.
+7. Prove rebuild appends one artifact while binding, page version, events and cache generations remain unchanged.
+8. Prove activation rejects stale version, stale current artifact, reused rebuild, missing/invalid replacement and unpublished state atomically.
+9. Prove successful activation changes one locale binding, advances one version, retains both artifact rows and produces one lifecycle pair plus one receipt; observe cache generations only after committed events.
+10. Retain repair transport execution evidence and keep automatic audit-to-repair behavior absent before browser/tenant evidence and FFA/FBA promotion.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
@@ -154,4 +190,4 @@ cargo test -p rustok-pages --test explicit_artifact_rebuild_sqlite -- --nocaptur
 cargo check -p rustok-pages --all-targets
 ```
 
-Tests, source verifiers, Cargo, formatting, migrations, database/runtime scenarios, lifecycle/cache observation, workflows and CI were intentionally not run.
+Tests, source verifiers, Cargo, formatting, migrations, GraphQL/HTTP/OpenAPI execution, database/runtime scenarios, lifecycle/cache observation, workflows and CI were intentionally not run.
