@@ -9,6 +9,7 @@ const files = {
   composition: "apps/server/src/services/index_replay_runtime_composition.rs",
   graphql: "apps/server/src/graphql/index_drift_diagnosis.rs",
   graphqlSchema: "apps/server/src/graphql/schema.rs",
+  continuation: "crates/rustok-index/src/application/source_continuation.rs",
   doc: "apps/server/docs/index-drift-source-page-diagnosis.md",
   operatorDoc: "apps/server/docs/index-reconciliation-operator-runtime.md",
   plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
@@ -133,6 +134,8 @@ for (const forbidden of [
   "resolve_finding",
   "ignore_finding",
   "repair_finding",
+  "IndexSourceContinuationCodec",
+  "IndexSourceContinuationToken",
 ]) {
   if (production.includes(forbidden)) {
     throw new Error(`source-page diagnosis contains forbidden capability: ${forbidden}`);
@@ -162,6 +165,8 @@ for (const forbidden of [
   "diagnose_index_source_page",
   "IndexDriftSourcePageDiagnosisRuntime",
   "IndexSourceCursor",
+  "IndexSourceContinuationCodec",
+  "IndexSourceContinuationToken",
   "diagnose_missing_entity_candidate",
 ]) {
   if (content.graphql.includes(forbidden) || content.graphqlSchema.includes(forbidden)) {
@@ -169,33 +174,47 @@ for (const forbidden of [
   }
 }
 
+requireMarkers("continuation", [
+  "pub struct IndexSourceContinuationCodec",
+  "pub struct IndexSourceContinuationScope",
+  "pub struct IndexSourceContinuationToken",
+  "pub fn from_registry(",
+  "Aes256Gcm::new_from_slice",
+]);
 requireMarkers("doc", [
   "Status: `missing_only_source_complete_transport_and_owner_execution_pending`.",
   "one page limit in `1..=32`",
   "skips retained source `Delete` mutations",
   "source `Upsert` plus materialized `Missing`",
   "non-missing candidate count",
-  "The cursor is not attached to GraphQL",
-  "server-owned continuation envelope",
+  "The raw cursor is not attached to GraphQL",
+  "Confidential continuation prerequisite",
+  "The codec is not yet composed into this server runtime",
+  "server continuation-key configuration",
   "No tests, verifiers, formatting, Cargo checks",
 ]);
 requireMarkers("operatorDoc", [
   "IndexDriftSourcePageDiagnosisRuntime",
   "diagnose_missing_entity_candidate(context, key)",
-  "one-page internal missing-entity diagnosis are source complete",
+  "IndexSourceContinuationCodec",
+  "does **not** yet compose that codec",
+  "transport-neutral confidential continuation codec",
 ]);
 requireMarkers("plan", [
   "M6 missing-only entity candidate outcome",
   "M6 bounded source-page missing-entity diagnosis",
-  "source_complete_transport_and_owner_execution_pending",
+  "M6 authenticated and confidential source continuation codec",
+  "source_complete_server_key_composition_pending",
 ]);
 requireMarkers("aggregate", [
   "'verify-index-drift-source-page-diagnosis.mjs'",
+  "'verify-index-source-continuation.mjs'",
 ]);
 
 for (const claim of [
   "tests passed",
   "source-page transport is complete",
+  "server continuation composition is complete",
   "retained evidence admitted",
   "repair is complete",
 ]) {
