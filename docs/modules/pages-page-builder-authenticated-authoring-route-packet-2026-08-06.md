@@ -113,13 +113,14 @@ This slice does not add:
 - `apps/storefront/public/assets/pages-inline-edit-bootstrap.js`
 - `apps/storefront/scripts/build-pages-inline-edit-client.mjs`
 - `apps/storefront/Cargo.toml`
+- `apps/storefront/build.rs`
 - `apps/server/src/middleware/auth_context.rs`
 - `crates/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json`
 - `crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs`
 
 ## Validation status
 
-Artifact build and browser execution remain pending. Tests, verifiers, Cargo, formatting, SSR/WASM checks, dependency graphs, HTTP hosts, asset delivery, browsers, workflows and CI were not run by the implementation agent.
+The source status is explicit: artifact build and browser execution remain pending. Tests, verifiers, Cargo, formatting, SSR/WASM checks, dependency graphs, HTTP hosts, asset delivery, browsers, workflows and CI were not run by the implementation agent.
 
 Suggested commands, intentionally not run:
 
