@@ -1,4 +1,9 @@
 use rustok_ui_core::css_hex_accent_class;
+use uuid::Uuid;
+
+const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;
+const MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN: usize = 64;
+const MAX_FORUM_TOPIC_ROUTE_SLUG_LEN: usize = 255;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForumStorefrontCategoryRailLabels {
@@ -114,7 +119,7 @@ pub fn forum_storefront_category_card_view_model(
 pub fn forum_storefront_topic_card_view_model(
     module_route_base: &str,
     item: &crate::model::ForumTopicListItem,
-    selected_category_id: Option<&str>,
+    _selected_category_id: Option<&str>,
     selected_topic_id: Option<&str>,
     slug_template: &str,
 ) -> ForumStorefrontTopicCardViewModel {
@@ -122,7 +127,12 @@ pub fn forum_storefront_topic_card_view_model(
     let is_unread = item.is_unread.unwrap_or(false);
     let status_class = topic_status_class(item.status.as_str());
     ForumStorefrontTopicCardViewModel {
-        href: topic_href(module_route_base, selected_category_id, item.id.as_str()),
+        href: topic_href(
+            item.id.as_str(),
+            item.effective_locale.as_str(),
+            item.slug.as_str(),
+        )
+        .unwrap_or_else(|| module_route_base.to_string()),
         is_active,
         container_class: forum_storefront_topic_card_class(is_active, is_unread),
         status_class,
@@ -145,13 +155,33 @@ pub fn category_href(module_route_base: &str, category_id: &str) -> String {
     format!("{module_route_base}?category={category_id}")
 }
 
-pub fn topic_href(module_route_base: &str, category_id: Option<&str>, topic_id: &str) -> String {
-    match category_id {
-        Some(category_id) if !category_id.is_empty() => {
-            format!("{module_route_base}?category={category_id}&topic={topic_id}")
-        }
-        _ => format!("{module_route_base}?topic={topic_id}"),
+pub fn topic_href(topic_id: &str, locale: &str, slug: &str) -> Option<String> {
+    let topic_id = Uuid::parse_str(topic_id.trim()).ok()?;
+    let locale = rustok_api::normalize_locale_tag(locale.trim())?;
+    if locale.chars().count() > MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN {
+        return None;
     }
+    let slug = normalize_topic_route_slug(slug)?;
+    let compact = topic_id.simple().to_string();
+    let short_id = &compact[..FORUM_TOPIC_ROUTE_SHORT_ID_LEN];
+    Some(format!("/{locale}/forum/t/{short_id}/{slug}"))
+}
+
+fn normalize_topic_route_slug(value: &str) -> Option<String> {
+    let mut normalized = String::with_capacity(value.len());
+    let mut previous_dash = false;
+    for ch in value.trim().chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            normalized.push(ch);
+            previous_dash = false;
+        } else if !previous_dash {
+            normalized.push('-');
+            previous_dash = true;
+        }
+    }
+    let normalized = normalized.trim_matches('-').to_string();
+    (!normalized.is_empty() && normalized.len() <= MAX_FORUM_TOPIC_ROUTE_SLUG_LEN)
+        .then_some(normalized)
 }
 
 pub fn topic_status_class(status: &str) -> &'static str {
@@ -168,18 +198,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builds_category_and_topic_hrefs_with_existing_query_keys() {
+    fn builds_category_and_canonical_topic_hrefs() {
         assert_eq!(
-            category_href("/forum", "category-1"),
-            "/forum?category=category-1"
+            category_href("/en/modules/forum", "category-1"),
+            "/en/modules/forum?category=category-1"
         );
         assert_eq!(
-            topic_href("/forum", Some("category-1"), "topic-1"),
-            "/forum?category=category-1&topic=topic-1"
+            topic_href(
+                "12345678-9abc-4def-8123-456789abcdef",
+                "en-us",
+                "Welcome Thread"
+            )
+            .as_deref(),
+            Some("/en-US/forum/t/123456789abc/welcome-thread")
         );
+    }
+
+    #[test]
+    fn canonical_topic_href_fails_closed_for_invalid_identity_or_slug() {
+        assert_eq!(topic_href("topic-1", "en", "welcome"), None);
         assert_eq!(
-            topic_href("/forum", None, "topic-1"),
-            "/forum?topic=topic-1"
+            topic_href(
+                "12345678-9abc-4def-8123-456789abcdef",
+                "en",
+                "---"
+            ),
+            None
         );
     }
 
