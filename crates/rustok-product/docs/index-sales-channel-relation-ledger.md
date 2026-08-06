@@ -17,7 +17,7 @@ Index mutation, or publish a broker event.
 
 Each append-only snapshot contains:
 
-- one positive tenant-local `sequence_no` for bounded change consumption;
+- one positive `sequence_no`; change reads and cursors remain tenant-scoped;
 - exact non-nil `tenant_id` and `product_id` identity;
 - one positive contiguous `relation_epoch` for that tenant/Product relation;
 - the complete resolved Channel UUID membership as canonical JSON.
@@ -25,6 +25,12 @@ Each append-only snapshot contains:
 The Channel UUID array is bounded to 1024 entries. Every value must be a canonical non-nil UUID
 string, strictly sorted and unique. An empty array is valid and means that the resolved relation has
 no Channel targets.
+
+An empty resolved UUID membership is not the same thing as an empty Product
+`allowed_channel_slugs` list. The existing Product visibility contract treats an empty slug allowlist
+as unrestricted visibility. A future cross-owner resolver must explicitly translate that visibility
+semantics into the current resolved Channel UUID set rather than copying an empty slug list into an
+empty relation snapshot.
 
 The first persisted epoch is exactly `1`. A later snapshot must be exactly the previous epoch plus
 one and must change membership. Equal membership is an idempotent retry and is not appended.
@@ -35,11 +41,17 @@ Updates and deletes of retained snapshots are rejected.
 `ProductSalesChannelIndexRelationStore::replace` accepts an already resolved Channel UUID set. It:
 
 1. validates tenant/Product identity and the bounded unique Channel set;
-2. acquires one PostgreSQL advisory transaction lock for the exact tenant/Product relation;
-3. loads the latest retained snapshot;
-4. returns `Unchanged` without creating a new epoch when membership is identical;
-5. otherwise appends epoch `1` or exactly `previous + 1`;
-6. commits the complete membership and epoch in the same transaction.
+2. requires and locks the exact live Product row with `FOR KEY SHARE`;
+3. acquires one PostgreSQL advisory transaction lock for the exact tenant/Product relation;
+4. loads the latest retained snapshot;
+5. returns `Unchanged` without creating a new epoch when membership is identical;
+6. otherwise appends epoch `1` or exactly `previous + 1`;
+7. commits the complete membership and epoch in the same transaction.
+
+The Product row lock is deliberate. A stale resolver cannot append a new non-empty relation after a
+concurrent Product delete. Product deletion takes the row lock first and its `AFTER DELETE` trigger
+then takes the same relation advisory lock, so the lock order stays consistent and the final retained
+state converges to an empty relation epoch.
 
 The store maps storage failures to one bounded `Unavailable` error rather than exposing raw database
 diagnostics.
@@ -48,7 +60,7 @@ diagnostics.
 
 The same owner boundary exposes:
 
-- `list_changes` — tenant-local append-only sequence pages of at most 256 snapshots;
+- `list_changes` — tenant-scoped append-only sequence pages of at most 256 snapshots;
 - `scan_current` — current state for at most 256 Products in stable Product UUID order;
 - `load_current` — exact current state for at most 64 Product UUIDs.
 
@@ -82,6 +94,7 @@ place that owns monotonic relation epochs.
 This slice does not yet:
 
 - resolve `metadata.channel_visibility.allowed_channel_slugs` to Channel UUIDs;
+- define the reviewed unrestricted-visibility-to-current-Channel resolution policy;
 - react to Channel create/delete/slug movement or Product visibility changes;
 - initialize relation state for existing Products;
 - register a relation replay source or mutation-event route;
@@ -94,7 +107,8 @@ This slice does not yet:
 
 The next source slice should compose a cross-owner resolver in a layer that already sees both selected
 Product and Channel modules. That resolver must re-read current Product visibility plus Channel
-identity, then call this Product-owned store; it must not move Channel SQL into `rustok-product`.
+identity, preserve the existing unrestricted visibility semantics explicitly, then call this
+Product-owned store; it must not move Channel SQL into `rustok-product`.
 
 ## Maintainer verification
 
