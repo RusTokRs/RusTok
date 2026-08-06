@@ -96,8 +96,8 @@ const execute = productionApp.indexOf('    pub async fn execute(');
 const authorize = productionApp.indexOf('self.authorizer.authorize(command).await?', execute);
 const denied = productionApp.indexOf('IndexDriftFindingLifecycleOutcome::Denied', authorize);
 const grant = productionApp.indexOf('IndexDriftFindingAuthorizedLifecycleCommand::new(command)', denied);
-const store = productionApp.indexOf('.apply_authorized_lifecycle_command(&authorized)', grant);
-if (execute < 0 || authorize <= execute || denied <= authorize || grant <= denied || store <= grant) {
+const storeCall = productionApp.indexOf('.apply_authorized_lifecycle_command(&authorized)', grant);
+if (execute < 0 || authorize <= execute || denied <= authorize || grant <= denied || storeCall <= grant) {
   throw new Error('lifecycle service must authorize, deny fail-closed, mint capability, then call store');
 }
 
@@ -139,21 +139,29 @@ for (const forbidden of [
   }
 }
 
-const transaction = productionStore.indexOf('.begin_with_config(');
-const commandLock = productionStore.indexOf('lock_command_id(transaction, command).await?', transaction);
+const applyMethod = productionStore.indexOf('    async fn apply_authorized_lifecycle_command(');
+const begin = productionStore.indexOf('.begin_with_config(', applyMethod);
+const applyCall = productionStore.indexOf('self.apply_in_transaction(&transaction, command).await', begin);
+const commit = productionStore.indexOf('.commit()', applyCall);
+if (applyMethod < 0 || begin <= applyMethod || applyCall <= begin || commit <= applyCall) {
+  throw new Error('authorized lifecycle store must begin, apply atomically, then commit');
+}
+
+const applyTransaction = productionStore.indexOf('    async fn apply_in_transaction(');
+const commandLock = productionStore.indexOf('lock_command_id(transaction, command).await?', applyTransaction);
 const existing = productionStore.indexOf('load_existing_event(transaction, command).await?', commandLock);
 const findingLock = productionStore.indexOf('lock_finding_state(transaction, command).await?', existing);
 const update = productionStore.indexOf('UPDATE index_consistency_findings SET state = $3', findingLock);
 const audit = productionStore.indexOf('INSERT INTO index_consistency_finding_lifecycle_events', update);
 if (
-  transaction < 0 ||
-  commandLock <= transaction ||
+  applyTransaction < 0 ||
+  commandLock <= applyTransaction ||
   existing <= commandLock ||
   findingLock <= existing ||
   update <= findingLock ||
   audit <= update
 ) {
-  throw new Error('lifecycle store must serialize command, replay-check, lock finding, update, then append audit');
+  throw new Error('lifecycle transaction must serialize command, replay-check, lock finding, update, then append audit');
 }
 
 requireMarkers('migration', [
