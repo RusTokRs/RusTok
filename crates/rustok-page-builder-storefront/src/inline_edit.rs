@@ -12,12 +12,19 @@ use rustok_page_builder::render::{
     PageBuilderRuntimeRenderResponse, render_page_builder_project, render_page_builder_runtime,
 };
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 
 pub use fly_leptos::{
     AuthenticatedInlineEditGrant as InlineEditGrant,
     AuthenticatedInlineEditRequest as InlineEditRequest,
 };
+
+const RUNTIME_COMPONENT_COLLECTIONS: [&str; 3] = [
+    "flyRuntimeBindings",
+    "flyRuntimeConditions",
+    "flyRuntimeRepeaters",
+];
 
 pub trait InlineEditAuthorizationPort {
     fn authorize(&self, request: &AuthenticatedInlineEditRequest) -> Result<(), String>;
@@ -94,9 +101,6 @@ impl AuthenticatedInlineEditSession {
         authorization: &dyn InlineEditAuthorizationPort,
     ) -> Result<InlineEditApplyResult, InlineEditError> {
         self.grant.validate_request(&request, now_unix_ms)?;
-        authorization
-            .authorize(&request)
-            .map_err(InlineEditError::AuthorizationRejected)?;
         if request.sequence <= self.last_sequence {
             return Err(InlineEditError::SequenceReplay {
                 last: self.last_sequence,
@@ -124,16 +128,20 @@ impl AuthenticatedInlineEditSession {
                 request.component_id.clone(),
             ));
         }
+        let runtime_owned = runtime_owned_component_ids(self.editor.document());
         let component = self
             .editor
             .document()
             .component(&request.component_id)
             .ok_or_else(|| InlineEditError::ComponentNotFound(request.component_id.clone()))?;
-        if !is_inline_text_component(component) {
+        if runtime_owned.contains(&request.component_id) || !is_inline_text_component(component) {
             return Err(InlineEditError::ComponentNotInlineEditable(
                 request.component_id.clone(),
             ));
         }
+        authorization
+            .authorize(&request)
+            .map_err(InlineEditError::AuthorizationRejected)?;
 
         let previous_hash = current_hash;
         self.editor.apply(EditorCommand::Patch {
@@ -284,25 +292,57 @@ fn editable_component_ids_from_document(
     selection: &PageSelection,
 ) -> Result<Vec<String>, InlineEditError> {
     let page_index = selected_page_index(document, selection)?;
+    let runtime_owned = runtime_owned_component_ids(document);
     let mut ids = Vec::new();
     if let Some(root) = document.project.pages[page_index].component.as_ref() {
-        collect_editable_ids(root, &mut ids);
+        collect_editable_ids(root, &runtime_owned, &mut ids);
     }
     Ok(ids)
 }
 
-fn collect_editable_ids(component: &ComponentNode, ids: &mut Vec<String>) {
+fn collect_editable_ids(
+    component: &ComponentNode,
+    runtime_owned: &BTreeSet<String>,
+    ids: &mut Vec<String>,
+) {
     let Some(component) = component.as_object() else {
         return;
     };
     if is_inline_text_component(component)
         && let Some(id) = component.id()
+        && !runtime_owned.contains(id)
     {
         ids.push(id.to_string());
     }
     for child in component.children() {
-        collect_editable_ids(child, ids);
+        collect_editable_ids(child, runtime_owned, ids);
     }
+}
+
+fn runtime_owned_component_ids(document: &ProjectDocument) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    for collection in RUNTIME_COMPONENT_COLLECTIONS {
+        let Some(entries) = document
+            .project
+            .extensions
+            .get(collection)
+            .and_then(Value::as_array)
+        else {
+            continue;
+        };
+        for entry in entries {
+            if let Some(component_id) = entry
+                .get("component_id")
+                .or_else(|| entry.get("componentId"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ids.insert(component_id.to_string());
+            }
+        }
+    }
+    ids
 }
 
 fn selected_page_index(
@@ -370,12 +410,7 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
     let class = class.unwrap_or_else(|| "rustok-page-builder-inline-storefront".to_string());
     let root_id = format!("fly-inline-{}", dom_id(grant.session_id()));
     let editable_ids = inline_editable_component_ids(&project_data, &selection).unwrap_or_default();
-    let rendered = render_authenticated_inline_page(
-        project_data,
-        selection,
-        policy,
-        context,
-    );
+    let rendered = render_authenticated_inline_page(project_data, selection, policy, context);
 
     #[cfg(all(target_arch = "wasm32", feature = "hydrate"))]
     {
@@ -478,12 +513,23 @@ mod tests {
                         "type": "text",
                         "content": "{{entry.name}}"
                     }, {
+                        "id": "bound",
+                        "type": "text",
+                        "content": "Fallback"
+                    }, {
                         "id": "nested",
                         "type": "text",
                         "content": "Parent",
                         "components": [{ "id": "child", "type": "text", "content": "Child" }]
                     }]
                 }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "bound-content",
+                "component_id": "bound",
+                "path": "page.title",
+                "target": "field",
+                "name": "content"
             }]
         })
     }
@@ -531,11 +577,15 @@ mod tests {
             .expect("apply");
         assert_ne!(result.previous_hash, result.project_hash);
         assert_eq!(result.command_sequence, 1);
-        assert_eq!(result.project_data["pages"][0]["component"]["components"][0]["content"], "Updated");
+        assert_eq!(
+            result.project_data["pages"][0]["component"]["components"][0]["content"]
+                .as_str(),
+            Some("Updated")
+        );
     }
 
     #[test]
-    fn stale_replay_dynamic_and_rejected_authorization_fail_closed() {
+    fn stale_replay_dynamic_bound_and_rejected_authorization_fail_closed() {
         let project = project();
         let grant = grant(&project);
         let mut session = AuthenticatedInlineEditSession::new(
@@ -553,13 +603,15 @@ mod tests {
             Err(InlineEditError::AuthorizationRejected(_))
         ));
 
-        let dynamic = grant
-            .bind_request(1_000, 1, "dynamic", "Changed")
-            .expect("request");
-        assert!(matches!(
-            session.apply_authorized(dynamic, 1_000, &|_| Ok(())),
-            Err(InlineEditError::ComponentNotInlineEditable(_))
-        ));
+        for component_id in ["dynamic", "bound"] {
+            let request = grant
+                .bind_request(1_000, 1, component_id, "Changed")
+                .expect("request");
+            assert!(matches!(
+                session.apply_authorized(request, 1_000, &|_| Ok(())),
+                Err(InlineEditError::ComponentNotInlineEditable(_))
+            ));
+        }
 
         let first = grant
             .bind_request(1_000, 1, "heading", "Updated")
@@ -577,7 +629,6 @@ mod tests {
     #[test]
     fn inline_renderer_instruments_components_without_exposing_authorization_proof() {
         let project = project();
-        let grant = grant(&project);
         let output = render_authenticated_inline_page(
             project,
             PageSelection::First,
@@ -586,6 +637,6 @@ mod tests {
         )
         .expect("render");
         assert!(output.0.html.contains("data-fly-component-id=\"heading\""));
-        assert!(!output.0.html.contains(grant.authorization_proof));
+        assert!(!output.0.html.contains("signed-proof"));
     }
 }
