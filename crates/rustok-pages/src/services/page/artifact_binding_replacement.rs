@@ -1,0 +1,476 @@
+use chrono::Utc;
+use rustok_api::{Action, Resource};
+use rustok_core::{PermissionScope, SecurityContext};
+use rustok_events::DomainEvent;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait,
+    QueryFilter, QuerySelect, TransactionTrait,
+};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
+
+use crate::dto::{
+    ReplacePageArtifactBindingInput, ReplacePageArtifactBindingResult,
+};
+use crate::entities::{
+    page, page_artifact_binding_replacement_operation, page_artifact_rebuild_operation,
+    page_published_landing_artifact,
+};
+use crate::error::{PagesError, PagesResult};
+use crate::services::page_builder_artifact::PageBuilderArtifactService;
+
+use super::artifact_rebuild::verify_rebuild_operation;
+use super::helpers::{apply_transition, enforce_expected_version};
+use super::{PAGE_KIND, PageService, PageTransition};
+
+pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT: &str =
+    "page_artifact_binding_replacement_operation_v1";
+pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_IDEMPOTENCY_CONFLICT: &str =
+    "PAGE_ARTIFACT_BINDING_REPLACEMENT_IDEMPOTENCY_CONFLICT";
+pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT: &str =
+    "PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT";
+pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID: &str =
+    "PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID";
+pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY: &str =
+    "PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY";
+const MAX_REPLACEMENT_IDEMPOTENCY_KEY_BYTES: usize = 191;
+
+impl PageService {
+    /// Activates one exact rebuilt immutable artifact for its locale in one owner transaction.
+    ///
+    /// The command requires tenant-wide `pages:manage`, a page-version fence and the exact current
+    /// binding artifact id. It verifies the rebuild receipt and replacement artifact, updates one
+    /// localized binding, advances the page version, emits lifecycle events and stores one replayable
+    /// activation receipt atomically. It never compiles, sanitizes, rebuilds or reads the mutable body.
+    pub async fn replace_rebuilt_artifact_binding(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        input: ReplacePageArtifactBindingInput,
+    ) -> PagesResult<ReplacePageArtifactBindingResult> {
+        enforce_tenant_wide_manage(&security)?;
+        if tenant_id.is_nil()
+            || page_id.is_nil()
+            || input.rebuild_operation_id.is_nil()
+            || input.expected_current_artifact_id.is_nil()
+        {
+            return Err(PagesError::validation(
+                "artifact binding replacement tenant, page, rebuild and current artifact ids must not be nil",
+            ));
+        }
+        if input.expected_version <= 0 || input.expected_version == i32::MAX {
+            return Err(PagesError::validation(
+                "artifact binding replacement expected_version must be a positive incrementable version",
+            ));
+        }
+        let idempotency_key = normalize_idempotency_key(&input.idempotency_key)?;
+        let request_hash = stable_replacement_hash(&(
+            PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT,
+            tenant_id,
+            page_id,
+            input.rebuild_operation_id,
+            input.expected_version,
+            input.expected_current_artifact_id,
+        ))?;
+
+        let txn = self.db.begin().await?;
+        let existing_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
+        if let Some(operation) = find_operation_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            idempotency_key.as_str(),
+        )
+        .await?
+        {
+            ensure_same_request(
+                &operation,
+                tenant_id,
+                page_id,
+                input.rebuild_operation_id,
+                input.expected_version,
+                input.expected_current_artifact_id,
+                idempotency_key.as_str(),
+                request_hash.as_str(),
+            )?;
+            let result = result_from_record(operation, true)?;
+            txn.commit().await?;
+            return Ok(result);
+        }
+
+        enforce_expected_version(Some(input.expected_version), existing_page.version)?;
+        if existing_page.status != "published" {
+            return Err(replacement_current_conflict(
+                "artifact binding replacement requires a currently published page",
+            ));
+        }
+
+        let rebuild = load_rebuild_operation_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            input.rebuild_operation_id,
+        )
+        .await?;
+        verify_rebuild_operation(&rebuild)?;
+        if rebuild.source_artifact_id != input.expected_current_artifact_id {
+            return Err(replacement_current_conflict(
+                "expected current artifact is not the source artifact of the selected rebuild receipt",
+            ));
+        }
+        if let Some(existing) = find_operation_for_rebuild_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            rebuild.id,
+        )
+        .await?
+        {
+            verify_replacement_operation(&existing)?;
+            return Err(replacement_current_conflict(
+                "selected rebuild receipt already has an activation receipt",
+            ));
+        }
+
+        let binding = load_binding_for_update_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            rebuild.locale.as_str(),
+        )
+        .await?;
+        if binding.artifact_id != input.expected_current_artifact_id {
+            return Err(replacement_current_conflict(format!(
+                "current locale binding changed: expected artifact `{}`, found `{}`",
+                input.expected_current_artifact_id, binding.artifact_id,
+            )));
+        }
+        if rebuild.rebuilt_artifact_id == binding.artifact_id {
+            return Err(replacement_current_conflict(
+                "rebuilt artifact is already the current locale binding",
+            ));
+        }
+
+        let replacement = PageBuilderArtifactService::load_verified_artifact_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            rebuild.locale.as_str(),
+            rebuild.rebuilt_artifact_id,
+        )
+        .await?;
+        if replacement.instance_key != rebuild.artifact_instance_key
+            || replacement.artifact_hash != rebuild.rebuilt_artifact_hash
+            || replacement.materialization_hash.as_deref()
+                != Some(rebuild.rebuilt_materialization_hash.as_str())
+        {
+            return Err(replacement_target_invalid(
+                "rebuilt artifact no longer matches its immutable rebuild receipt",
+            ));
+        }
+
+        PageBuilderArtifactService::bind_existing_body_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            rebuild.locale.as_str(),
+            replacement.id,
+        )
+        .await?;
+
+        let now = Utc::now();
+        let mut active: page::ActiveModel = existing_page.into();
+        active.updated_at = Set(now.into());
+        active.version = Set(active.version.take().unwrap_or(1) + 1);
+        apply_transition(&mut active, Some(PageTransition::Publish), now);
+        let updated_page = active.update(&txn).await?;
+
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                DomainEvent::NodeUpdated {
+                    node_id: page_id,
+                    kind: PAGE_KIND.to_string(),
+                },
+            )
+            .await?;
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                DomainEvent::NodePublished {
+                    node_id: page_id,
+                    kind: PAGE_KIND.to_string(),
+                },
+            )
+            .await?;
+
+        let timestamp: sea_orm::prelude::DateTimeWithTimeZone = now.into();
+        let operation = page_artifact_binding_replacement_operation::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            page_id: Set(page_id),
+            rebuild_operation_id: Set(rebuild.id),
+            page_body_id: Set(binding.page_body_id),
+            locale: Set(rebuild.locale),
+            idempotency_key: Set(idempotency_key),
+            request_hash: Set(request_hash),
+            expected_version: Set(input.expected_version),
+            expected_current_artifact_id: Set(input.expected_current_artifact_id),
+            replacement_artifact_id: Set(replacement.id),
+            replacement_artifact_hash: Set(replacement.artifact_hash),
+            replacement_materialization_hash: Set(rebuild.rebuilt_materialization_hash),
+            result_version: Set(updated_page.version),
+            replaced_at: Set(timestamp.clone()),
+            created_at: Set(timestamp),
+        }
+        .insert(&txn)
+        .await?;
+        let result = result_from_record(operation, false)?;
+        txn.commit().await?;
+        Ok(result)
+    }
+}
+
+async fn load_rebuild_operation_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    rebuild_operation_id: Uuid,
+) -> PagesResult<page_artifact_rebuild_operation::Model> {
+    let query = || {
+        page_artifact_rebuild_operation::Entity::find_by_id(rebuild_operation_id)
+            .filter(page_artifact_rebuild_operation::Column::TenantId.eq(tenant_id))
+            .filter(page_artifact_rebuild_operation::Column::PageId.eq(page_id))
+    };
+    match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    }
+    .ok_or_else(|| replacement_target_invalid("selected rebuild receipt is unavailable"))
+}
+
+async fn load_binding_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+) -> PagesResult<page_published_landing_artifact::Model> {
+    let query = || {
+        page_published_landing_artifact::Entity::find()
+            .filter(page_published_landing_artifact::Column::TenantId.eq(tenant_id))
+            .filter(page_published_landing_artifact::Column::PageId.eq(page_id))
+            .filter(page_published_landing_artifact::Column::Locale.eq(locale))
+    };
+    match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
+    }
+    .ok_or_else(|| replacement_current_conflict("current locale binding is unavailable"))
+}
+
+async fn find_operation_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    idempotency_key: &str,
+) -> PagesResult<Option<page_artifact_binding_replacement_operation::Model>> {
+    let query = || {
+        page_artifact_binding_replacement_operation::Entity::find()
+            .filter(
+                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
+            )
+            .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(page_id))
+            .filter(
+                page_artifact_binding_replacement_operation::Column::IdempotencyKey
+                    .eq(idempotency_key),
+            )
+    };
+    Ok(match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
+    })
+}
+
+async fn find_operation_for_rebuild_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    rebuild_operation_id: Uuid,
+) -> PagesResult<Option<page_artifact_binding_replacement_operation::Model>> {
+    let query = || {
+        page_artifact_binding_replacement_operation::Entity::find()
+            .filter(
+                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
+            )
+            .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(page_id))
+            .filter(
+                page_artifact_binding_replacement_operation::Column::RebuildOperationId
+                    .eq(rebuild_operation_id),
+            )
+    };
+    Ok(match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn ensure_same_request(
+    operation: &page_artifact_binding_replacement_operation::Model,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    rebuild_operation_id: Uuid,
+    expected_version: i32,
+    expected_current_artifact_id: Uuid,
+    idempotency_key: &str,
+    request_hash: &str,
+) -> PagesResult<()> {
+    verify_replacement_operation(operation)?;
+    if operation.tenant_id != tenant_id
+        || operation.page_id != page_id
+        || operation.rebuild_operation_id != rebuild_operation_id
+        || operation.expected_version != expected_version
+        || operation.expected_current_artifact_id != expected_current_artifact_id
+        || operation.idempotency_key != idempotency_key
+        || operation.request_hash != request_hash
+    {
+        return Err(replacement_idempotency_conflict(
+            "idempotency key is bound to another artifact binding replacement request",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_replacement_operation(
+    operation: &page_artifact_binding_replacement_operation::Model,
+) -> PagesResult<()> {
+    if operation.id.is_nil()
+        || operation.tenant_id.is_nil()
+        || operation.page_id.is_nil()
+        || operation.rebuild_operation_id.is_nil()
+        || operation.page_body_id.is_nil()
+        || operation.expected_current_artifact_id.is_nil()
+        || operation.replacement_artifact_id.is_nil()
+        || operation.expected_current_artifact_id == operation.replacement_artifact_id
+        || operation.locale.trim().is_empty()
+        || operation.locale.trim() != operation.locale
+        || operation.idempotency_key.trim().is_empty()
+        || operation.expected_version <= 0
+        || operation.expected_version == i32::MAX
+        || operation.result_version != operation.expected_version + 1
+        || !is_sha256(&operation.request_hash)
+        || !is_sha256(&operation.replacement_artifact_hash)
+        || !is_sha256(&operation.replacement_materialization_hash)
+    {
+        return Err(replacement_operation_integrity(
+            "stored artifact binding replacement receipt failed integrity validation",
+        ));
+    }
+    Ok(())
+}
+
+fn result_from_record(
+    operation: page_artifact_binding_replacement_operation::Model,
+    replayed: bool,
+) -> PagesResult<ReplacePageArtifactBindingResult> {
+    verify_replacement_operation(&operation)?;
+    Ok(ReplacePageArtifactBindingResult {
+        operation_id: operation.id,
+        page_id: operation.page_id,
+        version: operation.result_version,
+        locale: operation.locale,
+        idempotency_key: operation.idempotency_key,
+        rebuild_operation_id: operation.rebuild_operation_id,
+        previous_artifact_id: operation.expected_current_artifact_id,
+        replacement_artifact_id: operation.replacement_artifact_id,
+        replacement_artifact_hash: operation.replacement_artifact_hash,
+        replacement_materialization_hash: operation.replacement_materialization_hash,
+        replayed,
+        replaced_at: operation.replaced_at.to_string(),
+    })
+}
+
+fn stable_replacement_hash(value: &impl Serialize) -> PagesResult<String> {
+    let bytes = serde_json::to_vec(value).map_err(|error| {
+        replacement_operation_integrity(format!(
+            "unable to encode artifact binding replacement request identity: {error}",
+        ))
+    })?;
+    Ok(Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+fn replacement_idempotency_conflict(message: impl Into<String>) -> PagesError {
+    PagesError::rollback_idempotency_conflict(format!(
+        "{PAGE_ARTIFACT_BINDING_REPLACEMENT_IDEMPOTENCY_CONFLICT}: {}",
+        message.into(),
+    ))
+}
+
+fn replacement_current_conflict(message: impl Into<String>) -> PagesError {
+    PagesError::rollback_target_unavailable(format!(
+        "{PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT}: {}",
+        message.into(),
+    ))
+}
+
+fn replacement_target_invalid(message: impl Into<String>) -> PagesError {
+    PagesError::rollback_target_unavailable(format!(
+        "{PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID}: {}",
+        message.into(),
+    ))
+}
+
+fn replacement_operation_integrity(message: impl Into<String>) -> PagesError {
+    PagesError::rollback_operation_integrity(format!(
+        "{PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY}: {}",
+        message.into(),
+    ))
+}
+
+fn enforce_tenant_wide_manage(security: &SecurityContext) -> PagesResult<()> {
+    if matches!(
+        security.get_scope(Resource::Pages, Action::Manage),
+        PermissionScope::All
+    ) {
+        Ok(())
+    } else {
+        Err(PagesError::forbidden(
+            "artifact binding replacement requires tenant-wide pages:manage",
+        ))
+    }
+}
+
+fn normalize_idempotency_key(value: &str) -> PagesResult<String> {
+    let normalized = value.trim();
+    if normalized.is_empty() || normalized.len() > MAX_REPLACEMENT_IDEMPOTENCY_KEY_BYTES {
+        return Err(PagesError::validation(format!(
+            "artifact binding replacement idempotency_key must contain 1 to {MAX_REPLACEMENT_IDEMPOTENCY_KEY_BYTES} bytes",
+        )));
+    }
+    Ok(normalized.to_string())
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replacement_idempotency_key_is_bounded() {
+        assert!(normalize_idempotency_key("replacement-1").is_ok());
+        assert!(normalize_idempotency_key("").is_err());
+        assert!(normalize_idempotency_key(&"x".repeat(192)).is_err());
+    }
+}
