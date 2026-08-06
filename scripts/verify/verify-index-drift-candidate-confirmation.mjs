@@ -10,6 +10,7 @@ const files = {
   lib: 'crates/rustok-index/src/lib.rs',
   doc: 'crates/rustok-index/docs/m6-drift-candidate-confirmation.md',
   lifecycleDoc: 'crates/rustok-index/docs/m6-drift-finding-lifecycle.md',
+  repairDoc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -82,6 +83,8 @@ for (const forbidden of [
   'record_mismatch',
   'resolve_finding',
   'ignore_finding',
+  'IndexDriftRepairService',
+  'IndexDriftRepairOwner',
   'repair_finding',
   'tokio::spawn',
   'spawn_blocking',
@@ -134,10 +137,8 @@ for (const forbidden of [
   'DELETE FROM',
   'FOR UPDATE',
   'pg_advisory',
-  'PostgresIndexDriftFindingWriter',
-  'record_mismatch',
-  'resolve_finding',
-  'ignore_finding',
+  'IndexDriftRepairService',
+  'IndexDriftRepairOwner',
   'repair_finding',
   'tokio::spawn',
   'async_graphql',
@@ -150,24 +151,29 @@ for (const forbidden of [
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_persistence_complete_lifecycle_complete_repair_pending`.',
-  'Materialized bracketing',
+  'Status: `source_complete_persistence_complete_lifecycle_complete_targeted_repair_boundary_complete`.',
+  'materialized identity',
   'An empty ordinary targeted load is never interpreted as absence.',
-  'PostgreSQL observer performs one exact query per observation',
   'm6-confirmed-candidate-finding-persistence.md',
   'm6-drift-finding-lifecycle.md',
+  'm6-targeted-drift-repair.md',
   'No tests, verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('lifecycleDoc', [
-  'Status: `source_complete_repair_pending`.',
+  'Status: `source_complete_targeted_repair_boundary_complete`.',
   'Fail-closed authorization',
 ]);
+requireMarkers('repairDoc', [
+  'Status: `source_complete_owner_composition_pending`.',
+  'Confirmation itself still grants no repair authority.',
+]);
 requireMarkers('plan', [
-  'M6 - add targeted drift repair',
-  'source_complete_repair_pending',
+  'M6 - compose targeted repair evidence and owner',
+  'source_complete_owner_composition_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-drift-candidate-confirmation.mjs'",
+  "'verify-index-targeted-drift-repair.mjs'",
 ]);
 
 console.log('Index drift candidate confirmation boundary verified');
