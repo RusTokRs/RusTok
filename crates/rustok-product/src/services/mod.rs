@@ -1,6 +1,7 @@
 pub mod catalog;
 pub mod catalog_schema;
 pub mod catalog_schema_service;
+mod index_channel_relation;
 mod index_refresh;
 mod index_refresh_publication;
 mod index_refresh_relay;
@@ -13,6 +14,12 @@ pub use catalog::{
 };
 pub use catalog_schema::*;
 pub use catalog_schema_service::*;
+pub use index_channel_relation::{
+    MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE,
+    MAX_PRODUCT_SALES_CHANNEL_RELATION_TARGETS, ProductSalesChannelIndexRelationError,
+    ProductSalesChannelIndexRelationRecord, ProductSalesChannelIndexRelationStore,
+    ProductSalesChannelIndexRelationWriteOutcome,
+};
 pub use index_refresh::{
     MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE,
     ProductIndexLocaleRefreshRecord, ProductIndexLocaleRefreshSource,

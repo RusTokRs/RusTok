@@ -1,12 +1,12 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked against current `main@3b69a76a5cb861a3da87e22d0a9fe0c636ef8ca9` and continued on
-`agent/index-m7-schema-readiness-20260807`. The intervening #3124 Commerce-only change does not
-overlap the Index slice.
+Status overlay rechecked against `main@eb75872bc37adba361c7a1eff1533b71f2a00a3f` and continued on
+`agent/index-m7-product-channel-relation-ledger-20260807`. Intervening #3127 Reactions, #3128 Pages,
+and #3129 Commerce changes do not overlap the Index/Product relation slice.
 
 This file supersedes the dated 2026-08-03 status overlay. `implementation-plan.md` remains the
 historical milestone/architecture plan, but several of its M5/M6/M7 checklist entries are stale
-relative to merged work from August 3-6.
+relative to merged work from August 3-7.
 
 ## Current primary cursor
 
@@ -33,11 +33,13 @@ Independent source work may continue while that owner-execution gate is pending.
 - Product locale append-only Index refresh ledger and bounded owner source;
 - ProductVariant parent-aware tombstones plus append-only refresh ledger/source;
 - Product-owned exact refresh canonical writer;
-- durable Product locale/ProductVariant relay cursor and one-step canonical outbox publication.
+- durable Product locale/ProductVariant relay cursor and one-step canonical outbox publication;
+- bounded fail-closed per-tenant persisted schema readiness gate.
 
 ### Owner-execution gates that remain open
 
 - concrete repair PostgreSQL retained packet;
+- persisted tenant schema readiness evidence;
 - Product-locale absence/live drift evidence;
 - live PostgreSQL/reference query equivalence;
 - retained real PostgreSQL partition packet;
@@ -105,49 +107,77 @@ The existing owner ledgers, canonical writer, and durable relay step do not bypa
 - [x] Product locale and ProductVariant owner refresh publication.
 - [x] Generic source-refresh worker.
 - [x] Product canonical refresh writer and durable relay step.
-- [x] Add a bounded fail-closed per-tenant persisted schema readiness gate for an explicit exact
-      schema set.
-- [ ] Run owner verification/evidence for persisted M7 tenant schema readiness.
+- [x] Bounded fail-closed per-tenant persisted schema readiness gate for an explicit exact schema set.
+- [x] Product-owned append-only Product-to-SalesChannel relation snapshot ledger with a dedicated
+      monotonic epoch, live-Product delete fencing, bounded owner readers, idempotent replacement, and
+      retained empty membership on Product hard delete.
+- [ ] Run owner verification/evidence for persisted M7 tenant schema readiness and relation storage.
+- [ ] Compose the cross-owner Product visibility to Channel UUID resolver without adding a Channel
+      dependency or Channel SQL to `rustok-product`; explicitly preserve unrestricted Product
+      visibility rather than interpreting an empty slug allowlist as an empty UUID membership.
+- [ ] Add a new Product schema version plus relation replay source and Product-to-SalesChannel
+      `IndexLink`; do not mutate Product v2 in place.
 - [ ] Admit the Product Index typed wire family, routes, and concrete consumers after digest repair.
-- [ ] Complete durable Product-to-SalesChannel owner relation epoch semantics and retained evidence.
+- [ ] Retain Channel create/delete/slug-change, Product visibility change, retry, restart,
+      delete/recreate, out-of-order, and locale fan-out evidence for the relation.
 - [ ] Prove complete Product/Variant/Channel query parity and no source-module filtering fan-out.
 - [ ] Move one Storefront query to Index only after all readiness/equivalence/freshness gates pass.
 - [ ] Keep authoritative consumer and production partition cutover forbidden until admission.
 
-## New source slice — tenant schema readiness
+## New source slice — Product-owned SalesChannel relation ledger
 
-`PostgresIndexSchemaReadinessStore` closes the source-level readiness gap without inventing a stale
-secondary readiness flag.
+The existing database-neutral relation admission contract already proved why Product and Channel
+owner revisions cannot be combined into a safe relation source version. This slice gives that
+relation its first durable owner state without violating module boundaries.
 
-For one explicit tenant and at most 64 exact schema references it:
+`product_sales_channel_index_relation_snapshots` stores one immutable complete resolved Channel UUID
+set per relation epoch. For one exact tenant/Product identity:
 
-- requires every reference to exist in the immutable runtime `SchemaRegistry` before storage access;
-- reads the complete requested tenant set in one bounded statement;
-- requires one persisted row per exact reference;
-- requires `status = active`;
-- requires the persisted fingerprint to equal the runtime fingerprint;
-- requires persisted `schema_json` to equal the runtime contract;
-- returns one deterministic receipt only when the complete set is ready;
-- reports typed missing/inactive/fingerprint/contract failures and never returns partial success.
+- the first epoch is exactly `1`;
+- later membership changes advance exactly by one under an advisory transaction lock;
+- identical membership is an idempotent retry and does not append another epoch;
+- membership is canonical, strictly sorted, unique, non-nil, and bounded to 1024 Channel UUIDs;
+- writes first require the live Product row under `FOR KEY SHARE`, preventing stale post-delete
+  resolver writes;
+- retained snapshots cannot be updated or deleted;
+- Product hard delete appends an empty epoch when the current membership is non-empty;
+- `list_changes` exposes bounded tenant-scoped sequence pages;
+- `scan_current` exposes bounded current Product-order pages;
+- `load_current` exposes bounded exact Product loads.
 
-It is generic Index infrastructure. It performs no schema registration, Product-domain call, task
-startup, retry, broker work, or cutover by itself.
+The owner store intentionally knows no Channel schema, Channel table, Index mutation, broker, or
+runtime worker. It receives only an already resolved UUID membership. This keeps `rustok-product`
+installable without `rustok-channel` and makes cross-owner resolution a separate integration concern.
+
+The resolver has one semantic trap that must remain explicit: Product currently treats an empty
+`allowed_channel_slugs` list as unrestricted visibility, whereas an empty resolved UUID membership
+means no relation targets. The next slice must define the reviewed unrestricted resolution policy and
+must not copy the Product slug list mechanically.
 
 ## Next implementation step
 
 Primary owner step: execute and admit the locked concrete-repair PostgreSQL packet.
 
-Next unblocked source step after this readiness slice: define the durable Product-to-SalesChannel
-owner relation epoch/storage semantics from the already admitted generic relation contract, unless the
-maintainer first admits the event-contract digest baseline and unblocks Product Index typed events.
+Next unblocked source step after this ledger slice: compose a bounded cross-owner resolver in
+`rustok-distribution` (or an equivalent selected-module integration layer). It should read current
+Product visibility and current tenant Channel identities, preserve the unrestricted visibility
+semantics, submit the complete resolved UUID set to the Product-owned relation store, and react to
+both Product visibility and Channel identity changes.
+
+After that resolver is source complete, add a new Product Index schema version and relation replay
+adapter; Product v2 must remain immutable.
 
 ## Maintainer verification for this slice
 
 ```bash
-cargo test -p rustok-index schema_readiness --lib -- --nocapture
+cargo test -p rustok-product index_channel_relation --lib -- --nocapture
+cargo test -p rustok-distribution product_sales_channel_relation -- --nocapture
+node scripts/verify/verify-index-product-channel-relation-ledger.mjs
+node scripts/verify/verify-index-product-channel-relation-admission.mjs
 node scripts/verify/verify-index-schema-readiness.mjs
 node scripts/verify/verify-index-query-contract.mjs
-cargo check -p rustok-index --all-targets
+cargo check -p rustok-product --all-targets
+cargo check -p rustok-distribution --all-targets
 git diff --check
 ```
 
