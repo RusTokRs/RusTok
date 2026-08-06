@@ -177,7 +177,6 @@ pub fn StorefrontModulePage(
     locale: String,
     enabled_modules: Vec<String>,
     route_segment: String,
-    subpath: Option<String>,
     query_params: HashMap<String, String>,
 ) -> impl IntoView {
     init_modules();
@@ -187,7 +186,7 @@ pub fn StorefrontModulePage(
             <ModuleRequestProvider
                 locale=Some(locale.clone())
                 route_segment=Some(route_segment.clone())
-                subpath=subpath
+                subpath=None
                 query_params=query_params
             >
                 <StorefrontModulePageContent locale=locale route_segment=route_segment />
