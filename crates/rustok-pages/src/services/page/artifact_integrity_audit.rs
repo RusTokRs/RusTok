@@ -114,35 +114,58 @@ impl PageService {
             return Err(PagesError::PageNotFound(page_id));
         }
 
-        let artifact_query = || {
+        let artifact_id_query = || {
             page_static_landing_artifact::Entity::find()
                 .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
                 .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
+                .select_only()
+                .column(page_static_landing_artifact::Column::Id)
                 .order_by_asc(page_static_landing_artifact::Column::CreatedAt)
                 .order_by_asc(page_static_landing_artifact::Column::Id)
                 .limit(fetch_limit)
         };
-        let mut records = match txn.get_database_backend() {
-            DbBackend::Sqlite => artifact_query().all(&txn).await?,
+        let mut artifact_ids = match txn.get_database_backend() {
+            DbBackend::Sqlite => artifact_id_query().into_tuple::<Uuid>().all(&txn).await?,
             DbBackend::Postgres | DbBackend::MySql => {
-                artifact_query().lock_shared().all(&txn).await?
+                artifact_id_query()
+                    .lock_shared()
+                    .into_tuple::<Uuid>()
+                    .all(&txn)
+                    .await?
             }
         };
-        let truncated = records.len() > max_records as usize;
+        let truncated = artifact_ids.len() > max_records as usize;
         if truncated {
-            records.pop();
+            artifact_ids.pop();
         }
 
         let mut valid_artifact_count = 0_u32;
         let mut invalid_artifact_count = 0_u32;
         let mut findings = Vec::new();
         let mut findings_truncated = false;
-        let mut entries = Vec::with_capacity(records.len());
+        let mut entries = Vec::with_capacity(artifact_ids.len());
 
-        for record in &records {
+        for artifact_id in &artifact_ids {
+            let record_query = || {
+                page_static_landing_artifact::Entity::find_by_id(*artifact_id)
+                    .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+                    .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
+            };
+            let record = match txn.get_database_backend() {
+                DbBackend::Sqlite => record_query().one(&txn).await?,
+                DbBackend::Postgres | DbBackend::MySql => {
+                    record_query().lock_shared().one(&txn).await?
+                }
+            }
+            .ok_or_else(|| {
+                PagesError::artifact_integrity(
+                    "Immutable artifact audit selected a record that is no longer readable",
+                )
+            })?;
+
             let locale_hash = hex_sha256(record.locale.as_bytes());
-            let record_identity_hash = artifact_record_identity_hash(record)?;
-            let (status, diagnostic_hash) = match verify_artifact_record(record, tenant_id, page_id)
+            let record_identity_hash = artifact_record_identity_hash(&record)?;
+            let (status, diagnostic_hash) = match verify_artifact_record(&record, tenant_id, page_id)
             {
                 Ok(()) => {
                     valid_artifact_count = valid_artifact_count.saturating_add(1);
@@ -182,7 +205,7 @@ impl PageService {
             truncated,
             &entries,
         ))?;
-        let scanned_artifact_count = u32::try_from(records.len()).map_err(|_| {
+        let scanned_artifact_count = u32::try_from(artifact_ids.len()).map_err(|_| {
             PagesError::artifact_integrity("Immutable artifact audit record count overflow")
         })?;
         txn.commit().await?;
@@ -255,6 +278,7 @@ fn verify_artifact_record(
             "Stored static landing artifact has invalid owner identity",
         ));
     }
+    enforce_record_size_limits(record)?;
 
     let identity: StaticLandingBuildIdentity =
         from_json(&record.identity, "landing build identity")?;
@@ -264,23 +288,21 @@ fn verify_artifact_record(
         from_json(&record.landing_sections, "landing section manifest")?;
     let page_index = usize::try_from(record.page_index)
         .map_err(|_| PagesError::artifact_integrity("Stored landing page index is negative"))?;
-    let page = StaticLandingPage {
-        page_index,
-        page_id: record.fly_page_id.clone(),
-        slug: record.slug.clone(),
-        head,
-        document_html: record.document_html.clone(),
-        body_html: record.body_html.clone(),
-        css: record.css.clone(),
-        content_hash: record.content_hash.clone(),
-        landing_sections,
-    };
-    enforce_size_limits(&page)?;
     let artifact = StaticLandingArtifact {
         identity,
         artifact_hash: record.artifact_hash.clone(),
         registry,
-        pages: vec![page],
+        pages: vec![StaticLandingPage {
+            page_index,
+            page_id: record.fly_page_id.clone(),
+            slug: record.slug.clone(),
+            head,
+            document_html: record.document_html.clone(),
+            body_html: record.body_html.clone(),
+            css: record.css.clone(),
+            content_hash: record.content_hash.clone(),
+            landing_sections,
+        }],
     };
     artifact
         .verify_integrity()
@@ -329,14 +351,14 @@ fn verify_artifact_record(
     }
 }
 
-fn enforce_size_limits(page: &StaticLandingPage) -> PagesResult<()> {
+fn enforce_record_size_limits(record: &page_static_landing_artifact::Model) -> PagesResult<()> {
     enforce_max(
         "document HTML",
-        page.document_html.len(),
+        record.document_html.len(),
         MAX_DOCUMENT_HTML_BYTES,
     )?;
-    enforce_max("body HTML", page.body_html.len(), MAX_BODY_HTML_BYTES)?;
-    enforce_max("CSS", page.css.len(), MAX_CSS_BYTES)
+    enforce_max("body HTML", record.body_html.len(), MAX_BODY_HTML_BYTES)?;
+    enforce_max("CSS", record.css.len(), MAX_CSS_BYTES)
 }
 
 fn enforce_max(label: &str, actual: usize, maximum: usize) -> PagesResult<()> {
@@ -352,7 +374,7 @@ fn from_json<T>(value: &Value, label: &str) -> PagesResult<T>
 where
     T: serde::de::DeserializeOwned,
 {
-    serde_json::from_value(value.clone()).map_err(|error| {
+    T::deserialize(value).map_err(|error| {
         PagesError::artifact_integrity(format!("Unable to decode stored {label}: {error}"))
     })
 }
