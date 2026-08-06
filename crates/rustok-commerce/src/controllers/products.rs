@@ -55,6 +55,44 @@ impl AdminProductErrorContext {
     }
 }
 
+struct AdminProductDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    product_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminProductErrorContext> for AdminProductDiagnosticContext {
+    fn from(context: &AdminProductErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            product_id: optional_uuid_shape(context.product_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminProductDiagnosticError;
+
+impl std::fmt::Debug for AdminProductDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
 fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
     match error {
         CommerceError::Database(_) => (
@@ -115,6 +153,8 @@ pub(crate) fn map_admin_product_error(
 ) -> HttpError {
     adopt_product_error_identity(&mut context, &error);
     let (status, code, message, error_kind) = product_error_policy(&error);
+    let context = AdminProductDiagnosticContext::from(&context);
+    let error = AdminProductDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_PRODUCT_OWNER,
