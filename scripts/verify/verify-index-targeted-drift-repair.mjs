@@ -12,6 +12,7 @@ const files = {
   migrationsMod: 'crates/rustok-index/src/migrations/mod.rs',
   lib: 'crates/rustok-index/src/lib.rs',
   doc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
+  concreteDoc: 'crates/rustok-index/docs/m6-missing-entity-repair-composition.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -203,20 +204,27 @@ for (const forbidden of [
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_owner_composition_pending`.',
+  'Status: `source_complete_missing_entity_composed_recovery_pending`.',
   'cryptographic preimage check',
   '`SERIALIZABLE READ WRITE`',
   '`prepared -> completed`',
-  'Concrete evidence readers and concrete mutation owners are deliberately not registered',
-  'process crashes',
-  'No tests, verifiers, formatting, Cargo checks',
+  '`materialize_postgres_index_drift_missing_entity_repair_service`',
+  'mutation inbox',
+  'prepared-reservation lease, expiry, abandonment, takeover, or operator recovery',
+  'No tests, Node verifiers, formatting, Cargo checks',
+]);
+requireMarkers('concreteDoc', [
+  'Status: `source_complete_recovery_policy_pending`.',
+  'PostgresMutationStore::apply',
+  'durable repair command UUID',
 ]);
 requireMarkers('plan', [
-  'M6 - compose targeted repair evidence and owner',
-  'source_complete_owner_composition_pending',
+  'M6 - add prepared repair recovery policy',
+  'source_complete_recovery_policy_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-targeted-drift-repair.mjs'",
+  "'verify-index-missing-entity-repair-composition.mjs'",
 ]);
 
 console.log('Index targeted drift repair boundary verified');
