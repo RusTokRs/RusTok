@@ -57,6 +57,20 @@ impl std::fmt::Debug for StorefrontCustomerDiagnosticError {
     }
 }
 
+struct StorefrontCartPortDiagnosticError {
+    code: String,
+    kind: PortErrorKind,
+    retryable: bool,
+    message_shape: &'static str,
+    message_len: usize,
+}
+
+impl std::fmt::Debug for StorefrontCartPortDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
 fn actor_kind_name(kind: &PortActorKind) -> &'static str {
     match kind {
         PortActorKind::User => "user",
@@ -254,12 +268,25 @@ pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
         ),
     };
 
+    let source_owner = cart_port_source_owner(&error);
+    let message_shape = text_shape(error.message.as_str());
+    let message_len = error.message.len();
+    let error = StorefrontCartPortDiagnosticError {
+        code: error.code,
+        kind: error.kind,
+        retryable: error.retryable,
+        message_shape,
+        message_len,
+    };
+
     tracing::error!(
         error = ?error,
         owner = "rustok_commerce.graphql_cart_helper",
-        source_owner = cart_port_source_owner(&error),
+        source_owner,
         operation = "storefront_cart_port",
         owner_code = %error.code,
+        owner_message_shape = error.message_shape,
+        owner_message_len = error.message_len,
         owner_kind = ?error.kind,
         owner_retryable = error.retryable,
         public_code = code,
@@ -408,7 +435,6 @@ pub(crate) async fn resolve_storefront_line_item_input(
         tenant_id,
         pricing_read_port,
         pricing_port_context,
-        pricing_context,
         locale,
         default_locale,
         public_channel_slug,
