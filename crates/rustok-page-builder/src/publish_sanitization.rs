@@ -8,7 +8,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+#[path = "static_publish_resource_limits.rs"]
+pub mod static_publish_resource_limits;
+
+use static_publish_resource_limits::{
+    PageBuilderStaticPublishResourceEvidence, PageBuilderStaticPublishResourceLimitError,
+    validate_static_publish_resource_limits,
+};
+
 pub const PAGE_BUILDER_STATIC_SANITIZATION_FORMAT: &str =
+    "page_builder_static_publish_sanitization_v3";
+const PAGE_BUILDER_STATIC_SANITIZATION_LEGACY_FORMAT: &str =
     "page_builder_static_publish_sanitization_v2";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -16,6 +26,8 @@ pub struct PageBuilderSanitizedStaticLandingProject {
     pub format: String,
     pub policy_format: String,
     pub policy_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_limits: Option<PageBuilderStaticPublishResourceEvidence>,
     pub sanitized_project: Value,
     pub sanitized_hash: String,
 }
@@ -37,7 +49,11 @@ impl PageBuilderSanitizedStaticLandingProject {
     }
 
     pub fn verify_integrity(&self) -> Result<(), PageBuilderStaticLandingSanitizationError> {
-        if self.format != PAGE_BUILDER_STATIC_SANITIZATION_FORMAT {
+        if !matches!(
+            self.format.as_str(),
+            PAGE_BUILDER_STATIC_SANITIZATION_FORMAT
+                | PAGE_BUILDER_STATIC_SANITIZATION_LEGACY_FORMAT
+        ) {
             return Err(PageBuilderStaticLandingSanitizationError::Integrity(
                 "unsupported static publish sanitization format".to_string(),
             ));
@@ -54,10 +70,33 @@ impl PageBuilderSanitizedStaticLandingProject {
                 "sanitized static landing hash must be SHA-256".to_string(),
             ));
         }
+
+        match self.format.as_str() {
+            PAGE_BUILDER_STATIC_SANITIZATION_FORMAT => self
+                .resource_limits
+                .as_ref()
+                .ok_or_else(|| {
+                    PageBuilderStaticLandingSanitizationError::Integrity(
+                        "current sanitization evidence is missing resource limits".to_string(),
+                    )
+                })?
+                .verify_integrity()?,
+            PAGE_BUILDER_STATIC_SANITIZATION_LEGACY_FORMAT => {
+                if self.resource_limits.is_some() {
+                    return Err(PageBuilderStaticLandingSanitizationError::Integrity(
+                        "legacy sanitization evidence must not contain resource limits".to_string(),
+                    ));
+                }
+            }
+            _ => unreachable!("sanitization format checked above"),
+        }
+
         let expected = sanitization_hash(
+            &self.format,
             &self.sanitized_project,
             &self.policy_format,
             &self.policy_hash,
+            self.resource_limits.as_ref(),
         )?;
         if expected != self.sanitized_hash {
             return Err(PageBuilderStaticLandingSanitizationError::Integrity(
@@ -73,6 +112,14 @@ impl PageBuilderSanitizedStaticLandingProject {
                 "sanitized static landing policy evidence mismatch".to_string(),
             ));
         }
+        if let Some(expected_resources) = self.resource_limits.as_ref() {
+            let verified_resources = validate_static_publish_resource_limits(&document)?;
+            if &verified_resources != expected_resources {
+                return Err(PageBuilderStaticLandingSanitizationError::Integrity(
+                    "sanitized static landing resource evidence mismatch".to_string(),
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -83,6 +130,8 @@ pub enum PageBuilderStaticLandingSanitizationError {
     Landing(#[from] LandingProjectError),
     #[error(transparent)]
     Policy(#[from] PageBuilderStaticPublishPolicyError),
+    #[error(transparent)]
+    Resource(#[from] PageBuilderStaticPublishResourceLimitError),
     #[error("static publish sanitization encoding failed: {0}")]
     Encode(String),
     #[error("static publish sanitization integrity failed: {0}")]
@@ -93,8 +142,8 @@ pub enum PageBuilderStaticLandingSanitizationError {
 ///
 /// The returned project is a compiler-owned clone. It contains deterministic stable component ids,
 /// preserves current Fly extension fields and has passed structural validation, the complete
-/// fail-closed static publish policy and secure-resource validation. The original editor source and
-/// runtime context remain untouched.
+/// fail-closed static publish policy, secure-resource validation and bounded global resource limits.
+/// The original editor source and runtime context remain untouched.
 pub fn sanitize_static_landing_project(
     project_data: &Value,
 ) -> Result<PageBuilderSanitizedStaticLandingProject, PageBuilderStaticLandingSanitizationError> {
@@ -103,13 +152,21 @@ pub fn sanitize_static_landing_project(
         format: policy_format,
         policy_hash,
     } = validate_static_publish_document(&document)?;
+    let resource_limits = validate_static_publish_resource_limits(&document)?;
     let sanitized_project = serde_json::to_value(document.project)
         .map_err(|error| PageBuilderStaticLandingSanitizationError::Encode(error.to_string()))?;
-    let sanitized_hash = sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?;
+    let sanitized_hash = sanitization_hash(
+        PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
+        &sanitized_project,
+        &policy_format,
+        &policy_hash,
+        Some(&resource_limits),
+    )?;
     let result = PageBuilderSanitizedStaticLandingProject {
         format: PAGE_BUILDER_STATIC_SANITIZATION_FORMAT.to_string(),
         policy_format,
         policy_hash,
+        resource_limits: Some(resource_limits),
         sanitized_project,
         sanitized_hash,
     };
@@ -118,16 +175,41 @@ pub fn sanitize_static_landing_project(
 }
 
 fn sanitization_hash(
+    format: &str,
     sanitized_project: &Value,
     policy_format: &str,
     policy_hash: &str,
+    resource_limits: Option<&PageBuilderStaticPublishResourceEvidence>,
 ) -> Result<String, PageBuilderStaticLandingSanitizationError> {
-    stable_hash(&(
-        PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
-        policy_format,
-        policy_hash,
-        sanitized_project,
-    ))
+    match format {
+        PAGE_BUILDER_STATIC_SANITIZATION_FORMAT => stable_hash(&(
+            PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
+            policy_format,
+            policy_hash,
+            resource_limits.ok_or_else(|| {
+                PageBuilderStaticLandingSanitizationError::Integrity(
+                    "current sanitization hash is missing resource limits".to_string(),
+                )
+            })?,
+            sanitized_project,
+        )),
+        PAGE_BUILDER_STATIC_SANITIZATION_LEGACY_FORMAT => {
+            if resource_limits.is_some() {
+                return Err(PageBuilderStaticLandingSanitizationError::Integrity(
+                    "legacy sanitization hash must not include resource limits".to_string(),
+                ));
+            }
+            stable_hash(&(
+                PAGE_BUILDER_STATIC_SANITIZATION_LEGACY_FORMAT,
+                policy_format,
+                policy_hash,
+                sanitized_project,
+            ))
+        }
+        _ => Err(PageBuilderStaticLandingSanitizationError::Integrity(
+            "unsupported sanitization hash format".to_string(),
+        )),
+    }
 }
 
 fn stable_hash(
@@ -151,9 +233,8 @@ mod tests {
     use crate::static_publish_policy::PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT;
     use serde_json::json;
 
-    #[test]
-    fn sanitization_assigns_stable_ids_and_hashes_policy_bound_project() {
-        let project = json!({
+    fn project() -> Value {
+        json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": {
@@ -172,25 +253,39 @@ mod tests {
                     }]
                 }
             }]
-        });
+        })
+    }
+
+    #[test]
+    fn sanitization_assigns_stable_ids_and_hashes_policy_bound_project() {
+        let project = project();
         let first = sanitize_static_landing_project(&project).expect("sanitized project");
         let second = sanitize_static_landing_project(&project).expect("sanitized project");
 
         assert_eq!(first, second);
+        assert_eq!(first.format, PAGE_BUILDER_STATIC_SANITIZATION_FORMAT);
         assert_eq!(first.sanitized_hash.len(), 64);
         assert_eq!(
             first.policy_format,
             PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT
         );
         assert_eq!(first.policy_hash.len(), 64);
+        let resource_limits = first
+            .resource_limits
+            .as_ref()
+            .expect("current resource evidence");
+        assert_eq!(resource_limits.observed.page_count, 1);
+        assert_eq!(resource_limits.observed.component_count, 2);
         assert_eq!(
             first.sanitized_hash,
             sanitization_hash(
+                &first.format,
                 &first.sanitized_project,
                 &first.policy_format,
                 &first.policy_hash,
+                first.resource_limits.as_ref(),
             )
-            .expect("policy-bound sanitization hash")
+            .expect("policy-and-resource-bound sanitization hash")
         );
         assert!(
             first.sanitized_project["pages"][0]["component"]["components"][0]["id"]
@@ -198,6 +293,23 @@ mod tests {
                 .is_some_and(|id| id.starts_with("fly-static-"))
         );
         first.verify_integrity().expect("sanitization integrity");
+    }
+
+    #[test]
+    fn legacy_v2_sanitization_remains_verifiable() {
+        let mut legacy = sanitize_static_landing_project(&project()).expect("current sanitization");
+        legacy.format = PAGE_BUILDER_STATIC_SANITIZATION_LEGACY_FORMAT.to_string();
+        legacy.resource_limits = None;
+        legacy.sanitized_hash = sanitization_hash(
+            &legacy.format,
+            &legacy.sanitized_project,
+            &legacy.policy_format,
+            &legacy.policy_hash,
+            None,
+        )
+        .expect("legacy sanitization hash");
+
+        legacy.verify_integrity().expect("legacy v2 integrity");
     }
 
     #[test]
