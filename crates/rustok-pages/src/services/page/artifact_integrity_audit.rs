@@ -6,7 +6,8 @@ use rustok_page_builder::{
     PageHead, StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
 };
 use sea_orm::{
-    ColumnTrait, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -178,7 +179,7 @@ impl PageService {
                 build_hash: &record.build_hash,
                 artifact_hash: &record.artifact_hash,
                 materialization_hash: record.materialization_hash.as_deref(),
-                status,
+                status: *status,
                 diagnostic_hash: diagnostic_hash.as_deref(),
             })
             .collect::<Vec<_>>();
