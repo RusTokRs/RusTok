@@ -29,6 +29,7 @@ mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "mod-mark
 mod-moderation = ["dep:rustok-moderation"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
+mod-reactions = ["dep:rustok-reactions"]
 mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
 mod-notifications = ["dep:rustok-notifications"]
 mod-comments = ["dep:rustok-comments", "rustok-comments/tcp-transport", "rustok-content-orchestration/mod-comments"]
@@ -85,6 +86,7 @@ rustok-moderation = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true
 rustok-blog = { workspace = true, optional = true }
+rustok-reactions = { path = "../rustok-reactions", optional = true }
 rustok-forum = { workspace = true, optional = true }
 rustok-notifications = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
