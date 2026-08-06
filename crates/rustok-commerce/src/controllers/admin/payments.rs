@@ -77,6 +77,52 @@ impl AdminPaymentErrorContext {
     }
 }
 
+struct AdminPaymentDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    payment_collection_id: &'static str,
+    refund_id: &'static str,
+    order_id: &'static str,
+    cart_id: &'static str,
+    customer_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminPaymentErrorContext> for AdminPaymentDiagnosticContext {
+    fn from(context: &AdminPaymentErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            payment_collection_id: optional_uuid_shape(context.payment_collection_id),
+            refund_id: optional_uuid_shape(context.refund_id),
+            order_id: optional_uuid_shape(context.order_id),
+            cart_id: optional_uuid_shape(context.cart_id),
+            customer_id: optional_uuid_shape(context.customer_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminPaymentDiagnosticError;
+
+impl std::fmt::Debug for AdminPaymentDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
 #[utoipa::path(
     get,
     path = "/admin/payment-collections",
@@ -542,7 +588,7 @@ fn adopt_payment_error_identity(context: &mut AdminPaymentErrorContext, error: &
 
 fn admin_payment_http_error<E>(
     context: &AdminPaymentErrorContext,
-    error: &E,
+    _error: &E,
     source_owner: &'static str,
     policy: AdminPaymentHttpPolicy,
 ) -> HttpError
@@ -550,6 +596,8 @@ where
     E: std::fmt::Debug,
 {
     let (status, code, message, error_kind) = policy;
+    let context = AdminPaymentDiagnosticContext::from(context);
+    let error = AdminPaymentDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_PAYMENT_OWNER,
