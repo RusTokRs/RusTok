@@ -1,35 +1,50 @@
-# Checkout fulfillment stage owner context
+# Checkout fulfillment stage owner context and retry disposition
 
-Status: **source-ready / unvalidated**
+Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-This slice retains the exact `PortContext` used by the mounted durable checkout
-fulfillment stage for three typed owner calls:
+The mounted durable checkout fulfillment stage makes three typed owner calls:
 
 - `CheckoutFulfillmentExecutionPort::ensure_checkout_fulfillments`;
 - `CheckoutFulfillmentExecutionPort::read_checkout_fulfillments`;
 - `CheckoutOrderPaymentSettlementPort::settle_checkout_payment`.
 
-Each call now constructs one context value, delegates a clone of that value to
-the owner port, and reuses the original context when mapping a returned
-`PortError` into `CheckoutFulfillmentStageError::Boundary`.
+The stage preserves the complete delegated `PortContext` and maps owner failures to
+`CheckoutFulfillmentStageError::Boundary`, including the exact owner code and
+`retryable` value.
 
-## Retained diagnostic context
+This slice fixes the staged-checkout disposition of that existing typed boundary.
+A fulfillment-stage boundary with `retryable: true` is now persisted through the
+existing `mark_retryable_error` transition instead of being marked
+`compensation_required`.
 
-The structured boundary event records:
+## Retry policy
 
-- truthful owner identity (`rustok_fulfillment` or `rustok_order`);
-- correlation and tenant identity;
-- actor, channel, and locale;
-- causation, traceparent, idempotency key, and deadline;
-- exact owner operation and commerce stage;
-- stable owner error code, typed error kind, and retryability;
-- explicit `commerce_checkout_fulfillment_stage` boundary identity.
+The source policy is intentionally narrow:
 
-Unavailable, timeout, and invariant failures use error severity. Validation,
-not-found, conflict, forbidden, and other policy rejections use warning severity.
-The complete typed `PortError` remains internal diagnostic data.
+- retryable fulfillment ensure/read boundary → `retryable_error`;
+- retryable order-payment settlement boundary → `retryable_error`;
+- non-retryable fulfillment-stage boundary → `compensation_required`;
+- fulfillment-stage conflict → unchanged `compensation_required`;
+- fulfillment-stage operation/journal error → unchanged `compensation_required`.
+
+`CheckoutOperationJournal::claim_execution` already admits `retryable_error`, so a
+later checkout attempt can reclaim the operation and resume from the durable stage.
+`RecoveringStagedCheckoutService` remains unchanged and invokes synchronous
+compensation only when the operation is `compensation_required`.
+
+## Resume safety
+
+The existing owner operations remain suitable for durable resume:
+
+- fulfillment ensure uses the canonical
+  `checkout:{operation_id}:fulfillment-set` idempotency key;
+- fulfillment read is side-effect free;
+- order payment settlement uses the canonical
+  `checkout:{operation_id}:order:payment-settlement` idempotency key;
+- successful owner outcomes are still validated before the
+  `payment_captured -> fulfillment_created` checkpoint.
 
 ## Preserved contracts
 
@@ -37,44 +52,42 @@ This slice does not change:
 
 - fulfillment or order owner port traits;
 - ensure/read/settlement request and response DTOs;
+- owner execution, adoption, settlement, or lifecycle policy;
 - fulfillment plan construction and cart-line provenance checks;
 - captured-payment admission and amount validation;
 - payment-reference or manual-provider fallback behavior;
-- fulfillment idempotency and order-settlement idempotency keys;
+- idempotency keys, causation, locale, deadlines, or delegated contexts;
 - bounded stage-loop behavior;
-- the `payment_captured -> fulfillment_created` checkpoint;
-- `CheckoutFulfillmentStageError::Boundary` stage, code, message, or retryability;
+- stage checkpoints;
+- operation journal implementation;
+- recovery service implementation;
+- pipeline error-code mapping;
+- public errors or HTTP/GraphQL/native contracts;
 - FBA or FFA status.
 
-## Static evidence
+## Source evidence
 
-The focused source guard is:
+- `crates/rustok-commerce/contracts/evidence/checkout-fulfillment-retry-disposition-source-review.json`
+- `scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs`
+- `scripts/verify/verify-commerce-staged-checkout-fulfillment-retry-disposition.mjs`
 
-```text
-scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs
-```
+## Remaining work
 
-It verifies three retained contexts, three cloned owner delegations, exact owner
-and operation attribution, structured diagnostic fields, severity policy,
-existing typed lifecycle admission, checkpoint preservation, and removal of the
-old context-dropping mapper.
-
-## Still open
-
-This slice does not deliver:
-
-- fulfillment or order owner policy-admission diagnostics;
-- checkout compensation context retention;
-- remaining fulfillment GraphQL/HTTP/native adapters;
-- remaining order, payment, inventory, customer, tax, or promotion mapper cleanup;
-- runtime, restart, remote-profile, or cross-database evidence.
+The broader fulfillment mapper cleanup remains open, including raw diagnostic and
+public-envelope review outside this disposition slice. Compile, runtime, database,
+restart, remote-port, workflow, and CI evidence also remain open.
 
 ## Intended maintainer checks
 
 ```bash
 node scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
+node scripts/verify/verify-commerce-staged-checkout-fulfillment-retry-disposition.mjs
+cargo test -p rustok-commerce staged_checkout::tests::retryable_fulfillment_stage_boundary_does_not_force_compensation
+cargo test -p rustok-commerce staged_checkout::tests::retryable_order_settlement_boundary_does_not_force_compensation
+cargo test -p rustok-commerce staged_checkout::tests::non_retryable_fulfillment_stage_boundary_requires_compensation
 cargo check -p rustok-commerce --lib
 ```
 
-These commands were not run by the implementation agent.
+No tests, Node verifiers, Cargo commands, formatting, fulfillment-owner calls,
+order-owner calls, database scenarios, restart scenarios, remote-port scenarios,
+workflows, or CI were executed.
