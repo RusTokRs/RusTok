@@ -30,6 +30,7 @@ function rejectMarker(source, marker, label) {
 }
 
 const enginePath = "crates/rustok-search/src/engine.rs";
+const forumProjectionPath = "crates/rustok-forum/src/search_projection.rs";
 const libPath = "crates/rustok-search/src/lib.rs";
 const graphqlPath = "crates/rustok-search/src/graphql/types.rs";
 const storefrontNativePath =
@@ -45,6 +46,7 @@ const evidencePath = "crates/rustok-search/contracts/evidence/search-canonical-u
 const planPath = "crates/rustok-search/docs/implementation-plan.md";
 
 const engine = read(enginePath);
+const forumProjection = read(forumProjectionPath);
 const lib = read(libPath);
 const graphql = read(graphqlPath);
 const storefrontNative = read(storefrontNativePath);
@@ -71,16 +73,48 @@ for (const marker of [
   "ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_')",
   "content_kind_query",
   'const FORUM_SOURCE_MODULE: &str = "forum"',
+  'const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category"',
+  'const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic"',
   'const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply"',
-  "canonical_forum_reply_result_url(value)",
-  'parse_payload_uuid(&value.payload, "reply_id")',
-  'parse_payload_uuid(&value.payload, "topic_id")',
-  "if reply_id != value.id",
-  "?topic={topic_id}&reply={reply_id}",
-  "canonical_url_derives_forum_category_topic_and_reply_routes",
-  "canonical_url_rejects_spoofed_forum_source_entity_pairs_and_reply_payloads",
+  "canonical_forum_projected_result_url(value)",
+  'value.payload.get("route")',
+  "canonical_forum_category_route",
+  "canonical_forum_topic_route",
+  "rustok_api::normalize_locale_tag",
+  "forum_topic_short_identity",
+  "valid_forum_slug",
+  "canonical_url_accepts_owner_projected_forum_category_topic_and_reply_routes",
+  "canonical_url_rejects_stale_or_malformed_forum_route_projections",
 ]) {
   requireMarker(engine, marker, enginePath);
+}
+for (const marker of [
+  'const FORUM_STOREFRONT_ROUTE: &str = "/modules/forum"',
+  'format!("{FORUM_STOREFRONT_ROUTE}?category=',
+  'format!("{FORUM_STOREFRONT_ROUTE}?topic=',
+  "canonical_forum_reply_result_url",
+]) {
+  rejectMarker(engine, marker, enginePath);
+}
+
+for (const marker of [
+  "ForumCategoryRouteService",
+  "ForumTopicRouteService",
+  "exact_category_route",
+  "exact_topic_route",
+  ".canonical_descriptor(",
+  '"route": route',
+  'format!("{topic_route}?reply={reply_id}")',
+  "category.effective_locale != locale",
+  "topic.effective_locale != locale",
+]) {
+  requireMarker(forumProjection, marker, forumProjectionPath);
+}
+for (const marker of [
+  '"/modules/forum?category=',
+  '"/modules/forum?topic=',
+]) {
+  rejectMarker(forumProjection, marker, forumProjectionPath);
 }
 
 requireMarker(lib, "canonical_search_result_url", libPath);
@@ -142,6 +176,7 @@ if (evidence) {
   const contract = evidence.production_contract ?? {};
   for (const [key, expected] of Object.entries({
     normalized_result: enginePath,
+    forum_projection_owner: forumProjectionPath,
     public_export: libPath,
     graphql_projection: graphqlPath,
     storefront_native_projection: storefrontNativePath,
@@ -160,9 +195,11 @@ if (evidence) {
   for (const requiredCase of [
     "blog_canonical_route",
     "blog_fail_closed",
+    "forum_projection_owner_routes",
     "forum_category_topic_routes",
     "forum_reply_canonical_route",
     "forum_reply_fail_closed",
+    "forum_stale_projection_fail_closed",
     "product_and_content_routes",
     "content_kind_injection",
     "graphql_owner_projection",

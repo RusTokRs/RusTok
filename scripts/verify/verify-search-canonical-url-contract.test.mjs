@@ -18,6 +18,7 @@ function write(root, relativePath, content) {
 function fixture({
   localGraphqlPolicy = false,
   missingBlogSourceCheck = false,
+  missingForumProjectionOwner = false,
   missingStorefrontNativeDelegation = false,
   missingAdminNativeDelegation = false,
   missingAdminShellDelegation = false,
@@ -26,6 +27,7 @@ function fixture({
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-search-url-contract-"));
   const enginePath = "crates/rustok-search/src/engine.rs";
+  const forumProjectionPath = "crates/rustok-forum/src/search_projection.rs";
   const graphqlPath = "crates/rustok-search/src/graphql/types.rs";
   const storefrontNativePath =
     "crates/rustok-search/storefront/src/transport/native_server_adapter.rs";
@@ -47,11 +49,13 @@ function fixture({
       const BLOG_STOREFRONT_ROUTE: &str = "/modules/blog";
       const MAX_BLOG_SLUG_LEN: usize = 200;
       const FORUM_SOURCE_MODULE: &str = "forum";
+      const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
+      const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
       const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply";
       pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
         ${missingBlogSourceCheck ? "true" : "value.source_module == BLOG_SOURCE_MODULE"};
         content_kind_query(&value.source_module);
-        canonical_forum_reply_result_url(value);
+        canonical_forum_projected_result_url(value);
         canonical_blog_result_url(&value.payload)
       }
       fn canonical_blog_result_url(payload: &serde_json::Value) -> Option<String> {
@@ -60,23 +64,42 @@ function fixture({
         let _ = slug.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'));
         Some(format!("{BLOG_STOREFRONT_ROUTE}?slug={slug}"))
       }
-      fn canonical_forum_reply_result_url(value: &SearchResultItem) -> Option<String> {
-        let reply_id = parse_payload_uuid(&value.payload, "reply_id")?;
-        let topic_id = parse_payload_uuid(&value.payload, "topic_id")?;
-        if reply_id != value.id { return None; }
-        Some(format!("?topic={topic_id}&reply={reply_id}"))
+      fn canonical_forum_projected_result_url(value: &SearchResultItem) -> Option<String> {
+        let route = value.payload.get("route")?.as_str()?;
+        rustok_api::normalize_locale_tag(value.locale.as_deref()?);
+        canonical_forum_category_route(route, "en");
+        canonical_forum_topic_route(route, "en", value.id, None);
+        forum_topic_short_identity(value.id);
+        valid_forum_slug("general");
+        Some(route.to_string())
       }
-      fn parse_payload_uuid(_: &serde_json::Value, _: &str) -> Option<Uuid> { None }
-      fn canonical_url_derives_forum_category_topic_and_reply_routes() {}
-      fn canonical_url_rejects_spoofed_forum_source_entity_pairs_and_reply_payloads() {}
+      fn canonical_forum_category_route(_: &str, _: &str) -> Option<()> { Some(()) }
+      fn canonical_forum_topic_route(_: &str, _: &str, _: Uuid, _: Option<Uuid>) -> Option<()> { Some(()) }
+      fn forum_topic_short_identity(_: Uuid) -> String { String::new() }
+      fn valid_forum_slug(_: &str) -> bool { true }
+      fn canonical_url_accepts_owner_projected_forum_category_topic_and_reply_routes() {}
+      fn canonical_url_rejects_stale_or_malformed_forum_route_projections() {}
       fn content_kind_query(_: &str) -> String { String::new() }
     `,
   );
   write(
     root,
-    "crates/rustok-search/src/lib.rs",
-    "pub use engine::canonical_search_result_url;",
+    forumProjectionPath,
+    missingForumProjectionOwner
+      ? 'payload: json!({ "route": "/modules/forum?topic=1" })'
+      : `
+        ForumCategoryRouteService
+        ForumTopicRouteService
+        exact_category_route
+        exact_topic_route
+        .canonical_descriptor(
+        category.effective_locale != locale
+        topic.effective_locale != locale
+        "route": route
+        format!("{topic_route}?reply={reply_id}")
+      `,
   );
+  write(root, "crates/rustok-search/src/lib.rs", "pub use engine::canonical_search_result_url;");
   write(
     root,
     graphqlPath,
@@ -98,11 +121,7 @@ function fixture({
       ? "mod navigation; navigation::enrich_search_result_urls(&mut payload); blog_result_url"
       : "execute_selected_transport(...).await",
   );
-  write(
-    root,
-    adminNativeRootPath,
-    'include!("native_server_adapter/mapping.rs");',
-  );
+  write(root, adminNativeRootPath, 'include!("native_server_adapter/mapping.rs");');
   write(
     root,
     adminNativeMappingPath,
@@ -134,6 +153,7 @@ function fixture({
 
   const productionContract = {
     normalized_result: enginePath,
+    forum_projection_owner: forumProjectionPath,
     public_export: "crates/rustok-search/src/lib.rs",
     graphql_projection: graphqlPath,
     storefront_native_projection: storefrontNativePath,
@@ -142,9 +162,7 @@ function fixture({
     admin_native_mapping: adminNativeMappingPath,
     admin_shell_projection: adminShellPath,
   };
-  if (staleEvidenceFallback) {
-    productionContract.compatibility_fallback = compatibilityPath;
-  }
+  if (staleEvidenceFallback) productionContract.compatibility_fallback = compatibilityPath;
   write(
     root,
     "crates/rustok-search/contracts/evidence/search-canonical-url-contract.json",
@@ -158,9 +176,11 @@ function fixture({
       cases: [
         "blog_canonical_route",
         "blog_fail_closed",
+        "forum_projection_owner_routes",
         "forum_category_topic_routes",
         "forum_reply_canonical_route",
         "forum_reply_fail_closed",
+        "forum_stale_projection_fail_closed",
         "product_and_content_routes",
         "content_kind_injection",
         "graphql_owner_projection",
@@ -199,7 +219,8 @@ function expectRejected(options, pattern) {
   }
 }
 
-test("accepts one Search-owned canonical URL policy", () => {
+// Aggregate FBA guard marker: accepts one Search-owned canonical URL policy.
+test("accepts one Search-owned canonical URL policy over Forum-owned route identity", () => {
   const root = fixture();
   try {
     const result = run(root);
@@ -211,50 +232,33 @@ test("accepts one Search-owned canonical URL policy", () => {
 });
 
 test("rejects a transport-local GraphQL switch", () => {
-  expectRejected(
-    { localGraphqlPolicy: true },
-    /missing crate::canonical_search_result_url|forbidden fn derive_search_result_url/,
-  );
+  expectRejected({ localGraphqlPolicy: true }, /missing crate::canonical_search_result_url|forbidden fn derive_search_result_url/);
 });
 
 test("rejects missing Blog source ownership", () => {
-  expectRejected(
-    { missingBlogSourceCheck: true },
-    /missing value.source_module == BLOG_SOURCE_MODULE/,
-  );
+  expectRejected({ missingBlogSourceCheck: true }, /missing value.source_module == BLOG_SOURCE_MODULE/);
+});
+
+test("rejects missing Forum route owner projection", () => {
+  expectRejected({ missingForumProjectionOwner: true }, /missing ForumCategoryRouteService|forbidden/);
 });
 
 test("rejects missing storefront native delegation", () => {
-  expectRejected(
-    { missingStorefrontNativeDelegation: true },
-    /missing rustok_search::canonical_search_result_url\(&value\)/,
-  );
+  expectRejected({ missingStorefrontNativeDelegation: true }, /missing rustok_search::canonical_search_result_url\(&value\)/);
 });
 
 test("rejects admin package URL duplication", () => {
-  expectRejected(
-    { missingAdminNativeDelegation: true },
-    /missing rustok_search::canonical_search_result_url\(&item\)|forbidden fn derive_search_result_url/,
-  );
+  expectRejected({ missingAdminNativeDelegation: true }, /missing rustok_search::canonical_search_result_url\(&item\)|forbidden fn derive_search_result_url/);
 });
 
 test("rejects admin shell URL duplication", () => {
-  expectRejected(
-    { missingAdminShellDelegation: true },
-    /missing rustok_search::canonical_search_result_url\(&item\)|forbidden fn derive_admin_search_result_url/,
-  );
+  expectRejected({ missingAdminShellDelegation: true }, /missing rustok_search::canonical_search_result_url\(&item\)|forbidden fn derive_admin_search_result_url/);
 });
 
 test("rejects post-transport compatibility enrichment", () => {
-  expectRejected(
-    { transportFallbackRegression: true },
-    /compatibility implementation must be deleted|forbidden mod navigation|forbidden enrich_search_result_urls/,
-  );
+  expectRejected({ transportFallbackRegression: true }, /compatibility implementation must be deleted|forbidden mod navigation|forbidden enrich_search_result_urls/);
 });
 
 test("rejects stale fallback evidence", () => {
-  expectRejected(
-    { staleEvidenceFallback: true },
-    /compatibility_fallback must be removed/,
-  );
+  expectRejected({ staleEvidenceFallback: true }, /compatibility_fallback must be removed/);
 });

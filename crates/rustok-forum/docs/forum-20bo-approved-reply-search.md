@@ -58,21 +58,21 @@ This fan-out is intentionally conservative. A later FORUM-23 owner-revision/inbo
 
 ## Canonical navigation
 
-`rustok-search` remains the only canonical Search result URL owner. A canonical `forum_reply` result is navigable only when:
+FORUM-24Q supersedes the original UUID query navigation described by this historical slice. `ForumSearchProjectionSource` now obtains the exact localized parent-topic descriptor from `ForumTopicRouteService` and publishes:
 
-- `source_module` is exactly `forum`;
-- payload `reply_id` is a non-nil UUID equal to the result ID;
-- payload `topic_id` is a non-nil UUID.
+```text
+/{locale}/forum/t/{short_id}/{slug}?reply={reply_id}
+```
 
-The result URL is:
+`rustok-search` remains the single cross-transport result URL projection. It requires the owner-projected route and validates the canonical Forum source/entity pair, result and payload identities, exact locale, topic short identity, route shape and the one exact reply query. It does not rebuild the topic path or retain a UUID compatibility fallback.
 
-`/modules/forum?topic={topic_id}&reply={reply_id}`
+Existing indexed reply documents with the retired UUID query route are non-navigable until a Forum Search reindex. This still does not add a standalone reply page, scrolling or focus behavior; `reply` remains an additive topic-open selection key.
 
-The `reply` query parameter is an additive topic-open hint. This slice does not add a standalone reply page, scrolling or focus behavior, or any storefront UI. A future UI route contract may consume the hint without changing the Search document identity.
+The current route contract is documented in [FORUM-24Q Search canonical route cutover](./forum-24q-search-canonical-route-cutover.md).
 
 ## Consumer boundary
 
-Published storefront searches filter on `is_public = TRUE`; they do not maintain a fixed status allowlist, so the typed `approved` status is not discarded after projection. GraphQL, native storefront and Search admin preview mappings are entity-generic and delegate URL construction to `canonical_search_result_url`.
+Published storefront searches filter on `is_public = TRUE`; they do not maintain a fixed status allowlist, so the typed `approved` status is not discarded after projection. GraphQL, native storefront and Search admin preview mappings are entity-generic and delegate URL projection to `canonical_search_result_url`.
 
 Admin global search keeps its fail-closed domain allowlist. FORUM-20BO adds explicit mappings:
 
@@ -85,6 +85,8 @@ The canonical source must be `forum` or `rustok-forum`; spoofed source/entity pa
 ## Compatibility
 
 This slice reuses `search_documents` and the existing staged Forum replacement. It adds no migration, workspace dependency, Cargo.lock change, REST or GraphQL field change, public DTO change, transport-local URL fallback, or FFA/FBA status promotion.
+
+FORUM-24Q changes only the projected route value and requires reindexing existing Forum documents. Search storage, events, invalidation and result DTOs remain unchanged.
 
 The large canonical implementation plan, Forum CRATE_API and Search local plan remain conflict-sensitive synchronization debt and are not rewritten through the GitHub Contents API in this slice.
 

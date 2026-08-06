@@ -7,6 +7,7 @@
   "owner": "rustok-search",
   "production_contract": {
     "normalized_result": "crates/rustok-search/src/engine.rs",
+    "forum_projection_owner": "crates/rustok-forum/src/search_projection.rs",
     "public_export": "crates/rustok-search/src/lib.rs",
     "graphql_projection": "crates/rustok-search/src/graphql/types.rs",
     "storefront_native_projection": "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
@@ -25,16 +26,24 @@
       "expected": "wrong source module missing slug non-string slug traversal spaces and overlong slugs remain non-navigable"
     },
     {
+      "name": "forum_projection_owner_routes",
+      "expected": "Forum Search projection resolves exact category and topic descriptors through ForumCategoryRouteService and ForumTopicRouteService before writing payload.route"
+    },
+    {
       "name": "forum_category_topic_routes",
-      "expected": "canonical forum_category and forum_topic results derive the existing category and topic query keys"
+      "expected": "canonical forum_category and forum_topic results expose only exact localized owner-projected routes after Search validates locale identity entity identity short topic identity and path shape"
     },
     {
       "name": "forum_reply_canonical_route",
-      "expected": "canonical forum_reply derives /modules/forum?topic={topic_id}&reply={reply_id} only when payload reply identity matches the result and topic identity is a non-nil UUID"
+      "expected": "canonical forum_reply exposes the owner-projected localized topic route with one exact reply query only when reply and topic identities match"
     },
     {
       "name": "forum_reply_fail_closed",
-      "expected": "wrong source module missing or malformed payload mismatched reply identity and nil topic identity remain non-navigable"
+      "expected": "wrong source module missing or malformed payload mismatched identities locale drift short-id drift unsafe paths and incorrect reply queries remain non-navigable"
+    },
+    {
+      "name": "forum_stale_projection_fail_closed",
+      "expected": "legacy UUID query routes and documents missing the owner-projected route remain non-navigable until the Forum projection is rebuilt; no compatibility fallback exists"
     },
     {
       "name": "product_and_content_routes",
@@ -66,16 +75,18 @@
     },
     {
       "name": "no_transport_fallback",
-      "expected": "storefront transport selection returns backend-projected URLs directly and no navigation compatibility module exists"
+      "expected": "storefront transport selection returns backend-projected URLs directly and no navigation compatibility module or UUID Forum fallback exists"
     }
   ],
   "runtime_promotion_requirements": [
     "execute rustok-search engine URL policy tests",
-    "execute GraphQL storefrontSearch against projected Blog and Forum reply documents",
-    "execute native storefront search and confirm canonical URLs are present",
+    "rebuild Forum Search projections so every visible category topic and approved reply contains the canonical localized owner route",
+    "execute GraphQL storefrontSearch against reindexed Forum category topic and reply documents",
+    "execute native storefront search and confirm canonical localized URLs are present",
     "execute Search admin preview and admin global search against product content Blog and Forum results",
     "verify admin global search enforces Forum category topic and reply domain permissions",
-    "verify click analytics records the canonical href",
-    "verify malformed Blog and Forum reply payloads remain non-navigable through every transport"
+    "verify click analytics records the canonical localized href",
+    "verify malformed and stale Forum payloads remain non-navigable through every transport",
+    "verify no UUID Forum query route is emitted after reindex"
   ]
 }
