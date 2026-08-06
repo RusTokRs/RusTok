@@ -69,19 +69,20 @@ static-publish-resource-limits-source-ready
 
 The reviewed static publish path already has provider-owned fail-closed HTML, CSS, URL, attribute, metadata and public-resource checks. The remaining global budget gap is now source-closed.
 
-New reviewed sanitization evidence uses `page_builder_static_publish_sanitization_v3` and binds:
+The provider now rejects a prepared project above any of these limits:
 
-- a 16 MiB prepared-project byte limit;
-- at most 128 pages;
-- at most 50,000 current `pages[].component` nodes;
-- maximum component depth 128;
-- at most 4,096 assets;
-- at most 20,000 style rules;
-- the resource-limit policy hash and observed counts.
+- 16 MiB serialized project bytes;
+- 128 pages;
+- 50,000 current `pages[].component` nodes;
+- component depth 128;
+- 4,096 assets;
+- 20,000 style rules.
 
-Resource evidence is recomputed during sanitization integrity verification before runtime materialization. Existing per-content, attribute, URL, CSS and media-query limits remain authoritative.
+The resource policy has deterministic SHA-256 identity and typed observations, but the established sanitization identity remains exactly `page_builder_static_publish_sanitization_v2`. Its existing hash payload and the Pages locale-ordered `sanitized_set_hash` contract are unchanged.
 
-The exact legacy sanitization v2 remains verifiable with its prior hash formula. Existing immutable v2 artifacts do not receive retroactive resource-limit rejection; every newly sanitized reviewed publication carries v3 evidence.
+Resource validation runs before sanitized-project hashing and is repeated during transient sanitization integrity verification before runtime materialization. Existing per-content, attribute, URL, CSS and media-query limits remain authoritative.
+
+No persisted DTO, migration or historical immutable artifact rewrite is introduced by this slice.
 
 The broad Phase 4 wording should now be read as follows:
 
