@@ -2,8 +2,7 @@ use crate::landing::LandingProjectError;
 use crate::static_landing::{
     StaticLandingCompiler,
     static_publish_resource_limits::{
-        PageBuilderStaticPublishResourceLimitError, PageBuilderStaticPublishResourceLimits,
-        validate_static_publish_resource_limits,
+        PageBuilderStaticPublishResourceLimitError, validate_static_publish_resource_limits,
     },
 };
 use crate::static_publish_policy::{
@@ -158,6 +157,7 @@ fn is_sha256(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::static_landing::static_publish_resource_limits::PageBuilderStaticPublishResourceLimits;
     use crate::static_publish_policy::PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT;
     use serde_json::json;
 
