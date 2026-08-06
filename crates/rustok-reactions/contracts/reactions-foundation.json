@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "module": "reactions",
+  "contract": "reactions_foundation_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "api_crate": "crates/rustok-reactions-api",
+  "owner_crate": "crates/rustok-reactions",
+  "required_files": [
+    "crates/rustok-reactions-api/Cargo.toml",
+    "crates/rustok-reactions-api/src/lib.rs",
+    "crates/rustok-reactions-api/src/model.rs",
+    "crates/rustok-reactions-api/src/provider.rs",
+    "crates/rustok-reactions-api/README.md",
+    "crates/rustok-reactions-api/docs/README.md",
+    "crates/rustok-reactions-api/docs/implementation-plan.md",
+    "crates/rustok-reactions/Cargo.toml",
+    "crates/rustok-reactions/src/lib.rs",
+    "crates/rustok-reactions/rustok-module.toml",
+    "crates/rustok-reactions/README.md",
+    "crates/rustok-reactions/docs/README.md",
+    "crates/rustok-reactions/docs/implementation-plan.md"
+  ],
+  "required_api_symbols": [
+    "ReactionSourceSlug",
+    "ReactionSubjectKind",
+    "ReactionKey",
+    "ReactionSubjectRef",
+    "ReactionSelectionPolicy",
+    "ReactionCatalog",
+    "ReactionCommandIdentity",
+    "ApplyReactionCommand",
+    "ReactionReadPort",
+    "ReactionWritePort",
+    "ReactionSubjectProvider",
+    "ReactionSubjectProviderFactory",
+    "ReactionSubjectRegistry"
+  ],
+  "required_limits": [
+    "MAX_REACTION_CATALOG_SIZE",
+    "MAX_REACTIONS_PER_ACTOR",
+    "MAX_REACTION_PROVIDER_KINDS"
+  ],
+  "forbidden_api_dependencies": [
+    "rustok-forum",
+    "rustok-blog",
+    "rustok-comments",
+    "rustok-profiles",
+    "rustok-media",
+    "sea-orm",
+    "sea-orm-migration",
+    "async-graphql",
+    "axum",
+    "leptos"
+  ],
+  "forbidden_owner_dependencies": [
+    "rustok-forum",
+    "rustok-blog",
+    "rustok-comments",
+    "rustok-profiles",
+    "rustok-media",
+    "sea-orm",
+    "sea-orm-migration",
+    "async-graphql",
+    "axum",
+    "leptos"
+  ],
+  "deliberate_limits": [
+    "no persistence",
+    "no migrations",
+    "no producer-private table reads",
+    "no transports",
+    "no UI",
+    "no Forum vote migration",
+    "no reputation or achievement ownership"
+  ],
+  "verification": [
+    "cargo test -p rustok-reactions-api",
+    "cargo test -p rustok-reactions",
+    "cargo check -p rustok-reactions-api --all-targets",
+    "cargo check -p rustok-reactions --all-targets",
+    "node scripts/verify/verify-reactions-foundation.mjs",
+    "git diff --check"
+  ]
+}
