@@ -43,8 +43,11 @@ async fn storefront_topic_route_native(
             .await
             .map_err(ServerFnError::new)?;
         let db = runtime_ctx.db_clone();
+        let authenticated = auth.is_some();
 
-        let channel_enabled = if let Some(channel_id) = request.channel_id {
+        let anonymous_channel_enabled = if authenticated {
+            true
+        } else if let Some(channel_id) = request.channel_id {
             rustok_channel::ChannelService::new(db.clone())
                 .is_module_enabled(channel_id, "forum")
                 .await
@@ -52,7 +55,7 @@ async fn storefront_topic_route_native(
         } else {
             true
         };
-        if auth.is_none() && !channel_enabled {
+        if !anonymous_channel_enabled {
             return Ok(None);
         }
 
@@ -68,7 +71,19 @@ async fn storefront_topic_route_native(
         };
 
         if resolution.disposition == ForumTopicRouteDisposition::Gone {
-            if !channel_enabled {
+            let gone_channel_enabled = if authenticated {
+                if let Some(channel_id) = request.channel_id {
+                    rustok_channel::ChannelService::new(db.clone())
+                        .is_module_enabled(channel_id, "forum")
+                        .await
+                        .map_err(server_error)?
+                } else {
+                    true
+                }
+            } else {
+                anonymous_channel_enabled
+            };
+            if !gone_channel_enabled {
                 return Ok(None);
             }
             let topic_id = resolution.requested_topic_id.ok_or_else(|| {
