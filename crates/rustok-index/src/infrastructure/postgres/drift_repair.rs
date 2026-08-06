@@ -146,7 +146,8 @@ impl PostgresIndexDriftRepairStore {
         let existing = load_command_by_ticket(transaction, ticket)
             .await?
             .ok_or_else(|| permanent_failure(RESERVATION_INVALID))?;
-        if existing.finding_id != ticket.finding_id()
+        if existing.tenant_id != ticket.tenant_id()
+            || existing.finding_id != ticket.finding_id()
             || existing.payload_digest != ticket.reservation_digest()
         {
             return Err(permanent_failure(RESERVATION_INVALID));

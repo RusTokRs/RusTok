@@ -141,7 +141,8 @@ pub use services::{
 };
 pub use services::{
     BackfillForumTopicMergeRouteAliasesInput, FORUM_TOPIC_RENAMED_ROUTE_REASON,
-    FORUM_TOPIC_ROUTE_SHORT_ID_LEN, ForumTopicMergeRouteBackfillCursor,
+    FORUM_TOPIC_ROUTE_SHORT_ID_LEN, ForumCategoryRouteDescriptor, ForumCategoryRouteDisposition,
+    ForumCategoryRouteResolution, ForumCategoryRouteService, ForumTopicMergeRouteBackfillCursor,
     ForumTopicMergeRouteBackfillResult, ForumTopicMergeRouteBackfillService,
     ForumTopicRouteDescriptor, ForumTopicRouteDisposition, ForumTopicRouteResolution,
     ForumTopicRouteService, ForumTopicSlugRenameResult,

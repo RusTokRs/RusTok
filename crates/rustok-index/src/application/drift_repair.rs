@@ -820,7 +820,8 @@ impl IndexDriftRepairService {
                 None,
                 None,
                 "before_not_repairable",
-            )?;
+            )
+            .map_err(|_| permanent_failure("index_drift_repair_completion_invalid"))?;
             return self.complete_ticket(&ticket, &completion).await;
         }
 
