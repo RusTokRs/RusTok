@@ -1,6 +1,6 @@
 # GraphQL query fulfillment owner context
 
-Status: `source_cutover_diagnostics_bounded_unvalidated`
+Status: `source_cutover_diagnostics_bounded_channel_context_unvalidated`
 
 ## Owner projection reads
 
@@ -35,8 +35,10 @@ adapters are preserved; otherwise the root in-process factories provide the
 baseline implementation.
 
 GraphQL consumes both runtimes through manifest data and one mounted
-`CommerceShippingOptionReadScope`. The extension nests both task-local values for
-each resolver execution. The private query facade clones all three owner ports and
+`CommerceShippingOptionReadScope`. The extension nests both runtime task-local
+values plus a request-owned fulfillment call context for each resolver execution.
+The call context contains only the normalized public channel derived from trusted
+`RequestContext` data. The private query facade clones all three owner ports and
 does not construct `FulfillmentService` or root in-process read providers.
 
 Commerce HTTP router construction consumes the same typed runtimes from
@@ -45,7 +47,7 @@ absent.
 
 Directly embedded GraphQL schemas that do not mount the server extension retain
 explicit in-process compatibility fallbacks in the public GraphQL runtime module.
-Those fallbacks are outside the private facade and are not mounted transport parity
+Those fallbacks carry no invented channel and are not mounted transport parity
 evidence.
 
 ## GraphQL lifecycle source cutover
@@ -87,6 +89,7 @@ GraphQL shipping-option reads construct `PortContext` with:
 - tenant identity;
 - service actor `rustok-commerce.graphql-query-shipping-options`;
 - requested locale with tenant/default fallback data retained separately;
+- normalized public channel when the mounted request has one;
 - query-field and resource-scoped correlation id;
 - two-second deadline.
 
@@ -95,11 +98,16 @@ GraphQL fulfillment lifecycle reads construct `PortContext` with:
 - tenant identity;
 - service actor `rustok-commerce.graphql-query-fulfillments`;
 - stable compatibility locale;
+- normalized public channel when the mounted request has one;
 - query-field, owner-operation, and resource-scoped correlation id;
 - two-second deadline.
 
-The current GraphQL query signature does not carry public channel into every read
-context, so complete GraphQL channel propagation remains open.
+The mounted extension derives the channel only through
+`public_channel_slug_from_request`, stores it in
+`CommerceFulfillmentReadCallContext`, and scopes it with the selected owner
+runtimes. Both fulfillment context builders apply that value through one helper
+before the owner call. Missing request channel and directly embedded schemas stay
+channel-absent rather than receiving a guessed value.
 
 REST reads construct `PortContext` with tenant identity, authenticated or
 storefront service actor as appropriate, request locale, effective channel when
@@ -138,7 +146,8 @@ The private GraphQL fulfillment facade now emits only:
 - a zero-sized diagnostic token whose `Debug` output is always `redacted`.
 
 It no longer emits complete `PortError` values, raw correlation ids, raw tenant or
-actor values, raw resource UUIDs, owner message content, or public message content.
+actor values, raw channel values, raw resource UUIDs, owner message content, or
+public message content.
 
 ## Preserved contracts
 
@@ -163,7 +172,6 @@ actor values, raw resource UUIDs, owner message content, or public message conte
   fixtures.
 - Prove locale, effective channel, deadline, tenant, filter, optional not-found,
   typed failure, restart, and external-adapter behavior through mounted requests.
-- Add public-channel propagation to every GraphQL fulfillment read context.
 - Continue converting remaining Commerce query boundaries that still use dynamic
   strings.
 - Continue the shared storefront HTTP, inventory, customer, tax, promotion,

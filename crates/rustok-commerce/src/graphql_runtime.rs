@@ -156,9 +156,32 @@ impl Default for CommerceOrderReadCallContext {
     }
 }
 
+/// Request-owned normalized public channel used by GraphQL fulfillment owner reads.
+///
+/// The value is derived from trusted `RequestContext` data by the mounted GraphQL extension.
+/// Directly embedded compatibility schemas that do not mount the extension retain `None`.
+#[derive(Clone, Default)]
+pub(crate) struct CommerceFulfillmentReadCallContext {
+    channel: Option<String>,
+}
+
+impl CommerceFulfillmentReadCallContext {
+    fn from_extension_context(ctx: &ExtensionContext<'_>) -> Self {
+        let channel = ctx
+            .data_opt::<RequestContext>()
+            .and_then(crate::storefront_channel::public_channel_slug_from_request);
+        Self { channel }
+    }
+
+    pub(crate) fn channel(&self) -> Option<&str> {
+        self.channel.as_deref()
+    }
+}
+
 tokio::task_local! {
     static CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME: CommerceShippingOptionReadRuntime;
     static CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME: CommerceFulfillmentLifecycleReadRuntime;
+    static CURRENT_COMMERCE_FULFILLMENT_READ_CALL_CONTEXT: CommerceFulfillmentReadCallContext;
     static CURRENT_COMMERCE_ORDER_READ_RUNTIME: CommerceOrderReadRuntime;
     static CURRENT_COMMERCE_ORDER_READ_CALL_CONTEXT: CommerceOrderReadCallContext;
     static CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME: ProductCatalogReadRuntime;
@@ -167,8 +190,9 @@ tokio::task_local! {
 /// Resolver-scoped bridge from schema runtime data to private compatibility facades.
 ///
 /// The mounted extension carries shipping-option, fulfillment-lifecycle, order, and Product catalog
-/// owner ports plus validated order actor/channel/locale facts so every included Commerce resolver
-/// uses host-selected adapters and request-owned context for the current async task.
+/// owner ports plus validated order actor/channel/locale and fulfillment public-channel facts so
+/// every included Commerce resolver uses host-selected adapters and request-owned context for the
+/// current async task.
 #[derive(Default)]
 pub struct CommerceShippingOptionReadScope;
 
@@ -192,18 +216,23 @@ impl Extension for CommerceShippingOptionReadScopeExtension {
             return next.run(ctx, info).await;
         };
         let order_call_context = CommerceOrderReadCallContext::from_extension_context(ctx);
+        let fulfillment_call_context =
+            CommerceFulfillmentReadCallContext::from_extension_context(ctx);
         CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME
             .scope(
                 runtime_data.shipping_option_read_runtime(),
                 CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME.scope(
                     runtime_data.fulfillment_lifecycle_read_runtime(),
-                    CURRENT_COMMERCE_ORDER_READ_CALL_CONTEXT.scope(
-                        order_call_context,
-                        CURRENT_COMMERCE_ORDER_READ_RUNTIME.scope(
-                            runtime_data.order_read_runtime(),
-                            CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME.scope(
-                                runtime_data.product_catalog_read_runtime(),
-                                next.run(ctx, info),
+                    CURRENT_COMMERCE_FULFILLMENT_READ_CALL_CONTEXT.scope(
+                        fulfillment_call_context,
+                        CURRENT_COMMERCE_ORDER_READ_CALL_CONTEXT.scope(
+                            order_call_context,
+                            CURRENT_COMMERCE_ORDER_READ_RUNTIME.scope(
+                                runtime_data.order_read_runtime(),
+                                CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME.scope(
+                                    runtime_data.product_catalog_read_runtime(),
+                                    next.run(ctx, info),
+                                ),
                             ),
                         ),
                     ),
@@ -227,6 +256,13 @@ pub(crate) fn fulfillment_lifecycle_read_runtime_for_current_graphql_scope(
     CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME
         .try_with(Clone::clone)
         .unwrap_or_else(|_| CommerceFulfillmentLifecycleReadRuntime::in_process(db))
+}
+
+pub(crate) fn fulfillment_read_call_context_for_current_graphql_scope(
+) -> CommerceFulfillmentReadCallContext {
+    CURRENT_COMMERCE_FULFILLMENT_READ_CALL_CONTEXT
+        .try_with(Clone::clone)
+        .unwrap_or_default()
 }
 
 pub(crate) fn order_read_runtime_for_current_graphql_scope(
