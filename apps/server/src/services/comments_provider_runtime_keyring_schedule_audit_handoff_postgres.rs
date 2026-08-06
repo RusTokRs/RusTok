@@ -2,7 +2,7 @@ use std::{fmt, time::Duration};
 
 use rustok_api::AuthPrincipalKind;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult,
+    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult,
     Statement, TransactionTrait,
 };
 use uuid::Uuid;

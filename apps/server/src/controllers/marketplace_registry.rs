@@ -2920,6 +2920,7 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::InvalidPublishRequestCreateCommand
         | ModuleGovernanceError::InvalidPublishArtifactAttachCommand
         | ModuleGovernanceError::InvalidPublicationEvidenceCommand
+        | ModuleGovernanceError::InvalidPlatformPublicationEvidenceRequest
         | ModuleGovernanceError::InvalidBuildServiceAttestationCommand
         | ModuleGovernanceError::InvalidPlatformAdmissionCommand
         | ModuleGovernanceError::InvalidPlatformBuildStageCommand
@@ -2951,6 +2952,8 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         }
         ModuleGovernanceError::OwnerUnchanged
         | ModuleGovernanceError::OwnerAlreadyBound
+        | ModuleGovernanceError::PublishRequestCreationConflict
+        | ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable
         | ModuleGovernanceError::PublishRequestReleaseAlreadyActive { .. }
         | ModuleGovernanceError::PublishRequestCannotBeRejected(_)
         | ModuleGovernanceError::PublishRequestCannotRequestChanges(_)
