@@ -28,13 +28,15 @@ The first host-level FFA slice has already been applied to the storefront header
 render adapter. This split is enforced by the fast verifier `npm run verify:frontend:host-ffa-contract`.
 
 Host context server functions are split by concern: enabled-module, canonical-route and SEO page-context
-adapters live next to their context contracts.
+adapters live next to their context contracts. Module-specific canonical mounts may call a module-owned
+route facade and perform only HTTP composition in the host.
 
 ## Responsibility boundaries
 
 - own the Leptos storefront host and its SSR/runtime wiring;
 - mount module-owned storefront packages from `crates/rustok-*/storefront`;
 - maintain the generic route contract for storefront modules;
+- mount owner-admitted canonical route families without reading module persistence or historical ledgers;
 - pass `UiRouteContext` and effective locale to module-owned packages;
 - not pull module business UI and module transport contracts into the host.
 
@@ -44,13 +46,14 @@ adapters live next to their context contracts.
 - Native Leptos `#[server]` functions are used as the preferred internal data-layer path in the SSR/hydrate runtime in parallel with GraphQL.
 - CSR/WASM for Leptos storefront packages is a compatibility/debug profile. If a package must run standalone, it must have a GraphQL/REST fallback and not require `/api/fn/*`.
 - Generic storefront routes live under the `/modules/{route_segment}` and `/{locale}/modules/{route_segment}` families.
+- The localized Forum topic route lives at `/{locale}/forum/t/{short_id}/{slug}` and delegates admission to `rustok-forum-storefront` before SSR.
 - The host selects the transport path by build/runtime profile: native `#[server]` for SSR/hydrate and GraphQL for headless/CSR.
 - Host routing contexts keep their native adapters separate: enabled-module resolution,
   canonical-route resolution and SEO page-context resolution live in their respective
   `shared/context/*_native_server_adapter.rs` files. The context modules select the
   native or GraphQL path and do not share an aggregate adapter.
 - Generated search mount uses host-owned `SearchStorefrontComposition`: the adapter checks tenant enablement of the `product` module, passes `UiRouteContext.locale` to a public-safe product metadata helper, and maps owner DTO to search props without moving product/search domain logic into the host.
-- Module-owned storefront packages must build internal links through `UiRouteContext::module_route_base()`, not through hardcoded route strings.
+- Module-owned storefront packages must build generic module links through `UiRouteContext::module_route_base()`. Owner-specific canonical route families may be emitted by the owner module package when the route contract requires a different path.
 - Module-owned storefront packages do not define their own locale negotiation policy; the effective locale comes from the host/runtime contract.
 - Module-owned Leptos storefront packages read query/state through the common helper layer `leptos-ui-routing`,
   not through package-local direct access to `UiRouteContext.query_value(...)`.
@@ -99,29 +102,33 @@ Direct storefront server functions currently cover:
 - `product/storefront-data`
 - `region/storefront-data`
 - `forum/storefront-data`
+- `forum/storefront-topic-route`
 - `search/storefront-search`
 - `search/storefront-filter-presets`
 - `search/storefront-suggestions`
 - `search/storefront-track-click`
 
-The GraphQL path remains a working and supported headless contract for module-owned storefront surfaces, `cart/storefront-data` now serves the cart-owned cart workspace with a seller-aware delivery-group snapshot, `cart/decrement-line-item` and `cart/remove-line-item` provide a safe line-item write-side within the cart boundary, and `commerce/storefront-data`, `commerce/select-shipping-option`, `commerce/create-payment-collection`, and `commerce/complete-checkout` serve the aggregate checkout workspace in `rustok-commerce/storefront`, maintaining the seller-aware shipping selection contract end-to-end.
+The GraphQL path remains a working and supported headless contract for module-owned storefront surfaces. Forum route resolution uses the additive `forumStorefrontTopicRoute` query and the same exact audience owner as the native path. `cart/storefront-data` now serves the cart-owned cart workspace with a seller-aware delivery-group snapshot, `cart/decrement-line-item` and `cart/remove-line-item` provide a safe line-item write-side within the cart boundary, and `commerce/storefront-data`, `commerce/select-shipping-option`, `commerce/create-payment-collection`, and `commerce/complete-checkout` serve the aggregate checkout workspace in `rustok-commerce/storefront`, maintaining the seller-aware shipping selection contract end-to-end.
 
 ## Canonical routing and locale
 
 - Canonical and alias state is stored in backend/domain layers, not in the storefront host.
-- Storefront uses SEO preflight before rendering a page: it first reads `SeoPageContext`, and the canonical-only path remains a fallback branch.
+- Storefront uses SEO preflight before rendering a generic module page: it first reads `SeoPageContext`, and the canonical-only path remains a fallback branch.
+- Forum topic route admission is separate from SEO composition: `rustok-forum-storefront` returns only visibility-admitted `CANONICAL` or `REDIRECT` DTOs, and the host applies private `308`, `404` or `503` responses before rendering.
+- Forum `GONE` remains hidden and collapses to the same public `404` as missing or non-visible content until an owner-approved visibility snapshot exists.
 - Consume policy is build-profile-selected: Leptos monolith/hydrate uses native `#[server]`, headless/CSR uses GraphQL, and transport errors do not automatically switch from native execution to GraphQL.
 - `SeoPageContext` is split into `route` and `document`: the route part handles redirect/canonical/hreflang, the document part handles typed SSR head metadata.
 - `SeoPageContext.document.structured_data_blocks` contains typed JSON-LD blocks (`schema_kind`, `schema_type`, `source`, payload), not host-local raw schema mapping.
 - `storefront/seo-page-context` on SSR now also passes the host `RequestContext.channel_slug` to `rustok-seo`, so channel-restricted forum topics receive SEO head only in the matching public channel.
 - Rust-side head serialization is extracted to `rustok-seo-render`, so the host does not maintain its own second renderer over the same SEO contract.
 - Locale-prefixed routes are the primary route contract.
-- Host locale normalization goes through the shared `rustok_core::normalize_locale_tag`, not through package-local rules.
-- Legacy query-based locale fallback is only allowed as a backward-compatible path.
+- Host locale normalization goes through the shared `rustok_api::normalize_locale_tag`, not through package-local rules.
+- Legacy query-based locale fallback is only allowed as a backward-compatible generic module path.
 
 ## SEO parity evidence
 
 - Leptos Storefront is the Rust-host reference for SSR SEO rendering: it consumes `SeoPageContext` through `storefront/seo-page-context` and serializes the head via `rustok-seo-render`.
+- FORUM-24I does not claim Forum canonical, hreflang or structured-data integration for the new topic path; that remains a separate owner/SEO composition slice.
 - D8/D9 compile-free evidence is seeded in the Next storefront fixture so route ownership and long-tail differences stay explicit across Rust and Next hosts.
 - Final closeout still requires live SSR smoke evidence for runtime page context, robots/canonical/hreflang metadata and structured-data blocks against a running backend.
 
@@ -136,12 +143,14 @@ The GraphQL path remains a working and supported headless contract for module-ow
 ## Verification
 
 - `npm.cmd run verify:storefront:routes`
+- `node scripts/verify/verify-forum-topic-route-storefront-mount.mjs`
 - storefront-specific targeted smoke/contract runs on module-owned surfaces
 - when changing manifest wiring, cross-reference with `docs/modules/manifest.md`
 
 ## Related documents
 
 - [Implementation plan](./implementation-plan.md)
+- [FORUM-24I canonical topic route mount](../../../crates/rustok-forum/docs/forum-24i-topic-route-storefront-mount.md)
 - [Storefront architecture notes](../../../docs/UI/storefront.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
