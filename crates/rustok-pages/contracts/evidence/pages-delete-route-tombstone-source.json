@@ -1,0 +1,67 @@
+{
+  "format": "pages_delete_route_tombstone_source_v1",
+  "status": "pages_delete_route_tombstone_source_unvalidated",
+  "date": "2026-08-06",
+  "execution": [],
+  "validation": {
+    "source_verifier_run": false,
+    "rust_tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "sqlite_run": false,
+    "postgres_run": false,
+    "host_run": false,
+    "browser_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  },
+  "source_contract": {
+    "published_route_snapshot_table_added": true,
+    "snapshot_claim_unique_by_tenant_locale_slug": true,
+    "snapshot_history_survives_page_delete": true,
+    "published_routes_snapshotted_before_unpublish": true,
+    "published_routes_snapshotted_before_archive": true,
+    "never_published_draft_routes_not_snapshotted": true,
+    "delete_tombstones_written_in_owner_transaction": true,
+    "current_public_route_becomes_gone": true,
+    "multiple_public_route_snapshots_become_gone": true,
+    "existing_redirect_history_preserved": true,
+    "redirect_to_deleted_page_folds_to_gone": true,
+    "deleted_public_claims_cannot_be_reused": true,
+    "draft_only_deleted_claim_can_be_reused": true,
+    "stable_tombstone_reason": true,
+    "focused_sqlite_regression_added": true,
+    "production_pages_lifecycle_behavior_changed": true,
+    "production_pages_route_resolution_changed": true,
+    "production_page_builder_behavior_changed": false,
+    "page_body_schema_changed": false,
+    "page_artifact_schema_changed": false,
+    "graphql_schema_changed": false,
+    "rest_http_api_changed": false,
+    "cache_policy_changed": false,
+    "event_schema_changed": false,
+    "optional_event_infrastructure_changed": false,
+    "historical_backfill_added": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "owner": {
+    "snapshot": "record_published_route_snapshots_in_tx",
+    "delete": "PageService::delete",
+    "tombstone": "record_delete_route_tombstones_in_tx",
+    "resolver": "PageRouteService::resolve",
+    "reason": "Page deleted"
+  },
+  "migration": "crates/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs",
+  "regression": {
+    "path": "crates/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs",
+    "tests": [
+      "delete_turns_every_retained_public_route_into_gone_without_rewriting_redirects",
+      "deleting_a_never_published_draft_does_not_reserve_its_slug"
+    ],
+    "backend": "sqlite_in_memory"
+  },
+  "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs",
+  "packet": "docs/modules/pages-page-builder-delete-route-tombstone-packet-2026-08-06.md"
+}
