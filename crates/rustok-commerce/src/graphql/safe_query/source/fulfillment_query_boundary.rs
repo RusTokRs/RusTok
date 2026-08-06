@@ -9,13 +9,15 @@ fn shipping_option_query_context(
     let resource = shipping_option_id
         .map(|id| id.to_string())
         .unwrap_or_else(|| tenant_id.to_string());
-    PortContext::new(
-        tenant_id.to_string(),
-        PortActor::service("rustok-commerce.graphql-query-shipping-options"),
-        locale,
-        format!("graphql-fulfillment:{query_field}:{resource}"),
+    with_current_graphql_public_channel(
+        PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("rustok-commerce.graphql-query-shipping-options"),
+            locale,
+            format!("graphql-fulfillment:{query_field}:{resource}"),
+        )
+        .with_deadline(std::time::Duration::from_secs(2)),
     )
-    .with_deadline(std::time::Duration::from_secs(2))
 }
 
 fn fulfillment_query_context(
@@ -26,13 +28,24 @@ fn fulfillment_query_context(
     order_id: Option<Uuid>,
 ) -> PortContext {
     let resource = fulfillment_id.or(order_id).unwrap_or(tenant_id);
-    PortContext::new(
-        tenant_id.to_string(),
-        PortActor::service("rustok-commerce.graphql-query-fulfillments"),
-        "en",
-        format!("graphql-fulfillment-lifecycle:{query_field}:{operation}:{resource}"),
+    with_current_graphql_public_channel(
+        PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("rustok-commerce.graphql-query-fulfillments"),
+            "en",
+            format!("graphql-fulfillment-lifecycle:{query_field}:{operation}:{resource}"),
+        )
+        .with_deadline(std::time::Duration::from_secs(2)),
     )
-    .with_deadline(std::time::Duration::from_secs(2))
+}
+
+fn with_current_graphql_public_channel(context: PortContext) -> PortContext {
+    let call_context =
+        crate::graphql_runtime::fulfillment_read_call_context_for_current_graphql_scope();
+    match call_context.channel() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

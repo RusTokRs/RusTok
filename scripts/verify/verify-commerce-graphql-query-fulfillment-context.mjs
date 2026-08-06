@@ -84,6 +84,30 @@ const fulfillmentLatest = between(
   'fn shipping_option_query_context(',
   'fulfillment latest',
 );
+const shippingOptionContext = between(
+  shim,
+  'fn shipping_option_query_context(',
+  'fn fulfillment_query_context(',
+  'shipping option context',
+);
+const fulfillmentContext = between(
+  shim,
+  'fn fulfillment_query_context(',
+  'fn with_current_graphql_public_channel(',
+  'fulfillment lifecycle context',
+);
+const channelContextHelper = between(
+  shim,
+  'fn with_current_graphql_public_channel(',
+  '#[allow(clippy::too_many_arguments)]\nfn map_shipping_option_lookup_port_error(',
+  'fulfillment channel context helper',
+);
+const fulfillmentCallContext = between(
+  graphqlRuntime,
+  'pub(crate) struct CommerceFulfillmentReadCallContext {',
+  'tokio::task_local! {',
+  'fulfillment request call context',
+);
 const adminQuery = between(
   query,
   'async fn shipping_options(',
@@ -137,10 +161,30 @@ for (const [source, value, label] of [
   [fulfillmentLatest, 'FindLatestFulfillmentByOrderProjectionRequest { order_id }', 'typed latest request'],
 ]) requireText(source, value, label);
 
+for (const [source, value, label] of [
+  [shippingOptionContext, 'with_current_graphql_public_channel(', 'shipping-option channel attachment'],
+  [shippingOptionContext, 'PortActor::service("rustok-commerce.graphql-query-shipping-options")', 'shipping-option actor'],
+  [fulfillmentContext, 'with_current_graphql_public_channel(', 'fulfillment channel attachment'],
+  [fulfillmentContext, 'PortActor::service("rustok-commerce.graphql-query-fulfillments")', 'lifecycle actor'],
+  [channelContextHelper, 'fulfillment_read_call_context_for_current_graphql_scope()', 'scoped channel read'],
+  [channelContextHelper, 'Some(channel) => context.with_channel(channel)', 'port channel propagation'],
+  [channelContextHelper, 'None => context', 'standalone no-channel fallback'],
+]) requireText(source, value, label);
+for (const value of [
+  'RequestContext',
+  'channel_slug',
+  'public_channel_slug_from_request',
+]) forbidText(channelContextHelper, value, 'private facade request-context ownership');
+const channelHelperReferences = shim.match(/with_current_graphql_public_channel\(/g) ?? [];
+if (channelHelperReferences.length !== 3) {
+  failures.push(
+    `expected one helper plus two fulfillment context applications, found ${channelHelperReferences.length}`,
+  );
+}
+
 for (const [value, label] of [
   ['pub(crate) struct ShippingOptionAdminQueryError(BoundaryError);', 'typed admin error'],
   ['fn fulfillment_query_context(', 'lifecycle context builder'],
-  ['PortActor::service("rustok-commerce.graphql-query-fulfillments")', 'lifecycle actor'],
   ['graphql-fulfillment-lifecycle:{query_field}:{operation}:{resource}', 'lifecycle correlation'],
   ['with_deadline(std::time::Duration::from_secs(2))', 'read deadline'],
   ['fn map_fulfillment_port_error(', 'lifecycle mapper'],
@@ -158,6 +202,8 @@ for (const [value, label] of [
   ['actor_kind = facts.actor_kind', 'actor kind logging'],
   ['actor_id_length = facts.actor_id_length', 'actor length logging'],
   ['correlation_id_length = facts.correlation_id_length', 'correlation length logging'],
+  ['channel_present = facts.channel_present', 'channel presence logging'],
+  ['channel_length = ?facts.channel_length', 'channel length logging'],
   ['deadline_ms = ?facts.deadline_ms', 'deadline logging'],
   ['shipping_option_id_shape', 'shipping option shape logging'],
   ['fulfillment_id_shape', 'fulfillment shape logging'],
@@ -173,6 +219,7 @@ for (const value of [
   'correlation_id = %context.correlation_id',
   'tenant_id = %context.tenant_id',
   'actor = ?context.actor',
+  'channel = %',
   'shipping_option_id = ?shipping_option_id',
   'fulfillment_id = ?fulfillment_id',
   'order_id = ?order_id',
@@ -186,8 +233,17 @@ for (const value of ['impl std::fmt::Display', 'impl Display', 'format!("{}", se
 for (const [source, value, label] of [
   [graphqlRuntime, 'pub struct CommerceShippingOptionReadRuntime {', 'shipping runtime'],
   [graphqlRuntime, 'pub struct CommerceFulfillmentLifecycleReadRuntime {', 'lifecycle runtime'],
+  [graphqlRuntime, 'pub(crate) struct CommerceFulfillmentReadCallContext {', 'fulfillment call context'],
+  [fulfillmentCallContext, 'channel: Option<String>', 'bounded channel storage'],
+  [fulfillmentCallContext, 'ctx.data_opt::<RequestContext>()', 'trusted request context'],
+  [fulfillmentCallContext, '.and_then(crate::storefront_channel::public_channel_slug_from_request)', 'normalized public channel'],
+  [fulfillmentCallContext, 'pub(crate) fn channel(&self) -> Option<&str>', 'channel accessor'],
   [graphqlRuntime, 'tokio::task_local! {', 'task-local scope'],
   [graphqlRuntime, 'CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME', 'lifecycle scope identity'],
+  [graphqlRuntime, 'CURRENT_COMMERCE_FULFILLMENT_READ_CALL_CONTEXT', 'fulfillment call scope identity'],
+  [graphqlRuntime, 'CommerceFulfillmentReadCallContext::from_extension_context(ctx)', 'request channel derivation'],
+  [graphqlRuntime, 'CURRENT_COMMERCE_FULFILLMENT_READ_CALL_CONTEXT.scope(', 'request channel scoping'],
+  [graphqlRuntime, 'fulfillment_read_call_context_for_current_graphql_scope', 'scoped channel accessor'],
   [graphqlRuntime, 'pub struct CommerceShippingOptionReadScope;', 'shared extension'],
   [graphqlRuntime, 'runtime_data.fulfillment_lifecycle_read_runtime()', 'lifecycle scope value'],
   [graphqlRuntime, 'CommerceFulfillmentLifecycleReadRuntime::in_process(db)', 'standalone fallback'],
@@ -198,6 +254,11 @@ for (const [source, value, label] of [
   [serverSchema, 'let builder = builder.extension(CommerceShippingOptionReadScope);', 'server extension mount'],
   [commerceCargo, 'tokio.workspace = true', 'task-local dependency'],
 ]) requireText(source, value, label);
+forbidText(
+  fulfillmentCallContext,
+  'request.channel_slug.clone()',
+  'un-normalized fulfillment request channel',
+);
 
 for (const [value, label] of [
   ['use rustok_fulfillment::FulfillmentService;', 'unchanged facade import'],
@@ -246,5 +307,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ mounted Commerce GraphQL shipping-option and fulfillment lifecycle reads retain host-scoped owner ports, typed failures, bounded diagnostics, optional not-found, and two-second context policy',
+  '✔ mounted Commerce GraphQL shipping-option and fulfillment lifecycle reads retain host-scoped owner ports, normalized public channel context, typed failures, bounded diagnostics, optional not-found, and two-second policy',
 );
