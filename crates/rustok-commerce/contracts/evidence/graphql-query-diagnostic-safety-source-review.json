@@ -1,0 +1,43 @@
+{
+  "status": "commerce_graphql_query_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs",
+    "scripts/verify/verify-commerce-graphql-query-error-boundary.mjs",
+    "crates/rustok-commerce/docs/graphql-query-diagnostic-safety.md",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "dynamic_message_content_logged": false,
+    "database_error_logged": false,
+    "commerce_error_logged": false,
+    "fulfillment_error_logged": false,
+    "order_error_logged": false,
+    "payment_error_logged": false,
+    "diagnostic_error_debug_redacted": true,
+    "dynamic_message_presence_logged": true,
+    "dynamic_message_length_logged": true,
+    "typed_policy_selection_precedes_shadowing": true,
+    "six_diagnostic_shadow_points": true,
+    "graphql_public_messages_preserved": true,
+    "graphql_public_codes_preserved": true,
+    "graphql_retryability_preserved": true,
+    "graphql_pass_through_preserved": true,
+    "product_mapper_delegation_preserved": true,
+    "resolver_source_unchanged": true,
+    "query_correlation_context_added": false,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}
