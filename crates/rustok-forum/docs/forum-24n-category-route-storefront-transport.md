@@ -66,7 +66,9 @@ For authenticated requests, both transports:
 1. derive `SecurityContext` from the trusted permission snapshot;
 2. build `category_read_audience_port_context` from routed tenant, authenticated user, request channel and canonical locale;
 3. use operation `SelectedCategory` and the transport-specific label;
-4. call `get_authenticated_storefront_visible_with_audience_context`.
+4. call `get_authenticated_storefront_list_visible_with_audience_context`.
+
+The authenticated method intentionally uses the existing `forum_categories:list` storefront deep-link boundary. It does not require the stronger owner-facing `forum_categories:read` permission merely because the route selected one category.
 
 This rechecks the inherited public/authenticated floor and every richer category audience layer. An alias row never authorizes disclosure.
 
