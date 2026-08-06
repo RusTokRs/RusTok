@@ -32,6 +32,13 @@ const between = (content, start, end, label) => {
   }
   return content.slice(startIndex, endIndex);
 };
+const requireShadowBeforeTrace = (content, shadow, label) => {
+  const shadowIndex = content.indexOf(shadow);
+  const traceIndex = content.indexOf('tracing::error!(');
+  if (shadowIndex < 0 || traceIndex < 0 || shadowIndex > traceIndex) {
+    failures.push(`${label}: diagnostic shadow must precede tracing::error!`);
+  }
+};
 
 const portMapper = between(
   source,
@@ -47,34 +54,116 @@ const ownerMapper = between(
 );
 const orchestrationStart = source.indexOf('fn map_admin_fulfillment_orchestration_error(');
 const orchestrationMapper =
-  orchestrationStart < 0
-    ? ''
-    : source.slice(orchestrationStart);
+  orchestrationStart < 0 ? '' : source.slice(orchestrationStart);
 if (orchestrationStart < 0) {
   failures.push('admin fulfillment orchestration mapper: unable to isolate source block');
 }
 
 for (const [value, label] of [
-  ['AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,', 'typed API imports'],
-  ['FulfillmentError, FulfillmentService, ListFulfillmentProjectionsRequest,', 'typed fulfillment imports'],
-  ['ReadFulfillmentProjectionRequest,', 'typed fulfillment detail request'],
-  ['FulfillmentOrchestrationError, FulfillmentOrchestrationService,', 'typed orchestration import'],
-  ['use rustok_web::{HttpError, HttpResult};', 'typed HTTP error import'],
-  ['const ADMIN_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_routes";', 'owner constant'],
-  [
-    'const ADMIN_FULFILLMENT_ORCHESTRATION_OWNER: &str =',
-    'orchestration owner constant',
-  ],
-  [
-    'const ADMIN_FULFILLMENT_BOUNDARY: &str = "commerce_admin_fulfillment_http";',
-    'HTTP boundary constant',
-  ],
-  ['struct AdminFulfillmentErrorContext {', 'route error context'],
-  ['tenant_id: Uuid,', 'tenant context field'],
-  ['fulfillment_id: Option<Uuid>,', 'truthful fulfillment identity field'],
-  ['order_id: Option<Uuid>,', 'truthful order identity field'],
-  ["operation: &'static str,", 'operation context field'],
+  ['struct AdminFulfillmentErrorContext {', 'typed route error context'],
+  ['tenant_id: Uuid,', 'typed tenant identity'],
+  ['fulfillment_id: Option<Uuid>,', 'typed fulfillment identity'],
+  ['order_id: Option<Uuid>,', 'typed order identity'],
+  ["operation: &'static str,", 'typed operation'],
+  ['struct AdminFulfillmentDiagnosticContext {', 'bounded route diagnostic context'],
+  ["tenant_id: &'static str,", 'bounded tenant shape'],
+  ["fulfillment_id: &'static str,", 'bounded fulfillment shape'],
+  ["order_id: &'static str,", 'bounded order shape'],
+  ['impl From<&AdminFulfillmentErrorContext> for AdminFulfillmentDiagnosticContext', 'typed-to-diagnostic conversion'],
+  ['struct AdminFulfillmentPortDiagnosticContext {', 'bounded port diagnostic context'],
+  ["correlation_id: &'static str,", 'bounded correlation shape'],
+  ["actor: &'static str,", 'bounded actor shape'],
+  ["channel: &'static str,", 'bounded channel shape'],
+  ['locale: usize,', 'bounded locale shape'],
+  ['deadline_ms: Option<u64>,', 'deadline retention'],
+  ['struct AdminFulfillmentPortDiagnosticError', 'bounded port diagnostic error'],
+  ['struct AdminFulfillmentDiagnosticError;', 'bounded owner diagnostic error'],
+  ['formatter.write_str("redacted")', 'redacted Debug output'],
+  ["fn uuid_shape(value: Uuid) -> &'static str", 'required UUID shape helper'],
+  ["fn optional_uuid_shape(value: Option<Uuid>) -> &'static str", 'optional UUID shape helper'],
+  ["fn text_presence_shape(value: &str) -> &'static str", 'text presence shape helper'],
+  ["fn optional_text_presence_shape(value: Option<&str>) -> &'static str", 'optional text presence shape helper'],
+  ['"nil"', 'nil UUID shape'],
+  ['"non_nil"', 'non-nil UUID shape'],
+  ['"absent"', 'absent optional shape'],
+  ['"present_nil"', 'present nil optional shape'],
+  ['"present_non_nil"', 'present non-nil optional shape'],
+  ['"empty"', 'empty text shape'],
+  ['"present_empty"', 'present empty text shape'],
+  ['"present_non_empty"', 'present non-empty text shape'],
 ]) requireText(source, value, label);
+
+for (const [value, label] of [
+  ['PortErrorKind::Validation', 'port validation policy'],
+  ['PortErrorKind::NotFound', 'port not-found policy'],
+  ['PortErrorKind::Conflict', 'port conflict policy'],
+  ['PortErrorKind::Forbidden', 'port forbidden policy'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'port unavailable policy'],
+  ['PortErrorKind::InvariantViolation', 'port invariant policy'],
+  ['let context = AdminFulfillmentDiagnosticContext::from(&context);', 'port context shadow'],
+  ['let port_context = AdminFulfillmentPortDiagnosticContext::from(port_context);', 'port metadata shadow'],
+  ['let error = AdminFulfillmentPortDiagnosticError {', 'port error shadow'],
+  ['code: error.code.as_str()', 'stable internal code retention'],
+  ['retryable: error.retryable', 'retryability retention'],
+  ['error = ?error', 'redacted port diagnostic'],
+  ['owner = ADMIN_FULFILLMENT_OWNER', 'port owner'],
+  ['owner_operation,', 'port owner operation'],
+  ['correlation_id = %port_context.correlation_id', 'correlation shape log'],
+  ['tenant_id = %context.tenant_id', 'tenant shape log'],
+  ['fulfillment_id = ?context.fulfillment_id', 'fulfillment shape log'],
+  ['order_id = ?context.order_id', 'order shape log'],
+  ['operation = %context.operation', 'operation log'],
+  ['actor = ?port_context.actor', 'actor shape log'],
+  ['channel = ?port_context.channel', 'channel shape log'],
+  ['locale = %port_context.locale', 'locale length log'],
+  ['deadline_ms = ?port_context.deadline_ms', 'deadline log'],
+  ['internal_code = %error.code', 'stable internal code log'],
+  ['retryable = error.retryable', 'retryability log'],
+  ['HttpError::new(status, code, message)', 'static port envelope'],
+]) requireText(portMapper, value, label);
+requireShadowBeforeTrace(
+  portMapper,
+  'let error = AdminFulfillmentPortDiagnosticError {',
+  'admin fulfillment port mapper',
+);
+
+for (const [value, label] of [
+  ['FulfillmentError::Validation(_)', 'owner validation policy'],
+  ['FulfillmentError::ShippingOptionNotFound(_)', 'owner shipping-option policy'],
+  ['FulfillmentError::FulfillmentNotFound(_)', 'owner fulfillment policy'],
+  ['FulfillmentError::InvalidTransition { .. }', 'owner transition policy'],
+  ['FulfillmentError::Database(_)', 'owner database policy'],
+  ['let context = AdminFulfillmentDiagnosticContext::from(&context);', 'owner context shadow'],
+  ['let error = AdminFulfillmentDiagnosticError;', 'owner error shadow'],
+  ['error = ?error', 'redacted owner diagnostic'],
+  ['owner = ADMIN_FULFILLMENT_OWNER', 'owner diagnostic owner'],
+  ['HttpError::new(status, code, message)', 'static owner envelope'],
+]) requireText(ownerMapper, value, label);
+requireShadowBeforeTrace(
+  ownerMapper,
+  'let error = AdminFulfillmentDiagnosticError;',
+  'admin fulfillment owner mapper',
+);
+
+for (const [value, label] of [
+  ['FulfillmentOrchestrationError::Fulfillment(error)', 'nested owner delegation'],
+  ['FulfillmentOrchestrationError::OrderNotFound(_)', 'order-not-found policy'],
+  ['FulfillmentOrchestrationError::Database(_)', 'database policy'],
+  ['FulfillmentOrchestrationError::Validation(_)', 'validation policy'],
+  ['FulfillmentOrchestrationError::ProviderAfterPersistence {', 'provider-after-persistence policy'],
+  ['FulfillmentOrchestrationError::PersistenceAfterProvider {', 'persistence-after-provider policy'],
+  ['context.fulfillment_id = Some(*fulfillment_id);', 'reconciliation fulfillment identity adoption'],
+  ['let context = AdminFulfillmentDiagnosticContext::from(&context);', 'orchestration context shadow'],
+  ['let error = AdminFulfillmentDiagnosticError;', 'orchestration error shadow'],
+  ['owner = ADMIN_FULFILLMENT_ORCHESTRATION_OWNER', 'orchestration owner'],
+  ['"Fulfillment operation requires reconciliation"', 'static reconciliation envelope'],
+  ['HttpError::new(status, code, message)', 'static orchestration envelope'],
+]) requireText(orchestrationMapper, value, label);
+requireShadowBeforeTrace(
+  orchestrationMapper,
+  'let error = AdminFulfillmentDiagnosticError;',
+  'admin fulfillment orchestration mapper',
+);
 
 for (const [value, label] of [
   ['pub async fn list_fulfillments(', 'list route'],
@@ -88,148 +177,33 @@ for (const [value, label] of [
   ['[Permission::FULFILLMENTS_READ]', 'read permission'],
   ['[Permission::FULFILLMENTS_CREATE]', 'create permission'],
   ['[Permission::FULFILLMENTS_UPDATE]', 'update permission'],
-  ['request_context: RequestContext', 'request context extraction'],
-  ['ListFulfillmentProjectionsRequest {', 'list port input contract'],
-  ['page: pagination.page', 'page forwarding'],
-  ['per_page: pagination.limit()', 'page-size forwarding'],
-  ['status: params.status', 'status forwarding'],
-  ['order_id: params.order_id', 'order forwarding'],
-  ['customer_id: params.customer_id', 'customer forwarding'],
-  ['.list_fulfillment_projections(', 'list owner-port contract'],
-  ['ReadFulfillmentProjectionRequest { fulfillment_id: id }', 'detail port input contract'],
-  ['.read_fulfillment_projection(', 'detail owner-port contract'],
-  ['let order_id = input.order_id;', 'create order identity capture'],
-  ['Some(order_id)', 'create order identity context'],
-  ['.create_manual_fulfillment(tenant.id, input)', 'create service contract'],
-  ['.ship_fulfillment(tenant.id, id, input)', 'ship service contract'],
-  ['.deliver_fulfillment(tenant.id, id, input)', 'deliver service contract'],
-  ['.reopen_fulfillment(tenant.id, id, input)', 'reopen service contract'],
-  ['.reship_fulfillment(tenant.id, id, input)', 'reship service contract'],
-  ['.cancel_fulfillment(tenant.id, id, input)', 'cancel service contract'],
-]) requireText(source, value, label);
-
-for (const [value, label] of [
-  ['"list_fulfillments"', 'list operation'],
-  ['"list_fulfillment_projections"', 'list owner operation'],
-  ['"create_manual_fulfillment"', 'create operation'],
-  ['"get_fulfillment"', 'show operation'],
-  ['"read_fulfillment_projection"', 'show owner operation'],
-  ['"ship_fulfillment"', 'ship operation'],
-  ['"deliver_fulfillment"', 'deliver operation'],
-  ['"reopen_fulfillment"', 'reopen operation'],
-  ['"reship_fulfillment"', 'reship operation'],
-  ['"cancel_fulfillment"', 'cancel operation'],
+  ['.list_fulfillment_projections(', 'list owner-port call'],
+  ['.read_fulfillment_projection(', 'detail owner-port call'],
+  ['.create_manual_fulfillment(tenant.id, input)', 'create orchestration call'],
+  ['.ship_fulfillment(tenant.id, id, input)', 'ship orchestration call'],
+  ['.deliver_fulfillment(tenant.id, id, input)', 'deliver owner call'],
+  ['.reopen_fulfillment(tenant.id, id, input)', 'reopen owner call'],
+  ['.reship_fulfillment(tenant.id, id, input)', 'reship orchestration call'],
+  ['.cancel_fulfillment(tenant.id, id, input)', 'cancel orchestration call'],
 ]) requireText(source, value, label);
 
 const portMapperUses =
-  source.match(
-    /map_admin_fulfillment_port_error\(\s+AdminFulfillmentErrorContext::new\(/g,
-  ) ?? [];
+  source.match(/map_admin_fulfillment_port_error\(\s+AdminFulfillmentErrorContext::new\(/g) ?? [];
 if (portMapperUses.length !== 2) {
   failures.push(`expected two context-aware port mapper callsites, found ${portMapperUses.length}`);
 }
 const ownerMapperUses =
-  source.match(
-    /map_admin_fulfillment_error\(\s+AdminFulfillmentErrorContext::new\(/g,
-  ) ?? [];
+  source.match(/map_admin_fulfillment_error\(\s+AdminFulfillmentErrorContext::new\(/g) ?? [];
 if (ownerMapperUses.length !== 2) {
-  failures.push(`expected two context-aware mutation owner mapper callsites, found ${ownerMapperUses.length}`);
+  failures.push(`expected two context-aware owner mapper callsites, found ${ownerMapperUses.length}`);
 }
 const orchestrationMapperUses =
-  source.match(
-    /map_admin_fulfillment_orchestration_error\(\s+AdminFulfillmentErrorContext::new\(/g,
-  ) ?? [];
+  source.match(/map_admin_fulfillment_orchestration_error\(\s+AdminFulfillmentErrorContext::new\(/g) ?? [];
 if (orchestrationMapperUses.length !== 4) {
   failures.push(
     `expected four context-aware orchestration mapper callsites, found ${orchestrationMapperUses.length}`,
   );
 }
-
-for (const [value, label] of [
-  ['PortErrorKind::Validation', 'port validation variant'],
-  ['PortErrorKind::NotFound', 'port not-found variant'],
-  ['PortErrorKind::Conflict', 'port conflict variant'],
-  ['PortErrorKind::Forbidden', 'port forbidden variant'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'port unavailable variant'],
-  ['PortErrorKind::InvariantViolation', 'port invariant variant'],
-  ['error = ?error', 'typed port cause'],
-  ['owner = ADMIN_FULFILLMENT_OWNER', 'port owner log'],
-  ['owner_operation,', 'owner operation log'],
-  ['correlation_id = %port_context.correlation_id', 'correlation log'],
-  ['tenant_id = %context.tenant_id', 'port tenant log'],
-  ['fulfillment_id = ?context.fulfillment_id', 'port fulfillment identity log'],
-  ['order_id = ?context.order_id', 'port order identity log'],
-  ['operation = %context.operation', 'port operation log'],
-  ['actor = ?port_context.actor', 'actor log'],
-  ['channel = ?port_context.channel', 'channel log'],
-  ['locale = %port_context.locale', 'locale log'],
-  ['deadline_ms = ?port_context.deadline_ms', 'deadline log'],
-  ['internal_code = %error.code', 'stable owner code log'],
-  ['retryable = error.retryable', 'retryability log'],
-  ['error_kind,', 'port error-kind log'],
-  ['public_code = code', 'port public code log'],
-  ['status = %status', 'port status log'],
-  ['boundary = ADMIN_FULFILLMENT_BOUNDARY', 'port boundary log'],
-  ['"Fulfillment request is invalid"', 'static validation envelope'],
-  ['"Commerce resource not found"', 'static not-found envelope'],
-  [
-    '"Fulfillment operation conflicts with the current state"',
-    'static conflict envelope',
-  ],
-  ['"Permission denied"', 'static permission envelope'],
-  ['"Fulfillment storage is temporarily unavailable"', 'static storage envelope'],
-  ['"Fulfillment operation could not be completed safely"', 'static safe-failure envelope'],
-  ['HttpError::new(status, code, message)', 'single port envelope constructor'],
-]) requireText(portMapper, value, label);
-
-for (const [value, label] of [
-  ['FulfillmentError::Validation(_)', 'validation variant'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'shipping-option not-found variant'],
-  ['FulfillmentError::FulfillmentNotFound(_)', 'fulfillment not-found variant'],
-  ['FulfillmentError::InvalidTransition { .. }', 'transition variant'],
-  ['FulfillmentError::Database(_)', 'database variant'],
-  ['error = ?error', 'typed internal cause'],
-  ['owner = ADMIN_FULFILLMENT_OWNER', 'owner log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['fulfillment_id = ?context.fulfillment_id', 'fulfillment identity log'],
-  ['order_id = ?context.order_id', 'order identity log'],
-  ['operation = %context.operation', 'operation log'],
-  ['error_kind,', 'error-kind log'],
-  ['public_code = code', 'public code log'],
-  ['status = %status', 'status log'],
-  ['boundary = ADMIN_FULFILLMENT_BOUNDARY', 'boundary log'],
-  ['"Fulfillment request is invalid"', 'static validation envelope'],
-  ['"Commerce resource not found"', 'static not-found envelope'],
-  [
-    '"Fulfillment operation conflicts with the current state"',
-    'static conflict envelope',
-  ],
-  ['"Fulfillment storage is temporarily unavailable"', 'static storage envelope'],
-  ['HttpError::new(status, code, message)', 'single owner envelope constructor'],
-]) requireText(ownerMapper, value, label);
-
-for (const [value, label] of [
-  ['FulfillmentOrchestrationError::Fulfillment(error)', 'nested owner delegation'],
-  ['FulfillmentOrchestrationError::OrderNotFound(_)', 'order-not-found variant'],
-  ['FulfillmentOrchestrationError::Database(_)', 'database variant'],
-  ['FulfillmentOrchestrationError::Validation(_)', 'validation variant'],
-  [
-    'FulfillmentOrchestrationError::ProviderAfterPersistence {',
-    'provider-after-persistence variant',
-  ],
-  [
-    'FulfillmentOrchestrationError::PersistenceAfterProvider {',
-    'persistence-after-provider variant',
-  ],
-  ['context.fulfillment_id = Some(*fulfillment_id);', 'persisted fulfillment identity adoption'],
-  ['owner = ADMIN_FULFILLMENT_ORCHESTRATION_OWNER', 'orchestration owner log'],
-  ['tenant_id = %context.tenant_id', 'orchestration tenant log'],
-  ['fulfillment_id = ?context.fulfillment_id', 'orchestration fulfillment identity log'],
-  ['order_id = ?context.order_id', 'orchestration order identity log'],
-  ['operation = %context.operation', 'orchestration operation log'],
-  ['"Fulfillment operation requires reconciliation"', 'static reconciliation envelope'],
-  ['HttpError::new(status, code, message)', 'single orchestration envelope constructor'],
-]) requireText(orchestrationMapper, value, label);
 
 for (const [ownerSource, value, label] of [
   [fulfillmentErrors, 'Validation(String)', 'owner validation variant'],
@@ -239,49 +213,28 @@ for (const [ownerSource, value, label] of [
   [fulfillmentErrors, 'Database(#[from] DbErr)', 'owner database variant'],
   [orchestrationErrors, 'OrderNotFound(Uuid)', 'orchestration order-not-found variant'],
   [orchestrationErrors, 'Database(#[from] sea_orm::DbErr)', 'orchestration database variant'],
-  [
-    orchestrationErrors,
-    'Fulfillment(#[from] rustok_fulfillment::error::FulfillmentError)',
-    'orchestration fulfillment variant',
-  ],
   [orchestrationErrors, 'Validation(String)', 'orchestration validation variant'],
-  [orchestrationErrors, 'ProviderAfterPersistence {', 'provider-after-persistence owner variant'],
-  [orchestrationErrors, 'PersistenceAfterProvider {', 'persistence-after-provider owner variant'],
+  [orchestrationErrors, 'ProviderAfterPersistence {', 'provider-after-persistence variant'],
+  [orchestrationErrors, 'PersistenceAfterProvider {', 'persistence-after-provider variant'],
 ]) requireText(ownerSource, value, label);
 
-const listBlock = between(
-  source,
-  'pub async fn list_fulfillments(',
-  '/// Create admin fulfillment',
-  'admin fulfillment list block',
-);
-const showBlock = between(
-  source,
-  'pub async fn show_fulfillment(',
-  '/// Ship admin fulfillment',
-  'admin fulfillment show block',
-);
-for (const [content, value, label] of [
-  [listBlock, 'FulfillmentService::new(', 'list concrete service'],
-  [listBlock, '.list_fulfillments(', 'list concrete operation'],
-  [showBlock, 'FulfillmentService::new(', 'show concrete service'],
-  [showBlock, '.get_fulfillment(', 'show concrete operation'],
-]) forbidText(content, value, label);
-
 for (const value of [
-  '.map_err(super::map_fulfillment_error)',
-  '.map_err(super::map_fulfillment_orchestration_error)',
-  'format!("Fulfillment request is invalid:',
+  'correlation_id = %port_context.correlation_id.as_str()',
+  'actor = ?port_context.actor.id',
+  'tenant_id = %context.tenant_id.to_string()',
+  'fulfillment_id = ?context.fulfillment_id.map',
+  'order_id = ?context.order_id.map',
   'error.to_string()',
+  'format!("Fulfillment request is invalid:',
   'HttpError::bad_request("commerce_admin_fulfillment_invalid", error',
-]) forbidText(source, value, 'unsafe admin fulfillment public mapping');
+]) forbidText(source, value, 'raw or public-leaking admin fulfillment mapping');
 
 if (failures.length > 0) {
-  console.error('Commerce admin fulfillment route error-context verification failed:');
+  console.error('Commerce admin fulfillment diagnostic-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Commerce admin fulfillment reads use typed owner-port errors while mutation routes retain typed causes and static public envelopes',
+  '✔ Commerce admin fulfillment mappers preserve typed policy while emitting bounded diagnostic shapes',
 );

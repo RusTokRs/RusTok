@@ -55,6 +55,91 @@ impl AdminFulfillmentErrorContext {
     }
 }
 
+struct AdminFulfillmentDiagnosticContext {
+    tenant_id: &'static str,
+    fulfillment_id: &'static str,
+    order_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminFulfillmentErrorContext> for AdminFulfillmentDiagnosticContext {
+    fn from(context: &AdminFulfillmentErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            fulfillment_id: optional_uuid_shape(context.fulfillment_id),
+            order_id: optional_uuid_shape(context.order_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminFulfillmentPortDiagnosticContext {
+    correlation_id: &'static str,
+    actor: &'static str,
+    channel: &'static str,
+    locale: usize,
+    deadline_ms: Option<u64>,
+}
+
+impl From<&PortContext> for AdminFulfillmentPortDiagnosticContext {
+    fn from(context: &PortContext) -> Self {
+        Self {
+            correlation_id: text_presence_shape(context.correlation_id.as_str()),
+            actor: text_presence_shape(context.actor.id.as_str()),
+            channel: optional_text_presence_shape(context.channel.as_deref()),
+            locale: context.locale.len(),
+            deadline_ms: context.deadline_ms,
+        }
+    }
+}
+
+struct AdminFulfillmentPortDiagnosticError<'a> {
+    code: &'a str,
+    retryable: bool,
+}
+
+impl std::fmt::Debug for AdminFulfillmentPortDiagnosticError<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+struct AdminFulfillmentDiagnosticError;
+
+impl std::fmt::Debug for AdminFulfillmentDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
+fn text_presence_shape(value: &str) -> &'static str {
+    if value.is_empty() {
+        "empty"
+    } else {
+        "present_non_empty"
+    }
+}
+
+fn optional_text_presence_shape(value: Option<&str>) -> &'static str {
+    match value {
+        None => "absent",
+        Some("") => "present_empty",
+        Some(_) => "present_non_empty",
+    }
+}
+
 fn admin_fulfillment_read_port_context(
     tenant_id: Uuid,
     auth: &AuthContext,
@@ -119,6 +204,12 @@ fn map_admin_fulfillment_port_error(
             "Fulfillment operation could not be completed safely",
             "invariant_violation",
         ),
+    };
+    let context = AdminFulfillmentDiagnosticContext::from(&context);
+    let port_context = AdminFulfillmentPortDiagnosticContext::from(port_context);
+    let error = AdminFulfillmentPortDiagnosticError {
+        code: error.code.as_str(),
+        retryable: error.retryable,
     };
     tracing::error!(
         error = ?error,
@@ -531,6 +622,8 @@ fn map_admin_fulfillment_error(
             "database",
         ),
     };
+    let context = AdminFulfillmentDiagnosticContext::from(&context);
+    let error = AdminFulfillmentDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_FULFILLMENT_OWNER,
@@ -596,6 +689,8 @@ fn map_admin_fulfillment_orchestration_error(
                     "nested fulfillment errors are handled before orchestration mapping"
                 ),
             };
+            let context = AdminFulfillmentDiagnosticContext::from(&context);
+            let error = AdminFulfillmentDiagnosticError;
             tracing::error!(
                 error = ?error,
                 owner = ADMIN_FULFILLMENT_ORCHESTRATION_OWNER,
