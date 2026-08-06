@@ -1,22 +1,31 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked against the current main snapshot retained in
-`implementation-main-delta-2026-08-06-1335.md`, stacked parent PR #3067 at
-`7ababf39e26de9d2039c864d5092147d52d50d1a`, and active branch
-`agent/index-m6-orphan-link-repair-20260806`.
+`implementation-main-delta-2026-08-06-1525.md`, stacked parent PR #3075 at
+`8c36960608ef387b5e36f2b5904c6ea83ceda752`, and active branch
+`agent/index-m6-repair-execution-evidence-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - retain concrete repair execution evidence`
+`M6 - execute and admit concrete repair evidence`
+
+Previous source cursor: `M6 - retain concrete repair execution evidence`.
 
 The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
 confirmation boundary, serializable finding persistence, fail-closed finding lifecycle commands,
 generic targeted-repair orchestration, durable repair reservations/receipts, authorization-gated
 prepared-command recovery, and concrete recovery-aware repair compositions for missing entities and
 orphan links are source complete.
+
+The environment-gated PostgreSQL repair execution packet is now
+`source_ready_owner_execution_pending`. It uses real `IndexModule` migrations and production schema,
+mutation, finding, repair, recovery, evidence, and owner adapters through these targets:
+
+- `drift_repair_recovery_postgres_test`;
+- `drift_repair_concrete_execution_postgres_test`.
 
 Concrete missing-entity repair:
 
@@ -45,8 +54,8 @@ Both concrete paths:
 - fail legacy decision-less, paused, and abandoned prepared commands closed;
 - remain unmounted from runtime extensions and public transports.
 
-Public transport, automatic iteration, time-derived leases, and retained execution evidence remain
-open.
+Public transport, automatic iteration, time-derived leases, and admitted retained execution results
+remain open.
 
 ## Rechecked status
 
@@ -85,6 +94,8 @@ open.
   `source_complete_owner_execution_pending`
 - M6 concrete orphan-link evidence reader and command-bound edge-removal owner:
   `source_complete_recovery_aware_owner_execution_pending`
+- M6 concrete repair PostgreSQL execution harness:
+  `source_ready_owner_execution_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -158,9 +169,11 @@ open.
 - [x] Compose one command-bound exact edge-removal persistence owner behind the recovery boundary.
 - [x] Preserve source entity version/payload and unrelated links during orphan repair.
 - [x] Require exact applied inbox proof before admitting an absent edge as convergence.
+- [x] Add env-gated real-migration PostgreSQL targets for concrete repair crash, retry, recovery,
+      commitment-change, and concurrency scenarios.
+- [ ] Run and admit the concrete repair PostgreSQL targets with retained database/version/result
+      metadata.
 - [ ] Add time-derived lease expiry only with retained owner-liveness and crash-window evidence.
-- [ ] Retain migration, crash-window, owner-idempotency, recovery-race, and PostgreSQL concurrency
-      evidence for both concrete repair paths.
 
 ## M7 production graph and cutover
 
@@ -176,19 +189,20 @@ open.
 
 ## Next implementation step
 
-Retain executable evidence for the complete concrete repair boundary before exposing it through a
+Execute and admit the source-ready concrete repair PostgreSQL packet before exposing repair through a
 public command surface or automatic iterator.
 
-The next slice must cover:
+The owner run must retain:
 
-- migration up/down and database-trigger behavior for repair reservations and recovery decisions;
-- missing-entity mutation commit followed by crash before receipt, then exact resumed convergence;
-- orphan-link edge removal and inbox completion in one transaction;
-- orphan-link crash after edge commit but before repair receipt, then exact duplicate convergence;
-- link substitution, source-version movement, target restoration, and target-absence-version movement;
-- pause/abandon racing before owner admission and after owner side effect but before completion;
-- command UUID payload reuse, stale recovery revisions, duplicate decisions, and completion guard;
-- PostgreSQL concurrent reservation, recovery, owner, and completion behavior.
+- PostgreSQL server version and database URL class without credentials;
+- exact commit SHA and both target command lines;
+- migration up/down and repair/recovery trigger results;
+- missing-entity and orphan-link post-owner crash/retry results;
+- pause-before-owner and abandon-before-completion race results;
+- command UUID reuse, stale revision, duplicate decision, and completion immutability results;
+- changed source/link/target/absence commitment results;
+- normal full-mutation versus exact edge-owner serialization results;
+- complete stdout/stderr and final pass/fail status.
 
 Public authorization transport, automatic iteration, time-derived leases, and lifecycle
 auto-resolution remain separate later slices.
@@ -196,9 +210,17 @@ auto-resolution remain separate later slices.
 ## Owner verification for this slice
 
 ```bash
-cargo test -p rustok-index drift_repair -- --nocapture
-cargo test -p rustok-index drift_missing_entity_repair -- --nocapture
-cargo test -p rustok-index drift_orphan_link_repair -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-index \
+  --test drift_repair_recovery_postgres_test \
+  -- --nocapture --test-threads=1
+
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-index \
+  --test drift_repair_concrete_execution_postgres_test \
+  -- --nocapture --test-threads=1
+
+node scripts/verify/verify-index-repair-execution-postgres-harness.mjs
 node scripts/verify/verify-index-prepared-repair-recovery.mjs
 node scripts/verify/verify-index-missing-entity-repair-composition.mjs
 node scripts/verify/verify-index-orphan-link-repair-composition.mjs
