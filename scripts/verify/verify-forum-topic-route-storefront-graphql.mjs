@@ -14,6 +14,7 @@ const paths = {
   query: "crates/rustok-forum/src/graphql/topic_route_query.rs",
   graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
   owner: "crates/rustok-forum/src/services/topic_route.rs",
+  audienceOwner: "crates/rustok-forum/src/services/topic_audience_read.rs",
   contract: "crates/rustok-forum/contracts/forum-topic-route-storefront-graphql.json",
   test: "crates/rustok-forum/tests/topic_route_storefront_graphql_contract.rs",
   docs: "crates/rustok-forum/docs/forum-24h-topic-route-storefront-graphql.md",
@@ -42,6 +43,7 @@ function forbidText(content, marker, label) {
 const query = read(paths.query);
 const graphqlMod = read(paths.graphqlMod);
 const owner = read(paths.owner);
+const audienceOwner = read(paths.audienceOwner);
 const contractText = read(paths.contract);
 const test = read(paths.test);
 const docs = read(paths.docs);
@@ -60,12 +62,13 @@ for (const marker of [
   "Permission denied: tenant scope mismatch",
   "ForumTopicRouteService::new(db.clone())",
   ".resolve(tenant_id, &locale, &short_id, &slug)",
-  "TopicService::new(db.clone(), event_bus.clone())",
-  ".get_with_locale_fallback(",
-  "forum_request_security(ctx)",
-  "SecurityContext::public_read",
-  "crate::constants::topic_status::OPEN",
-  "is_topic_visible_for_channel(",
+  ".topic_audience_read_service(db.clone(), event_bus.clone())",
+  "topic_read_audience_port_context(",
+  "ForumTopicReadTransport::Graphql",
+  "ForumTopicReadOperation::SelectedTopic",
+  ".get_authenticated_storefront_visible_with_audience_context(",
+  ".get_public_storefront_visible_with_locale_fallback(",
+  "SecurityContext::from_permission_snapshot",
   "ForumTopicRouteDisposition::Gone => return Ok(None)",
   "GqlForumStorefrontTopicRouteDisposition::Canonical",
   "GqlForumStorefrontTopicRouteDisposition::Redirect",
@@ -74,6 +77,9 @@ for (const marker of [
 }
 
 for (const marker of [
+  "TopicService::new",
+  "is_topic_visible_for_channel(",
+  "crate::constants::topic_status::OPEN",
   "pub requested_topic_id",
   "pub alias_id",
   "GqlForumStorefrontTopicRouteDisposition::Gone",
@@ -98,6 +104,14 @@ requireText(
   "Callers must perform the\n/// same visibility/read authorization required for the canonical topic",
   paths.owner,
 );
+for (const marker of [
+  "pub struct ForumTopicAudienceReadService",
+  "get_authenticated_storefront_visible_with_audience_context",
+  "get_public_storefront_visible_with_locale_fallback",
+  "ForumTopicAudienceVisibilityService",
+]) {
+  requireText(audienceOwner, marker, paths.audienceOwner);
+}
 
 for (const marker of [
   "forumStorefrontTopicRoute",
@@ -107,6 +121,7 @@ for (const marker of [
   "requestedLocale",
   "requestedShortId",
   "requestedSlug",
+  "ForumTopicAudienceReadService",
 ]) {
   requireText(test, marker, paths.test);
 }
@@ -128,6 +143,9 @@ if (contract) {
   if (contract.status !== "source_ready_maintainer_execution_pending") {
     failures.push(`${paths.contract}: unexpected source status`);
   }
+  if (contract.storefront_visibility_owner !== "ForumTopicAudienceReadService") {
+    failures.push(`${paths.contract}: exact audience owner must be declared`);
+  }
   if (contract.output?.gone_exposed !== false) {
     failures.push(`${paths.contract}: gone_exposed must remain false`);
   }
@@ -139,6 +157,9 @@ if (contract) {
   }
   if (contract.authorization?.canonical_topic_rechecked !== true) {
     failures.push(`${paths.contract}: canonical topic visibility recheck is required`);
+  }
+  if (contract.authorization?.exact_audience_owner_rechecked !== true) {
+    failures.push(`${paths.contract}: exact audience recheck is required`);
   }
   if (contract.route_policy?.canonical_resolution_reimplemented !== false) {
     failures.push(`${paths.contract}: canonical resolution must remain owner-defined`);
