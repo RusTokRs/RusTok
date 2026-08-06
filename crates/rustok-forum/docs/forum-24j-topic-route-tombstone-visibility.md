@@ -36,18 +36,21 @@ locale data or route metadata. Richer audience rules are reduced to one boolean 
 
 ## Lock and transaction order
 
-The delete owner acquires locks in this order:
+The delete owner follows the same order as the canonical topic audience owner:
 
 1. tenant category-tree advisory scope;
-2. exact topic-audience advisory scope;
-3. exact topic row claim;
-4. visibility snapshot write;
-5. route tombstone write;
-6. topic-thread soft delete.
+2. exact topic row claim;
+3. exact topic-audience advisory scope;
+4. locked topic reload;
+5. visibility snapshot write;
+6. route tombstone write;
+7. topic-thread soft delete.
 
-Category visibility writes now participate in the same tenant category-tree lock already used by
-category audience and topic audience policy owners. Topic channel, category and status changes are
-therefore serialized against the snapshot through their existing owner locks or the locked topic row.
+The snapshot reuses `category_audience::lock_category_tree_in_tx` and
+`topic_audience_lock::lock_topic_audience_scopes_in_tx`; it does not define another advisory lock
+namespace. Category visibility writes now participate in the same tenant category-tree lock already
+used by category audience and topic audience policy owners. Topic channel, category and status changes
+are serialized against the snapshot through their existing owner locks or the locked topic row.
 
 ## Storage
 
