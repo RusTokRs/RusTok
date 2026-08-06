@@ -1,214 +1,212 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 
-const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
-const root = configuredRoot
-  ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
-  : new URL('../../', import.meta.url);
-const source = readFileSync(
-  new URL('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs', root),
-  'utf8',
-);
+const root = new URL('../../', import.meta.url);
+const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const failures = [];
-
-const requireText = (content, value, label) => {
-  if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
+const requireText = (source, value, label) => {
+  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
-const forbidText = (content, value, label) => {
-  if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
+const forbidText = (source, value, label) => {
+  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
-const between = (content, start, end, label) => {
-  const startIndex = content.indexOf(start);
-  const endIndex = content.indexOf(end, startIndex + start.length);
-  if (startIndex < 0 || endIndex < 0) {
-    failures.push(`${label}: unable to isolate source block`);
-    return '';
-  }
-  return content.slice(startIndex, endIndex);
+const requireCount = (source, value, expected, label) => {
+  const count = source.split(value).length - 1;
+  if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
 };
 
-const orchestrationBlock = between(
-  source,
-  '    async fn compensate_claimed(',
-  '    async fn compensate_payment(',
-  'compensation orchestration block',
-);
-const inventoryBlock = between(
-  source,
-  '    async fn release_remaining_reservations(',
-  '    async fn release_cart(',
-  'inventory release block',
-);
-const cartBlock = between(
-  source,
-  '    async fn release_cart(',
-  '\n}\n\nfn cart_status(',
-  'cart release block',
-);
-const inventoryContext = between(
-  source,
-  'fn inventory_context(',
-  'fn cart_context(',
-  'inventory context helper',
-);
-const ownerMapper = between(
-  source,
-  'fn owner_boundary_error(',
-  'fn boundary_error(',
-  'owner boundary mapper',
-);
-const boundaryMapper = between(
-  source,
-  'fn boundary_error(',
-  'fn compensation_error_code(',
-  'generic boundary mapper',
-);
+const paths = {
+  services: 'crates/rustok-commerce/src/services/mod.rs',
+  facade: 'crates/rustok-commerce/src/services/checkout_compensation_payment_safe.rs',
+  legacy: 'crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs',
+  ownerContract: 'crates/rustok-inventory/src/ports.rs',
+  ownerWrapper: 'crates/rustok-inventory/src/reservation_owner_context.rs',
+  evidence:
+    'crates/rustok-commerce/contracts/evidence/checkout-inventory-compensation-error-safety-source-review.json',
+  doc: 'crates/rustok-commerce/docs/checkout-compensation-inventory-context.md',
+};
 
-for (const [value, label] of [
-  ['PortErrorKind', 'typed port error classification import'],
-  [
-    'const CHECKOUT_COMPENSATION_OWNER_BOUNDARY: &str = "checkout_compensation_owner_port";',
-    'stable compensation owner boundary',
-  ],
-  ['const INVENTORY_COMPENSATION_OWNER: &str = "rustok_inventory";', 'truthful inventory owner'],
-  [
-    'const INVENTORY_COMPENSATION_OPERATION: &str = "release_inventory_by_identity";',
-    'exact inventory owner operation',
-  ],
+const services = read(paths.services);
+const facade = read(paths.facade);
+const legacy = read(paths.legacy);
+const ownerContract = read(paths.ownerContract);
+const ownerWrapper = read(paths.ownerWrapper);
+const evidence = JSON.parse(read(paths.evidence));
+const doc = read(paths.doc);
+
+for (const [source, value, label] of [
+  [services, '#[path = "checkout_compensation_payment_safe.rs"]\nmod checkout_compensation;', 'mounted facade'],
+  [facade, 'include!("checkout_compensation_owner_ports.rs");', 'retained source'],
+  [facade, 'use super::rustok_inventory_shim as rustok_inventory;', 'inventory shim alias'],
+  [facade, 'InventoryReservationIdentityPort as CanonicalInventoryReservationIdentityPort', 'canonical inventory API'],
 ]) requireText(source, value, label);
 
-for (const [value, label] of [
-  ['let inventory_context = inventory_context(', 'retained inventory context'],
-  ['inventory_context.clone()', 'inventory context delegation clone'],
-  ['&inventory_context', 'inventory context mapper input'],
-  ['INVENTORY_COMPENSATION_OWNER', 'inventory mapper owner'],
-  ['INVENTORY_COMPENSATION_OPERATION', 'inventory mapper operation'],
-  ['"release_inventory"', 'inventory commerce stage'],
-  ['InventoryIdentityReservationReleaseRequest {', 'inventory release request'],
-  ['reservation_id: reservation.reservation_id', 'reservation identity input'],
-  ['external_id: reservation.external_id.clone()', 'external identity input'],
-  ['released.reservation_id != reservation.reservation_id', 'reservation response identity check'],
-  ['released.external_id != reservation.external_id', 'external response identity check'],
-  ['released.variant_id != reservation.variant_id', 'variant response identity check'],
-  ['.mark_released(tenant_id, reservation.reservation_id)', 'reservation release checkpoint'],
-  ['CheckoutInventoryReservationStatus::Consumed', 'consumed reservation reconciliation'],
-  ['inventory reservation {} is already consumed', 'consumed reservation message'],
-]) requireText(inventoryBlock, value, label);
-
-const contextBindings = inventoryBlock.match(/let inventory_context\s*=/g) ?? [];
-const contextClones = inventoryBlock.match(/inventory_context\.clone\(\)/g) ?? [];
-const mapperInputs = inventoryBlock.match(/&inventory_context/g) ?? [];
-if (contextBindings.length !== 1 || contextClones.length !== 1 || mapperInputs.length !== 1) {
-  failures.push(
-    `expected one retained inventory context, one clone, and one mapper input, found ${contextBindings.length}/${contextClones.length}/${mapperInputs.length}`,
-  );
-}
-
-for (const [value, label] of [
-  ['PortActor::service("rustok-commerce.checkout-compensation")', 'inventory service actor'],
-  ['PLATFORM_FALLBACK_LOCALE', 'inventory effective locale'],
-  ['checkout:{}:compensation:inventory:{}', 'inventory correlation identity'],
-  ['operation.id, reservation.cart_line_item_id', 'inventory correlation components'],
-  ['.with_causation_id(operation.id.to_string())', 'inventory causation'],
-  ['.with_idempotency_key(reservation.external_id.clone())', 'inventory idempotency key'],
-  ['.with_deadline(deadline)', 'inventory deadline'],
-]) requireText(inventoryContext, value, label);
-
-for (const [value, label] of [
-  ['context: &PortContext', 'retained context input'],
-  ["owner: &'static str", 'owner input'],
-  ["operation: &'static str", 'owner operation input'],
-  ["stage: &'static str", 'commerce stage input'],
-  ['error: PortError', 'original port error input'],
-  [
-    'log_owner_boundary_error(context, owner, operation, stage, &error);',
-    'diagnostics before mapping',
-  ],
-  ['fn log_owner_boundary_error(', 'structured diagnostic helper'],
-  ['error = ?error', 'original port error'],
-  ['owner = owner', 'truthful dynamic owner'],
-  ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['channel = ?context.channel', 'channel context'],
-  ['locale = %context.locale', 'locale context'],
-  ['causation_id = ?context.causation_id', 'causation context'],
-  ['traceparent = ?context.traceparent', 'trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
-  ['operation = operation', 'exact owner operation field'],
-  ['stage = stage', 'commerce stage field'],
-  ['code = %error.code', 'original port code'],
-  ['internal_message = %error.message', 'original public-safe port message'],
-  ['error_kind = ?error.kind', 'typed port error kind'],
-  ['retryable = error.retryable', 'original retryability'],
-  ['boundary = CHECKOUT_COMPENSATION_OWNER_BOUNDARY', 'boundary field'],
-  [
-    'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
-    'technical severity classification',
-  ],
-  ['tracing::error!(', 'technical error severity'],
-  ['tracing::warn!(', 'ordinary rejection severity'],
-]) requireText(ownerMapper, value, label);
-
-const diagnosticIndex = ownerMapper.indexOf(
-  'log_owner_boundary_error(context, owner, operation, stage, &error);',
+for (const marker of [
+  'impl InventoryReservationIdentityPort for SanitizingPort',
+  'let facts = BoundaryFacts::inventory(&request);',
+  '.release_inventory_by_identity(context, request)',
+  'sanitize(&error_context, facts, error)',
+  'rustok_inventory_shim::wrap_inventory_reservation_identity_port(',
+  'reservation_port: Arc<dyn CanonicalInventoryReservationIdentityPort>',
+]) requireText(facade, marker, `${paths.facade}: inventory composition`);
+requireCount(
+  facade,
+  'wrap_inventory_reservation_identity_port(',
+  2,
+  'definition plus constructor inventory wrapping',
 );
-const manualRoutingIndex = ownerMapper.indexOf('if matches!(');
-const boundaryDelegationIndex = ownerMapper.indexOf('boundary_error(stage, error)');
+
+for (const message of [
+  'Checkout inventory compensation request is invalid',
+  'Checkout inventory compensation resource was not found',
+  'Checkout inventory compensation conflicts with the current inventory state',
+  'Checkout inventory compensation is not permitted',
+  'Checkout inventory compensation service is temporarily unavailable',
+  'Checkout inventory compensation could not be completed safely',
+]) requireText(facade, message, `${paths.facade}: static inventory message`);
+
+for (const marker of [
+  'family: MessageFamily::Inventory',
+  'owner: "rustok_inventory"',
+  'operation: "release_inventory_by_identity"',
+  'stage: "release_inventory"',
+  'boundary: "commerce_checkout_inventory_compensation_adapter"',
+  'primary_id_shape: uuid_shape(request.reservation_id)',
+  'opaque_text_shape: text_shape(request.external_id.as_str())',
+  'opaque_text_len: Some(request.external_id.chars().count())',
+  'tenant_id_shape = context_facts.tenant_id_shape',
+  'correlation_id_shape = context_facts.correlation_id_shape',
+  'primary_id_shape = facts.primary_id_shape',
+  'opaque_text_shape = facts.opaque_text_shape',
+  'opaque_text_len = ?facts.opaque_text_len',
+  'owner_code = %error.code',
+  'owner_message_present',
+  'owner_message_len',
+  'owner_kind = ?error.kind',
+  'owner_retryable = error.retryable',
+  'formatter.write_str("redacted")',
+  'kind: error.kind',
+  'code: error.code',
+  'message: message.to_string()',
+  'retryable: error.retryable',
+]) requireText(facade, marker, `${paths.facade}: bounded inventory contract`);
+
+for (const forbidden of [
+  'message: error.message',
+  'error = ?error',
+  'error = %error',
+  'internal_message',
+  '%error.message',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'correlation_id = %context.correlation_id',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'external_id = %',
+  'external_id = ?',
+]) forbidText(facade, forbidden, `${paths.facade}: raw inventory payload`);
+
+requireCount(
+  facade,
+  '&& $owner != "rustok_inventory"',
+  2,
+  'technical and warning inventory compatibility suppression',
+);
+
+for (const marker of [
+  'release_inventory_by_identity(',
+  'InventoryIdentityReservationReleaseRequest {',
+  'reservation_id: reservation.reservation_id',
+  'external_id: reservation.external_id.clone()',
+  'released.reservation_id != reservation.reservation_id',
+  'released.external_id != reservation.external_id',
+  'released.variant_id != reservation.variant_id',
+  '.mark_released(tenant_id, reservation.reservation_id)',
+  'let message = compensation.to_string();',
+  '.mark_compensation_retryable(',
+]) requireText(legacy, marker, `${paths.legacy}: retained inventory flow`);
+
+for (const marker of [
+  'pub trait InventoryReservationIdentityPort',
+  'async fn release_inventory_by_identity(',
+  'InventoryIdentityReservationReleaseRequest',
+  'InventoryIdentityReservationReleaseSnapshot',
+]) requireText(ownerContract, marker, `${paths.ownerContract}: canonical owner contract`);
+
+for (const marker of [
+  'impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentityPort',
+  'require_inventory_reservation_write_admission(&context, RELEASE_OPERATION)?;',
+  'map_inventory_reservation_identity_local_port_error(',
+  'error_message_present = !error.message.is_empty()',
+  'error_message_length = error.message.chars().count()',
+]) requireText(ownerWrapper, marker, `${paths.ownerWrapper}: bounded owner wrapper`);
+
 if (
-  !(
-    diagnosticIndex >= 0 &&
-    diagnosticIndex < manualRoutingIndex &&
-    manualRoutingIndex < boundaryDelegationIndex
-  )
-) {
-  failures.push('inventory owner diagnostics must precede unchanged owner routing and boundary mapping');
+  evidence.status !==
+  'commerce_checkout_inventory_compensation_error_safety_source_reviewed_unvalidated'
+) failures.push(`${paths.evidence}: unexpected status ${evidence.status}`);
+
+for (const [key, expected] of Object.entries({
+  mounted_combined_payment_order_inventory_facade_active: true,
+  retained_compensation_business_logic_changed: false,
+  constructor_inventory_port_wrapped: true,
+  inventory_owner_kind_preserved: true,
+  inventory_owner_code_preserved: true,
+  inventory_owner_retryability_preserved: true,
+  inventory_owner_message_public: false,
+  inventory_owner_message_persisted: false,
+  complete_inventory_port_error_logged: false,
+  raw_inventory_context_values_logged: false,
+  raw_inventory_request_values_logged: false,
+  bounded_inventory_context_shapes_logged: true,
+  bounded_inventory_request_shapes_logged: true,
+  legacy_payment_diagnostic_suppressed: true,
+  legacy_order_diagnostic_suppressed: true,
+  legacy_inventory_diagnostic_suppressed: true,
+  legacy_cart_diagnostic_suppressed: false,
+  cart_compensation_mapper_changed: false,
+  remaining_compensation_cleanup_closed: false,
+  broad_ecommerce_cleanup_closed: false,
+  runtime_evidence_claimed: false,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
+  }
 }
 
-for (const [value, label] of [
-  ['ORDER_MANUAL_RECONCILIATION_CODE | PAYMENT_MANUAL_RECONCILIATION_CODE', 'manual routing remains payment/order only'],
-  ['boundary_error(stage, error)', 'inventory generic boundary delegation'],
-]) requireText(ownerMapper, value, label);
+for (const key of [
+  'tests_run', 'verifier_run', 'cargo_run', 'format_run',
+  'inventory_scenarios_run', 'database_scenarios_run',
+  'restart_scenarios_run', 'remote_port_scenarios_run',
+  'workflow_checks_run', 'ci_run', 'compile_proven', 'runtime_proven',
+]) {
+  if (evidence.validation?.[key] !== false) {
+    failures.push(`${paths.evidence}: validation.${key} must remain false`);
+  }
+}
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  failures.push(`${paths.evidence}: execution must remain empty`);
+}
 
-for (const [value, label] of [
-  ['CheckoutCompensationError::Boundary {', 'stable boundary envelope'],
-  ['stage,', 'stable boundary stage'],
-  ['code: error.code', 'stable boundary code'],
-  ['message: error.message', 'stable boundary message'],
-  ['retryable: error.retryable', 'stable boundary retryability'],
-]) requireText(boundaryMapper, value, label);
-
-for (const [value, label] of [
-  ['self.compensate_payment(tenant_id, actor_id, operation)', 'payment-first orchestration'],
-  ['self.compensate_order(tenant_id, actor_id, operation)', 'order-second orchestration'],
-  ['self.release_remaining_reservations(tenant_id, operation)', 'inventory-third orchestration'],
-  ['self.release_cart(tenant_id, operation)', 'cart-fourth orchestration'],
-]) requireText(orchestrationBlock, value, label);
-
-for (const [value, label] of [
-  ['read_cart_checkout_snapshot(', 'cart snapshot read remains mounted'],
-  ['release_cart_checkout(', 'cart release remains mounted'],
-]) requireText(cartBlock, value, label);
-
-for (const [value, label] of [
-  [
-    'release_inventory_by_identity(\n                            inventory_context(',
-    'inline inventory context delegation',
-  ],
-  ['.map_err(|error| boundary_error("release_inventory", error))?', 'context-dropping inventory mapper'],
-  ['owner_boundary_error("release_inventory", error)', 'legacy inventory owner mapper'],
-]) forbidText(inventoryBlock, value, label);
+for (const marker of [
+  'Status: **source-reviewed / unvalidated**',
+  'combined payment/order/inventory facade',
+  'prevents the owner message from reaching',
+  'leaves the retained cart diagnostic active',
+  'Cart snapshot and cart release consumer mapping remain open',
+  'No tests, Node verifiers, Cargo commands, formatting',
+]) requireText(doc, marker, `${paths.doc}: truthful inventory review`);
 
 if (failures.length > 0) {
-  console.error('Checkout compensation inventory context verification failed:');
+  console.error('Checkout inventory compensation error-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Checkout inventory compensation retains owner context without changing payment/order behavior or public envelopes',
+  '✔ Mounted Commerce inventory compensation preserves typed owner classification while using static persisted messages and bounded diagnostics; cart and runtime validation remain open',
 );

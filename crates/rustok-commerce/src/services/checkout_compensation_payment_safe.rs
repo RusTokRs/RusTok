@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_cart::CartCheckoutPort;
-use rustok_inventory::InventoryReservationIdentityPort;
+use rustok_inventory::InventoryReservationIdentityPort as CanonicalInventoryReservationIdentityPort;
 use rustok_order::{
     CheckoutOrderCompensationPort as CanonicalCheckoutOrderCompensationPort,
     CheckoutOrderIdentityPort,
@@ -24,6 +24,7 @@ use super::{
 
 mod safe_boundary {
     use rustok_api::{PortActorKind, PortContext, PortError, PortErrorKind};
+    use rustok_inventory::InventoryIdentityReservationReleaseRequest;
     use rustok_order::CheckoutOrderCompensationRequest;
     use rustok_payment::CheckoutPaymentCompensationRequest;
     use serde_json::Value;
@@ -35,16 +36,24 @@ mod safe_boundary {
         "order.checkout_compensation_manual_reconciliation";
 
     #[derive(Clone, Copy)]
+    enum MessageFamily {
+        Payment,
+        Order,
+        Inventory,
+    }
+
+    #[derive(Clone, Copy)]
     pub(crate) struct BoundaryFacts {
+        family: MessageFamily,
         owner: &'static str,
         operation: &'static str,
         stage: &'static str,
         boundary: &'static str,
-        checkout_operation_id_non_nil: bool,
-        subject_id_shape: &'static str,
-        expected_id_shape: &'static str,
-        reason_shape: &'static str,
-        reason_len: Option<usize>,
+        operation_id_shape: &'static str,
+        primary_id_shape: &'static str,
+        secondary_id_shape: &'static str,
+        opaque_text_shape: &'static str,
+        opaque_text_len: Option<usize>,
         payload_kind: &'static str,
         payload_entry_count: Option<usize>,
     }
@@ -52,15 +61,16 @@ mod safe_boundary {
     impl BoundaryFacts {
         pub(crate) fn payment(request: &CheckoutPaymentCompensationRequest) -> Self {
             Self {
+                family: MessageFamily::Payment,
                 owner: "rustok_payment",
                 operation: "compensate_checkout_payment",
                 stage: "compensate_payment",
                 boundary: "commerce_checkout_payment_compensation_adapter",
-                checkout_operation_id_non_nil: !request.checkout_operation_id.is_nil(),
-                subject_id_shape: optional_uuid_shape(request.collection_id),
-                expected_id_shape: "not_applicable",
-                reason_shape: optional_text_shape(request.reason.as_deref()),
-                reason_len: request.reason.as_ref().map(|value| value.chars().count()),
+                operation_id_shape: uuid_shape(request.checkout_operation_id),
+                primary_id_shape: optional_uuid_shape(request.collection_id),
+                secondary_id_shape: "not_applicable",
+                opaque_text_shape: optional_text_shape(request.reason.as_deref()),
+                opaque_text_len: request.reason.as_ref().map(|value| value.chars().count()),
                 payload_kind: json_kind(&request.metadata),
                 payload_entry_count: match &request.metadata {
                     Value::Object(values) => Some(values.len()),
@@ -72,15 +82,35 @@ mod safe_boundary {
 
         pub(crate) fn order(request: &CheckoutOrderCompensationRequest) -> Self {
             Self {
+                family: MessageFamily::Order,
                 owner: "rustok_order",
                 operation: "compensate_checkout_order",
                 stage: "compensate_order",
                 boundary: "commerce_checkout_order_compensation_adapter",
-                checkout_operation_id_non_nil: !request.checkout_operation_id.is_nil(),
-                subject_id_shape: uuid_shape(request.cart_id),
-                expected_id_shape: optional_uuid_shape(request.expected_order_id),
-                reason_shape: optional_text_shape(request.reason.as_deref()),
-                reason_len: request.reason.as_ref().map(|value| value.chars().count()),
+                operation_id_shape: uuid_shape(request.checkout_operation_id),
+                primary_id_shape: uuid_shape(request.cart_id),
+                secondary_id_shape: optional_uuid_shape(request.expected_order_id),
+                opaque_text_shape: optional_text_shape(request.reason.as_deref()),
+                opaque_text_len: request.reason.as_ref().map(|value| value.chars().count()),
+                payload_kind: "not_applicable",
+                payload_entry_count: None,
+            }
+        }
+
+        pub(crate) fn inventory(
+            request: &InventoryIdentityReservationReleaseRequest,
+        ) -> Self {
+            Self {
+                family: MessageFamily::Inventory,
+                owner: "rustok_inventory",
+                operation: "release_inventory_by_identity",
+                stage: "release_inventory",
+                boundary: "commerce_checkout_inventory_compensation_adapter",
+                operation_id_shape: "not_applicable",
+                primary_id_shape: uuid_shape(request.reservation_id),
+                secondary_id_shape: "not_applicable",
+                opaque_text_shape: text_shape(request.external_id.as_str()),
+                opaque_text_len: Some(request.external_id.chars().count()),
                 payload_kind: "not_applicable",
                 payload_entry_count: None,
             }
@@ -146,7 +176,11 @@ mod safe_boundary {
     }
 
     fn uuid_shape(value: Uuid) -> &'static str {
-        if value.is_nil() { "uuid_nil" } else { "uuid_non_nil" }
+        if value.is_nil() {
+            "uuid_nil"
+        } else {
+            "uuid_non_nil"
+        }
     }
 
     fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
@@ -157,7 +191,11 @@ mod safe_boundary {
     }
 
     fn text_shape(value: &str) -> &'static str {
-        if value.is_empty() { "empty" } else { "present" }
+        if value.is_empty() {
+            "empty"
+        } else {
+            "present"
+        }
     }
 
     fn optional_text_shape(value: Option<&str>) -> &'static str {
@@ -178,67 +216,88 @@ mod safe_boundary {
         }
     }
 
-    fn payment_message(error: &PortError) -> &'static str {
-        if error.code == PAYMENT_MANUAL_CODE {
-            return "Checkout payment compensation requires manual reconciliation";
-        }
-        match &error.kind {
-            PortErrorKind::Validation => "Checkout payment compensation request is invalid",
-            PortErrorKind::NotFound => "Checkout payment compensation resource was not found",
-            PortErrorKind::Conflict => {
-                "Checkout payment compensation conflicts with the current payment state"
+    fn public_message(family: MessageFamily, error: &PortError) -> &'static str {
+        match family {
+            MessageFamily::Payment => {
+                if error.code == PAYMENT_MANUAL_CODE {
+                    return "Checkout payment compensation requires manual reconciliation";
+                }
+                match &error.kind {
+                    PortErrorKind::Validation => {
+                        "Checkout payment compensation request is invalid"
+                    }
+                    PortErrorKind::NotFound => {
+                        "Checkout payment compensation resource was not found"
+                    }
+                    PortErrorKind::Conflict => {
+                        "Checkout payment compensation conflicts with the current payment state"
+                    }
+                    PortErrorKind::Forbidden => {
+                        "Checkout payment compensation is not permitted"
+                    }
+                    PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+                        "Checkout payment compensation service is temporarily unavailable"
+                    }
+                    PortErrorKind::InvariantViolation => {
+                        "Checkout payment compensation could not be completed safely"
+                    }
+                }
             }
-            PortErrorKind::Forbidden => "Checkout payment compensation is not permitted",
-            PortErrorKind::Unavailable | PortErrorKind::Timeout => {
-                "Checkout payment compensation service is temporarily unavailable"
+            MessageFamily::Order => {
+                if error.code == ORDER_MANUAL_CODE {
+                    return "Checkout order compensation requires manual reconciliation";
+                }
+                match &error.kind {
+                    PortErrorKind::Validation => {
+                        "Checkout order compensation request is invalid"
+                    }
+                    PortErrorKind::NotFound => {
+                        "Checkout order compensation resource was not found"
+                    }
+                    PortErrorKind::Conflict => {
+                        "Checkout order compensation conflicts with the current order state"
+                    }
+                    PortErrorKind::Forbidden => {
+                        "Checkout order compensation is not permitted"
+                    }
+                    PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+                        "Checkout order compensation service is temporarily unavailable"
+                    }
+                    PortErrorKind::InvariantViolation => {
+                        "Checkout order compensation could not be completed safely"
+                    }
+                }
             }
-            PortErrorKind::InvariantViolation => {
-                "Checkout payment compensation could not be completed safely"
-            }
+            MessageFamily::Inventory => match &error.kind {
+                PortErrorKind::Validation => {
+                    "Checkout inventory compensation request is invalid"
+                }
+                PortErrorKind::NotFound => {
+                    "Checkout inventory compensation resource was not found"
+                }
+                PortErrorKind::Conflict => {
+                    "Checkout inventory compensation conflicts with the current inventory state"
+                }
+                PortErrorKind::Forbidden => {
+                    "Checkout inventory compensation is not permitted"
+                }
+                PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+                    "Checkout inventory compensation service is temporarily unavailable"
+                }
+                PortErrorKind::InvariantViolation => {
+                    "Checkout inventory compensation could not be completed safely"
+                }
+            },
         }
     }
 
-    fn order_message(error: &PortError) -> &'static str {
-        if error.code == ORDER_MANUAL_CODE {
-            return "Checkout order compensation requires manual reconciliation";
-        }
-        match &error.kind {
-            PortErrorKind::Validation => "Checkout order compensation request is invalid",
-            PortErrorKind::NotFound => "Checkout order compensation resource was not found",
-            PortErrorKind::Conflict => {
-                "Checkout order compensation conflicts with the current order state"
-            }
-            PortErrorKind::Forbidden => "Checkout order compensation is not permitted",
-            PortErrorKind::Unavailable | PortErrorKind::Timeout => {
-                "Checkout order compensation service is temporarily unavailable"
-            }
-            PortErrorKind::InvariantViolation => {
-                "Checkout order compensation could not be completed safely"
-            }
-        }
-    }
-
-    pub(crate) fn sanitize_payment(
+    pub(crate) fn sanitize(
         context: &PortContext,
         facts: BoundaryFacts,
         error: PortError,
     ) -> PortError {
         log(context, facts, &error);
-        let message = payment_message(&error);
-        replace_message(error, message)
-    }
-
-    pub(crate) fn sanitize_order(
-        context: &PortContext,
-        facts: BoundaryFacts,
-        error: PortError,
-    ) -> PortError {
-        log(context, facts, &error);
-        let message = order_message(&error);
-        replace_message(error, message)
-    }
-
-    fn replace_message(error: PortError, message: &'static str) -> PortError {
+        let message = public_message(facts.family, &error);
         PortError {
             kind: error.kind,
             code: error.code,
@@ -275,11 +334,11 @@ mod safe_boundary {
                 traceparent_shape = context_facts.traceparent_shape,
                 idempotency_key_shape = context_facts.idempotency_key_shape,
                 deadline_ms = ?context_facts.deadline_ms,
-                checkout_operation_id_non_nil = facts.checkout_operation_id_non_nil,
-                subject_id_shape = facts.subject_id_shape,
-                expected_id_shape = facts.expected_id_shape,
-                reason_shape = facts.reason_shape,
-                reason_len = ?facts.reason_len,
+                operation_id_shape = facts.operation_id_shape,
+                primary_id_shape = facts.primary_id_shape,
+                secondary_id_shape = facts.secondary_id_shape,
+                opaque_text_shape = facts.opaque_text_shape,
+                opaque_text_len = ?facts.opaque_text_len,
                 payload_kind = facts.payload_kind,
                 payload_entry_count = ?facts.payload_entry_count,
                 owner_code = %error.code,
@@ -308,11 +367,11 @@ mod safe_boundary {
                 traceparent_shape = context_facts.traceparent_shape,
                 idempotency_key_shape = context_facts.idempotency_key_shape,
                 deadline_ms = ?context_facts.deadline_ms,
-                checkout_operation_id_non_nil = facts.checkout_operation_id_non_nil,
-                subject_id_shape = facts.subject_id_shape,
-                expected_id_shape = facts.expected_id_shape,
-                reason_shape = facts.reason_shape,
-                reason_len = ?facts.reason_len,
+                operation_id_shape = facts.operation_id_shape,
+                primary_id_shape = facts.primary_id_shape,
+                secondary_id_shape = facts.secondary_id_shape,
+                opaque_text_shape = facts.opaque_text_shape,
+                opaque_text_len = ?facts.opaque_text_len,
                 payload_kind = facts.payload_kind,
                 payload_entry_count = ?facts.payload_entry_count,
                 owner_code = %error.code,
@@ -333,7 +392,7 @@ mod rustok_payment_shim {
     use async_trait::async_trait;
     use rustok_api::{PortContext, PortError};
 
-    use super::safe_boundary::{BoundaryFacts, sanitize_payment};
+    use super::safe_boundary::{BoundaryFacts, sanitize};
 
     pub use ::rustok_payment::{
         CheckoutPaymentCompensationRequest, PaymentCollectionStatusKind, PaymentProviderRegistry,
@@ -364,7 +423,7 @@ mod rustok_payment_shim {
             self.inner
                 .compensate_checkout_payment(context, request)
                 .await
-                .map_err(|error| sanitize_payment(&error_context, facts, error))
+                .map_err(|error| sanitize(&error_context, facts, error))
         }
     }
 
@@ -420,7 +479,7 @@ mod rustok_order_shim {
     use async_trait::async_trait;
     use rustok_api::{PortContext, PortError};
 
-    use super::safe_boundary::{BoundaryFacts, sanitize_order};
+    use super::safe_boundary::{BoundaryFacts, sanitize};
 
     pub use ::rustok_order::{
         CheckoutOrderCompensationRequest, CheckoutOrderCompensationSnapshot,
@@ -452,7 +511,7 @@ mod rustok_order_shim {
             self.inner
                 .compensate_checkout_order(context, request)
                 .await
-                .map_err(|error| sanitize_order(&error_context, facts, error))
+                .map_err(|error| sanitize(&error_context, facts, error))
         }
     }
 
@@ -505,10 +564,62 @@ mod rustok_order_shim {
     }
 }
 
+mod rustok_inventory_shim {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use rustok_api::{PortContext, PortError};
+
+    use super::safe_boundary::{BoundaryFacts, sanitize};
+
+    pub use ::rustok_inventory::{
+        InventoryIdentityReservationReleaseRequest,
+        InventoryIdentityReservationReleaseSnapshot,
+    };
+
+    #[async_trait]
+    pub trait InventoryReservationIdentityPort: Send + Sync {
+        async fn release_inventory_by_identity(
+            &self,
+            context: PortContext,
+            request: InventoryIdentityReservationReleaseRequest,
+        ) -> Result<InventoryIdentityReservationReleaseSnapshot, PortError>;
+    }
+
+    struct SanitizingPort {
+        inner: Arc<dyn ::rustok_inventory::InventoryReservationIdentityPort>,
+    }
+
+    #[async_trait]
+    impl InventoryReservationIdentityPort for SanitizingPort {
+        async fn release_inventory_by_identity(
+            &self,
+            context: PortContext,
+            request: InventoryIdentityReservationReleaseRequest,
+        ) -> Result<InventoryIdentityReservationReleaseSnapshot, PortError> {
+            let error_context = context.clone();
+            let facts = BoundaryFacts::inventory(&request);
+            self.inner
+                .release_inventory_by_identity(context, request)
+                .await
+                .map_err(|error| sanitize(&error_context, facts, error))
+        }
+    }
+
+    pub(crate) fn wrap_inventory_reservation_identity_port(
+        inner: Arc<dyn ::rustok_inventory::InventoryReservationIdentityPort>,
+    ) -> Arc<dyn InventoryReservationIdentityPort> {
+        Arc::new(SanitizingPort { inner })
+    }
+}
+
 mod tracing_shim {
     macro_rules! error {
         (error = ?$error:expr, owner = $owner:expr, $($rest:tt)*) => {{
-            if $owner != "rustok_payment" && $owner != "rustok_order" {
+            if $owner != "rustok_payment"
+                && $owner != "rustok_order"
+                && $owner != "rustok_inventory"
+            {
                 ::tracing::error!(error = ?$error, owner = $owner, $($rest)*);
             }
         }};
@@ -516,7 +627,10 @@ mod tracing_shim {
 
     macro_rules! warn {
         (error = ?$error:expr, owner = $owner:expr, $($rest:tt)*) => {{
-            if $owner != "rustok_payment" && $owner != "rustok_order" {
+            if $owner != "rustok_payment"
+                && $owner != "rustok_order"
+                && $owner != "rustok_inventory"
+            {
                 ::tracing::warn!(error = ?$error, owner = $owner, $($rest)*);
             }
         }};
@@ -527,6 +641,7 @@ mod tracing_shim {
 }
 
 mod legacy {
+    use super::rustok_inventory_shim as rustok_inventory;
     use super::rustok_order_shim as rustok_order;
     use super::rustok_payment_shim as rustok_payment;
     use super::tracing_shim as tracing;
@@ -544,14 +659,16 @@ impl CheckoutCompensationService {
     pub fn new(
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
-        reservation_port: Arc<dyn InventoryReservationIdentityPort>,
+        reservation_port: Arc<dyn CanonicalInventoryReservationIdentityPort>,
         cart_port: Arc<dyn CartCheckoutPort>,
     ) -> Self {
         Self {
             inner: legacy::CheckoutCompensationService::new(
                 db,
                 event_bus,
-                reservation_port,
+                rustok_inventory_shim::wrap_inventory_reservation_identity_port(
+                    reservation_port,
+                ),
                 cart_port,
             ),
         }
