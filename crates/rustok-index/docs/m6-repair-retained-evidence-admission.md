@@ -51,9 +51,9 @@ It rejects non-PostgreSQL URLs, a dirty working tree, a changing HEAD, source dr
 skipped database targets, missing test-case success lines, duplicate or missing PostgreSQL metadata,
 and any non-zero command result.
 
-The runner never persists the database URL, username, password, host, database name, or connection
-string. It retains only the environment variable name used and a bounded URL class such as
-`loopback`, `private_ipv4`, `dns_name`, or `unix_socket`.
+The runner never persists the database URL, username, password, or connection string. It retains only
+the environment variable name used and a bounded URL class such as `loopback`, `private_ipv4`,
+`dns_name`, or `unix_socket`.
 
 Before writing logs it replaces the exact database URL, any PostgreSQL URL-shaped token, and password
 assignments. It then rejects the retained text if a PostgreSQL URL or unredacted password assignment
