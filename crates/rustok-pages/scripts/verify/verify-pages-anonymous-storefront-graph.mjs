@@ -10,6 +10,21 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
   : path.resolve(scriptDir, "..", "..", "..", "..");
 const failures = [];
+const read = (relativePath) => readFileSync(path.join(repoRoot, relativePath), "utf8");
+const need = (text, marker, label) => {
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
+};
+const forbid = (text, marker, label) => {
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+};
+const featureBody = (manifest, feature, label) => {
+  const match = manifest.match(new RegExp(`^${feature}\\s*=\\s*\\[(.*?)\\]`, "ms"));
+  if (!match) {
+    failures.push(`${label}: missing ${feature} feature`);
+    return "";
+  }
+  return match[1];
+};
 
 const evidencePath =
   "crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json";
@@ -17,26 +32,20 @@ const packetPath =
   "docs/modules/pages-page-builder-anonymous-storefront-graph-packet-2026-08-05.md";
 const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 const localPlanPath = "crates/rustok-pages/docs/implementation-plan.md";
-
-const read = (relativePath) =>
-  readFileSync(path.join(repoRoot, relativePath), "utf8");
-const need = (text, marker, label) => {
-  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
-};
-const forbid = (text, marker, label) => {
-  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
-};
+const pagesManifestPath = "crates/rustok-pages/storefront/Cargo.toml";
+const pagesLibPath = "crates/rustok-pages/storefront/src/lib.rs";
+const pagesInlineSourcePath = "crates/rustok-pages/storefront/src/inline_edit.rs";
+const builderManifestPath = "crates/rustok-page-builder-storefront/Cargo.toml";
+const builderLibPath = "crates/rustok-page-builder-storefront/src/lib.rs";
+const builderInlineSourcePath = "crates/rustok-page-builder-storefront/src/inline_edit.rs";
+const hostManifestPath = "apps/storefront/Cargo.toml";
 
 const evidence = JSON.parse(read(evidencePath));
 const packet = read(packetPath);
 const plan = read(planPath);
 const localPlan = read(localPlanPath);
-const pagesManifestPath = "crates/rustok-pages/storefront/Cargo.toml";
-const builderManifestPath = "crates/rustok-page-builder-storefront/Cargo.toml";
-const builderLibPath = "crates/rustok-page-builder-storefront/src/lib.rs";
-const inlineSourcePath = "crates/rustok-page-builder-storefront/src/inline_edit.rs";
-const hostManifestPath = "apps/storefront/Cargo.toml";
 const pagesManifest = read(pagesManifestPath);
+const pagesLib = read(pagesLibPath);
 const builderManifest = read(builderManifestPath);
 const builderLib = read(builderLibPath);
 const hostManifest = read(hostManifestPath);
@@ -93,7 +102,7 @@ for (const key of [
   "fba_promoted"
 ]) {
   if (evidence.source_contract?.[key] !== false) {
-    failures.push(`source_contract.${key} must be false`);
+    failures.push(`historical source_contract.${key} must remain false`);
   }
 }
 
@@ -131,12 +140,19 @@ if (
 }
 
 for (const marker of [
-  'default = []',
+  "default = []",
   '"rustok-page-builder-storefront/hydrate"',
   '"rustok-page-builder-storefront/ssr"',
-  'rustok-page-builder-storefront = { path = "../../rustok-page-builder-storefront" }'
-]) {
-  need(pagesManifest, marker, "Pages storefront manifest");
+  "inline-edit = [",
+  '"rustok-page-builder-storefront/inline-edit"',
+  'fly = { path = "../../fly", optional = true }',
+]) need(pagesManifest, marker, "Pages storefront manifest");
+for (const feature of ["default", "hydrate", "ssr"]) {
+  forbid(
+    featureBody(pagesManifest, feature, "Pages storefront manifest"),
+    "inline-edit",
+    `Pages storefront retained ${feature} profile`,
+  );
 }
 for (const forbidden of [
   "rustok-pages-admin",
@@ -144,47 +160,50 @@ for (const forbidden of [
   "rustok-admin",
   "fly-browser",
   "fly-ui",
-  "fly-leptos",
-  "rustok-page-builder-storefront/inline-edit"
-]) {
-  forbid(pagesManifest, forbidden, "Pages storefront manifest");
-}
+  "fly-leptos"
+]) forbid(pagesManifest, forbidden, "Pages storefront manifest");
+for (const marker of [
+  '#[cfg(feature = "inline-edit")]',
+  "mod inline_edit;",
+  "PagesAuthenticatedInlineEditSurface",
+]) need(pagesLib, marker, "feature-gated Pages inline source");
 
 for (const marker of [
-  'default = []',
+  "default = []",
   '"leptos/hydrate"',
   '"leptos/ssr"',
   'inline-edit = ["dep:fly-leptos"]',
   'fly-leptos = { path = "../fly-leptos", optional = true, default-features = false }',
   'fly = { path = "../fly" }',
   'rustok-page-builder = { path = "../rustok-page-builder", default-features = false }'
-]) {
-  need(builderManifest, marker, "Page Builder storefront manifest");
-}
+]) need(builderManifest, marker, "Page Builder storefront manifest");
 for (const forbidden of [
   "rustok-pages-admin",
   "rustok-page-builder-admin",
   "rustok-admin",
   "fly-browser",
   "fly-ui"
-]) {
-  forbid(builderManifest, forbidden, "Page Builder storefront manifest");
-}
+]) forbid(builderManifest, forbidden, "Page Builder storefront manifest");
 for (const marker of [
   '#[cfg(feature = "inline-edit")]',
-  'mod inline_edit;',
-  'pub use inline_edit::*;'
-]) {
-  need(builderLib, marker, "feature-gated Page Builder inline source");
-}
+  "mod inline_edit;",
+  "pub use inline_edit::*;"
+]) need(builderLib, marker, "feature-gated Page Builder inline source");
 
 for (const marker of [
   'csr = ["leptos/csr", "leptos_i18n/csr"]',
   'hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]',
   '"rustok-pages-storefront/ssr"',
+  "pages-inline-edit = [",
+  "pages-inline-edit-hydrate = [",
   'rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }'
-]) {
-  need(hostManifest, marker, "host storefront manifest");
+]) need(hostManifest, marker, "host storefront manifest");
+for (const feature of ["csr", "hydrate", "ssr"]) {
+  forbid(
+    featureBody(hostManifest, feature, "host storefront manifest"),
+    "pages-inline-edit",
+    `host retained ${feature} profile`,
+  );
 }
 for (const forbidden of forbiddenPackages) {
   forbid(hostManifest, forbidden, "host storefront manifest");
@@ -229,13 +248,9 @@ for (const sourceRoot of [
 ]) {
   for (const file of walkRustFiles(sourceRoot)) {
     const label = path.relative(repoRoot, file);
-    if (label === inlineSourcePath) {
-      continue;
-    }
+    if (label === pagesInlineSourcePath || label === builderInlineSourcePath) continue;
     const source = readFileSync(file, "utf8");
-    for (const marker of forbiddenSourceMarkers) {
-      forbid(source, marker, label);
-    }
+    for (const marker of forbiddenSourceMarkers) forbid(source, marker, label);
   }
 }
 
@@ -248,12 +263,8 @@ function cargoMetadata(profile) {
     path.join(repoRoot, profile.manifest),
     "--no-default-features"
   ];
-  if (profile.features.length > 0) {
-    args.push("--features", profile.features.join(","));
-  }
-  if (profile.target) {
-    args.push("--filter-platform", profile.target);
-  }
+  if (profile.features.length > 0) args.push("--features", profile.features.join(","));
+  if (profile.target) args.push("--filter-platform", profile.target);
   const result = spawnSync("cargo", args, {
     cwd: repoRoot,
     encoding: "utf8",
@@ -265,8 +276,9 @@ function cargoMetadata(profile) {
     return null;
   }
   if (result.status !== 0) {
-    const diagnostic = `${result.stderr ?? ""}`.trim().slice(0, 4000);
-    failures.push(`${profile.id}: cargo metadata exited ${result.status}: ${diagnostic}`);
+    failures.push(
+      `${profile.id}: cargo metadata exited ${result.status}: ${`${result.stderr ?? ""}`.trim().slice(0, 4000)}`,
+    );
     return null;
   }
   try {
@@ -298,9 +310,7 @@ function reachableNonDevPackages(metadata, profile) {
     if (!node) continue;
     for (const dep of node.deps ?? []) {
       const kinds = dep.dep_kinds ?? [];
-      const reachable =
-        kinds.length === 0 || kinds.some((kind) => kind.kind !== "dev");
-      if (reachable) stack.push(dep.pkg);
+      if (kinds.length === 0 || kinds.some((kind) => kind.kind !== "dev")) stack.push(dep.pkg);
     }
   }
   return new Set(
@@ -345,9 +355,7 @@ for (const raw of evidence.profiles) {
     }
   }
   for (const packageName of required) {
-    if (!packages.has(packageName)) {
-      failures.push(`${profile.id}: missing required package ${packageName}`);
-    }
+    if (!packages.has(packageName)) failures.push(`${profile.id}: missing required package ${packageName}`);
   }
 }
 
@@ -356,23 +364,19 @@ for (const marker of [
   "Six feature-resolved graphs",
   "Dev-dependencies are excluded",
   "compiled bundle artifact evidence remains pending"
-]) {
-  need(packet, marker, "anonymous storefront graph packet");
-}
+]) need(packet, marker, "anonymous storefront graph packet");
 for (const marker of [
   "anonymous-storefront-graph-source-ready",
   "Anonymous storefront authoring exclusion: source-ready",
   "feature-resolved `cargo metadata`",
-  "bundle artifact execution remains pending"
-]) {
-  need(plan, marker, "canonical Pages/Page Builder plan");
-}
+  "bundle artifact execution remains pending",
+  "authenticated inline profiles are opt-in"
+]) need(plan, marker, "canonical Pages/Page Builder plan");
 for (const marker of [
   "anonymous storefront dependency graph verifier",
-  "Compiled SSR/CSR/hydrate bundle artifact evidence remains open"
-]) {
-  need(localPlan, marker, "Pages local plan");
-}
+  "Compiled SSR/CSR/hydrate bundle artifact evidence remains open",
+  "authenticated inline profiles are opt-in"
+]) need(localPlan, marker, "Pages local plan");
 
 if (failures.length > 0) {
   console.error("[verify-pages-anonymous-storefront-graph] FAIL");
@@ -380,5 +384,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "[verify-pages-anonymous-storefront-graph] PASS graph_profiles=6 authoring_packages=excluded optional_inline_source=gated bundle_artifact_execution=pending"
+  "[verify-pages-anonymous-storefront-graph] PASS graph_profiles=6 authoring_packages=excluded opt_in_inline_profiles=separate bundle_artifact_execution=pending"
 );
