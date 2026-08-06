@@ -26,5 +26,6 @@ Describe the domain and responsibilities of this module.
 - [Queries](./queries.md)
 - [Events](./events.md)
 - [Storage](./storage.md)
+- [Index integration](./indexing.md)
 - [Workflows](./workflows.md)
 - [Testing](./testing.md)
