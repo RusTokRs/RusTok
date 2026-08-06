@@ -22,11 +22,12 @@ const sourcePath = 'crates/rustok-index/src/infrastructure/postgres/schema_readi
 const source = requireMarkers(sourcePath, [
   'pub const MAX_INDEX_SCHEMA_READINESS_SCHEMAS: usize = 64;',
   'pub struct IndexSchemaReadinessRequest',
-  'pub enum IndexSchemaReadinessFailureKind',
-  'Missing,',
-  'Inactive,',
-  'FingerprintMismatch,',
-  'ContractMismatch,',
+  'pub struct IndexSchemaReadinessFailure',
+  'pub reason: PersistedSchemaReadinessFailure',
+  'PersistedSchemaReadinessFailure::Missing',
+  'PersistedSchemaReadinessFailure::Inactive',
+  'PersistedSchemaReadinessFailure::FingerprintMismatch',
+  'PersistedSchemaReadinessFailure::ContractMismatch',
   'pub struct IndexSchemaReadinessReceipt',
   'pub struct PostgresIndexSchemaReadinessStore',
   'pub async fn require(',
@@ -61,6 +62,10 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_readiness
   'readiness_rejects_schema_json_drift_even_with_the_expected_fingerprint',
   'readiness_request_is_bounded_and_unambiguous',
   'readiness_rejects_refs_absent_from_the_runtime_registry_before_storage',
+  'PersistedSchemaReadinessFailure::Missing',
+  'PersistedSchemaReadinessFailure::Inactive',
+  'PersistedSchemaReadinessFailure::FingerprintMismatch',
+  'PersistedSchemaReadinessFailure::ContractMismatch',
 ]);
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
