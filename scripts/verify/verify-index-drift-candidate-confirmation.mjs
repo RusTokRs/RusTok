@@ -149,18 +149,17 @@ for (const forbidden of [
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_finding_persistence_pending`.',
+  'Status: `source_complete_persistence_complete_lifecycle_pending`.',
   'Materialized bracketing',
   'An empty ordinary targeted load is never interpreted as absence.',
   'requires the same positive absence version',
   'PostgreSQL and owner sources do not share a transaction',
-  'does not add:',
-  'internal persistence adapter for confirmed candidates',
+  'm6-confirmed-candidate-finding-persistence.md',
   'No tests, verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('plan', [
-  'M6 - persist confirmed stale and orphan findings',
-  'source_complete_finding_persistence_pending',
+  'M6 - add drift finding lifecycle commands',
+  'source_complete_lifecycle_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-drift-candidate-confirmation.mjs'",
