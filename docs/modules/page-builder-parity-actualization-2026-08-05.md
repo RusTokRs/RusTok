@@ -1,6 +1,6 @@
 # Page Builder / Pages Parity Actualization
 
-Date: 2026-08-05
+Date: 2026-08-06
 Status: current-source-overlay / execution-and-rollout-open
 
 This overlay reconciles the Page Builder programme with current `main`. It supersedes stale open-checkbox wording in older broad plans where that wording conflicts with merged source. It does not convert source-ready work into executed evidence.
@@ -47,21 +47,61 @@ Recent source packets add progressively stronger evidence:
 - PR #2971: PostgreSQL publish/rollback outbox/cache harness;
 - PR #2974: durable relay failure and restart harness;
 - PR #2979: public artifact HTTP cache harness;
-- current slice: native storefront cache source contract.
+- native storefront cache source contract.
 
 The native storefront cache source contract is ready. It retains composite route/page/artifact generation keys, hit short-circuit, generation rotation, old-value reachability rules and cache-failure fallback through the same public Pages cache runtime.
 
+### Authenticated inline authoring and anonymous exclusion
+
+Authenticated real-DOM authoring, dedicated authoring assets, same-origin admin launch, deterministic release composition and the artifact/HTTP/browser/rollout evidence harness chain are source-ready.
+
+Anonymous default, CSR, hydrate and SSR profiles do not enable inline editing, authoring assets or the admin launch. Public Pages HTML remains SSR-only and excludes the dedicated authoring bootstrap, JS and WASM source paths.
+
+Older Phase 3 and Phase 8 checkboxes that still say the real-DOM adapter, authenticated storefront editing, selected immutable artifact rendering or anonymous authoring-code exclusion are unimplemented are stale at source level. Artifact, HTTP, browser and tenant execution remain open.
+
+### Reviewed publish resource limits
+
+Marker:
+
+```text
+static-publish-resource-limits-source-ready
+```
+
+The reviewed static publish path already has provider-owned fail-closed HTML, CSS, URL, attribute, metadata and public-resource checks. The remaining global budget gap is now source-closed.
+
+New reviewed sanitization evidence uses `page_builder_static_publish_sanitization_v3` and binds:
+
+- a 16 MiB prepared-project byte limit;
+- at most 128 pages;
+- at most 50,000 current `pages[].component` nodes;
+- maximum component depth 128;
+- at most 4,096 assets;
+- at most 20,000 style rules;
+- the resource-limit policy hash and observed counts.
+
+Resource evidence is recomputed during sanitization integrity verification before runtime materialization. Existing per-content, attribute, URL, CSS and media-query limits remain authoritative.
+
+The exact legacy sanitization v2 remains verifiable with its prior hash formula. Existing immutable v2 artifacts do not receive retroactive resource-limit rejection; every newly sanitized reviewed publication carries v3 evidence.
+
+The broad Phase 4 wording should now be read as follows:
+
+- HTML/CSS/URL/attribute policy source: ready;
+- global project/page/component/depth/asset/style budgets: source-ready;
+- accepted parser, real-project, runtime and tenant evidence: pending.
+
 ### Status boundary
 
-Source parity has advanced, but execution and rollout gates remain open.
+Source parity has advanced, but execution and rollout remain open.
 
 - No new test, verifier, Cargo, database, HTTP, browser, workflow or CI execution is claimed here.
+- No publish/materialization scenario was executed.
 - No FFA/FBA promotion is made.
-- Real native server-function execution, durable relay-to-storefront continuity, browser/runtime packets and observed tenant rollout remain required.
 
 ## Current next cursor
 
-1. Execute the existing metadata conflict/isolation and published metadata browser packets.
-2. Mount and execute the real Pages native storefront server-function route with trusted host context, database fixtures and `PagesCacheReadRuntime`.
-3. Retain one exact-revision continuity packet from durable `NodePublished` relay delivery through generation rotation to native storefront miss/refill/hit.
-4. Complete compilation, workflow, anonymous-bundle and tenant Wave evidence before promotion.
+1. Run the static publish resource-limit source guard and focused Page Builder tests.
+2. Retain accepted real-project policy evidence covering HTML/CSS/URL/attribute rejection and every global budget boundary.
+3. Execute the existing metadata conflict/isolation and published metadata browser packets.
+4. Mount and execute the real Pages native storefront server-function route with trusted host context, database fixtures and `PagesCacheReadRuntime`.
+5. Retain one exact-revision continuity packet from durable `NodePublished` relay delivery through generation rotation to native storefront miss/refill/hit.
+6. Complete compilation, artifact/HTTP/browser, anonymous-bundle and tenant Wave evidence before promotion.
