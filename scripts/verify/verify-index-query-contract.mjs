@@ -61,6 +61,7 @@ const scripts = [
   'verify-index-product-source.mjs',
   'verify-index-product-locale-refresh-ledger.mjs',
   'verify-index-product-variant-refresh-ledger.mjs',
+  'verify-index-product-refresh-canonical-writer.mjs',
   'verify-index-product-variant-source.mjs',
   'verify-index-product-graph-source.mjs',
   'verify-index-product-tombstone-source.mjs',
