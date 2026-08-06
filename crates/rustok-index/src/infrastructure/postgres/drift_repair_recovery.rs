@@ -74,6 +74,7 @@ impl PostgresIndexDriftRepairRecoveryStore {
         if let Some(existing) = load_decision_by_id(
             transaction,
             command.tenant_id(),
+            command.command_id(),
             command.decision_id(),
         )
         .await?
@@ -82,7 +83,7 @@ impl PostgresIndexDriftRepairRecoveryStore {
                 return Err(permanent_recovery_failure(DECISION_ID_CONFLICT));
             }
             return Ok(IndexDriftRepairRecoveryStoreOutcome::AlreadyApplied(
-                existing.into_receipt(command.command_id())?,
+                existing.into_receipt()?,
             ));
         }
 
@@ -136,15 +137,18 @@ impl PostgresIndexDriftRepairRecoveryStore {
             return Ok(IndexDriftRepairRecoveryStoreOutcome::FindingNotOpen);
         }
 
-        let revision = current_revision
-            .map_or(Some(0), |value| value.checked_add(1))
-            .ok_or_else(|| permanent_recovery_failure(STORED_CONTRACT_INVALID))?;
+        let revision = match current_revision {
+            Some(value) => value
+                .checked_add(1)
+                .ok_or_else(|| permanent_recovery_failure(STORED_CONTRACT_INVALID))?,
+            None => 0,
+        };
         insert_decision(
             transaction,
             DecisionInsert {
                 tenant_id: command.tenant_id(),
-                decision_id: command.decision_id(),
                 command_id: command.command_id(),
+                decision_id: command.decision_id(),
                 finding_id: command.finding_id(),
                 payload_digest: command.payload_digest(),
                 revision,
@@ -277,19 +281,7 @@ impl RecoveryAwareIndexDriftRepairStore {
             .await
         }
         .await;
-        match result {
-            Ok(()) => {
-                transaction
-                    .commit()
-                    .await
-                    .map_err(|_| retryable_repair_failure(STORAGE_UNAVAILABLE))?;
-                Ok(())
-            }
-            Err(error) => {
-                let _ = transaction.rollback().await;
-                Err(error)
-            }
-        }
+        finish_repair_transaction(transaction, result).await
     }
 
     async fn ensure_initial_active(
@@ -342,8 +334,8 @@ impl RecoveryAwareIndexDriftRepairStore {
                 &transaction,
                 DecisionInsert {
                     tenant_id: command.tenant_id(),
-                    decision_id: command.command_id(),
                     command_id: command.command_id(),
+                    decision_id: command.command_id(),
                     finding_id: command.finding_id(),
                     payload_digest: &payload_digest,
                     revision: 0,
@@ -358,19 +350,7 @@ impl RecoveryAwareIndexDriftRepairStore {
             .await
         }
         .await;
-        match result {
-            Ok(()) => {
-                transaction
-                    .commit()
-                    .await
-                    .map_err(|_| retryable_repair_failure(STORAGE_UNAVAILABLE))?;
-                Ok(())
-            }
-            Err(error) => {
-                let _ = transaction.rollback().await;
-                Err(error)
-            }
-        }
+        finish_repair_transaction(transaction, result).await
     }
 
     async fn gate_ticket(
@@ -413,19 +393,7 @@ impl RecoveryAwareIndexDriftRepairStore {
             .await
         }
         .await;
-        match result {
-            Ok(()) => {
-                transaction
-                    .commit()
-                    .await
-                    .map_err(|_| retryable_repair_failure(STORAGE_UNAVAILABLE))?;
-                Ok(())
-            }
-            Err(error) => {
-                let _ = transaction.rollback().await;
-                Err(error)
-            }
-        }
+        finish_repair_transaction(transaction, result).await
     }
 }
 
@@ -437,7 +405,10 @@ impl IndexDriftRepairStore for RecoveryAwareIndexDriftRepairStore {
     ) -> Result<IndexDriftRepairReservationOutcome, IndexDriftRepairFailure> {
         self.gate_command(authorized.command()).await?;
         let outcome = self.inner.reserve(authorized).await?;
-        if matches!(outcome, IndexDriftRepairReservationOutcome::Reserved { .. }) {
+        if matches!(
+            &outcome,
+            IndexDriftRepairReservationOutcome::Reserved { .. }
+        ) {
             self.ensure_initial_active(authorized).await?;
         }
         Ok(outcome)
@@ -569,6 +540,7 @@ struct LatestDecision {
 
 #[derive(Clone)]
 struct StoredDecision {
+    command_id: Uuid,
     decision_id: Uuid,
     finding_id: Uuid,
     payload_digest: String,
@@ -586,25 +558,30 @@ impl StoredDecision {
         &self,
         command: &crate::IndexDriftRepairRecoveryCommand,
     ) -> bool {
-        self.decision_id == command.decision_id()
+        self.command_id == command.command_id()
+            && self.decision_id == command.decision_id()
             && self.finding_id == command.finding_id()
             && self.payload_digest == command.payload_digest()
+            && self.expected_revision() == command.expected_revision()
             && self.action == recovery_action_text(command.action())
             && self.actor_kind == command.actor().kind()
             && self.actor_subject == command.actor().subject()
             && self.reason == command.reason()
     }
 
+    fn expected_revision(&self) -> Option<u64> {
+        self.revision.checked_sub(1)
+    }
+
     fn into_receipt(
         self,
-        command_id: Uuid,
     ) -> Result<IndexDriftRepairRecoveryReceipt, IndexDriftRepairRecoveryFailure> {
         let action = decode_operator_action(&self.action)?;
         let previous_state = decode_optional_state(&self.previous_state)?;
         let current_state = decode_state(&self.new_state)?;
         IndexDriftRepairRecoveryReceipt::new(
             self.decision_id,
-            command_id,
+            self.command_id,
             self.finding_id,
             self.revision,
             action,
@@ -617,8 +594,8 @@ impl StoredDecision {
 
 struct DecisionInsert<'a> {
     tenant_id: Uuid,
-    decision_id: Uuid,
     command_id: Uuid,
+    decision_id: Uuid,
     finding_id: Uuid,
     payload_digest: &'a str,
     revision: u64,
@@ -630,6 +607,25 @@ struct DecisionInsert<'a> {
     reason: &'a str,
 }
 
+async fn finish_repair_transaction(
+    transaction: DatabaseTransaction,
+    result: Result<(), IndexDriftRepairFailure>,
+) -> Result<(), IndexDriftRepairFailure> {
+    match result {
+        Ok(()) => {
+            transaction
+                .commit()
+                .await
+                .map_err(|_| retryable_repair_failure(STORAGE_UNAVAILABLE))?;
+            Ok(())
+        }
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            Err(error)
+        }
+    }
+}
+
 async fn load_command_identity(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -638,7 +634,7 @@ async fn load_command_identity(
     transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            &format!(
+            format!(
                 "SELECT finding_id, payload_digest, state FROM {COMMAND_TABLE} WHERE tenant_id = $1 AND command_id = $2 FOR UPDATE"
             ),
             vec![tenant_id.into(), command_id.into()],
@@ -657,7 +653,7 @@ async fn load_command_identity_repair(
     transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            &format!(
+            format!(
                 "SELECT finding_id, payload_digest, state FROM {COMMAND_TABLE} WHERE tenant_id = $1 AND command_id = $2 FOR UPDATE"
             ),
             vec![tenant_id.into(), command_id.into()],
@@ -676,7 +672,7 @@ async fn load_latest_decision(
     transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            &format!(
+            format!(
                 "SELECT revision, new_state FROM {DECISION_TABLE} WHERE tenant_id = $1 AND command_id = $2 ORDER BY revision DESC LIMIT 1 FOR UPDATE"
             ),
             vec![tenant_id.into(), command_id.into()],
@@ -695,7 +691,7 @@ async fn load_latest_decision_repair(
     transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            &format!(
+            format!(
                 "SELECT revision, new_state FROM {DECISION_TABLE} WHERE tenant_id = $1 AND command_id = $2 ORDER BY revision DESC LIMIT 1 FOR UPDATE"
             ),
             vec![tenant_id.into(), command_id.into()],
@@ -709,15 +705,16 @@ async fn load_latest_decision_repair(
 async fn load_decision_by_id(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
+    command_id: Uuid,
     decision_id: Uuid,
 ) -> Result<Option<StoredDecision>, IndexDriftRepairRecoveryFailure> {
     transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            &format!(
-                "SELECT decision_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason FROM {DECISION_TABLE} WHERE tenant_id = $1 AND decision_id = $2 FOR UPDATE"
+            format!(
+                "SELECT command_id, decision_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason FROM {DECISION_TABLE} WHERE tenant_id = $1 AND command_id = $2 AND decision_id = $3 FOR UPDATE"
             ),
-            vec![tenant_id.into(), decision_id.into()],
+            vec![tenant_id.into(), command_id.into(), decision_id.into()],
         ))
         .await
         .map_err(|_| retryable_recovery_failure(STORAGE_UNAVAILABLE))?
@@ -734,13 +731,13 @@ async fn insert_decision(
     let inserted = transaction
         .execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            &format!(
-                "INSERT INTO {DECISION_TABLE} (tenant_id, decision_id, command_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+            format!(
+                "INSERT INTO {DECISION_TABLE} (tenant_id, command_id, decision_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
             ),
             vec![
                 decision.tenant_id.into(),
-                decision.decision_id.into(),
                 decision.command_id.into(),
+                decision.decision_id.into(),
                 decision.finding_id.into(),
                 decision.payload_digest.to_owned().into(),
                 revision.into(),
@@ -769,13 +766,13 @@ async fn insert_decision_repair(
     let inserted = transaction
         .execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            &format!(
-                "INSERT INTO {DECISION_TABLE} (tenant_id, decision_id, command_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+            format!(
+                "INSERT INTO {DECISION_TABLE} (tenant_id, command_id, decision_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
             ),
             vec![
                 decision.tenant_id.into(),
-                decision.decision_id.into(),
                 decision.command_id.into(),
+                decision.decision_id.into(),
                 decision.finding_id.into(),
                 decision.payload_digest.to_owned().into(),
                 revision.into(),
@@ -944,6 +941,9 @@ fn decode_latest_decision_repair(
 fn decode_stored_decision(
     row: QueryResult,
 ) -> Result<StoredDecision, IndexDriftRepairRecoveryFailure> {
+    let command_id = row
+        .try_get::<Uuid>("", "command_id")
+        .map_err(|_| permanent_recovery_failure(STORED_CONTRACT_INVALID))?;
     let decision_id = row
         .try_get::<Uuid>("", "decision_id")
         .map_err(|_| permanent_recovery_failure(STORED_CONTRACT_INVALID))?;
@@ -953,10 +953,15 @@ fn decode_stored_decision(
     let payload_digest = row
         .try_get::<String>("", "payload_digest")
         .map_err(|_| permanent_recovery_failure(STORED_CONTRACT_INVALID))?;
-    if decision_id.is_nil() || finding_id.is_nil() || !valid_digest(&payload_digest) {
+    if command_id.is_nil()
+        || decision_id.is_nil()
+        || finding_id.is_nil()
+        || !valid_digest(&payload_digest)
+    {
         return Err(permanent_recovery_failure(STORED_CONTRACT_INVALID));
     }
     Ok(StoredDecision {
+        command_id,
         decision_id,
         finding_id,
         payload_digest,
