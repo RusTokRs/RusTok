@@ -48,9 +48,12 @@
   },
   "authorization": {
     "owner": "ForumCategoryAudienceReadService",
+    "authenticated_method": "get_authenticated_storefront_list_visible_with_audience_context",
+    "authenticated_permission_boundary": "forum_categories:list",
     "authenticated_operation": "SelectedCategory",
     "authenticated_transport_graphql": "Graphql",
     "authenticated_transport_native": "NativeServer",
+    "anonymous_method": "get_public_storefront_visible_with_locale_fallback",
     "anonymous_uses_public_category_audience": true,
     "authenticated_uses_exact_permission_snapshot": true,
     "authenticated_uses_trusted_audience_port_context": true,
