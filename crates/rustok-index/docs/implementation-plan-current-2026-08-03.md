@@ -1,12 +1,9 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
-Status overlay rechecked through
-`main@809a557dd37d636ef1ad7fa1df06ab4c4daa03b4`, stacked parent PR #3067 at
+Status overlay rechecked against the current main snapshot retained in
+`implementation-main-delta-2026-08-06-1335.md`, stacked parent PR #3067 at
 `7ababf39e26de9d2039c864d5092147d52d50d1a`, and active branch
 `agent/index-m6-orphan-link-repair-20260806`.
-
-The non-overlapping current-main review is retained in
-`implementation-main-delta-2026-08-06-1335.md`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
