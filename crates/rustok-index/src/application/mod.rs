@@ -25,6 +25,8 @@ mod validation;
 #[cfg(test)]
 mod aggregate_ordering_tests;
 #[cfg(test)]
+mod drift_repair_tests;
+#[cfg(test)]
 mod planner_tests;
 #[cfg(test)]
 mod postgres_compiler_tests;
