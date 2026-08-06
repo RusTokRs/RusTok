@@ -710,7 +710,7 @@ const document = {
     raw_response_bodies_persisted: false,
     raw_command_logs_persisted: false,
     docker_inspect_document_persisted: false,
-+    requested_image_reference_persisted: false,
+    requested_image_reference_persisted: false,
   },
 };
 
