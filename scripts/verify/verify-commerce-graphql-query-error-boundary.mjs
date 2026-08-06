@@ -52,6 +52,12 @@ const dynamicMapper = between(
   'impl QueryGraphqlMessage for &str {',
   'dynamic string mapper',
 );
+const borrowedMapper = between(
+  boundary,
+  'impl QueryGraphqlMessage for &str {',
+  'impl QueryGraphqlMessage for BoundaryError {',
+  'borrowed string mapper',
+);
 const databaseMapper = between(
   boundary,
   'impl From<sea_orm::DbErr> for BoundaryError {',
@@ -95,8 +101,8 @@ for (const [value, label] of [
   ['Public {', 'static public envelope'],
   ['pub(crate) trait QueryGraphqlMessage', 'constructor policy'],
   ['impl QueryGraphqlMessage for String', 'dynamic string redaction'],
-  ['impl QueryGraphqlMessage for &str', 'static message preservation'],
-  ['impl From<Error> for BoundaryError', 'GraphQL conversion'],
+  ['impl QueryGraphqlMessage for &str', 'borrowed string redaction'],
+  ['impl From<Error> for BoundaryError', 'typed GraphQL conversion'],
   ['impl From<String> for BoundaryError', 'string conversion'],
   ['impl From<sea_orm::DbErr> for BoundaryError', 'database conversion'],
   ['impl From<crate::CommerceError> for BoundaryError', 'commerce conversion'],
@@ -109,7 +115,7 @@ for (const [value, label] of [
   ['const QUERY_ERROR_BOUNDARY: &str = "commerce_graphql_query";', 'boundary constant'],
   ['struct QueryDiagnosticError;', 'diagnostic error type'],
   ['formatter.write_str("redacted")', 'redacted diagnostic Debug'],
-  ['fn text_presence_shape(value: &str)', 'dynamic text shape helper'],
+  ['fn text_presence_shape(value: &str)', 'text shape helper'],
 ]) requireText(boundary, value, label);
 
 for (const [value, label] of [
@@ -126,8 +132,30 @@ for (const value of ['error_message = %self', 'message = %self', 'error = %self'
   forbidText(dynamicMapper, value, 'raw dynamic string diagnostic');
 }
 
+for (const [value, label] of [
+  ['let message_presence = text_presence_shape(self);', 'borrowed message shape'],
+  ['let message_len = self.len();', 'borrowed message length'],
+  ['source_owner = "commerce_graphql_query.borrowed_message"', 'borrowed source owner'],
+  ['error_kind = "borrowed_message"', 'borrowed error kind'],
+  ['message_presence,', 'borrowed presence log'],
+  ['message_len,', 'borrowed length log'],
+  ['"COMMERCE_QUERY_OPERATION_FAILED"', 'borrowed safe code'],
+  ['"Commerce query could not be completed safely"', 'borrowed safe message'],
+  ['retryable = false', 'borrowed retryability'],
+]) requireText(borrowedMapper, value, label);
+for (const value of [
+  'BoundaryError::Graphql(Error::new(self))',
+  'Error::new(self)',
+  'error_message = %self',
+  'message = %self',
+  'error = %self',
+]) {
+  forbidText(borrowedMapper, value, 'borrowed message bypass');
+}
+
 for (const mapper of [
   ['dynamic', dynamicMapper],
+  ['borrowed', borrowedMapper],
   ['database', databaseMapper],
   ['commerce', commerceMapper],
   ['fulfillment', fulfillmentMapper],
@@ -230,7 +258,7 @@ for (const [ownerSource, value, label] of [
 
 for (const value of [
   'BoundaryError::Graphql(error) => error',
-  'BoundaryError::Graphql(Error::new(self))',
+  'impl From<Error> for BoundaryError',
   '<::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::unauthenticated()',
   '<::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::permission_denied(message)',
   '::rustok_api::graphql::require_module_enabled(ctx, module_slug)',
@@ -243,7 +271,7 @@ for (const value of [
   'mod source;',
   'include!("../query.rs");',
   'pub use source::CommerceQuery;',
-]) requireText(facade, value, 'existing GraphQL preservation');
+]) requireText(facade, value, 'existing typed GraphQL preservation');
 
 for (const value of [
   'Error::new(error.to_string())',
@@ -283,11 +311,11 @@ if ((facade.match(/include!\("\.\.\/query\.rs"\)/g) ?? []).length !== 1) {
 }
 
 const shadows = boundary.match(/let error = QueryDiagnosticError;/g) ?? [];
-if (shadows.length !== 6) {
-  failures.push(`expected six diagnostic shadows, found ${shadows.length}`);
+if (shadows.length !== 7) {
+  failures.push(`expected seven diagnostic shadows, found ${shadows.length}`);
 }
-if ((boundary.match(/error = \?error/g) ?? []).length !== 6) {
-  failures.push('expected six redacted diagnostic error fields');
+if ((boundary.match(/error = \?error/g) ?? []).length !== 7) {
+  failures.push('expected seven redacted diagnostic error fields');
 }
 for (const value of [
   'error_message = %self',
@@ -318,5 +346,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL query errors retain stable envelopes and emit bounded redacted diagnostics',
+  '✔ Commerce GraphQL query errors retain typed GraphQL pass-through while borrowed and owned messages use bounded stable envelopes',
 );
