@@ -60,6 +60,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_readiness
   'readiness_rejects_inactive_or_contract_drifted_rows',
   'readiness_rejects_schema_json_drift_even_with_the_expected_fingerprint',
   'readiness_request_is_bounded_and_unambiguous',
+  'readiness_rejects_refs_absent_from_the_runtime_registry_before_storage',
 ]);
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
@@ -83,8 +84,8 @@ requireMarkers('crates/rustok-index/docs/m7-schema-readiness.md', [
   '`schema_fingerprint`',
   '`schema_json`',
   '`rustok-product::product@2`',
-  '`rustok-product::product-variant@2`',
-  '`rustok-channel::sales-channel@1`',
+  '`rustok-product::product_variant@2`',
+  '`rustok-channel::sales_channel@1`',
   'does not:',
   'No tests, Node verifiers, Cargo checks',
 ]);
