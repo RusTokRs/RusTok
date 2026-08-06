@@ -14,7 +14,7 @@ use crate::{
     ForumTopicRouteService, TopicService,
 };
 
-use super::GqlForumTopicRouteDescriptor;
+use super::{GqlForumTopicRouteDescriptor, query::is_topic_visible_for_channel};
 
 const MODULE_SLUG: &str = "forum";
 
@@ -49,7 +49,9 @@ impl ForumTopicRouteQuery {
             .await
         {
             Ok(resolution) => resolution,
-            Err(ForumError::TopicRouteNotFound) => return Ok(None),
+            Err(ForumError::TopicNotFound(_))
+            | Err(ForumError::TopicDeleted)
+            | Err(ForumError::TopicRouteNotFound) => return Ok(None),
             Err(error) => return Err(async_graphql::Error::new(error.to_string())),
         };
 
@@ -197,17 +199,6 @@ fn is_public_request(ctx: &Context<'_>) -> bool {
 fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
     ctx.data_opt::<RequestContext>()
         .and_then(|request| request.channel_slug.clone())
-}
-
-fn is_topic_visible_for_channel(channel_slugs: &[String], channel_slug: Option<&str>) -> bool {
-    if channel_slugs.is_empty() {
-        return true;
-    }
-    let Some(channel_slug) = channel_slug else {
-        return false;
-    };
-    let normalized = channel_slug.trim().to_ascii_lowercase();
-    !normalized.is_empty() && channel_slugs.iter().any(|item| item == &normalized)
 }
 
 #[cfg(test)]
