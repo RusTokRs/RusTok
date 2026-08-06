@@ -146,7 +146,7 @@ requireMarkers('doc', [
   'keeps the fence inside its 512-byte contract',
   'deleted target rows must have an',
   'current target row whose',
-  'post-fence is skipped',
+  'version is not visible in the fence is skipped',
   '`limit + 1`',
   'does not record a finding',
   'candidate confirmation boundary',
