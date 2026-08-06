@@ -12,18 +12,24 @@ The packet is executable source, not admitted production evidence. It retains th
 assertions the repository owner must run before a public command surface, automatic iterator, or
 time-derived ownership policy can be considered.
 
+The locked retained-evidence contract, clean-commit capture runner, and admission verifier are
+documented separately in
+[`m6-repair-retained-evidence-admission.md`](./m6-repair-retained-evidence-admission.md).
+
 ## Executable targets
 
 The harness lives in:
 
 ```text
+crates/rustok-index/tests/drift_repair_postgres_environment_test.rs
 crates/rustok-index/tests/drift_repair_recovery_postgres_test.rs
 crates/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs
 crates/rustok-index/tests/support/drift_repair.rs
 ```
 
-Both targets read `RUSTOK_INDEX_TEST_DATABASE_URL`, with PostgreSQL `DATABASE_URL` as a fallback.
-When no PostgreSQL URL is available, each target reports a skip and succeeds.
+All targets read `RUSTOK_INDEX_TEST_DATABASE_URL`, with PostgreSQL `DATABASE_URL` as a fallback. When
+no PostgreSQL URL is available, each target reports a skip and succeeds. The retained-evidence runner
+rejects that skip state and therefore cannot promote an environment-less run.
 
 Every test creates a unique PostgreSQL schema, creates the tenant-owner fixture table, applies the
 real `IndexModule` migrations, uses production schema registration, mutation, finding, repair, and
@@ -33,6 +39,17 @@ The shared fixture intentionally creates independent one-connection pools for th
 store, base repair store, recovery-aware owner, concrete owner, and evidence reader. This preserves
 the real nested transaction shape without allowing an outer command fence to starve an inner owner
 transaction on a single pooled connection.
+
+## Environment metadata target
+
+`drift_repair_postgres_environment_test` queries PostgreSQL through the same isolated-schema fixture
+and emits exactly two bounded capture markers:
+
+- `postgres_server_version`;
+- `postgres_server_version_num`.
+
+It does not emit the connection URL, host, database name, username, or password. URL source and a
+bounded URL class are derived only by the capture runner and are retained without credentials.
 
 ## Migration and recovery target
 
@@ -110,6 +127,21 @@ The first four cases must complete as `NotRepaired(before_not_repairable)` witho
 mutation delivery. The normal mutation case must preserve the newer source entity and link graph,
 leave the repair command prepared, and reject the stale exact-edge owner call.
 
+## Retained admission boundary
+
+The source-ready packet is locked by:
+
+```text
+crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
+scripts/evidence/capture-index-repair-postgres.mjs
+scripts/verify/verify-index-repair-retained-evidence.mjs
+```
+
+The runner requires a clean commit, executes the metadata target followed by both scenario targets,
+rejects skips and non-zero results, retains current source hashes, and writes credential-redacted
+complete stdout/stderr plus one final pass packet. Until the runner is executed, all three retained
+output files must remain absent and the verifier reports execution pending.
+
 ## Deliberate limits
 
 This packet does not add or claim:
@@ -123,22 +155,21 @@ This packet does not add or claim:
 
 ## Owner verification
 
+The admitted path is:
+
 ```bash
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
-  cargo test -p rustok-index \
-  --test drift_repair_recovery_postgres_test \
-  -- --nocapture --test-threads=1
+  node scripts/evidence/capture-index-repair-postgres.mjs
 
-RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
-  cargo test -p rustok-index \
-  --test drift_repair_concrete_execution_postgres_test \
-  -- --nocapture --test-threads=1
-
+node scripts/verify/verify-index-repair-retained-evidence.mjs
 node scripts/verify/verify-index-repair-execution-postgres-harness.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
+
+The two scenario targets may still be run directly for diagnosis, but only the capture runner writes
+the bounded retained packet and complete redacted logs.
 
 Tests, Node verifiers, formatting, Cargo checks, migrations, PostgreSQL scenarios, workflows, and CI
 were not executed by the implementation agent, per maintainer instruction.
