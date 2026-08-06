@@ -136,13 +136,15 @@ impl TopicService {
         )?;
 
         let txn = self.db.begin().await?;
-        ForumTopicRouteTombstoneVisibilityService::lock_delete_scope_in_tx(
+        ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(&txn, tenant_id)
+            .await?;
+        claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
+        ForumTopicRouteTombstoneVisibilityService::lock_topic_audience_scope_in_tx(
             &txn,
             tenant_id,
             topic_id,
         )
         .await?;
-        claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
 
         let public_reply_count = forum_reply::Entity::find()
