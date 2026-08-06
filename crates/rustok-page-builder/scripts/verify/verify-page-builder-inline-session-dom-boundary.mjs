@@ -92,7 +92,7 @@ for (const marker of [
   "grant session identifier",
   "Fly page id + expected project hash",
   "data-inline-session",
-  "session remains available only inside the trusted Rust/WASM grant",
+  "The session remains available only inside the trusted Rust/WASM grant",
   "Browser evidence remains pending",
 ]) need(packet, marker, "corrective packet");
 for (const marker of [
