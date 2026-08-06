@@ -109,9 +109,83 @@ mod cart_storefront_owner_boundary {
         CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
         CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
     };
-    use rustok_api::{PortContext, PortError};
+    use rustok_api::{PortActorKind, PortContext, PortError};
 
     const CART_GRAPHQL_OWNER_BOUNDARY: &str = "commerce_graphql_cart";
+
+    #[derive(Clone, Copy)]
+    struct CartOwnerDiagnosticContext {
+        tenant_id_shape: &'static str,
+        actor_kind: &'static str,
+        actor_id_shape: &'static str,
+        claim_count: usize,
+        role_count: usize,
+        channel_shape: &'static str,
+        locale_shape: &'static str,
+        correlation_id_shape: &'static str,
+        causation_id_shape: &'static str,
+        traceparent_shape: &'static str,
+        idempotency_key_shape: &'static str,
+        deadline_ms: Option<u64>,
+    }
+
+    impl From<&PortContext> for CartOwnerDiagnosticContext {
+        fn from(context: &PortContext) -> Self {
+            Self {
+                tenant_id_shape: identity_text_shape(context.tenant_id.as_str()),
+                actor_kind: actor_kind_name(&context.actor.kind),
+                actor_id_shape: identity_text_shape(context.actor.id.as_str()),
+                claim_count: context.claims.len(),
+                role_count: context.roles.len(),
+                channel_shape: optional_text_shape(context.channel.as_deref()),
+                locale_shape: text_shape(context.locale.as_str()),
+                correlation_id_shape: text_shape(context.correlation_id.as_str()),
+                causation_id_shape: optional_text_shape(context.causation_id.as_deref()),
+                traceparent_shape: optional_text_shape(context.traceparent.as_deref()),
+                idempotency_key_shape: optional_text_shape(context.idempotency_key.as_deref()),
+                deadline_ms: context.deadline_ms,
+            }
+        }
+    }
+
+    struct CartOwnerDiagnosticError;
+
+    impl std::fmt::Debug for CartOwnerDiagnosticError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("redacted")
+        }
+    }
+
+    fn actor_kind_name(kind: &PortActorKind) -> &'static str {
+        match kind {
+            PortActorKind::User => "user",
+            PortActorKind::Service => "service",
+            PortActorKind::System => "system",
+        }
+    }
+
+    fn identity_text_shape(value: &str) -> &'static str {
+        if value.is_empty() {
+            return "empty";
+        }
+        match uuid::Uuid::parse_str(value) {
+            Ok(value) if value.is_nil() => "uuid_nil",
+            Ok(_) => "uuid_non_nil",
+            Err(_) => "opaque",
+        }
+    }
+
+    fn text_shape(value: &str) -> &'static str {
+        if value.is_empty() { "empty" } else { "present" }
+    }
+
+    fn optional_text_shape(value: Option<&str>) -> &'static str {
+        match value {
+            None => "absent",
+            Some(value) if value.is_empty() => "empty",
+            Some(_) => "present",
+        }
+    }
 
     fn retain_cart_owner_context<T>(
         context: &PortContext,
@@ -119,21 +193,35 @@ mod cart_storefront_owner_boundary {
         result: Result<T, PortError>,
     ) -> Result<T, PortError> {
         result.map_err(|error| {
+            let diagnostic_context = CartOwnerDiagnosticContext::from(context);
+            let owner_code = error.code.clone();
+            let owner_kind = error.kind.clone();
+            let owner_retryable = error.retryable;
+            let owner_message_shape = text_shape(error.message.as_str());
+            let owner_message_len = error.message.len();
+            let diagnostic_error = CartOwnerDiagnosticError;
+
             tracing::error!(
-                error = ?error,
+                error = ?diagnostic_error,
                 owner = "rustok_cart",
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                channel = ?context.channel,
-                locale = %context.locale,
-                actor_kind = ?context.actor.kind,
-                actor_id = %context.actor.id,
-                causation_id = ?context.causation_id,
-                idempotency_key = ?context.idempotency_key,
+                tenant_id_shape = diagnostic_context.tenant_id_shape,
+                actor_kind = diagnostic_context.actor_kind,
+                actor_id_shape = diagnostic_context.actor_id_shape,
+                claim_count = diagnostic_context.claim_count,
+                role_count = diagnostic_context.role_count,
+                channel_shape = diagnostic_context.channel_shape,
+                locale_shape = diagnostic_context.locale_shape,
+                correlation_id_shape = diagnostic_context.correlation_id_shape,
+                causation_id_shape = diagnostic_context.causation_id_shape,
+                traceparent_shape = diagnostic_context.traceparent_shape,
+                idempotency_key_shape = diagnostic_context.idempotency_key_shape,
+                deadline_ms = ?diagnostic_context.deadline_ms,
                 operation,
-                owner_code = %error.code,
-                owner_kind = ?error.kind,
-                owner_retryable = error.retryable,
+                owner_code = %owner_code,
+                owner_message_shape,
+                owner_message_len,
+                owner_kind = ?owner_kind,
+                owner_retryable,
                 boundary = CART_GRAPHQL_OWNER_BOUNDARY,
                 "commerce GraphQL storefront cart owner call failed"
             );

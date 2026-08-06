@@ -92,3 +92,27 @@ Consequences:
   semantics separately;
 - the split-track `blog / forum / pages off rustok-content` no longer depends on
   an implicit forum slug/locale arrangement.
+
+## 2026-08-06 amendment — FORUM-24L category route identity
+
+FORUM-24L exercises the future category lookup anticipated above without changing
+the category slug model:
+
+- the transport-neutral canonical category path is
+  `/{locale}/forum/c/{slug}`;
+- `slug` remains a locale-aware translation field and the category UUID remains
+  internal identity;
+- category hierarchy is not embedded in the canonical path, so hierarchy moves do not change this route;
+- reverse lookup uses the shared order
+  `requested -> explicit fallback -> en -> first available`;
+- first-available lookup is accepted only when all remaining active candidates
+  belong to one category identity; cross-category ambiguity fails closed;
+- an exact requested route owned by an archived category does not fall through
+  to another locale or category;
+- route identity does not authorize public disclosure; audience, channel and
+  module visibility remain required at a future transport boundary.
+
+This amendment supersedes the ID-only statement in section 4 for category route
+identity only. It does not add a GraphQL field, REST endpoint, storefront mount,
+category alias history, hreflang or SEO publication policy. The later FORUM-24
+topic-route slices define their own separate stable-short-identity contract.

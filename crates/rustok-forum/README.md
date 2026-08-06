@@ -21,6 +21,7 @@
 - Own forum storage tables for categories, topics, translations, replies, and channel access through `forum_topic_channel_access`.
 - Expose shared multilingual contract fields on forum read surfaces:
   `requested_locale`, `effective_locale`, and `available_locales`.
+- Own stable localized topic routes and locale-aware category route identity while keeping route resolution separate from visibility authorization.
 - Own forum GraphQL and REST transport adapters alongside the domain services.
 - Keep REST category/topic/reply/user/widget handlers on narrow `ForumHttpRuntime` state; the manifest-declared Axum router builds it from `HostRuntimeContext` and a typed transactional event bus.
 - Publish the forum widget contract-freeze catalog/validation surfaces (`ForumWidgetContractService`, `/api/forum/widgets/catalog`, `/api/forum/widgets/validate`, `forumWidgetCatalog`).
@@ -35,13 +36,17 @@
 - Depends on `rustok-content` for shared rich-text, locale, and future orchestration helpers.
 - Depends on `rustok-taxonomy` for the shared scope-aware term dictionary behind
   forum topic tags.
-- Category slugs are translation-local, while topic slugs remain stable thread
-  labels; current public Forum lookup stays ID-based. A selected merged-source
-  ID resolves through the immutable `forum_topic_merge_operations` chain to the
-  terminal retained topic. `GET /api/forum/topics/{id}` returns an
-  authorization-safe `308 Permanent Redirect` for a merged source and keeps the
-  existing `200 TopicResponse` for a direct target. Slug aliases and localized
-  public routes are not part of the current contract.
+- Category slugs are translation-local. `ForumCategoryRouteService` owns the
+  transport-neutral flat `/{locale}/forum/c/{slug}` identity and shared locale
+  fallback semantics, but no public category route is mounted yet. Topic routes
+  use `/{locale}/forum/t/{short_id}/{slug}` with immutable redirect/tombstone
+  history and a Rust storefront mount; ID routes remain compatibility paths.
+  Every route transport must still apply the exact Forum audience, channel and
+  module visibility owner before disclosure.
+- A selected merged-source ID resolves through the immutable
+  `forum_topic_merge_operations` chain to the terminal retained topic.
+  `GET /api/forum/topics/{id}` returns an authorization-safe `308 Permanent Redirect`
+  for a merged source and keeps the existing `200 TopicResponse` for a direct target.
 - The manager-only GraphQL mutation `mergeForumTopic` composes the idempotent
   `ForumTopicMergeService` owner, derives tenant authority from the routed
   request, requires `forum_topics:manage`, and returns the immutable merge
@@ -118,6 +123,8 @@
 - `TopicService`
 - `ReplyService`
 - `CategoryService`
+- `services::ForumCategoryRouteService`
+- `ForumTopicRouteService`
 - `ModerationService`
 - `SubscriptionService`
 - `UserStatsService`
@@ -144,6 +151,7 @@ into README files, issues, or additional planning documents.
 
 - [Module docs](./docs/README.md)
 - [Canonical implementation plan](./docs/implementation-plan.md)
+- [Accepted Forum slug/locale decision](../../DECISIONS/2026-03-29-forum-slug-locale-contract.md)
 - [Merge owner](./docs/forum-21b-topic-merge-owner.md)
 - [Checked cross-category merge](./docs/forum-21m-topic-merge-cross-category.md)
 - [Accepted-solution policy](./docs/forum-21h-topic-merge-solution-policy.md)
@@ -152,4 +160,7 @@ into README files, issues, or additional planning documents.
 - [Topic merge GraphQL transport](./docs/forum-21k-topic-merge-graphql-transport.md)
 - [Admin topic merge workflow](./docs/forum-21n-topic-merge-admin-ui.md)
 - [Native Leptos admin merge transport](./docs/forum-21o-topic-merge-native-admin.md)
+- [Topic route identity owner](./docs/forum-24a-topic-route-identity-owner.md)
+- [Authorized topic route gone transport](./docs/forum-24k-topic-route-authorized-gone.md)
+- [Localized category route identity owner](./docs/forum-24l-category-route-identity-owner.md)
 - [Platform docs index](../../docs/index.md)

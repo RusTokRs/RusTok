@@ -23,9 +23,15 @@ ssr = [
   "dep:rustok-tenant",
   "rustok-api/server",
 ]
+inline-edit = [
+  "dep:fly",
+  "dep:uuid",
+  "rustok-page-builder-storefront/inline-edit",
+]
 
 [dependencies]
 rustok-ui-core.workspace = true
+fly = { path = "../../fly", optional = true }
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
@@ -43,6 +49,7 @@ rustok-core = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
 
 [dev-dependencies]
 async-trait.workspace = true
