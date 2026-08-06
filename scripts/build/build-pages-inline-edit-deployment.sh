@@ -84,8 +84,11 @@ fi
 
 server_rustflags="${RUSTFLAGS:-}"
 admin_rustflags="${RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS:-$server_rustflags}"
+client_rustflags="${RUSTOK_PAGES_INLINE_EDIT_CLIENT_RUSTFLAGS:-$admin_rustflags}"
 RUSTFLAGS="$admin_rustflags" bash "$admin_builder" "${admin_args[@]}"
-RUSTFLAGS="$server_rustflags" bash "$server_builder" "${server_args[@]}"
+RUSTFLAGS="$server_rustflags" \
+RUSTOK_PAGES_INLINE_EDIT_CLIENT_RUSTFLAGS="$client_rustflags" \
+  bash "$server_builder" "${server_args[@]}"
 
 test -s "$repo_root/apps/admin/dist/index.html"
 test -s "$repo_root/apps/admin/dist/output.css"
