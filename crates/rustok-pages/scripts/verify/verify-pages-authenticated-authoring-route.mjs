@@ -27,6 +27,7 @@ const evidence = JSON.parse(read(
 ));
 const storefrontCore = read("apps/storefront/src/modules/core.rs");
 const storefrontCargo = read("apps/storefront/Cargo.toml");
+const storefrontBuild = read("apps/storefront/build.rs");
 const bootstrap = read("apps/storefront/public/assets/pages-inline-edit-bootstrap.js");
 const builder = read("apps/storefront/scripts/build-pages-inline-edit-client.mjs");
 const auth = read("apps/server/src/middleware/auth_context.rs");
@@ -72,6 +73,7 @@ for (const key of [
   "fixed_js_and_wasm_asset_paths_are_declared",
   "wasm_export_is_feature_and_target_gated",
   "ssr_shell_is_removed_before_client_mount",
+  "client_only_codegen_excludes_optional_server_modules",
   "dedicated_client_artifact_builder_source_added",
   "client_builder_enables_only_pages_inline_edit_hydrate",
   "anonymous_pages_route_is_unchanged",
@@ -146,6 +148,13 @@ for (const baseFeature of ["default", "csr", "hydrate", "ssr"]) {
     `storefront ${baseFeature} profile`,
   );
 }
+for (const marker of [
+  'std::env::var_os("CARGO_FEATURE_CSR").is_some()',
+  'std::env::var_os("CARGO_FEATURE_HYDRATE").is_some()',
+  'std::env::var_os("CARGO_FEATURE_SSR").is_none()',
+  "if client_only",
+  "empty_storefront_codegen()",
+]) need(storefrontBuild, marker, "client-only storefront codegen");
 
 for (const marker of [
   'const MODULE_PATH = "/assets/pages-inline-edit/rustok_storefront.js"',
@@ -187,9 +196,11 @@ for (const marker of [
   '"/api/fn/pages/inline-edit/bootstrap"',
   '"/api/fn/pages/inline-edit/commit"',
 ]) need(auth, marker, "host authoring admission");
-for (const marker of [
+need(
+  serverCargo,
   'pages-inline-edit = ["embed-storefront", "mod-pages", "rustok-storefront/pages-inline-edit"]',
-]) need(serverCargo, marker, "server opt-in feature");
+  "server opt-in feature",
+);
 forbid(
   featureBody(serverCargo, "default", "server manifest"),
   "pages-inline-edit",
