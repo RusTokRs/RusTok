@@ -1,13 +1,15 @@
 use std::{fmt, str::FromStr};
 
 use async_trait::async_trait;
+use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement};
 use thiserror::Error;
 
 use crate::{
-    IndexDriftCandidate, IndexDriftCandidateConfirmationFailure,
+    IndexDriftCandidate, IndexDriftCandidateConfirmationFailure, IndexDriftCandidateConfirmer,
     IndexDriftCandidateMaterializedObservation, IndexDriftCandidateMaterializedObserver,
     IndexDriftOrphanLinkCandidate, IndexDriftStaleEntityCandidate,
+    SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
 };
 
 const BACKEND_UNSUPPORTED: &str =
@@ -152,6 +154,24 @@ pub fn materialize_postgres_index_drift_candidate_observer(
         return Err(IndexDriftCandidateObserverCompositionError::UnsupportedBackend);
     }
     Ok(PostgresIndexDriftCandidateMaterializedObserver::new(db))
+}
+
+/// Constructs the internal confirmer from frozen source registries without publishing it.
+pub fn materialize_postgres_index_drift_candidate_confirmer(
+    extensions: &ModuleRuntimeExtensions,
+    db: DatabaseConnection,
+) -> Result<Option<IndexDriftCandidateConfirmer>, IndexDriftCandidateObserverCompositionError> {
+    let Some(sources) = extensions.get::<SharedIndexSourceRegistry>().cloned() else {
+        return Ok(None);
+    };
+    let observer = materialize_postgres_index_drift_candidate_observer(db)?;
+    let confirmer = IndexDriftCandidateConfirmer::new(sources, observer);
+    Ok(Some(
+        match extensions.get::<SharedIndexSourceAbsenceRegistry>().cloned() {
+            Some(absence) => confirmer.with_absence_registry(absence),
+            None => confirmer,
+        },
+    ))
 }
 
 fn stored_source_version(
