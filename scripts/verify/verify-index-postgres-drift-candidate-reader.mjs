@@ -44,6 +44,8 @@ requireMarkers('source', [
   'txid_visible_in_snapshot((e.xmin::text)::bigint, $5::txid_snapshot)',
   'txid_visible_in_snapshot((l.xmin::text)::bigint, $5::txid_snapshot)',
   'txid_visible_in_snapshot((s.xmin::text)::bigint, $5::txid_snapshot)',
+  'txid_visible_in_snapshot((t.xmin::text)::bigint, $5::txid_snapshot)',
+  't.is_deleted = TRUE AND txid_visible_in_snapshot',
   'const SCOPE_DIGEST_DOMAIN: &[u8] = b"index_drift_candidate_scope_v1";',
   'scope_digest: String',
   'wire.scope_digest != scope_digest(request.scope())',
@@ -57,7 +59,6 @@ requireMarkers('source', [
   'AND (entity_id, locale_key) > ($6::uuid, $7)',
   'AND (l.source_entity_id, l.source_locale_key, l.link_name, l.ordinal',
   'AND is_deleted = FALSE AND source_version > 0',
-  'AND (t.tenant_id IS NULL OR t.is_deleted = TRUE)',
   'CursorPhaseWire::Stale',
   'CursorPhaseWire::Orphan',
   'validate_wire_scope(',
@@ -125,9 +126,16 @@ if (page < 0 || fence <= page || cursor <= fence || stale <= cursor || orphan <=
 const staleSql = production.indexOf('FROM index_entities e');
 const staleLimit = production.indexOf('LIMIT $6', staleSql);
 const orphanSql = production.indexOf('FROM index_links l JOIN index_entities s', staleLimit);
-const orphanLimit = production.indexOf('LIMIT $6', orphanSql);
-if (staleSql < 0 || staleLimit <= staleSql || orphanSql <= staleLimit || orphanLimit <= orphanSql) {
-  throw new Error('candidate reader must retain bounded stale and orphan SQL');
+const targetFence = production.indexOf('txid_visible_in_snapshot((t.xmin::text)::bigint', orphanSql);
+const orphanLimit = production.indexOf('LIMIT $6', targetFence);
+if (
+  staleSql < 0 ||
+  staleLimit <= staleSql ||
+  orphanSql <= staleLimit ||
+  targetFence <= orphanSql ||
+  orphanLimit <= targetFence
+) {
+  throw new Error('candidate reader must retain bounded stale, source, target, and orphan SQL');
 }
 
 requireMarkers('doc', [
@@ -136,8 +144,9 @@ requireMarkers('doc', [
   '`txid_current_snapshot()::text`',
   'domain-separated SHA-256 digest',
   'keeps the fence inside its 512-byte contract',
-  '`txid_visible_in_snapshot((xmin::text)::bigint, fence::txid_snapshot)`',
-  'post-fence mutation may conservatively remove a candidate',
+  'deleted target rows must have an',
+  'current target row whose',
+  'post-fence is skipped',
   '`limit + 1`',
   'does not record a finding',
   'candidate confirmation boundary',
