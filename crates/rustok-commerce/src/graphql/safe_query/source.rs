@@ -77,11 +77,14 @@ mod rustok_customer_shim;
 mod rustok_fulfillment_shim;
 #[path = "source/rustok_order_shim.rs"]
 mod rustok_order_shim;
+#[path = "source/rustok_pricing_shim.rs"]
+mod rustok_pricing_shim;
 
 use self::rustok_api_shim as rustok_api;
 use self::rustok_customer_shim as rustok_customer;
 use self::rustok_fulfillment_shim as rustok_fulfillment;
 use self::rustok_order_shim as rustok_order;
+use self::rustok_pricing_shim as rustok_pricing;
 
 // The unchanged compatibility resolver formats the Region owner code and message
 // before constructing a GraphQL error. Intercept only that exact source expression
