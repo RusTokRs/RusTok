@@ -1,0 +1,99 @@
+{
+  "contract": "forum_category_route_storefront_transport_v1",
+  "task": "FORUM-24N",
+  "parent_task": "FORUM-24",
+  "extends": [
+    "FORUM-24L",
+    "FORUM-24M"
+  ],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "route": {
+    "shape": "/{locale}/forum/c/{slug}",
+    "dispositions": [
+      "CANONICAL",
+      "REDIRECT"
+    ],
+    "gone_supported": false,
+    "requested_fields": [
+      "requestedLocale",
+      "requestedSlug"
+    ],
+    "canonical_fields": [
+      "categoryId",
+      "locale",
+      "slug",
+      "path"
+    ],
+    "alias_id_exposed": false,
+    "alias_reason_exposed": false
+  },
+  "graphql": {
+    "field": "forumStorefrontCategoryRoute",
+    "tenant_argument_optional": true,
+    "tenant_argument_must_match_routed_tenant": true,
+    "module_registry_gate": true,
+    "channel_module_gate": true,
+    "missing_hidden_archived_or_disabled_returns_null": true,
+    "resolution_conflict_returns_internal_error": true
+  },
+  "native": {
+    "server_function_endpoint": "forum/storefront-category-route",
+    "trusted_tenant_context": true,
+    "trusted_auth_context": true,
+    "trusted_request_context": true,
+    "channel_module_gate": true,
+    "missing_hidden_archived_or_disabled_returns_none": true,
+    "resolution_conflict_returns_transport_error": true
+  },
+  "authorization": {
+    "owner": "ForumCategoryAudienceReadService",
+    "authenticated_method": "get_authenticated_storefront_list_visible_with_audience_context",
+    "authenticated_permission_boundary": "forum_categories:list",
+    "authenticated_operation": "SelectedCategory",
+    "authenticated_transport_graphql": "Graphql",
+    "authenticated_transport_native": "NativeServer",
+    "anonymous_method": "get_public_storefront_visible_with_locale_fallback",
+    "anonymous_uses_public_category_audience": true,
+    "authenticated_uses_exact_permission_snapshot": true,
+    "authenticated_uses_trusted_audience_port_context": true,
+    "canonical_category_rechecked_before_disclosure": true,
+    "alias_existence_never_authorizes_disclosure": true,
+    "audience_facts_provider_optional_but_constraints_fail_closed": true
+  },
+  "locale": {
+    "requested_locale_from_route": true,
+    "explicit_fallback_from_tenant_default_locale": true,
+    "platform_fallback_preserved": true,
+    "first_available_preserved": true,
+    "canonical_locale_from_owner": true
+  },
+  "parity": {
+    "graphql_and_native_use_same_route_owner": true,
+    "graphql_and_native_use_same_category_audience_owner": true,
+    "graphql_and_native_return_same_public_dto_shape": true,
+    "transport_fallback_after_failure": false
+  },
+  "compatibility": {
+    "category_route_mounted_in_host": false,
+    "category_links_changed": false,
+    "http_status_mapping_changed": false,
+    "seo_or_hreflang_changed": false,
+    "graphql_category_read_fields_changed": false,
+    "rest_changed": false,
+    "topic_routes_changed": false,
+    "category_write_contract_changed": false,
+    "new_migration": false
+  },
+  "verification": {
+    "executed_by_implementation_agent": false,
+    "commands": [
+      "node scripts/verify/verify-forum-category-route-storefront-transport.mjs",
+      "cargo test -p rustok-forum graphql::category_route_query::tests -- --nocapture",
+      "cargo test -p rustok-forum --test category_route_storefront_transport_contract -- --nocapture",
+      "cargo test -p rustok-forum-storefront model::tests::category_route_payload_uses_graphql_enum_and_field_names -- --nocapture",
+      "cargo check -p rustok-forum --all-targets",
+      "cargo check -p rustok-forum-storefront --all-targets"
+    ]
+  }
+}

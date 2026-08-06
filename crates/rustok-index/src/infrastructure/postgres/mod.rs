@@ -5,6 +5,7 @@ mod drift_digest_recorder;
 mod drift_finding_inspector;
 mod drift_finding_lifecycle;
 mod drift_finding_writer;
+mod drift_repair;
 mod drift_snapshot_reader;
 mod mutation_store;
 mod partition_admission;
@@ -70,6 +71,9 @@ pub use drift_finding_lifecycle::{
 pub use drift_finding_writer::{
     IndexDriftDigestFindingRequest, IndexDriftFindingWriteError, IndexDriftFindingWriteOutcome,
     PostgresIndexDriftFindingWriter,
+};
+pub use drift_repair::{
+    PostgresIndexDriftRepairStore, materialize_postgres_index_drift_repair_store,
 };
 pub use drift_snapshot_reader::{
     IndexDriftSnapshotCompositionError, PostgresIndexDriftSnapshotReader,

@@ -1,6 +1,6 @@
 # M6 drift finding lifecycle commands
 
-Status: `source_complete_repair_pending`.
+Status: `source_complete_targeted_repair_boundary_complete`.
 
 ## Purpose
 
@@ -66,7 +66,7 @@ The transaction:
 The finding key, check name, scope, severity, first/last detection timestamps, details, and digest
 evidence are not modified by the lifecycle command.
 
-## Idempotency
+## Idempotency and audit storage
 
 The primary key of `index_consistency_finding_lifecycle_events` is
 `(tenant_id, command_id)`.
@@ -75,31 +75,26 @@ A retry with the same exact payload returns the original typed target-state rece
 finding was later reopened by a new detection. Reusing the command UUID with any different payload
 fails permanently as `index_drift_finding_lifecycle_command_id_conflict`.
 
-Concurrent different commands for the same finding serialize on the finding row. Only the command
-that observes the explicit open precondition may transition it; later commands return the current
-state without adding audit rows.
+Migration `m20260806_000006_add_index_finding_lifecycle_audit` stores tenant/command/finding identity,
+action, from/to state, bounded actor identity, bounded reason, and database timestamp. PostgreSQL and
+SQLite triggers reject row updates. Audit rows retain the existing finding/tenant cascade policy.
 
-## Audit storage
+## Relationship to targeted repair
 
-Migration `m20260806_000006_add_index_finding_lifecycle_audit` adds the Index-owned lifecycle ledger.
-Each row stores only:
+The separate targeted-repair boundary is documented in
+[`m6-targeted-drift-repair.md`](./m6-targeted-drift-repair.md).
 
-- tenant, command, and finding UUIDs;
-- action, from-state, and to-state;
-- bounded actor kind and actor subject;
-- bounded reason;
-- database-owned creation timestamp.
+Repair does not infer authority from resolved/ignored state and does not rewrite lifecycle audit.
+It requires a separate authorization capability, typed finding commitment, admitted before/after
+evidence, one target-kind owner, and a separate durable receipt.
 
-The table has a composite foreign key to the exact finding and database checks for supported actions,
-states, transitions, and bounded text. PostgreSQL and SQLite triggers reject row updates. The Index
-lifecycle API contains no update or delete operation for audit rows.
-
-Audit rows follow the existing finding/tenant cascade retention behavior. This permits whole-tenant
-retention deletion while preventing lifecycle code from rewriting historical events.
+A repair receipt does not automatically resolve a finding. Conversely, a lifecycle transition does
+not prove that any repair occurred. If a finding closes during an active repair, repair completion is
+downgraded to `NotRepaired(finding_not_open)` rather than claiming convergence.
 
 ## Outcomes
 
-The service returns only:
+The lifecycle service returns only:
 
 - `Denied`;
 - `Applied(receipt)`;
@@ -113,32 +108,33 @@ subject, reason, timestamps, and stored row contents are not returned.
 
 ## Deliberate limits
 
-This slice does not add:
+The lifecycle and generic targeted-repair slices still do not add:
 
 - GraphQL, HTTP, CLI, MCP, native-admin, or module-runtime composition;
 - an allow-all or request-derived authorization implementation;
 - audit inspection or public actor/reason disclosure;
-- finding candidate iteration or automatic closure;
-- targeted, shadow, full, or automatic repair;
+- finding candidate iteration or automatic closure/repair;
+- a concrete repair evidence reader or mutation owner;
+- prepared-repair recovery/expiry policy;
 - retained migration, PostgreSQL, concurrency, workflow, or CI evidence.
 
 ## Next implementation step
 
-Add one internal targeted repair boundary for an exact open confirmed finding. It must require an
-authorized operator, capture admitted before evidence, apply only the finding-specific repair owner,
-re-read admitted after evidence, and record a separate repair receipt. Repair must not be inferred
-from lifecycle state and must remain unmounted from public transports.
+Compose one concrete evidence reader and one concrete idempotent repair owner for the smallest
+supported confirmed finding kind. Keep lifecycle transition after successful repair, public
+transport, prepared-command recovery, and automatic iteration separate.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index drift_finding_lifecycle -- --nocapture
+cargo test -p rustok-index drift_repair -- --nocapture
 node scripts/verify/verify-index-drift-finding-lifecycle.mjs
-node scripts/verify/verify-index-confirmed-candidate-persistence.mjs
+node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL scenarios, workflows, or CI were
-executed by the implementation agent.
+No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite scenarios, workflows, or
+CI were executed by the implementation agent.

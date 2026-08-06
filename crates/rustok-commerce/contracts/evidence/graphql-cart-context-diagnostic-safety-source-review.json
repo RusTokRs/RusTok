@@ -1,0 +1,45 @@
+{
+  "status": "commerce_graphql_cart_context_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/graphql/mutations/safe_cart.rs",
+    "scripts/verify/verify-commerce-graphql-cart-context-diagnostic-safety.mjs",
+    "scripts/verify/verify-commerce-graphql-cart-context-error-safety.mjs",
+    "crates/rustok-commerce/docs/graphql-cart-context-diagnostic-safety.md",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "complete_store_context_error_logged": false,
+    "tenant_uuid_payload_logged": false,
+    "validation_payload_logged": false,
+    "currency_region_payload_logged": false,
+    "tenant_boundary_payload_logged": false,
+    "region_boundary_payload_logged": false,
+    "database_payload_logged": false,
+    "diagnostic_error_zero_sized": true,
+    "diagnostic_error_debug_redacted": true,
+    "typed_error_kind_preserved": true,
+    "public_code_preserved": true,
+    "public_retryability_preserved": true,
+    "public_message_preserved": true,
+    "graphql_pass_through_preserved": true,
+    "store_context_service_call_count_preserved": true,
+    "cart_owner_cleanup_preserved": true,
+    "pricing_owner_cleanup_preserved": true,
+    "typed_line_item_cleanup_closed": false,
+    "compatibility_string_classification_closed": false,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, or CI were executed."
+}

@@ -1,33 +1,35 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked through
-`main@d0f1aa543de2509b3b3c108c97cb4a7573eba136` and active branch
-`agent/index-m6-finding-lifecycle-20260806`.
+`main@e903e9e5d2a0e186432e436a4dc353b752218219` and active branch
+`agent/index-m6-targeted-drift-repair-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - add targeted drift repair`
+`M6 - compose targeted repair evidence and owner`
 
 The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
-confirmation boundary, serializable finding persistence, and fail-closed finding lifecycle commands
-are source complete.
+confirmation boundary, serializable finding persistence, fail-closed finding lifecycle commands, and
+generic targeted-repair orchestration with durable PostgreSQL reservations/receipts are source
+complete.
 
-Finding lifecycle now:
+Targeted repair now:
 
-- accepts one exact tenant/finding/command identity;
-- supports only explicit open-to-resolved or open-to-ignored transitions;
-- requires bounded actor kind, actor subject, and nonempty reason;
-- authorizes before minting a non-publicly-constructible store capability;
-- serializes command replay and locks the exact finding row;
-- changes current state and appends actor/action/reason audit in one PostgreSQL transaction;
-- detects command UUID reuse with a different payload;
-- returns only denied, applied, already-applied, or typed not-applied outcomes;
+- accepts one exact tenant/finding/command identity and one typed missing-entity or orphan-link target;
+- authorizes before minting a non-public store/owner capability;
+- verifies the typed target as the cryptographic preimage of the stored finding identity and evidence;
+- reserves at most one active command per finding under a serializable database fence;
+- requires admitted before evidence, one target-kind owner call, and admitted after evidence;
+- persists one immutable terminal repaired/not-repaired receipt;
+- makes exact command replay resumable or terminally idempotent;
+- leaves ambiguous prepared commands fail-closed rather than silently expiring them;
 - remains unmounted from runtime extensions and public transports.
 
-Targeted repair and retained migration/runtime evidence remain open.
+A concrete evidence reader, concrete idempotent repair owner, prepared-command recovery policy, and
+retained execution evidence remain open.
 
 ## Rechecked status
 
@@ -58,7 +60,9 @@ Targeted repair and retained migration/runtime evidence remain open.
 - M6 PostgreSQL drift candidate reader: `source_complete`
 - M6 bounded candidate confirmation and PostgreSQL materialized observer: `source_complete`
 - M6 confirmed-candidate finding persistence: `source_complete`
-- M6 drift finding lifecycle commands: `source_complete_repair_pending`
+- M6 drift finding lifecycle commands: `source_complete`
+- M6 generic targeted drift repair boundary and durable receipt store:
+  `source_complete_owner_composition_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -99,7 +103,7 @@ Targeted repair and retained migration/runtime evidence remain open.
 - [ ] Run and admit retained exact GraphQL, Product absence, PostgreSQL, continuation, and rotation
       evidence.
 
-## M6 stale entity and orphan-link discovery
+## M6 stale entity, orphan-link, lifecycle, and targeted repair
 
 - [x] Add a database-neutral bounded candidate contract with one exact tenant/schema scope and page
       size at most 32.
@@ -109,30 +113,24 @@ Targeted repair and retained migration/runtime evidence remain open.
 - [x] Add `PostgresIndexDriftCandidateReader` over `index_entities` and `index_links`.
 - [x] Run one read-only repeatable-read transaction per page and capture one scope-bound PostgreSQL
       transaction-snapshot fence.
-- [x] Filter row insertion versions through `txid_visible_in_snapshot` so late commits and
-      post-fence updates cannot add candidates to continuation pages.
 - [x] Use only bounded `limit + 1` keyset SQL and one deterministic stale-to-orphan transition.
-- [x] Keep the reader unmounted: no server extension or public transport.
 - [x] Add `IndexDriftCandidateConfirmer` over one candidate only.
 - [x] Observe exact materialized state before and after provisional confirmation.
-- [x] Confirm stale candidates only through an authoritative delete or admitted absence watermark
-      with a stable version not below the indexed version.
-- [x] Confirm orphan candidates only while the same source version/link/ordinal/target remains
-      authoritative and the target has stable delete/absence evidence.
-- [x] Add the PostgreSQL observer for exact source row/version/link/target-absence shape.
-- [x] Map changed source, link, target, or materialized state to typed `NotCandidate` or bounded
-      dependency failure without recording a finding.
-- [x] Add a composition helper that returns the confirmer without publishing it.
-- [x] Derive deterministic bounded finding identity and SHA-256 evidence from confirmed candidates.
+- [x] Confirm stale/orphan candidates only through stable authoritative source/delete/absence evidence.
+- [x] Add the PostgreSQL exact materialized observer.
+- [x] Derive deterministic finding identity and SHA-256 evidence from confirmed candidates.
 - [x] Revalidate write-time entity/version/link/target state in one serializable transaction.
 - [x] Create, refresh, reopen, or suppress through the established Index finding contract.
-- [x] Return only finding outcome or typed `NotRecorded(MaterializedChanged)`.
-- [x] Keep persistence unmounted from server extensions and public transports.
-- [x] Add fail-closed resolve/ignore commands with explicit open-state preconditions.
-- [x] Require authorization before minting the store capability.
-- [x] Add idempotent command replay and immutable actor/action/reason audit rows.
-- [x] Keep lifecycle commands unmounted from server extensions and public transports.
-- [ ] Add targeted repair with before/after admitted evidence.
+- [x] Add fail-closed resolve/ignore commands with authorization capability and immutable audit rows.
+- [x] Add typed targeted-repair command, authorization capability, evidence and owner ports.
+- [x] Verify typed repair targets against exact persisted check/finding/evidence commitments.
+- [x] Add one active-command-per-finding serializable reservation and idempotent terminal receipt.
+- [x] Preserve finding and lifecycle rows; successful repair does not silently resolve a finding.
+- [x] Keep repair unmounted from server extensions, public transports, schedulers, and page loops.
+- [ ] Compose one concrete admitted evidence reader.
+- [ ] Compose one concrete idempotent repair owner for the smallest supported target kind.
+- [ ] Add prepared-command lease/abandon/recovery policy and lifecycle coordination.
+- [ ] Retain migration, crash-window, owner-idempotency, and PostgreSQL concurrency evidence.
 
 ## M7 production graph and cutover
 
@@ -148,27 +146,28 @@ Targeted repair and retained migration/runtime evidence remain open.
 
 ## Next implementation step
 
-Add one internal targeted repair boundary for an exact open confirmed drift finding.
+Compose one concrete bounded evidence reader and one concrete idempotent repair owner for the smallest
+supported confirmed finding kind.
 
-The repair slice must:
+The next slice must:
 
-- require exact tenant and finding identity plus a non-public authorized operator capability;
-- admit only supported confirmed missing-entity and orphan-link finding identities;
-- capture bounded before evidence through the existing exact source/materialized boundaries;
-- select a finding-specific repair owner rather than accept caller SQL, payload, or mutation JSON;
-- apply at most one targeted repair action under an explicit write fence;
-- re-read bounded after evidence and fail closed when it does not prove convergence;
-- persist a separate idempotent repair receipt without rewriting lifecycle audit rows;
-- expose only repaired/not-repaired receipt or bounded failure;
-- add no candidate page loop, scheduler, automatic repair, or public transport.
+- reuse the existing source registry, admitted absence proof, and exact materialized observation;
+- derive before/after evidence from typed state rather than caller digests or payloads;
+- support exactly one target kind and reject all others before owner mutation;
+- make the owner mutation idempotent by the durable repair command UUID;
+- apply at most one exact mutation through an existing owner/storage contract;
+- return a bounded owner receipt digest without exposing source or Index payload;
+- preserve the prepared reservation across retryable source/owner/evidence failure;
+- add no public transport, scheduler, automatic finding iteration, or lifecycle transition.
 
-Keep repair internal and unmounted. Public authorization transport, automatic iteration, and retained
-production evidence remain separate later slices.
+Prepared-command recovery policy, a second repair kind, public authorization transport, and automatic
+repair remain separate later slices.
 
 ## Owner verification for this slice
 
 ```bash
-cargo test -p rustok-index drift_finding_lifecycle -- --nocapture
+cargo test -p rustok-index drift_repair -- --nocapture
+node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-drift-finding-lifecycle.mjs
 node scripts/verify/verify-index-confirmed-candidate-persistence.mjs
 node scripts/verify/verify-index-query-contract.mjs
@@ -176,5 +175,5 @@ cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL scenarios, workflows, or CI were
-executed by the implementation agent.
+No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite scenarios, workflows, or
+CI were executed by the implementation agent.

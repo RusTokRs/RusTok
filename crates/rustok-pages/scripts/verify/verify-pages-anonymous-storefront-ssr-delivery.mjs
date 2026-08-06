@@ -15,6 +15,8 @@ const files = {
     "crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-ssr-delivery-source.json",
   graphEvidence:
     "crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json",
+  authoringEvidence:
+    "crates/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json",
   graphVerifier:
     "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
   inspector:
@@ -24,6 +26,7 @@ const files = {
   plan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   cargo: "apps/storefront/Cargo.toml",
   host: "apps/storefront/src/lib.rs",
+  authoringCore: "apps/storefront/src/modules/core.rs",
   regression: "apps/storefront/tests/pages_anonymous_ssr_delivery.rs",
 };
 
@@ -60,69 +63,41 @@ if (failures.length > 0) {
 
 const evidence = JSON.parse(read(files.evidence));
 const graphEvidence = JSON.parse(read(files.graphEvidence));
+const authoringEvidence = JSON.parse(read(files.authoringEvidence));
 const cargo = read(files.cargo);
 const host = read(files.host);
+const authoringCore = read(files.authoringCore);
 const regression = read(files.regression);
 const inspector = read(files.inspector);
 const packet = read(files.packet);
 const plan = read(files.plan);
 
 if (evidence.format !== "pages_anonymous_storefront_ssr_delivery_source_v1") {
-  failures.push(`evidence format mismatch: ${evidence.format}`);
+  failures.push(`historical evidence format mismatch: ${evidence.format}`);
 }
 if (evidence.status !== "pages_anonymous_storefront_ssr_delivery_source_unvalidated") {
-  failures.push(`evidence status mismatch: ${evidence.status}`);
+  failures.push(`historical evidence status mismatch: ${evidence.status}`);
 }
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
-  failures.push("source evidence execution must remain empty");
+  failures.push("historical source evidence execution must remain empty");
 }
 for (const [key, value] of Object.entries(evidence.validation ?? {})) {
-  if (value !== false) failures.push(`validation.${key} must remain false`);
+  if (value !== false) failures.push(`historical validation.${key} must remain false`);
 }
-for (const key of [
-  "current_pages_public_host_is_ssr_rendered",
-  "host_library_crate_type_is_rlib",
-  "host_csr_profile_keeps_pages_storefront_disabled",
-  "host_hydrate_profile_keeps_pages_storefront_disabled",
-  "host_ssr_profile_enables_pages_storefront",
-  "rendered_document_has_no_executable_client_script_source",
-  "rendered_document_has_no_module_script",
-  "rendered_document_has_no_module_preload",
-  "storefront_source_has_no_wasm_start_entrypoint",
-  "storefront_source_has_no_mount_to_body_entrypoint",
-  "storefront_source_has_no_hydrate_body_entrypoint",
-  "source_regression_added",
-  "artifact_inspector_added",
-  "artifact_inspector_requires_explicit_artifact_paths",
-  "artifact_inspector_records_sha256",
-  "artifact_inspector_rejects_pages_admin",
-  "artifact_inspector_rejects_page_builder_admin",
-  "artifact_inspector_rejects_fly_authoring_packages",
-  "artifact_inspector_rejects_editor_composition_markers",
-  "json_ld_structured_data_remains_allowed",
-  "client_bundle_proof_is_not_claimed",
-  "client_bundle_gate_reopens_when_pages_client_bootstrap_is_added"
-]) {
-  if (evidence.source_contract?.[key] !== true) {
-    failures.push(`source_contract.${key} must be true`);
-  }
+if (authoringEvidence.status !== "pages_authenticated_authoring_route_source_unvalidated") {
+  failures.push(`authoring evidence status mismatch: ${authoringEvidence.status}`);
 }
-for (const key of [
-  "production_pages_behavior_changed",
-  "production_page_builder_behavior_changed",
-  "production_storefront_behavior_changed",
-  "dependencies_changed",
-  "features_changed",
-  "database_schema_changed",
-  "public_route_changed",
-  "cache_policy_changed",
-  "optional_event_infrastructure_changed",
-  "ffa_promoted",
-  "fba_promoted"
-]) {
-  if (evidence.source_contract?.[key] !== false) {
-    failures.push(`source_contract.${key} must be false`);
-  }
+if (authoringEvidence.source_contract?.anonymous_pages_route_is_unchanged !== true) {
+  failures.push("authoring evidence must retain unchanged anonymous Pages route");
+}
+if (
+  authoringEvidence.source_contract
+    ?.anonymous_default_csr_hydrate_ssr_profiles_remain_without_inline_edit !== true
+) {
+  failures.push("authoring evidence must retain anonymous profile exclusion");
+}
+if (authoringEvidence.source_contract?.built_client_artifact_produced !== false) {
+  failures.push("authoring evidence must not claim a built client artifact");
 }
 
 if (graphEvidence.status !== "pages_anonymous_storefront_graph_source_unvalidated") {
@@ -133,19 +108,27 @@ if (graphEvidence.source_contract?.host_client_profiles_keep_optional_pages_modu
 }
 
 for (const marker of [
-  'crate-type = ["rlib"]',
+  'crate-type = ["cdylib", "rlib"]',
   'csr = ["leptos/csr", "leptos_i18n/csr"]',
   'hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]',
   '"dep:rustok-pages-storefront"',
   '"rustok-pages-storefront/ssr"',
-  'rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }'
+  'rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }',
+  "pages-inline-edit-hydrate = [",
+  '"rustok-pages-storefront/hydrate"',
 ]) {
   need(cargo, marker, "storefront Cargo contract");
 }
 const csrFeature = between(cargo, 'csr = [', ']\nhydrate = [', "CSR feature");
-const hydrateFeature = between(cargo, 'hydrate = [', ']\nssr = [', "hydrate feature");
-for (const feature of [csrFeature, hydrateFeature]) {
-  forbid(feature, "rustok-pages-storefront", "host client feature must not enable Pages");
+const hydrateFeature = between(cargo, 'hydrate = [', ']\npages-inline-edit = [', "hydrate feature");
+const ssrFeature = between(cargo, 'ssr = [', ']\n\n[dependencies]', "SSR feature");
+for (const [label, feature] of [
+  ["CSR", csrFeature],
+  ["hydrate", hydrateFeature],
+  ["SSR", ssrFeature],
+]) {
+  forbid(feature, "pages-inline-edit", `anonymous ${label} feature`);
+  forbid(feature, "fly-leptos", `anonymous ${label} feature`);
 }
 
 const renderDocument = between(
@@ -168,10 +151,24 @@ for (const marker of [
   ".wasm",
   "/pkg/",
   "hydrate_body",
-  "mount_to_body"
+  "mount_to_body",
+  "pages-inline-edit-bootstrap"
 ]) {
-  forbid(renderDocument, marker, "SSR document renderer");
+  forbid(renderDocument, marker, "anonymous SSR document renderer");
 }
+
+for (const marker of [
+  '#[cfg(feature = "pages-inline-edit")]',
+  'PAGES_AUTHORING_ROUTE_SEGMENT: &str = "pages-authoring"',
+  'src=PAGES_AUTHORING_BOOTSTRAP_ASSET',
+  '#[cfg(all(feature = "pages-inline-edit-hydrate", target_arch = "wasm32"))]',
+  "start_pages_inline_edit_client",
+  "mount_to_body(",
+]) {
+  need(authoringCore, marker, "gated authoring client source");
+}
+forbid(authoringCore, "#[wasm_bindgen(start)]", "gated authoring client source");
+forbid(authoringCore, "wasm_bindgen(start)", "gated authoring client source");
 
 function rustFiles(root) {
   const result = [];
@@ -188,8 +185,9 @@ function rustFiles(root) {
   return result;
 }
 for (const file of rustFiles("apps/storefront/src")) {
-  const source = readFileSync(file, "utf8");
   const label = path.relative(repoRoot, file);
+  if (label === files.authoringCore) continue;
+  const source = readFileSync(file, "utf8");
   for (const marker of [
     "#[wasm_bindgen(start)]",
     "wasm_bindgen(start)",
@@ -244,8 +242,9 @@ for (const marker of [
 for (const marker of [
   "anonymous-storefront-ssr-delivery-source-ready",
   "Anonymous storefront SSR delivery: source-ready",
-  "current public Pages host is SSR-only",
-  "client bundle gate is conditional"
+  "public Pages route remains SSR-only",
+  "authenticated inline profiles are opt-in",
+  "client artifact build and browser execution remain pending"
 ]) {
   need(plan, marker, "canonical Pages/Page Builder plan");
 }
@@ -256,5 +255,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "[verify-pages-anonymous-storefront-ssr-delivery] PASS source_ready=true execution=pending host_mode=ssr_only",
+  "[verify-pages-anonymous-storefront-ssr-delivery] PASS public_ssr_only=true authenticated_client=gated artifact_execution=pending",
 );

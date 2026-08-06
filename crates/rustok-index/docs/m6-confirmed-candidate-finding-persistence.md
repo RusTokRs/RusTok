@@ -1,6 +1,6 @@
 # M6 confirmed candidate finding persistence
 
-Status: `source_complete_lifecycle_complete_repair_pending`.
+Status: `source_complete_lifecycle_complete_targeted_repair_boundary_complete`.
 
 ## Purpose
 
@@ -30,35 +30,27 @@ also read with `FOR SHARE`. An absent target remains a serializable predicate re
 serialization failures map to the retryable bounded `Storage` error without exposing SQL or database
 causes.
 
-## Deterministic identity
+## Deterministic identity and evidence
 
-Missing-entity findings use:
+Missing-entity findings use check name `index.confirmed_missing_entity`, exact materialized entity
+scope, and the established tenant/check/scope finding-key derivation.
 
-- check name `index.confirmed_missing_entity`;
-- the exact materialized entity finding scope;
-- the existing tenant/check/scope finding-key derivation.
-
-Orphan-link findings use the exact source entity scope and a bounded check name:
+Orphan-link findings use the exact source entity scope and:
 
 `index.confirmed_orphan_link.<sha256>`
 
-The SHA-256 identity binds link name, ordinal, complete target identity, optional locale, and
-admitted target absence version. Different orphan identities therefore cannot collapse to the same
-finding key under one source entity scope.
+The suffix binds link name, ordinal, complete target identity, optional locale, and admitted target
+absence version.
 
-## Evidence digests
+Expected and actual values are lowercase SHA-256 digests derived only from typed identity, indexed
+source version, authoritative absence version, and separate expected/materialized state tags. The
+persisted details value remains the bounded
+`{ "contract": "index_drift_digest_finding_v1" }` marker.
 
-Expected and actual digests are lowercase SHA-256 values derived only from typed fields.
-Length-prefixed components and separate domain/state tags bind exact identity, indexed source
-version, authoritative absence version, and expected versus materialized state.
-
-No caller evidence blob or raw owner/index record is accepted or persisted. The persisted `details`
-value remains the established bounded `{ "contract": "index_drift_digest_finding_v1" }` marker.
-
-## Idempotent state behavior
+## Idempotent finding state
 
 The adapter uses the same finding-key advisory-lock namespace and state semantics as the existing
-Index finding writer:
+Index writer:
 
 - no row becomes `Created`;
 - an open row becomes `Refreshed`;
@@ -66,21 +58,24 @@ Index finding writer:
 - an ignored row remains ignored and returns `Suppressed`.
 
 Finding identity and `first_detected_at` are preserved. Unsupported stored identity or state fails
-closed with `FindingContract`.
+closed.
 
-## Lifecycle follow-up
+## Lifecycle and targeted repair follow-up
 
-The separate `IndexDriftFindingLifecycleService` and
-`PostgresIndexDriftFindingLifecycleStore` now provide authorized open-to-resolved and open-to-ignored
-commands with explicit state preconditions and append-only actor/action/reason audit. See
-`m6-drift-finding-lifecycle.md`.
+The separate lifecycle boundary provides authorization-gated resolve/ignore commands and immutable
+audit. See `m6-drift-finding-lifecycle.md`.
 
-Finding recording still does not accept lifecycle authority. A new detection may reopen a resolved
-finding through the existing writer; ignored findings remain suppressed.
+The separate generic targeted-repair boundary now accepts a typed missing/orphan preimage only after
+authorization. Its PostgreSQL reservation store reproduces this writer's exact check-name suffix,
+finding-key derivation, and expected/actual evidence formulas before a repair can start. See
+`m6-targeted-drift-repair.md`.
+
+Repair does not mutate this writer's evidence and does not automatically resolve the finding. A new
+detection may still reopen a resolved finding; ignored findings remain suppressed.
 
 ## Outputs and failures
 
-The output is only:
+The persistence output is only:
 
 - `Recorded(IndexDriftFindingWriteOutcome)`; or
 - `NotRecorded(MaterializedChanged)`.
@@ -91,38 +86,38 @@ returned.
 
 ## Composition and transport boundary
 
-`materialize_postgres_index_drift_confirmed_candidate_writer` validates PostgreSQL and returns the
-internal writer. It executes no SQL during composition and does not insert the writer into
-`ModuleRuntimeExtensions`.
-
-Finding persistence and lifecycle remain unmounted from GraphQL, HTTP, CLI, MCP, native admin,
-background workers, and schedulers.
+Persistence, lifecycle, and generic targeted repair remain unmounted from GraphQL, HTTP, CLI, MCP,
+native admin, background workers, schedulers, and `ModuleRuntimeExtensions`.
 
 ## Deliberate limits
 
-These slices do not add:
+These slices still do not add:
 
 - automatic candidate-page iteration or confirmation-to-write orchestration;
-- lifecycle public transport or audit inspection;
+- public lifecycle or repair transport;
+- a concrete repair evidence reader or mutation owner;
+- prepared-repair recovery policy;
 - retained PostgreSQL/concurrency execution evidence;
-- targeted, shadow, full, or automatic repair.
+- shadow, full, or automatic repair.
 
 ## Next implementation step
 
-Add one internal targeted repair boundary with authorized operator capability and admitted before and
-after evidence. Keep automatic iteration and public transport separate.
+Compose one concrete bounded repair evidence reader and one concrete idempotent owner for the
+smallest supported confirmed finding kind. Keep automatic iteration and public transport separate.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index drift_confirmed_candidate_writer -- --nocapture
 cargo test -p rustok-index drift_finding_lifecycle -- --nocapture
+cargo test -p rustok-index drift_repair -- --nocapture
 node scripts/verify/verify-index-confirmed-candidate-persistence.mjs
 node scripts/verify/verify-index-drift-finding-lifecycle.mjs
+node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL scenarios, workflows, or CI were
-executed by the implementation agent.
+No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite scenarios, workflows, or
+CI were executed by the implementation agent.

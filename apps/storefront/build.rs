@@ -113,9 +113,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
-    if std::env::var_os("CARGO_FEATURE_CSR").is_some()
-        && std::env::var_os("CARGO_FEATURE_SSR").is_none()
-    {
+    let client_only = (std::env::var_os("CARGO_FEATURE_CSR").is_some()
+        || std::env::var_os("CARGO_FEATURE_HYDRATE").is_some())
+        && std::env::var_os("CARGO_FEATURE_SSR").is_none();
+    if client_only {
         let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
         fs::write(
             out_dir.join("module_ui_codegen.rs"),

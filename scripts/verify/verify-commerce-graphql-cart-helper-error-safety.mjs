@@ -56,7 +56,7 @@ const legacyMapper = between(
 const typedPolicy = between(
   typedSource,
   'fn storefront_line_item_public_policy(',
-  '#[allow(clippy::too_many_arguments)]\nfn storefront_line_item_graphql_error(',
+  'fn uuid_shape(',
   'typed line item public policy',
 );
 const typedMapper = between(
@@ -391,6 +391,16 @@ for (const [value, label] of [
   ['Pricing(PortError)', 'typed pricing cause'],
   ['Inventory(CommerceError)', 'typed inventory cause'],
   ['Metadata(serde_json::Error)', 'typed metadata cause'],
+  ['struct StorefrontLineItemDiagnosticSource;', 'redacted typed source token'],
+  [
+    'impl From<StorefrontLineItemFailureSource> for StorefrontLineItemDiagnosticSource',
+    'typed source consumption',
+  ],
+  ['impl std::fmt::Debug for StorefrontLineItemDiagnosticSource', 'typed source Debug'],
+  ['formatter.write_str("redacted")', 'typed source redaction'],
+  ['fn uuid_shape(value: Uuid)', 'typed UUID shape helper'],
+  ['fn optional_uuid_shape(value: Option<Uuid>)', 'typed optional UUID shape helper'],
+  ['fn optional_text_shape(value: Option<&str>)', 'typed optional text shape helper'],
   ['fn storefront_line_item_public_policy(', 'typed public policy'],
   ['fn storefront_line_item_graphql_error(', 'typed GraphQL mapper'],
   ['async fn resolve_typed_storefront_line_item_input(', 'typed resolver'],
@@ -423,15 +433,25 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['source = ?source', 'typed source diagnostics'],
+  ['let StorefrontLineItemFailure {', 'typed failure destructuring'],
+  ['let source_kind = source.kind();', 'typed source-kind projection'],
+  [
+    'let source = StorefrontLineItemDiagnosticSource::from(source);',
+    'typed source consuming shadow',
+  ],
+  ['let correlation_id_shape = optional_text_shape(correlation_id);', 'correlation shape projection'],
+  ['let tenant_id_shape = uuid_shape(tenant_id);', 'tenant shape projection'],
+  ['let variant_id_shape = uuid_shape(variant_id);', 'variant shape projection'],
+  ['let product_id_shape = optional_uuid_shape(product_id);', 'product shape projection'],
+  ['source = ?source', 'redacted typed source diagnostics'],
   ['source_kind,', 'typed source-kind diagnostics'],
-  ['owner = failure.source_owner', 'truthful source owner'],
-  ['owner_operation = failure.source_operation', 'truthful source operation'],
+  ['owner = source_owner', 'truthful source owner'],
+  ['owner_operation = source_operation', 'truthful source operation'],
   ['consumer_operation = consumer_operation.name()', 'consumer operation'],
-  ['correlation_id = ?correlation_id', 'optional retained correlation'],
-  ['tenant_id = %tenant_id', 'tenant context'],
-  ['variant_id = %variant_id', 'variant context'],
-  ['product_id = ?failure.product_id', 'product context'],
+  ['correlation_id_shape,', 'bounded correlation fact'],
+  ['tenant_id_shape,', 'bounded tenant fact'],
+  ['variant_id_shape,', 'bounded variant fact'],
+  ['product_id_shape,', 'bounded product fact'],
   ['requested_quantity,', 'quantity context'],
   ['channel_slug_length = ?channel_slug_length', 'bounded channel fact'],
   ['locale_length = ?locale_length', 'bounded locale fact'],
@@ -446,11 +466,23 @@ for (const [value, label] of [
 }
 
 for (const value of [
+  'use std::fmt::Debug;',
+  'fn detail(&self)',
+  '-> &dyn Debug',
+  '.detail()',
   'format!("{error:?}")',
   'detail.contains(',
   'async_graphql::Error::new(error.to_string())',
   'async_graphql::Error::new(format!("{error}"))',
   'error.message',
+  'correlation_id = ?correlation_id',
+  'correlation_id = %correlation_id',
+  'tenant_id = %tenant_id',
+  'tenant_id = ?tenant_id',
+  'variant_id = %variant_id',
+  'variant_id = ?variant_id',
+  'product_id = ?failure.product_id',
+  'product_id = %product_id',
   'public_channel_slug = ?public_channel_slug',
   'locale = ?locale',
   'metadata = ?input.metadata',
@@ -460,6 +492,43 @@ for (const value of [
   'title = ?',
 ]) {
   forbidText(typedSource, value, 'typed storefront line item boundary');
+}
+
+const typedPolicyIndex = typedMapper.indexOf(
+  'storefront_line_item_public_policy(consumer_operation, failure.kind)',
+);
+const typedDestructureIndex = typedMapper.indexOf('let StorefrontLineItemFailure {');
+const typedKindIndex = typedMapper.indexOf('let source_kind = source.kind();');
+const typedShadowIndex = typedMapper.indexOf(
+  'let source = StorefrontLineItemDiagnosticSource::from(source);',
+);
+const typedProjectionIndex = typedMapper.indexOf(
+  'let correlation_id_shape = optional_text_shape(correlation_id);',
+);
+const typedEventIndex = typedMapper.indexOf('tracing::error!(');
+const typedReturnIndex = typedMapper.lastIndexOf(
+  'public_graphql_error(message, code, retryable)',
+);
+if (
+  !(
+    typedPolicyIndex >= 0 &&
+    typedPolicyIndex < typedDestructureIndex &&
+    typedDestructureIndex < typedKindIndex &&
+    typedKindIndex < typedShadowIndex &&
+    typedShadowIndex < typedProjectionIndex &&
+    typedProjectionIndex < typedEventIndex &&
+    typedEventIndex < typedReturnIndex
+  )
+) {
+  failures.push(
+    'typed line-item error must map policy, destructure, classify, consume, project, diagnose, and return in order',
+  );
+}
+if ((typedMapper.match(/StorefrontLineItemDiagnosticSource::from\(source\)/g) ?? []).length !== 1) {
+  failures.push('expected one typed source-consuming shadow');
+}
+if ((typedMapper.match(/source = \?source/g) ?? []).length !== 2) {
+  failures.push('expected two redacted typed source fields');
 }
 
 for (const operation of [
@@ -495,5 +564,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded customer and legacy diagnostics, typed line-item outcomes, and private layered routing',
+  '✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded customer, legacy, and typed line-item diagnostics, typed outcomes, and private layered routing',
 );
