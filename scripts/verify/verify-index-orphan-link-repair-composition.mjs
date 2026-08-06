@@ -30,15 +30,18 @@ requireMarkers('postgresMod', [
   'mod drift_orphan_link_repair;',
   'PostgresIndexDriftOrphanLinkEvidenceReader',
   'PostgresIndexDriftOrphanLinkRepairOwner',
-  'PostgresIndexOrphanLinkMutationStore',
   'materialize_postgres_index_drift_orphan_link_repair_service',
 ]);
 requireMarkers('lib', [
   'PostgresIndexDriftOrphanLinkEvidenceReader',
   'PostgresIndexDriftOrphanLinkRepairOwner',
-  'PostgresIndexOrphanLinkMutationStore',
   'materialize_postgres_index_drift_orphan_link_repair_service',
 ]);
+for (const forbidden of ['IndexOrphanLinkRemovalOutcome', 'PostgresIndexOrphanLinkMutationStore']) {
+  if (content.postgresMod.includes(forbidden) || content.lib.includes(forbidden)) {
+    throw new Error(`internal orphan-link mutation detail leaked through crate exports: ${forbidden}`);
+  }
+}
 
 requireMarkers('source', [
   'pub struct PostgresIndexDriftOrphanLinkEvidenceReader',
@@ -188,7 +191,7 @@ requireMarkers('genericDoc', [
   'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   '`materialize_postgres_index_drift_orphan_link_repair_service`',
   '`PostgresIndexOrphanLinkMutationStore`',
-  'absent link without the exact applied delivery is never accepted as convergence',
+  'An absent link without the exact applied delivery is never accepted as convergence',
 ]);
 requireMarkers('doc', [
   'Status: `source_complete_owner_execution_pending`.',
