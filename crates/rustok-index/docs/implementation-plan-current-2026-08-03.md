@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
-Status overlay rechecked against current `main` after Social Graph route merge #3102 and active
-branch `agent/index-m5-product-source-refresh-contract-20260806`.
+Status overlay rechecked against current `main` after exact source-refresh worker merge #3106 and
+active branch `agent/index-m5-product-locale-refresh-ledger-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
@@ -40,7 +40,15 @@ A second independent M5 slice adds exact source-refresh orchestration for thin o
 One event identifies an exact `EntityKey`, owner event UUID, and positive minimum source version. The
 worker resolves the immutable route and source, performs one bounded exact load, requires an upsert
 or tombstone at or beyond the event fence, rebinds the canonical mutation to the broker event UUID,
-durably applies it, and only then acknowledges. Product wire events and runtime wiring remain open.
+durably applies it, and only then acknowledges.
+
+A third independent M5 slice makes Product locale owner changes recoverable before the public wire
+contract exists. Product lifecycle publication now retains the exact root envelope UUID and writes
+bounded append-only `(tenant, product, locale, source_version)` refresh rows in the same transaction.
+Live rows use final trigger-owned Product revisions; removed locales and hard deletes use retained
+tombstone revisions. A bounded Product-owned source exposes the ledger without importing Index.
+Typed Product events, route registration, relay/consumer composition, and ProductVariant ownership
+remain open. This source-only work does not advance or bypass the repair evidence cursor.
 
 Concrete missing-entity repair:
 
@@ -83,6 +91,8 @@ remain open.
   `generic_source_complete_social_graph_route_runtime_execution_pending`
 - M5 exact source-refresh event worker:
   `source_complete_owner_event_publication_and_runtime_wiring_pending`
+- M5 Product locale append-only refresh owner ledger and bounded owner source:
+  `owner_source_complete_wire_and_consumer_pending`
 - M5 Social Graph bounded replay source and exact production event route:
   `source_complete_runtime_execution_pending`
 - M5/M6 bounded source replay contract: `source_complete_owner_execution_pending`
@@ -130,10 +140,15 @@ remain open.
 - [x] Reuse the concrete Social Graph Iggy consumer/acknowledger, bounded retry/backoff, DLQ and
       poison receipts, graceful shutdown, and lag/outcome metrics.
 - [x] Materialize selected PostgreSQL sources and mutation event routes atomically.
-- [ ] Define reviewed Product locale and ProductVariant refresh event families with exact owner
-      revision and release-digest updates.
-- [ ] Publish Product/ProductVariant refresh events transactionally from every owner change path.
-- [ ] Register remaining selected production owner routes and concrete consumers.
+- [x] Retain exact Product locale identities and owner revisions in an append-only transactional
+      ledger causally linked to the existing Product lifecycle envelope.
+- [x] Expose the Product locale ledger through one bounded tenant/sequence owner source.
+- [ ] Define the reviewed Product locale refresh event family and update the committed release
+      digests through the canonical generator.
+- [ ] Relay Product locale rows as typed write-once events with `refresh_id` envelope identity.
+- [ ] Register the Product locale production route and concrete consumer/acknowledger.
+- [ ] Add ProductVariant parent identity to retained tombstones and implement the equivalent owner
+      ledger, typed event, route, and consumer path.
 - [ ] Add equivalent concrete consumer policy for every remaining selected owner route.
 - [ ] Retain crash-between-commit-and-ack and redelivery evidence against the generic registered
       route boundary.
@@ -212,8 +227,10 @@ remain open.
 - [x] Add stable replay identities and retained deletes.
 - [x] Add Product-to-ProductVariant graph materialization.
 - [x] Add the generic exact-source refresh worker required by Product/ProductVariant notifications.
-- [ ] Add Product/ProductVariant owner event contracts, transactional publication, production routes,
-      and concrete incremental consumer wiring.
+- [x] Add Product locale append-only owner refresh publication and bounded owner source.
+- [ ] Add Product locale typed event, production route, relay, and concrete incremental consumer.
+- [ ] Add ProductVariant parent-aware tombstones, owner refresh publication, typed event, route, and
+      concrete incremental consumer.
 - [ ] Persist and enforce per-tenant schema readiness.
 - [ ] Complete durable Product-to-SalesChannel relation semantics and retained evidence.
 - [ ] Admit tombstone purge, freshness/outage/restart/backlog recovery, and delete/recreate evidence.
@@ -237,13 +254,16 @@ The owner must run the locked capture command from a clean commit. The retained 
 - normal full-mutation versus exact edge-owner serialization results;
 - complete credential-redacted stdout/stderr and final pass status.
 
-Independent source-only work may continue on Product event publication and remaining M5/M7 owner
-routes, but public repair authorization transport, automatic iteration, time-derived leases, and
-lifecycle auto-resolution remain blocked until admission.
+Independent source-only work may continue on the Product locale typed relay, ProductVariant owner
+identity, and remaining M5/M7 owner routes, but public repair authorization transport, automatic
+iteration, time-derived leases, and lifecycle auto-resolution remain blocked until admission.
 
 ## Owner verification for current source boundaries
 
 ```bash
+node scripts/verify/verify-index-product-locale-refresh-ledger.mjs
+cargo check -p rustok-product --all-targets
+
 cargo test -p rustok-index source_refresh_event --lib -- --nocapture
 node scripts/verify/verify-index-source-refresh-event.mjs
 
