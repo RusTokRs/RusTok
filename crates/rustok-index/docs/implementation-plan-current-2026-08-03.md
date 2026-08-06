@@ -1,34 +1,33 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked through
-`main@b18558e3f8443135a403780d1ef75bc4d14dba6d` and active branch
-`agent/index-m6-confirmed-candidate-persistence-20260806`.
+`main@d0f1aa543de2509b3b3c108c97cb4a7573eba136` and active branch
+`agent/index-m6-finding-lifecycle-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - add drift finding lifecycle commands`
+`M6 - add targeted drift repair`
 
 The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
-confirmation boundary, PostgreSQL materialized observer, and serializable idempotent finding
-persistence adapter are source complete.
+confirmation boundary, serializable finding persistence, and fail-closed finding lifecycle commands
+are source complete.
 
-Confirmed-candidate persistence now:
+Finding lifecycle now:
 
-- consumes exactly one `IndexDriftConfirmedCandidate`;
-- derives check identity, exact entity scope, and SHA-256 evidence only from typed fields;
-- revalidates exact materialized entity/version/link/target state in one PostgreSQL
-  `SERIALIZABLE READ WRITE` transaction;
-- returns `NotRecorded(MaterializedChanged)` without writing when the candidate changed;
-- uses the established finding-key advisory lock and `index_consistency_findings` state contract;
-- creates, refreshes, reopens, or preserves ignored suppression idempotently;
-- exposes no caller JSON, source/index payload, SQL, database cause, lifecycle authority, or repair;
+- accepts one exact tenant/finding/command identity;
+- supports only explicit open-to-resolved or open-to-ignored transitions;
+- requires bounded actor kind, actor subject, and nonempty reason;
+- authorizes before minting a non-publicly-constructible store capability;
+- serializes command replay and locks the exact finding row;
+- changes current state and appends actor/action/reason audit in one PostgreSQL transaction;
+- detects command UUID reuse with a different payload;
+- returns only denied, applied, already-applied, or typed not-applied outcomes;
 - remains unmounted from runtime extensions and public transports.
 
-Resolve/ignore lifecycle commands, actor/reason audit, repair, and retained execution evidence remain
-open.
+Targeted repair and retained migration/runtime evidence remain open.
 
 ## Rechecked status
 
@@ -58,7 +57,8 @@ open.
 - M6 bounded stale-entity and orphan-link candidate contract: `source_complete`
 - M6 PostgreSQL drift candidate reader: `source_complete`
 - M6 bounded candidate confirmation and PostgreSQL materialized observer: `source_complete`
-- M6 confirmed-candidate finding persistence: `source_complete_lifecycle_pending`
+- M6 confirmed-candidate finding persistence: `source_complete`
+- M6 drift finding lifecycle commands: `source_complete_repair_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -128,7 +128,10 @@ open.
 - [x] Create, refresh, reopen, or suppress through the established Index finding contract.
 - [x] Return only finding outcome or typed `NotRecorded(MaterializedChanged)`.
 - [x] Keep persistence unmounted from server extensions and public transports.
-- [ ] Add resolve/ignore lifecycle commands with actor/reason audit and fail-closed authorization.
+- [x] Add fail-closed resolve/ignore commands with explicit open-state preconditions.
+- [x] Require authorization before minting the store capability.
+- [x] Add idempotent command replay and immutable actor/action/reason audit rows.
+- [x] Keep lifecycle commands unmounted from server extensions and public transports.
 - [ ] Add targeted repair with before/after admitted evidence.
 
 ## M7 production graph and cutover
@@ -145,34 +148,33 @@ open.
 
 ## Next implementation step
 
-Add internal fail-closed resolve and ignore lifecycle commands for one exact finding.
+Add one internal targeted repair boundary for an exact open confirmed drift finding.
 
-The lifecycle slice must:
+The repair slice must:
 
-- require exact tenant and finding identity;
-- accept actor identity only from an already authorized internal operator boundary;
-- require a bounded nonempty reason and explicit expected current state;
-- lock the exact finding row and reject missing, conflicting, or unsupported states;
-- preserve finding key, scope, check identity, first/last detection evidence, and digest history;
-- record immutable actor/action/reason/timestamp audit evidence in Index-owned storage;
-- make retries idempotent without silently changing a different lifecycle transition;
-- expose only typed transition receipt or bounded failure;
-- add no repair, candidate iteration, scheduler, or public transport.
+- require exact tenant and finding identity plus a non-public authorized operator capability;
+- admit only supported confirmed missing-entity and orphan-link finding identities;
+- capture bounded before evidence through the existing exact source/materialized boundaries;
+- select a finding-specific repair owner rather than accept caller SQL, payload, or mutation JSON;
+- apply at most one targeted repair action under an explicit write fence;
+- re-read bounded after evidence and fail closed when it does not prove convergence;
+- persist a separate idempotent repair receipt without rewriting lifecycle audit rows;
+- expose only repaired/not-repaired receipt or bounded failure;
+- add no candidate page loop, scheduler, automatic repair, or public transport.
 
-Keep lifecycle commands internal and unmounted. Authorization transport and targeted repair remain
-separate later slices.
+Keep repair internal and unmounted. Public authorization transport, automatic iteration, and retained
+production evidence remain separate later slices.
 
 ## Owner verification for this slice
 
 ```bash
-cargo test -p rustok-index drift_confirmed_candidate_writer -- --nocapture
+cargo test -p rustok-index drift_finding_lifecycle -- --nocapture
+node scripts/verify/verify-index-drift-finding-lifecycle.mjs
 node scripts/verify/verify-index-confirmed-candidate-persistence.mjs
-node scripts/verify/verify-index-drift-candidate-confirmation.mjs
-node scripts/verify/verify-index-drift-finding-writer.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, PostgreSQL scenarios, workflows, or CI were executed by
-the implementation agent.
+No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL scenarios, workflows, or CI were
+executed by the implementation agent.
