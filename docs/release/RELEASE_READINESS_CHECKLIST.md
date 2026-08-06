@@ -25,7 +25,7 @@ Use this checklist for every RusToK release. A release is not complete because a
 - [ ] Confirm release workflows and GitHub actions are unchanged or explicitly approved with `release-infra-approved`.
 - [ ] Confirm the pinned Debian base digest and Debian Snapshot timestamp in `apps/server/Dockerfile.release` have a reviewed update record if changed.
 - [ ] Confirm checkout fetched `refs/remotes/origin/main` and signed-tag ancestry validation uses the local ref without a post-checkout credentialed fetch.
-- [ ] Confirm the embedded admin bundle was built from locked npm inputs with Trunk `0.21.14` for public URL `/admin/` before both independent server builds.
+- [ ] Confirm the same-origin Pages inline-edit deployment composition was built from locked npm and Cargo inputs with Trunk `0.21.14`, the Cargo.lock-selected `wasm-bindgen-cli`, embedded admin public URL `/admin/`, admin launch acknowledgement, dedicated client assets and `rustok-server/pages-inline-edit-assets` before both independent server archives.
 
 ## 3. Required verification before tagging
 
@@ -57,6 +57,10 @@ node scripts/verify/verify-release-readiness-contract.mjs
 node scripts/verify/verify-rust-host-browser-contract.mjs
 node scripts/verify/verify-development-container-topology.mjs
 
+node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
+
 cargo tree -i rsa --workspace --all-features
 cargo tree -i atomic-polyfill --workspace --all-features
 cargo audit
@@ -66,6 +70,9 @@ cargo audit
 - [ ] Run the migration-prepared Rust-host browser workflow for `/health`, storefront, embedded `/admin/` assets and strict CSP.
 - [ ] Run standalone admin smoke against the nonce-bearing SSR host before declaring that deployment profile production-ready.
 - [ ] Run Page Builder smoke for custom viewport size, continuous zoom, iframe load, overlay alignment, drag/drop and resize.
+- [ ] Build the same-origin Pages inline-edit composition and retain the embedded admin JS/WASM, dedicated authoring JS/WASM and native server binary hashes and sizes.
+- [ ] Prove the embedded admin launch is visible only for eligible drafts and navigates to the exact-locale same-origin authoring route without credentials in the URL or DOM.
+- [ ] Prove the three authoring assets return expected `200`/`304`, MIME, ETag, cache and CORP headers while anonymous public Pages HTML does not reference them.
 - [ ] Execute fresh, incremental and N-1 PostgreSQL migration scenarios against disposable databases.
 - [ ] Verify current backup/PITR evidence and identify the restore point immediately preceding deployment.
 
@@ -75,7 +82,8 @@ The release workflow must produce and verify all of the following:
 
 - [ ] The tag is annotated, cryptographically verified and points to a commit on `main`.
 - [ ] Workspace version, locked server version, tag and changelog section are identical.
-- [ ] Both isolated build jobs prepare the same locked embedded admin input before compiling `rustok-server`.
+- [ ] Both isolated build jobs run the same locked Pages inline-edit deployment composition before packaging `rustok-server`.
+- [ ] Both jobs use separately bounded Rust flags for embedded admin WASM, dedicated authoring WASM and the native server binary.
 - [ ] Two isolated jobs produce the same SHA-256 digest for the Linux server archive.
 - [ ] The SPDX 2.3 SBOM contains only the transitive dependency closure reachable from `rustok-server`.
 - [ ] The runtime image is built from the pinned Debian base and fixed snapshot package sources, runs as UID/GID `10001`, and is published by digest.
@@ -98,6 +106,8 @@ The release workflow must produce and verify all of the following:
 - [ ] Verify REST, GraphQL HTTP and GraphQL WebSocket tenant isolation on the deployed environment.
 - [ ] Verify authentication issuance/refresh/revocation and privileged admin access.
 - [ ] Verify storefront and admin browser journeys with no unexpected enforced CSP violations.
+- [ ] Verify direct-user allowed and anonymous/service/delegated/permission-denied authoring cases.
+- [ ] Verify inline edit, save, replacement grant, stale revision, replay and expiry behavior.
 - [ ] Confirm worker queues, outbox/search lag and build admission metrics remain inside defined operating thresholds.
 - [ ] Confirm no migration, panic, authorization or tenant-resolution error spike after deployment.
 
@@ -147,6 +157,11 @@ Required-check run IDs:
 API compatibility artifact/run:
 Migration compatibility artifact/run:
 Browser smoke runs:
+Embedded admin JS/WASM SHA-256 and sizes:
+Authoring client JS/WASM SHA-256 and sizes:
+Server binary SHA-256 and size:
+Authoring asset HTTP evidence:
+Inline-edit browser evidence:
 Server archive SHA-256:
 SBOM SHA-256:
 GHCR image and digest:
