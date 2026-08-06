@@ -1,0 +1,108 @@
+{
+  "contract": "forum_topic_route_authorized_gone_transport_v1",
+  "task": "FORUM-24K",
+  "parent_task": "FORUM-24",
+  "extends": ["FORUM-24H", "FORUM-24I", "FORUM-24J"],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "owner": "ForumTopicRouteTombstoneVisibilityService::can_disclose_public_gone",
+  "graphql": {
+    "legacy_field": "forumStorefrontTopicRoute",
+    "legacy_field_changed": false,
+    "legacy_gone_exposed": false,
+    "decision_field": "forumStorefrontTopicRouteDecision",
+    "decision_field_additive": true,
+    "decision_dispositions": ["CANONICAL", "REDIRECT", "GONE"],
+    "decision_canonical_nullable_only_for_gone": true,
+    "requested_topic_id_exposed": false,
+    "alias_id_exposed": false,
+    "snapshot_payload_exposed": false
+  },
+  "native_storefront": {
+    "endpoint": "forum/storefront-topic-route",
+    "selected_for": ["ssr", "hydrate"],
+    "automatic_graphql_fallback": false,
+    "owner_boolean_consumed": true,
+    "gone_canonical": null,
+    "snapshot_storage_read_directly": false
+  },
+  "graphql_storefront": {
+    "selected_for": ["headless", "csr"],
+    "query": "StorefrontForumTopicRouteDecision",
+    "field": "forumStorefrontTopicRouteDecision",
+    "owner_boolean_consumed_server_side": true
+  },
+  "authorization": {
+    "tenant_authority": "routed_context",
+    "optional_tenant_id_is_assertion_only": true,
+    "forum_module_required": true,
+    "gone_requires_current_channel_module_enabled": true,
+    "gone_requires_deletion_time_public_snapshot": true,
+    "gone_requires_exact_snapshot_channel_match_when_restricted": true,
+    "authenticated_requests_do_not_broaden_public_snapshot": true,
+    "missing_snapshot_hidden": true,
+    "private_snapshot_hidden": true,
+    "channel_mismatch_hidden": true,
+    "snapshot_integrity_conflict": "transport_error"
+  },
+  "host": {
+    "application": "apps/storefront",
+    "authorized_gone_status": 410,
+    "authorized_gone_cache_control": "private, no-store",
+    "missing_or_unauthorized_status": 404,
+    "malformed_decision_status": 503,
+    "canonical_status": 200,
+    "redirect_status": 308,
+    "host_reads_forum_storage": false,
+    "host_reauthorizes_gone": false
+  },
+  "shape_invariants": {
+    "canonical_requires_target": true,
+    "redirect_requires_target": true,
+    "gone_forbids_target": true,
+    "malformed_shapes_fail_closed": true
+  },
+  "compatibility": {
+    "database_schema_changed": false,
+    "migration_added": false,
+    "delete_owner_changed": false,
+    "route_identity_changed": false,
+    "semantic_event_changed": false,
+    "admin_contract_changed": false,
+    "seo_changed": false,
+    "legacy_graphql_generated_clients_preserved": true
+  },
+  "historical_policy": {
+    "topics_deleted_before_FORUM_24J": "hidden",
+    "formerly_private_topics": "hidden",
+    "formerly_public_unrestricted_topics": "eligible_for_gone",
+    "formerly_public_channel_restricted_topics": "eligible_only_on_snapshotted_channel",
+    "cross_topic_redirect_target_disappearance": "hidden_without_source_route_snapshot_proof"
+  },
+  "verification": {
+    "contract_test": "crates/rustok-forum/tests/topic_route_authorized_gone_transport_contract.rs",
+    "verifier": "scripts/verify/verify-forum-topic-route-authorized-gone.mjs",
+    "maintainer_commands": [
+      "node scripts/verify/verify-forum-topic-route-authorized-gone.mjs",
+      "cargo test -p rustok-forum --test topic_route_authorized_gone_transport_contract -- --nocapture",
+      "cargo test -p rustok-forum graphql::topic_route_query::tests -- --nocapture",
+      "cargo test -p rustok-forum-storefront model::tests -- --nocapture",
+      "cargo test -p rustok-storefront forum_topic_route::tests -- --nocapture",
+      "cargo check -p rustok-forum --all-targets",
+      "cargo check -p rustok-forum-storefront --all-targets --features ssr",
+      "cargo check -p rustok-storefront --all-targets --features ssr"
+    ]
+  },
+  "remaining_scope": [
+    "category route identity",
+    "canonical and hreflang document policy",
+    "Forum SEO composition",
+    "maintainer migration runtime and browser evidence"
+  ],
+  "non_claims": [
+    "no test verifier formatter Cargo migration workflow browser or CI execution is claimed",
+    "no historical visibility snapshot backfill is claimed",
+    "no private or authenticated-only tombstone disclosure is claimed",
+    "FORUM-24 remains planned"
+  ]
+}
