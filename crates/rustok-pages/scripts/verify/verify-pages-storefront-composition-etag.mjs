@@ -82,11 +82,13 @@ for (const key of [
   "composition_etag_binds_channel_identity",
   "composition_etag_binds_navigation_payload",
   "composition_etag_binds_seo_payload",
+  "composition_etag_binds_rendered_html",
   "composition_etag_uses_sha256",
   "composition_etag_is_canonical_only",
   "terminal_routes_never_claim_composition_etag",
   "strong_weak_and_list_if_none_match_are_supported",
   "matching_if_none_match_returns_304",
+  "conditional_304_uses_fully_rendered_document_identity",
   "canonical_etag_responses_use_private_no_cache",
   "terminal_route_responses_remain_private_no_store",
 ]) {
@@ -172,12 +174,16 @@ for (const marker of [
   "route_generation: decision.route_generation?",
   "page_generation: decision.page_generation?",
   "artifact_generation: decision.artifact_generation?",
+  "rendered_html_hash: String",
+  "rendered_html: &str",
+  "Sha256::digest(rendered_html.as_bytes())",
   "seo,",
   "navigation,",
-  "Sha256::digest",
+  "Sha256::digest(encoded)",
   "candidate.strip_prefix(\"W/\") == Some(etag)",
   "candidate == \"*\"",
   "composition_etag_is_stable_and_binds_every_dependency",
+  "changed rendered HTML should still produce an ETag",
   "incomplete_or_terminal_decisions_do_not_claim_composition_cache_identity",
 ]) need(composition, marker, "Pages composition ETag contract");
 need(cargo, "sha2.workspace = true", "storefront composition dependency");
@@ -189,13 +195,15 @@ for (const marker of [
   "fetch_active_menu(StorefrontMenuLocation::Footer",
   "render_canonical_pages_response",
   "fetch_seo_page_context(locale, route_segment, &query_params).await",
-  "pages_storefront_composition_etag(locale, &decision, &seo_context, &navigation)",
+  "render_module_page_with_nonce(",
+  "Some(navigation.clone())",
+  "pages_storefront_composition_etag(",
+  "html.as_str()",
   "if_none_match_matches(if_none_match, etag)",
   "not_modified_composition_response(etag)",
   "StatusCode::NOT_MODIFIED",
   "apply_composition_headers",
   "HeaderValue::from_static(PAGES_STOREFRONT_REVALIDATE_CACHE_CONTROL)",
-  "Some(navigation)",
   "get(IF_NONE_MATCH)",
   "const PRIVATE_NO_STORE: &str = \"private, no-store\"",
 ]) need(host, marker, "storefront Pages owner composition");
@@ -209,13 +217,15 @@ const canonicalComposition = between(
 ordered(canonicalComposition, [
   "fetch_seo_page_context(locale, route_segment, &query_params).await",
   "fetch_pages_navigation_snapshot(locale).await",
-  "pages_storefront_composition_etag(locale, &decision, &seo_context, &navigation)",
+  "render_module_page_with_nonce(",
+  "Some(navigation.clone())",
+  "pages_storefront_composition_etag(",
+  "html.as_str()",
   "if_none_match_matches(if_none_match, etag)",
   "not_modified_composition_response(etag)",
-  "render_module_page_with_nonce(",
-  "Some(navigation)",
+  "Html(html).into_response()",
   "apply_composition_headers(&mut response, etag.as_str())",
-], "SEO Navigation ETag conditional render ordering");
+], "SEO Navigation render identity conditional response ordering");
 
 const hostPipeline = between(
   host,
@@ -234,19 +244,23 @@ ordered(hostPipeline, [
 for (const marker of [
   "storefront-composition-etag-source-ready",
   "Pages storefront Navigation/SEO composition ETag: source-ready",
+  "exact final rendered HTML",
   "Cache-Control: private, no-cache",
   "Terminal Pages route responses continue to use `private, no-store`",
 ]) need(plan, marker, "canonical parity plan");
 for (const marker of [
   "storefront-composition-etag-source-ready",
   "Navigation-owned header/footer menus",
+  "exact rendered HTML",
   "deterministic SHA-256 ETag",
   "Matching strong, weak or comma-separated `If-None-Match` returns `304`",
 ]) need(localPlan, marker, "Pages implementation plan");
 for (const marker of [
   "source-ready / execution-pending",
   "Navigation-owned header/footer reads",
+  "SSR render with the preloaded Navigation snapshot",
   "pages_storefront_composition_v1",
+  "exact final rendered HTML document",
   "304 Not Modified",
   "private, no-cache",
   "Execution evidence remains pending",
