@@ -1,3 +1,5 @@
+use super::{category_audience, category_visibility, topic_audience};
+
 pub(crate) mod route_tombstone_visibility {
     include!("topic_route_tombstone_visibility.rs");
 }
