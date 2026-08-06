@@ -16,6 +16,13 @@ export const forumNav: NavItem = {
       moduleSlug: 'forum'
     },
     {
+      title: 'Rename Topic Route',
+      url: '/dashboard/forum/rename-slug',
+      icon: 'messageSquare',
+      moduleSlug: 'forum',
+      access: { permission: 'forum_topics:update' }
+    },
+    {
       title: 'Merge Topics',
       url: '/dashboard/forum/merge',
       icon: 'messageSquare',
