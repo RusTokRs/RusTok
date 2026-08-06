@@ -57,7 +57,9 @@ pub use infrastructure::postgres::{
     IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,
     IndexReplayJobLeaseRequest, IndexReplayRunError, IndexReplayRunOutcome,
     IndexReplayRunRequest, IndexReplayRunStatus, IndexReplayRuntimeCompositionError,
-    IndexReplayTerminalState, MutationApplyOutcome, MutationDelivery, MutationStorageError,
+    IndexReplayTerminalState, IndexSchemaReadinessEntry, IndexSchemaReadinessError,
+    IndexSchemaReadinessFailure, IndexSchemaReadinessFailureKind, IndexSchemaReadinessReceipt,
+    IndexSchemaReadinessRequest, MutationApplyOutcome, MutationDelivery, MutationStorageError,
     PartitionAdmissionError, PartitionAdmissionOutcome, PartitionAdmissionPolicy,
     PartitionAdmissionReason, PartitionBaselineEvidence, PartitionEvidence,
     PartitionMeasurementCoverage, PartitionRelationPlan, PartitionShadowEvidence,
@@ -67,7 +69,7 @@ pub use infrastructure::postgres::{
     PostgresIndexDriftMissingEntityEvidenceReader, PostgresIndexDriftMissingEntityRepairOwner,
     PostgresIndexDriftOrphanLinkEvidenceReader, PostgresIndexDriftOrphanLinkRepairOwner,
     PostgresIndexDriftRepairRecoveryStore, PostgresIndexDriftRepairStore,
-    PostgresIndexDriftSnapshotReader, PostgresIndexQueryPort,
+    PostgresIndexDriftSnapshotReader, PostgresIndexQueryPort, PostgresIndexSchemaReadinessStore,
     PostgresIndexReconciliationRetryStore, PostgresIndexReconciliationRunner,
     PostgresIndexReconciliationWorkAdapter, PostgresIndexReplayCheckpointStore,
     PostgresIndexReplayJobStore, PostgresIndexReplayRunner, PostgresIndexSourceFactory,
@@ -80,7 +82,7 @@ pub use infrastructure::postgres::{
     SecondaryIndexError, SecondaryIndexExecutionOutcome, SecondaryIndexKind,
     SecondaryIndexLease, SecondaryIndexOperation, SecondaryIndexPlan,
     SecondaryIndexRequest, SecondaryIndexSpec, SharedIndexReplayRuntime,
-    INDEX_RECONCILIATION_WORKER,
+    MAX_INDEX_SCHEMA_READINESS_SCHEMAS, INDEX_RECONCILIATION_WORKER,
 };
 
 pub struct IndexModule;
