@@ -26,14 +26,17 @@ const forbidMarkers = (relative, source, markers) => {
 
 const modulePath = 'crates/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
+  'mod absence;',
   'pub(crate) mod graph;',
   'mod product;',
   'mod variant;',
   'product::register(extensions)?;',
-  'variant::register(extensions)',
-  'selected_product_bridge_set_registers_four_schemas_and_two_stable_factories',
+  'variant::register(extensions)?;',
+  'absence::register(extensions)',
+  'selected_product_bridge_set_registers_four_schemas_and_three_stable_factories',
   '.len(),\n            4',
-  'assert_eq!(factories.len(), 2);',
+  'assert_eq!(factories.len(), 3);',
+  'PRODUCT_ABSENCE_WATERMARK_FACTORY',
 ]);
 forbidMarkers(modulePath, moduleSource, ['graph::register(extensions)', 'PRODUCT_GRAPH_INDEX_SOURCE']);
 
@@ -99,6 +102,22 @@ forbidMarkers(sourcePath, source, [
   'tokio::time::sleep',
   'loop {',
   'rustok_search',
+]);
+
+const absencePath = 'crates/rustok-distribution/src/product_index/absence.rs';
+const absence = requireMarkers(absencePath, [
+  'PRODUCT_ABSENCE_WATERMARK_FACTORY',
+  'register_index_source_absence_provider(',
+  'ProductLocaleAbsenceProvider',
+  'FROM product_translations translation',
+  'FROM product_index_tombstones tombstone',
+]);
+forbidMarkers(absencePath, absence, [
+  'index_entities',
+  'index_links',
+  'tokio::spawn',
+  'tokio::time::sleep',
+  'loop {',
 ]);
 
 const membershipPath =

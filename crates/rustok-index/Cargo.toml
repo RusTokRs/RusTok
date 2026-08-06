@@ -18,6 +18,7 @@ tokio.workspace = true
 tracing.workspace = true
 
 # Domain and application core
+aes-gcm.workspace = true
 base64.workspace = true
 chrono.workspace = true
 hex.workspace = true

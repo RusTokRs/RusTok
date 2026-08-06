@@ -59,8 +59,11 @@ const sourcePath = 'crates/rustok-distribution/src/product_index/graph.rs';
 const source = requireMarkers(sourcePath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
   'PRODUCT_EVENT_DOMAIN_V1: &str = "rustok-product.product-replay-v1"',
+  'PRODUCT_EVENT_DOMAIN_V2: &str = "rustok-product.product-replay-v2"',
   'fn product_v1_schema()',
+  'fn product_v2_schema()',
   'reference: product_schema_ref(1)?',
+  'reference: product_schema_ref(2)?',
   'locale_mode: LocaleMode::Required',
   'scalar_field("status", IndexValueType::String, false, true, true)?',
   'scalar_field("title", IndexValueType::String, false, true, true)?',
@@ -68,13 +71,13 @@ const source = requireMarkers(sourcePath, [
   'scalar_field("description", IndexValueType::String, true, false, false)?',
   'scalar_field("vendor", IndexValueType::String, true, true, true)?',
   'scalar_field("product_type", IndexValueType::String, true, true, true)?',
-  'links: Vec::new()',
   'product_schema_ref(1).map_err(|error| error.to_string())?',
   'product_schema_ref(2).map_err(|error| error.to_string())?',
   'ProductPostgresIndexSource { db }',
   'impl IndexSource for ProductPostgresIndexSource',
   'FROM products p',
   'JOIN product_translations t',
+  'FROM product_index_tombstones tombstone',
   '(row.product_id, row.locale) > ($2, $3)',
   'ORDER BY row.product_id ASC, row.locale ASC',
   'request.limit() + 1',
@@ -96,21 +99,66 @@ forbidMarkers(sourcePath, source, [
   'rustok_search',
 ]);
 
-const migrationPath =
-  'crates/rustok-product/src/migrations/m20260730_000001_add_product_index_revision.rs';
-requireMarkers(migrationPath, [
-  'ADD COLUMN index_revision BIGINT NOT NULL DEFAULT 1',
-  'NEW.index_revision := OLD.index_revision + 1;',
-  'trg_products_bump_index_revision',
-  'trg_product_translations_bump_index_revision',
-  'AFTER INSERT OR UPDATE OR DELETE ON product_translations',
+const absencePath = 'crates/rustok-distribution/src/product_index/absence.rs';
+const absence = requireMarkers(absencePath, [
+  'PRODUCT_ABSENCE_WATERMARK_FACTORY',
+  'product-locale-absence-postgres',
+  'impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider',
+  'CAST(product.index_revision AS TEXT) AS source_version_text',
+  'FROM product_translations translation',
+  'FROM product_index_tombstones tombstone',
+  'IndexSourceAbsenceWatermark::new(key, source_version)',
 ]);
+forbidMarkers(absencePath, absence, [
+  'INSERT ',
+  'UPDATE ',
+  'DELETE FROM',
+  'index_entities',
+  'index_links',
+  'tokio::spawn',
+  'loop {',
+]);
+
+const revisionMigration = requireMarkers(
+  'crates/rustok-product/src/migrations/m20260730_000001_add_product_index_revision.rs',
+  [
+    'ADD COLUMN index_revision BIGINT NOT NULL DEFAULT 1',
+    'NEW.index_revision := OLD.index_revision + 1;',
+    'trg_products_bump_index_revision',
+    'trg_product_translations_bump_index_revision',
+    'AFTER INSERT OR UPDATE OR DELETE ON product_translations',
+  ],
+);
+forbidMarkers(
+  'crates/rustok-product/src/migrations/m20260730_000001_add_product_index_revision.rs',
+  revisionMigration,
+  ['index_entities', 'index_links'],
+);
+
+const tombstoneMigration = requireMarkers(
+  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
+  [
+    'CREATE TABLE product_index_tombstones',
+    'rustok_product_store_index_tombstone',
+    'rustok_product_capture_index_tombstones',
+    'rustok_product_seed_index_revision_from_tombstones',
+    'rustok_product_clear_superseded_index_tombstone',
+  ],
+);
+forbidMarkers(
+  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
+  tombstoneMigration,
+  ['index_entities', 'index_links', 'index_jobs'],
+);
 
 requireMarkers('crates/rustok-index/docs/m7-product-source.md', [
   'Status: `source_complete_owner_execution_pending`',
-  '`rustok-product::product@1`',
+  '`rustok-product::product@1` and `@2`',
   'stable `(product_id, locale)` identity',
-  'Product hard deletes do not yet emit durable Index tombstones.',
+  '`product_index_tombstones`',
+  'Translation deletion or identity movement stores an exact locale tombstone',
+  '`product-locale-absence-postgres`',
+  'positive `products.index_revision`',
   'maintainer-run',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [

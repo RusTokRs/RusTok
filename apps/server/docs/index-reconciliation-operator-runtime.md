@@ -1,70 +1,111 @@
 # Index reconciliation operator runtime
 
-Status: `source_complete_transport_and_owner_execution_pending`.
+Status: `sealed_source_page_graphql_source_complete_owner_execution_pending`.
 
 ## Purpose
 
-The server publishes one guarded `IndexReconciliationOperatorRuntime` after the replay composition freezes the immutable source and schema registries.
+The server publishes guarded reconciliation, exact-entity diagnosis, one-page missing-entity
+diagnosis, and one bounded sealed GraphQL page transport after replay composition freezes the source
+and schema registries.
 
-The boundary wraps:
+`IndexDriftSourcePageDiagnosisRuntime` privately composes:
 
-- `PostgresIndexReconciliationRunner` for bounded run and cancellation;
-- `PostgresIndexReconciliationDeadLetterInspector` for bounded read-only dead-letter inspection;
-- `PostgresIndexDriftFindingInspector` for bounded read-only open-finding diagnosis;
-- `PostgresIndexReconciliationRecoveryStore` for audited same-job recovery.
+- the frozen `SharedIndexSourceRegistry`;
+- the guarded `IndexDriftDiagnosisOperatorRuntime`;
+- an optional private continuation keyring containing bounded key IDs, `SecretRef` values, lifetime,
+  and the process-owned resolver registry.
 
-The same registry-freezing composition also publishes the separate module-owned reconciliation work registration. The operator runtime does not expose or own that scheduler.
+The keyring is not published as an independent extension handle. Raw AES key bytes exist only in one
+short-lived codec created inside a sealed request.
 
 ## Request-bound authority
 
-Every operation requires a non-nil tenant/actor `IndexReconciliationOperatorContext`, a current request-scoped RBAC snapshot, and effective `Permission::MODULES_MANAGE`.
+Every operator method requires a non-nil tenant/actor context, a current request-local RBAC snapshot,
+and effective `Permission::MODULES_MANAGE`.
 
-Run rejects a tenant mismatch before runner delegation. Cancellation, dead-letter inspection, drift-finding inspection, and requeue accept no caller-selected tenant. Requeue accepts no caller-selected actor; the audit actor is always `context.actor_id()`.
+Exact diagnosis authorizes before key validation or dependency access. The raw internal page method
+authorizes before page-limit validation and scan-request construction.
 
-Both inspection methods and requeue authorize before adapter or recovery-request validation and before database access. An unauthorized caller therefore cannot use nil identifiers, malformed requests, or storage behavior as a tenant-scoped oracle.
+`diagnose_source_page_sealed(context, schema, continuation, limit)` additionally:
 
-## Published surface
+1. authorizes before untrusted continuation parsing;
+2. validates the `1..=32` limit;
+3. derives canonical source scope from the frozen registry;
+4. resolves exact 32-byte keys through the private keyring;
+5. opens and validates the token before constructing `IndexSourceScanRequest`;
+6. diagnoses one page exactly once;
+7. seals any outgoing raw cursor before returning.
 
-The operator exposes only:
+## Published operator surface
 
-- `run(context, request)`;
-- `request_cancel(context, job_id)`;
-- `inspect_dead_letter(context, job_id)`;
-- `inspect_drift_finding(context, finding_id)`;
-- `requeue_dead_letter(context, job_id, reason)`.
+`IndexDriftDiagnosisOperatorRuntime` exposes:
 
-Drift inspection returns only the bounded crate value: finding UUID and key, check name, severity, typed scope, and optional expected/actual digests. It does not return tenant identity, raw finding details, detection timestamps, closure state, SQL, or database causes.
+- `diagnose_entity(context, key)`;
+- `diagnose_missing_entity_candidate(context, key)`.
 
-The runtime exposes no database connection, registry, scheduler handle, worker-spawn handle, raw failure or finding details, direct SQL, or transport.
+`IndexDriftSourcePageDiagnosisRuntime` exposes:
 
-## Composition and scheduling
+- internal `diagnose_source_page(context, schema, cursor, limit)`;
+- transport-safe `diagnose_source_page_sealed(context, schema, continuation, limit)`.
 
-The server replay composition remains the single source-freezing point:
+The sealed result contains only bounded current-page counters, missing-finding receipts, completion
+state, and an optional opaque token.
 
-1. PostgreSQL source factories are materialized;
-2. `SharedIndexSourceRegistry` is frozen;
-3. replay dry-run/runtime and the due-reconciliation module-work registration are published;
-4. this guarded reconciliation operator is built from the same source/schema registries and database;
-5. the canonical runner, both read-only inspectors, and the audited recovery store are inserted into one private runtime.
+## GraphQL transports
 
-Composition performs no reconciliation or drift SQL and starts no task. The existing generic server module-work bootstrap later owns the one-second polling loop and shared `StopHandle` shutdown. The Index adapter discovers work; the canonical runner owns claim, takeover, attempt fencing, cancellation, retry, exhaustion, and terminal state.
+The root mutation now contains two deliberately separate operations:
 
-The operator remains intentionally independent from automatic scheduling: manual authorized calls and host-scheduled calls converge only at the same canonical runner. Drift inspection is read-only and is not scheduled.
+- `diagnoseIndexEntity(input: IndexDriftDiagnosisInput!)` for one caller-known exact entity;
+- `diagnoseIndexSourcePage(input: IndexDriftSourcePageDiagnosisInput!)` for one bounded owner-source
+  page through the sealed continuation boundary.
+
+The page input contains module, entity, schema version, limit, and optional opaque token strings only.
+Tenant and actor come from authenticated context. Effective `modules:manage` is checked before schema,
+limit, or token parsing.
+
+The page resolver delegates exactly once to `diagnose_source_page_sealed`. It does not call the raw
+page method and accepts no tenant, actor, owner/source identity, raw cursor, entity ID, entity list,
+checkpoint, scheduler, lifecycle, or repair input.
+
+The payload exposes current-page aggregate counters, bounded finding receipts, completion state, and
+one opaque token. It exposes no raw cursor, owner/index payload, fields, links, source identity,
+secret reference, key material, SQL, or database cause.
+
+## Confidential continuation composition
+
+`IndexSourceContinuationCodec` uses AES-256-GCM and binds encrypted claims to tenant, exact schema,
+canonical owner/source identity, contract version, issued-at, and expiry.
+
+`RUSTOK_INDEX_SOURCE_CONTINUATION_KEYRING_JSON` stores only bounded key IDs and secret references.
+The JSON is bounded to 16 KiB before parsing; at most 16 unique references are admitted. Secret
+values must be canonical URL-safe unpadded base64 and decode to exactly 32 bytes.
+
+Synchronous composition validates configuration shape and resolver policy. Asynchronous secret
+resolution occurs inside the sealed method before token parsing or source scan. Resolver causes,
+reference keys, token contents, and key material are never copied into GraphQL errors or debug output.
+
+## Composition order
+
+1. selected source factories are materialized;
+2. the source registry is frozen;
+3. replay and reconciliation runtimes are composed;
+4. exact diagnosis and optional absence proof are composed;
+5. deployment-owned continuation configuration is validated;
+6. the private keyring is passed directly into the page runtime;
+7. GraphQL schema construction mounts exact diagnosis and the separate sealed source-page mutation.
+
+Composition performs no secret resolution, source scan, diagnosis SQL, or task spawn.
 
 ## Explicitly open
 
-- GraphQL, HTTP, CLI, MCP, native admin, or other command transport;
-- retained PostgreSQL authorization, inspection, and scheduler execution evidence;
-- operator-visible scheduler health and metrics;
-- per-source retry policy, jitter, and dynamic configuration;
-- source/index digest comparison and consistency-finding production;
-- orphan diagnosis;
-- finding resolution or ignore transitions;
-- targeted/full/shadow repair admission, execution, audit, and evidence;
-- locale or partition checkpoint dimensions.
-
-The canonical bounded retry/global scheduling item remains open pending owner-retained production and multi-host evidence. The drift-diagnosis/targeted-repair item also remains open because this runtime only authorizes bounded inspection of findings that already exist.
+- retained authorization, key-resolution, rotation, expiry, PostgreSQL, and GraphQL evidence;
+- persisted continuation, multi-page accumulation, background scanning, scheduling, or restart state;
+- stale Index-only and orphan-link discovery;
+- finding resolve/ignore lifecycle;
+- targeted/full/shadow repair;
+- reconciliation command transports and operator-visible scheduler health.
 
 ## Validation ownership
 
-Formatting, Cargo checks/tests, JavaScript verifiers, database scenarios, workflows, and CI are maintainer-run and were not executed by the implementation agent.
+Formatting, Cargo checks/tests, JavaScript verifiers, cryptographic integration, database or GraphQL
+scenarios, workflows, and CI are maintainer-run and were not executed by the implementation agent.

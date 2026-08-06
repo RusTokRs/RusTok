@@ -2,6 +2,8 @@
 pub mod blog_rate_limit;
 pub mod dashboard_security;
 pub mod forum_principal_security;
+pub mod index_drift_diagnosis;
+pub mod index_drift_source_page_diagnosis;
 pub mod legacy_disable_user;
 pub mod loaders;
 pub mod module_security;

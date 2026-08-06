@@ -15,12 +15,13 @@ use crate::{
     EntityKey, EntityName, FieldName, IndexDriftDependencyFailure, IndexDriftDigestRequest,
     IndexDriftEntityState, IndexDriftSnapshotBoundary, IndexDriftSnapshotPair,
     IndexDriftSnapshotReader, IndexDriftSnapshotView, IndexLinkValue, IndexRecord,
-    IndexSourceError, IndexSourceFailureKind, IndexSourceLoadRequest, IndexValue, LinkedEntityKey,
-    LinkName, LocaleKey, ModuleName, SchemaRef, SchemaVersion, SharedIndexSchemaRegistry,
-    SharedIndexSourceRegistry,
+    IndexSourceAbsenceError, IndexSourceError, IndexSourceFailureKind, IndexSourceLoadRequest,
+    IndexValue, LinkedEntityKey, LinkName, LocaleKey, ModuleName, SchemaRef, SchemaVersion,
+    SharedIndexSchemaRegistry, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
 };
 
 const SNAPSHOT_BOUNDARY_DOMAIN: &[u8] = b"index_drift_postgres_source_version_boundary_v1";
+const ABSENCE_WATERMARK_BOUNDARY_TAG: &[u8] = b"explicit_source_absence_watermark_v1";
 const SOURCE_UNAVAILABLE: &str = "index_drift_source_unavailable";
 const SOURCE_REJECTED: &str = "index_drift_source_rejected";
 const SOURCE_CONTRACT_INVALID: &str = "index_drift_source_contract_invalid";
@@ -32,19 +33,41 @@ const MATERIALIZED_INVALID: &str = "index_drift_materialized_state_invalid";
 const SCHEMA_UNAVAILABLE: &str = "index_drift_snapshot_schema_unavailable";
 const BOUNDARY_INVALID: &str = "index_drift_snapshot_boundary_invalid";
 
+#[derive(Clone, PartialEq, Eq)]
+struct IndexDriftSourceObservation {
+    state: IndexDriftEntityState,
+    absence_source_version: Option<u64>,
+}
+
+impl IndexDriftSourceObservation {
+    fn retained(state: IndexDriftEntityState) -> Self {
+        Self {
+            state,
+            absence_source_version: None,
+        }
+    }
+
+    fn missing(key: EntityKey, source_version: u64) -> Self {
+        Self {
+            state: IndexDriftEntityState::missing(key),
+            absence_source_version: Some(source_version),
+        }
+    }
+}
+
 /// PostgreSQL materialized-state reader fenced by one exact owner source version.
 ///
-/// The reader loads one source mutation, opens a `REPEATABLE READ READ ONLY`
-/// PostgreSQL transaction, captures the materialized entity and links, then reloads
-/// the source while the transaction remains open. Only an identical positive-version
-/// source state is accepted. A source that returns no mutation has no admitted entity
-/// watermark and therefore fails closed instead of treating an unproven absence as a
-/// truthful snapshot.
+/// The reader loads one retained source mutation or one explicit positive-version absence
+/// watermark, opens a `REPEATABLE READ READ ONLY` PostgreSQL transaction, captures the
+/// materialized entity and links, then reloads the same owner evidence while the transaction
+/// remains open. Only an identical typed state and version are accepted. An empty targeted load
+/// without an admitted watermark remains fail-closed.
 #[derive(Clone)]
 pub struct PostgresIndexDriftSnapshotReader {
     db: DatabaseConnection,
     sources: SharedIndexSourceRegistry,
     schemas: SharedIndexSchemaRegistry,
+    absence: Option<SharedIndexSourceAbsenceRegistry>,
 }
 
 impl PostgresIndexDriftSnapshotReader {
@@ -57,19 +80,42 @@ impl PostgresIndexDriftSnapshotReader {
             db,
             sources,
             schemas,
+            absence: None,
         }
     }
 
-    async fn load_source_state(
+    pub fn with_absence_registry(
+        mut self,
+        absence: SharedIndexSourceAbsenceRegistry,
+    ) -> Self {
+        self.absence = Some(absence);
+        self
+    }
+
+    async fn load_source_observation(
         &self,
         request: &IndexDriftDigestRequest,
-    ) -> Result<IndexDriftEntityState, IndexDriftDependencyFailure> {
+    ) -> Result<IndexDriftSourceObservation, IndexDriftDependencyFailure> {
         let load = IndexSourceLoadRequest::new(vec![request.key().clone()])
             .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?;
         let batch = self.sources.load(load).await.map_err(map_source_error)?;
         let mut mutations = batch.into_mutations();
         if mutations.is_empty() {
-            return Err(permanent_failure(SOURCE_WATERMARK_MISSING));
+            let Some(absence) = &self.absence else {
+                return Err(permanent_failure(SOURCE_WATERMARK_MISSING));
+            };
+            if absence.provider_for_schema(&request.key().schema).is_none() {
+                return Err(permanent_failure(SOURCE_WATERMARK_MISSING));
+            }
+            let watermark = absence
+                .load(request.key().clone())
+                .await
+                .map_err(map_absence_error)?
+                .ok_or_else(|| permanent_failure(SOURCE_WATERMARK_MISSING))?;
+            return Ok(IndexDriftSourceObservation::missing(
+                request.key().clone(),
+                watermark.source_version(),
+            ));
         }
         if mutations.len() != 1 {
             return Err(permanent_failure(SOURCE_CONTRACT_INVALID));
@@ -79,14 +125,14 @@ impl PostgresIndexDriftSnapshotReader {
         {
             return Err(permanent_failure(SOURCE_CONTRACT_INVALID));
         }
-        Ok(state)
+        Ok(IndexDriftSourceObservation::retained(state))
     }
 
     async fn capture_in_transaction(
         &self,
         transaction: &DatabaseTransaction,
         request: &IndexDriftDigestRequest,
-        source: &IndexDriftEntityState,
+        source: &IndexDriftSourceObservation,
     ) -> Result<IndexDriftSnapshotPair, IndexDriftDependencyFailure> {
         let snapshot = transaction
             .query_one(Statement::from_string(
@@ -102,14 +148,23 @@ impl PostgresIndexDriftSnapshotReader {
         let materialized = self
             .load_materialized_state(transaction, request.key())
             .await?;
-        let observed_again = self.load_source_state(request).await?;
+        let observed_again = match self.load_source_observation(request).await {
+            Ok(observation) => observation,
+            Err(error)
+                if source.absence_source_version.is_some()
+                    && error.code() == SOURCE_WATERMARK_MISSING =>
+            {
+                return Err(retryable_failure(SOURCE_CHANGED));
+            }
+            Err(error) => return Err(error),
+        };
         if &observed_again != source {
             return Err(retryable_failure(SOURCE_CHANGED));
         }
 
         let boundary = derive_boundary(&snapshot, source)?;
         IndexDriftSnapshotPair::new(
-            IndexDriftSnapshotView::new(boundary.clone(), source.clone()),
+            IndexDriftSnapshotView::new(boundary.clone(), source.state.clone()),
             IndexDriftSnapshotView::new(boundary, materialized),
         )
         .map_err(|_| permanent_failure(BOUNDARY_INVALID))
@@ -198,7 +253,7 @@ impl IndexDriftSnapshotReader for PostgresIndexDriftSnapshotReader {
         if self.db.get_database_backend() != DbBackend::Postgres {
             return Err(permanent_failure(BACKEND_UNSUPPORTED));
         }
-        let source = self.load_source_state(request).await?;
+        let source = self.load_source_observation(request).await?;
         let transaction = self
             .db
             .begin_with_config(
@@ -236,8 +291,9 @@ pub enum IndexDriftSnapshotCompositionError {
 
 /// Constructs the production reader only after immutable source and schema registries exist.
 ///
-/// The function performs no SQL and starts no task. An absent source registry remains an
-/// optional capability rather than publishing a reader that can never capture a source state.
+/// The function performs no SQL and starts no task. An absent source registry remains an optional
+/// capability. An optional already-materialized absence registry is attached without changing the
+/// ordinary replay-source contract.
 pub fn materialize_postgres_index_drift_snapshot_reader(
     extensions: &ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -252,9 +308,13 @@ pub fn materialize_postgres_index_drift_snapshot_reader(
     if db.get_database_backend() != DbBackend::Postgres {
         return Err(IndexDriftSnapshotCompositionError::UnsupportedBackend);
     }
-    Ok(Some(PostgresIndexDriftSnapshotReader::new(
-        db, sources, schemas,
-    )))
+    let reader = PostgresIndexDriftSnapshotReader::new(db, sources, schemas);
+    Ok(Some(
+        match extensions.get::<SharedIndexSourceAbsenceRegistry>().cloned() {
+            Some(absence) => reader.with_absence_registry(absence),
+            None => reader,
+        },
+    ))
 }
 
 async fn load_links(
@@ -389,14 +449,18 @@ fn source_version(state: &IndexDriftEntityState) -> Option<u64> {
 
 fn derive_boundary(
     snapshot: &str,
-    source: &IndexDriftEntityState,
+    source: &IndexDriftSourceObservation,
 ) -> Result<IndexDriftSnapshotBoundary, IndexDriftDependencyFailure> {
-    let encoded = postcard::to_allocvec(source)
+    let encoded = postcard::to_allocvec(&source.state)
         .map_err(|_| permanent_failure(BOUNDARY_INVALID))?;
     let mut hasher = Sha256::new();
     hash_component(&mut hasher, SNAPSHOT_BOUNDARY_DOMAIN);
     hash_component(&mut hasher, snapshot.as_bytes());
     hash_component(&mut hasher, &encoded);
+    if let Some(source_version) = source.absence_source_version {
+        hash_component(&mut hasher, ABSENCE_WATERMARK_BOUNDARY_TAG);
+        hash_component(&mut hasher, &source_version.to_be_bytes());
+    }
     IndexDriftSnapshotBoundary::new(format!("pg:{}", hex::encode(hasher.finalize())))
         .map_err(|_| permanent_failure(BOUNDARY_INVALID))
 }
@@ -414,6 +478,21 @@ fn map_source_error(error: IndexSourceError) -> IndexDriftDependencyFailure {
             retryable_failure(SOURCE_UNAVAILABLE)
         }
         IndexSourceError::SourceFailure { .. } => permanent_failure(SOURCE_REJECTED),
+        _ => permanent_failure(SOURCE_CONTRACT_INVALID),
+    }
+}
+
+fn map_absence_error(error: IndexSourceAbsenceError) -> IndexDriftDependencyFailure {
+    match error {
+        IndexSourceAbsenceError::ProviderFailure { failure, .. }
+            if failure.kind() == IndexSourceFailureKind::Retryable =>
+        {
+            retryable_failure(SOURCE_UNAVAILABLE)
+        }
+        IndexSourceAbsenceError::ProviderFailure { .. } => permanent_failure(SOURCE_REJECTED),
+        IndexSourceAbsenceError::UnknownSchemaProvider(_) => {
+            permanent_failure(SOURCE_WATERMARK_MISSING)
+        }
         _ => permanent_failure(SOURCE_CONTRACT_INVALID),
     }
 }
