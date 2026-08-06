@@ -2,6 +2,10 @@ struct Module;
 
 impl rustok_module_sdk::Guest for Module {
     fn run(input: String) -> Result<String, String> {
+        // This is a brokered domain event example only. It does not register an
+        // Index schema, write Index storage, or provide replay/load semantics.
+        // See `docs/index-integration.md` in the template documentation before
+        // claiming compatibility with the host-owned `rustok-index` engine.
         let event = [
             "{\"topic\":\"module.{{slug}}.executed\",\"payload\":",
             input.as_str(),
