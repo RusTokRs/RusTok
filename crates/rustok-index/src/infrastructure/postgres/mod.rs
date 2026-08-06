@@ -6,6 +6,7 @@ mod drift_finding_inspector;
 mod drift_finding_lifecycle;
 mod drift_finding_writer;
 mod drift_missing_entity_repair;
+mod drift_orphan_link_repair;
 mod drift_repair;
 mod drift_repair_recovery;
 mod drift_snapshot_reader;
@@ -78,6 +79,11 @@ pub use drift_missing_entity_repair::{
     PostgresIndexDriftMissingEntityEvidenceReader,
     PostgresIndexDriftMissingEntityRepairOwner,
     materialize_postgres_index_drift_missing_entity_repair_service,
+};
+pub use drift_orphan_link_repair::{
+    IndexOrphanLinkRemovalOutcome, PostgresIndexDriftOrphanLinkEvidenceReader,
+    PostgresIndexDriftOrphanLinkRepairOwner, PostgresIndexOrphanLinkMutationStore,
+    materialize_postgres_index_drift_orphan_link_repair_service,
 };
 pub use drift_repair::{
     PostgresIndexDriftRepairStore, materialize_postgres_index_drift_repair_store,
