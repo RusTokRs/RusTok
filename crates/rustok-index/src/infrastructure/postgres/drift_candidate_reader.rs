@@ -334,7 +334,7 @@ async fn load_orphan_rows(
     after: Option<&OrphanPositionWire>,
     limit: usize,
 ) -> Result<Vec<OrphanCandidateRow>, IndexDriftCandidateFailure> {
-    let base = "SELECT l.source_entity_id, l.source_locale_key, CAST(s.source_version AS TEXT) AS source_version_text, l.link_name, l.ordinal, l.target_module, l.target_entity, l.target_schema_version, l.target_entity_id, l.target_locale_key FROM index_links l JOIN index_entities s ON s.tenant_id = l.tenant_id AND s.module_name = l.source_module AND s.entity_name = l.source_entity AND s.schema_version = l.source_schema_version AND s.entity_id = l.source_entity_id AND s.locale_key = l.source_locale_key AND s.source_version = l.source_version LEFT JOIN index_entities t ON t.tenant_id = l.tenant_id AND t.module_name = l.target_module AND t.entity_name = l.target_entity AND t.schema_version = l.target_schema_version AND t.entity_id = l.target_entity_id AND t.locale_key = l.target_locale_key WHERE l.tenant_id = $1 AND l.source_module = $2 AND l.source_entity = $3 AND l.source_schema_version = $4 AND s.is_deleted = FALSE AND s.source_version > 0 AND txid_visible_in_snapshot((l.xmin::text)::bigint, $5::txid_snapshot) AND txid_visible_in_snapshot((s.xmin::text)::bigint, $5::txid_snapshot) AND (t.tenant_id IS NULL OR t.is_deleted = TRUE)";
+    let base = "SELECT l.source_entity_id, l.source_locale_key, CAST(s.source_version AS TEXT) AS source_version_text, l.link_name, l.ordinal, l.target_module, l.target_entity, l.target_schema_version, l.target_entity_id, l.target_locale_key FROM index_links l JOIN index_entities s ON s.tenant_id = l.tenant_id AND s.module_name = l.source_module AND s.entity_name = l.source_entity AND s.schema_version = l.source_schema_version AND s.entity_id = l.source_entity_id AND s.locale_key = l.source_locale_key AND s.source_version = l.source_version LEFT JOIN index_entities t ON t.tenant_id = l.tenant_id AND t.module_name = l.target_module AND t.entity_name = l.target_entity AND t.schema_version = l.target_schema_version AND t.entity_id = l.target_entity_id AND t.locale_key = l.target_locale_key WHERE l.tenant_id = $1 AND l.source_module = $2 AND l.source_entity = $3 AND l.source_schema_version = $4 AND s.is_deleted = FALSE AND s.source_version > 0 AND txid_visible_in_snapshot((l.xmin::text)::bigint, $5::txid_snapshot) AND txid_visible_in_snapshot((s.xmin::text)::bigint, $5::txid_snapshot) AND (t.tenant_id IS NULL OR (t.is_deleted = TRUE AND txid_visible_in_snapshot((t.xmin::text)::bigint, $5::txid_snapshot)))";
     let (sql, values) = match after {
         None => (
             format!(
@@ -763,26 +763,29 @@ mod tests {
     #[test]
     fn compact_fence_remains_scope_bound() {
         let tenant_id = Uuid::new_v4();
-        let scope = scope(tenant_id);
+        let candidate_scope = scope(tenant_id);
         let encoded = encode_wire(
             &FenceWire {
                 version: WIRE_VERSION,
-                scope_digest: scope_digest(&scope),
+                scope_digest: scope_digest(&candidate_scope),
                 snapshot: "10:20:12".to_owned(),
             },
             CONTRACT_INVALID,
         )
         .expect("fence wire");
         assert!(IndexDriftCandidateFence::new(encoded).is_ok());
-        assert_ne!(scope_digest(&scope), scope_digest(&scope(Uuid::new_v4())));
+        assert_ne!(
+            scope_digest(&candidate_scope),
+            scope_digest(&scope(Uuid::new_v4()))
+        );
     }
 
     #[test]
     fn cursor_is_scope_bound_and_phase_typed() {
         let tenant_id = Uuid::new_v4();
-        let scope = scope(tenant_id);
+        let candidate_scope = scope(tenant_id);
         let cursor = encode_cursor(
-            &scope,
+            &candidate_scope,
             CursorPhaseWire::Orphan {
                 after: Some(OrphanPositionWire {
                     source_entity_id: Uuid::new_v4(),
@@ -799,13 +802,13 @@ mod tests {
         )
         .expect("cursor");
         let request = IndexDriftCandidateRequest::new(
-            scope.clone(),
+            candidate_scope.clone(),
             Some(
                 IndexDriftCandidateFence::new(
                     encode_wire(
                         &FenceWire {
                             version: WIRE_VERSION,
-                            scope_digest: scope_digest(&scope),
+                            scope_digest: scope_digest(&candidate_scope),
                             snapshot: "10:20:12".to_owned(),
                         },
                         CONTRACT_INVALID,
@@ -823,8 +826,9 @@ mod tests {
             ReadPhase::Orphan(Some(_))
         ));
 
+        let foreign_scope = scope(Uuid::new_v4());
         let foreign_request = IndexDriftCandidateRequest::new(
-            scope(Uuid::new_v4()),
+            foreign_scope,
             request.fence().cloned(),
             request.cursor().cloned(),
             8,
