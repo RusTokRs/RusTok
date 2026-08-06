@@ -27,7 +27,11 @@ const between = (source, start, end, label) => {
 };
 
 const staged = read('crates/rustok-commerce/src/services/staged_checkout.rs');
-const fulfillment = read('crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs');
+const fulfillmentFacade = read('crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs');
+const fulfillmentLegacy = read(
+  'crates/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
+);
+const fulfillment = `${fulfillmentFacade}\n${fulfillmentLegacy}`;
 const operation = read('crates/rustok-commerce/src/services/checkout_operation.rs');
 const recovery = read('crates/rustok-commerce/src/services/recovering_staged_checkout.rs');
 const doc = read('crates/rustok-commerce/docs/checkout-fulfillment-stage-context.md');
@@ -113,6 +117,11 @@ for (const [source, value, label] of [
     fulfillment,
     'next_stage: CheckoutOperationStage::FulfillmentCreated',
     'fulfillment checkpoint preservation',
+  ],
+  [
+    fulfillmentFacade,
+    'include!("checkout_fulfillment_stages_legacy.rs");',
+    'safe facade preserves retained implementation',
   ],
 ]) requireText(source, value, label);
 

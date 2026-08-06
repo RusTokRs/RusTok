@@ -1,27 +1,79 @@
-# Checkout fulfillment stage owner context and retry disposition
+# Checkout fulfillment stage error safety and retry disposition
 
 Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-The mounted durable checkout fulfillment stage makes three typed owner calls:
+The mounted durable checkout fulfillment stage keeps its established business logic
+behind a private retained source and now sanitizes failures from all three typed owner
+calls before they reach the stage mapper:
 
 - `CheckoutFulfillmentExecutionPort::ensure_checkout_fulfillments`;
 - `CheckoutFulfillmentExecutionPort::read_checkout_fulfillments`;
 - `CheckoutOrderPaymentSettlementPort::settle_checkout_payment`.
 
-The stage preserves the complete delegated `PortContext` and maps owner failures to
-`CheckoutFulfillmentStageError::Boundary`, including the exact owner code and
-`retryable` value.
+The complete canonical `PortContext`, requests, successful DTOs, lifecycle policy,
+idempotency identities, stage checkpoints, and retry disposition remain unchanged.
 
-This slice fixes the staged-checkout disposition of that existing typed boundary.
-A fulfillment-stage boundary with `retryable: true` is now persisted through the
-existing `mark_retryable_error` transition instead of being marked
-`compensation_required`.
+## Public and persisted error policy
+
+The exact owner `code`, typed `PortErrorKind`, and `retryable` value are retained.
+Owner message text is not copied into `CheckoutFulfillmentStageError::Boundary`, the
+staged pipeline error string, or checkout operation journal persistence.
+
+Fulfillment owner failures use these Commerce-owned messages:
+
+| Owner kind | Stage message |
+| --- | --- |
+| `Validation` | `Checkout fulfillment request is invalid` |
+| `NotFound` | `Checkout fulfillment resource was not found` |
+| `Conflict` | `Checkout fulfillment state conflicts with the requested operation` |
+| `Forbidden` | `Checkout fulfillment operation is not permitted` |
+| `Unavailable` / `Timeout` | `Checkout fulfillment service is temporarily unavailable` |
+| `InvariantViolation` | `Checkout fulfillment operation could not be completed safely` |
+
+Order payment-settlement failures use the corresponding stable order-settlement
+messages, including `Checkout order settlement service is temporarily unavailable`
+for unavailable/timeout failures.
+
+## Diagnostic policy
+
+The mounted facade emits only:
+
+- a redacted diagnostic token;
+- truthful owner, owner operation, and commerce stage;
+- owner code, typed kind, retryability, message presence, and message length;
+- bounded tenant/actor identity shapes;
+- actor kind plus claim and role counts;
+- channel, locale, correlation, causation, trace, and idempotency presence shapes;
+- deadline milliseconds;
+- the stable `commerce_checkout_fulfillment_execution_adapter` boundary.
+
+Raw `PortError`, owner message text, tenant/actor identities, correlation values,
+channel/locale values, causation, traceparent, and idempotency keys are not emitted.
+
+Unavailable, timeout, and invariant failures remain error-level diagnostics.
+Validation, not-found, conflict, forbidden, and other ordinary owner rejections remain
+warning-level diagnostics.
+
+## Legacy isolation
+
+`checkout_fulfillment_stages_legacy.rs` retains the previously mounted business logic
+unchanged. The mounted facade:
+
+1. wraps the canonical fulfillment and order-settlement owner ports;
+2. sanitizes owner failures before the retained mapper receives them;
+3. suppresses the retained raw compatibility tracing macros;
+4. keeps the retained implementation private;
+5. preserves canonical custom owner-port injection on
+   `CheckoutFulfillmentStageExecutor`.
+
+The retained mapper therefore still preserves stage, code, message, and retryability
+structurally, but the message it receives is already the static Commerce-owned message.
 
 ## Retry policy
 
-The source policy is intentionally narrow:
+The existing staged-checkout disposition remains unchanged:
 
 - retryable fulfillment ensure/read boundary → `retryable_error`;
 - retryable order-payment settlement boundary → `retryable_error`;
@@ -29,62 +81,59 @@ The source policy is intentionally narrow:
 - fulfillment-stage conflict → unchanged `compensation_required`;
 - fulfillment-stage operation/journal error → unchanged `compensation_required`.
 
-`CheckoutOperationJournal::claim_execution` already admits `retryable_error`, so a
-later checkout attempt can reclaim the operation and resume from the durable stage.
-`RecoveringStagedCheckoutService` remains unchanged and invokes synchronous
-compensation only when the operation is `compensation_required`.
+`CheckoutOperationJournal::claim_execution` continues to admit `retryable_error`, and
+`RecoveringStagedCheckoutService` continues to invoke synchronous compensation only
+for `compensation_required`.
 
 ## Resume safety
 
-The existing owner operations remain suitable for durable resume:
+The owner operations keep their established durable identities:
 
-- fulfillment ensure uses the canonical
-  `checkout:{operation_id}:fulfillment-set` idempotency key;
-- fulfillment read is side-effect free;
-- order payment settlement uses the canonical
-  `checkout:{operation_id}:order:payment-settlement` idempotency key;
-- successful owner outcomes are still validated before the
-  `payment_captured -> fulfillment_created` checkpoint.
+- fulfillment ensure uses `checkout:{operation_id}:fulfillment-set`;
+- fulfillment read remains side-effect free;
+- order payment settlement uses
+  `checkout:{operation_id}:order:payment-settlement`;
+- successful owner outcomes are validated before
+  `payment_captured -> fulfillment_created`.
 
 ## Preserved contracts
 
-This slice does not change:
+This source wave does not change:
 
 - fulfillment or order owner port traits;
-- ensure/read/settlement request and response DTOs;
+- ensure/read/settlement request or response DTOs;
 - owner execution, adoption, settlement, or lifecycle policy;
-- fulfillment plan construction and cart-line provenance checks;
-- captured-payment admission and amount validation;
-- payment-reference or manual-provider fallback behavior;
+- fulfillment plan construction or cart-line provenance checks;
+- captured-payment admission or amount validation;
+- payment-reference/manual-provider fallback behavior;
 - idempotency keys, causation, locale, deadlines, or delegated contexts;
-- bounded stage-loop behavior;
-- stage checkpoints;
-- operation journal implementation;
-- recovery service implementation;
-- pipeline error-code mapping;
-- public errors or HTTP/GraphQL/native contracts;
-- FBA or FFA status.
+- stage checkpoints, operation journal, or recovery implementations;
+- pipeline error-code mapping or retry disposition;
+- HTTP, GraphQL, or native field/route contracts;
+- Commerce FFA/FBA status.
 
 ## Source evidence
 
+- `crates/rustok-commerce/contracts/evidence/checkout-fulfillment-stage-error-safety-source-review.json`
 - `crates/rustok-commerce/contracts/evidence/checkout-fulfillment-retry-disposition-source-review.json`
 - `scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs`
 - `scripts/verify/verify-commerce-staged-checkout-fulfillment-retry-disposition.mjs`
+- `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 
 ## Remaining work
 
-The broader fulfillment mapper cleanup remains open, including raw diagnostic and
-public-envelope review outside this disposition slice. Compile, runtime, database,
-restart, remote-port, workflow, and CI evidence also remain open.
+The broad ecommerce mapper-cleanup P0 remains open for other fulfillment adapters,
+tax, promotion, remaining ecommerce adapters, and non-`PortError` public envelopes.
+Compile, runtime, database, restart, remote-port, workflow, and CI evidence also
+remain open.
 
 ## Intended maintainer checks
 
 ```bash
 node scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs
 node scripts/verify/verify-commerce-staged-checkout-fulfillment-retry-disposition.mjs
-cargo test -p rustok-commerce staged_checkout::tests::retryable_fulfillment_stage_boundary_does_not_force_compensation
-cargo test -p rustok-commerce staged_checkout::tests::retryable_order_settlement_boundary_does_not_force_compensation
-cargo test -p rustok-commerce staged_checkout::tests::non_retryable_fulfillment_stage_boundary_requires_compensation
+node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs
+node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs
 cargo check -p rustok-commerce --lib
 ```
 

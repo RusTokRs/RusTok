@@ -20,9 +20,13 @@ const paymentStageLegacy = read(
   'crates/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
 );
 const paymentStage = `${paymentStageFacade}\n${paymentStageLegacy}`;
-const fulfillmentStage = read(
+const fulfillmentStageFacade = read(
   'crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
 );
+const fulfillmentStageLegacy = read(
+  'crates/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
+);
+const fulfillmentStage = `${fulfillmentStageFacade}\n${fulfillmentStageLegacy}`;
 const pipeline = read(
   'crates/rustok-commerce/src/services/checkout_stage_pipeline_owner_ports.rs',
 );
@@ -47,6 +51,22 @@ requireText(
   'struct SanitizingCheckoutPaymentExecutionPort',
   'mounted payment-stage owner adapter',
 );
+requireText(
+  fulfillmentStageFacade,
+  'include!("checkout_fulfillment_stages_legacy.rs");',
+  'mounted fulfillment-stage facade',
+);
+requireText(
+  fulfillmentStageFacade,
+  'struct SanitizingCheckoutFulfillmentExecutionPort',
+  'mounted fulfillment-stage owner adapter',
+);
+requireText(
+  fulfillmentStageFacade,
+  'struct SanitizingCheckoutOrderPaymentSettlementPort',
+  'mounted order-settlement owner adapter',
+);
+
 for (const [source, label, required] of [
   [
     paymentStage,
@@ -151,5 +171,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Checkout payment, fulfillment, order settlement, and pipeline recovery use owner boundaries',
+  '✔ Checkout payment, fulfillment, order settlement, and pipeline recovery use sanitized owner boundaries',
 );

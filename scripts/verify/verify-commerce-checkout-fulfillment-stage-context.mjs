@@ -8,163 +8,118 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
-const source = readFileSync(
-  new URL(
-    'crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
-    root,
-  ),
-  'utf8',
-);
+const read = (file) => readFileSync(new URL(file, root), 'utf8');
 const failures = [];
-
-const requireText = (value, label) => {
+const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
-const forbidText = (value, label) => {
+const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-for (const [value, label] of [
-  [
-    'const CHECKOUT_FULFILLMENT_STAGE_BOUNDARY: &str = "commerce_checkout_fulfillment_stage";',
-    'stable checkout fulfillment stage boundary',
-  ],
-  ['PortErrorKind,', 'typed port error classification import'],
-  ['let fulfillment_context = fulfillment_write_context(', 'retained fulfillment write context'],
-  ['let fulfillment_context = fulfillment_read_context(', 'retained fulfillment read context'],
-  ['let order_context = order_payment_context(', 'retained order payment context'],
-  ['fulfillment_context.clone()', 'fulfillment owner context delegation'],
-  ['order_context.clone()', 'order owner context delegation'],
-  [
-    '"rustok_fulfillment",\n                    "ensure_checkout_fulfillments",\n                    "ensure_fulfillments"',
-    'fulfillment ensure owner and operation',
-  ],
-  [
-    '"rustok_fulfillment",\n                    "read_checkout_fulfillments",\n                    "read_fulfillments"',
-    'fulfillment read owner and operation',
-  ],
-  [
-    '"rustok_order",\n                    "settle_checkout_payment",\n                    "settle_order_payment"',
-    'order settlement owner and operation',
-  ],
-  ['fn fulfillment_stage_boundary_error(', 'context-aware fulfillment stage mapper'],
-  [
-    'fn log_checkout_fulfillment_stage_boundary_failure(',
-    'shared structured diagnostic helper',
-  ],
-  ['owner = owner', 'truthful dynamic owner field'],
-  ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['channel = ?context.channel', 'channel context'],
-  ['locale = %context.locale', 'locale context'],
-  ['causation_id = ?context.causation_id', 'causation context'],
-  ['traceparent = ?context.traceparent', 'trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
-  ['operation = owner_operation', 'exact owner operation'],
-  ['stage = stage', 'commerce stage context'],
-  ['code = %boundary_error.code', 'stable owner code'],
-  ['error_kind = ?boundary_error.kind', 'typed owner kind'],
-  ['retryable = boundary_error.retryable', 'owner retryability'],
-  ['boundary = CHECKOUT_FULFILLMENT_STAGE_BOUNDARY', 'boundary identity'],
-  ['"checkout fulfillment stage owner boundary failed"', 'error diagnostic event'],
-  [
-    '"checkout fulfillment stage owner boundary was rejected"',
-    'warning diagnostic event',
-  ],
-  [
-    'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
-    'error severity classification',
-  ],
-]) {
-  requireText(value, label);
-}
+const facade = read('crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs');
+const legacy = read('crates/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs');
+const evidence = JSON.parse(read(
+  'crates/rustok-commerce/contracts/evidence/checkout-fulfillment-stage-error-safety-source-review.json',
+));
 
-const retainedFulfillmentContexts =
-  source.match(/let fulfillment_context = fulfillment_(write|read)_context\(/g) ?? [];
-if (retainedFulfillmentContexts.length !== 2) {
-  failures.push(
-    `expected two retained fulfillment contexts, found ${retainedFulfillmentContexts.length}`,
-  );
-}
-
-const retainedOrderContexts = source.match(/let order_context = order_payment_context\(/g) ?? [];
-if (retainedOrderContexts.length !== 1) {
-  failures.push(`expected one retained order context, found ${retainedOrderContexts.length}`);
-}
-
-const delegatedFulfillmentContexts = source.match(/fulfillment_context\.clone\(\)/g) ?? [];
-if (delegatedFulfillmentContexts.length !== 2) {
-  failures.push(
-    `expected two fulfillment context clones, found ${delegatedFulfillmentContexts.length}`,
-  );
-}
-
-const delegatedOrderContexts = source.match(/order_context\.clone\(\)/g) ?? [];
-if (delegatedOrderContexts.length !== 1) {
-  failures.push(`expected one order context clone, found ${delegatedOrderContexts.length}`);
-}
-
-const mapperCalls = source.match(/fulfillment_stage_boundary_error\(/g) ?? [];
-if (mapperCalls.length !== 4) {
-  failures.push(`expected three mapper calls plus definition, found ${mapperCalls.length}`);
-}
+for (const [source, value, label] of [
+  [facade, 'include!("checkout_fulfillment_stages_legacy.rs");', 'mounted legacy include'],
+  [facade, 'struct SanitizingCheckoutFulfillmentExecutionPort', 'fulfillment sanitizer'],
+  [facade, 'struct SanitizingCheckoutOrderPaymentSettlementPort', 'order settlement sanitizer'],
+  [facade, 'fn sanitize_owner_error(', 'shared typed sanitizer'],
+  [facade, '"ensure_checkout_fulfillments"', 'ensure operation'],
+  [facade, '"read_checkout_fulfillments"', 'read operation'],
+  [facade, '"settle_checkout_payment"', 'settlement operation'],
+  [facade, '"ensure_fulfillments"', 'ensure stage'],
+  [facade, '"read_fulfillments"', 'read stage'],
+  [facade, '"settle_order_payment"', 'settlement stage'],
+  [facade, 'message: public_message.to_string()', 'static public message projection'],
+  [facade, 'code: error.code', 'owner code preservation'],
+  [facade, 'retryable: error.retryable', 'owner retryability preservation'],
+  [facade, 'owner_message_shape = owner_message_shape', 'owner message shape'],
+  [facade, 'owner_message_len = owner_message_len', 'owner message length'],
+  [facade, 'tenant_id_shape = diagnostic_context.tenant_id_shape', 'bounded tenant facts'],
+  [facade, 'actor_id_shape = diagnostic_context.actor_id_shape', 'bounded actor facts'],
+  [facade, 'correlation_id_shape = diagnostic_context.correlation_id_shape', 'bounded correlation facts'],
+  [facade, 'idempotency_key_shape = diagnostic_context.idempotency_key_shape', 'bounded idempotency facts'],
+  [facade, 'error = ?diagnostic_error', 'redacted diagnostic token'],
+  [facade, '"commerce_checkout_fulfillment_execution_adapter"', 'stable safe boundary'],
+  [facade, 'macro_rules! error', 'legacy error tracing suppression'],
+  [facade, 'macro_rules! warn', 'legacy warn tracing suppression'],
+  [legacy, 'fulfillment_context.clone()', 'legacy fulfillment context delegation'],
+  [legacy, 'order_context.clone()', 'legacy order context delegation'],
+  [legacy, 'message: error.message,', 'retained legacy mapper business logic'],
+  [legacy, 'next_stage: CheckoutOperationStage::FulfillmentCreated', 'checkpoint preservation'],
+  [legacy, 'state.payment_collection.status_kind() != PaymentCollectionStatusKind::Captured', 'typed captured admission'],
+  [legacy, '.with_idempotency_key(format!("checkout:{operation_id}:fulfillment-set"))', 'fulfillment idempotency'],
+  [legacy, '.with_idempotency_key(format!("checkout:{operation_id}:order:payment-settlement"))', 'settlement idempotency'],
+]) requireText(source, value, label);
 
 for (const [value, label] of [
-  ['CheckoutFulfillmentStageError::Boundary {', 'existing boundary variant'],
-  ['stage,\n        code: error.code,', 'stage and code preservation'],
-  ['message: error.message,', 'message preservation'],
-  ['retryable: error.retryable,', 'retryability preservation'],
-  [
-    'expected_stage: CheckoutOperationStage::PaymentCaptured',
-    'payment captured checkpoint admission',
-  ],
-  [
-    'next_stage: CheckoutOperationStage::FulfillmentCreated',
-    'fulfillment created checkpoint',
-  ],
-  [
-    'state.payment_collection.status_kind() != PaymentCollectionStatusKind::Captured',
-    'typed captured payment admission',
-  ],
-  ['.with_causation_id(operation_id.to_string())', 'causation construction'],
-  [
-    '.with_idempotency_key(format!("checkout:{operation_id}:fulfillment-set"))',
-    'fulfillment idempotency construction',
-  ],
-  [
-    '.with_idempotency_key(format!("checkout:{operation_id}:order:payment-settlement"))',
-    'order settlement idempotency construction',
-  ],
-  ['.with_deadline(deadline)', 'deadline construction'],
-]) {
-  requireText(value, label);
+  ['error = ?boundary_error', 'raw owner error logging'],
+  ['correlation_id = %context.correlation_id', 'raw correlation logging'],
+  ['tenant_id = %context.tenant_id', 'raw tenant logging'],
+  ['actor = ?context.actor', 'raw actor logging'],
+  ['channel = ?context.channel', 'raw channel logging'],
+  ['locale = %context.locale', 'raw locale logging'],
+  ['causation_id = ?context.causation_id', 'raw causation logging'],
+  ['traceparent = ?context.traceparent', 'raw trace logging'],
+  ['idempotency_key = ?context.idempotency_key', 'raw idempotency logging'],
+  ['message: error.message,', 'owner message publication from mounted facade'],
+]) forbidText(facade, value, label);
+
+for (const message of [
+  'Checkout fulfillment request is invalid',
+  'Checkout fulfillment resource was not found',
+  'Checkout fulfillment state conflicts with the requested operation',
+  'Checkout fulfillment operation is not permitted',
+  'Checkout fulfillment service is temporarily unavailable',
+  'Checkout fulfillment operation could not be completed safely',
+  'Checkout order settlement request is invalid',
+  'Checkout order settlement resource was not found',
+  'Checkout order settlement state conflicts with the requested operation',
+  'Checkout order settlement operation is not permitted',
+  'Checkout order settlement service is temporarily unavailable',
+  'Checkout order settlement could not be completed safely',
+]) requireText(facade, message, 'static stage message');
+
+for (const [key, expected] of Object.entries({
+  mounted_facade_active: true,
+  legacy_source_private: true,
+  legacy_source_business_logic_changed: false,
+  fulfillment_owner_calls_wrapped: true,
+  order_settlement_owner_call_wrapped: true,
+  owner_message_public: false,
+  raw_port_error_logged: false,
+  raw_context_values_logged: false,
+  bounded_context_shapes_logged: true,
+  owner_message_shape_logged: true,
+  owner_message_length_logged: true,
+  owner_code_preserved: true,
+  owner_retryability_preserved: true,
+  legacy_tracing_suppressed: true,
+  retry_disposition_preserved: true,
+  runtime_evidence_claimed: false,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(`evidence source_contract.${key} must be ${expected}`);
+  }
 }
 
-forbidText(
-  "fn boundary_error(stage: &'static str, error: PortError)",
-  'context-dropping fulfillment stage mapper',
-);
-forbidText(
-  '.ensure_checkout_fulfillments(\n                fulfillment_write_context(',
-  'inline fulfillment write context',
-);
-forbidText(
-  '.read_checkout_fulfillments(\n                fulfillment_read_context(',
-  'inline fulfillment read context',
-);
-forbidText(
-  '.settle_checkout_payment(\n                order_payment_context(',
-  'inline order payment context',
-);
+for (const [key, value] of Object.entries(evidence.validation ?? {})) {
+  if (value !== false) failures.push(`evidence validation.${key} must remain false`);
+}
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  failures.push('evidence execution must remain empty');
+}
 
 if (failures.length > 0) {
-  console.error('Checkout fulfillment stage context verification failed:');
+  console.error('Checkout fulfillment stage error-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Checkout fulfillment ensure/read and order payment settlement failures retain the complete owner PortContext',
+  '✔ Checkout fulfillment and order-settlement owner failures are sanitized before the retained stage mapper',
 );
