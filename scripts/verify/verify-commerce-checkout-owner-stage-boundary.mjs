@@ -13,9 +13,13 @@ const forbidText = (source, value, label) => {
 };
 
 const services = read('crates/rustok-commerce/src/services/mod.rs');
-const paymentStage = read(
+const paymentStageFacade = read(
   'crates/rustok-commerce/src/services/checkout_payment_stages.rs',
 );
+const paymentStageLegacy = read(
+  'crates/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
+);
+const paymentStage = `${paymentStageFacade}\n${paymentStageLegacy}`;
 const fulfillmentStage = read(
   'crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
 );
@@ -32,6 +36,16 @@ requireText(
   services,
   '#[path = "checkout_stage_pipeline_owner_ports.rs"]',
   'commerce services mount',
+);
+requireText(
+  paymentStageFacade,
+  'include!("checkout_payment_stages_legacy.rs");',
+  'mounted payment-stage facade',
+);
+requireText(
+  paymentStageFacade,
+  'struct SanitizingCheckoutPaymentExecutionPort',
+  'mounted payment-stage owner adapter',
 );
 for (const [source, label, required] of [
   [
