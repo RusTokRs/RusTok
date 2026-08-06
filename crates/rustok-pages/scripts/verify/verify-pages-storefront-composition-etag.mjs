@@ -155,12 +155,12 @@ for (const marker of [
   "NavigationSnapshotProvider",
   "provide_context(snapshot)",
   "use_context::<StorefrontNavigationSnapshot>()",
-  "snapshot.menu(location)",
+  ".menu(location)",
   "Resource::new_blocking",
 ]) need(navigationUi, marker, "Navigation SSR snapshot reuse");
 ordered(navigationUi, [
   "use_context::<StorefrontNavigationSnapshot>()",
-  "snapshot.menu(location)",
+  ".menu(location)",
   "Resource::new_blocking",
 ], "preloaded Navigation before fallback transport");
 
@@ -196,7 +196,7 @@ for (const marker of [
   "apply_composition_headers",
   "HeaderValue::from_static(PAGES_STOREFRONT_REVALIDATE_CACHE_CONTROL)",
   "Some(navigation)",
-  "headers.get(IF_NONE_MATCH)",
+  "get(IF_NONE_MATCH)",
   "const PRIVATE_NO_STORE: &str = \"private, no-store\"",
 ]) need(host, marker, "storefront Pages owner composition");
 
@@ -241,7 +241,7 @@ for (const marker of [
   "storefront-composition-etag-source-ready",
   "Navigation-owned header/footer menus",
   "deterministic SHA-256 ETag",
-  "matching strong, weak or comma-separated `If-None-Match` returns `304`",
+  "Matching strong, weak or comma-separated `If-None-Match` returns `304`",
 ]) need(localPlan, marker, "Pages implementation plan");
 for (const marker of [
   "source-ready / execution-pending",
