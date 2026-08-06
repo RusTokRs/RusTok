@@ -9,10 +9,10 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use crate::services::ForumTopicRouteTombstoneVisibilityService;
 use crate::{
     ForumError, ForumTopicReadOperation, ForumTopicReadTransport, ForumTopicRouteDisposition,
-    ForumTopicRouteResolution, ForumTopicRouteService,
-    ForumTopicRouteTombstoneVisibilityService, topic_read_audience_port_context,
+    ForumTopicRouteResolution, ForumTopicRouteService, topic_read_audience_port_context,
 };
 
 use super::{ForumGraphqlRuntimeData, GqlForumTopicRouteDescriptor};
