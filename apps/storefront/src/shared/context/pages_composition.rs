@@ -19,6 +19,7 @@ struct PagesCompositionPayload<'a> {
     route_generation: u64,
     page_generation: u64,
     artifact_generation: u64,
+    rendered_html_hash: String,
     seo: &'a Option<ResolvedSeoPageContext>,
     navigation: &'a StorefrontNavigationSnapshot,
 }
@@ -28,6 +29,7 @@ pub fn pages_storefront_composition_etag(
     decision: &StorefrontPageRouteDecision,
     seo: &Option<ResolvedSeoPageContext>,
     navigation: &StorefrontNavigationSnapshot,
+    rendered_html: &str,
 ) -> Option<String> {
     if decision.disposition != StorefrontPageRouteDisposition::Canonical {
         return None;
@@ -42,6 +44,7 @@ pub fn pages_storefront_composition_etag(
         route_generation: decision.route_generation?,
         page_generation: decision.page_generation?,
         artifact_generation: decision.artifact_generation?,
+        rendered_html_hash: hex_digest(&Sha256::digest(rendered_html.as_bytes())),
         seo,
         navigation,
     };
@@ -118,6 +121,7 @@ mod tests {
             &decision(),
             &None,
             &navigation("About"),
+            "<html>about</html>",
         )
         .expect("complete canonical decision should produce an ETag");
         assert_eq!(
@@ -127,6 +131,7 @@ mod tests {
                 &decision(),
                 &None,
                 &navigation("About"),
+                "<html>about</html>",
             )
             .expect("same composition should produce the same ETag")
         );
@@ -140,6 +145,7 @@ mod tests {
                 &generation_changed,
                 &None,
                 &navigation("About"),
+                "<html>about</html>",
             )
             .expect("changed generation should still produce an ETag")
         );
@@ -150,8 +156,20 @@ mod tests {
                 &decision(),
                 &None,
                 &navigation("Company"),
+                "<html>about</html>",
             )
             .expect("changed menu should still produce an ETag")
+        );
+        assert_ne!(
+            base,
+            pages_storefront_composition_etag(
+                "en",
+                &decision(),
+                &None,
+                &navigation("About"),
+                "<html>company</html>",
+            )
+            .expect("changed rendered HTML should still produce an ETag")
         );
 
         let mut seo = ResolvedSeoPageContext::default();
@@ -163,6 +181,7 @@ mod tests {
                 &decision(),
                 &Some(seo),
                 &navigation("About"),
+                "<html>about</html>",
             )
             .expect("changed SEO should still produce an ETag")
         );
@@ -173,15 +192,27 @@ mod tests {
         let mut incomplete = decision();
         incomplete.route_generation = None;
         assert!(
-            pages_storefront_composition_etag("en", &incomplete, &None, &navigation("About"))
-                .is_none()
+            pages_storefront_composition_etag(
+                "en",
+                &incomplete,
+                &None,
+                &navigation("About"),
+                "<html>about</html>",
+            )
+            .is_none()
         );
 
         let mut terminal = decision();
         terminal.disposition = StorefrontPageRouteDisposition::Gone;
         assert!(
-            pages_storefront_composition_etag("en", &terminal, &None, &navigation("About"))
-                .is_none()
+            pages_storefront_composition_etag(
+                "en",
+                &terminal,
+                &None,
+                &navigation("About"),
+                "<html>about</html>",
+            )
+            .is_none()
         );
     }
 
