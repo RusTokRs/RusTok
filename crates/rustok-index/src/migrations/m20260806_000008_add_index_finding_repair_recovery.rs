@@ -8,7 +8,6 @@ pub struct Migration;
 
 const COMMAND_TABLE: &str = "index_consistency_finding_repair_commands";
 const DECISION_TABLE: &str = "index_consistency_finding_repair_recovery_decisions";
-const COMMAND_INDEX: &str = "idx_index_finding_repair_recovery_command";
 const REVISION_INDEX: &str = "uq_index_finding_repair_recovery_revision";
 const POSTGRES_IMMUTABLE_FUNCTION: &str = "rustok_index_guard_finding_repair_recovery_immutable";
 const POSTGRES_IMMUTABLE_UPDATE_TRIGGER: &str = "trg_index_finding_repair_recovery_no_update";
@@ -33,12 +32,12 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(IndexFindingRepairRecoveryDecisions::DecisionId)
+                        ColumnDef::new(IndexFindingRepairRecoveryDecisions::CommandId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(IndexFindingRepairRecoveryDecisions::CommandId)
+                        ColumnDef::new(IndexFindingRepairRecoveryDecisions::DecisionId)
                             .uuid()
                             .not_null(),
                     )
@@ -97,6 +96,7 @@ impl MigrationTrait for Migration {
                         Index::create()
                             .name("pk_index_finding_repair_recovery_decisions")
                             .col(IndexFindingRepairRecoveryDecisions::TenantId)
+                            .col(IndexFindingRepairRecoveryDecisions::CommandId)
                             .col(IndexFindingRepairRecoveryDecisions::DecisionId),
                     )
                     .foreign_key(
@@ -151,17 +151,6 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name(COMMAND_INDEX)
-                    .table(IndexFindingRepairRecoveryDecisions::Table)
-                    .col(IndexFindingRepairRecoveryDecisions::TenantId)
-                    .col(IndexFindingRepairRecoveryDecisions::CommandId)
-                    .col(IndexFindingRepairRecoveryDecisions::Revision)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .create_index(
-                Index::create()
                     .name(REVISION_INDEX)
                     .table(IndexFindingRepairRecoveryDecisions::Table)
                     .col(IndexFindingRepairRecoveryDecisions::TenantId)
@@ -205,7 +194,7 @@ async fn install_immutability_guards(manager: &SchemaManager<'_>) -> Result<(), 
         DbBackend::Postgres => {
             connection
                 .execute_unprepared(&format!(
-                    "CREATE FUNCTION {POSTGRES_IMMUTABLE_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Index finding repair recovery decisions are immutable'; END; $$"
+                    "CREATE FUNCTION {POSTGRES_IMMUTABLE_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Index finding repair recovery decisions are immutable'; RETURN OLD; END; $$"
                 ))
                 .await?;
             connection
@@ -333,8 +322,8 @@ async fn remove_immutability_guards(manager: &SchemaManager<'_>) -> Result<(), D
 enum IndexFindingRepairRecoveryDecisions {
     Table,
     TenantId,
-    DecisionId,
     CommandId,
+    DecisionId,
     FindingId,
     PayloadDigest,
     Revision,
