@@ -41,7 +41,7 @@ async fn forum_without_reactions_keeps_forum_host_composition_available() {
     );
 }
 
-#[cfg(all(feature = "mod-reactions", not(feature = "mod-forum")))]
+#[cfg(all(feature = "mod-reactions", not(feature = "mod-forum"), not(feature = "mod-blog")))]
 #[tokio::test]
 async fn reactions_without_forum_materializes_an_empty_subject_registry() {
     let registry = ModuleRegistry::new()
@@ -84,8 +84,34 @@ async fn forum_with_reactions_materializes_topic_and_reply_provider() {
         .collect::<Vec<_>>();
     kinds.sort();
 
-    assert_eq!(subjects.len(), 1);
     assert_eq!(kinds, vec!["reply".to_string(), "topic".to_string()]);
+}
+
+#[cfg(all(feature = "mod-blog", feature = "mod-reactions"))]
+#[tokio::test]
+async fn blog_with_reactions_materializes_post_provider() {
+    let registry = ModuleRegistry::new()
+        .register(IndexModule)
+        .register(rustok_reactions::ReactionsModule)
+        .register(rustok_blog::BlogModule);
+
+    let extensions = compose(&registry)
+        .await
+        .expect("Blog plus Reactions host composition must initialize");
+    let subjects = rustok_reactions::api::reaction_subject_registry_from_extensions(
+        extensions.as_ref(),
+    )
+    .expect("selected Reactions owner must publish a materialized subject registry");
+    let blog = subjects
+        .get_by_str("blog")
+        .expect("Blog producer must materialize when both modules are selected");
+    let kinds = blog
+        .supported_kinds()
+        .into_iter()
+        .map(|kind| kind.as_str().to_string())
+        .collect::<Vec<_>>();
+
+    assert_eq!(kinds, vec!["post".to_string()]);
 }
 
 #[cfg(feature = "mod-reactions")]
