@@ -153,8 +153,8 @@ for (const marker of [
 }
 
 for (const marker of [
+  "requested_path: String",
   "rustok_forum_storefront::resolve_storefront_topic_route(",
-  "let requested_path = format!(\"/{locale_path_prefix}/forum/t/{short_id}/{slug}\")",
   "StorefrontForumTopicRouteDisposition::Redirect",
   "requested_path != canonical_path",
   "private_permanent_redirect(location.as_str())",
@@ -167,6 +167,7 @@ for (const marker of [
   requireText(host, marker, paths.host);
 }
 for (const marker of [
+  "let requested_path = format!",
   "ForumTopicRouteService",
   "ForumTopicAudienceReadService",
   "forum_topic_route_aliases",
@@ -180,6 +181,8 @@ for (const marker of [
 for (const marker of [
   "mod forum_topic_route;",
   "\"/{locale}/forum/t/{short_id}/{slug}\"",
+  "original_uri: axum::extract::OriginalUri",
+  "original_uri.0.path().to_string()",
   "forum_topic_route::render_forum_topic_route_response(",
 ]) {
   requireText(hostLib, marker, paths.hostLib);
