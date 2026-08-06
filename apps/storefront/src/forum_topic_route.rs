@@ -21,6 +21,7 @@ enum ForumTopicHostAction {
 }
 
 pub(crate) async fn render_forum_topic_route_response(
+    requested_path: String,
     locale_path_prefix: String,
     effective_locale: String,
     short_id: String,
@@ -28,9 +29,8 @@ pub(crate) async fn render_forum_topic_route_response(
     mut query_params: HashMap<String, String>,
     csp_nonce: Option<&CspNonce>,
 ) -> Response {
-    let requested_path = format!("/{locale_path_prefix}/forum/t/{short_id}/{slug}");
     let resolution = match rustok_forum_storefront::resolve_storefront_topic_route(
-        locale_path_prefix.clone(),
+        locale_path_prefix,
         short_id,
         slug,
     )
@@ -135,6 +135,10 @@ mod tests {
             ),
             (
                 "/EN/forum/t/123456789ABC/welcome",
+                StorefrontForumTopicRouteDisposition::Canonical,
+            ),
+            (
+                "/en/forum/t/123456789abc/%77elcome",
                 StorefrontForumTopicRouteDisposition::Canonical,
             ),
         ] {
