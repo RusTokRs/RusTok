@@ -182,7 +182,7 @@ for (const marker of [
 
 for (const marker of [
   '"page_builder_static_publish_sanitization_v2"',
-  '#[path = "static_publish_resource_limits.rs"]',
+  "static_publish_resource_limits::{",
   "PageBuilderStaticPublishResourceLimitError",
   "validate_static_publish_resource_limits(&document)?",
   "sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?",
@@ -193,7 +193,8 @@ for (const marker of [
   "page_builder_static_publish_sanitization_v3",
   "pub resource_limits:",
   "resource_limits: Some(",
-]) forbid(sources.sanitization, marker, "unchanged sanitization identity");
+  '#[path = "static_publish_resource_limits.rs"]',
+]) forbid(sources.sanitization, marker, "unchanged sanitization identity and compiler ownership");
 
 const sanitizeFunction = sliceBetween(
   sources.sanitization,
@@ -225,6 +226,8 @@ if (
 }
 
 for (const marker of [
+  '#[path = "static_publish_resource_limits.rs"]',
+  "pub mod static_publish_resource_limits;",
   "PageBuilderStaticPublishResourceLimitError",
   "require_static_publish_resource_limits(&document)?",
   "require_static_publish_resource_limits(document)?",
