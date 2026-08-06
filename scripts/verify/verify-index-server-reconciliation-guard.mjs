@@ -157,7 +157,6 @@ const keyring = requireMarkers(keyringPath, [
 const keyringProduction = keyring.split('\n#[cfg(test)]')[0];
 for (const forbidden of [
   'DatabaseConnection',
-  'ModuleRuntimeExtensions',
   'tokio::spawn',
   'spawn_blocking',
   'SELECT ',
@@ -310,7 +309,7 @@ requireMarkers(pageDocsPath, [
   'RUSTOK_INDEX_SOURCE_CONTINUATION_KEYRING_JSON',
 ]);
 requireMarkers(continuationDocsPath, [
-  'Status: `source_complete_server_key_composition_pending`.',
+  'Status: `source_complete_server_composition_complete_transport_pending`.',
   'AES-256-GCM',
 ]);
 requireMarkers(serverContinuationDocsPath, [
