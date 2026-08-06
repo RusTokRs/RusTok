@@ -28,11 +28,12 @@ The broader Page Builder plan remains authoritative for the complete programme. 
 - treats those binding, condition and repeater targets plus descendants as runtime-owned subtrees;
 - permits a stable static leaf nested inside an ordinary unowned layout;
 - validates grant identity, expiry, sequence, selected page and exact project hash;
+- rejects an unchanged `focusout` as `NoContentChange` without advancing sequence or project hash;
 - invokes a consumer `InlineEditAuthorizationPort` immediately before mutation;
 - converts the request into one canonical Fly `EditorCommand::Patch` for `content`;
 - returns the complete current project plus prior/new hashes and command sequence.
 
-Because the canonical project hash changes, the grant is intentionally one-commit. A successful consumer must persist the current project and issue a replacement grant.
+Because the canonical project hash changes after every accepted content patch, the grant is intentionally one-commit. A successful consumer must persist the current project and issue a replacement grant.
 
 ## Ownership retained
 
