@@ -13,15 +13,13 @@ const forbidText = (source, value, label) => {
 };
 
 const services = read('crates/rustok-commerce/src/services/mod.rs');
-const facade = read(
-  'crates/rustok-commerce/src/services/checkout_compensation_payment_safe.rs',
-);
-const legacy = read(
-  'crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs',
-);
+const facade = read('crates/rustok-commerce/src/services/checkout_compensation_payment_safe.rs');
+const legacy = read('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
 const compensation = `${facade}\n${legacy}`;
 const order = read('crates/rustok-order/src/checkout_compensation.rs');
 const payment = read('crates/rustok-payment/src/checkout_compensation.rs');
+const inventoryContract = read('crates/rustok-inventory/src/ports.rs');
+const inventoryWrapper = read('crates/rustok-inventory/src/reservation_owner_context.rs');
 
 requireText(
   services,
@@ -41,15 +39,19 @@ for (const marker of [
   'include!("checkout_compensation_owner_ports.rs");',
   'use super::rustok_payment_shim as rustok_payment;',
   'use super::rustok_order_shim as rustok_order;',
+  'use super::rustok_inventory_shim as rustok_inventory;',
   'wrap_checkout_payment_compensation_port(',
   'wrap_checkout_order_compensation_port(',
+  'wrap_inventory_reservation_identity_port(',
 ]) requireText(facade, marker, 'mounted combined compensation facade');
 
 for (const value of [
   'CheckoutOrderCompensationPort',
   'CheckoutPaymentCompensationPort',
+  'InventoryReservationIdentityPort',
   'compensate_checkout_order(',
   'compensate_checkout_payment(',
+  'release_inventory_by_identity(',
   'with_causation_id(',
   'with_idempotency_key(',
   'with_deadline(',
@@ -60,6 +62,7 @@ for (const value of [
   'PaymentService',
   'PaymentProviderOperationJournal',
   'PaymentOrchestrationService',
+  'InventoryService',
   'CancelPaymentInput',
   '.cancel_order(',
   '.cancel_collection(',
@@ -71,10 +74,22 @@ for (const [source, label, traitName, operation] of [
 ]) {
   requireText(source, `trait ${traitName}`, label);
   requireText(source, `async fn ${operation}(`, label);
-  requireText(source, 'require_policy(PortCallPolicy::write())?', label);
-  requireText(source, 'require_write_semantics()?', label);
-  requireText(source, 'checkout_operation_id', label);
 }
+
+for (const marker of [
+  'pub trait InventoryReservationIdentityPort',
+  'async fn release_inventory_by_identity(',
+]) requireText(inventoryContract, marker, 'inventory compensation owner contract');
+
+requireText(order, 'require_policy(PortCallPolicy::write())?', 'order owner write policy');
+requireText(order, 'require_write_semantics()?', 'order owner write semantics');
+requireText(payment, 'require_policy(PortCallPolicy::write())?', 'payment owner write policy');
+requireText(payment, 'require_write_semantics()?', 'payment owner write semantics');
+requireText(
+  inventoryWrapper,
+  'require_inventory_reservation_write_admission(&context, RELEASE_OPERATION)?;',
+  'inventory owner write admission',
+);
 
 requireText(order, 'OrderService::new(', 'order compensation owner');
 requireText(payment, 'PaymentService::new(', 'payment compensation owner');
@@ -85,6 +100,11 @@ requireText(
   'PROVIDER_OPERATION_RECONCILIATION_REQUIRED',
   'payment compensation owner',
 );
+requireText(
+  inventoryWrapper,
+  'map_inventory_reservation_identity_local_port_error(',
+  'inventory bounded owner wrapper',
+);
 
 if (failures.length > 0) {
   console.error('Checkout compensation owner-boundary verification failed:');
@@ -93,5 +113,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Checkout compensation is mounted through typed payment/order owner ports and the combined bounded consumer facade',
+  '✔ Checkout compensation is mounted through typed payment, order, and inventory owner ports with bounded consumer adapters; cart remains separate',
 );

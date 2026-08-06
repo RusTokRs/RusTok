@@ -35,15 +35,15 @@ for (const [source, value, label] of [
   [facade, 'include!("checkout_compensation_owner_ports.rs");', 'retained source'],
   [facade, 'use super::rustok_payment_shim as rustok_payment;', 'payment shim alias'],
   [facade, 'use super::rustok_order_shim as rustok_order;', 'order shim alias'],
+  [facade, 'use super::rustok_inventory_shim as rustok_inventory;', 'inventory shim alias'],
   [facade, 'CheckoutPaymentCompensationPort as CanonicalCheckoutPaymentCompensationPort', 'canonical payment API'],
 ]) requireText(source, value, label);
 
 for (const marker of [
   'impl CheckoutPaymentCompensationPort for SanitizingPort',
-  'let error_context = context.clone();',
   'let facts = BoundaryFacts::payment(&request);',
   '.compensate_checkout_payment(context, request)',
-  'sanitize_payment(&error_context, facts, error)',
+  'sanitize(&error_context, facts, error)',
   '::rustok_payment::in_process_checkout_payment_compensation_port(db)',
   '::rustok_payment::InProcessCheckoutPaymentCompensationPort::with_provider_registry(',
   'rustok_payment_shim::wrap_checkout_payment_compensation_port(',
@@ -55,33 +55,34 @@ requireCount(
   'definition plus default, provider-registry, and custom payment wrapping',
 );
 
-for (const [kind, message] of [
-  ['PortErrorKind::Validation', 'Checkout payment compensation request is invalid'],
-  ['PortErrorKind::NotFound', 'Checkout payment compensation resource was not found'],
-  ['PortErrorKind::Conflict', 'Checkout payment compensation conflicts with the current payment state'],
-  ['PortErrorKind::Forbidden', 'Checkout payment compensation is not permitted'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'Checkout payment compensation service is temporarily unavailable'],
-  ['PortErrorKind::InvariantViolation', 'Checkout payment compensation could not be completed safely'],
-]) {
-  requireText(facade, kind, `${kind} payment mapping`);
-  requireText(facade, message, `${kind} payment message`);
-}
+for (const message of [
+  'Checkout payment compensation request is invalid',
+  'Checkout payment compensation resource was not found',
+  'Checkout payment compensation conflicts with the current payment state',
+  'Checkout payment compensation is not permitted',
+  'Checkout payment compensation service is temporarily unavailable',
+  'Checkout payment compensation could not be completed safely',
+  'Checkout payment compensation requires manual reconciliation',
+]) requireText(facade, message, `${paths.facade}: static payment message`);
 
 for (const marker of [
-  'error.code == PAYMENT_MANUAL_CODE',
-  'Checkout payment compensation requires manual reconciliation',
-  'kind: error.kind',
-  'code: error.code',
-  'retryable: error.retryable',
-  'BoundaryFacts::payment(&request)',
+  'family: MessageFamily::Payment',
+  'operation_id_shape: uuid_shape(request.checkout_operation_id)',
+  'primary_id_shape: optional_uuid_shape(request.collection_id)',
+  'opaque_text_shape: optional_text_shape(request.reason.as_deref())',
+  'payload_kind: json_kind(&request.metadata)',
   'tenant_id_shape = context_facts.tenant_id_shape',
   'correlation_id_shape = context_facts.correlation_id_shape',
-  'subject_id_shape = facts.subject_id_shape',
+  'operation_id_shape = facts.operation_id_shape',
+  'primary_id_shape = facts.primary_id_shape',
   'payload_kind = facts.payload_kind',
+  'owner_code = %error.code',
   'owner_message_present',
   'owner_message_len',
-  'boundary = facts.boundary',
+  'owner_kind = ?error.kind',
+  'owner_retryable = error.retryable',
   'formatter.write_str("redacted")',
+  'message: message.to_string()',
 ]) requireText(facade, marker, `${paths.facade}: bounded payment contract`);
 
 for (const forbidden of [
@@ -104,9 +105,9 @@ for (const forbidden of [
 
 requireCount(
   facade,
-  'if $owner != "rustok_payment" && $owner != "rustok_order"',
+  '&& $owner != "rustok_inventory"',
   2,
-  'payment/order compatibility suppression',
+  'payment/order/inventory compatibility suppression',
 );
 
 for (const marker of [
@@ -116,6 +117,7 @@ for (const marker of [
   '.mark_compensation_retryable(',
   'self.compensate_payment(tenant_id, actor_id, operation)',
   'self.compensate_order(tenant_id, actor_id, operation)',
+  'self.release_remaining_reservations(tenant_id, operation)',
 ]) requireText(legacy, marker, `${paths.legacy}: unchanged retained flow`);
 
 if (
@@ -125,7 +127,7 @@ if (
 
 for (const [key, expected] of Object.entries({
   mounted_payment_compensation_facade_active: true,
-  combined_payment_order_facade_active: true,
+  combined_payment_order_inventory_facade_active: true,
   retained_compensation_business_logic_changed: false,
   default_payment_port_wrapped: true,
   provider_registry_payment_port_wrapped: true,
@@ -137,9 +139,10 @@ for (const [key, expected] of Object.entries({
   bounded_payment_context_shapes_logged: true,
   legacy_payment_diagnostic_suppressed: true,
   legacy_order_diagnostic_suppressed: true,
-  inventory_cart_legacy_diagnostics_suppressed: false,
+  legacy_inventory_diagnostic_suppressed: true,
+  legacy_cart_diagnostic_suppressed: false,
   order_compensation_mapper_changed: true,
-  inventory_compensation_mapper_changed: false,
+  inventory_compensation_mapper_changed: true,
   cart_compensation_mapper_changed: false,
   broad_ecommerce_cleanup_closed: false,
   runtime_evidence_claimed: false,
@@ -165,10 +168,10 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 
 for (const marker of [
   'Status: **source-reviewed / unvalidated**',
-  'combined facade',
-  'owner message can no longer reach',
-  'Order compensation is now also adapted',
-  'Inventory and cart compensation mapper cleanup remains open',
+  'combined payment/order/inventory facade',
+  'Owner message text is replaced',
+  'Order and inventory compensation are now also adapted',
+  'Cart compensation mapper cleanup remains open',
   'No tests, Node verifiers, Cargo commands, formatting',
 ]) requireText(doc, marker, `${paths.doc}: truthful payment review`);
 
@@ -179,5 +182,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Mounted Commerce payment compensation preserves typed owner classification while using static persisted messages and bounded diagnostics; validation remains open',
+  '✔ Mounted Commerce payment compensation preserves typed owner classification while using static persisted messages and bounded diagnostics; validation and cart cleanup remain open',
 );

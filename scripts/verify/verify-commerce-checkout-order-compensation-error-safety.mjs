@@ -33,21 +33,22 @@ const evidence = JSON.parse(read(paths.evidence));
 const doc = read(paths.doc);
 
 for (const [source, value, label] of [
-  [services, '#[path = "checkout_compensation_payment_safe.rs"]\nmod checkout_compensation;', 'mounted combined facade'],
+  [services, '#[path = "checkout_compensation_payment_safe.rs"]\nmod checkout_compensation;', 'mounted facade'],
   [facade, 'include!("checkout_compensation_owner_ports.rs");', 'retained source'],
   [facade, 'use super::rustok_order_shim as rustok_order;', 'order shim alias'],
-  [facade, 'CheckoutOrderCompensationPort as CanonicalCheckoutOrderCompensationPort', 'canonical custom order API'],
+  [facade, 'use super::rustok_inventory_shim as rustok_inventory;', 'inventory shim alias'],
+  [facade, 'CheckoutOrderCompensationPort as CanonicalCheckoutOrderCompensationPort', 'canonical order API'],
 ]) requireText(source, value, label);
 
 for (const marker of [
   'impl CheckoutOrderCompensationPort for SanitizingPort',
   'let facts = BoundaryFacts::order(&request);',
   '.compensate_checkout_order(context, request)',
-  'sanitize_order(&error_context, facts, error)',
+  'sanitize(&error_context, facts, error)',
   '::rustok_order::in_process_checkout_order_compensation_port(db, event_bus)',
   '::rustok_order::InProcessCheckoutOrderCompensationPort::with_identity_port(',
   'rustok_order_shim::wrap_checkout_order_compensation_port(order_compensation_port)',
-]) requireText(facade, marker, `${paths.facade}: complete order composition`);
+]) requireText(facade, marker, `${paths.facade}: order composition`);
 requireCount(
   facade,
   'wrap_checkout_order_compensation_port(',
@@ -55,32 +56,33 @@ requireCount(
   'definition plus default, identity-aware, and custom order wrapping',
 );
 
-for (const [kind, message] of [
-  ['PortErrorKind::Validation', 'Checkout order compensation request is invalid'],
-  ['PortErrorKind::NotFound', 'Checkout order compensation resource was not found'],
-  ['PortErrorKind::Conflict', 'Checkout order compensation conflicts with the current order state'],
-  ['PortErrorKind::Forbidden', 'Checkout order compensation is not permitted'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'Checkout order compensation service is temporarily unavailable'],
-  ['PortErrorKind::InvariantViolation', 'Checkout order compensation could not be completed safely'],
-]) {
-  requireText(facade, kind, `${kind} order mapping`);
-  requireText(facade, message, `${kind} order message`);
-}
+for (const message of [
+  'Checkout order compensation request is invalid',
+  'Checkout order compensation resource was not found',
+  'Checkout order compensation conflicts with the current order state',
+  'Checkout order compensation is not permitted',
+  'Checkout order compensation service is temporarily unavailable',
+  'Checkout order compensation could not be completed safely',
+  'Checkout order compensation requires manual reconciliation',
+]) requireText(facade, message, `${paths.facade}: static order message`);
 
 for (const marker of [
-  'error.code == ORDER_MANUAL_CODE',
-  'Checkout order compensation requires manual reconciliation',
-  'BoundaryFacts::order(&request)',
-  'subject_id_shape: uuid_shape(request.cart_id)',
-  'expected_id_shape: optional_uuid_shape(request.expected_order_id)',
-  'reason_shape: optional_text_shape(request.reason.as_deref())',
+  'family: MessageFamily::Order',
+  'operation_id_shape: uuid_shape(request.checkout_operation_id)',
+  'primary_id_shape: uuid_shape(request.cart_id)',
+  'secondary_id_shape: optional_uuid_shape(request.expected_order_id)',
+  'opaque_text_shape: optional_text_shape(request.reason.as_deref())',
+  'tenant_id_shape = context_facts.tenant_id_shape',
+  'operation_id_shape = facts.operation_id_shape',
+  'secondary_id_shape = facts.secondary_id_shape',
+  'opaque_text_shape = facts.opaque_text_shape',
   'owner_code = %error.code',
   'owner_message_present',
   'owner_message_len',
   'owner_kind = ?error.kind',
   'owner_retryable = error.retryable',
-  'boundary = facts.boundary',
   'formatter.write_str("redacted")',
+  'message: message.to_string()',
 ]) requireText(facade, marker, `${paths.facade}: bounded order contract`);
 
 for (const forbidden of [
@@ -103,9 +105,9 @@ for (const forbidden of [
 
 requireCount(
   facade,
-  'if $owner != "rustok_payment" && $owner != "rustok_order"',
+  '&& $owner != "rustok_inventory"',
   2,
-  'payment/order compatibility suppression',
+  'payment/order/inventory compatibility suppression',
 );
 
 for (const marker of [
@@ -125,6 +127,7 @@ for (const marker of [
   'let message = compensation.to_string();',
   '.mark_compensation_retryable(',
   'self.compensate_order(tenant_id, actor_id, operation)',
+  'self.release_remaining_reservations(tenant_id, operation)',
 ]) requireText(legacy, marker, `${paths.legacy}: retained order flow`);
 
 if (
@@ -133,7 +136,7 @@ if (
 ) failures.push(`${paths.evidence}: unexpected status ${evidence.status}`);
 
 for (const [key, expected] of Object.entries({
-  mounted_combined_compensation_facade_active: true,
+  mounted_combined_payment_order_inventory_facade_active: true,
   retained_compensation_business_logic_changed: false,
   default_order_port_wrapped: true,
   identity_order_port_wrapped: true,
@@ -145,13 +148,12 @@ for (const [key, expected] of Object.entries({
   order_owner_message_persisted: false,
   complete_order_port_error_logged: false,
   raw_order_context_values_logged: false,
-  raw_order_request_values_logged: false,
   bounded_order_context_shapes_logged: true,
-  bounded_order_request_shapes_logged: true,
   legacy_order_diagnostic_suppressed: true,
   legacy_payment_diagnostic_suppressed: true,
-  inventory_cart_legacy_diagnostics_suppressed: false,
-  inventory_compensation_mapper_changed: false,
+  legacy_inventory_diagnostic_suppressed: true,
+  legacy_cart_diagnostic_suppressed: false,
+  inventory_compensation_mapper_changed: true,
   cart_compensation_mapper_changed: false,
   remaining_compensation_cleanup_closed: false,
   broad_ecommerce_cleanup_closed: false,
@@ -178,11 +180,10 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 
 for (const marker of [
   'Status: **source-reviewed / unvalidated**',
-  'default in-process order compensation factory',
-  'identity-aware in-process constructor',
-  'custom `CheckoutOrderCompensationPort` injection',
-  'owner text cannot enter',
-  'Inventory and cart compensation consumer mappers',
+  'combined payment/order/inventory facade',
+  'Owner text cannot',
+  'Inventory compensation is now also adapted',
+  'Cart compensation consumer mapping',
   'No tests, Node verifiers, Cargo commands, formatting',
 ]) requireText(doc, marker, `${paths.doc}: truthful order review`);
 
@@ -193,5 +194,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Mounted Commerce order compensation wraps every order composition path with static persisted messages and bounded diagnostics; validation and inventory/cart cleanup remain open',
+  '✔ Mounted Commerce order compensation preserves typed owner classification while using static persisted messages and bounded diagnostics; validation and cart cleanup remain open',
 );

@@ -1,119 +1,76 @@
-# Checkout compensation inventory owner context
+# Checkout inventory compensation error safety
 
-Status: **source-ready / unvalidated**
+Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-This source slice closes the consumer-side structured-context gap for mounted
-checkout compensation inventory reservation release in
-`crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs`.
+This source slice closes the Commerce consumer-side error boundary for
+`InventoryReservationIdentityPort::release_inventory_by_identity` during checkout
+compensation.
 
-The mounted service already used `InventoryReservationIdentityPort`. Before this
-slice, each reserved row constructed its complete `PortContext` inline inside
-`release_inventory_by_identity`, then mapped a failed `PortError` through the
-generic commerce boundary mapper with only the stage name. Correlation, actor,
-locale, causation, idempotency, deadline, and truthful owner-operation
-attribution were therefore unavailable at the mapper.
-
-This slice is deliberately limited to pre-adoption inventory reservations still
-in the `reserved` state. Cart snapshot read and cart release remain a separate
-follow-up slice.
+The retained compensation implementation remains private and unchanged. The mounted
+facade wraps the constructor-injected inventory reservation port before the retained
+service can use it.
 
 ## Delivered source contract
 
-For every reserved compensation row, the mounted service now:
+The mounted combined payment/order/inventory facade now:
 
-- constructs one retained `inventory_context`;
-- clones that context into `InventoryReservationIdentityPort`;
-- keeps the original context available when the owner call fails;
-- attributes the call to owner `rustok_inventory`;
-- attributes the exact owner operation `release_inventory_by_identity`;
-- preserves commerce stage `release_inventory`.
+- preserves the canonical inventory release request and successful response;
+- preserves the owner `PortError.kind`, exact `code`, and `retryable`;
+- replaces owner message text with a Commerce-owned static message before
+  `CheckoutCompensationError::Boundary` construction;
+- therefore prevents the owner message from reaching
+  `mark_compensation_retryable` through `compensation.to_string()`;
+- records only bounded context shapes, reservation-id shape, external-id
+  presence/length, typed classification, message presence/length, and a redacted
+  diagnostic token;
+- suppresses the retained raw compatibility diagnostic only for truthful owners
+  `rustok_payment`, `rustok_order`, and `rustok_inventory`;
+- leaves the retained cart diagnostic active because cart cleanup is outside this
+  slice.
 
-The existing shared compensation diagnostic mapper records before public error
-mapping:
+## Static inventory messages
 
-- the original `PortError`;
-- correlation id and tenant id;
-- actor, channel, and locale;
-- causation id and traceparent;
-- idempotency key and deadline;
-- owner, exact owner operation, and commerce stage;
-- original code, public-safe message, typed kind, and retryability;
-- boundary `checkout_compensation_owner_port`.
-
-Unavailable, timeout, and invariant failures use error severity. Other owner
-rejections use warning severity.
+- validation: `Checkout inventory compensation request is invalid`
+- not found: `Checkout inventory compensation resource was not found`
+- conflict: `Checkout inventory compensation conflicts with the current inventory state`
+- forbidden: `Checkout inventory compensation is not permitted`
+- unavailable / timeout: `Checkout inventory compensation service is temporarily unavailable`
+- invariant violation: `Checkout inventory compensation could not be completed safely`
 
 ## Preserved behavior
 
 This slice does not change:
 
-- compensation claim, lease, retry, or journal behavior;
+- compensation claim, lease, retry, or journal control flow;
 - payment-before-order-before-inventory-before-cart ordering;
-- inventory reservation selection or status handling;
-- the release request reservation id or external identity;
-- the existing inventory context actor, locale, correlation identity,
-  causation id, idempotency key, or deadline;
-- released reservation id, external id, and variant id validation;
+- reservation selection and status handling;
+- inventory actor, locale, correlation, causation, idempotency, or deadline values
+  delegated to the owner;
+- release request reservation id or external identity;
+- release response reservation-id, external-id, and variant-id checks;
 - the durable `mark_released` checkpoint;
 - consumed-reservation manual reconciliation;
-- unsupported-state conflict behavior;
-- `CheckoutCompensationError::Boundary` stage, code, message, or retryability;
-- payment and order compensation context behavior delivered by PR #2265;
-- cart snapshot read or release mapper paths;
+- payment or order compensation behavior;
+- cart snapshot/release behavior;
 - FBA or FFA status.
 
-Inventory errors do not use the payment/order manual-reconciliation code branch.
-After diagnostics they continue through the generic `Boundary` envelope with
-stage `release_inventory`.
+## Remaining work
 
-## Static evidence
+Cart snapshot and cart release consumer mapping remain open. Compile, runtime,
+database, replay, restart, remote-port, workflow, and CI evidence also remain open.
 
-`scripts/verify/verify-commerce-checkout-compensation-inventory-context.mjs`
-guards:
+## Validation disclosure
 
-- one retained inventory context, one delegation clone, and one mapper input;
-- truthful inventory owner and exact owner operation;
-- the existing service actor, locale, correlation, causation, idempotency, and
-  deadline construction;
-- full available `PortContext` fields in diagnostics;
-- original `PortError` code, message, kind, and retryability;
-- typed severity and explicit boundary identity;
-- diagnostics before unchanged owner routing and boundary mapping;
-- unchanged boundary envelope fields;
-- unchanged release response validation and journal checkpoint;
-- unchanged compensation ordering;
-- unchanged cart mapper paths;
-- absence of the old inline context construction and context-dropping inventory
-  mapper.
+No tests, Node verifiers, Cargo commands, formatting, inventory scenarios, database
+scenarios, restart scenarios, remote-port scenarios, workflows, or CI were run.
 
-The preceding payment/order verifier was synchronized only to stop pinning the
-now-superseded direct inventory mapper. Its payment/order assertions and cart
-out-of-scope assertions remain intact.
-
-## Remaining gaps
-
-The master ecommerce correlation-safe mapper task remains open for:
-
-- mounted compensation cart snapshot read context retention;
-- mounted compensation cart release context retention;
-- remaining payment execution and compensation consumers;
-- remaining order, fulfillment, inventory, customer, tax, promotion, and
-  ecommerce adapters;
-- non-`PortError` public envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
-
-No architecture status is promoted from source-only evidence.
-
-## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
+Suggested maintainer checks:
 
 ```bash
 node scripts/verify/verify-commerce-checkout-compensation-inventory-context.mjs
 node scripts/verify/verify-commerce-checkout-compensation-payment-order-context.mjs
 node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-commerce --lib
 ```

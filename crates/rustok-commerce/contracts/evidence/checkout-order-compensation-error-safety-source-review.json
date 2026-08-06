@@ -11,7 +11,7 @@
     "scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs"
   ],
   "source_contract": {
-    "mounted_combined_compensation_facade_active": true,
+    "mounted_combined_payment_order_inventory_facade_active": true,
     "retained_compensation_source_private": true,
     "retained_compensation_business_logic_changed": false,
     "canonical_order_port_request_changed": false,
@@ -37,9 +37,10 @@
     "order_error_severity_classification_preserved": true,
     "legacy_order_diagnostic_suppressed": true,
     "legacy_payment_diagnostic_suppressed": true,
-    "inventory_cart_legacy_diagnostics_suppressed": false,
+    "legacy_inventory_diagnostic_suppressed": true,
+    "legacy_cart_diagnostic_suppressed": false,
     "payment_compensation_behavior_changed": false,
-    "inventory_compensation_mapper_changed": false,
+    "inventory_compensation_mapper_changed": true,
     "cart_compensation_mapper_changed": false,
     "compensation_ordering_changed": false,
     "operation_journal_flow_changed": false,
