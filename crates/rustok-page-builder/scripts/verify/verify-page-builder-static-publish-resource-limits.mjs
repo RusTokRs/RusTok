@@ -9,6 +9,8 @@ const failures = [];
 const files = {
   limits: "crates/rustok-page-builder/src/static_publish_resource_limits.rs",
   sanitization: "crates/rustok-page-builder/src/publish_sanitization.rs",
+  runtimeContract:
+    "crates/rustok-page-builder/contracts/page-builder-publish-runtime-review.json",
   evidence:
     "crates/rustok-page-builder/contracts/evidence/page-builder-static-publish-resource-limits-source.json",
   packet: "crates/rustok-page-builder/docs/static-publish-resource-limits.md",
@@ -22,6 +24,19 @@ const need = (source, marker, label) => {
 };
 const forbid = (source, marker, label) => {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+};
+const sliceBetween = (source, start, end, label) => {
+  const startIndex = source.indexOf(start);
+  if (startIndex < 0) {
+    failures.push(`${label}: missing ${start}`);
+    return "";
+  }
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (endIndex < 0) {
+    failures.push(`${label}: missing ${end}`);
+    return "";
+  }
+  return source.slice(startIndex, endIndex);
 };
 
 for (const [label, relativePath] of Object.entries(files)) {
@@ -44,6 +59,7 @@ const sources = Object.fromEntries(
   Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]),
 );
 const evidence = JSON.parse(sources.evidence);
+const runtimeContract = JSON.parse(sources.runtimeContract);
 
 if (evidence.format !== "page_builder_static_publish_resource_limits_source_v1") {
   failures.push("source evidence format drifted");
@@ -72,16 +88,17 @@ for (const [key, value] of Object.entries(expectedLimits)) {
   }
 }
 for (const key of [
+  "sanitization_hash_payload_unchanged",
   "limits_are_positive_and_policy_hashed",
   "project_bytes_are_measured_from_the_prepared_project",
   "component_count_and_depth_use_the_current_pages_component_authority",
   "page_asset_and_style_counts_are_bounded",
   "limit_rejections_are_typed_and_path_bound",
-  "resource_evidence_is_bound_into_the_v3_sanitization_hash",
-  "resource_evidence_is_recomputed_during_integrity_verification",
-  "legacy_v2_hash_and_integrity_remain_supported",
-  "legacy_v2_does_not_gain_retroactive_resource_evidence",
+  "resource_validation_runs_before_sanitized_project_hashing",
+  "resource_validation_is_repeated_during_integrity_verification",
   "reviewed_publish_calls_resource_validation_before_materialization",
+  "pages_sanitized_set_hash_contract_is_unchanged",
+  "database_graphql_rest_event_and_artifact_schemas_are_unchanged",
   "anonymous_rendering_persistence_and_public_routes_are_unchanged",
 ]) {
   if (evidence.source_contract?.[key] !== true) {
@@ -100,6 +117,21 @@ for (const key of [
   if (evidence.source_contract?.[key] !== false) {
     failures.push(`source_contract.${key} must remain false`);
   }
+}
+
+if (
+  evidence.source_contract?.sanitization_format !==
+    "page_builder_static_publish_sanitization_v2"
+) {
+  failures.push("source evidence sanitization format drifted");
+}
+if (
+  runtimeContract.provider?.sanitization?.format !==
+    "page_builder_static_publish_sanitization_v2" ||
+  JSON.stringify(runtimeContract.provider?.sanitization?.hash_payload) !==
+    JSON.stringify(["format", "policy_format", "policy_hash", "sanitized_project"])
+) {
+  failures.push("existing publish runtime sanitization identity contract drifted");
 }
 
 for (const marker of [
@@ -130,29 +162,51 @@ for (const marker of [
 ]) need(sources.limits, marker, "resource-limit source");
 
 for (const marker of [
-  '"page_builder_static_publish_sanitization_v3"',
   '"page_builder_static_publish_sanitization_v2"',
   '#[path = "static_publish_resource_limits.rs"]',
+  "PageBuilderStaticPublishResourceLimitError",
   "validate_static_publish_resource_limits(&document)?",
-  "pub resource_limits: Option<PageBuilderStaticPublishResourceEvidence>",
-  "resource evidence mismatch",
-  "current sanitization hash is missing resource limits",
-  "legacy sanitization hash must not include resource limits",
-  "PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,",
-  "resource_limits.ok_or_else",
-  "legacy_v2_sanitization_remains_verifiable",
+  "sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?",
+  "result.verify_integrity()?",
+  "sanitization_rejects_excess_global_resources",
 ]) need(sources.sanitization, marker, "sanitization source");
+for (const marker of [
+  "page_builder_static_publish_sanitization_v3",
+  "pub resource_limits:",
+  "resource_limits: Some(",
+]) forbid(sources.sanitization, marker, "unchanged sanitization identity");
 
-const policyIndex = sources.sanitization.indexOf("validate_static_publish_document(&document)?");
-const resourceIndex = sources.sanitization.indexOf("validate_static_publish_resource_limits(&document)?");
-const materializationBoundary = sources.sanitization.indexOf("serde_json::to_value(document.project)");
+const sanitizeFunction = sliceBetween(
+  sources.sanitization,
+  "pub fn sanitize_static_landing_project",
+  "fn sanitization_hash",
+  "reviewed sanitization function",
+);
+const policyIndex = sanitizeFunction.indexOf("validate_static_publish_document(&document)?");
+const resourceIndex = sanitizeFunction.indexOf("validate_static_publish_resource_limits(&document)?");
+const hashIndex = sanitizeFunction.indexOf(
+  "sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?",
+);
 if (
   policyIndex < 0 ||
   resourceIndex < 0 ||
-  materializationBoundary < 0 ||
-  !(policyIndex < resourceIndex && resourceIndex < materializationBoundary)
+  hashIndex < 0 ||
+  !(policyIndex < resourceIndex && resourceIndex < hashIndex)
 ) {
-  failures.push("reviewed sanitization order must be policy -> resource limits -> sanitized project");
+  failures.push("reviewed sanitization order must be policy -> resource limits -> hash");
+}
+
+const integrityFunction = sliceBetween(
+  sources.sanitization,
+  "pub fn verify_integrity",
+  "#[derive(Debug, thiserror::Error)]",
+  "sanitization integrity function",
+);
+if (
+  integrityFunction.indexOf("validate_static_publish_document(&document)?") < 0 ||
+  integrityFunction.indexOf("validate_static_publish_resource_limits(&document)?") < 0
+) {
+  failures.push("sanitization integrity must repeat policy and resource validation");
 }
 
 for (const marker of [
@@ -160,16 +214,15 @@ for (const marker of [
   "max_pages: usize::MAX",
   "max_components: usize::MAX",
   "max_component_depth: usize::MAX",
-  "resource_limits: None,\n        sanitized_project",
-]) forbid(sources.limits + sources.sanitization, marker, "fail-closed resource boundary");
+]) forbid(sources.limits, marker, "fail-closed resource boundary");
 
 for (const marker of [
   "source-ready / maintainer-validation-pending",
   "serialized prepared project: 16 MiB",
   "component nodes: 50,000",
-  "page_builder_static_publish_sanitization_v3",
   "page_builder_static_publish_sanitization_v2",
-  "do not receive retroactive rejection",
+  "hash payload remains exactly",
+  "No new persisted DTO",
   "No raw runtime context",
   "intentionally not run",
 ]) need(sources.packet, marker, "resource-limit packet");
@@ -177,7 +230,7 @@ for (const marker of [
 for (const marker of [
   "Reviewed publish resource limits",
   "static-publish-resource-limits-source-ready",
-  "legacy sanitization v2 remains verifiable",
+  "sanitization identity remains exactly `page_builder_static_publish_sanitization_v2`",
   "execution and rollout remain open",
 ]) need(sources.actualization, marker, "parity actualization");
 
