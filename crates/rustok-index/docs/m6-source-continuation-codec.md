@@ -1,6 +1,6 @@
 # M6 confidential source continuation codec
 
-Status: `source_complete_server_key_composition_pending`.
+Status: `source_complete_server_composition_complete_transport_pending`.
 
 ## Purpose
 
@@ -11,6 +11,9 @@ partition positions, or other implementation details.
 `IndexSourceContinuationCodec` adds a transport-neutral authenticated and confidential envelope. It
 does not mount a GraphQL, HTTP, CLI, MCP, or native-admin operation and does not read configuration or
 resolve secrets by itself.
+
+Server-owned `SecretRef` composition and an internal sealed page method now exist separately. See
+[M6 server-owned source continuation keyring](./m6-source-continuation-server-keyring.md).
 
 ## Canonical scope
 
@@ -72,37 +75,53 @@ One configured key id is active for sealing. Every retained key can decrypt. A d
 
 1. add a new key while retaining the previous key;
 2. switch the active key id;
-3. wait longer than the maximum 15-minute token lifetime;
+3. wait longer than the maximum configured token lifetime and operational skew;
 4. remove the previous key.
 
 A token naming a removed or otherwise unavailable key fails closed before source access. The codec
 `Debug` implementation exposes only active key id and key count; token `Debug` exposes only encoded
 length. Key bytes and token contents are not formatted.
 
+## Server composition
+
+The server now validates bounded deployment configuration containing only key IDs and `SecretRef`
+values. Secret material is URL-safe unpadded base64 and must decode to exactly 32 bytes.
+
+Because secret resolution is asynchronous, the server resolves keys inside
+`diagnose_source_page_sealed` before parsing the incoming token or constructing
+`IndexSourceScanRequest`. It builds one short-lived codec, opens the incoming token, executes one
+page, seals the outgoing cursor, and drops the local key map.
+
+The keyring is private to the page runtime and is not published as an independently retrievable
+extension. Configuration, secret-resolution, and exact-length failures expose no raw resolver cause,
+reference key, or key material.
+
 ## Deliberate limits
 
 This slice does not add or claim:
 
-- server configuration or `SecretResolverRegistry` composition;
-- environment, file, cloud-vault, or database key loading;
-- a sealed method on `IndexDriftSourcePageDiagnosisRuntime`;
 - a public source-page transport;
+- cloud/Vault/Kubernetes keyring configuration specific to this Index boundary;
 - cursor persistence, multi-page scheduling, or restart state;
 - stale Index-only or orphan-link discovery;
 - finding lifecycle or repair;
 - retained cryptographic, server, GraphQL, workflow, or CI execution evidence.
 
-The next safe slice is server-owned keyring composition from secret references, followed by one
-internal page method that opens the incoming token before constructing `IndexSourceScanRequest` and
-seals the returned continuation before crossing any future transport boundary.
+The next safe slice is one bounded transport over the existing sealed internal page method. It must
+preserve request-bound authorization, accept and return only the opaque continuation, expose no raw
+cursor or source entity identifiers, and delegate exactly once.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index source_continuation -- --nocapture
+cargo test -p rustok-server index_source_continuation_runtime -- --nocapture
+cargo test -p rustok-server index_drift_source_page_diagnosis -- --nocapture
 node scripts/verify/verify-index-source-continuation.mjs
+node scripts/verify/verify-index-source-continuation-server.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
+cargo check -p rustok-server --all-targets --features mod-product
 git diff --check
 ```
 
