@@ -1,0 +1,105 @@
+{
+  "contract": "forum_topic_slug_rename_admin_ui_v1",
+  "task": "FORUM-24G",
+  "parent_task": "FORUM-24",
+  "extends": ["FORUM-24D", "FORUM-24F"],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "backend_owner": "TopicService::rename_slug",
+  "backend_graphql_field": "renameForumTopicSlug",
+  "authorization": {
+    "required_permission": "forum_topics:update",
+    "tenant_authority": "routed_context",
+    "optional_tenant_id_is_assertion_only": true,
+    "owner_revalidates_ownership": true,
+    "manager_override_remains_owner_defined": true
+  },
+  "leptos_admin": {
+    "route": "/modules/forum/rename-slug",
+    "manifest_child_page": "rename-slug",
+    "root_dispatcher": "admin/src/ui/root.rs",
+    "framework_neutral_policy": "admin/src/topic_slug_rename_model.rs",
+    "ui_adapter": "admin/src/ui/topic_slug_rename.rs",
+    "transport_facade": "admin/src/transport.rs",
+    "graphql_adapter": "admin/src/transport/topic_slug_rename_graphql_adapter.rs",
+    "candidate_limit": 100,
+    "transport_state": "single_adapter_graphql",
+    "native_server_path_claimed": false,
+    "rest_fallback": false,
+    "package_owned_locales": ["en", "ru"]
+  },
+  "next_admin": {
+    "route": "/dashboard/forum/rename-slug",
+    "host_page": "apps/next-admin/src/app/dashboard/forum/rename-slug/page.tsx",
+    "package_api": "apps/next-admin/packages/forum/src/api/forum.ts",
+    "framework_neutral_policy": "apps/next-admin/packages/forum/src/core/topic-slug-rename.ts",
+    "ui_adapter": "apps/next-admin/packages/forum/src/components/forum-topic-slug-rename.tsx",
+    "package_entry": "apps/next-admin/packages/forum/src/index.ts",
+    "graphql_proxy": "apps/next-admin/src/app/api/rustok/graphql/route.ts",
+    "host_page_is_composition_only": true,
+    "candidate_limit": 100,
+    "browser_transport": "same_origin_graphql_proxy",
+    "proxy_session_authentication": true,
+    "client_access_token_serialized": false,
+    "package_owned_locales": ["en", "ru"],
+    "navigation_permission": "forum_topics:update"
+  },
+  "command_policy": {
+    "topic_identity_is_selected_from_bounded_candidates": true,
+    "locale_is_selected_from_existing_translation": true,
+    "slug_required": true,
+    "slug_max_characters": 255,
+    "slug_control_characters_rejected": true,
+    "exact_current_slug_is_not_rejected_by_ui": true,
+    "short_identity_is_not_computed_by_ui": true,
+    "route_normalization_is_not_implemented_by_ui": true,
+    "fallback_locale_selection_is_not_implemented_by_ui": true
+  },
+  "result_policy": {
+    "shows_previous_path": true,
+    "shows_canonical_path": true,
+    "shows_locale": true,
+    "shows_immutable_alias_id": true,
+    "shows_owner_changed_flag": true,
+    "refreshes_candidate_projection_after_success": true,
+    "does_not_read_route_alias_table": true
+  },
+  "compatibility": {
+    "backend_owner_changed": false,
+    "graphql_schema_changed": false,
+    "route_alias_schema_changed": false,
+    "semantic_event_changed": false,
+    "migration_added": false,
+    "rest_contract_changed": false,
+    "storefront_route_changed": false,
+    "seo_policy_changed": false
+  },
+  "verification": {
+    "verifier": "scripts/verify/verify-forum-topic-slug-rename-admin-ui.mjs",
+    "rust_unit_target": "rustok-forum-admin topic_slug_rename_model tests",
+    "next_typecheck_scope": "apps/next-admin",
+    "maintainer_commands": [
+      "node scripts/verify/verify-forum-topic-slug-rename-owner.mjs",
+      "node scripts/verify/verify-forum-topic-slug-rename-graphql-transport.mjs",
+      "node scripts/verify/verify-forum-topic-slug-rename-admin-ui.mjs",
+      "npm run verify:forum:admin-boundary",
+      "npm run verify:blog:forum-ui-ownership",
+      "cargo test -p rustok-forum-admin topic_slug_rename_model -- --nocapture",
+      "cargo check -p rustok-forum-admin --all-targets",
+      "npm --prefix apps/next-admin run typecheck"
+    ]
+  },
+  "remaining_scope": [
+    "public localized topic route mounting",
+    "host redirect gone and conflict composition",
+    "localized category routes",
+    "hreflang and SEO publication policy",
+    "maintainer browser and transport execution evidence"
+  ],
+  "non_claims": [
+    "no test verifier formatter Cargo npm workflow browser or CI execution is claimed",
+    "no native or REST slug rename transport is claimed",
+    "no owner GraphQL alias event migration canonical resolution or storefront change is added",
+    "FORUM-24 remains planned"
+  ]
+}
