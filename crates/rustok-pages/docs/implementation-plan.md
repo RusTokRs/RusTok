@@ -128,11 +128,12 @@ Optional external event infrastructure is outside the active Pages cursor.
   deleted rows and Page Builder artifacts do not prove complete historical public
   ownership.
 - [x] Exact canonical Pages SSR preloads Navigation-owned header/footer menus and the
-  SEO-owned page context once, binds their actual payloads to channel identity and
-  Pages route/page/artifact generations, and emits a deterministic SHA-256 ETag.
-- [x] Matching strong, weak or comma-separated `If-None-Match` returns `304`; a
-  missing Pages generation runtime disables the ETag only, while terminal route
-  responses remain `private, no-store`.
+  SEO-owned page context once, renders with those owner payloads, and binds the
+  exact rendered HTML to channel identity plus Pages route/page/artifact generations
+  in a deterministic SHA-256 ETag.
+- [x] Matching strong, weak or comma-separated `If-None-Match` returns `304` after
+  reconstruction of the exact document identity; missing Pages generations disable
+  the ETag only, while terminal route responses remain `private, no-store`.
 - [ ] Authenticated real-DOM inline editing is not implemented.
 - [ ] Compiled SSR/CSR/hydrate bundle artifact evidence remains open; client bundle
   proof becomes mandatory when a Pages client bootstrap is introduced.
@@ -194,12 +195,13 @@ PR #3020 boundary and is no longer the current implementation status.
 18. A missing-page redirect import requires a direct terminal gone anchor for the
     same page so redirect resolution cannot depend on a nonexistent canonical row.
 19. The final canonical Pages document identity binds channel identity, canonical
-    page/locale/slug, all three Pages generations and the actual Navigation/SEO
-    owner payloads.
+    page/locale/slug, all three Pages generations, actual Navigation/SEO payloads
+    and a SHA-256 hash of the exact rendered HTML.
 20. Navigation header/footer reads are performed once by the host and reused by the
     SSR components; Pages and the host do not recreate menu policy.
-21. Conditional `304` is allowed only for a complete canonical composition ETag;
-    terminal routes and incomplete generation state never claim that identity.
+21. Conditional `304` is allowed only after reconstructing a complete canonical
+    rendered-document identity; terminal routes and incomplete generation state
+    never claim that identity.
 22. No block or shadow-editor fallback exists.
 
 ## Current pipelines
@@ -263,9 +265,10 @@ public Pages host request
   → target publication/channel visibility recheck
   → exact canonical: read Pages generations
   → Navigation-owned header/footer reads + SEO-owned page context
-  → SHA-256 composition ETag
+  → SSR render with preloaded Navigation snapshot
+  → hash generations + owner payloads + exact rendered HTML
   → matching If-None-Match: private 304
-  → otherwise private revalidated SSR render with preloaded menus
+  → otherwise private revalidated HTML response
   → alias/noncanonical: 308 private no-store
   → gone: 410 private no-store
   → missing: 404 private no-store
@@ -278,7 +281,7 @@ public Pages host request
 - **FFA:** `in_progress` — metadata/document separation, reviewed publication,
   rollback, immutable public reads, tenant locale fallback, localized route identity,
   published-slug redirects, delete tombstones, explicit historical import, host
-  route responses and Navigation/SEO composition ETags are source-connected.
+  route responses and rendered-document Navigation/SEO ETags are source-connected.
   Browser execution, inline edit and built artifact evidence remain open.
 - **FBA:** `in_progress` — sanitizer/materialization/artifact/receipt boundaries and
   production-gated cache invalidation are source-connected. Route persistence,
@@ -333,7 +336,8 @@ public Pages host request
 - Added the historical route import owner, forward-only provenance receipts,
   bounded all-or-nothing composition and focused SQLite source regressions.
 - Added host-preloaded Navigation header/footer snapshots and deterministic Pages
-  generation + Navigation + SEO composition ETags with conditional private `304`.
+  generation + Navigation + SEO + rendered-HTML composition ETags with conditional
+  private `304`.
 - Tests, verifiers, formatters, Cargo commands, databases, server functions, hosts,
   browsers, workflows and CI were not executed by the implementation agent.
 
