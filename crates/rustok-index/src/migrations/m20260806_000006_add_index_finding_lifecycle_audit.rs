@@ -81,19 +81,17 @@ impl MigrationTrait for Migration {
                             .name("fk_index_finding_lifecycle_event_finding")
                             .from(
                                 IndexFindingLifecycleEvents::Table,
-                                IndexFindingLifecycleEvents::TenantId,
-                            )
-                            .from(
-                                IndexFindingLifecycleEvents::Table,
-                                IndexFindingLifecycleEvents::FindingId,
-                            )
-                            .to(
-                                IndexConsistencyFindings::Table,
-                                IndexConsistencyFindings::TenantId,
+                                (
+                                    IndexFindingLifecycleEvents::TenantId,
+                                    IndexFindingLifecycleEvents::FindingId,
+                                ),
                             )
                             .to(
                                 IndexConsistencyFindings::Table,
-                                IndexConsistencyFindings::FindingId,
+                                (
+                                    IndexConsistencyFindings::TenantId,
+                                    IndexConsistencyFindings::FindingId,
+                                ),
                             )
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
@@ -149,7 +147,7 @@ async fn install_append_only_guards(manager: &SchemaManager<'_>) -> Result<(), D
         DbBackend::Postgres => {
             connection
                 .execute_unprepared(&format!(
-                    "CREATE FUNCTION {POSTGRES_GUARD_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Index finding lifecycle audit is append-only'; END $$"
+                    "CREATE FUNCTION {POSTGRES_GUARD_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Index finding lifecycle audit is append-only'; END; $$"
                 ))
                 .await?;
             connection
