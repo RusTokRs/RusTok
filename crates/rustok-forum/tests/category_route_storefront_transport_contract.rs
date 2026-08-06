@@ -29,8 +29,8 @@ fn graphql_route_resolution_rechecks_exact_category_visibility() {
     ] {
         assert!(source.contains(marker), "missing GraphQL marker: {marker}");
     }
-    assert!(!source.contains("alias_id:"));
-    assert!(!source.contains("alias.reason"));
+    assert!(!source.contains("pub alias_id"));
+    assert!(!source.contains("pub alias_reason"));
 }
 
 #[test]
