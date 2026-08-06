@@ -1,7 +1,7 @@
 {
   "format": "page_builder_authenticated_inline_edit_adapter_source_v1",
   "status": "page_builder_authenticated_inline_edit_adapter_source_unvalidated",
-  "generated_at": "2026-08-06T08:18:00Z",
+  "generated_at": "2026-08-06T14:36:00Z",
   "scope": "feature-gated Page Builder authenticated real-DOM inline adapter",
   "source_contract": {
     "real_dom_adapter_owned_by_fly_leptos": true,
@@ -11,6 +11,8 @@
     "grant_binds_session_page_revision_hash_expiry_and_proof": true,
     "authorization_proof_is_redacted_from_debug": true,
     "authorization_proof_is_not_rendered_into_dom": true,
+    "grant_session_is_not_rendered_into_dom": true,
+    "dom_root_identity_uses_page_and_project_hash": true,
     "plain_text_is_bounded_and_normalized": true,
     "dom_is_a_temporary_focusout_buffer": true,
     "dom_listener_cleanup_restores_attributes": true,
