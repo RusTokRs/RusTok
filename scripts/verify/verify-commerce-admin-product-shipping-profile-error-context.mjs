@@ -9,15 +9,30 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
-
-const adminProducts = read('crates/rustok-commerce/src/controllers/admin/products.rs');
 const failures = [];
+
+const paths = {
+  source: 'crates/rustok-commerce/src/controllers/admin/products.rs',
+  evidence:
+    'crates/rustok-commerce/contracts/evidence/admin-product-shipping-diagnostic-safety-source-review.json',
+  doc: 'crates/rustok-commerce/docs/admin-product-shipping-diagnostic-safety.md',
+  plan: 'crates/rustok-commerce/docs/implementation-plan.md',
+};
+
+const source = read(paths.source);
+const evidence = JSON.parse(read(paths.evidence));
+const doc = read(paths.doc);
+const plan = read(paths.plan);
 
 const requireText = (content, value, label) => {
   if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
 };
 const forbidText = (content, value, label) => {
   if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
+};
+const requireCount = (content, value, expected, label) => {
+  const actual = content.split(value).length - 1;
+  if (actual !== expected) failures.push(`${label}: expected ${expected}, found ${actual}`);
 };
 const between = (content, start, end, label) => {
   const startIndex = content.indexOf(start);
@@ -28,268 +43,277 @@ const between = (content, start, end, label) => {
   }
   return content.slice(startIndex, endIndex);
 };
+const requireOrder = (content, markers, label) => {
+  let previous = -1;
+  for (const marker of markers) {
+    const index = content.indexOf(marker);
+    if (index < 0) {
+      failures.push(`${label}: missing ${marker}`);
+      return;
+    }
+    if (index <= previous) {
+      failures.push(`${label}: ${marker} is out of order`);
+      return;
+    }
+    previous = index;
+  }
+};
+
+const diagnosticContext = between(
+  source,
+  'struct AdminProductShippingProfileDiagnosticContext {',
+  'impl From<&AdminProductShippingProfileErrorContext>',
+  'bounded shipping-profile context',
+);
+for (const field of [
+  'tenant_id',
+  'actor_id',
+  'product_id',
+  'shipping_profile_id',
+  'operation',
+]) {
+  requireText(
+    diagnosticContext,
+    `${field}: &'static str`,
+    `${paths.source}: bounded ${field}`,
+  );
+}
+for (const value of ['Uuid', 'Option<', 'String']) {
+  forbidText(diagnosticContext, value, `${paths.source}: diagnostic context storage`);
+}
+
+const conversion = between(
+  source,
+  'impl From<&AdminProductShippingProfileErrorContext>',
+  'struct AdminProductShippingProfileDiagnosticError;',
+  'shipping-profile diagnostic conversion',
+);
+for (const marker of [
+  'tenant_id: uuid_shape(context.tenant_id)',
+  'actor_id: uuid_shape(context.actor_id)',
+  'product_id: optional_uuid_shape(context.product_id)',
+  'shipping_profile_id: optional_uuid_shape(context.shipping_profile_id)',
+  'operation: context.operation',
+]) requireText(conversion, marker, `${paths.source}: diagnostic conversion`);
+
+const diagnosticError = between(
+  source,
+  'struct AdminProductShippingProfileDiagnosticError;',
+  'fn uuid_shape(',
+  'bounded shipping-profile error',
+);
+for (const marker of [
+  'impl std::fmt::Debug for AdminProductShippingProfileDiagnosticError',
+  'formatter.write_str("redacted")',
+]) requireText(diagnosticError, marker, `${paths.source}: redacted error`);
+for (const value of ['CommerceError', 'message:', 'source:', 'String']) {
+  forbidText(diagnosticError, value, `${paths.source}: diagnostic error payload`);
+}
+
+const requiredShape = between(
+  source,
+  'fn uuid_shape(',
+  'fn optional_uuid_shape(',
+  'required UUID shape',
+);
+for (const marker of ['value.is_nil()', '"nil"', '"non_nil"']) {
+  requireText(requiredShape, marker, `${paths.source}: required UUID shape`);
+}
+
+const optionalShape = between(
+  source,
+  'fn optional_uuid_shape(',
+  'fn admin_product_shipping_profile_error_policy(',
+  'optional UUID shape',
+);
+for (const marker of [
+  'None => "absent"',
+  'Some(value) if value.is_nil() => "present_nil"',
+  'Some(_) => "present_non_nil"',
+]) requireText(optionalShape, marker, `${paths.source}: optional UUID shape`);
 
 const policy = between(
-  adminProducts,
+  source,
   'fn admin_product_shipping_profile_error_policy(',
   'fn adopt_admin_product_shipping_profile_error_identity(',
   'shipping-profile policy',
 );
-const identityAdoption = between(
-  adminProducts,
+for (const marker of [
+  'CommerceError::ShippingProfileNotFound(_)',
+  'CommerceError::DuplicateShippingProfileSlug(_)',
+  'CommerceError::Validation(_)',
+  'CommerceError::Database(_)',
+  'CommerceError::ProductNotFound(_)',
+  'CommerceError::VariantNotFound(_)',
+  'CommerceError::DuplicateHandle { .. }',
+  'CommerceError::DuplicateSku(_)',
+  'CommerceError::InvalidPrice(_)',
+  'CommerceError::InsufficientInventory { .. }',
+  'CommerceError::InvalidOptionCombination',
+  'CommerceError::NoVariants',
+  'CommerceError::CannotDeletePublished',
+  'CommerceError::Rich(_)',
+  'CommerceError::Core(_)',
+  'StatusCode::NOT_FOUND',
+  'StatusCode::CONFLICT',
+  'StatusCode::BAD_REQUEST',
+  'StatusCode::SERVICE_UNAVAILABLE',
+  'StatusCode::INTERNAL_SERVER_ERROR',
+  '"commerce_admin_not_found"',
+  '"commerce_admin_shipping_profile_conflict"',
+  '"commerce_admin_shipping_profile_invalid"',
+  '"commerce_admin_shipping_profile_storage_unavailable"',
+  '"commerce_admin_shipping_profile_failed"',
+  '"Commerce resource not found"',
+  '"A shipping profile with this slug already exists"',
+  '"Shipping profile request is invalid"',
+  '"Shipping profile storage is temporarily unavailable"',
+  '"Shipping profile operation could not be completed safely"',
+]) requireText(policy, marker, `${paths.source}: preserved policy`);
+
+const adoption = between(
+  source,
   'fn adopt_admin_product_shipping_profile_error_identity(',
   'fn map_admin_product_shipping_profile_error(',
   'shipping-profile identity adoption',
 );
+for (const marker of [
+  'if let CommerceError::ShippingProfileNotFound(id) = error',
+  'context.shipping_profile_id = Some(*id);',
+]) requireText(adoption, marker, `${paths.source}: profile identity adoption`);
+
 const mapper = between(
-  adminProducts,
+  source,
   'fn map_admin_product_shipping_profile_error(',
   'async fn validate_admin_product_shipping_profile_input(',
   'shipping-profile mapper',
 );
+requireOrder(
+  mapper,
+  [
+    'adopt_admin_product_shipping_profile_error_identity(&mut context, &error);',
+    'admin_product_shipping_profile_error_policy(&error);',
+    'let context = AdminProductShippingProfileDiagnosticContext::from(&context);',
+    'let error = AdminProductShippingProfileDiagnosticError;',
+    'tracing::error!(',
+    'HttpError::new(status, code, message)',
+  ],
+  `${paths.source}: identity, policy, and shadowing order`,
+);
+for (const marker of [
+  'error = ?error',
+  'owner = ADMIN_PRODUCT_SHIPPING_PROFILE_OWNER',
+  'tenant_id = %context.tenant_id',
+  'actor_id = %context.actor_id',
+  'product_id = %context.product_id',
+  'shipping_profile_id = %context.shipping_profile_id',
+  'operation = %context.operation',
+  'error_kind,',
+  'public_code = code',
+  'status = %status',
+  'boundary = ADMIN_PRODUCT_SHIPPING_PROFILE_BOUNDARY',
+  '"commerce admin product shipping-profile validation failed"',
+]) requireText(mapper, marker, `${paths.source}: bounded log site`);
+for (const value of ['error.to_string()', 'format!(', 'error.message']) {
+  forbidText(mapper, value, `${paths.source}: raw mapper payload`);
+}
+
 const validator = between(
-  adminProducts,
+  source,
   'async fn validate_admin_product_shipping_profile_input(',
   '/// List admin ecommerce products',
   'shipping-profile validator',
 );
-const createRoute = between(
-  adminProducts,
-  'pub async fn create_product(',
-  '/// Show admin ecommerce product',
-  'create product route',
+for (const marker of [
+  'shipping_profile_slug.and_then(normalize_shipping_profile_slug)',
+  'return Ok(());',
+  'ShippingProfileService::new(db.clone())',
+  '.ensure_shipping_profile_slug_exists(context.tenant_id, &slug)',
+  '.map_err(|error| map_admin_product_shipping_profile_error(context, error))?;',
+]) requireText(validator, marker, `${paths.source}: preserved validator`);
+
+for (const marker of [
+  'Permission::PRODUCTS_CREATE',
+  'Permission::PRODUCTS_UPDATE',
+  '"create_product_shipping_profile_validation"',
+  '"update_product_shipping_profile_validation"',
+  '.create_product(tenant.id, auth.user_id, input)',
+  '.update_product(tenant.id, auth.user_id, id, input)',
+  'Ok((StatusCode::CREATED, Json(product)))',
+  'Ok(Json(product))',
+]) requireText(source, marker, `${paths.source}: preserved routes`);
+requireCount(
+  source,
+  'validate_admin_product_shipping_profile_input(',
+  3,
+  'one validator and two route callsites',
 );
-const updateRoute = between(
-  adminProducts,
-  'pub async fn update_product(',
-  '/// Delete admin ecommerce product',
-  'update product route',
+requireCount(
+  source,
+  'map_admin_product_shipping_profile_error(',
+  2,
+  'one mapper and one validator handoff',
 );
 
-for (const [value, label] of [
-  [
-    'const ADMIN_PRODUCT_SHIPPING_PROFILE_OWNER: &str = "rustok_commerce.shipping_profile";',
-    'owner constant',
-  ],
-  [
-    'const ADMIN_PRODUCT_SHIPPING_PROFILE_BOUNDARY: &str =',
-    'boundary constant declaration',
-  ],
-  [
-    '"commerce_admin_product_shipping_profile_http";',
-    'boundary constant value',
-  ],
-  ['type AdminProductShippingProfileHttpPolicy = (', 'static policy type'],
-  [
-    'struct AdminProductShippingProfileErrorContext {',
-    'typed validation context',
-  ],
-  ['tenant_id: Uuid,', 'tenant context field'],
-  ['actor_id: Uuid,', 'actor context field'],
-  ['product_id: Option<Uuid>,', 'product context field'],
-  ['shipping_profile_id: Option<Uuid>,', 'profile context field'],
-  ["operation: &'static str,", 'operation context field'],
-  ['fn map_admin_product_shipping_profile_error(', 'typed mapper'],
-  [
-    'async fn validate_admin_product_shipping_profile_input(',
-    'local validation helper',
-  ],
-]) requireText(adminProducts, value, label);
-
-for (const [value, label] of [
-  ['CommerceError::ShippingProfileNotFound(_)', 'profile not-found variant'],
-  [
-    'CommerceError::DuplicateShippingProfileSlug(_)',
-    'duplicate profile slug variant',
-  ],
-  ['CommerceError::Validation(_)', 'validation variant'],
-  ['CommerceError::Database(_)', 'database variant'],
-  ['CommerceError::ProductNotFound(_)', 'unexpected product variant'],
-  ['CommerceError::VariantNotFound(_)', 'unexpected variant variant'],
-  ['CommerceError::DuplicateHandle { .. }', 'unexpected duplicate handle variant'],
-  ['CommerceError::DuplicateSku(_)', 'unexpected duplicate SKU variant'],
-  ['CommerceError::InvalidPrice(_)', 'unexpected invalid price variant'],
-  [
-    'CommerceError::InsufficientInventory { .. }',
-    'unexpected inventory variant',
-  ],
-  [
-    'CommerceError::InvalidOptionCombination',
-    'unexpected option combination variant',
-  ],
-  ['CommerceError::NoVariants', 'unexpected no-variants variant'],
-  [
-    'CommerceError::CannotDeletePublished',
-    'unexpected published-state variant',
-  ],
-  ['CommerceError::Rich(_)', 'unexpected rich variant'],
-  ['CommerceError::Core(_)', 'unexpected core variant'],
-  ['StatusCode::NOT_FOUND', 'not-found status'],
-  ['StatusCode::CONFLICT', 'conflict status'],
-  ['StatusCode::BAD_REQUEST', 'bad-request status'],
-  ['StatusCode::SERVICE_UNAVAILABLE', 'storage status'],
-  ['StatusCode::INTERNAL_SERVER_ERROR', 'fail-closed status'],
-  ['"commerce_admin_not_found"', 'not-found code'],
-  [
-    '"commerce_admin_shipping_profile_conflict"',
-    'duplicate slug conflict code',
-  ],
-  [
-    '"commerce_admin_shipping_profile_invalid"',
-    'validation code',
-  ],
-  [
-    '"commerce_admin_shipping_profile_storage_unavailable"',
-    'storage code',
-  ],
-  ['"commerce_admin_shipping_profile_failed"', 'fail-closed code'],
-  ['"Commerce resource not found"', 'static not-found message'],
-  [
-    '"A shipping profile with this slug already exists"',
-    'static duplicate slug message',
-  ],
-  [
-    '"Shipping profile request is invalid"',
-    'static validation message',
-  ],
-  [
-    '"Shipping profile storage is temporarily unavailable"',
-    'static storage message',
-  ],
-  [
-    '"Shipping profile operation could not be completed safely"',
-    'static fail-closed message',
-  ],
-]) requireText(policy, value, label);
-
-for (const [value, label] of [
-  [
-    'if let CommerceError::ShippingProfileNotFound(id) = error',
-    'typed profile identity variant',
-  ],
-  [
-    'context.shipping_profile_id = Some(*id);',
-    'typed profile identity adoption',
-  ],
-]) requireText(identityAdoption, value, label);
-
-for (const [value, label] of [
-  ['error = ?error', 'typed cause log'],
-  ['owner = ADMIN_PRODUCT_SHIPPING_PROFILE_OWNER', 'owner log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['actor_id = %context.actor_id', 'actor log'],
-  ['product_id = ?context.product_id', 'product identity log'],
-  [
-    'shipping_profile_id = ?context.shipping_profile_id',
-    'profile identity log',
-  ],
-  ['operation = %context.operation', 'operation log'],
-  ['error_kind,', 'error-kind log'],
-  ['public_code = code', 'public code log'],
-  ['status = %status', 'status log'],
-  [
-    'boundary = ADMIN_PRODUCT_SHIPPING_PROFILE_BOUNDARY',
-    'boundary log',
-  ],
-  ['HttpError::new(status, code, message)', 'static envelope'],
-]) requireText(mapper, value, label);
-
-for (const [value, label] of [
-  [
-    'shipping_profile_slug.and_then(normalize_shipping_profile_slug)',
-    'slug normalization',
-  ],
-  ['return Ok(());', 'absent slug no-op'],
-  ['ShippingProfileService::new(db.clone())', 'profile service construction'],
-  [
-    '.ensure_shipping_profile_slug_exists(context.tenant_id, &slug)',
-    'owner validation call',
-  ],
-  [
-    '.map_err(|error| map_admin_product_shipping_profile_error(context, error))?;',
-    'context-aware error mapping',
-  ],
-]) requireText(validator, value, label);
-
-for (const [
-  block,
-  permission,
-  productIdentity,
-  operation,
-  serviceCall,
-  response,
-  label,
-] of [
-  [
-    createRoute,
-    'Permission::PRODUCTS_CREATE',
-    'None,',
-    '"create_product_shipping_profile_validation"',
-    '.create_product(tenant.id, auth.user_id, input)',
-    'Ok((StatusCode::CREATED, Json(product)))',
-    'create route',
-  ],
-  [
-    updateRoute,
-    'Permission::PRODUCTS_UPDATE',
-    'Some(id)',
-    '"update_product_shipping_profile_validation"',
-    '.update_product(tenant.id, auth.user_id, id, input)',
-    'Ok(Json(product))',
-    'update route',
-  ],
+if (
+  evidence.status !==
+  'commerce_admin_product_shipping_diagnostic_safety_source_reviewed_unvalidated'
+) failures.push(`${paths.evidence}: unexpected status ${evidence.status}`);
+for (const [key, expected] of Object.entries({
+  raw_commerce_error_logged: false,
+  raw_tenant_uuid_logged: false,
+  raw_actor_uuid_logged: false,
+  raw_product_uuid_logged: false,
+  raw_shipping_profile_uuid_logged: false,
+  redacted_error_debug_logged: true,
+  required_uuid_shapes_logged: true,
+  optional_uuid_shapes_logged: true,
+  shipping_profile_not_found_identity_adoption_preserved: true,
+  typed_policy_selection_precedes_shadowing: true,
+  http_policy_preserved: true,
+  validator_preserved: true,
+  create_and_update_callsites_preserved: true,
+  permissions_preserved: true,
+  catalog_owner_calls_preserved: true,
+  broad_ecommerce_cleanup_closed: false,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
+  }
+}
+for (const key of [
+  'tests_run',
+  'cargo_run',
+  'format_run',
+  'verifiers_run',
+  'workflow_checks_run',
+  'ci_run',
+  'compile_proven',
+  'runtime_proven',
 ]) {
-  requireText(block, permission, `${label} permission`);
-  requireText(
-    block,
-    'validate_admin_product_shipping_profile_input(',
-    `${label} local validator`,
-  );
-  requireText(
-    block,
-    'AdminProductShippingProfileErrorContext::new(',
-    `${label} typed context`,
-  );
-  requireText(block, 'tenant.id', `${label} tenant identity`);
-  requireText(block, 'auth.user_id', `${label} actor identity`);
-  requireText(block, productIdentity, `${label} product identity`);
-  requireText(block, operation, `${label} operation`);
-  requireText(
-    block,
-    'input.shipping_profile_slug.as_deref()',
-    `${label} profile slug forwarding`,
-  );
-  requireText(block, serviceCall, `${label} catalog service contract`);
-  requireText(block, response, `${label} response contract`);
+  if (evidence.validation?.[key] !== false) {
+    failures.push(`${paths.evidence}: validation.${key} must remain false`);
+  }
 }
 
-const validationUses =
-  adminProducts.match(
-    /validate_admin_product_shipping_profile_input\(\s+runtime\.db\(\),\s+AdminProductShippingProfileErrorContext::new\(/g,
-  ) ?? [];
-if (validationUses.length !== 2) {
-  failures.push(
-    `expected two context-aware product shipping-profile validation callsites, found ${validationUses.length}`,
-  );
-}
-
-for (const value of [
-  'super::validate_product_shipping_profile_input(',
-  'super::map_shipping_profile_error(',
-  'err.to_string()',
-  'error.to_string()',
-  'other.to_string()',
-  'format!("Shipping profile',
-]) forbidText(adminProducts, value, 'stale or unsafe product shipping-profile mapping');
+for (const marker of [
+  'Status: **source-ready / unvalidated**',
+  'shipping-profile-not-found identity adoption and HTTP policy selection',
+  'Debug output is always `redacted`',
+  'The broader ecommerce correlation-safe mapper and non-`PortError` envelope cleanup remains open.',
+]) requireText(doc, marker, `${paths.doc}: documentation contract`);
+requireText(
+  plan,
+  'Finish correlation-safe mapper cleanup',
+  `${paths.plan}: broad cleanup remains open`,
+);
 
 if (failures.length > 0) {
-  console.error(
-    'Commerce admin product shipping-profile error-context verification failed:',
-  );
-  for (const failure of failures) console.error(`✗ ${failure}`);
+  console.error('Commerce admin product shipping diagnostic verification failed:');
+  for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Commerce admin product shipping-profile validation retains typed causes and route context',
+  'Commerce admin product shipping-profile diagnostics are bounded while typed policy, identity adoption, validation, permissions, and catalog calls remain unchanged; execution validation remains open',
 );
