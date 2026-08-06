@@ -19,7 +19,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 1. **Schema-Agnostic PostgreSQL JSONB Storage**: Envelopes entity state into benchmarked `JSONB` structures while maintaining independent relational graphs (`index_links`).
 2. **Derived Secondary Indexes**: Automatically creates typed PostgreSQL partial B-Tree expression indexes for scalar fields and GIN containment indexes for arrays.
-3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors use a separate authenticated, confidential, tenant/schema/source-bound codec plus a private server `SecretRef` keyring, sealed one-page service boundary, and bounded GraphQL transport.
+3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors use a separate authenticated, confidential, tenant/schema/source-bound codec plus a private server `SecretRef` keyring, sealed one-page service boundary, and bounded GraphQL transport. Drift discovery candidates use a separate exact-scope, immutable-fence, opaque-keyset contract before any PostgreSQL reader or public transport is admitted.
 4. **Durable Rebuilds & Outbox Inbox**: Fences stale checkpoint writers with advisory locks, deduplicates mutations via `index_inbox`, and logs consistency findings (`index_consistency_findings`).
 
 ---
@@ -31,6 +31,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
 - [M6 Confidential Source Continuation Codec](./m6-source-continuation-codec.md)
 - [M6 Server-owned Source Continuation Keyring](./m6-source-continuation-server-keyring.md)
+- [M6 Bounded Stale-entity and Orphan-link Candidates](./m6-bounded-drift-candidates.md)
 - [M6 Product Locale Absence PostgreSQL Harness](./m6-product-locale-absence-postgres-harness.md)
 - [M6 GraphQL Exact-entity Diagnosis Transport](../../../apps/server/docs/index-drift-diagnosis-graphql-transport.md)
 - [M6 One-page Missing-entity Diagnosis](../../../apps/server/docs/index-drift-source-page-diagnosis.md)
