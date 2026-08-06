@@ -1,7 +1,7 @@
 # Pages / Page Builder Inline Edit Execution Plan
 
 Date: 2026-08-06  
-Status: `artifact-http-evidence-harness-source-ready / artifact-http-browser-rollout-execution-pending`
+Status: `artifact-http-evidence-harness-source-ready / session-dom-boundary-source-fixed / artifact-http-browser-rollout-execution-pending`
 Parent cursor: `docs/modules/pages-page-builder-parity-continuation-plan.md`
 
 ## Purpose
@@ -20,9 +20,19 @@ Artifact/HTTP evidence harness: source-ready.
 
 The machine contract, build snapshot capture, production image capture, HTTP capture and same-commit aggregate assembler now exist. No artifact, Docker, HTTP, browser, workflow or rollout result is claimed.
 
+Corrective security marker:
+
+```text
+inline-edit-session-dom-boundary-source-fixed
+```
+
+The Page Builder authoring root no longer derives its DOM id from the grant session and no longer emits `data-inline-session`. The deterministic hydration id now uses Fly page identity plus expected project hash. Maintainer validation and browser inspection remain pending.
+
 ## Gate A — source guards
 
 - [ ] Run the authenticated adapter, consumer, route, asset, admin launch and release-composition source guards.
+- [ ] Run `verify-page-builder-authenticated-inline-edit-adapter.mjs` and confirm it rejects session-derived DOM identity.
+- [ ] Confirm the source contains neither `data-inline-session` nor `dom_id(grant.session_id())`.
 - [ ] Run `verify-pages-inline-edit-artifact-http-evidence-harness.mjs`.
 - [ ] Run release infrastructure, supply-chain and readiness guards.
 - [ ] Record the exact source commit and command output hashes.
@@ -124,6 +134,8 @@ This status closes only artifact, production-image, HTTP and anonymous-artifact 
 - [ ] Confirm launch is hidden for published, missing, locale-less, unauthorized and standalone-admin states.
 - [ ] Confirm navigation is same-origin and uses the selected document's exact locale.
 - [ ] Confirm the bounded authoring root mounts the dedicated JS/WASM client.
+- [ ] Inspect both SSR HTML and hydrated DOM: no grant session, proof, bearer token, signing material or authenticated session identifier may appear in ids, attributes, URLs or logs.
+- [ ] Confirm the authoring root id uses document identity rather than grant/session identity.
 - [ ] Edit one eligible real-DOM text node.
 - [ ] Confirm one canonical Fly patch and one Pages document save.
 - [ ] Reload and confirm the saved document revision.
@@ -132,7 +144,6 @@ This status closes only artifact, production-image, HTTP and anonymous-artifact 
 - [ ] Confirm replayed grant/sequence fails.
 - [ ] Confirm expired grant fails.
 - [ ] Confirm provider-owned, composite, templated, interactive and runtime-owned subtrees remain read-only.
-- [ ] Confirm no grant, proof, signing material or session identifier appears in DOM, URL or browser logs.
 
 Gate G passing state:
 
@@ -172,6 +183,7 @@ Hashes, sizes, selected headers, environment variable names, immutable RepoDiges
 ```text
 source pipeline: ready
 artifact/HTTP evidence harness: source-ready
+session DOM exposure: source-fixed, validation pending
 artifact execution: pending
 HTTP execution: pending
 browser execution: pending
