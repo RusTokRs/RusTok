@@ -1,3 +1,4 @@
+mod artifact_integrity_audit;
 mod mutation;
 mod query;
 mod scenario_baseline;
@@ -15,8 +16,13 @@ pub struct PagesQuery(
 pub struct PagesMutation(
     mutation::PagesMutation,
     scenario_baseline::PageBuilderScenarioBaselineMutation,
+    artifact_integrity_audit::PageArtifactIntegrityAuditMutation,
 );
 
+pub use artifact_integrity_audit::{
+    AuditGqlPageArtifactsInput, GqlPageArtifactIntegrityAuditResult,
+    GqlPageArtifactIntegrityFinding,
+};
 pub use scenario_baseline::{
     GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioReleaseStatus,
     SaveGqlPageBuilderScenarioBaselineInput,
