@@ -15,6 +15,8 @@
     "slug_source": "forum_category_translations.slug",
     "slug_is_locale_aware": true,
     "category_uuid_exposed_in_path": false,
+    "hierarchy_embedded_in_path": false,
+    "hierarchy_move_changes_route": false,
     "id_routes_remain_internal_compatibility_only": true
   },
   "persistence": {
@@ -80,7 +82,7 @@
     "executed_by_implementation_agent": false
   },
   "remaining_scope": [
-    "category slug rename and move alias history",
+    "category slug rename alias history",
     "visibility-safe GraphQL and native category route transport",
     "Rust storefront category route mount and link cutover",
     "canonical and hreflang document policy",
@@ -91,6 +93,7 @@
   "non_claims": [
     "no test verifier formatter Cargo migration workflow HTTP browser or CI execution is claimed",
     "no category alias or tombstone history is claimed",
+    "no hierarchy-derived route or move redirect is claimed",
     "no public category route transport or host mount is claimed",
     "no SEO or hreflang integration is claimed",
     "FORUM-24 remains planned"
