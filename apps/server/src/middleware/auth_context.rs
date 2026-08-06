@@ -40,7 +40,9 @@ pub async fn resolve_optional(
                 .into_response();
         }
     };
-    let human_user_only = is_human_user_self_service_path(parts.uri.path());
+    let pages_inline_authoring = is_pages_inline_authoring_path(parts.uri.path());
+    let human_user_only =
+        is_human_user_self_service_path(parts.uri.path()) || pages_inline_authoring;
     let request_method = parts.method.clone();
     let request_path = parts.uri.path().to_string();
     let mut rbac_scope = None;
@@ -53,6 +55,32 @@ pub async fn resolve_optional(
                     "Human-user, storefront, and interactive admin endpoints do not accept service credentials",
                 )
                     .into_response();
+            }
+            if pages_inline_authoring {
+                if !current_user.principal_kind.is_direct_user() {
+                    return (
+                        StatusCode::FORBIDDEN,
+                        "Pages inline authoring requires a direct authenticated user session",
+                    )
+                        .into_response();
+                }
+                if current_user.session_id.is_nil() {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        "Pages inline authoring requires a non-empty authenticated session",
+                    )
+                        .into_response();
+                }
+                if !has_effective_permission(
+                    &current_user.permissions,
+                    &Permission::PAGES_UPDATE,
+                ) {
+                    return (
+                        StatusCode::FORBIDDEN,
+                        "pages:update is required for Pages inline authoring",
+                    )
+                        .into_response();
+                }
             }
             if current_user.actor_kind == SecurityActorKind::Service {
                 if let Some(message) = service_forum_boundary_violation(
@@ -85,7 +113,7 @@ pub async fn resolve_optional(
                 grant_type: current_user.grant_type,
             }));
         }
-        Err((status, message)) if presented_credentials => {
+        Err((status, message)) if presented_credentials || pages_inline_authoring => {
             return (status, message).into_response();
         }
         Err(_) => {}
@@ -115,6 +143,25 @@ fn is_human_user_self_service_path(path: &str) -> bool {
         || path == "/store"
         || path.starts_with("/store/")
         || path.starts_with("/api/fn/ai/")
+}
+
+fn is_pages_inline_authoring_path(path: &str) -> bool {
+    if matches!(
+        path,
+        "/api/fn/pages/inline-edit/bootstrap" | "/api/fn/pages/inline-edit/commit"
+    ) {
+        return true;
+    }
+
+    let segments = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    matches!(
+        segments.as_slice(),
+        ["modules", "pages-authoring"] | [_, "modules", "pages-authoring"]
+    )
 }
 
 fn service_forum_boundary_violation(
@@ -173,7 +220,10 @@ fn service_forum_boundary_violation(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_human_user_self_service_path, service_forum_boundary_violation};
+    use super::{
+        is_human_user_self_service_path, is_pages_inline_authoring_path,
+        service_forum_boundary_violation,
+    };
     use axum::http::{HeaderMap, Method, header::AUTHORIZATION};
     use rustok_api::Permission;
     use uuid::Uuid;
@@ -203,6 +253,26 @@ mod tests {
         assert!(!is_human_user_self_service_path("/admin/products"));
         assert!(!is_human_user_self_service_path("/api/auth/reset/request"));
         assert!(!is_human_user_self_service_path("/api/oauth/token"));
+    }
+
+    #[test]
+    fn pages_inline_authoring_paths_are_explicit_and_bounded() {
+        assert!(is_pages_inline_authoring_path(
+            "/modules/pages-authoring"
+        ));
+        assert!(is_pages_inline_authoring_path(
+            "/en/modules/pages-authoring"
+        ));
+        assert!(is_pages_inline_authoring_path(
+            "/api/fn/pages/inline-edit/bootstrap"
+        ));
+        assert!(is_pages_inline_authoring_path(
+            "/api/fn/pages/inline-edit/commit"
+        ));
+        assert!(!is_pages_inline_authoring_path("/modules/pages"));
+        assert!(!is_pages_inline_authoring_path(
+            "/en/modules/pages-authoring/extra"
+        ));
     }
 
     #[test]
