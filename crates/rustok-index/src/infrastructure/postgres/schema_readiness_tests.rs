@@ -4,13 +4,13 @@ use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 use super::{
-    IndexSchemaReadinessError, IndexSchemaReadinessFailureKind, IndexSchemaReadinessRequest,
-    PostgresIndexSchemaReadinessStore, PostgresSchemaRegistrationStore,
-    MAX_INDEX_SCHEMA_READINESS_SCHEMAS,
+    IndexSchemaReadinessError, IndexSchemaReadinessRequest, PostgresIndexSchemaReadinessStore,
+    PostgresSchemaRegistrationStore, MAX_INDEX_SCHEMA_READINESS_SCHEMAS,
 };
 use crate::{
     EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema, IndexValueType,
-    LocaleMode, ModuleName, SchemaRef, SchemaRegistry, SchemaVersion,
+    LocaleMode, ModuleName, PersistedSchemaReadinessFailure, SchemaRef, SchemaRegistry,
+    SchemaVersion,
 };
 
 const TENANT: &str = "11111111-1111-1111-1111-111111111111";
@@ -133,7 +133,7 @@ async fn readiness_reports_a_missing_exact_schema_without_partial_success() {
         IndexSchemaReadinessError::NotReady { failures } => {
             assert_eq!(failures.len(), 1);
             assert_eq!(failures[0].reference, schemas[2].reference);
-            assert_eq!(failures[0].kind, IndexSchemaReadinessFailureKind::Missing);
+            assert_eq!(failures[0].reason, PersistedSchemaReadinessFailure::Missing);
         }
         error => panic!("unexpected error: {error}"),
     }
@@ -172,11 +172,11 @@ async fn readiness_rejects_inactive_or_contract_drifted_rows() {
             assert_eq!(failures.len(), 2);
             assert!(failures.iter().any(|failure| {
                 failure.reference == schemas[0].reference
-                    && failure.kind == IndexSchemaReadinessFailureKind::Inactive
+                    && failure.reason == PersistedSchemaReadinessFailure::Inactive
             }));
             assert!(failures.iter().any(|failure| {
                 failure.reference == schemas[2].reference
-                    && failure.kind == IndexSchemaReadinessFailureKind::FingerprintMismatch
+                    && failure.reason == PersistedSchemaReadinessFailure::FingerprintMismatch
             }));
         }
         error => panic!("unexpected error: {error}"),
@@ -207,8 +207,8 @@ async fn readiness_rejects_schema_json_drift_even_with_the_expected_fingerprint(
             assert_eq!(failures.len(), 1);
             assert_eq!(failures[0].reference, schemas[0].reference);
             assert_eq!(
-                failures[0].kind,
-                IndexSchemaReadinessFailureKind::ContractMismatch
+                failures[0].reason,
+                PersistedSchemaReadinessFailure::ContractMismatch
             );
         }
         error => panic!("unexpected error: {error}"),
