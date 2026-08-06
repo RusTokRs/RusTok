@@ -1,5 +1,8 @@
+mod artifact_integrity_audit;
 #[cfg(feature = "inline-edit-assets")]
 mod inline_edit_assets;
+
+pub use artifact_integrity_audit::audit_page_artifacts;
 
 use anyhow::Context;
 use axum::{
@@ -118,7 +121,9 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
             axum::routing::post(rollback_page),
         )
         .with_state(publish_runtime);
-    let router = crate::controllers::axum_router(runtime)?.merge(publish_router);
+    let router = crate::controllers::axum_router(runtime)?
+        .merge(publish_router)
+        .merge(artifact_integrity_audit::router(runtime)?);
     #[cfg(feature = "inline-edit-assets")]
     let router = router.merge(inline_edit_assets::router());
     Ok(router)
