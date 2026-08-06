@@ -124,7 +124,7 @@ rustok-region-storefront = { path = "../../crates/rustok-region/storefront", def
 rustok-search-storefront = { path = "../../crates/rustok-search/storefront", default-features = false, optional = true }
 console_error_panic_hook = "0.1"
 wasm-bindgen = { version = "0.2", optional = true }
-web-sys = { version = "0.3", features = ["Document", "Element", "Location", "Window"] }
+web-sys = { version = "0.3", features = ["Document", "Element", "HtmlElement", "Location", "Window"] }
 
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
