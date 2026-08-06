@@ -19,7 +19,7 @@ last_reviewed: 2026-08-07
 | `REACTIONS-02` | `in_progress` | Actor state, aggregate deltas, typed semantic events and completed shared Outbox receipts now share one transaction. Bounded inspect/repair reconciliation is source-ready; retain rollback, replay, concurrency and repair evidence. |
 | `REACTIONS-03` | `in_progress` | Forum topic/reply provider, optional host materialization and executable composition profile tests are source-ready. Reactions stays outside defaults; retained execution evidence remains pending. |
 | `REACTIONS-04` | `in_progress` | Blog `post` producer and Blog+Reactions composition profile are source-ready over Blog-owned publication, channel visibility and owner version. The neutral-contract review now covers Forum and Blog producers; retain Blog provider/host runtime evidence before freezing shared transport or presentation contracts. |
-| `REACTIONS-05` | `planned` | Bounded read/write transports and module-owned UI. |
+| `REACTIONS-05` | `in_progress` | Manifest-composed bounded GraphQL read/write transport is source-ready over the neutral owner ports. Retain schema/runtime execution evidence and add module-owned UI; no HTTP transport or presentation contract is frozen by this slice. |
 | `REACTIONS-06` | `planned` | Runtime evidence, FBA contracts, import/reconciliation and release profiles. |
 
 ## Ownership
@@ -174,6 +174,39 @@ Neither `mod-forum` nor `mod-blog` implies `mod-reactions`, server defaults do
 not select it and `modules.toml` keeps Reactions outside `default_enabled` and
 outside default profiles.
 
+## Bounded GraphQL transport boundary
+
+`REACTIONS-05` starts with one manifest-composed GraphQL transport over the
+existing neutral owner ports. The transport is deliberately narrow:
+
+- `reactionSnapshot` accepts only source, kind, subject UUID and positive subject
+  revision; tenant scope comes from `TenantContext`, never caller input;
+- anonymous reads use a system transport actor with no actor-state request, so
+  producer authorization resolves public visibility only;
+- authenticated human reads derive actor state from the trusted `AuthContext`;
+  service principals do not impersonate a user through GraphQL read input;
+- `applyReaction` requires a human-user principal and derives the actor UUID from
+  `AuthContext`; there is no caller-supplied actor identity;
+- the mutation command UUID is also the `PortContext` idempotency key, preserving
+  the owner receipt invariant without a transport-local receipt store;
+- producer source/kind/revision checks, catalog authorization, actor state,
+  aggregate mutation and event/receipt atomicity remain inside
+  `ReactionsService` and producer providers rather than GraphQL resolvers;
+- subject revisions, actor-state revisions and aggregate counts are rendered as
+  decimal strings so GraphQL integer width cannot truncate owner `u64` values;
+- the mutation returns only the stable command UUID and `changed` flag; clients
+  may issue the read query for canonical post-write state instead of creating a
+  second transport-owned representation.
+
+The manifest declares query, mutation and a runtime-data factory. The factory
+fails closed unless the host has already materialized
+`Arc<ReactionSubjectRegistry>`, then constructs `ReactionsService` from the host
+DB plus that registry. `rustok-server` enables the crate `graphql` feature only
+when `mod-reactions` is selected. This slice adds no producer-table reads, no
+HTTP-specific policy and no UI. The GraphQL contract remains source-ready rather
+than frozen until maintainer schema/runtime evidence is retained alongside the
+Forum+Blog provider evidence.
+
 ## Executable composition evidence
 
 `apps/server/tests/reactions_composition_profiles.rs` provides executable
@@ -191,8 +224,8 @@ the Blog+Reactions host profile and Blog authorization behavior remains part of
 
 The contract remains `source_ready_maintainer_execution_pending`: retained
 execution evidence remains pending until a maintainer runs and stores the
-profiles. Source presence alone does not promote `REACTIONS-03` or
-`REACTIONS-04` to done.
+profiles. Source presence alone does not promote `REACTIONS-03`,
+`REACTIONS-04` or `REACTIONS-05` to done.
 
 ## Immediate next action
 
@@ -200,9 +233,11 @@ Regenerate `Cargo.lock` and the `rustok-events` digest artifact, then retain
 SQLite/PostgreSQL evidence covering changed/no-op/replay event cardinality,
 rollback on event failure, concurrent actor updates, clean/blocked/drift
 reconciliation and receipt replay. Retain Blog provider authorization and
-Blog+Reactions host composition evidence. After those gates, review the two
-producer results and begin bounded transports/UI without widening producer
-storage ownership.
+Blog+Reactions host composition evidence. Retain manifest-composed GraphQL schema
+and runtime evidence for anonymous/authenticated reads, human-user writes,
+tenant mismatch, idempotent replay and stale/denied subjects. Then add the
+module-owned Reactions UI over the neutral transport without moving producer
+storage or presentation ownership into Forum/Blog.
 
 Before release, execute SQLite and PostgreSQL migrations, retain replay,
 concurrency and rollback evidence, and retain bounded repair evidence for catalog
@@ -214,13 +249,16 @@ and aggregate drift.
 cargo test -p rustok-events reactions
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
+cargo test -p rustok-reactions --features graphql graphql
 cargo test -p rustok-forum reaction_subject
 cargo test -p rustok-blog reaction_subject
 cargo check -p rustok-reactions-api --all-targets
 cargo check -p rustok-reactions --all-targets
+cargo check -p rustok-reactions --features graphql --all-targets
 cargo check -p rustok-forum --all-targets
 cargo check -p rustok-blog --all-targets
 cargo check -p rustok-distribution --features "mod-forum mod-reactions"
+cargo check -p rustok-server --no-default-features --features mod-reactions
 cargo test -p rustok-server --no-default-features --features mod-forum --test reactions_composition_profiles forum_without_reactions_keeps_forum_host_composition_available
 cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles reactions_without_forum_materializes_an_empty_subject_registry
 cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles selected_reactions_feature_fails_when_owner_module_is_missing

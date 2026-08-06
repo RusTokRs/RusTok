@@ -116,8 +116,10 @@ authorization plus a bounded single-`like` v1 catalog. Blog now supplies the
 second real producer through the same neutral SPI using Blog-owned publication,
 channel visibility and owner version, with a Blog+Reactions composition profile
 in source. Optional owner selection, host materialization and executable source
-evidence are source-ready. Maintainer lockfile/event-digest generation and
-retained execution evidence remains pending. No reaction transport or UI exists.
+evidence are source-ready. A bounded manifest-composed GraphQL read/write
+transport over the neutral Reactions ports is also source-ready. Maintainer
+lockfile/event-digest generation and retained owner/provider/schema/runtime
+evidence remain pending; module-owned reaction UI does not yet exist.
 
 ## Program ledger
 
@@ -141,7 +143,7 @@ retained execution evidence remains pending. No reaction transport or UI exists.
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`. Finish member-card composition, privacy/block behavior, Forum-stat enrichment and no-N+1 evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
-| `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization and composition-test source are ready. Regenerate `Cargo.lock` and event digests, retain owner/event/repair/Forum+Blog composition evidence, then add transports/UI and runtime proof; Forum votes remain separate. |
+| `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source and bounded GraphQL read/write transport are ready. Regenerate `Cargo.lock` and event digests, retain owner/event/repair/Forum+Blog/GraphQL runtime evidence, then add module-owned UI and final runtime proof; Forum votes remain separate. |
 | `FORUM-19` | `planned` | Integrate `rustok-moderation-api` subject/effect adapters and Forum-local restrictions. Moderation owns cases and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
@@ -234,6 +236,19 @@ valid actor selections under the immutable current catalog. Missing/corrupt
 catalog or actor-state corruption blocks repair; the repair never mutates Forum
 content, visibility, lifecycle, votes or producer-private state.
 
+The first Reactions transport slice is manifest-composed GraphQL over the
+existing neutral read/write ports. Tenant comes only from `TenantContext`;
+subject source/kind/UUID/revision remain caller input, while actor identity is
+never accepted from the caller. Anonymous reads request public state only,
+authenticated human reads may include their actor state, and writes require a
+human-user principal. The mutation command UUID is also the owner idempotency
+key. Producer visibility, lifecycle, revision and catalog decisions remain in
+Forum/Blog providers, and GraphQL does not read producer-private storage.
+Positive revisions and aggregate counts are exposed as decimal strings to avoid
+GraphQL integer-width truncation. This is source-ready transport foundation, not
+a frozen presentation contract; retained schema/runtime evidence and
+module-owned Reactions UI remain.
+
 Reputation and achievements remain separate shared capabilities consuming
 semantic facts. Forum trust remains Forum-owned because it controls Forum
 posting policy.
@@ -261,8 +276,9 @@ Hosts register/mount packages and do not absorb policy.
 4. Optional distribution/server selection and host materialization after Forum facts: source-ready, maintainer verification pending.
 5. Executable composition profiles, sealed semantic reaction events and bounded aggregate reconciliation: source-ready; retain execution, rollback, replay and repair evidence.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
-7. Introduce Reputation/Achievements only after at least two producers agree.
-8. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
+7. Bounded Reactions GraphQL transport: source-ready over neutral owner ports; retain schema/runtime execution evidence, then add module-owned UI without moving producer policy into transport.
+8. Introduce Reputation/Achievements only after at least two producers agree.
+9. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
 
 ### Track 2 — close existing Forum work
 
@@ -297,6 +313,9 @@ Hosts register/mount packages and do not absorb policy.
   a second producer.
 - Selecting `mod-reactions` without registering `ReactionsModule` is a startup
   configuration error, not an implicit empty owner.
+- Reactions GraphQL derives tenant and actor scope from trusted request context;
+  it does not accept caller-supplied tenant/actor identity or duplicate producer
+  authorization in transport code.
 - Reactions semantic event envelope identity is the admitted owner-operation
   UUID; it is not a Forum route/revision/vote identity.
 - Reactions bounded reconciliation repairs aggregate projection only and cannot
@@ -316,9 +335,12 @@ node scripts/verify/verify-reactions-events-reconciliation.mjs
 cargo test -p rustok-events reactions
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
+cargo test -p rustok-reactions --features graphql graphql
 cargo test -p rustok-forum reaction_subject
 cargo test -p rustok-blog reaction_subject
+cargo check -p rustok-reactions --features graphql --all-targets
 cargo check -p rustok-distribution --features "mod-forum mod-reactions"
+cargo check -p rustok-server --no-default-features --features mod-reactions
 cargo check -p rustok-server --no-default-features --features "mod-forum mod-reactions"
 cargo test -p rustok-server --no-default-features --features "mod-blog mod-reactions" --test reactions_composition_profiles blog_with_reactions_materializes_post_provider
 cargo run -p rustok-events --example event_contract_digests -- --write
@@ -354,5 +376,7 @@ Regenerate the event-contract digests and `Cargo.lock`, then retain SQLite and
 PostgreSQL evidence for changed/no-op/replayed reaction event cardinality,
 rollback on event failure, concurrent actor writes, clean/blocked/drift bounded
 aggregate reconciliation and repair receipt replay. Retain Blog provider and
-Blog+Reactions composition evidence, then begin bounded reaction transport/UI
-work without moving producer-owned visibility or lifecycle into Reactions.
+Blog+Reactions composition evidence plus manifest-composed GraphQL schema/runtime
+evidence for anonymous/authenticated reads, human-user writes, tenant mismatch,
+idempotent replay and stale/denied subjects. Then add module-owned Reactions UI
+without moving producer-owned visibility or lifecycle into Reactions.

@@ -13,6 +13,11 @@ outbox = { version_req = ">=0.1.0" }
 [crate]
 entry_type = "ReactionsModule"
 
+[provides.graphql]
+query = "graphql::ReactionsQuery"
+mutation = "graphql::ReactionsMutation"
+runtime_data_factory = "graphql::attach_schema_data"
+
 [marketplace]
 category = "content"
 publisher = "rustok"

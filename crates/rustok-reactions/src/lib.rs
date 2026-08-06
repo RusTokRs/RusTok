@@ -1,4 +1,6 @@
 pub mod entities;
+#[cfg(feature = "graphql")]
+pub mod graphql;
 pub mod migrations;
 mod reconciliation;
 mod service;
