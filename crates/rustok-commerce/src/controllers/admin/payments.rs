@@ -588,7 +588,7 @@ fn adopt_payment_error_identity(context: &mut AdminPaymentErrorContext, error: &
 
 fn admin_payment_http_error<E>(
     context: &AdminPaymentErrorContext,
-    error: &E,
+    _error: &E,
     source_owner: &'static str,
     policy: AdminPaymentHttpPolicy,
 ) -> HttpError
