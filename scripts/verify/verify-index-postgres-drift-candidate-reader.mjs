@@ -102,7 +102,7 @@ for (const forbiddenSql of ['SELECT *', ' OFFSET ', 'LIMIT 1000']) {
 
 const begin = production.indexOf('.begin_with_config(');
 const read = production.indexOf('self.read_in_transaction(&transaction, &request)', begin);
-const commit = production.indexOf('transaction\n                    .commit()', read);
+const commit = production.indexOf('.commit()', read);
 if (begin < 0 || read <= begin || commit <= read) {
   throw new Error('candidate page must begin read-only transaction, read, then commit');
 }
