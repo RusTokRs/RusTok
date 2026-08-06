@@ -181,7 +181,7 @@ forbid(clientBuilder, 'path.join(repoRoot, "target", "wasm32-unknown-unknown"', 
 for (const marker of [
   "set -euo pipefail",
   "wasm-bindgen-cli",
-  '--version "$wasm_bindgen_version"',
+  '--version "=$wasm_bindgen_version"',
   "--locked",
   "rustup target add wasm32-unknown-unknown",
   'RUSTOK_WASM_BINDGEN_BIN="$wasm_bindgen"',
