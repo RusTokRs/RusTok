@@ -40,6 +40,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Concrete Missing-entity Repair](./m6-missing-entity-repair-composition.md)
 - [M6 Concrete Orphan-link Repair](./m6-orphan-link-repair-composition.md)
 - [M6 Prepared Repair Recovery](./m6-prepared-repair-recovery.md)
+- [M6 Concrete Repair PostgreSQL Harness](./m6-repair-execution-postgres-harness.md)
 - [M6 Product Locale Absence PostgreSQL Harness](./m6-product-locale-absence-postgres-harness.md)
 - [M6 GraphQL Exact-entity Diagnosis Transport](../../../apps/server/docs/index-drift-diagnosis-graphql-transport.md)
 - [M6 One-page Missing-entity Diagnosis](../../../apps/server/docs/index-drift-source-page-diagnosis.md)
