@@ -31,6 +31,7 @@ const scripts = [
   'verify-index-drift-source-page-diagnosis.mjs',
   'verify-index-drift-source-page-graphql-transport.mjs',
   'verify-index-drift-candidate-contract.mjs',
+  'verify-index-postgres-drift-candidate-reader.mjs',
   'verify-index-reconciliation-retry-store.mjs',
   'verify-index-reconciliation-runner-retry.mjs',
   'verify-index-reconciliation-host-scheduler.mjs',
