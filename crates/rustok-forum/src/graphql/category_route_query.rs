@@ -37,7 +37,7 @@ impl ForumCategoryRouteQuery {
         else {
             return Ok(None);
         };
-        map_public_category_route_resolution(resolution).map(Some)
+        Ok(Some(map_public_category_route_resolution(resolution)))
     }
 }
 
@@ -123,7 +123,7 @@ async fn resolve_authorized_public_category_route(
         )
         .map_err(|error| internal_error(error.to_string()))?;
         service
-            .get_authenticated_storefront_visible_with_audience_context(
+            .get_authenticated_storefront_list_visible_with_audience_context(
                 tenant_id,
                 security,
                 audience_context,
@@ -151,7 +151,7 @@ async fn resolve_authorized_public_category_route(
 
 fn map_public_category_route_resolution(
     resolution: ForumCategoryRouteResolution,
-) -> Result<GqlForumStorefrontCategoryRouteResolution> {
+) -> GqlForumStorefrontCategoryRouteResolution {
     let disposition = match resolution.disposition {
         ForumCategoryRouteDisposition::Canonical => {
             GqlForumStorefrontCategoryRouteDisposition::Canonical
@@ -161,12 +161,12 @@ fn map_public_category_route_resolution(
         }
     };
 
-    Ok(GqlForumStorefrontCategoryRouteResolution {
+    GqlForumStorefrontCategoryRouteResolution {
         requested_locale: resolution.requested_locale,
         requested_slug: resolution.requested_slug,
         disposition,
         canonical: resolution.canonical.into(),
-    })
+    }
 }
 
 async fn forum_channel_enabled(ctx: &Context<'_>) -> Result<bool> {
@@ -222,8 +222,7 @@ mod tests {
             disposition: ForumCategoryRouteDisposition::Redirect,
             canonical: descriptor(),
             alias_id: Some(Uuid::new_v4()),
-        })
-        .expect("route mapping");
+        });
 
         assert_eq!(
             mapped.disposition,
@@ -240,8 +239,7 @@ mod tests {
             disposition: ForumCategoryRouteDisposition::Canonical,
             canonical: descriptor(),
             alias_id: None,
-        })
-        .expect("route mapping");
+        });
 
         assert_eq!(
             mapped.disposition,
