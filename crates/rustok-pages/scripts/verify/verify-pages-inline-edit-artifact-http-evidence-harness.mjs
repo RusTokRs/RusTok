@@ -35,9 +35,7 @@ const forbid = (source, marker, label) => {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 };
 const exact = (actual, expected, label) => {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    failures.push(`${label} drifted`);
-  }
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) failures.push(`${label} drifted`);
 };
 
 for (const [label, relativePath] of Object.entries(files)) {
@@ -63,14 +61,18 @@ if (
   contract.packet !== "pages-inline-edit-artifact-http-execution" ||
   contract.status !== "source_ready_maintainer_execution_pending"
 ) failures.push("execution contract identity drifted");
-exact(contract.tools, {
-  build_snapshot: "scripts/evidence/capture-pages-inline-edit-build-snapshot.mjs",
-  docker_capture: "scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs",
-  http_capture: "scripts/evidence/capture-pages-inline-edit-http-evidence.mjs",
-  assembler: "scripts/evidence/assemble-pages-inline-edit-artifact-http-evidence.mjs",
-  source_verifier:
-    "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs",
-}, "execution contract tools");
+exact(
+  contract.tools,
+  {
+    build_snapshot: "scripts/evidence/capture-pages-inline-edit-build-snapshot.mjs",
+    docker_capture: "scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs",
+    http_capture: "scripts/evidence/capture-pages-inline-edit-http-evidence.mjs",
+    assembler: "scripts/evidence/assemble-pages-inline-edit-artifact-http-evidence.mjs",
+    source_verifier:
+      "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs",
+  },
+  "execution contract tools",
+);
 if (
   contract.output?.path !== "target/pages-inline-edit-artifact-http-evidence.json" ||
   contract.output?.format !== "pages_inline_edit_artifact_http_execution_v1" ||
@@ -80,14 +82,18 @@ if (
   contract.output?.automatic_canonical_source_mutation !== false
 ) failures.push("execution contract output boundary drifted");
 exact(contract.build_snapshots?.profiles, ["build-a", "build-b"], "build profiles");
-exact(contract.build_snapshots?.required_artifacts, [
-  "embedded_admin_index",
-  "embedded_admin_css",
-  "authoring_bootstrap",
-  "authoring_module",
-  "authoring_wasm",
-  "server_binary",
-], "critical artifact ids");
+exact(
+  contract.build_snapshots?.required_artifacts,
+  [
+    "embedded_admin_index",
+    "embedded_admin_css",
+    "authoring_bootstrap",
+    "authoring_module",
+    "authoring_wasm",
+    "server_binary",
+  ],
+  "critical artifact ids",
+);
 if (
   contract.build_snapshots?.format !== "pages_inline_edit_build_snapshot_v1" ||
   contract.build_snapshots?.full_admin_dist_manifest_required !== true ||
@@ -104,8 +110,15 @@ if (
   contract.docker_capture?.revision_label_must_match_source_commit !== true ||
   contract.docker_capture?.immutable_repo_digest_required !== true
 ) failures.push("Docker evidence boundary drifted");
+if (contract.http_capture?.deployment_image_digest_required !== true) {
+  failures.push("HTTP deployment image digest must be required");
+}
 exact(
-  contract.http_capture?.asset_paths?.map(({ id, path, content_type }) => [id, path, content_type]),
+  contract.http_capture?.asset_paths?.map(({ id, path: route, content_type }) => [
+    id,
+    route,
+    content_type,
+  ]),
   [
     ["authoring_bootstrap", "/assets/pages-inline-edit-bootstrap.js", "text/javascript; charset=utf-8"],
     ["authoring_module", "/assets/pages-inline-edit/rustok_storefront.js", "text/javascript; charset=utf-8"],
@@ -160,6 +173,7 @@ for (const value of [
   "raw_denial_body",
   "raw_command_log",
   "docker_inspect_document",
+  "requested_image_reference",
 ]) {
   if (!contract.privacy_boundary?.forbidden_persisted_values?.includes(value)) {
     failures.push(`privacy boundary is missing ${value}`);
@@ -189,7 +203,9 @@ for (const key of [
   "production_image_digest_capture_added",
   "production_image_platform_user_entrypoint_checked",
   "oci_revision_is_bound_to_source_commit",
+  "raw_requested_image_reference_is_not_persisted",
   "raw_docker_inspect_document_is_not_persisted",
+  "http_target_image_digest_is_bound_to_docker_capture",
   "three_authoring_assets_are_requested",
   "strong_body_bound_etag_is_checked",
   "exact_if_none_match_304_is_checked",
@@ -248,26 +264,35 @@ const requiredMarkers = {
     'execFileSync("docker", ["image", "inspect", image]',
     "RepoDigests",
     'labels["org.opencontainers.image.revision"]',
+    "requested_image: `sha256:${sha256(options.image)}`",
+    "requested_image_value_persisted: false",
     "docker_inspect_document_persisted: false",
     "renameSync(temporary, absolute)",
   ],
   httpCapture: [
+    "--deployment-image-digest REPO@sha256:DIGEST",
+    "requireDeploymentImageDigest",
+    "deployment_image_digest: deploymentImageDigest",
     "AbortSignal.timeout(requestTimeoutMs)",
     '"if-none-match": etag',
     '"if-none-match": `W/${etag}`',
     "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_COMMON_HEADERS_JSON",
+    "duplicate case-insensitive header",
+    'data-pages-page-id=\"${pageId}\"',
+    'data-pages-locale=\"${locale}\"',
     "credential_environment_names",
     "credential_values_persisted: false",
     "raw_response_bodies_persisted: false",
-    "direct_user HTML must bind the requested page id and exact locale",
   ],
   assembler: [
     'validateBuild(inputs.build_a, "build-a", head)',
     'validateBuild(inputs.build_b, "build-b", head)',
     "compareBuilds(buildA, buildB)",
     "HTTP body does not match the built artifact",
+    "HTTP target deployment image digest is not present in Docker evidence",
     "validateAnonymous(inputs.anonymous, head)",
     "browser_edit_save_replay_expiry_executed: false",
+    "requested_image_reference_persisted: false",
     "canonical_source_mutated: false",
   ],
   anonymousInspector: [
@@ -293,6 +318,7 @@ const requiredMarkers = {
   packet: [
     "source-ready / maintainer-execution-pending / browser-rollout-pending",
     "artifact_http_execution_passed_browser_rollout_pending",
+    "deployment image digest binding",
     "anonymous          → 401",
     "direct_user        → 200",
     "permission_denied  → 403",
@@ -302,6 +328,7 @@ const requiredMarkers = {
     "artifact-http-evidence-harness-source-ready",
     "inline-edit-artifact-http-evidence-harness-source-ready",
     "artifact/HTTP evidence harness: source-ready",
+    "Supply the immutable deployment RepoDigest recorded in Gate C",
     "artifact_http_execution_passed_browser_rollout_pending",
     "Browser edit/save/replay/expiry and tenant rollout remain pending",
   ],
@@ -324,8 +351,16 @@ for (const sourceName of ["buildCapture", "dockerCapture", "httpCapture", "assem
   forbid(sources[sourceName], "shell: true", sourceName);
   forbid(sources[sourceName], "|| true", sourceName);
 }
-forbid(sources.assembler, "docs/modules/pages-page-builder-parity-continuation-plan.md", "assembler canonical mutation");
-forbid(sources.assembler, "crates/rustok-pages/docs/implementation-plan.md", "assembler canonical mutation");
+forbid(
+  sources.assembler,
+  "docs/modules/pages-page-builder-parity-continuation-plan.md",
+  "assembler canonical mutation",
+);
+forbid(
+  sources.assembler,
+  "crates/rustok-pages/docs/implementation-plan.md",
+  "assembler canonical mutation",
+);
 
 if (failures.length > 0) {
   console.error("[verify-pages-inline-edit-artifact-http-evidence-harness] FAIL");
