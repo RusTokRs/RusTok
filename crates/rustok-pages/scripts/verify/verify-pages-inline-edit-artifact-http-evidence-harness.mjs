@@ -4,13 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const failures = [];
 const files = {
   contract:
@@ -27,70 +21,56 @@ const files = {
   auth: "apps/server/src/middleware/auth_context.rs",
   packet:
     "docs/modules/pages-page-builder-inline-edit-artifact-http-evidence-harness-packet-2026-08-06.md",
-  releasePacket:
-    "docs/modules/pages-page-builder-inline-edit-release-composition-packet-2026-08-06.md",
+  executionPlan: "docs/modules/pages-page-builder-inline-edit-execution-plan.md",
   canonicalPlan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   localPlan: "crates/rustok-pages/docs/implementation-plan.md",
 };
 
-function absolute(relativePath) {
-  return path.join(repoRoot, relativePath);
-}
-
-function read(relativePath) {
-  return fs.readFileSync(absolute(relativePath), "utf8");
-}
-
-function need(source, marker, label) {
+const absolute = (relativePath) => path.join(repoRoot, relativePath);
+const read = (relativePath) => fs.readFileSync(absolute(relativePath), "utf8");
+const need = (source, marker, label) => {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
-}
-
-function forbid(source, marker, label) {
+};
+const forbid = (source, marker, label) => {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
-}
+};
+const exact = (actual, expected, label) => {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    failures.push(`${label} drifted`);
+  }
+};
 
 for (const [label, relativePath] of Object.entries(files)) {
   if (!fs.existsSync(absolute(relativePath))) failures.push(`${label}: missing ${relativePath}`);
 }
 if (failures.length > 0) {
   console.error("[verify-pages-inline-edit-artifact-http-evidence-harness] FAIL");
-  for (const failure of failures) console.error(`- ${failure}`);
+  failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(1);
 }
 
 const contract = JSON.parse(read(files.contract));
 const evidence = JSON.parse(read(files.evidence));
-const buildCapture = read(files.buildCapture);
-const dockerCapture = read(files.dockerCapture);
-const httpCapture = read(files.httpCapture);
-const assembler = read(files.assembler);
-const anonymousInspector = read(files.anonymousInspector);
-const assetRoute = read(files.assetRoute);
-const auth = read(files.auth);
-const packet = read(files.packet);
-const releasePacket = read(files.releasePacket);
-const canonicalPlan = read(files.canonicalPlan);
-const localPlan = read(files.localPlan);
+const sources = Object.fromEntries(
+  Object.entries(files)
+    .filter(([key]) => !["contract", "evidence"].includes(key))
+    .map(([key, relativePath]) => [key, read(relativePath)]),
+);
 
 if (
   contract.schema_version !== 1 ||
   contract.module !== "pages" ||
   contract.packet !== "pages-inline-edit-artifact-http-execution" ||
   contract.status !== "source_ready_maintainer_execution_pending"
-) {
-  failures.push("execution contract identity drifted");
-}
-const expectedTools = {
+) failures.push("execution contract identity drifted");
+exact(contract.tools, {
   build_snapshot: "scripts/evidence/capture-pages-inline-edit-build-snapshot.mjs",
   docker_capture: "scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs",
   http_capture: "scripts/evidence/capture-pages-inline-edit-http-evidence.mjs",
   assembler: "scripts/evidence/assemble-pages-inline-edit-artifact-http-evidence.mjs",
   source_verifier:
     "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs",
-};
-if (JSON.stringify(contract.tools) !== JSON.stringify(expectedTools)) {
-  failures.push("execution contract tool ownership drifted");
-}
+}, "execution contract tools");
 if (
   contract.output?.path !== "target/pages-inline-edit-artifact-http-evidence.json" ||
   contract.output?.format !== "pages_inline_edit_artifact_http_execution_v1" ||
@@ -98,29 +78,24 @@ if (
   contract.output?.same_commit_inputs_required !== true ||
   contract.output?.atomic_replace !== true ||
   contract.output?.automatic_canonical_source_mutation !== false
-) {
-  failures.push("execution contract output boundary drifted");
-}
-if (
-  JSON.stringify(contract.build_snapshots?.profiles) !== JSON.stringify(["build-a", "build-b"]) ||
-  contract.build_snapshots?.format !== "pages_inline_edit_build_snapshot_v1" ||
-  contract.build_snapshots?.full_admin_dist_manifest_required !== true ||
-  contract.build_snapshots?.critical_hashes_must_match_between_builds !== true ||
-  contract.build_snapshots?.admin_dist_manifest_must_match_between_builds !== true
-) {
-  failures.push("execution contract build snapshot boundary drifted");
-}
-const requiredArtifacts = [
+) failures.push("execution contract output boundary drifted");
+exact(contract.build_snapshots?.profiles, ["build-a", "build-b"], "build profiles");
+exact(contract.build_snapshots?.required_artifacts, [
   "embedded_admin_index",
   "embedded_admin_css",
   "authoring_bootstrap",
   "authoring_module",
   "authoring_wasm",
   "server_binary",
-];
-if (JSON.stringify(contract.build_snapshots?.required_artifacts) !== JSON.stringify(requiredArtifacts)) {
-  failures.push("execution contract critical artifacts drifted");
-}
+], "critical artifact ids");
+if (
+  contract.build_snapshots?.format !== "pages_inline_edit_build_snapshot_v1" ||
+  contract.build_snapshots?.full_admin_dist_manifest_required !== true ||
+  contract.build_snapshots?.source_hashes_required !== true ||
+  contract.build_snapshots?.toolchain_versions_required !== true ||
+  contract.build_snapshots?.critical_hashes_must_match_between_builds !== true ||
+  contract.build_snapshots?.admin_dist_manifest_must_match_between_builds !== true
+) failures.push("build snapshot boundary drifted");
 if (
   contract.docker_capture?.format !== "pages_inline_edit_docker_execution_v1" ||
   contract.docker_capture?.required_platform !== "linux/amd64" ||
@@ -128,65 +103,42 @@ if (
   contract.docker_capture?.required_entrypoint !== "/app/rustok-server" ||
   contract.docker_capture?.revision_label_must_match_source_commit !== true ||
   contract.docker_capture?.immutable_repo_digest_required !== true
-) {
-  failures.push("execution contract Docker boundary drifted");
-}
-const expectedAssets = [
+) failures.push("Docker evidence boundary drifted");
+exact(
+  contract.http_capture?.asset_paths?.map(({ id, path, content_type }) => [id, path, content_type]),
   [
-    "authoring_bootstrap",
-    "/assets/pages-inline-edit-bootstrap.js",
-    "text/javascript; charset=utf-8",
+    ["authoring_bootstrap", "/assets/pages-inline-edit-bootstrap.js", "text/javascript; charset=utf-8"],
+    ["authoring_module", "/assets/pages-inline-edit/rustok_storefront.js", "text/javascript; charset=utf-8"],
+    ["authoring_wasm", "/assets/pages-inline-edit/rustok_storefront_bg.wasm", "application/wasm"],
   ],
+  "HTTP asset set",
+);
+exact(
+  contract.http_capture?.authoring_scenarios?.map(({ id, expected_status }) => [id, expected_status]),
   [
-    "authoring_module",
-    "/assets/pages-inline-edit/rustok_storefront.js",
-    "text/javascript; charset=utf-8",
+    ["anonymous", 401],
+    ["direct_user", 200],
+    ["service", 403],
+    ["delegated", 403],
+    ["missing_session", 401],
+    ["permission_denied", 403],
   ],
-  [
-    "authoring_wasm",
-    "/assets/pages-inline-edit/rustok_storefront_bg.wasm",
-    "application/wasm",
-  ],
-];
-if (
-  JSON.stringify(
-    contract.http_capture?.asset_paths?.map(({ id, path, content_type }) => [
-      id,
-      path,
-      content_type,
-    ]),
-  ) !== JSON.stringify(expectedAssets)
-) {
-  failures.push("execution contract HTTP asset set drifted");
+  "authoring scenarios",
+);
+for (const [key, expected] of Object.entries({
+  asset_cache_control: "public, max-age=0, must-revalidate",
+  asset_cross_origin_resource_policy: "same-origin",
+  authoring_route_cache_control: "private, no-store",
+  authoring_route_robots: "noindex, nofollow, noarchive",
+})) {
+  if (contract.http_capture?.[key] !== expected) failures.push(`http_capture.${key} drifted`);
 }
-if (
-  contract.http_capture?.asset_cache_control !== "public, max-age=0, must-revalidate" ||
-  contract.http_capture?.asset_cross_origin_resource_policy !== "same-origin" ||
-  contract.http_capture?.strong_etag_required !== true ||
-  contract.http_capture?.exact_if_none_match_304_required !== true ||
-  contract.http_capture?.weak_if_none_match_304_required !== true ||
-  contract.http_capture?.authoring_route_cache_control !== "private, no-store" ||
-  contract.http_capture?.authoring_route_robots !== "noindex, nofollow, noarchive"
-) {
-  failures.push("execution contract HTTP policy drifted");
-}
-const expectedScenarios = [
-  ["anonymous", 401],
-  ["direct_user", 200],
-  ["service", 403],
-  ["delegated", 403],
-  ["missing_session", 401],
-  ["permission_denied", 403],
-];
-if (
-  JSON.stringify(
-    contract.http_capture?.authoring_scenarios?.map(({ id, expected_status }) => [
-      id,
-      expected_status,
-    ]),
-  ) !== JSON.stringify(expectedScenarios)
-) {
-  failures.push("execution contract authoring scenarios drifted");
+for (const key of [
+  "strong_etag_required",
+  "exact_if_none_match_304_required",
+  "weak_if_none_match_304_required",
+]) {
+  if (contract.http_capture?.[key] !== true) failures.push(`http_capture.${key} must be true`);
 }
 if (
   contract.anonymous_artifact_input?.format !==
@@ -194,18 +146,8 @@ if (
   contract.anonymous_artifact_input?.status !== "passed" ||
   contract.anonymous_artifact_input?.source_commit_required !== true ||
   contract.anonymous_artifact_input?.forbidden_markers_found_must_be_empty !== true
-) {
-  failures.push("execution contract anonymous artifact boundary drifted");
-}
-for (const key of [
-  "persist_environment_names_only",
-  "persist_response_and_command_hashes_only",
-]) {
-  if (contract.privacy_boundary?.[key] !== true) {
-    failures.push(`execution contract privacy_boundary.${key} must be true`);
-  }
-}
-for (const forbiddenValue of [
+) failures.push("anonymous artifact input boundary drifted");
+for (const value of [
   "authorization_header",
   "cookie_header",
   "bearer_token",
@@ -219,8 +161,8 @@ for (const forbiddenValue of [
   "raw_command_log",
   "docker_inspect_document",
 ]) {
-  if (!contract.privacy_boundary?.forbidden_persisted_values?.includes(forbiddenValue)) {
-    failures.push(`execution contract privacy list is missing ${forbiddenValue}`);
+  if (!contract.privacy_boundary?.forbidden_persisted_values?.includes(value)) {
+    failures.push(`privacy boundary is missing ${value}`);
   }
 }
 
@@ -271,9 +213,7 @@ for (const key of [
   "browser_edit_save_replay_expiry_remains_separate",
   "tenant_rollout_remains_separate",
 ]) {
-  if (evidence.source_contract?.[key] !== true) {
-    failures.push(`source evidence source_contract.${key} must be true`);
-  }
+  if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
 }
 for (const key of [
   "tests_run",
@@ -291,159 +231,107 @@ for (const key of [
   "ffa_promoted",
   "fba_promoted",
 ]) {
-  if (evidence.source_contract?.[key] !== false) {
-    failures.push(`source evidence source_contract.${key} must be false`);
-  }
+  if (evidence.source_contract?.[key] !== false) failures.push(`source_contract.${key} must be false`);
 }
 
-for (const marker of [
-  "--profile build-a|build-b",
-  "--server-binary FILE",
-  "--trunk FILE",
-  "--wasm-bindgen FILE",
-  "--command-log FILE",
-  'execFileSync("git", ["rev-parse", "HEAD"]',
-  "sourceHashes()",
-  "directoryManifest(options.adminDist)",
-  "raw_command_log_persisted: false",
-  "credentials_persisted: false",
-  "grants_or_proofs_persisted: false",
-  "renameSync(temporary, absolute)",
-]) {
-  need(buildCapture, marker, "build snapshot capture");
-}
-for (const marker of [
-  'execFileSync("docker", ["image", "inspect", image]',
-  "RepoDigests",
-  "required_platform",
-  "required_user",
-  "required_entrypoint",
-  'labels["org.opencontainers.image.revision"]',
-  "raw_document_persisted: false",
-  "docker_inspect_document_persisted: false",
-  "renameSync(temporary, absolute)",
-]) {
-  need(dockerCapture, marker, "Docker evidence capture");
-}
-for (const marker of [
-  "AbortSignal.timeout(requestTimeoutMs)",
-  '"if-none-match": etag',
-  '"if-none-match": `W/${etag}`',
-  "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_COMMON_HEADERS_JSON",
-  'headers.authorization = authorization',
-  'headers.cookie = cookie',
-  "credential_environment_names",
-  "credential_values_persisted: false",
-  "raw_response_bodies_persisted: false",
-  "grants_or_proofs_persisted: false",
-  "direct_user HTML must bind the requested page id and exact locale",
-  "renameSync(temporary, absolute)",
-]) {
-  need(httpCapture, marker, "HTTP evidence capture");
-}
-for (const marker of [
-  'validateBuild(inputs.build_a, "build-a", head)',
-  'validateBuild(inputs.build_b, "build-b", head)',
-  "compareBuilds(buildA, buildB)",
-  "build toolchain versions do not match",
-  "build source hashes do not match",
-  "embedded admin dist manifest is not reproducible",
-  "HTTP body does not match the built artifact",
-  "validateAnonymous(inputs.anonymous, head)",
-  "browser_edit_save_replay_expiry_executed: false",
-  "tenant_rollout_executed: false",
-  "canonical_source_mutated: false",
-  "renameSync(temporary, location)",
-]) {
-  need(assembler, marker, "artifact/HTTP evidence assembler");
-}
-for (const marker of [
-  "pages_anonymous_storefront_ssr_artifact_execution_v1",
-  "absence_of_a_client_bundle_is_not_reported_as_a_passing_client_bundle",
-  "forbidden_markers_found",
-  "source_commit",
-]) {
-  need(anonymousInspector, marker, "anonymous artifact inspector");
-}
-for (const marker of [
-  'PAGES_INLINE_EDIT_BOOTSTRAP_PATH: &str =',
-  'PAGES_INLINE_EDIT_MODULE_PATH: &str =',
-  'PAGES_INLINE_EDIT_WASM_PATH: &str =',
-  '"public, max-age=0, must-revalidate"',
-  '"same-origin"',
-  "If-None-Match",
-]) {
-  const normalizedMarker = marker === "If-None-Match" ? "IF_NONE_MATCH" : marker;
-  need(assetRoute, normalizedMarker, "asset route source");
-}
-for (const marker of [
-  'PAGES_AUTHORING_CACHE_CONTROL: &str = "private, no-store"',
-  'PAGES_AUTHORING_ROBOTS_POLICY: &str = "noindex, nofollow, noarchive"',
-  "current_user.principal_kind.is_direct_user()",
-  "current_user.session_id.is_nil()",
-  "Permission::PAGES_UPDATE",
-  "SecurityActorKind::User",
-]) {
-  need(auth, marker, "authoring admission source");
-}
-
-for (const marker of [
-  "source-ready / maintainer-execution-pending / browser-rollout-pending",
-  "two independent deterministic build snapshots",
-  "artifact_http_execution_passed_browser_rollout_pending",
-  "anonymous          → 401",
-  "direct_user        → 200",
-  "service            → 403",
-  "delegated          → 403",
-  "missing_session    → 401",
-  "permission_denied  → 403",
-  "Credential values are read only from named environment variables",
-  "Artifact, HTTP, browser and rollout evidence remain pending",
-]) {
-  need(packet, marker, "artifact/HTTP evidence packet");
-}
-for (const marker of [
-  "Run the Pages route, asset, launch and release-composition static guards",
-  "Build the composition twice",
-  "Prove asset `200`/`304`",
-  "Observe edit, save, replacement grant, stale revision, replay and expiry browser behavior",
-]) {
-  need(releasePacket, marker, "release composition packet");
-}
-for (const [document, label] of [
-  [canonicalPlan, "canonical plan"],
-  [localPlan, "local plan"],
-]) {
-  for (const marker of [
+const requiredMarkers = {
+  buildCapture: [
+    "--profile build-a|build-b",
+    "--command-log FILE",
+    'execFileSync("git", ["rev-parse", "HEAD"]',
+    "sourceHashes()",
+    "directoryManifest(options.adminDist)",
+    "raw_command_log_persisted: false",
+    "renameSync(temporary, absolute)",
+  ],
+  dockerCapture: [
+    'execFileSync("docker", ["image", "inspect", image]',
+    "RepoDigests",
+    'labels["org.opencontainers.image.revision"]',
+    "docker_inspect_document_persisted: false",
+    "renameSync(temporary, absolute)",
+  ],
+  httpCapture: [
+    "AbortSignal.timeout(requestTimeoutMs)",
+    '"if-none-match": etag',
+    '"if-none-match": `W/${etag}`',
+    "RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_COMMON_HEADERS_JSON",
+    "credential_environment_names",
+    "credential_values_persisted: false",
+    "raw_response_bodies_persisted: false",
+    "direct_user HTML must bind the requested page id and exact locale",
+  ],
+  assembler: [
+    'validateBuild(inputs.build_a, "build-a", head)',
+    'validateBuild(inputs.build_b, "build-b", head)',
+    "compareBuilds(buildA, buildB)",
+    "HTTP body does not match the built artifact",
+    "validateAnonymous(inputs.anonymous, head)",
+    "browser_edit_save_replay_expiry_executed: false",
+    "canonical_source_mutated: false",
+  ],
+  anonymousInspector: [
+    "pages_anonymous_storefront_ssr_artifact_execution_v1",
+    "absence_of_a_client_bundle_is_not_reported_as_a_passing_client_bundle",
+    "forbidden_markers_found",
+  ],
+  assetRoute: [
+    "PAGES_INLINE_EDIT_BOOTSTRAP_PATH",
+    "PAGES_INLINE_EDIT_MODULE_PATH",
+    "PAGES_INLINE_EDIT_WASM_PATH",
+    '"public, max-age=0, must-revalidate"',
+    '"same-origin"',
+    "IF_NONE_MATCH",
+  ],
+  auth: [
+    'PAGES_AUTHORING_CACHE_CONTROL: &str = "private, no-store"',
+    'PAGES_AUTHORING_ROBOTS_POLICY: &str = "noindex, nofollow, noarchive"',
+    "current_user.principal_kind.is_direct_user()",
+    "current_user.session_id.is_nil()",
+    "Permission::PAGES_UPDATE",
+  ],
+  packet: [
+    "source-ready / maintainer-execution-pending / browser-rollout-pending",
+    "artifact_http_execution_passed_browser_rollout_pending",
+    "anonymous          → 401",
+    "direct_user        → 200",
+    "permission_denied  → 403",
+    "Artifact, HTTP, browser and rollout evidence remain pending",
+  ],
+  executionPlan: [
+    "artifact-http-evidence-harness-source-ready",
     "inline-edit-artifact-http-evidence-harness-source-ready",
     "artifact/HTTP evidence harness: source-ready",
     "artifact_http_execution_passed_browser_rollout_pending",
     "Browser edit/save/replay/expiry and tenant rollout remain pending",
-  ]) {
-    need(document, marker, label);
-  }
+  ],
+  canonicalPlan: [
+    "release-composition-source-ready / execution-browser-rollout-pending",
+    "inline-edit-release-composition-source-ready",
+    "Execution evidence remains pending",
+  ],
+  localPlan: [
+    "release-composition-source-ready / execution-browser-rollout-pending",
+    "Release composition: source-ready",
+    "Execution remains pending",
+  ],
+};
+for (const [sourceName, markers] of Object.entries(requiredMarkers)) {
+  for (const marker of markers) need(sources[sourceName], marker, sourceName);
 }
-
-for (const [source, label] of [
-  [buildCapture, "build snapshot capture"],
-  [dockerCapture, "Docker evidence capture"],
-  [httpCapture, "HTTP evidence capture"],
-  [assembler, "artifact/HTTP evidence assembler"],
-]) {
-  forbid(source, "eval(", label);
-  forbid(source, "shell: true", label);
-  forbid(source, "|| true", label);
+for (const sourceName of ["buildCapture", "dockerCapture", "httpCapture", "assembler"]) {
+  forbid(sources[sourceName], "eval(", sourceName);
+  forbid(sources[sourceName], "shell: true", sourceName);
+  forbid(sources[sourceName], "|| true", sourceName);
 }
-forbid(httpCapture, "set-cookie", "HTTP retained response headers");
-forbid(assembler, "writeFileSync(absolute(files.canonicalPlan)", "assembler canonical mutation");
-forbid(assembler, "writeFileSync(absolute(files.localPlan)", "assembler canonical mutation");
+forbid(sources.assembler, "docs/modules/pages-page-builder-parity-continuation-plan.md", "assembler canonical mutation");
+forbid(sources.assembler, "crates/rustok-pages/docs/implementation-plan.md", "assembler canonical mutation");
 
 if (failures.length > 0) {
   console.error("[verify-pages-inline-edit-artifact-http-evidence-harness] FAIL");
-  for (const failure of failures) console.error(`- ${failure}`);
+  failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-
 console.log(
   "[verify-pages-inline-edit-artifact-http-evidence-harness] PASS source_ready=true execution=pending browser=pending rollout=pending",
 );
