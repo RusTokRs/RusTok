@@ -1,0 +1,105 @@
+{
+  "contract": "forum_topic_route_tombstone_visibility_owner_v1",
+  "task": "FORUM-24J",
+  "parent_task": "FORUM-24",
+  "extends": ["FORUM-24C", "FORUM-24H", "FORUM-24I"],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "owner": "ForumTopicRouteTombstoneVisibilityService",
+  "write_boundary": "TopicService::delete transaction",
+  "storage": {
+    "migration": "m20260806_000025_add_forum_topic_route_tombstone_visibility",
+    "snapshot_table": "forum_topic_route_tombstone_visibility",
+    "channel_table": "forum_topic_route_tombstone_channels",
+    "append_only_update_delete_guards": true,
+    "parent_primary_key": ["tenant_id", "topic_id"],
+    "channel_primary_key": ["tenant_id", "topic_id", "channel_slug"],
+    "route_channel_count_sealed": true,
+    "route_channel_sha256_digest_sealed": true,
+    "postgres_supported": true,
+    "sqlite_supported": true
+  },
+  "snapshot_inputs": {
+    "topic_status_open": true,
+    "category_public_floor": true,
+    "inherited_category_audience_layers": true,
+    "topic_audience_layer": true,
+    "route_channel_scope": true,
+    "current_topic_row_locked": true,
+    "category_tree_scope_locked": true,
+    "topic_audience_scope_locked": true
+  },
+  "lock_order": [
+    "category_tree",
+    "topic_audience",
+    "topic_row"
+  ],
+  "delete_order": [
+    "lock snapshot scopes",
+    "claim and reload topic row",
+    "record immutable visibility snapshot",
+    "record route tombstones",
+    "soft-delete topic thread"
+  ],
+  "disclosure_reader": {
+    "method": "can_disclose_public_gone",
+    "result": "boolean_only",
+    "missing_snapshot": false,
+    "private_snapshot": false,
+    "restricted_without_channel": false,
+    "restricted_nonmatching_channel": false,
+    "sealed_scope_mismatch": "fail_closed_conflict",
+    "audience_selectors_exposed": false,
+    "historical_channel_list_exposed": false,
+    "alias_metadata_exposed": false
+  },
+  "replay": {
+    "existing_parent_compared": true,
+    "existing_channels_compared": true,
+    "existing_channels_appended": false,
+    "payload_drift": "fail_closed_conflict"
+  },
+  "compatibility": {
+    "graphql_changed": false,
+    "native_storefront_transport_changed": false,
+    "storefront_http_changed": false,
+    "public_gone_exposed": false,
+    "public_410_added": false,
+    "route_identity_changed": false,
+    "alias_schema_changed": false,
+    "semantic_event_changed": false,
+    "admin_contract_changed": false
+  },
+  "historical_policy": {
+    "topics_deleted_before_snapshot_migration": "hidden",
+    "same_topic_slug_alias_after_snapshotted_delete": "future_consumer_may_authorize",
+    "cross_topic_merge_target_disappearance": "hidden_without_separate_source_snapshot_proof"
+  },
+  "verification": {
+    "contract_test": "crates/rustok-forum/tests/topic_route_tombstone_visibility_contract.rs",
+    "verifier": "scripts/verify/verify-forum-topic-route-tombstone-visibility-owner.mjs",
+    "maintainer_commands": [
+      "node scripts/verify/verify-forum-topic-route-tombstone-visibility-owner.mjs",
+      "cargo test -p rustok-forum --test topic_route_tombstone_visibility_contract -- --nocapture",
+      "cargo test -p rustok-forum topic_owner::route_tombstone_visibility::tests -- --nocapture",
+      "cargo check -p rustok-forum --all-targets"
+    ]
+  },
+  "next_task": "FORUM-24K consume the boolean owner decision in GraphQL, native storefront transport and Rust host HTTP composition",
+  "remaining_scope": [
+    "publish authorized GONE through GraphQL and native storefront DTOs",
+    "map authorized GONE to private 410 in the Rust host",
+    "retain hidden and missing indistinguishability when snapshot authorization fails",
+    "category route identity",
+    "canonical and hreflang document policy",
+    "Forum SEO composition",
+    "maintainer migration and runtime evidence"
+  ],
+  "non_claims": [
+    "no test verifier formatter Cargo migration workflow browser or CI execution is claimed",
+    "no public GONE transport is claimed",
+    "no public 410 response is claimed",
+    "no historical snapshot backfill is claimed",
+    "FORUM-24 remains planned"
+  ]
+}
