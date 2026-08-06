@@ -46,7 +46,9 @@ No menu policy, binding, locale fallback or Navigation database ownership moves 
 
 The serialized payload is hashed with SHA-256 and emitted as a strong ETag. The key is produced only for a complete canonical decision with all three Pages generations. Missing cache runtime or generation reads disable the ETag but do not disable SSR.
 
-A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modified` after the same exact document identity has been reconstructed. Canonical ETag responses use `Cache-Control: private, no-cache` so a user agent may retain and revalidate the composed document without treating it as an anonymously shareable CDN object.
+Nonce-bearing HTML also disables the ETag. A request-specific CSP nonce is part of the rendered representation; reusing a cached body under a different CSP header could invalidate its inline structured-data scripts. The slice therefore fails closed rather than normalizing or ignoring nonce attributes.
+
+A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modified` after the same exact nonce-free document identity has been reconstructed. Canonical ETag responses use `Cache-Control: private, no-cache` so a user agent may retain and revalidate the composed document without treating it as an anonymously shareable CDN object.
 
 ## Source evidence
 
@@ -64,6 +66,7 @@ This slice does not:
 
 - add a shared/CDN full-document cache;
 - skip SSR work on a conditional request;
+- normalize CSP nonces into a cache identity;
 - change Navigation menu ownership or persistence;
 - change SEO ownership, target providers or schemas;
 - change Page Builder/Fly documents, artifacts, publish or rollback;
