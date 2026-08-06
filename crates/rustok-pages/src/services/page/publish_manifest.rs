@@ -1,16 +1,37 @@
+use rustok_core::CONTENT_FORMAT_GRAPESJS;
+use rustok_page_builder::sanitize_static_landing_project;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait,
     QueryFilter, QueryOrder,
 };
 use serde::Serialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::entities::{
-    page_publish_operation, page_publish_operation_artifact, page_published_landing_artifact,
-    page_static_landing_artifact,
+    page_body, page_publish_operation, page_publish_operation_artifact,
+    page_publish_rebuild_source, page_published_landing_artifact, page_static_landing_artifact,
 };
 use crate::error::{PagesError, PagesResult};
+
+const PAGE_PUBLISH_REBUILD_SOURCE_FORMAT: &str = "pages_publish_rebuild_source_v1";
+
+struct PreparedPublishArtifactManifest {
+    locale: String,
+    page_body_id: Uuid,
+    source_format: String,
+    source_revision: String,
+    artifact_id: Uuid,
+    artifact_hash: String,
+    materialization_hash: String,
+    sanitized_project: Value,
+    sanitized_hash: String,
+    source_hash: String,
+    materialization_identity: Value,
+    runtime_snapshots: Value,
+    provenance_hash: String,
+}
 
 pub(crate) async fn persist_publish_manifest_after_save<C>(
     db: &C,
@@ -19,13 +40,17 @@ pub(crate) async fn persist_publish_manifest_after_save<C>(
 where
     C: ConnectionTrait,
 {
-    let existing = page_publish_operation_artifact::Entity::find()
+    let existing_manifest = page_publish_operation_artifact::Entity::find()
         .filter(page_publish_operation_artifact::Column::OperationId.eq(operation.id))
         .count(db)
         .await?;
-    if existing != 0 {
+    let existing_sources = page_publish_rebuild_source::Entity::find()
+        .filter(page_publish_rebuild_source::Column::OperationId.eq(operation.id))
+        .count(db)
+        .await?;
+    if existing_manifest != 0 || existing_sources != 0 {
         return Err(PagesError::publish_operation_integrity(format!(
-            "publish operation `{}` already has an artifact manifest",
+            "publish operation `{}` already has an artifact manifest or rebuild provenance",
             operation.id
         )));
     }
@@ -56,53 +81,182 @@ where
                     binding.page_body_id
                 ))
             })?;
-        if !is_sha256(&artifact.artifact_hash)
-            || artifact
-                .materialization_hash
-                .as_deref()
-                .is_some_and(|hash| !is_sha256(hash))
-        {
+        let body = page_body::Entity::find_by_id(binding.page_body_id)
+            .filter(page_body::Column::TenantId.eq(operation.tenant_id))
+            .filter(page_body::Column::PageId.eq(operation.page_id))
+            .filter(page_body::Column::Locale.eq(&binding.locale))
+            .one(db)
+            .await?
+            .ok_or_else(|| {
+                PagesError::publish_operation_integrity(format!(
+                    "published binding `{}` references a missing source body",
+                    binding.page_body_id
+                ))
+            })?;
+        if body.format != CONTENT_FORMAT_GRAPESJS {
             return Err(PagesError::publish_operation_integrity(format!(
-                "immutable artifact `{}` has invalid publish identity evidence",
-                artifact.id
+                "published source body `{}` is not a Page Builder document",
+                body.id
             )));
         }
-        rows.push((
-            binding.locale,
+
+        let project_data: Value = serde_json::from_str(&body.content).map_err(|error| {
+            PagesError::publish_operation_integrity(format!(
+                "published source body `{}` is not valid Page Builder JSON: {error}",
+                body.id
+            ))
+        })?;
+        let sanitized = sanitize_static_landing_project(&project_data).map_err(|error| {
+            PagesError::publish_operation_integrity(format!(
+                "published source body `{}` failed rebuild provenance sanitization: {error}",
+                body.id
+            ))
+        })?;
+        sanitized.verify_integrity().map_err(|error| {
+            PagesError::publish_operation_integrity(format!(
+                "published source body `{}` produced invalid rebuild provenance: {error}",
+                body.id
+            ))
+        })?;
+
+        let materialization_hash = artifact.materialization_hash.clone().ok_or_else(|| {
+            PagesError::publish_operation_integrity(format!(
+                "reviewed artifact `{}` is missing materialization hash provenance",
+                artifact.id
+            ))
+        })?;
+        let materialization_identity =
+            artifact.materialization_identity.clone().ok_or_else(|| {
+                PagesError::publish_operation_integrity(format!(
+                    "reviewed artifact `{}` is missing materialization identity provenance",
+                    artifact.id
+                ))
+            })?;
+        let runtime_snapshots = artifact.runtime_snapshots.clone().ok_or_else(|| {
+            PagesError::publish_operation_integrity(format!(
+                "reviewed artifact `{}` is missing runtime snapshot provenance",
+                artifact.id
+            ))
+        })?;
+        for (label, value) in [
+            ("operation review", operation.review_hash.as_str()),
+            ("artifact source", artifact.source_hash.as_str()),
+            ("artifact", artifact.artifact_hash.as_str()),
+            ("materialization", materialization_hash.as_str()),
+            ("sanitized project", sanitized.sanitized_hash()),
+        ] {
+            if !is_sha256(value) {
+                return Err(PagesError::publish_operation_integrity(format!(
+                    "{label} hash is invalid for immutable artifact `{}`",
+                    artifact.id
+                )));
+            }
+        }
+
+        let materialization_identity_hash = stable_hash(&materialization_identity)?;
+        let runtime_snapshots_hash = stable_hash(&runtime_snapshots)?;
+        let source_revision = body.updated_at.to_string();
+        let sanitized_hash = sanitized.sanitized_hash().to_string();
+        let provenance_hash = stable_hash(&(
+            PAGE_PUBLISH_REBUILD_SOURCE_FORMAT,
+            operation.id,
+            operation.tenant_id,
+            operation.page_id,
+            body.id,
+            body.locale.as_str(),
+            body.format.as_str(),
+            source_revision.as_str(),
             artifact.id,
-            artifact.artifact_hash,
-            artifact.materialization_hash,
-        ));
+            sanitized_hash.as_str(),
+            artifact.source_hash.as_str(),
+            operation.review_hash.as_str(),
+            artifact.artifact_hash.as_str(),
+            materialization_hash.as_str(),
+            materialization_identity_hash.as_str(),
+            runtime_snapshots_hash.as_str(),
+        ))?;
+
+        rows.push(PreparedPublishArtifactManifest {
+            locale: binding.locale,
+            page_body_id: body.id,
+            source_format: body.format,
+            source_revision,
+            artifact_id: artifact.id,
+            artifact_hash: artifact.artifact_hash,
+            materialization_hash,
+            sanitized_project: sanitized.project_data().clone(),
+            sanitized_hash,
+            source_hash: artifact.source_hash,
+            materialization_identity,
+            runtime_snapshots,
+            provenance_hash,
+        });
     }
 
-    let manifest_hash = stable_hash(
+    let artifact_manifest_hash = stable_hash(
         &rows
             .iter()
-            .map(|(locale, _, artifact_hash, materialization_hash)| {
+            .map(|row| {
                 (
-                    locale.as_str(),
-                    artifact_hash.as_str(),
-                    materialization_hash.as_deref(),
+                    row.locale.as_str(),
+                    row.artifact_hash.as_str(),
+                    Some(row.materialization_hash.as_str()),
                 )
             })
             .collect::<Vec<_>>(),
     )?;
-    if manifest_hash != operation.artifact_set_hash {
+    if artifact_manifest_hash != operation.artifact_set_hash {
         return Err(PagesError::publish_operation_integrity(
             "current immutable bindings do not match the publish artifact_set_hash",
         ));
     }
 
-    for (locale, artifact_id, artifact_hash, materialization_hash) in rows {
+    let sanitized_manifest_hash = stable_hash(
+        &rows
+            .iter()
+            .map(|row| (row.locale.as_str(), row.sanitized_hash.as_str()))
+            .collect::<Vec<_>>(),
+    )?;
+    if sanitized_manifest_hash != operation.sanitized_set_hash {
+        return Err(PagesError::publish_operation_integrity(
+            "current immutable source snapshots do not match the publish sanitized_set_hash",
+        ));
+    }
+
+    for row in rows {
         page_publish_operation_artifact::ActiveModel {
             id: Set(Uuid::new_v4()),
             operation_id: Set(operation.id),
             tenant_id: Set(operation.tenant_id),
             page_id: Set(operation.page_id),
-            locale: Set(locale),
-            artifact_id: Set(artifact_id),
-            artifact_hash: Set(artifact_hash),
-            materialization_hash: Set(materialization_hash),
+            locale: Set(row.locale.clone()),
+            artifact_id: Set(row.artifact_id),
+            artifact_hash: Set(row.artifact_hash.clone()),
+            materialization_hash: Set(Some(row.materialization_hash.clone())),
+            created_at: Set(operation.created_at.clone()),
+        }
+        .insert(db)
+        .await?;
+
+        page_publish_rebuild_source::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            operation_id: Set(operation.id),
+            tenant_id: Set(operation.tenant_id),
+            page_id: Set(operation.page_id),
+            page_body_id: Set(row.page_body_id),
+            locale: Set(row.locale),
+            artifact_id: Set(row.artifact_id),
+            source_format: Set(row.source_format),
+            source_revision: Set(row.source_revision),
+            sanitized_project: Set(row.sanitized_project),
+            sanitized_hash: Set(row.sanitized_hash),
+            source_hash: Set(row.source_hash),
+            review_hash: Set(operation.review_hash.clone()),
+            artifact_hash: Set(row.artifact_hash),
+            materialization_hash: Set(row.materialization_hash),
+            materialization_identity: Set(row.materialization_identity),
+            runtime_snapshots: Set(row.runtime_snapshots),
+            provenance_hash: Set(row.provenance_hash),
             created_at: Set(operation.created_at.clone()),
         }
         .insert(db)
