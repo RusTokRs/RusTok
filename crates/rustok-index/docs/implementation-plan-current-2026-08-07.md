@@ -109,11 +109,12 @@ The existing owner ledgers, canonical writer, and durable relay step do not bypa
 - [x] Product canonical refresh writer and durable relay step.
 - [x] Bounded fail-closed per-tenant persisted schema readiness gate for an explicit exact schema set.
 - [x] Product-owned append-only Product-to-SalesChannel relation snapshot ledger with a dedicated
-      monotonic epoch, bounded owner readers, idempotent replacement, and retained empty membership on
-      Product hard delete.
+      monotonic epoch, live-Product delete fencing, bounded owner readers, idempotent replacement, and
+      retained empty membership on Product hard delete.
 - [ ] Run owner verification/evidence for persisted M7 tenant schema readiness and relation storage.
 - [ ] Compose the cross-owner Product visibility to Channel UUID resolver without adding a Channel
-      dependency or Channel SQL to `rustok-product`.
+      dependency or Channel SQL to `rustok-product`; explicitly preserve unrestricted Product
+      visibility rather than interpreting an empty slug allowlist as an empty UUID membership.
 - [ ] Add a new Product schema version plus relation replay source and Product-to-SalesChannel
       `IndexLink`; do not mutate Product v2 in place.
 - [ ] Admit the Product Index typed wire family, routes, and concrete consumers after digest repair.
@@ -136,9 +137,11 @@ set per relation epoch. For one exact tenant/Product identity:
 - later membership changes advance exactly by one under an advisory transaction lock;
 - identical membership is an idempotent retry and does not append another epoch;
 - membership is canonical, strictly sorted, unique, non-nil, and bounded to 1024 Channel UUIDs;
+- writes first require the live Product row under `FOR KEY SHARE`, preventing stale post-delete
+  resolver writes;
 - retained snapshots cannot be updated or deleted;
 - Product hard delete appends an empty epoch when the current membership is non-empty;
-- `list_changes` exposes bounded tenant sequence pages;
+- `list_changes` exposes bounded tenant-scoped sequence pages;
 - `scan_current` exposes bounded current Product-order pages;
 - `load_current` exposes bounded exact Product loads.
 
@@ -146,14 +149,20 @@ The owner store intentionally knows no Channel schema, Channel table, Index muta
 runtime worker. It receives only an already resolved UUID membership. This keeps `rustok-product`
 installable without `rustok-channel` and makes cross-owner resolution a separate integration concern.
 
+The resolver has one semantic trap that must remain explicit: Product currently treats an empty
+`allowed_channel_slugs` list as unrestricted visibility, whereas an empty resolved UUID membership
+means no relation targets. The next slice must define the reviewed unrestricted resolution policy and
+must not copy the Product slug list mechanically.
+
 ## Next implementation step
 
 Primary owner step: execute and admit the locked concrete-repair PostgreSQL packet.
 
 Next unblocked source step after this ledger slice: compose a bounded cross-owner resolver in
 `rustok-distribution` (or an equivalent selected-module integration layer). It should read current
-Product visibility and current tenant Channel identities, submit the complete resolved UUID set to the
-Product-owned relation store, and react to both Product visibility and Channel identity changes.
+Product visibility and current tenant Channel identities, preserve the unrestricted visibility
+semantics, submit the complete resolved UUID set to the Product-owned relation store, and react to
+both Product visibility and Channel identity changes.
 
 After that resolver is source complete, add a new Product Index schema version and relation replay
 adapter; Product v2 must remain immutable.
