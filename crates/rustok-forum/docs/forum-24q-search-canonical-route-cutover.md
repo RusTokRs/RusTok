@@ -62,6 +62,14 @@ No compatibility fallback is added. This repository is pre-release and the canon
 
 A full Forum Search projection rebuild is therefore required before runtime promotion. The existing projection invalidation, owner-revision ledger, Search inbox, checkpoint and repair protocols are unchanged.
 
+FORUM-24R adds the executable PostgreSQL handoff for this requirement:
+
+```text
+crates/rustok-search/tests/forum_canonical_route_reindex_postgres.rs
+```
+
+It exercises real Forum owner writes, the durable Forum inbox, staged tenant replacement, removal of legacy UUID routes, canonical Search URL acceptance, stale-orphan cleanup and cross-tenant isolation. Its source is present but has not been executed.
+
 ## Visibility and authorization
 
 This slice does not broaden discovery. Forum still admits category, topic and approved-reply documents through `ForumPublicDiscoveryService`. Search storefront eligibility and admin permission checks remain unchanged.
@@ -83,26 +91,28 @@ This slice does not change:
 
 ## Verification handoff
 
-No tests, Node verifiers, formatting, Cargo commands, SQLite/PostgreSQL execution, reindex, workflows, HTTP requests, browser scenarios or CI were executed while preparing this slice.
+No tests, Node verifiers, formatting, Cargo commands, SQLite/PostgreSQL execution, reindex, workflows, HTTP requests, browser scenarios or CI were executed while preparing FORUM-24Q or FORUM-24R.
 
 Maintainers can run:
 
 ```bash
 node scripts/verify/verify-forum-search-canonical-route-cutover.mjs
+node scripts/verify/verify-forum-search-canonical-route-reindex-harness.mjs
 node scripts/verify/verify-search-canonical-url-contract.mjs
 node scripts/verify/verify-forum-public-discovery-seo.mjs
 cargo test -p rustok-search engine::tests -- --nocapture
+cargo test -p rustok-search --test forum_canonical_route_reindex_postgres -- --nocapture
 cargo test -p rustok-forum --test search_canonical_route_cutover_contract -- --nocapture
 cargo check -p rustok-forum --all-targets
 cargo check -p rustok-search --all-targets --features graphql
 ```
 
-Runtime promotion additionally requires rebuilding Forum Search documents and confirming that category, topic and reply results expose only localized owner routes through GraphQL, native storefront and admin consumers.
+Runtime promotion additionally requires executing the PostgreSQL harness, rebuilding Forum Search documents in the target environment and confirming that category, topic and reply results expose only localized owner routes through GraphQL, native storefront and admin consumers.
 
 ## Remaining FORUM-24 scope
 
 - complete Next storefront Forum product and canonical-route parity when its module-owned package exists;
-- retain executable SQLite, PostgreSQL, Search reindex, registered-host and browser evidence;
+- retain registered-host and browser evidence after the executable PostgreSQL reindex proof is run;
 - reconcile the canonical FORUM-24 ledger after maintainer execution.
 
-`crates/rustok-forum/docs/implementation-plan.md` remains the only authoritative roadmap. Its FORUM-24 ledger is stale relative to the merged A-Q slices. The connected complete-file writer cannot safely replace that large document losslessly, so this task document records only the bounded FORUM-24Q contract and does not create a second backlog or claim ledger synchronization.
+`crates/rustok-forum/docs/implementation-plan.md` remains the only authoritative roadmap. Its FORUM-24 ledger is stale relative to the merged source slices. The connected complete-file writer cannot safely replace that large document losslessly, so these bounded task documents do not create a second backlog or claim ledger synchronization.

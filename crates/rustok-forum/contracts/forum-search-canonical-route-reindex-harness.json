@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "module": "forum",
+  "surface": "search_canonical_route_reindex",
+  "task": "FORUM-24R",
+  "parent_task": "FORUM-24",
+  "upstream_task": "FORUM-24Q",
+  "status": "executable_no_run",
+  "compile_policy": "not_run_by_request",
+  "environment": {
+    "primary": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "fallback": "DATABASE_URL",
+    "required_backend": "postgresql",
+    "isolation": "unique schema first in search_path with public extensions available"
+  },
+  "test_target": "crates/rustok-search/tests/forum_canonical_route_reindex_postgres.rs",
+  "production_contract": {
+    "forum_projection": "crates/rustok-forum/src/search_projection.rs",
+    "category_route_owner": "ForumCategoryRouteService",
+    "topic_route_owner": "ForumTopicRouteService",
+    "search_ingestion": "crates/rustok-search/src/ingestion.rs",
+    "search_projector": "crates/rustok-search/src/forum_projector.rs",
+    "search_url_projection": "crates/rustok-search/src/engine.rs",
+    "source_guardrail": "scripts/verify/verify-forum-search-canonical-route-reindex-harness.mjs"
+  },
+  "cases": [
+    {
+      "name": "real_owner_migrations",
+      "expected": "isolated PostgreSQL applies Outbox, Taxonomy, Flex prerequisite, Forum, and Search migrations before exercising the harness"
+    },
+    {
+      "name": "real_forum_writes",
+      "expected": "Forum category, topic, and approved reply fixtures are created through the existing owner services"
+    },
+    {
+      "name": "durable_forum_reindex",
+      "expected": "a Forum ReindexRequested event enters SearchIngestionHandler with the real Forum projection source and durable inbox path"
+    },
+    {
+      "name": "atomic_scope_replacement",
+      "expected": "current-tenant stale category, topic, reply, and orphan rows are deleted before the staged owner projection is inserted in one projector transaction"
+    },
+    {
+      "name": "localized_owner_routes",
+      "expected": "category, topic, and approved-reply payload routes exactly match the localized descriptors owned by Forum"
+    },
+    {
+      "name": "search_projection_acceptance",
+      "expected": "canonical_search_result_url accepts each rebuilt owner route without rebuilding Forum identity"
+    },
+    {
+      "name": "legacy_route_removal",
+      "expected": "the rebuilt tenant has no /modules/forum route payloads"
+    },
+    {
+      "name": "stale_orphan_removal",
+      "expected": "a stale Forum document without an owner source row is removed by full scope replacement"
+    },
+    {
+      "name": "tenant_isolation",
+      "expected": "another tenant's stale Forum document remains byte-for-byte outside the rebuilt scope"
+    }
+  ],
+  "preserved_boundaries": {
+    "runtime_code_changed": false,
+    "search_storage_schema_changed": false,
+    "forum_storage_schema_changed": false,
+    "event_schema_changed": false,
+    "route_owner_changed": false,
+    "visibility_policy_changed": false,
+    "graphql_or_native_dto_changed": false,
+    "migration_added": false,
+    "compatibility_fallback_added": false
+  },
+  "runtime_promotion_requirements": [
+    "execute the PostgreSQL test target with RUSTOK_SEARCH_TEST_DATABASE_URL or DATABASE_URL",
+    "execute the source guardrail",
+    "retain successful Search inbox completion and staged replacement evidence",
+    "run a complete Forum Search reindex in the target environment",
+    "confirm GraphQL, native storefront, Search admin, and admin shell expose only localized Forum routes"
+  ]
+}
