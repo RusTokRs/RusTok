@@ -63,14 +63,15 @@ pub use drift_digest::{
     IndexDriftSnapshotReader, IndexDriftSnapshotView,
 };
 pub use drift_finding_lifecycle::{
-    IndexDriftFindingLifecycleAction, IndexDriftFindingLifecycleActor,
-    IndexDriftFindingLifecycleAuthorization, IndexDriftFindingLifecycleAuthorizer,
-    IndexDriftFindingLifecycleCommand, IndexDriftFindingLifecycleFailure,
-    IndexDriftFindingLifecycleFailureError, IndexDriftFindingLifecycleFailureKind,
-    IndexDriftFindingLifecycleNotAppliedReason, IndexDriftFindingLifecycleOutcome,
-    IndexDriftFindingLifecycleReceipt, IndexDriftFindingLifecycleService,
-    IndexDriftFindingLifecycleStore, IndexDriftFindingLifecycleStoreOutcome,
-    IndexDriftFindingLifecycleValidationError, IndexDriftFindingState,
+    IndexDriftFindingAuthorizedLifecycleCommand, IndexDriftFindingLifecycleAction,
+    IndexDriftFindingLifecycleActor, IndexDriftFindingLifecycleAuthorization,
+    IndexDriftFindingLifecycleAuthorizer, IndexDriftFindingLifecycleCommand,
+    IndexDriftFindingLifecycleFailure, IndexDriftFindingLifecycleFailureError,
+    IndexDriftFindingLifecycleFailureKind, IndexDriftFindingLifecycleNotAppliedReason,
+    IndexDriftFindingLifecycleOutcome, IndexDriftFindingLifecycleReceipt,
+    IndexDriftFindingLifecycleService, IndexDriftFindingLifecycleStore,
+    IndexDriftFindingLifecycleStoreOutcome, IndexDriftFindingLifecycleValidationError,
+    IndexDriftFindingState,
 };
 pub use mutation_event::{
     IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,
