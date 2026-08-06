@@ -1,9 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
-Status overlay rechecked against the current main snapshot retained in
-`implementation-main-delta-2026-08-06-1525.md`, stacked parent PR #3083 at
-`aab4f9418317f965d540adf538ede2e1660785d1`, and active branch
-`agent/index-m6-repair-evidence-admission-20260806`.
+Status overlay rechecked against `main@e0451f978e8f533a5949710509ea8327e4a140c0` and active
+branch `agent/index-m5-social-graph-event-route-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
@@ -32,6 +30,11 @@ The clean-commit retained-evidence admission boundary is
 commands, current source hashes, required case names, bounded database/toolchain metadata, complete
 credential-redacted stdout/stderr, and an atomic terminal pass packet. The packet and logs remain
 absent until the repository owner executes the capture runner.
+
+An independent M5 slice now registers Social Graph as the first exact production mutation route. It
+adds one bounded authoritative replay source over `social_graph_relations`, reuses the existing Iggy
+consumer source identity, and atomically materializes the immutable mutation event registry with the
+staged source catalog. This does not advance or bypass the concrete-repair evidence cursor.
 
 Concrete missing-entity repair:
 
@@ -71,7 +74,9 @@ remain open.
 - M4 query planning/compiler/runtime and privacy shadow: `source_complete_owner_execution_pending`
 - M5 inbox deduplication and monotonic source versions: `complete`
 - M5 mutation event registry and commit-before-ack orchestration:
-  `source_complete_broker_wiring_pending`
+  `generic_source_complete_social_graph_route_runtime_execution_pending`
+- M5 Social Graph bounded replay source and exact production event route:
+  `source_complete_runtime_execution_pending`
 - M5/M6 bounded source replay contract: `source_complete_owner_execution_pending`
 - M6 replay jobs, checkpoints, multi-page execution, cancellation, retry/dead-letter, and generic
   host scheduling: `source_complete_owner_execution_pending`
@@ -112,10 +117,14 @@ remain open.
 - [x] Add a source replay registry with bounded failure classification.
 - [x] Add inbox deduplication and monotonic source versions.
 - [x] Add a database-neutral mutation-source event registry and commit-before-ack orchestration.
-- [ ] Register production owner event routes and compose a concrete broker consumer/acknowledger.
-- [ ] Add batch transactions, bounded backoff, dead-letter state, and lag metrics around production
-      event routes.
-- [ ] Retain crash-between-commit-and-ack and redelivery evidence.
+- [x] Register the Social Graph production event route and bounded replay source.
+- [x] Reuse the concrete Social Graph Iggy consumer/acknowledger, bounded retry/backoff, DLQ and
+      poison receipts, graceful shutdown, and lag/outcome metrics.
+- [x] Materialize selected PostgreSQL sources and mutation event routes atomically.
+- [ ] Register remaining selected production owner routes, beginning with Product/ProductVariant.
+- [ ] Add equivalent concrete consumer policy for every remaining selected owner route.
+- [ ] Retain crash-between-commit-and-ack and redelivery evidence against the generic registered
+      route boundary.
 
 ## M6 replay and scheduling
 
@@ -190,7 +199,8 @@ remain open.
 - [x] Add Product, ProductVariant, and SalesChannel schemas and bounded current-state sources.
 - [x] Add stable replay identities and retained deletes.
 - [x] Add Product-to-ProductVariant graph materialization.
-- [ ] Add production owner event routes and concrete incremental consumer wiring.
+- [ ] Add Product/ProductVariant production owner event routes and concrete incremental consumer
+      wiring.
 - [ ] Persist and enforce per-tenant schema readiness.
 - [ ] Complete durable Product-to-SalesChannel relation semantics and retained evidence.
 - [ ] Admit tombstone purge, freshness/outage/restart/backlog recovery, and delete/recreate evidence.
@@ -214,12 +224,17 @@ The owner must run the locked capture command from a clean commit. The retained 
 - normal full-mutation versus exact edge-owner serialization results;
 - complete credential-redacted stdout/stderr and final pass status.
 
-Public authorization transport, automatic iteration, time-derived leases, and lifecycle
-auto-resolution remain separate later slices.
+Independent source-only work may continue on remaining M5/M7 owner routes, but public repair
+authorization transport, automatic iteration, time-derived leases, and lifecycle auto-resolution
+remain blocked until admission.
 
-## Owner verification for this slice
+## Owner verification for current source boundaries
 
 ```bash
+cargo test -p rustok-social-graph --features index-consumer index_source -- --nocapture
+cargo test -p rustok-index source_factory -- --nocapture
+node scripts/verify/verify-index-social-graph-mutation-route.mjs
+
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   node scripts/evidence/capture-index-repair-postgres.mjs
 
@@ -230,9 +245,10 @@ node scripts/verify/verify-index-missing-entity-repair-composition.mjs
 node scripts/verify/verify-index-orphan-link-repair-composition.mjs
 node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-query-contract.mjs
+cargo check -p rustok-social-graph --features index-consumer --all-targets
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, Node verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite scenarios,
+No tests, Node verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite/Iggy scenarios,
 workflows, or CI were executed by the implementation agent.

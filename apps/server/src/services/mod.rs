@@ -202,8 +202,8 @@ pub mod module_event_dispatcher {
     mod tests {
         use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
         use rustok_index::{
-            IndexModule, SharedIndexQueryRuntime, SharedIndexReplayRuntime,
-            SharedIndexSchemaRegistry,
+            IndexModule, SharedIndexMutationEventRegistry, SharedIndexQueryRuntime,
+            SharedIndexReplayRuntime, SharedIndexSchemaRegistry,
         };
         use sea_orm::Database;
 
@@ -213,7 +213,7 @@ pub mod module_event_dispatcher {
         use crate::services::server_runtime_context::ServerRuntimeContext;
 
         #[tokio::test]
-        async fn host_materializes_index_query_runtime_after_source_registry() {
+        async fn host_materializes_social_graph_index_query_replay_and_event_runtimes() {
             let registry = ModuleRegistry::new()
                 .register(IndexModule)
                 .register(rustok_social_graph::SocialGraphModule);
@@ -233,7 +233,17 @@ pub mod module_event_dispatcher {
 
             assert!(extensions.contains::<SharedIndexSchemaRegistry>());
             assert!(extensions.contains::<SharedIndexQueryRuntime>());
-            assert!(!extensions.contains::<SharedIndexReplayRuntime>());
+            assert!(extensions.contains::<SharedIndexReplayRuntime>());
+            let event_registry = extensions
+                .get::<SharedIndexMutationEventRegistry>()
+                .expect("Social Graph event registry should be materialized");
+            assert!(
+                event_registry
+                    .get(
+                        rustok_social_graph::index_source::SOCIAL_GRAPH_RELATION_INDEX_EVENT_DOMAIN
+                    )
+                    .is_some()
+            );
             #[cfg(feature = "mod-forum")]
             assert!(
                 extensions.contains::<rustok_search::SharedStorefrontSearchCategoryScopePort>()
@@ -253,7 +263,11 @@ pub mod module_event_dispatcher {
             );
             let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
             assert!(host.shared_get::<SharedIndexQueryRuntime>().is_some());
-            assert!(host.shared_get::<SharedIndexReplayRuntime>().is_none());
+            assert!(host.shared_get::<SharedIndexReplayRuntime>().is_some());
+            assert!(
+                host.shared_get::<SharedIndexMutationEventRegistry>()
+                    .is_some()
+            );
             #[cfg(feature = "mod-forum")]
             assert!(
                 host.shared_get::<rustok_search::SharedStorefrontSearchCategoryScopePort>()

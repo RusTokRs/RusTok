@@ -20,6 +20,8 @@ pub mod index_dlq_receipt;
 pub mod index_privacy;
 #[cfg(feature = "index")]
 pub mod index_privacy_shadow;
+#[cfg(feature = "index")]
+pub mod index_source;
 pub mod maintenance;
 pub mod migrations;
 pub mod model;
@@ -105,6 +107,13 @@ impl RusToKModule for SocialGraphModule {
                     ))
                 },
             )?;
+            index_source::register_social_graph_index_source_contracts(extensions).map_err(
+                |error| {
+                    rustok_core::Error::Validation(format!(
+                        "Social Graph Index source contract registration failed: {error}"
+                    ))
+                },
+            )?;
         }
         #[cfg(not(feature = "index"))]
         let _ = extensions;
@@ -142,11 +151,11 @@ mod tests {
 
     #[cfg(feature = "index")]
     #[test]
-    fn module_publishes_its_index_schema_through_runtime_extensions() {
+    fn module_publishes_complete_index_source_contracts() {
         let mut extensions = ModuleRuntimeExtensions::default();
         SocialGraphModule
             .register_runtime_extensions(&mut extensions)
-            .expect("Social Graph schema source should register");
+            .expect("Social Graph Index contracts should register");
 
         let catalog = extensions
             .get::<rustok_index::IndexSchemaSourceCatalog>()
@@ -157,5 +166,26 @@ mod tests {
             .expect("Social Graph schema should be source-published");
         assert_eq!(descriptor.owner_module, "social_graph");
         assert_eq!(descriptor.schema, schema);
+
+        let factories = extensions
+            .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
+            .expect("Social Graph replay source factory should be present");
+        assert!(factories.iter().any(|factory| {
+            factory.owner_module() == "social_graph"
+                && factory.factory_name()
+                    == crate::index_source::SOCIAL_GRAPH_RELATION_INDEX_SOURCE_FACTORY
+        }));
+
+        let routes = extensions
+            .get::<rustok_index::IndexMutationEventCatalog>()
+            .expect("Social Graph mutation event catalog should be present");
+        let route = routes
+            .get(crate::index_source::SOCIAL_GRAPH_RELATION_INDEX_EVENT_DOMAIN)
+            .expect("Social Graph relation event route should be present");
+        assert_eq!(
+            route.source_name(),
+            crate::index_source::SOCIAL_GRAPH_RELATION_INDEX_SOURCE
+        );
+        assert_eq!(route.schema(), &schema.reference);
     }
 }
