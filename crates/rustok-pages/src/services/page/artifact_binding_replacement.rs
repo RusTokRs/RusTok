@@ -10,17 +10,14 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::dto::{
-    ReplacePageArtifactBindingInput, ReplacePageArtifactBindingResult,
-};
+use crate::dto::{ReplacePageArtifactBindingInput, ReplacePageArtifactBindingResult};
 use crate::entities::{
     page, page_artifact_binding_replacement_operation, page_artifact_rebuild_operation,
-    page_published_landing_artifact,
+    page_published_landing_artifact, page_static_landing_artifact,
 };
 use crate::error::{PagesError, PagesResult};
 use crate::services::page_builder_artifact::PageBuilderArtifactService;
 
-use super::artifact_rebuild::verify_rebuild_operation;
 use super::helpers::{apply_transition, enforce_expected_version};
 use super::{PAGE_KIND, PageService, PageTransition};
 
@@ -114,7 +111,7 @@ impl PageService {
             input.rebuild_operation_id,
         )
         .await?;
-        verify_rebuild_operation(&rebuild)?;
+        verify_rebuild_receipt(&rebuild)?;
         if rebuild.source_artifact_id != input.expected_current_artifact_id {
             return Err(replacement_current_conflict(
                 "expected current artifact is not the source artifact of the selected rebuild receipt",
@@ -153,7 +150,7 @@ impl PageService {
             ));
         }
 
-        let replacement = PageBuilderArtifactService::load_verified_artifact_in_tx(
+        let replacement = load_replacement_artifact_in_tx(
             &txn,
             tenant_id,
             page_id,
@@ -274,6 +271,26 @@ async fn load_binding_for_update_in_tx(
     .ok_or_else(|| replacement_current_conflict("current locale binding is unavailable"))
 }
 
+async fn load_replacement_artifact_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+    artifact_id: Uuid,
+) -> PagesResult<page_static_landing_artifact::Model> {
+    let query = || {
+        page_static_landing_artifact::Entity::find_by_id(artifact_id)
+            .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+            .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
+            .filter(page_static_landing_artifact::Column::Locale.eq(locale))
+    };
+    match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    }
+    .ok_or_else(|| replacement_target_invalid("rebuilt replacement artifact is unavailable"))
+}
+
 async fn find_operation_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -342,6 +359,32 @@ fn ensure_same_request(
     {
         return Err(replacement_idempotency_conflict(
             "idempotency key is bound to another artifact binding replacement request",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_rebuild_receipt(operation: &page_artifact_rebuild_operation::Model) -> PagesResult<()> {
+    if operation.id.is_nil()
+        || operation.tenant_id.is_nil()
+        || operation.page_id.is_nil()
+        || operation.source_id.is_nil()
+        || operation.source_publish_operation_id.is_nil()
+        || operation.source_artifact_id.is_nil()
+        || operation.rebuilt_artifact_id.is_nil()
+        || operation.source_artifact_id == operation.rebuilt_artifact_id
+        || operation.locale.trim().is_empty()
+        || operation.locale.trim() != operation.locale
+        || operation.idempotency_key.trim().is_empty()
+        || !is_sha256(&operation.request_hash)
+        || !is_sha256(&operation.expected_provenance_hash)
+        || !is_sha256(&operation.review_hash)
+        || !is_sha256(&operation.rebuilt_artifact_hash)
+        || !is_sha256(&operation.rebuilt_materialization_hash)
+        || operation.artifact_instance_key != format!("rebuild:{}", operation.id)
+    {
+        return Err(replacement_target_invalid(
+            "selected artifact rebuild receipt failed integrity validation",
         ));
     }
     Ok(())
