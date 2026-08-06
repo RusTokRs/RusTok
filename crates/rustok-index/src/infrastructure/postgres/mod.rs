@@ -3,6 +3,7 @@ mod drift_candidate_reader;
 mod drift_confirmed_candidate_writer;
 mod drift_digest_recorder;
 mod drift_finding_inspector;
+mod drift_finding_lifecycle;
 mod drift_finding_writer;
 mod drift_snapshot_reader;
 mod mutation_store;
@@ -61,6 +62,10 @@ pub use drift_confirmed_candidate_writer::{
 pub use drift_finding_inspector::{
     IndexDriftFindingInspection, IndexDriftFindingInspectionError, IndexDriftFindingScope,
     IndexDriftFindingSeverity, PostgresIndexDriftFindingInspector,
+};
+pub use drift_finding_lifecycle::{
+    PostgresIndexDriftFindingLifecycleStore,
+    materialize_postgres_index_drift_finding_lifecycle_store,
 };
 pub use drift_finding_writer::{
     IndexDriftDigestFindingRequest, IndexDriftFindingWriteError, IndexDriftFindingWriteOutcome,
