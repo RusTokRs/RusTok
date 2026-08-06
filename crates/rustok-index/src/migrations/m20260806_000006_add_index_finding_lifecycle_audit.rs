@@ -7,10 +7,9 @@ use sea_orm_migration::{
 pub struct Migration;
 
 const TABLE_NAME: &str = "index_consistency_finding_lifecycle_events";
-const POSTGRES_GUARD_FUNCTION: &str = "rustok_index_reject_finding_lifecycle_event_mutation";
-const POSTGRES_GUARD_TRIGGER: &str = "trg_index_finding_lifecycle_events_append_only";
+const POSTGRES_GUARD_FUNCTION: &str = "rustok_index_reject_finding_lifecycle_event_update";
+const POSTGRES_GUARD_TRIGGER: &str = "trg_index_finding_lifecycle_events_no_update";
 const SQLITE_UPDATE_TRIGGER: &str = "trg_index_finding_lifecycle_events_no_update";
-const SQLITE_DELETE_TRIGGER: &str = "trg_index_finding_lifecycle_events_no_delete";
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -126,11 +125,11 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        install_append_only_guards(manager).await
+        install_update_guard(manager).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        remove_append_only_guards(manager).await?;
+        remove_update_guard(manager).await?;
         manager
             .drop_table(
                 Table::drop()
@@ -141,18 +140,18 @@ impl MigrationTrait for Migration {
     }
 }
 
-async fn install_append_only_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn install_update_guard(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     match connection.get_database_backend() {
         DbBackend::Postgres => {
             connection
                 .execute_unprepared(&format!(
-                    "CREATE FUNCTION {POSTGRES_GUARD_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Index finding lifecycle audit is append-only'; END; $$"
+                    "CREATE FUNCTION {POSTGRES_GUARD_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Index finding lifecycle audit rows cannot be rewritten'; END; $$"
                 ))
                 .await?;
             connection
                 .execute_unprepared(&format!(
-                    "CREATE TRIGGER {POSTGRES_GUARD_TRIGGER} BEFORE UPDATE OR DELETE ON {TABLE_NAME} FOR EACH ROW EXECUTE FUNCTION {POSTGRES_GUARD_FUNCTION}()"
+                    "CREATE TRIGGER {POSTGRES_GUARD_TRIGGER} BEFORE UPDATE ON {TABLE_NAME} FOR EACH ROW EXECUTE FUNCTION {POSTGRES_GUARD_FUNCTION}()"
                 ))
                 .await?;
             Ok(())
@@ -160,12 +159,7 @@ async fn install_append_only_guards(manager: &SchemaManager<'_>) -> Result<(), D
         DbBackend::Sqlite => {
             connection
                 .execute_unprepared(&format!(
-                    "CREATE TRIGGER {SQLITE_UPDATE_TRIGGER} BEFORE UPDATE ON {TABLE_NAME} BEGIN SELECT RAISE(ABORT, 'Index finding lifecycle audit is append-only'); END"
-                ))
-                .await?;
-            connection
-                .execute_unprepared(&format!(
-                    "CREATE TRIGGER {SQLITE_DELETE_TRIGGER} BEFORE DELETE ON {TABLE_NAME} BEGIN SELECT RAISE(ABORT, 'Index finding lifecycle audit is append-only'); END"
+                    "CREATE TRIGGER {SQLITE_UPDATE_TRIGGER} BEFORE UPDATE ON {TABLE_NAME} BEGIN SELECT RAISE(ABORT, 'Index finding lifecycle audit rows cannot be rewritten'); END"
                 ))
                 .await?;
             Ok(())
@@ -176,7 +170,7 @@ async fn install_append_only_guards(manager: &SchemaManager<'_>) -> Result<(), D
     }
 }
 
-async fn remove_append_only_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn remove_update_guard(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     match connection.get_database_backend() {
         DbBackend::Postgres => {
@@ -195,9 +189,6 @@ async fn remove_append_only_guards(manager: &SchemaManager<'_>) -> Result<(), Db
         DbBackend::Sqlite => {
             connection
                 .execute_unprepared(&format!("DROP TRIGGER IF EXISTS {SQLITE_UPDATE_TRIGGER}"))
-                .await?;
-            connection
-                .execute_unprepared(&format!("DROP TRIGGER IF EXISTS {SQLITE_DELETE_TRIGGER}"))
                 .await?;
             Ok(())
         }
