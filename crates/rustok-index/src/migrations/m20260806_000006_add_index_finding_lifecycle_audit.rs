@@ -14,6 +14,7 @@ const SQLITE_UPDATE_TRIGGER: &str = "trg_index_finding_lifecycle_events_no_updat
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        ensure_supported_backend(manager)?;
         manager
             .create_table(
                 Table::create()
@@ -129,6 +130,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        ensure_supported_backend(manager)?;
         remove_update_guard(manager).await?;
         manager
             .drop_table(
@@ -137,6 +139,15 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await
+    }
+}
+
+fn ensure_supported_backend(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    match manager.get_connection().get_database_backend() {
+        DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
+        DbBackend::MySql => Err(DbErr::Custom(
+            "rustok-index finding lifecycle audit supports PostgreSQL and SQLite".to_owned(),
+        )),
     }
 }
 
@@ -164,9 +175,7 @@ async fn install_update_guard(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
                 .await?;
             Ok(())
         }
-        DbBackend::MySql => Err(DbErr::Custom(
-            "rustok-index finding lifecycle audit supports PostgreSQL and SQLite".to_owned(),
-        )),
+        DbBackend::MySql => unreachable!("unsupported backend was rejected before lifecycle DDL"),
     }
 }
 
@@ -192,9 +201,7 @@ async fn remove_update_guard(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 .await?;
             Ok(())
         }
-        DbBackend::MySql => Err(DbErr::Custom(
-            "rustok-index finding lifecycle audit supports PostgreSQL and SQLite".to_owned(),
-        )),
+        DbBackend::MySql => unreachable!("unsupported backend was rejected before lifecycle DDL"),
     }
 }
 
