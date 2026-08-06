@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use async_graphql::{ErrorExtensions, Result};
 use rustok_api::{PortContext, PortError};
 use rustok_inventory::{
@@ -49,15 +47,19 @@ impl StorefrontLineItemFailureSource {
             Self::Local(_) => "local_policy",
         }
     }
+}
 
-    fn detail(&self) -> &dyn Debug {
-        match self {
-            Self::Database(error) => error,
-            Self::Pricing(error) => error,
-            Self::Inventory(error) => error,
-            Self::Metadata(error) => error,
-            Self::Local(reason) => reason,
-        }
+struct StorefrontLineItemDiagnosticSource;
+
+impl From<StorefrontLineItemFailureSource> for StorefrontLineItemDiagnosticSource {
+    fn from(_source: StorefrontLineItemFailureSource) -> Self {
+        Self
+    }
+}
+
+impl std::fmt::Debug for StorefrontLineItemDiagnosticSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
     }
 }
 
@@ -202,6 +204,26 @@ fn storefront_line_item_public_policy(
     }
 }
 
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
+fn optional_text_shape(value: Option<&str>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_empty() => "empty",
+        Some(_) => "present",
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn storefront_line_item_graphql_error(
     failure: StorefrontLineItemFailure,
@@ -215,29 +237,40 @@ fn storefront_line_item_graphql_error(
 ) -> async_graphql::Error {
     let (message, code, retryable) =
         storefront_line_item_public_policy(consumer_operation, failure.kind);
-    let failure_kind = match failure.kind {
+    let StorefrontLineItemFailure {
+        kind,
+        source_owner,
+        source_operation,
+        product_id,
+        source,
+    } = failure;
+    let failure_kind = match kind {
         StorefrontLineItemFailureKind::ProductUnavailable => "product_unavailable",
         StorefrontLineItemFailureKind::InventoryInsufficient => "inventory_insufficient",
         StorefrontLineItemFailureKind::InputInvalid => "input_invalid",
         StorefrontLineItemFailureKind::DependencyUnavailable => "dependency_unavailable",
     };
-    let source_kind = failure.source.kind();
-    let source = failure.source.detail();
+    let source_kind = source.kind();
+    let source = StorefrontLineItemDiagnosticSource::from(source);
+    let correlation_id_shape = optional_text_shape(correlation_id);
+    let tenant_id_shape = uuid_shape(tenant_id);
+    let variant_id_shape = uuid_shape(variant_id);
+    let product_id_shape = optional_uuid_shape(product_id);
     let channel_slug_length = public_channel_slug.map(|value| value.chars().count());
     let locale_length = locale.map(|value| value.chars().count());
 
-    match failure.kind {
+    match kind {
         StorefrontLineItemFailureKind::DependencyUnavailable => tracing::error!(
             source = ?source,
             source_kind,
-            owner = failure.source_owner,
-            owner_operation = failure.source_operation,
+            owner = source_owner,
+            owner_operation = source_operation,
             consumer_operation = consumer_operation.name(),
             failure_kind,
-            correlation_id = ?correlation_id,
-            tenant_id = %tenant_id,
-            variant_id = %variant_id,
-            product_id = ?failure.product_id,
+            correlation_id_shape,
+            tenant_id_shape,
+            variant_id_shape,
+            product_id_shape,
             requested_quantity,
             channel_slug_length = ?channel_slug_length,
             locale_length = ?locale_length,
@@ -249,14 +282,14 @@ fn storefront_line_item_graphql_error(
         _ => tracing::warn!(
             source = ?source,
             source_kind,
-            owner = failure.source_owner,
-            owner_operation = failure.source_operation,
+            owner = source_owner,
+            owner_operation = source_operation,
             consumer_operation = consumer_operation.name(),
             failure_kind,
-            correlation_id = ?correlation_id,
-            tenant_id = %tenant_id,
-            variant_id = %variant_id,
-            product_id = ?failure.product_id,
+            correlation_id_shape,
+            tenant_id_shape,
+            variant_id_shape,
+            product_id_shape,
             requested_quantity,
             channel_slug_length = ?channel_slug_length,
             locale_length = ?locale_length,
