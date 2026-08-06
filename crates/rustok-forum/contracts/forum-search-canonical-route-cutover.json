@@ -1,0 +1,74 @@
+{
+  "contract": "forum_search_canonical_route_cutover_v1",
+  "task": "FORUM-24Q",
+  "parent_task": "FORUM-24",
+  "extends": [
+    "FORUM-20BI",
+    "FORUM-23",
+    "FORUM-24A",
+    "FORUM-24I",
+    "FORUM-24L",
+    "FORUM-24O",
+    "FORUM-24P"
+  ],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned_stale_ledger",
+  "projection_owner": {
+    "source": "crates/rustok-forum/src/search_projection.rs",
+    "category_route_owner": "ForumCategoryRouteService",
+    "topic_route_owner": "ForumTopicRouteService",
+    "category_exact_locale_required": true,
+    "topic_exact_locale_required": true,
+    "reply_uses_canonical_topic_route": true,
+    "reply_query_key": "reply",
+    "uuid_module_routes_projected": false
+  },
+  "search_boundary": {
+    "source": "crates/rustok-search/src/engine.rs",
+    "search_reconstructs_forum_slug": false,
+    "search_reconstructs_topic_short_id": false,
+    "owner_projected_route_required": true,
+    "source_entity_pair_required": true,
+    "payload_identity_match_required": true,
+    "result_locale_must_match_route_locale": true,
+    "topic_short_id_must_match_topic_uuid": true,
+    "unsafe_external_or_protocol_relative_paths_rejected": true,
+    "control_characters_fragments_and_extra_queries_rejected": true,
+    "legacy_uuid_query_routes_rejected": true,
+    "missing_route_rejected": true
+  },
+  "route_shapes": {
+    "category": "/{locale}/forum/c/{slug}",
+    "topic": "/{locale}/forum/t/{short_id}/{slug}",
+    "reply": "/{locale}/forum/t/{short_id}/{slug}?reply={reply_id}"
+  },
+  "reindex": {
+    "required_for_existing_forum_documents": true,
+    "legacy_documents_fail_closed_until_reindexed": true,
+    "compatibility_fallback_added": false,
+    "search_storage_schema_changed": false,
+    "owner_event_schema_changed": false,
+    "projection_invalidation_protocol_changed": false
+  },
+  "compatibility": {
+    "graphql_result_shape_changed": false,
+    "native_result_shape_changed": false,
+    "admin_result_shape_changed": false,
+    "product_blog_content_routes_changed": false,
+    "forum_visibility_policy_changed": false,
+    "forum_route_alias_policy_changed": false,
+    "new_migration": false
+  },
+  "verification": {
+    "executed_by_implementation_agent": false,
+    "commands": [
+      "node scripts/verify/verify-forum-search-canonical-route-cutover.mjs",
+      "node scripts/verify/verify-search-canonical-url-contract.mjs",
+      "node scripts/verify/verify-forum-public-discovery-seo.mjs",
+      "cargo test -p rustok-search engine::tests -- --nocapture",
+      "cargo test -p rustok-forum --test search_canonical_route_cutover_contract -- --nocapture",
+      "cargo check -p rustok-forum --all-targets",
+      "cargo check -p rustok-search --all-targets --features graphql"
+    ]
+  }
+}

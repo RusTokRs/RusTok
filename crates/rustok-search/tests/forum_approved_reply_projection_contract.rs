@@ -28,16 +28,20 @@ fn forum_source_publishes_only_exact_public_approved_reply_documents() {
         "Some(&[ReplyStatus::Approved])",
         "if reply.effective_locale != locale",
         ".get_public_topic_with_locale_fallback(",
+        "if topic.effective_locale != locale",
         ".get_public_category_with_locale_fallback(",
+        "exact_topic_route(&self.db, tenant_id, topic.id, locale)",
         "document_key: format!(\"forum_reply:{reply_id}:{locale}\")",
         "\"kind\": \"forum_reply\"",
         "\"reply_id\": reply_id",
         "\"topic_id\": topic.id",
         "\"is_solution\": is_solution",
+        "format!(\"{topic_route}?reply={reply_id}\")",
     ] {
         require(FORUM_SOURCE, marker);
     }
     reject(FORUM_SOURCE, "forum_reply::Entity::find()");
+    reject(FORUM_SOURCE, "\"/modules/forum?topic=");
 
     for marker in [
         "pub async fn get_public_reply_with_locale_fallback",
@@ -74,18 +78,21 @@ fn reply_edits_reuse_topic_invalidation_and_topic_refresh_rebuilds_child_scope()
 }
 
 #[test]
-fn canonical_reply_route_is_bound_to_result_and_parent_topic_identity() {
+fn canonical_reply_route_is_bound_to_owner_topic_route_and_result_identity() {
     for marker in [
         "const FORUM_REPLY_ENTITY_TYPE: &str = \"forum_reply\"",
-        "canonical_forum_reply_result_url(value)",
+        "canonical_forum_projected_result_url(value)",
         "parse_payload_uuid(&value.payload, \"reply_id\")",
         "if reply_id != value.id",
         "parse_payload_uuid(&value.payload, \"topic_id\")",
-        "?topic={topic_id}&reply={reply_id}",
-        "canonical_url_rejects_spoofed_forum_source_entity_pairs_and_reply_payloads",
+        "canonical_forum_topic_route(route, locale.as_str(), topic_id, Some(reply_id))",
+        "forum_topic_short_identity",
+        "canonical_url_rejects_stale_or_malformed_forum_route_projections",
     ] {
         require(SEARCH_ENGINE, marker);
     }
+    reject(SEARCH_ENGINE, "canonical_forum_reply_result_url");
+    reject(SEARCH_ENGINE, "{FORUM_STOREFRONT_ROUTE}?topic=");
 }
 
 #[test]

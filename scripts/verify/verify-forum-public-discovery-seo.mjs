@@ -19,11 +19,15 @@ const services = read('crates/rustok-forum/src/services/mod.rs');
 const lib = read('crates/rustok-forum/src/lib.rs');
 const seo = read('crates/rustok-forum/src/seo_audience_targets.rs');
 const legacySeo = read('crates/rustok-forum/src/seo_targets.rs');
+const searchProjection = read('crates/rustok-forum/src/search_projection.rs');
 const searchEngine = read('crates/rustok-search/src/engine.rs');
 const searchIngestion = read('crates/rustok-search/src/ingestion.rs');
 const storefrontCore = read('crates/rustok-forum/storefront/src/core.rs');
 const contract = JSON.parse(
   read('crates/rustok-forum/contracts/forum-public-discovery-seo.json'),
+);
+const routeCutover = JSON.parse(
+  read('crates/rustok-forum/contracts/forum-search-canonical-route-cutover.json'),
 );
 const upstream = JSON.parse(
   read('crates/rustok-forum/contracts/forum-category-audience-read.json'),
@@ -88,18 +92,49 @@ for (const marker of [
 }
 
 for (const marker of [
+  'ForumCategoryRouteService',
+  'ForumTopicRouteService',
+  'exact_category_route',
+  'exact_topic_route',
+  '.canonical_descriptor(',
+  'category.effective_locale != locale',
+  'topic.effective_locale != locale',
+  'format!("{topic_route}?reply={reply_id}")',
+  '"route": route',
+]) {
+  requireText(searchProjection, marker, 'Forum Search canonical route projection');
+}
+for (const forbidden of [
+  '"/modules/forum?category=',
+  '"/modules/forum?topic=',
+]) {
+  rejectText(searchProjection, forbidden, 'retired Forum Search UUID projection');
+}
+
+for (const marker of [
   'const FORUM_SOURCE_MODULE: &str = "forum"',
   'const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category"',
   'const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic"',
-  'const FORUM_STOREFRONT_ROUTE: &str = "/modules/forum"',
-  'value.source_module == FORUM_SOURCE_MODULE',
-  '?category={}',
-  '?topic={}',
-  'canonical_url_derives_forum_category_and_topic_routes',
-  'canonical_url_rejects_spoofed_forum_source_entity_pairs',
+  'canonical_forum_projected_result_url(value)',
+  'value.payload.get("route")',
+  'canonical_forum_category_route',
+  'canonical_forum_topic_route',
+  'rustok_api::normalize_locale_tag',
+  'forum_topic_short_identity',
+  'canonical_url_accepts_owner_projected_forum_category_topic_and_reply_routes',
+  'canonical_url_rejects_stale_or_malformed_forum_route_projections',
 ]) {
   requireText(searchEngine, marker, 'canonical Forum Search result routes');
 }
+for (const forbidden of [
+  'const FORUM_STOREFRONT_ROUTE',
+  'canonical_forum_reply_result_url',
+  '{FORUM_STOREFRONT_ROUTE}?category=',
+  '{FORUM_STOREFRONT_ROUTE}?topic=',
+]) {
+  rejectText(searchEngine, forbidden, 'retired Search-owned Forum URL construction');
+}
+
 for (const marker of [
   'Some(format!("/{locale}/forum/c/{slug}"))',
   'Some(format!("/{locale}/forum/t/{short_id}/{slug}"))',
@@ -152,7 +187,7 @@ for (const key of [
   'forum_storefront_query_keys_reused',
 ]) {
   if (!contract.search_boundary[key]) {
-    throw new Error(`contract must lock Search boundary ${key}`);
+    throw new Error(`historical FORUM-20BI contract must retain ${key}`);
   }
 }
 for (const key of [
@@ -162,8 +197,24 @@ for (const key of [
   'forum_event_ingestion_changed',
 ]) {
   if (contract.search_boundary[key]) {
-    throw new Error(`contract must keep undelivered Search boundary false: ${key}`);
+    throw new Error(`historical contract must keep undelivered boundary false: ${key}`);
   }
+}
+if (routeCutover.task !== 'FORUM-24Q') throw new Error('unexpected route cutover task');
+if (!routeCutover.projection_owner?.category_exact_locale_required) {
+  throw new Error('FORUM-24Q must require exact category locale projection');
+}
+if (!routeCutover.projection_owner?.topic_exact_locale_required) {
+  throw new Error('FORUM-24Q must require exact topic locale projection');
+}
+if (!routeCutover.search_boundary?.owner_projected_route_required) {
+  throw new Error('FORUM-24Q must require owner-projected Search routes');
+}
+if (!routeCutover.reindex?.legacy_documents_fail_closed_until_reindexed) {
+  throw new Error('FORUM-24Q must fail closed for stale Search documents');
+}
+if (routeCutover.reindex?.compatibility_fallback_added) {
+  throw new Error('FORUM-24Q must not add a compatibility fallback');
 }
 if (
   upstream.downstream_completion !==
@@ -177,13 +228,13 @@ for (const key of ['search_index_changed', 'seo_changed', 'deep_link_changed']) 
   }
 }
 if (!upstream.compatibility.search_change_is_route_contract_only) {
-  throw new Error('upstream contract must bound Search change to route contract');
+  throw new Error('upstream contract must bound the original Search change');
 }
 if (upstream.compatibility.forum_search_projection_consumer_wired) {
   throw new Error('upstream contract must not claim Forum Search projection wiring');
 }
 if (contract.downstream_task !== 'FORUM-20BJ') {
-  throw new Error('unexpected downstream task');
+  throw new Error('unexpected historical downstream task');
 }
 
-console.log('forum exact public discovery and SEO composition verified');
+console.log('forum exact public discovery, SEO, and Search route composition verified');

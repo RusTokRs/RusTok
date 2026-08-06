@@ -14,7 +14,6 @@ use sea_orm::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::ForumPublicDiscoveryService;
 use crate::entities::{
     forum_category, forum_category_translation, forum_reply_body, forum_topic_translation,
 };
@@ -23,6 +22,7 @@ use crate::search_projection_author::{
     public_author_payload,
 };
 use crate::state_machine::ReplyStatus;
+use crate::{ForumCategoryRouteService, ForumPublicDiscoveryService, ForumTopicRouteService};
 
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
@@ -189,6 +189,10 @@ impl ForumSearchProjectionSource {
         let Some(category) = category else {
             return Ok(None);
         };
+        if category.effective_locale != locale {
+            return Ok(None);
+        }
+        let route = exact_category_route(&self.db, tenant_id, category.id, locale).await?;
         let owner = forum_category::Entity::find_by_id(category.id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -224,7 +228,7 @@ impl ForumSearchProjectionSource {
                 "parent_id": category.parent_id,
                 "topic_count": category.topic_count,
                 "reply_count": category.reply_count,
-                "route": format!("/modules/forum?category={}", category.id)
+                "route": route
             }),
             published_at: Some(created_at),
             created_at,
@@ -246,6 +250,10 @@ impl ForumSearchProjectionSource {
         let Some(topic) = topic else {
             return Ok(None);
         };
+        if topic.effective_locale != locale {
+            return Ok(None);
+        }
+        let route = exact_topic_route(&self.db, tenant_id, topic.id, locale).await?;
         let category = self
             .discovery
             .get_public_category_with_locale_fallback(tenant_id, topic.category_id, locale, None)
@@ -307,7 +315,7 @@ impl ForumSearchProjectionSource {
                 "is_locked": topic.is_locked,
                 "solution_reply_id": topic.solution_reply_id,
                 "published_at": created_at.to_rfc3339(),
-                "route": format!("/modules/forum?topic={}", topic.id)
+                "route": route
             }),
             published_at: Some(created_at),
             created_at,
@@ -347,6 +355,10 @@ impl ForumSearchProjectionSource {
         let Some(topic) = topic else {
             return Ok(None);
         };
+        if topic.effective_locale != locale {
+            return Ok(None);
+        }
+        let topic_route = exact_topic_route(&self.db, tenant_id, topic.id, locale).await?;
         let category = self
             .discovery
             .get_public_category_with_locale_fallback(tenant_id, topic.category_id, locale, None)
@@ -367,7 +379,7 @@ impl ForumSearchProjectionSource {
         let created_at = parse_timestamp(&reply.created_at, "reply.created_at")?;
         let updated_at = parse_timestamp(&reply.updated_at, "reply.updated_at")?;
         let is_solution = reply.is_solution && topic.solution_reply_id == Some(reply_id);
-        let route = format!("/modules/forum?topic={}&reply={reply_id}", topic.id);
+        let route = format!("{topic_route}?reply={reply_id}");
         let body = reply.content_plain_text;
         Ok(Some(SearchProjectionDocument {
             document_key: format!("forum_reply:{reply_id}:{locale}"),
@@ -586,6 +598,42 @@ impl ProjectionCursor {
             )),
         }
     }
+}
+
+async fn exact_category_route(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    locale: &str,
+) -> Result<String> {
+    let descriptor = ForumCategoryRouteService::new(db.clone())
+        .canonical_descriptor(tenant_id, category_id, locale, None)
+        .await
+        .map_err(map_forum_error)?;
+    if descriptor.category_id != category_id || descriptor.locale != locale {
+        return Err(Error::External(
+            "Forum Search category route owner returned a non-exact descriptor".to_string(),
+        ));
+    }
+    Ok(descriptor.path)
+}
+
+async fn exact_topic_route(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    locale: &str,
+) -> Result<String> {
+    let descriptor = ForumTopicRouteService::new(db.clone())
+        .canonical_descriptor(tenant_id, topic_id, locale)
+        .await
+        .map_err(map_forum_error)?;
+    if descriptor.topic_id != topic_id || descriptor.locale != locale {
+        return Err(Error::External(
+            "Forum Search topic route owner returned a non-exact descriptor".to_string(),
+        ));
+    }
+    Ok(descriptor.path)
 }
 
 fn ensure_locale_bound(count: usize) -> Result<()> {

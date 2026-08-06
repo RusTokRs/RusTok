@@ -39,6 +39,7 @@ const adminGlobalPath = "apps/admin/src/widgets/app_shell/native_server_adapter.
 const rustTestPath = "crates/rustok-search/tests/forum_approved_reply_projection_contract.rs";
 const canonicalEvidencePath = "crates/rustok-search/contracts/evidence/search-canonical-url-contract.json";
 const contractPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
+const routeCutoverPath = "crates/rustok-forum/contracts/forum-search-canonical-route-cutover.json";
 const notePath = "crates/rustok-forum/docs/forum-20bo-approved-reply-search.md";
 const snapshotPath = "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json";
 const searchPath = "crates/rustok-forum/contracts/forum-search-projection.json";
@@ -61,10 +62,12 @@ const rustTest = read(rustTestPath);
 const note = read(notePath);
 let canonicalEvidence = null;
 let contract = null;
+let routeCutover = null;
 const upstreams = [];
 for (const [label, body, assign] of [
   [canonicalEvidencePath, read(canonicalEvidencePath), (value) => { canonicalEvidence = value; }],
   [contractPath, read(contractPath), (value) => { contract = value; }],
+  [routeCutoverPath, read(routeCutoverPath), (value) => { routeCutover = value; }],
   [snapshotPath, read(snapshotPath), (value) => upstreams.push([snapshotPath, value])],
   [searchPath, read(searchPath), (value) => upstreams.push([searchPath, value])],
   [invalidationPath, read(invalidationPath), (value) => upstreams.push([invalidationPath, value])],
@@ -105,13 +108,16 @@ for (const marker of [
   "Some(&[ReplyStatus::Approved])",
   "if reply.effective_locale != locale",
   ".get_public_topic_with_locale_fallback(",
+  "if topic.effective_locale != locale",
   ".get_public_category_with_locale_fallback(",
+  "exact_topic_route(&self.db, tenant_id, topic.id, locale)",
   'document_key: format!("forum_reply:{reply_id}:{locale}")',
   "entity_type: FORUM_REPLY_ENTITY_TYPE.to_string()",
   '"kind": "forum_reply"',
   '"reply_id": reply_id',
   '"topic_id": topic.id',
   '"is_solution": is_solution',
+  'format!("{topic_route}?reply={reply_id}")',
   "FORUM_REPLY_ENTITY_TYPE =>",
 ]) {
   requireMarker(source, marker, sourcePath);
@@ -122,6 +128,7 @@ for (const forbidden of [
   "forum_category_audience_policy::",
   "forum_topic_audience_policy::",
   "rustok_search::",
+  '"/modules/forum?topic=',
 ]) {
   rejectMarker(source, forbidden, sourcePath);
 }
@@ -158,15 +165,23 @@ for (const marker of [
 
 for (const marker of [
   'const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply"',
-  "canonical_forum_reply_result_url(value)",
+  "canonical_forum_projected_result_url(value)",
+  'value.payload.get("route")',
   'parse_payload_uuid(&value.payload, "reply_id")',
   "if reply_id != value.id",
   'parse_payload_uuid(&value.payload, "topic_id")',
-  "?topic={topic_id}&reply={reply_id}",
-  "canonical_url_derives_forum_category_topic_and_reply_routes",
-  "canonical_url_rejects_spoofed_forum_source_entity_pairs_and_reply_payloads",
+  "canonical_forum_topic_route(route, locale.as_str(), topic_id, Some(reply_id))",
+  "forum_topic_short_identity",
+  "canonical_url_accepts_owner_projected_forum_category_topic_and_reply_routes",
+  "canonical_url_rejects_stale_or_malformed_forum_route_projections",
 ]) {
   requireMarker(engine, marker, enginePath);
+}
+for (const forbidden of [
+  "canonical_forum_reply_result_url",
+  "{FORUM_STOREFRONT_ROUTE}?topic=",
+]) {
+  rejectMarker(engine, forbidden, enginePath);
 }
 
 requireMarker(pgEngine, 'clauses.push("is_public = TRUE".to_string())', pgEnginePath);
@@ -194,7 +209,7 @@ for (const marker of [
 for (const marker of [
   "forum_source_publishes_only_exact_public_approved_reply_documents",
   "reply_edits_reuse_topic_invalidation_and_topic_refresh_rebuilds_child_scope",
-  "canonical_reply_route_is_bound_to_result_and_parent_topic_identity",
+  "canonical_reply_route_is_bound_to_owner_topic_route_and_result_identity",
   "admin_global_search_maps_forum_results_to_domain_permissions",
 ]) {
   requireMarker(rustTest, marker, rustTestPath);
@@ -207,7 +222,9 @@ for (const marker of [
   "three bounded phases",
   "topic and all child replies together",
   "No new root event or reindex target string",
-  "/modules/forum?topic={topic_id}&reply={reply_id}",
+  "FORUM-24Q supersedes the original UUID query navigation",
+  "/{locale}/forum/t/{short_id}/{slug}?reply={reply_id}",
+  "It does not rebuild the topic path or retain a UUID compatibility fallback",
   "Published storefront searches filter on `is_public = TRUE`",
   "`FORUM_REPLIES_READ`",
   "FORUM-20BP",
@@ -279,14 +296,14 @@ if (contract) {
     "reply_query_is_additive_topic_open_hint",
     "spoofed_or_malformed_payload_is_non_navigable",
   ]) {
-    if (contract.canonical_url_boundary?.[key] !== true) failures.push(`${contractPath}: URL ${key} drift`);
+    if (contract.canonical_url_boundary?.[key] !== true) failures.push(`${contractPath}: historical URL ${key} drift`);
   }
   for (const key of [
     "standalone_reply_storefront_page_added",
     "storefront_reply_anchor_behavior_added",
     "transport_local_url_fallback_added",
   ]) {
-    if (contract.canonical_url_boundary?.[key] !== false) failures.push(`${contractPath}: URL ${key} must remain false`);
+    if (contract.canonical_url_boundary?.[key] !== false) failures.push(`${contractPath}: historical URL ${key} must remain false`);
   }
   for (const key of [
     "published_only_search_filters_by_is_public",
@@ -317,6 +334,22 @@ if (contract) {
   }
 }
 
+if (routeCutover) {
+  if (routeCutover.task !== "FORUM-24Q") failures.push(`${routeCutoverPath}: unexpected task`);
+  if (!routeCutover.projection_owner?.reply_uses_canonical_topic_route) {
+    failures.push(`${routeCutoverPath}: reply must reuse canonical topic route`);
+  }
+  if (!routeCutover.search_boundary?.owner_projected_route_required) {
+    failures.push(`${routeCutoverPath}: owner-projected route must be required`);
+  }
+  if (!routeCutover.reindex?.legacy_documents_fail_closed_until_reindexed) {
+    failures.push(`${routeCutoverPath}: stale reply documents must fail closed`);
+  }
+  if (routeCutover.reindex?.compatibility_fallback_added) {
+    failures.push(`${routeCutoverPath}: compatibility fallback must remain absent`);
+  }
+}
+
 for (const [label, upstream] of upstreams) {
   if (upstream.approved_reply_search_contract !== contractPath) {
     failures.push(`${label}: approved reply contract handoff drift`);
@@ -331,8 +364,10 @@ for (const [label, upstream] of upstreams) {
 if (canonicalEvidence) {
   const cases = new Set((canonicalEvidence.cases ?? []).map((entry) => entry.name));
   for (const required of [
+    "forum_projection_owner_routes",
     "forum_reply_canonical_route",
     "forum_reply_fail_closed",
+    "forum_stale_projection_fail_closed",
     "admin_forum_permission_gate",
   ]) {
     if (!cases.has(required)) failures.push(`${canonicalEvidencePath}: missing case ${required}`);
