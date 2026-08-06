@@ -23,15 +23,16 @@ enum ForumTopicHostAction {
 }
 
 pub(crate) async fn render_forum_topic_route_response(
-    locale: String,
+    locale_path_prefix: String,
+    effective_locale: String,
     short_id: String,
     slug: String,
     mut query_params: HashMap<String, String>,
     csp_nonce: Option<&CspNonce>,
 ) -> Response {
-    let requested_path = format!("/{locale}/forum/t/{short_id}/{slug}");
+    let requested_path = format!("/{locale_path_prefix}/forum/t/{short_id}/{slug}");
     let resolution = match rustok_forum_storefront::resolve_storefront_topic_route(
-        locale.clone(),
+        locale_path_prefix.clone(),
         short_id.clone(),
         slug.clone(),
     )
@@ -60,7 +61,7 @@ pub(crate) async fn render_forum_topic_route_response(
             let subpath = Some(format!("t/{short_id}/{slug}"));
             Html(
                 render_module_page_with_subpath_nonce(
-                    locale.as_str(),
+                    effective_locale.as_str(),
                     FORUM_ROUTE_SEGMENT,
                     subpath,
                     query_params,
