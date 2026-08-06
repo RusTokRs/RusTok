@@ -3,6 +3,7 @@ mod cursor;
 mod drift_candidate_confirmation;
 mod drift_candidates;
 mod drift_digest;
+mod drift_finding_lifecycle;
 mod mutation_event;
 mod planner;
 mod postgres_compiler;
@@ -60,6 +61,17 @@ pub use drift_digest::{
     IndexDriftMismatchRecordStatus, IndexDriftMismatchRecorder,
     IndexDriftMissingEntityCandidateOutcome, IndexDriftSnapshotBoundary, IndexDriftSnapshotPair,
     IndexDriftSnapshotReader, IndexDriftSnapshotView,
+};
+pub use drift_finding_lifecycle::{
+    IndexDriftFindingAuthorizedLifecycleCommand, IndexDriftFindingLifecycleAction,
+    IndexDriftFindingLifecycleActor, IndexDriftFindingLifecycleAuthorization,
+    IndexDriftFindingLifecycleAuthorizer, IndexDriftFindingLifecycleCommand,
+    IndexDriftFindingLifecycleFailure, IndexDriftFindingLifecycleFailureError,
+    IndexDriftFindingLifecycleFailureKind, IndexDriftFindingLifecycleNotAppliedReason,
+    IndexDriftFindingLifecycleOutcome, IndexDriftFindingLifecycleReceipt,
+    IndexDriftFindingLifecycleService, IndexDriftFindingLifecycleStore,
+    IndexDriftFindingLifecycleStoreOutcome, IndexDriftFindingLifecycleValidationError,
+    IndexDriftFindingState,
 };
 pub use mutation_event::{
     IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,

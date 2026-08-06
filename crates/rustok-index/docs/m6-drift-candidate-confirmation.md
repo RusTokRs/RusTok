@@ -1,6 +1,6 @@
 # M6 bounded drift candidate confirmation
 
-Status: `source_complete_persistence_complete_lifecycle_pending`.
+Status: `source_complete_persistence_complete_lifecycle_complete_repair_pending`.
 
 ## Purpose
 
@@ -23,8 +23,8 @@ The production observer is `PostgresIndexDriftCandidateMaterializedObserver`. It
 field map, schema fingerprint, graph aggregate, finding row, or owner-private record.
 
 `materialize_postgres_index_drift_candidate_confirmer` constructs the internal boundary from frozen
-registries and a PostgreSQL connection. It returns `None` when no shared source registry exists. It
-performs no SQL during composition and does not insert the confirmer into runtime extensions.
+registries and a PostgreSQL connection. It performs no SQL during composition and does not insert the
+confirmer into runtime extensions.
 
 ## Materialized bracketing
 
@@ -61,81 +61,66 @@ missing watermark, malformed owner state, or scope drift fails closed.
 
 For `IndexDriftOrphanLinkCandidate`, the confirmer:
 
-1. verifies the exact materialized source entity/version/link/ordinal/target and current target
-   absence or positive-version tombstone;
+1. verifies the exact materialized source entity/version/link/ordinal/target and target absence;
 2. targeted-loads the exact source key;
-3. requires an authoritative upsert with the same source version and the same target at the same
-   link ordinal;
+3. requires an authoritative upsert with the same source version and link target at the same ordinal;
 4. targeted-loads the exact target key under the source tenant;
 5. treats an authoritative target upsert as `NotCandidate(TargetPresent)`;
 6. accepts only an authoritative target delete or admitted target absence watermark;
-7. repeats the source-link read and requires the same summarized source version/link state;
-8. repeats target absence and requires the same positive absence version;
-9. repeats the materialized observation;
-10. returns `Confirmed(OrphanLink)` with only the source/link/target identity and target absence
-    version.
+7. repeats source-link and target-absence evidence;
+8. repeats the materialized observation;
+9. returns `Confirmed(OrphanLink)` with only typed identity and target absence version.
 
-A deleted or absent authoritative source entity is not an orphan-link finding candidate because the
-source link no longer has owner authority. A changed source version or link becomes a typed
-`NotCandidate` outcome.
+A deleted or absent authoritative source entity is not an orphan-link finding candidate. A changed
+source version or link becomes a typed `NotCandidate` outcome.
 
 ## Outcomes and failures
 
-Confirmed outcomes expose only:
+Confirmed outcomes expose only typed identity and positive source-version evidence. `NotCandidate`
+reasons are a closed enum. Dependency failures expose only retryable/permanent classification and a
+bounded lowercase machine code; source failure codes, provider names, SQL, causes, payloads, fields,
+and secret values are not propagated.
 
-- missing entity key, indexed source version, and authoritative absence version; or
-- orphan source key/version, link name, ordinal, typed target, and target absence version.
+## Downstream boundaries
 
-`NotCandidate` reasons are a closed enum:
+`PostgresIndexDriftConfirmedCandidateWriter` revalidates exact materialized state and records the
+finding in one serializable transaction. The persistence contract is documented in
+`m6-confirmed-candidate-finding-persistence.md`.
 
-- materialized changed;
-- source present or absent;
-- source version changed;
-- source link changed;
-- target present.
+`IndexDriftFindingLifecycleService` and its PostgreSQL store now add authorization-gated
+open-to-resolved/open-to-ignored commands with idempotent actor/action/reason audit. The lifecycle
+contract is documented in `m6-drift-finding-lifecycle.md`.
 
-Dependency failures expose only retryable/permanent classification and a bounded lowercase machine
-code. Source failure codes, provider names, SQL, database causes, payloads, fields, and secret values
-are not propagated.
-
-## Concurrency boundary
-
-PostgreSQL and owner sources do not share a transaction. The confirmer therefore performs bounded
-double observations rather than claiming cross-owner atomicity. State may still change after the
-final observation; the outcome is point-in-time confirmation for the internal persistence step, not
-repair authorization.
-
-`PostgresIndexDriftConfirmedCandidateWriter` now revalidates the exact materialized identity/version/
-link state and records the finding in one serializable PostgreSQL transaction. The persistence
-contract is documented separately in `m6-confirmed-candidate-finding-persistence.md`.
+Neither persistence nor lifecycle turns confirmation evidence into repair authority.
 
 ## Deliberate limits
 
-The confirmation and persistence slices do not add:
+The confirmation, persistence, and lifecycle slices do not add:
 
 - page iteration, cursor persistence, background execution, scheduling, or restart state;
-- resolve/ignore lifecycle, actor/reason audit, or authorization;
 - GraphQL, HTTP, CLI, MCP, native-admin, or public continuation transport;
 - targeted, shadow, full, or automatic repair;
-- retained PostgreSQL, owner-source, concurrency, workflow, or CI evidence.
+- retained PostgreSQL, owner-source, migration, concurrency, workflow, or CI evidence.
 
 ## Next implementation step
 
-Add fail-closed finding resolve and ignore lifecycle commands with authorized actor identity, bounded
-reason, exact state preconditions, and immutable audit evidence. Keep public transport and repair out
-of that slice.
+Add one internal targeted repair boundary with authorized operator capability, finding-specific owner
+selection, and admitted before/after evidence. Keep public transport and automatic repair out of that
+slice.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index drift_candidate_confirmation -- --nocapture
 cargo test -p rustok-index drift_confirmed_candidate_writer -- --nocapture
+cargo test -p rustok-index drift_finding_lifecycle -- --nocapture
 node scripts/verify/verify-index-drift-candidate-confirmation.mjs
 node scripts/verify/verify-index-confirmed-candidate-persistence.mjs
+node scripts/verify/verify-index-drift-finding-lifecycle.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, PostgreSQL scenarios, workflows, or CI were executed by
-the implementation agent.
+No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL scenarios, workflows, or CI were
+executed by the implementation agent.
