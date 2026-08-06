@@ -42,6 +42,7 @@ for (const slug of [
   "profiles",
   "media",
   "social_graph",
+  "reactions",
   "moderation",
   "notifications",
   "translation",
@@ -70,6 +71,17 @@ for (const fragment of [
   "MediaAssetReadPort",
 ]) {
   if (!media.includes(fragment)) fail(`Media owner contract is missing: ${fragment}`);
+}
+
+const reactions = read("crates/rustok-reactions/README.md");
+for (const fragment of [
+  "optional shared owner for reusable reactions",
+  "never reads producer-private tables",
+  "Existing Forum votes remain unchanged",
+]) {
+  if (!reactions.includes(fragment)) {
+    fail(`Reactions owner contract is missing: ${fragment}`);
+  }
 }
 
 const moderation = read("crates/rustok-moderation/README.md");

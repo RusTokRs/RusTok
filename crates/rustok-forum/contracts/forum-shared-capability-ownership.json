@@ -8,6 +8,7 @@
     "public_profile": "rustok-profiles",
     "binary_media": "rustok-media",
     "social_relations": "rustok-social-graph",
+    "reactions": "rustok-reactions",
     "moderation_cases": "rustok-moderation",
     "notification_inbox": "rustok-notifications",
     "translation_workflow": "rustok-translation",
@@ -15,7 +16,6 @@
     "generic_index": "rustok-index",
     "seo": "rustok-seo",
     "durable_events": ["rustok-outbox", "rustok-events"],
-    "planned_reactions": "rustok-reactions",
     "planned_reputation": "rustok-reputation"
   },
   "forum_owned": [
@@ -26,6 +26,7 @@
     "forum drafts and bookmarks",
     "forum attachment relations",
     "forum trust and posting policy",
+    "forum reaction subject adapter",
     "forum moderation effect adapter and local enforcement state",
     "forum visibility, semantic events and projections",
     "forum statistics and module-owned UI"
@@ -39,7 +40,7 @@
   ],
   "required_plan_fragments": [
     "Forum is an installable domain application composed from platform modules",
-    "planned `rustok-reactions`",
+    "`rustok-reactions`",
     "planned `rustok-reputation`",
     "`rustok-moderation` through `rustok-moderation-api`",
     "Profiles remains the sole public member identity and directory owner",
@@ -49,6 +50,7 @@
   "archive_snapshot": "crates/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot",
   "verification": [
     "node scripts/verify/verify-forum-shared-capability-ownership.mjs",
+    "node scripts/verify/verify-reactions-foundation.mjs",
     "cargo xtask module validate forum",
     "git diff --check"
   ]

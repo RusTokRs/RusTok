@@ -1,0 +1,20 @@
+[module]
+slug = "reactions"
+name = "Reactions"
+version = "0.1.0"
+description = "Shared bounded reactions with source-owned subject authorization"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "future_ui"
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "ReactionsModule"
+
+[marketplace]
+category = "content"
+publisher = "rustok"
+tags = ["reactions", "social", "engagement"]
+description = "Reusable reactions for revisioned subjects owned by platform modules."
