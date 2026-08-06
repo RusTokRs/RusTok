@@ -72,16 +72,39 @@ for (const forbidden of [
   }
 }
 
+const sourceFactoryPath =
+  'crates/rustok-index/src/infrastructure/postgres/source_factory.rs';
+const sourceFactory = requireMarkers(sourceFactoryPath, [
+  'materialize_index_mutation_event_registry(&staged)',
+  'SharedIndexMutationEventRegistry',
+  'MutationEventRegistry(#[source] IndexMutationEventError)',
+  '*extensions = staged',
+]);
+if (
+  sourceFactory.indexOf('materialize_index_mutation_event_registry(&staged)') >=
+  sourceFactory.indexOf('*extensions = staged')
+) {
+  fail(`${sourceFactoryPath} must validate event routes before committing staged extensions`);
+}
+
 const docPath = 'crates/rustok-index/docs/m5-mutation-event-ack-contract.md';
 requireMarkers(docPath, [
-  'Status: `registry_and_commit_before_ack_contract_source_complete_broker_wiring_pending`',
+  'Status: `generic_contract_complete_social_graph_route_source_complete_runtime_execution_pending`',
   '`IndexMutationEventCatalog`',
   '`IndexMutationEventWorker`',
   'A mutation failure suppresses acknowledgement',
   'durable database commit followed by acknowledgement',
-  'does not select or start a broker consumer',
-  'The M5 implementation-plan item remains open',
+  'First production route: Social Graph',
+  'Product, ProductVariant, or SalesChannel event routes',
+  'The M5 implementation-plan item remains partially open',
   'Execution is maintainer-owned',
+]);
+
+requireMarkers('crates/rustok-index/docs/m5-social-graph-mutation-route.md', [
+  'source_complete_runtime_execution_pending',
+  'social_graph.relation.state_changed.v1',
+  'Atomic source and route materialization',
+  'existing Social Graph Iggy worker',
 ]);
 
 console.log('[verify-index-mutation-event-ack-contract] OK');
