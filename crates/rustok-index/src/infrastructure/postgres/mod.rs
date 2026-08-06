@@ -81,8 +81,7 @@ pub use drift_missing_entity_repair::{
     materialize_postgres_index_drift_missing_entity_repair_service,
 };
 pub use drift_orphan_link_repair::{
-    IndexOrphanLinkRemovalOutcome, PostgresIndexDriftOrphanLinkEvidenceReader,
-    PostgresIndexDriftOrphanLinkRepairOwner, PostgresIndexOrphanLinkMutationStore,
+    PostgresIndexDriftOrphanLinkEvidenceReader, PostgresIndexDriftOrphanLinkRepairOwner,
     materialize_postgres_index_drift_orphan_link_repair_service,
 };
 pub use drift_repair::{
