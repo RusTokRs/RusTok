@@ -24,7 +24,8 @@ The broader Page Builder plan remains authoritative for the complete programme. 
 
 - is absent unless `inline-edit` is enabled;
 - leaves the existing read-only renderer uninstrumented;
-- rejects provider-owned, nested, templated, runtime-bound, conditional and repeated components;
+- rejects provider-owned nodes, composite nodes with children, templated nodes and every node inside runtime-owned binding, condition or repeater subtrees;
+- permits a stable static leaf nested inside an ordinary unowned layout;
 - validates grant identity, expiry, sequence, selected page and exact project hash;
 - invokes a consumer `InlineEditAuthorizationPort` immediately before mutation;
 - converts the request into one canonical Fly `EditorCommand::Patch` for `content`;
