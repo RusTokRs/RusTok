@@ -1,0 +1,47 @@
+{
+  "status": "commerce_admin_payment_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/controllers/admin/payments.rs",
+    "scripts/verify/verify-commerce-admin-payment-diagnostic-safety.mjs",
+    "crates/rustok-commerce/docs/admin-payment-diagnostic-safety.md",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "raw_payment_error_logged": false,
+    "raw_payment_orchestration_error_logged": false,
+    "raw_tenant_uuid_logged": false,
+    "raw_actor_uuid_logged": false,
+    "raw_payment_collection_uuid_logged": false,
+    "raw_refund_uuid_logged": false,
+    "raw_order_uuid_logged": false,
+    "raw_cart_uuid_logged": false,
+    "raw_customer_uuid_logged": false,
+    "redacted_error_debug_logged": true,
+    "required_uuid_shapes_logged": true,
+    "optional_uuid_shapes_logged": true,
+    "typed_policy_selection_precedes_shadowing": true,
+    "payment_not_found_identity_adoption_precedes_shadowing": true,
+    "reserved_refund_identity_adoption_precedes_shadowing": true,
+    "payment_http_policy_preserved": true,
+    "reserved_refund_http_policy_preserved": true,
+    "ten_route_callsites_preserved": true,
+    "permissions_preserved": true,
+    "owner_and_orchestration_calls_preserved": true,
+    "refund_idempotency_key_contract_preserved": true,
+    "route_response_contracts_preserved": true,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}
