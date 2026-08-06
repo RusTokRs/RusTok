@@ -48,6 +48,89 @@ impl AdminShippingOptionErrorContext {
     }
 }
 
+struct AdminShippingOptionDiagnosticContext {
+    tenant_id: &'static str,
+    shipping_option_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminShippingOptionErrorContext> for AdminShippingOptionDiagnosticContext {
+    fn from(context: &AdminShippingOptionErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            shipping_option_id: optional_uuid_shape(context.shipping_option_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminShippingOptionPortDiagnosticContext {
+    correlation_id: &'static str,
+    actor: &'static str,
+    channel: &'static str,
+    locale: usize,
+    deadline_ms: Option<u64>,
+}
+
+impl From<&PortContext> for AdminShippingOptionPortDiagnosticContext {
+    fn from(context: &PortContext) -> Self {
+        Self {
+            correlation_id: text_presence_shape(context.correlation_id.as_str()),
+            actor: text_presence_shape(context.actor.id.as_str()),
+            channel: optional_text_presence_shape(context.channel.as_deref()),
+            locale: context.locale.len(),
+            deadline_ms: context.deadline_ms,
+        }
+    }
+}
+
+struct AdminShippingOptionPortDiagnosticError<'a> {
+    code: &'a str,
+    retryable: bool,
+}
+
+impl std::fmt::Debug for AdminShippingOptionPortDiagnosticError<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+struct AdminShippingDiagnosticError;
+
+impl std::fmt::Debug for AdminShippingDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
+fn text_presence_shape(value: &str) -> &'static str {
+    if value.is_empty() {
+        "empty"
+    } else {
+        "present_non_empty"
+    }
+}
+
+fn optional_text_presence_shape(value: Option<&str>) -> &'static str {
+    match value {
+        None => "absent",
+        Some("") => "present_empty",
+        Some(_) => "present_non_empty",
+    }
+}
+
 fn map_shipping_profile_error(error: CommerceError) -> HttpError {
     let (status, code, message, error_kind) = match &error {
         CommerceError::ShippingProfileNotFound(_) => (
@@ -91,6 +174,7 @@ fn map_shipping_profile_error(error: CommerceError) -> HttpError {
             "unexpected_commerce_error",
         ),
     };
+    let error = AdminShippingDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = "rustok_commerce.shipping_profile",
@@ -133,6 +217,8 @@ fn map_admin_shipping_option_error(
             "database",
         ),
     };
+    let context = AdminShippingOptionDiagnosticContext::from(&context);
+    let error = AdminShippingDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_SHIPPING_OPTION_OWNER,
@@ -212,6 +298,12 @@ fn map_admin_shipping_option_port_error(
             "Fulfillment operation could not be completed safely",
             "invariant_violation",
         ),
+    };
+    let context = AdminShippingOptionDiagnosticContext::from(&context);
+    let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);
+    let error = AdminShippingOptionPortDiagnosticError {
+        code: error.code.as_str(),
+        retryable: error.retryable,
     };
     tracing::error!(
         error = ?error,
