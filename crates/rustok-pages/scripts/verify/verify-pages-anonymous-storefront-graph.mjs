@@ -33,9 +33,12 @@ const plan = read(planPath);
 const localPlan = read(localPlanPath);
 const pagesManifestPath = "crates/rustok-pages/storefront/Cargo.toml";
 const builderManifestPath = "crates/rustok-page-builder-storefront/Cargo.toml";
+const builderLibPath = "crates/rustok-page-builder-storefront/src/lib.rs";
+const inlineSourcePath = "crates/rustok-page-builder-storefront/src/inline_edit.rs";
 const hostManifestPath = "apps/storefront/Cargo.toml";
 const pagesManifest = read(pagesManifestPath);
 const builderManifest = read(builderManifestPath);
+const builderLib = read(builderLibPath);
 const hostManifest = read(hostManifestPath);
 
 if (evidence.format !== "pages_anonymous_storefront_graph_source_v1") {
@@ -141,22 +144,38 @@ for (const forbidden of [
   "rustok-admin",
   "fly-browser",
   "fly-ui",
-  "fly-leptos"
+  "fly-leptos",
+  "rustok-page-builder-storefront/inline-edit"
 ]) {
   forbid(pagesManifest, forbidden, "Pages storefront manifest");
 }
 
 for (const marker of [
   'default = []',
-  'hydrate = ["leptos/hydrate"]',
-  'ssr = ["leptos/ssr"]',
+  '"leptos/hydrate"',
+  '"leptos/ssr"',
+  'inline-edit = ["dep:fly-leptos"]',
+  'fly-leptos = { path = "../fly-leptos", optional = true, default-features = false }',
   'fly = { path = "../fly" }',
   'rustok-page-builder = { path = "../rustok-page-builder", default-features = false }'
 ]) {
   need(builderManifest, marker, "Page Builder storefront manifest");
 }
-for (const forbidden of forbiddenPackages) {
+for (const forbidden of [
+  "rustok-pages-admin",
+  "rustok-page-builder-admin",
+  "rustok-admin",
+  "fly-browser",
+  "fly-ui"
+]) {
   forbid(builderManifest, forbidden, "Page Builder storefront manifest");
+}
+for (const marker of [
+  '#[cfg(feature = "inline-edit")]',
+  'mod inline_edit;',
+  'pub use inline_edit::*;'
+]) {
+  need(builderLib, marker, "feature-gated Page Builder inline source");
 }
 
 for (const marker of [
@@ -209,8 +228,11 @@ for (const sourceRoot of [
   "apps/storefront/src"
 ]) {
   for (const file of walkRustFiles(sourceRoot)) {
-    const source = readFileSync(file, "utf8");
     const label = path.relative(repoRoot, file);
+    if (label === inlineSourcePath) {
+      continue;
+    }
+    const source = readFileSync(file, "utf8");
     for (const marker of forbiddenSourceMarkers) {
       forbid(source, marker, label);
     }
@@ -358,5 +380,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "[verify-pages-anonymous-storefront-graph] PASS graph_profiles=6 authoring_packages=excluded bundle_artifact_execution=pending"
+  "[verify-pages-anonymous-storefront-graph] PASS graph_profiles=6 authoring_packages=excluded optional_inline_source=gated bundle_artifact_execution=pending"
 );
