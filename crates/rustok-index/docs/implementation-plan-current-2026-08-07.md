@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked against current `main@c1edda46e5c4bf5ad3e6dbb01581d6026da28a95` and continued on
-`agent/index-m7-product-channel-relation-ledger-20260807`. The intervening #3126 Page Builder change
-does not overlap the Index/Product relation slice.
+Status overlay rechecked against `main@eb75872bc37adba361c7a1eff1533b71f2a00a3f` and continued on
+`agent/index-m7-product-channel-relation-ledger-20260807`. Intervening #3127 Reactions, #3128 Pages,
+and #3129 Commerce changes do not overlap the Index/Product relation slice.
 
 This file supersedes the dated 2026-08-03 status overlay. `implementation-plan.md` remains the
 historical milestone/architecture plan, but several of its M5/M6/M7 checklist entries are stale
