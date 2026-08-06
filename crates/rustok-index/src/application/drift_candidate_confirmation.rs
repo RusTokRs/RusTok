@@ -241,7 +241,7 @@ impl IndexDriftCandidateConfirmer {
     ) -> Result<IndexDriftCandidateConfirmationOutcome, IndexDriftCandidateConfirmationFailure> {
         let first = self.load_entity_authority(candidate.key()).await?;
         let first_absence = match first {
-            EntityAuthoritySummary::Present { .. } => {
+            EntityAuthoritySummary::Present => {
                 return Ok(not_candidate(
                     IndexDriftCandidateNotCandidateReason::SourcePresent,
                 ));
@@ -254,7 +254,7 @@ impl IndexDriftCandidateConfirmer {
 
         let second = self.load_entity_authority(candidate.key()).await?;
         match second {
-            EntityAuthoritySummary::Present { .. } => {
+            EntityAuthoritySummary::Present => {
                 return Ok(not_candidate(
                     IndexDriftCandidateNotCandidateReason::SourcePresent,
                 ));
@@ -286,10 +286,9 @@ impl IndexDriftCandidateConfirmer {
                     IndexDriftCandidateNotCandidateReason::SourceAbsent,
                 ));
             }
-            SourceLinkAuthoritySummary::Present {
-                source_version,
-                exact_link_present,
-            } if source_version != candidate.indexed_source_version() => {
+            SourceLinkAuthoritySummary::Present { source_version, .. }
+                if source_version != candidate.indexed_source_version() =>
+            {
                 return Ok(not_candidate(
                     IndexDriftCandidateNotCandidateReason::SourceVersionChanged,
                 ));
@@ -308,7 +307,7 @@ impl IndexDriftCandidateConfirmer {
         let target_key = target_entity_key(candidate);
         let first_target = self.load_entity_authority(&target_key).await?;
         let first_target_absence = match first_target {
-            EntityAuthoritySummary::Present { .. } => {
+            EntityAuthoritySummary::Present => {
                 return Ok(not_candidate(
                     IndexDriftCandidateNotCandidateReason::TargetPresent,
                 ));
@@ -325,7 +324,7 @@ impl IndexDriftCandidateConfirmer {
 
         let second_target = self.load_entity_authority(&target_key).await?;
         match second_target {
-            EntityAuthoritySummary::Present { .. } => {
+            EntityAuthoritySummary::Present => {
                 return Ok(not_candidate(
                     IndexDriftCandidateNotCandidateReason::TargetPresent,
                 ));
@@ -356,9 +355,7 @@ impl IndexDriftCandidateConfirmer {
         match self.load_single_mutation(key).await? {
             Some(IndexMutation::Upsert { record, .. }) => {
                 validate_record_identity(&record, key)?;
-                Ok(EntityAuthoritySummary::Present {
-                    source_version: record.source_version,
-                })
+                Ok(EntityAuthoritySummary::Present)
             }
             Some(IndexMutation::Delete {
                 key: returned_key,
@@ -399,7 +396,7 @@ impl IndexDriftCandidateConfirmer {
             }
             None => match self.load_retained_absence(candidate.source_key()).await? {
                 EntityAuthoritySummary::Absent { .. } => Ok(SourceLinkAuthoritySummary::Absent),
-                EntityAuthoritySummary::Present { .. } => {
+                EntityAuthoritySummary::Present => {
                     Err(permanent_failure(SOURCE_CONTRACT_INVALID))
                 }
             },
@@ -456,7 +453,7 @@ impl fmt::Debug for IndexDriftCandidateConfirmer {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum EntityAuthoritySummary {
-    Present { source_version: u64 },
+    Present,
     Absent { source_version: u64 },
 }
 
