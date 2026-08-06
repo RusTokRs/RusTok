@@ -342,22 +342,28 @@ async fn render_canonical_pages_response(
         }
     };
     let navigation = fetch_pages_navigation_snapshot(locale).await;
-    let etag = pages_storefront_composition_etag(locale, &decision, &seo_context, &navigation);
-    if let Some(etag) = etag.as_deref()
-        && if_none_match_matches(if_none_match, etag)
-    {
-        return not_modified_composition_response(etag);
-    }
-
     let html = render_module_page_with_nonce(
         locale,
         route_segment,
         query_params,
         seo_context.as_ref(),
         csp_nonce,
-        Some(navigation),
+        Some(navigation.clone()),
     )
     .await;
+    let etag = pages_storefront_composition_etag(
+        locale,
+        &decision,
+        &seo_context,
+        &navigation,
+        html.as_str(),
+    );
+    if let Some(etag) = etag.as_deref()
+        && if_none_match_matches(if_none_match, etag)
+    {
+        return not_modified_composition_response(etag);
+    }
+
     let mut response = Html(html).into_response();
     if let Some(etag) = etag {
         apply_composition_headers(&mut response, etag.as_str());
