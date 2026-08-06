@@ -727,6 +727,7 @@ pub struct CategoryFormSnapshot {
 }
 
 impl CategoryFormSnapshot {
+    #[cfg(test)]
     pub fn blank(default_locale: impl Into<String>) -> Self {
         Self {
             editing_id: None,
@@ -785,6 +786,7 @@ pub struct TopicFormSnapshot {
 }
 
 impl TopicFormSnapshot {
+    #[cfg(test)]
     pub fn blank(default_locale: impl Into<String>) -> Self {
         Self {
             editing_id: None,

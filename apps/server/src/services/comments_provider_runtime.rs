@@ -173,7 +173,6 @@ pub use keyring_schedule_persisted_trigger::{
     CommentsTcpDelegationPersistedScheduleAuditRecord,
     SharedCommentsTcpDelegationPersistedScheduleTrigger,
 };
-};
 pub use keyring_schedule_persistence::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_PERSISTENCE_SCHEMA_VERSION,
     CommentsTcpDelegationScheduleDigest, CommentsTcpDelegationSchedulePersistenceDocument,

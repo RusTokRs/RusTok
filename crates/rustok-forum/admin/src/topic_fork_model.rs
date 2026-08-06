@@ -3,7 +3,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-pub const MAX_FORUM_TOPIC_FORK_REPLIES: usize = 500;
 pub const MAX_FORUM_TOPIC_FORK_REASON_LEN: usize = 500;
 pub const MAX_FORUM_TOPIC_FORK_TITLE_LEN: usize = 500;
 
