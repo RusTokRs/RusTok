@@ -1,6 +1,7 @@
 use fly::{ComponentChildren, ComponentNode, ProjectDocument};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::io::{self, Write};
 
 pub const PAGE_BUILDER_STATIC_PUBLISH_RESOURCE_LIMITS_FORMAT: &str =
     "page_builder_static_publish_resource_limits_v1";
@@ -137,13 +138,11 @@ pub fn validate_static_publish_resource_limits(
     let limits = PageBuilderStaticPublishResourceLimits::default();
     limits.verify_integrity()?;
 
-    let project_bytes = serde_json::to_vec(&document.project)
-        .map_err(|error| PageBuilderStaticPublishResourceLimitError::Encode(error.to_string()))?
-        .len();
+    let project_bytes = serialized_project_bytes(document, limits.max_project_bytes)?;
     let page_count = document.project.pages.len();
     let asset_count = document.project.assets.len();
     let style_rule_count = document.project.styles.len();
-    let (component_count, max_component_depth) = component_observation(document);
+    let (component_count, max_component_depth) = component_observation(document, &limits);
     let observed = PageBuilderStaticPublishResourceObservation {
         project_bytes,
         page_count,
@@ -214,7 +213,56 @@ pub fn validate_static_publish_resource_limits(
     })
 }
 
-fn component_observation(document: &ProjectDocument) -> (usize, usize) {
+fn serialized_project_bytes(
+    document: &ProjectDocument,
+    maximum: usize,
+) -> Result<usize, PageBuilderStaticPublishResourceLimitError> {
+    let mut counter = BoundedByteCounter::new(maximum);
+    match serde_json::to_writer(&mut counter, &document.project) {
+        Ok(()) => Ok(counter.bytes),
+        Err(_) if counter.exceeded => Ok(maximum.saturating_add(1)),
+        Err(error) => Err(PageBuilderStaticPublishResourceLimitError::Encode(
+            error.to_string(),
+        )),
+    }
+}
+
+struct BoundedByteCounter {
+    bytes: usize,
+    maximum: usize,
+    exceeded: bool,
+}
+
+impl BoundedByteCounter {
+    fn new(maximum: usize) -> Self {
+        Self {
+            bytes: 0,
+            maximum,
+            exceeded: false,
+        }
+    }
+}
+
+impl Write for BoundedByteCounter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        let next = self.bytes.saturating_add(buffer.len());
+        if next > self.maximum {
+            self.exceeded = true;
+            return Err(io::Error::other("static publish project byte limit exceeded"));
+        }
+        self.bytes = next;
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn component_observation(
+    document: &ProjectDocument,
+    limits: &PageBuilderStaticPublishResourceLimits,
+) -> (usize, usize) {
     let mut component_count = 0usize;
     let mut max_component_depth = 0usize;
 
@@ -226,6 +274,11 @@ fn component_observation(document: &ProjectDocument) -> (usize, usize) {
         while let Some((node, depth)) = stack.pop() {
             component_count = component_count.saturating_add(1);
             max_component_depth = max_component_depth.max(depth);
+            if component_count > limits.max_components
+                || max_component_depth > limits.max_component_depth
+            {
+                return (component_count, max_component_depth);
+            }
             if let ComponentNode::Object(component) = node {
                 if let ComponentChildren::Nodes(children) = &component.components {
                     for child in children.iter().rev() {
