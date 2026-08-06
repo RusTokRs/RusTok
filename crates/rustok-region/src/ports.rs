@@ -120,6 +120,7 @@ struct RegionReadContextFacts {
     actor_id_length: usize,
     claim_count: usize,
     role_count: usize,
+    correlation_id_length: usize,
     channel_present: bool,
     channel_length: Option<usize>,
     locale_length: usize,
@@ -164,6 +165,7 @@ fn region_read_context_facts(context: &PortContext) -> RegionReadContextFacts {
         actor_id_length: context.actor.id.chars().count(),
         claim_count: context.claims.len(),
         role_count: context.roles.len(),
+        correlation_id_length: context.correlation_id.chars().count(),
         channel_present: context.channel.is_some(),
         channel_length: context.channel.as_ref().map(|value| value.chars().count()),
         locale_length: context.locale.chars().count(),
@@ -251,7 +253,7 @@ fn log_region_read_admission_rejection(
     let context_facts = region_read_context_facts(context);
     tracing::warn!(
         owner = REGION_OWNER,
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context_facts.correlation_id_length,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
         actor_id_length = context_facts.actor_id_length,
@@ -295,7 +297,7 @@ fn log_region_tenant_parse_rejection(context: &PortContext, owner_operation: &'s
     let context_facts = region_read_context_facts(context);
     tracing::warn!(
         owner = REGION_OWNER,
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context_facts.correlation_id_length,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
         actor_id_length = context_facts.actor_id_length,
@@ -345,7 +347,7 @@ fn log_region_request_validation_rejection(
     let request_facts = region_read_request_facts(request);
     tracing::warn!(
         owner = REGION_OWNER,
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context_facts.correlation_id_length,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
         actor_id_length = context_facts.actor_id_length,
@@ -424,7 +426,7 @@ fn log_region_owner_failure(
     if technical_failure {
         tracing::error!(
             owner = REGION_OWNER,
-            correlation_id = %context.correlation_id,
+            correlation_id_length = context_facts.correlation_id_length,
             tenant_id_length = context_facts.tenant_id_length,
             actor_kind = context_facts.actor_kind,
             actor_id_length = context_facts.actor_id_length,
@@ -454,7 +456,7 @@ fn log_region_owner_failure(
     } else {
         tracing::warn!(
             owner = REGION_OWNER,
-            correlation_id = %context.correlation_id,
+            correlation_id_length = context_facts.correlation_id_length,
             tenant_id_length = context_facts.tenant_id_length,
             actor_kind = context_facts.actor_kind,
             actor_id_length = context_facts.actor_id_length,
