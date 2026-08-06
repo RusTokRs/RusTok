@@ -23,9 +23,11 @@ The command requires tenant-wide:
 pages:manage
 ```
 
+Only `PermissionScope::All` is accepted. An owner-scoped `pages:manage` permission does not authorize reading retained page-wide artifacts.
+
 The requested tenant and page identifiers must be non-nil. The page must exist inside the exact tenant before artifact rows are read.
 
-The audit runs through one database transaction. PostgreSQL and MySQL use shared locks for the page and artifact rows; SQLite uses transaction serialization.
+The audit runs through one database transaction. PostgreSQL and MySQL use shared locks for the page and artifact rows; SQLite uses transaction serialization. This is a single-transaction read boundary, not a claim that every supported backend provides the same repeatable-read isolation semantics.
 
 ## Bounded scan
 
@@ -75,15 +77,16 @@ Partial materialization evidence fails closed.
 The result includes only bounded operational metadata:
 
 - artifact id;
-- locale;
-- build hash;
-- optional materialization hash;
+- SHA-256 locale hash;
+- SHA-256 record-identity hash binding owner and retained artifact hash fields;
 - one stable public finding code;
 - SHA-256 of the internal diagnostic;
 - counts, truncation flags and a deterministic audit hash.
 
 The command does not return:
 
+- raw locale;
+- raw build, artifact, content or materialization hashes;
 - document HTML or body HTML;
 - CSS;
 - page head or landing sections;
@@ -93,7 +96,9 @@ The command does not return:
 - internal error text;
 - raw runtime context.
 
-The audit hash binds the tenant, page, requested limit, truncation state and ordered artifact identity/status observations. It is an observation receipt, not persisted evidence and not a repair authorization.
+Hashing record identity instead of returning stored text keeps every finding byte-bounded even when a corrupted database row contains an unexpectedly large text value.
+
+The audit hash binds the tenant, page, requested limit, truncation state and ordered hashed artifact identity/status observations. It is an observation receipt, not persisted evidence and not a repair authorization.
 
 ## Preserved boundaries
 
@@ -122,12 +127,14 @@ cargo check -p rustok-pages
 
 A retained execution packet should cover at least:
 
-- exact `pages:manage` admission and denial;
+- exact tenant-wide `pages:manage` admission;
+- owner-scoped and missing-permission denial;
 - an empty artifact set;
 - valid legacy all-`NULL` materialization evidence;
 - valid current materialization evidence;
 - partial evidence rejection;
 - corrupted artifact/content/materialization hashes;
+- oversized corrupted identity text with bounded result fields;
 - output byte-limit rejection;
 - 512-row completion and 513-row truncation;
 - zero writes and zero emitted events.
