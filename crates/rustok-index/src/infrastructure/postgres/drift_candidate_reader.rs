@@ -518,7 +518,7 @@ fn validate_snapshot_token(value: &str) -> Result<(), IndexDriftCandidateFailure
     let active = parts
         .next()
         .ok_or_else(|| permanent_failure(FENCE_INVALID))?;
-    if parts.next().is_some() || xmin >= xmax {
+    if parts.next().is_some() || xmin > xmax {
         return Err(permanent_failure(FENCE_INVALID));
     }
     let mut previous = None;
@@ -754,6 +754,7 @@ mod tests {
     fn snapshot_token_validation_is_bounded_and_canonical() {
         assert!(validate_snapshot_token("10:20:12,14").is_ok());
         assert!(validate_snapshot_token("10:20:").is_ok());
+        assert!(validate_snapshot_token("10:10:").is_ok());
         assert!(validate_snapshot_token("20:10:").is_err());
         assert!(validate_snapshot_token("10:20:14,12").is_err());
         assert!(validate_snapshot_token("10:20:30").is_err());
