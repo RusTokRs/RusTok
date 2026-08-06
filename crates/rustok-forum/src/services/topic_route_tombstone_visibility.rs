@@ -15,9 +15,9 @@ use crate::state_machine::TopicStatus;
 use super::category_audience::lock_category_tree_in_tx;
 use super::category_visibility::is_category_public_to_anonymous;
 use super::topic_audience::load_policy_for_topic;
+use super::topic_audience_lock::lock_topic_audience_scopes_in_tx;
 
 const MAX_FORUM_ROUTE_TOMBSTONE_CHANNEL_SLUG_LEN: usize = 128;
-const FORUM_TOPIC_AUDIENCE_LOCK_NAMESPACE: i64 = 5;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct StoredForumTopicRouteTombstoneVisibility {
@@ -41,15 +41,21 @@ impl ForumTopicRouteTombstoneVisibilityService {
         Self { db }
     }
 
-    /// Locks every mutable owner scope used to derive the snapshot. Callers must acquire this lock
-    /// before locking the topic row so category lifecycle and audience writers keep one lock order.
-    pub(crate) async fn lock_delete_scope_in_tx(
+    /// Acquires the category-tree policy scope before the caller claims the topic row.
+    pub(crate) async fn lock_category_scope_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+    ) -> ForumResult<()> {
+        lock_category_tree_in_tx(txn, tenant_id).await
+    }
+
+    /// Acquires the canonical topic-audience advisory scope after the topic row has been claimed.
+    pub(crate) async fn lock_topic_audience_scope_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> ForumResult<()> {
-        lock_category_tree_in_tx(txn, tenant_id).await?;
-        lock_topic_audience_scope_in_tx(txn, tenant_id, topic_id).await
+        lock_topic_audience_scopes_in_tx(txn, tenant_id, &[topic_id]).await
     }
 
     /// Records one exact immutable snapshot after the caller has locked and reloaded the topic row.
@@ -145,29 +151,6 @@ async fn topic_audience_allows_public_in_tx(
         return Ok(false);
     }
     Ok(true)
-}
-
-async fn lock_topic_audience_scope_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> ForumResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            txn.execute(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, $2))",
-                [
-                    format!("{tenant_id}:{topic_id}").into(),
-                    FORUM_TOPIC_AUDIENCE_LOCK_NAMESPACE.into(),
-                ],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(unsupported_backend(backend)),
-    }
 }
 
 async fn load_source_channel_slugs<C>(
