@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "module": "pages",
+  "packet": "pages-inline-edit-rollout-execution",
+  "status": "source_ready_maintainer_execution_pending",
+  "scope": "bounded tenant cohort configuration, admission requirements, rollout observation, rollback identity, FFA handoff and FBA completion",
+  "runtime_control_boundary": "observes_external_rollout_without_mutating_configuration_or_deployment",
+  "browser_input": {
+    "format": "pages_inline_edit_browser_execution_v1",
+    "status": "browser_execution_passed_rollout_pending",
+    "same_source_commit_required": true,
+    "deployment_digest_required": true,
+    "rollout_boundary_must_be_open": true
+  },
+  "observation_input": {
+    "format": "pages_inline_edit_rollout_observation_v1",
+    "status": "maintainer_observation_recorded",
+    "phases": ["ffa", "fba"],
+    "same_source_commit_required": true,
+    "deployment_digest_required": true,
+    "flag_key": "pages.builder.inline_edit.enabled",
+    "tenant_id_representation": "sha256_only",
+    "required_admission_facts": [
+      "pages_module_enabled_required",
+      "direct_user_required",
+      "authenticated_session_required",
+      "pages_update_required"
+    ],
+    "required_monitoring_series": [
+      "save_conflicts",
+      "authorization_denials",
+      "grant_verification_failures",
+      "client_load_failures"
+    ],
+    "monitoring_policy": "every_observed_count_must_be_at_or_below_its_reviewed_threshold",
+    "raw_monitoring_logs_allowed": false
+  },
+  "phases": {
+    "ffa": {
+      "browser_input_required": true,
+      "previous_ffa_packet_required": false,
+      "positive_observation_window_required": true,
+      "non_empty_enabled_cohort_required": true,
+      "non_empty_disabled_control_cohort_required": true,
+      "rollback_owner_and_image_required": true,
+      "rollback_rehearsal_required": false,
+      "output_status": "ffa_observation_passed_fba_pending"
+    },
+    "fba": {
+      "browser_input_required": true,
+      "previous_ffa_packet_required": true,
+      "positive_observation_window_required": true,
+      "non_empty_enabled_cohort_required": true,
+      "non_empty_disabled_control_cohort_required": true,
+      "rollback_owner_and_image_required": true,
+      "rollback_rehearsal_required": true,
+      "ffa_window_must_precede_fba_window": true,
+      "output_status": "fba_rollout_evidence_complete"
+    }
+  },
+  "output": {
+    "default_ffa_path": "target/pages-inline-edit-rollout-ffa-evidence.json",
+    "default_fba_path": "target/pages-inline-edit-rollout-fba-evidence.json",
+    "format": "pages_inline_edit_rollout_execution_v1",
+    "atomic_replace": true,
+    "automatic_configuration_mutation": false,
+    "automatic_deployment_mutation": false,
+    "automatic_promotion": false,
+    "automatic_rollback": false
+  },
+  "cli": {
+    "script": "scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs",
+    "required_arguments": ["--phase", "--browser", "--observation", "--output"],
+    "fba_only_argument": "--ffa"
+  },
+  "required_source_files": [
+    "crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json",
+    "crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-evidence-harness-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
+    "scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs",
+    "docs/modules/pages-page-builder-inline-edit-rollout-evidence-harness-packet-2026-08-06.md",
+    "docs/modules/pages-page-builder-inline-edit-execution-plan.md"
+  ],
+  "privacy_boundary": {
+    "allowed_identity_values": [
+      "source_commit",
+      "immutable_deployment_repo_digest",
+      "sha256_tenant_identity",
+      "sha256_environment_identity",
+      "sha256_configuration_profile_identity",
+      "sha256_rollout_owner_identity"
+    ],
+    "forbidden_persisted_values": [
+      "raw_tenant_id",
+      "tenant_name",
+      "authorization_header",
+      "cookie_header",
+      "bearer_token",
+      "session_token",
+      "session_id",
+      "authorization_proof",
+      "grant",
+      "signing_key",
+      "database_url",
+      "deployment_credentials",
+      "configuration_secret",
+      "raw_monitoring_log",
+      "raw_alert_payload",
+      "raw_browser_html",
+      "raw_request_body",
+      "raw_response_body"
+    ]
+  }
+}

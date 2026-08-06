@@ -1,6 +1,6 @@
 # M6 targeted drift repair boundary
 
-Status: `source_complete_missing_entity_composed_recovery_pending`.
+Status: `source_complete_recovery_aware_orphan_pending`.
 
 ## Purpose
 
@@ -11,9 +11,10 @@ by `PostgresIndexDriftConfirmedCandidateWriter`:
 - `index.confirmed_missing_entity`;
 - `index.confirmed_orphan_link.<sha256>`.
 
-A separate concrete composition now supports only the missing-entity kind. Orphan-link repair remains
-unsupported. The service does not scan findings, choose arbitrary SQL, accept a record payload, run a
-background loop, mount a transport, or automatically resolve the finding.
+A separate concrete composition supports only the missing-entity kind and now includes a fail-closed
+prepared-command recovery policy. Orphan-link repair remains unsupported. The service does not scan
+findings, choose arbitrary SQL, accept a record payload, run a background loop, mount a transport, or
+automatically resolve the finding.
 
 ## Exact command
 
@@ -70,8 +71,8 @@ Migration `m20260806_000007_add_index_finding_repair_commands` adds
 `index_consistency_finding_repair_commands` and a partial unique index allowing at most one
 `prepared` command per tenant/finding.
 
-An exact retry resumes the same reservation. A completed retry returns its existing terminal receipt.
-A different active command receives `FindingBusy`.
+A completed retry returns its existing terminal receipt. A different active command receives
+`FindingBusy`. Exact retry of `prepared` state is additionally subject to the recovery policy below.
 
 ## Before, owner, and after boundaries
 
@@ -96,14 +97,47 @@ A successful receipt requires:
 - converged after evidence.
 
 Any other admitted result becomes a typed `NotRepaired` receipt. Dependency failures stay bounded
-retryable/permanent machine-code failures and leave the durable reservation available for exact
-retry.
+retryable/permanent machine-code failures and leave the durable reservation available for an exact,
+recovery-admitted retry.
+
+## Prepared-command recovery policy
+
+`IndexDriftRepairRecoveryService` defines independently authorized `Resume`, `Pause`, and `Abandon`
+decisions over one exact durable repair identity and expected recovery revision. The original repair
+payload digest commits the typed target, original actor, and original reason.
+
+Migration `m20260806_000008_add_index_finding_repair_recovery` adds an append-only decision ledger with
+these states:
+
+- unclassified legacy command;
+- active;
+- paused;
+- terminally abandoned.
+
+New reservations receive immutable revision `0` state `active`. A legacy or crash-stranded prepared
+row with no ledger decision fails closed with `index_drift_repair_recovery_required`; it never resumes
+from wall-clock age or process-liveness inference.
+
+The concrete missing-entity composition wraps both the durable store and owner:
+
+- reservation and completion require latest state `active`;
+- the owner holds the same tenant/command PostgreSQL advisory fence while validating payload identity,
+  checking active state, and performing the idempotent mutation call;
+- pause or abandon therefore wins before owner admission or waits until the already admitted owner
+  call finishes;
+- a database trigger rejects `prepared -> completed` unless latest state is still `active`.
+
+If an operator decision wins after the owner call but before receipt persistence, completion fails
+closed. No side effect is inferred. Authorized resume preserves the original command UUID and reaches
+the established mutation inbox duplicate path.
+
+The detailed policy is documented in `m6-prepared-repair-recovery.md`.
 
 ## Concrete missing-entity composition
 
-`materialize_postgres_index_drift_missing_entity_repair_service` now composes the first concrete path.
-It requires an explicit authorizer, frozen source and absence registries, an immutable schema registry,
-and PostgreSQL.
+`materialize_postgres_index_drift_missing_entity_repair_service` composes the first concrete path. It
+requires an explicit repair authorizer, frozen source and absence registries, an immutable schema
+registry, and PostgreSQL.
 
 The concrete path:
 
@@ -114,14 +148,15 @@ The concrete path:
 - emits a typed `IndexMutation::Delete` through `PostgresMutationStore`;
 - uses the durable repair command UUID as the mutation event and inbox delivery identity;
 - re-reads evidence and requires an exact tombstone at the admitted absence version;
-- returns a domain-separated owner receipt digest without payload or database causes.
+- returns a domain-separated owner receipt digest without payload or database causes;
+- applies the recovery-aware store, owner fence, and completion trigger described above.
 
-The detailed contract is documented in `m6-missing-entity-repair-composition.md`.
+The detailed concrete contract is documented in `m6-missing-entity-repair-composition.md`.
 
 ## Terminal receipt
 
 `complete` opens another PostgreSQL `SERIALIZABLE READ WRITE` transaction. It validates the
-tenant-bound reservation ticket and performs the only allowed database transition:
+tenant-bound reservation ticket and performs the only allowed repair-row transition:
 
 `prepared -> completed`
 
@@ -135,61 +170,65 @@ The terminal row records:
 - optional owner receipt digest;
 - database-owned completion timestamp.
 
-The database trigger preserves command identity, target kind, actor identity, reason, and payload
-digest across completion. A completed row cannot be updated again under the trigger contract.
+The original database trigger preserves command identity, target kind, actor identity, reason, and
+payload digest across completion. The recovery database trigger additionally requires latest state
+`active`. A completed row cannot be updated again under the trigger contract.
 
 The current finding lifecycle row is not rewritten by repair. If the finding is no longer open at
 completion, the store persists `NotRepaired(finding_not_open)` rather than claiming success.
+Authorized recovery resume also rejects a finding that is no longer open.
 
 ## Crash and lifecycle boundary
 
 A `prepared` reservation intentionally survives source, owner, evidence, serialization, or process
-failure. Exact retry is required.
+failure. The concrete missing-entity owner remains idempotent through the mutation inbox.
 
-The concrete missing-entity owner is idempotent through the established mutation inbox. A crash after
-the delete mutation commits but before after-evidence or repair receipt persistence can therefore be
-retried with the same command UUID.
+Recovery decisions are immutable and never derived from elapsed time. Pause is an admission fence,
+not cancellation after an owner call has acquired the advisory lock. Abandon is a terminal recovery
+decision and does not fabricate before evidence, after evidence, an owner receipt, or a repair
+receipt.
 
-If another lifecycle command closes the finding after reservation and the original process still
-reaches completion, the result is terminal `NotRepaired(finding_not_open)`. If the process crashes
-and the finding is closed before retry can reconstruct admitted evidence, reservation recovery fails
-closed. Lease/expiry/abandon recovery and lifecycle-vs-repair coordination remain a separate policy
-slice; this implementation does not silently expire or overwrite an ambiguous repair attempt.
+Finding lifecycle rows and repair/recovery history remain separate. Recovery neither resolves nor
+ignores a finding, and lifecycle closure does not delete the durable repair or recovery records.
 
 ## Privacy and transport
 
-Command and capability `Debug` output expose actor-subject and reason lengths only. Stored receipt
-decoders have no derived payload-revealing `Debug`. Public failures expose machine codes only.
+Repair and recovery command `Debug` output expose actor-subject and reason lengths only. Stored
+receipt decoders have no derived payload-revealing `Debug`. Public failures expose bounded machine
+codes only.
 
 The crate exports internal PostgreSQL materializers, but does not insert the store, evidence reader,
-owner, or service into `ModuleRuntimeExtensions`. There is no GraphQL, HTTP, CLI, MCP, native-admin,
-scheduler, worker, or automatic-repair surface.
+owner, repair service, or recovery service into `ModuleRuntimeExtensions`. There is no GraphQL, HTTP,
+CLI, MCP, native-admin, scheduler, worker, or automatic-repair surface.
 
 ## Deliberate limits
 
 These slices do not add:
 
-- orphan-link repair;
+- a concrete orphan-link repair owner;
 - lifecycle transition after successful repair;
-- prepared-reservation lease, expiry, abandonment, takeover, or operator recovery;
+- time-based lease expiry or automatic ownership inference;
+- cancellation after an owner call acquires the recovery fence;
 - automatic finding iteration or candidate-page consumption;
 - public authorization or transport;
-- retained migration, PostgreSQL, source-owner, crash-window, concurrency, workflow, or CI evidence.
+- retained migration, PostgreSQL/SQLite, owner, crash-window, concurrency, workflow, or CI evidence.
 
 ## Next implementation step
 
-Add one fail-closed recovery policy for durable `prepared` repair commands. It must distinguish an
-active attempt from an abandoned attempt, preserve payload identity, require an authorized operator
-decision, and avoid silently replaying or discarding an ambiguous owner side effect.
+Compose one concrete bounded orphan-link evidence reader and idempotent mutation owner behind the
+existing recovery-aware repair boundary. Preserve exact source link identity, ordinal, typed target,
+target absence version, and durable command UUID.
 
-Keep orphan-link repair, public transport, and automatic finding iteration separate.
+Keep public transport, automatic finding iteration, and retained production evidence separate.
 
 ## Suggested maintainer validation
 
 ```bash
+cargo test -p rustok-index drift_repair -- --nocapture
 cargo test -p rustok-index drift_missing_entity_repair -- --nocapture
-node scripts/verify/verify-index-missing-entity-repair-composition.mjs
 node scripts/verify/verify-index-targeted-drift-repair.mjs
+node scripts/verify/verify-index-missing-entity-repair-composition.mjs
+node scripts/verify/verify-index-prepared-repair-recovery.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check

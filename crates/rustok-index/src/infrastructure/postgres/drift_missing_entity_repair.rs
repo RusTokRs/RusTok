@@ -19,6 +19,9 @@ use crate::{
 
 use super::{
     drift_repair::materialize_postgres_index_drift_repair_store,
+    drift_repair_recovery::{
+        RecoveryAwareIndexDriftRepairOwner, RecoveryAwareIndexDriftRepairStore,
+    },
     mutation_store::{
         MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
     },
@@ -290,7 +293,8 @@ impl IndexDriftRepairStore for MissingEntityOnlyRepairStore {
 ///
 /// Only confirmed missing-entity findings are accepted. The supplied authorizer remains the owner
 /// of operator admission; this helper adds the exact source/absence/materialized evidence reader,
-/// one idempotent PostgreSQL delete owner, and the durable repair store behind a missing-only gate.
+/// one idempotent PostgreSQL delete owner, an active-recovery fence around the owner call, and the
+/// durable repair store behind missing-only and recovery-aware gates.
 pub fn materialize_postgres_index_drift_missing_entity_repair_service(
     authorizer: Arc<dyn IndexDriftRepairAuthorizer>,
     db: DatabaseConnection,
@@ -304,14 +308,21 @@ pub fn materialize_postgres_index_drift_missing_entity_repair_service(
         sources,
         absence,
     )?);
-    let owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(
+    let base_owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(
         PostgresIndexDriftMissingEntityRepairOwner::new(db.clone(), schemas)?,
+    );
+    let owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(
+        RecoveryAwareIndexDriftRepairOwner::new(db.clone(), base_owner)?,
     );
     let owners = IndexDriftRepairOwnerRegistry::new([owner])
         .map_err(|_| permanent_failure(COMPONENTS_INVALID))?;
-    let store = materialize_postgres_index_drift_repair_store(db)?;
-    let gated_store: Arc<dyn IndexDriftRepairStore> =
-        Arc::new(MissingEntityOnlyRepairStore { inner: store });
+    let store = materialize_postgres_index_drift_repair_store(db.clone())?;
+    let recovery_store: Arc<dyn IndexDriftRepairStore> = Arc::new(
+        RecoveryAwareIndexDriftRepairStore::new(db, store)?,
+    );
+    let gated_store: Arc<dyn IndexDriftRepairStore> = Arc::new(MissingEntityOnlyRepairStore {
+        inner: recovery_store,
+    });
     Ok(IndexDriftRepairService::new_boxed(
         authorizer,
         evidence,

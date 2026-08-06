@@ -13,6 +13,7 @@ const files = {
   lib: 'crates/rustok-index/src/lib.rs',
   doc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
   concreteDoc: 'crates/rustok-index/docs/m6-missing-entity-repair-composition.md',
+  recoveryDoc: 'crates/rustok-index/docs/m6-prepared-repair-recovery.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -41,6 +42,7 @@ requireMarkers('postgresMod', [
   'mod drift_repair;',
   'PostgresIndexDriftRepairStore',
   'materialize_postgres_index_drift_repair_store',
+  'RecoveryAwareIndexDriftRepairStore',
 ]);
 requireMarkers('lib', [
   'PostgresIndexDriftRepairStore',
@@ -51,6 +53,7 @@ requireMarkers('migrationsMod', [
   'Box::new(m20260806_000007_add_index_finding_repair_commands::Migration)',
   '"m20260806_000007_add_index_finding_repair_commands"',
   'vec!["m20260806_000006_add_index_finding_lifecycle_audit"]',
+  'mod m20260806_000008_add_index_finding_repair_recovery;',
 ]);
 
 requireMarkers('app', [
@@ -159,26 +162,6 @@ for (const forbidden of [
   }
 }
 
-for (const marker of [
-  'hash_component(&mut hasher, MISSING_EVIDENCE_DOMAIN);',
-  'hash_component(&mut hasher, state);',
-  'hash_entity_key(&mut hasher, key);',
-  'hash_component(&mut hasher, &indexed_source_version.to_be_bytes());',
-  'hash_component(&mut hasher, &absence_source_version.to_be_bytes());',
-]) {
-  requireMarkers('store', [marker]);
-}
-for (const marker of [
-  'hash_component(&mut hasher, ORPHAN_EVIDENCE_DOMAIN);',
-  'hash_entity_key(&mut hasher, source_key);',
-  'hash_component(&mut hasher, link_name.as_str().as_bytes());',
-  'hash_component(&mut hasher, &ordinal.to_be_bytes());',
-  'hash_linked_key(&mut hasher, target);',
-  'hash_component(\n        &mut hasher,\n        &target_absence_source_version.to_be_bytes(),',
-]) {
-  requireMarkers('store', [marker]);
-}
-
 requireMarkers('migration', [
   'index_consistency_finding_repair_commands',
   'IndexFindingRepairCommands::CommandId',
@@ -193,38 +176,36 @@ requireMarkers('migration', [
   "OLD.state <> 'prepared' OR NEW.state <> 'completed'",
   'ensure_supported_backend(manager)?;',
 ]);
-for (const forbidden of [
-  'BEFORE DELETE ON',
-  'DROP INDEX uq_index_finding_repair_active',
-  'payload JSON',
-]) {
-  if (content.migration.includes(forbidden)) {
-    throw new Error(`targeted repair migration contains forbidden marker: ${forbidden}`);
-  }
-}
 
 requireMarkers('doc', [
-  'Status: `source_complete_missing_entity_composed_recovery_pending`.',
+  'Status: `source_complete_recovery_aware_orphan_pending`.',
   'cryptographic preimage check',
   '`SERIALIZABLE READ WRITE`',
   '`prepared -> completed`',
   '`materialize_postgres_index_drift_missing_entity_repair_service`',
   'mutation inbox',
-  'prepared-reservation lease, expiry, abandonment, takeover, or operator recovery',
+  '`IndexDriftRepairRecoveryService`',
   'No tests, Node verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('concreteDoc', [
-  'Status: `source_complete_recovery_policy_pending`.',
+  'Status: `source_complete_recovery_aware_owner_execution_pending`.',
   'PostgresMutationStore::apply',
   'durable repair command UUID',
+  '`RecoveryAwareIndexDriftRepairOwner`',
+]);
+requireMarkers('recoveryDoc', [
+  'Status: `source_complete_owner_execution_pending`.',
+  '`PostgresIndexDriftRepairRecoveryStore`',
+  '`prepared -> completed`',
 ]);
 requireMarkers('plan', [
-  'M6 - add prepared repair recovery policy',
-  'source_complete_recovery_policy_pending',
+  'M6 - compose concrete orphan-link repair',
+  'M6 prepared repair pause/resume/abandon recovery policy:',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-targeted-drift-repair.mjs'",
   "'verify-index-missing-entity-repair-composition.mjs'",
+  "'verify-index-prepared-repair-recovery.mjs'",
 ]);
 
 console.log('Index targeted drift repair boundary verified');

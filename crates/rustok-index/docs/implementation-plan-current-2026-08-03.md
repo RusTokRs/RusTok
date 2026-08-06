@@ -1,20 +1,24 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked through
-`main@3f9be66d3b3d3ed594ffa1f325b02db728212797` and active branch
-`agent/index-m6-missing-entity-repair-owner-20260806`.
+`main@d890fd6f29a3c1dc2b883d570af9b3e9c094342d` and active branch
+`agent/index-m6-prepared-repair-recovery-20260806`.
+
+The non-overlapping merge-base-to-main review is retained in
+`implementation-main-delta-2026-08-06-1240.md`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - add prepared repair recovery policy`
+`M6 - compose concrete orphan-link repair`
 
 The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
 confirmation boundary, serializable finding persistence, fail-closed finding lifecycle commands,
-generic targeted-repair orchestration, durable repair reservations/receipts, and one concrete
-missing-entity evidence/owner composition are source complete.
+generic targeted-repair orchestration, durable repair reservations/receipts, one concrete
+missing-entity evidence/owner composition, and authorization-gated prepared-command recovery are
+source complete.
 
 Concrete missing-entity repair now:
 
@@ -24,10 +28,14 @@ Concrete missing-entity repair now:
 - applies one typed delete through the established mutation inbox and schema validation;
 - uses the durable repair command UUID as the mutation event and delivery identity;
 - requires an exact tombstone at the admitted absence version before recording `Repaired`;
+- creates one immutable revision-0 active recovery decision for each new reservation;
+- requires active recovery state before retry, owner mutation, and receipt completion;
+- serializes pause/abandon against the owner call with the exact command advisory fence;
+- fails legacy decision-less, paused, and abandoned prepared commands closed;
 - remains unmounted from runtime extensions and public transports.
 
-Prepared-command recovery policy, orphan-link repair, public transport, and retained execution
-evidence remain open.
+Orphan-link repair, public transport, automatic iteration, and retained execution evidence remain
+open.
 
 ## Rechecked status
 
@@ -61,7 +69,9 @@ evidence remain open.
 - M6 drift finding lifecycle commands: `source_complete`
 - M6 generic targeted drift repair boundary and durable receipt store: `source_complete`
 - M6 concrete missing-entity evidence reader and idempotent mutation owner:
-  `source_complete_recovery_policy_pending`
+  `source_complete_recovery_aware_owner_execution_pending`
+- M6 prepared repair pause/resume/abandon recovery policy:
+  `source_complete_owner_execution_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -130,8 +140,10 @@ evidence remain open.
 - [x] Compose one concrete idempotent missing-entity delete owner through `PostgresMutationStore`.
 - [x] Gate unsupported orphan-link targets before durable reservation in the concrete composition.
 - [x] Bind mutation retry identity to the durable repair command UUID.
-- [ ] Add prepared-command lease/abandon/recovery policy and lifecycle coordination.
-- [ ] Add a concrete orphan-link repair owner only after recovery policy is admitted.
+- [x] Add fail-closed prepared-command pause/resume/abandon recovery and lifecycle coordination.
+- [x] Retain immutable command-scoped recovery decisions and require active state at owner/completion.
+- [ ] Add a concrete orphan-link repair owner behind the admitted recovery boundary.
+- [ ] Add time-derived lease expiry only with retained owner-liveness and crash-window evidence.
 - [ ] Retain migration, crash-window, owner-idempotency, and PostgreSQL concurrency evidence.
 
 ## M7 production graph and cutover
@@ -148,26 +160,30 @@ evidence remain open.
 
 ## Next implementation step
 
-Add a fail-closed recovery policy for durable `prepared` repair commands.
+Compose one concrete bounded repair path for confirmed orphan-link findings behind the existing
+recovery-aware boundary.
 
 The next slice must:
 
-- distinguish an actively owned attempt from an abandoned or operator-paused attempt;
-- preserve exact tenant, finding, command, target, actor, reason, and payload-digest identity;
-- require an authorized operator capability for resume, abandon, or terminal not-repaired decisions;
-- never infer that an owner side effect did or did not happen from elapsed time alone;
-- support exact command retry without creating a second mutation identity;
-- retain an immutable recovery decision and bounded reason;
-- coordinate with finding lifecycle closure without silently deleting repair history;
-- add no public transport, automatic scanner, scheduler loop, or orphan-link mutation owner.
+- accept only the exact `index.confirmed_orphan_link.<sha256>` persisted commitment;
+- re-read the exact source entity, link name, ordinal, linked target, and target absence proof;
+- reject a changed source link, target identity, ordinal, source version, or absence version;
+- apply one typed idempotent link-removal mutation through an established owner boundary rather than
+  direct repair SQL;
+- bind mutation event and inbox identity to the durable repair command UUID;
+- preserve the active recovery fence through the owner call and completion trigger;
+- require admitted before and after evidence before recording `Repaired`;
+- add no public transport, automatic scanner, scheduler loop, or lifecycle auto-resolution.
 
-Orphan-link repair, public authorization transport, automatic iteration, and retained production
+Public authorization transport, automatic iteration, time-derived leases, and retained production
 evidence remain separate later slices.
 
 ## Owner verification for this slice
 
 ```bash
+cargo test -p rustok-index drift_repair -- --nocapture
 cargo test -p rustok-index drift_missing_entity_repair -- --nocapture
+node scripts/verify/verify-index-prepared-repair-recovery.mjs
 node scripts/verify/verify-index-missing-entity-repair-composition.mjs
 node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-query-contract.mjs

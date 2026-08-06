@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "module": "forum",
+  "contract": "forum_shared_capability_ownership_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "required_shared_owners": {
+    "public_profile": "rustok-profiles",
+    "binary_media": "rustok-media",
+    "social_relations": "rustok-social-graph",
+    "moderation_cases": "rustok-moderation",
+    "notification_inbox": "rustok-notifications",
+    "translation_workflow": "rustok-translation",
+    "search": "rustok-search",
+    "generic_index": "rustok-index",
+    "seo": "rustok-seo",
+    "durable_events": ["rustok-outbox", "rustok-events"],
+    "planned_reactions": "rustok-reactions",
+    "planned_reputation": "rustok-reputation"
+  },
+  "forum_owned": [
+    "category hierarchy and policy",
+    "topic and reply lifecycle",
+    "localized forum content and routes",
+    "subscriptions and forum read state",
+    "forum drafts and bookmarks",
+    "forum attachment relations",
+    "forum trust and posting policy",
+    "forum moderation effect adapter and local enforcement state",
+    "forum visibility, semantic events and projections",
+    "forum statistics and module-owned UI"
+  ],
+  "forbidden_plan_fragments": [
+    "tracking, moderation, reports, forum trust/reputation",
+    "drafts, bookmarks, reports, moderation, restrictions, forum trust",
+    "Initially keep reputation and badges forum-owned",
+    "Add forum-owned reports",
+    "No premature shared reactions/reputation/mentions module"
+  ],
+  "required_plan_fragments": [
+    "Forum is an installable domain application composed from platform modules",
+    "planned `rustok-reactions`",
+    "planned `rustok-reputation`",
+    "`rustok-moderation` through `rustok-moderation-api`",
+    "Profiles remains the sole public member identity and directory owner",
+    "Media remains the sole binary asset and delivery-lifecycle owner",
+    "Forum trust remains Forum-owned and is not equivalent to reputation"
+  ],
+  "archive_snapshot": "crates/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot",
+  "verification": [
+    "node scripts/verify/verify-forum-shared-capability-ownership.mjs",
+    "cargo xtask module validate forum",
+    "git diff --check"
+  ]
+}

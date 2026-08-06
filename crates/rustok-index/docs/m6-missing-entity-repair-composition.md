@@ -1,6 +1,6 @@
 # M6 concrete missing-entity drift repair
 
-Status: `source_complete_recovery_policy_pending`.
+Status: `source_complete_recovery_aware_owner_execution_pending`.
 
 ## Purpose
 
@@ -26,8 +26,10 @@ accept mutation JSON, mount a transport, or resolve the finding lifecycle row.
 It composes:
 
 - `PostgresIndexDriftMissingEntityEvidenceReader`;
-- one `PostgresIndexDriftMissingEntityRepairOwner`;
-- the existing durable `PostgresIndexDriftRepairStore` behind a missing-entity-only gate;
+- one `PostgresIndexDriftMissingEntityRepairOwner` behind
+  `RecoveryAwareIndexDriftRepairOwner`;
+- the durable `PostgresIndexDriftRepairStore` behind
+  `RecoveryAwareIndexDriftRepairStore` and a missing-entity-only gate;
 - the generic `IndexDriftRepairService`.
 
 The helper is exported at crate level but is not inserted into `ModuleRuntimeExtensions`.
@@ -113,15 +115,35 @@ entity identity, committed versions, and the typed mutation result (`Applied`, `
 `StaleIgnored` is not trusted as convergence by itself. The generic service still requires admitted
 after evidence to be `Converged` before recording `Repaired`.
 
+## Recovery-aware admission
+
+Every newly reserved command receives an immutable revision-0 `active` recovery decision. A legacy
+or crash-stranded `prepared` command without a decision fails with
+`index_drift_repair_recovery_required` until an independently authorized recovery `Resume` is
+recorded. `paused` and `abandoned` commands fail closed.
+
+`RecoveryAwareIndexDriftRepairOwner` holds the exact tenant/command PostgreSQL advisory fence while
+checking payload identity and latest recovery state and while delegating the mutation owner. An
+operator pause or abandon therefore cannot enter concurrently before the side effect; it either wins
+before owner admission or waits until the already admitted owner call returns.
+
+Completion is gated twice: by `RecoveryAwareIndexDriftRepairStore` and by the database trigger added
+in migration `m20260806_000008_add_index_finding_repair_recovery`. A pause or abandon that wins after
+the owner call but before receipt persistence prevents `prepared -> completed`. The implementation
+does not infer whether the side effect happened; authorized resume preserves the same mutation UUID
+and re-enters the inbox idempotency path.
+
+The complete recovery contract is documented in `m6-prepared-repair-recovery.md`.
+
 ## Failure mapping
 
 Source and absence provider failures retain only retryable/permanent classification. PostgreSQL read
 failures and transient mutation conflicts are retryable. Invalid source identity, malformed stored
-versions, delivery conflicts, schema validation errors, and unsupported backends fail permanently
-with bounded machine codes.
+versions, delivery conflicts, schema validation errors, unsupported backends, and non-active
+recovery state fail permanently with bounded machine codes.
 
-A retryable failure leaves the generic durable reservation in `prepared` state for exact command
-retry.
+A retryable failure leaves the generic durable reservation in `prepared` state. Exact retry proceeds
+only while the latest recovery state is `active`.
 
 ## Deliberate limits
 
@@ -132,26 +154,29 @@ This slice does not add:
 - GraphQL, HTTP, CLI, MCP, native-admin, or module-runtime composition;
 - scheduler, worker, candidate-page loop, or automatic repair;
 - automatic lifecycle transition after convergence;
-- prepared-command lease, expiry, abandonment, takeover, or operator recovery;
+- time-derived lease expiry or automatic ownership inference;
+- cancellation after an owner call has acquired the recovery fence;
 - retained PostgreSQL, source-owner, crash-window, workflow, or CI evidence.
 
 ## Next implementation step
 
-Add a fail-closed recovery policy for durable `prepared` repair commands. The policy must distinguish
-an actively owned attempt from an abandoned attempt, preserve command payload identity, require an
-authorized operator decision, and never silently replay or discard an ambiguous owner side effect.
-Keep orphan-link repair and public transport separate.
+Compose one concrete orphan-link evidence reader and idempotent mutation owner behind the same
+recovery-aware boundary. Preserve exact source link, ordinal, target identity, target absence proof,
+and durable repair command UUID.
+
+Keep public transport and automatic finding iteration separate.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index drift_missing_entity_repair -- --nocapture
 node scripts/verify/verify-index-missing-entity-repair-composition.mjs
+node scripts/verify/verify-index-prepared-repair-recovery.mjs
 node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, Node verifiers, formatting, Cargo checks, PostgreSQL scenarios, workflows, or CI were run by
-the implementation agent.
+No tests, Node verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite scenarios,
+workflows, or CI were executed by the implementation agent.

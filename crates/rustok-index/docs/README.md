@@ -19,13 +19,14 @@ This directory contains the detailed technical architecture documentation for `r
 
 1. **Schema-Agnostic PostgreSQL JSONB Storage**: Envelopes entity state into benchmarked `JSONB` structures while maintaining independent relational graphs (`index_links`).
 2. **Derived Secondary Indexes**: Automatically creates typed PostgreSQL partial B-Tree expression indexes for scalar fields and GIN containment indexes for arrays.
-3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors use a separate authenticated, confidential, tenant/schema/source-bound codec plus a private server `SecretRef` keyring, sealed one-page service boundary, and bounded GraphQL transport. Drift discovery uses a separate exact-scope candidate contract, read-only PostgreSQL `txid` visibility fence, bounded two-phase keyset reader, double-observed owner/materialized confirmation, serializable idempotent finding persistence, authorization-gated lifecycle audit, durable targeted-repair reservations/receipts, and one concrete missing-entity repair path through the canonical mutation inbox.
+3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors use a separate authenticated, confidential, tenant/schema/source-bound codec plus a private server `SecretRef` keyring, sealed one-page service boundary, and bounded GraphQL transport. Drift discovery uses a separate exact-scope candidate contract, read-only PostgreSQL `txid` visibility fence, bounded two-phase keyset reader, double-observed owner/materialized confirmation, serializable idempotent finding persistence, authorization-gated lifecycle audit, durable targeted-repair reservations/receipts, one concrete missing-entity repair path through the canonical mutation inbox, and an immutable authorization-gated recovery ledger for ambiguous `prepared` commands.
 4. **Durable Rebuilds & Outbox Inbox**: Fences stale checkpoint writers with advisory locks, deduplicates mutations via `index_inbox`, and logs consistency findings (`index_consistency_findings`).
 
 ---
 
 ## Reference Documents
 
+- [Source Module Integration Contract](./module-source-integration.md)
 - [Live Implementation Plan](./implementation-plan.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
 - [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
@@ -38,6 +39,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Drift Finding Lifecycle](./m6-drift-finding-lifecycle.md)
 - [M6 Targeted Drift Repair](./m6-targeted-drift-repair.md)
 - [M6 Concrete Missing-entity Repair](./m6-missing-entity-repair-composition.md)
+- [M6 Prepared Repair Recovery](./m6-prepared-repair-recovery.md)
 - [M6 Product Locale Absence PostgreSQL Harness](./m6-product-locale-absence-postgres-harness.md)
 - [M6 GraphQL Exact-entity Diagnosis Transport](../../../apps/server/docs/index-drift-diagnosis-graphql-transport.md)
 - [M6 One-page Missing-entity Diagnosis](../../../apps/server/docs/index-drift-source-page-diagnosis.md)

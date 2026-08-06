@@ -19,4 +19,23 @@ component digest into the final descriptor after Component and WIT inspection.
 sandbox limits, and the expected output. The guest publishes
 `module.<slug>.executed` with `{topic, payload}` input, so the example passes the
 same Events capability constraint validator as an admitted runtime execution.
-The renderer validates this scenario before returning the file set.
+
+## Index compatibility boundary
+
+Every rendered project includes `docs/index-integration.md`. The guide records
+that the generated project is a standalone Component Model guest and therefore
+cannot directly depend on `rustok-index`, register host runtime extensions,
+access PostgreSQL, or write Index-owned storage.
+
+The current component ABI exposes no `platform.index` capability. The Events
+example is intentionally not presented as an Index mutation contract. A future
+standalone integration must be host-owned, versioned, capability-constrained,
+and admitted before the template can generate executable Index-specific code.
+
+Native in-repository modules use the separate host integration contract in
+`crates/rustok-index/docs/module-source-integration.md`.
+
+The renderer validates the sandbox scenario and renders the Index boundary
+guide before returning the ordered file set. The static verifier additionally
+rejects a direct `rustok-index` dependency or an invented `platform.index`
+capability in the standalone template.

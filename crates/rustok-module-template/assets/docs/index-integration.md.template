@@ -1,0 +1,123 @@
+# Index integration for `{{slug}}`
+
+This generated project is a standalone RusToK Component Model module. It is not
+an in-process Rust module and does not link the host's `rustok-index` crate.
+
+## Current compatibility status
+
+The component receives platform access only through the single broker import
+provided by `rustok-module-sdk`:
+
+```rust
+rustok_module_sdk::rustok::module::host::invoke(
+    capability,
+    operation,
+    json_input,
+)
+```
+
+The current component ABI does not publish a `platform.index` capability. The
+example `platform.events/publish` call in `src/lib.rs` demonstrates a constrained
+event capability only. Publishing an event does **not** automatically register
+an Index schema, populate Index storage, provide replay, or make the module
+repair-ready.
+
+Do not add `rustok-index` to this crate's dependencies. A standalone component
+has no ambient PostgreSQL access, no `ModuleRuntimeExtensions`, and no right to
+write Index-owned tables.
+
+## When Index integration becomes available
+
+A standalone component can participate only after the host provides and admits
+one of these explicit boundaries:
+
+1. a typed broker capability dedicated to Index schema, replay, and mutation
+   operations; or
+2. a documented host-owned event-to-Index bridge with a versioned payload
+   contract and retained execution evidence.
+
+Until one of those boundaries exists, treat direct Index integration as
+unsupported. Do not invent private event payloads and call them Index mutations.
+
+## Data contract to prepare in advance
+
+Even before a host bridge exists, design domain state so it can satisfy the
+future Index contract without destructive migration.
+
+For every entity intended for indexing, define:
+
+- a stable entity type and identifier;
+- the exact tenant identity;
+- a versioned schema identity;
+- a monotonic source version that advances on every indexed change;
+- a stable event/delivery UUID reused on retry;
+- a complete upsert representation;
+- an explicit delete/tombstone representation;
+- complete ordered link values;
+- a bounded deterministic replay cursor;
+- an exact targeted-load operation;
+- authoritative absence evidence when deletion diagnosis is required.
+
+Wall-clock timestamps are not automatically valid source versions. Random IDs
+are not valid source versions. A missing data row is not automatically proof of
+deletion.
+
+## Safe use of `platform.events`
+
+The template publishes this example topic:
+
+```text
+module.{{slug}}.executed
+```
+
+Use module-owned topics for domain notifications only when they are declared in
+`module-artifact.json` and granted by policy. Keep the event payload versioned
+and deterministic, but do not imply that it is consumed by Index unless the
+host bridge documentation names the exact topic and payload version.
+
+Example application-level payload shape:
+
+```json
+{
+  "schema_version": 1,
+  "event_id": "00000000-0000-0000-0000-000000000000",
+  "entity_type": "listing",
+  "entity_id": "00000000-0000-0000-0000-000000000000",
+  "source_version": "42",
+  "change": "updated"
+}
+```
+
+This is only an example domain event envelope. It is deliberately **not** a
+canonical Index mutation contract.
+
+## Native module integration
+
+When the implementation is an in-repository native Rust module selected into
+the server distribution, use the host integration guide instead:
+
+```text
+crates/rustok-index/docs/module-source-integration.md
+```
+
+That path registers versioned `IndexSchema` contracts, bounded `IndexSource`
+replay/load adapters, incremental `IndexMutation` deliveries, and optional
+absence/repair evidence through host-owned composition.
+
+## Standalone compatibility checklist
+
+Before claiming that this component works with Index, require all of the
+following:
+
+- [ ] A documented host capability or event bridge exists.
+- [ ] The capability is declared in `module-artifact.json`.
+- [ ] Runtime policy grants the exact operations and scopes.
+- [ ] Schema identity and versioning are documented.
+- [ ] Delivery UUID and source-version rules are documented.
+- [ ] Upsert, delete, links, replay, and targeted load are defined.
+- [ ] Tenant and authorization boundaries are explicit.
+- [ ] Redelivery and crash behavior have retained evidence.
+- [ ] The host, not the guest, owns PostgreSQL and Index table access.
+
+Without those conditions, the correct status is: **Index integration not yet
+available for this standalone component**.
