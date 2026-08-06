@@ -38,36 +38,43 @@ The authoritative call remains:
 sanitize_static_landing_project
 ```
 
-Resource validation occurs after current Fly preparation and static publish policy validation, and before runtime materialization or immutable artifact creation.
+Resource validation occurs after current Fly preparation and static publish policy validation, and before sanitized-project hashing, runtime materialization or immutable artifact creation.
 
-## Evidence and integrity
+The same resource validation is repeated when the transient sanitization envelope verifies its integrity immediately before materialization.
 
-New sanitization outputs use:
+## Sanitization identity
 
-```text
-page_builder_static_publish_sanitization_v3
-```
-
-The v3 sanitization hash binds:
-
-- static HTML/CSS/URL/attribute policy format and hash;
-- resource-limit format and hash;
-- observed project bytes, page count, component count, maximum depth, asset count and style-rule count;
-- the sanitized current Fly project.
-
-Integrity verification recomputes both static policy evidence and resource evidence from the retained sanitized project.
-
-## Legacy compatibility
-
-Existing immutable evidence using:
+The existing contract remains unchanged:
 
 ```text
 page_builder_static_publish_sanitization_v2
 ```
 
-remains verifiable with the exact prior hash formula. Legacy v2 packets must not contain v3 resource evidence and do not receive retroactive rejection under the new budgets.
+Its SHA-256 payload remains exactly:
 
-This preserves already published immutable artifacts while requiring every newly sanitized reviewed publication to carry v3 resource evidence.
+```text
+format
+policy_format
+policy_hash
+sanitized_project
+```
+
+No new persisted DTO or database field is introduced. Pages continues to retain the resulting `sanitized_hash` inside the existing locale-ordered sanitized-set identity.
+
+Global budgets are an additional fail-closed admission condition on the reviewed sanitization operation. They do not rewrite historical immutable artifacts or alter the sanitization hash schema.
+
+## Resource policy evidence
+
+The provider-owned resource policy has its own deterministic SHA-256 identity and bounded observation DTO covering:
+
+- prepared-project bytes;
+- page count;
+- component count;
+- maximum component depth;
+- asset count;
+- style-rule count.
+
+This DTO is used by the validator and focused source/tests. It is not a new public transport or persistence schema.
 
 ## Typed rejection
 
@@ -90,6 +97,7 @@ This source slice does not change:
 
 - Pages metadata or document persistence;
 - publish transaction ownership or idempotency;
+- sanitization format or hash payload;
 - runtime scenario selection;
 - public route, cache or artifact schemas;
 - anonymous storefront rendering;
@@ -103,6 +111,7 @@ Suggested commands, intentionally not run in this slice:
 
 ```bash
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
 cargo test -p rustok-page-builder static_publish_resource_limits -- --nocapture
 cargo test -p rustok-page-builder publish_sanitization -- --nocapture
 cargo check -p rustok-page-builder
