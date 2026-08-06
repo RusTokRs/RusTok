@@ -15,8 +15,8 @@ use super::{
     CheckoutMarketplaceAllocationError, CheckoutMarketplaceCommissionError,
     CheckoutMarketplaceEconomicsCheckpointError, CheckoutOperationCheckpoint,
     CheckoutOperationError, CheckoutOperationJournal, CheckoutOperationStage,
-    CheckoutOperationStatus, CheckoutPlanBuilder, CheckoutStagePipeline,
-    CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    CheckoutOperationStatus, CheckoutPaymentStageError, CheckoutPlanBuilder,
+    CheckoutStagePipeline, CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
 
 #[derive(Debug, Error)]
@@ -365,7 +365,11 @@ fn checkout_failure_disposition(error: &CheckoutError) -> FailureDisposition {
 
 fn pipeline_failure_disposition(error: &CheckoutStagePipelineError) -> FailureDisposition {
     match error {
-        CheckoutStagePipelineError::MarketplaceAllocation(
+        CheckoutStagePipelineError::PaymentStage(CheckoutPaymentStageError::Boundary {
+            retryable: true,
+            ..
+        })
+        | CheckoutStagePipelineError::MarketplaceAllocation(
             CheckoutMarketplaceAllocationError::Boundary {
                 retryable: true, ..
             },
@@ -519,6 +523,39 @@ mod tests {
         assert!(matches!(
             checkout_failure_disposition(&error),
             FailureDisposition::Retryable
+        ));
+    }
+
+    #[test]
+    fn retryable_payment_stage_boundary_does_not_force_compensation() {
+        let error = CheckoutStagePipelineError::PaymentStage(
+            CheckoutPaymentStageError::Boundary {
+                stage: "capture",
+                code: "payment.provider_timeout".to_string(),
+                message: "Checkout payment service is temporarily unavailable".to_string(),
+                retryable: true,
+            },
+        );
+        assert!(matches!(
+            pipeline_failure_disposition(&error),
+            FailureDisposition::Retryable
+        ));
+    }
+
+    #[test]
+    fn non_retryable_payment_stage_boundary_requires_compensation() {
+        let error = CheckoutStagePipelineError::PaymentStage(
+            CheckoutPaymentStageError::Boundary {
+                stage: "capture",
+                code: "payment.capture_conflict".to_string(),
+                message: "Checkout payment state conflicts with the requested operation"
+                    .to_string(),
+                retryable: false,
+            },
+        );
+        assert!(matches!(
+            pipeline_failure_disposition(&error),
+            FailureDisposition::CompensationRequired
         ));
     }
 
