@@ -141,6 +141,7 @@ pub struct ForumReplyDetail {
 pub enum StorefrontForumTopicRouteDisposition {
     Canonical,
     Redirect,
+    Gone,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -163,7 +164,7 @@ pub struct StorefrontForumTopicRouteResolution {
     #[serde(rename = "requestedSlug")]
     pub requested_slug: String,
     pub disposition: StorefrontForumTopicRouteDisposition,
-    pub canonical: StorefrontForumTopicRouteDescriptor,
+    pub canonical: Option<StorefrontForumTopicRouteDescriptor>,
 }
 
 #[cfg(test)]
@@ -245,6 +246,28 @@ mod tests {
             route.disposition,
             StorefrontForumTopicRouteDisposition::Redirect
         );
-        assert_eq!(route.canonical.slug, "welcome");
+        assert_eq!(
+            route.canonical.as_ref().map(|canonical| canonical.slug.as_str()),
+            Some("welcome")
+        );
+    }
+
+    #[test]
+    fn gone_route_payload_has_no_canonical_target() {
+        let route: StorefrontForumTopicRouteResolution = serde_json::from_value(
+            serde_json::json!({
+                "requestedLocale": "en",
+                "requestedShortId": "123456789abc",
+                "requestedSlug": "retired-topic",
+                "disposition": "GONE",
+                "canonical": null
+            }),
+        )
+        .expect("gone route payload");
+        assert_eq!(
+            route.disposition,
+            StorefrontForumTopicRouteDisposition::Gone
+        );
+        assert!(route.canonical.is_none());
     }
 }
