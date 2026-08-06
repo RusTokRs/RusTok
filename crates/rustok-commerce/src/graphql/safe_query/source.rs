@@ -91,8 +91,8 @@ use self::rustok_pricing_shim as rustok_pricing;
 // inside the safe-query include so the complete typed PortError reaches the
 // transport mapper. Every other format invocation keeps standard Rust behavior.
 macro_rules! format {
-    ("{}: {}", error.code, error.message) => {
-        super::query_error_boundary::RegionGraphqlMessage::new(error)
+    ("{}: {}", $error:ident.code, $error_dup:ident.message) => {
+        super::query_error_boundary::RegionGraphqlMessage::new($error)
     };
     ($($tokens:tt)*) => {
         ::std::format!($($tokens)*)

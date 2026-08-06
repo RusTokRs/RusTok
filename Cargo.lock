@@ -13197,6 +13197,7 @@ dependencies = [
 name = "rustok-forum-storefront"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "leptos 0.8.20",
  "leptos-ui-routing",
  "leptos_axum",
@@ -13206,10 +13207,15 @@ dependencies = [
  "rustok-forum",
  "rustok-graphql",
  "rustok-outbox",
+ "rustok-taxonomy",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
+ "sea-orm",
+ "sea-orm-migration",
  "serde",
  "serde_json",
+ "tokio",
+ "tower",
  "uuid",
 ]
 
@@ -14423,6 +14429,8 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -15001,11 +15009,14 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "flex",
  "rustok-api",
  "rustok-content",
  "rustok-core",
  "rustok-events",
+ "rustok-forum",
  "rustok-outbox",
+ "rustok-taxonomy",
  "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
