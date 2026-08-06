@@ -1,7 +1,7 @@
 # Pages / Page Builder Inline Edit Execution Plan
 
 Date: 2026-08-06  
-Status: `artifact-http-evidence-harness-source-ready / session-dom-boundary-source-fixed / browser-evidence-harness-source-ready / artifact-http-browser-rollout-execution-pending`
+Status: `artifact-http-evidence-harness-source-ready / session-dom-boundary-source-fixed / browser-evidence-harness-source-ready / rollout-evidence-harness-source-ready / artifact-http-browser-rollout-execution-pending`
 Parent cursor: `docs/modules/pages-page-builder-parity-continuation-plan.md`
 
 ## Purpose
@@ -13,20 +13,28 @@ Source readiness is not execution evidence. No checkbox in this file may be prom
 ## Current marker
 
 ```text
+inline-edit-rollout-evidence-harness-source-ready
+```
+
+Rollout evidence harness: source-ready.
+
+The two-phase FFA/FBA machine contract, bounded external observation assembler, source evidence, fail-closed guard and maintainer packet now exist. The assembler observes externally performed rollout actions and cannot mutate deployment, configuration, promotion or rollback state.
+
+Retained browser marker:
+
+```text
 inline-edit-browser-evidence-harness-source-ready
 ```
 
-Browser evidence harness: source-ready.
+The browser harness remains the required rollout predecessor and must pass for the exact same source commit and immutable deployment RepoDigest.
 
-The machine browser contract, bounded Playwright config, authenticated launch/edit/save/reload/stale/replay/expiry scenario, source evidence, fail-closed guard and maintainer packet now exist. The browser harness requires the passing artifact/HTTP packet for the exact same commit, origin and immutable deployment RepoDigest.
-
-Retained predecessor marker:
+Retained artifact/HTTP marker:
 
 ```text
 inline-edit-artifact-http-evidence-harness-source-ready
 ```
 
-The build snapshot, production image, HTTP capture and same-commit aggregate tooling remain the required execution predecessor. No artifact, Docker, HTTP, browser, workflow or rollout result is claimed.
+The build snapshot, production image, HTTP capture and same-commit aggregate tooling remain the required browser predecessor. No artifact, Docker, HTTP, browser, workflow or rollout result is claimed.
 
 Corrective security marker:
 
@@ -44,6 +52,7 @@ The Page Builder authoring root no longer derives its DOM id from the grant sess
 - [ ] Confirm the source contains neither `data-inline-session` nor `dom_id(grant.session_id())`.
 - [ ] Run `verify-pages-inline-edit-artifact-http-evidence-harness.mjs`.
 - [ ] Run `verify-pages-inline-edit-browser-evidence-harness.mjs`.
+- [ ] Run `verify-pages-inline-edit-rollout-evidence-harness.mjs`.
 - [ ] Run release infrastructure, supply-chain and readiness guards.
 - [ ] Record the exact source commit and command output hashes.
 
@@ -188,15 +197,54 @@ This status closes only browser evidence for the reviewed source commit, origin 
 
 ## Gate H — rollout
 
-- [ ] Record tenant, environment, image digest and configuration profile.
-- [ ] Confirm `pages.builder.inline_edit.enabled` only for the intended tenant cohort.
-- [ ] Confirm Pages module enablement, direct-user session and `pages:update` remain mandatory.
-- [ ] Monitor save conflicts, authorization denials, grant verification failures and client load failures.
-- [ ] Define rollback owner and image digest.
-- [ ] Promote FFA only after artifact/HTTP/browser evidence is retained and reviewed.
-- [ ] Promote FBA only after the FFA observation window and rollback rehearsal.
+Source owner:
 
-Artifact, HTTP, browser execution and tenant rollout remain pending.
+```text
+scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs
+```
+
+Source guard:
+
+```text
+node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs
+```
+
+The assembler consumes bounded maintainer observations. It does not query deployment/configuration/monitoring systems and does not mutate configuration, deploy, promote or roll back.
+
+- [ ] Supply the passing Gate G browser packet for the exact same source commit and immutable deployment RepoDigest.
+- [ ] Record bounded environment and configuration-profile identities; retain only their SHA-256 values.
+- [ ] Confirm `pages.builder.inline_edit.enabled` only for the intended enabled tenant cohort and retain tenant identities as SHA-256 only.
+- [ ] Retain at least one disabled control tenant and confirm enabled/control cohorts are disjoint.
+- [ ] Confirm Pages module enablement, direct user, authenticated session and `pages:update` remain mandatory.
+- [ ] Record exact positive FFA observation-window timestamps and duration.
+- [ ] Record reviewed observed counts and thresholds for save conflicts, authorization denials, grant verification failures and client load failures.
+- [ ] Require every observed count to remain at or below its reviewed threshold.
+- [ ] Record a SHA-256 rollback owner identity and immutable rollback image distinct from the active image.
+- [ ] Review browser, configuration and monitoring evidence and obtain rollout-owner approval.
+- [ ] Assemble FFA evidence with `assemble-pages-inline-edit-rollout-evidence.mjs --phase ffa`.
+- [ ] Confirm the FFA status is exactly:
+
+```text
+ffa_observation_passed_fba_pending
+```
+
+- [ ] Start the FBA observation window only after the FFA window has ended.
+- [ ] Perform and review a successful rollback rehearsal through the external operational owner.
+- [ ] Review the previous FFA packet.
+- [ ] Assemble FBA evidence with `assemble-pages-inline-edit-rollout-evidence.mjs --phase fba --ffa <packet>`.
+- [ ] Confirm the terminal status is exactly:
+
+```text
+fba_rollout_evidence_complete
+```
+
+Gate H terminal state:
+
+```text
+inline-edit-rollout-ffa-fba-evidence-complete
+```
+
+Artifact, HTTP, browser and rollout execution remain pending. FFA/FBA are not promoted by source inspection or by running the assembler alone.
 
 ## Privacy boundary
 
@@ -210,13 +258,17 @@ Retained evidence must not contain:
 - raw request or response bodies;
 - raw console message text;
 - admin paths, page IDs, component IDs or edited text;
+- raw tenant IDs or tenant names;
+- raw environment, configuration-profile or rollout-owner values;
+- deployment credentials, configuration secrets or database URLs;
+- raw monitoring logs or alert payloads;
 - traces, screenshots or video;
 - raw build logs;
 - raw Docker image request references;
 - full Docker inspect documents;
 - tenant secrets or database credentials.
 
-Hashes, sizes, selected headers, environment variable names, immutable RepoDigests, source identities and bounded pass/fail facts are allowed.
+Hashes, sizes, selected headers, environment variable names, immutable RepoDigests, source identities, observation timestamps, counters, thresholds and bounded pass/fail facts are allowed.
 
 ## Current state
 
@@ -225,9 +277,10 @@ source pipeline: ready
 artifact/HTTP evidence harness: source-ready
 session DOM exposure: source-fixed, validation pending
 browser evidence harness: source-ready
+rollout evidence harness: source-ready
 artifact execution: pending
 HTTP execution: pending
 browser execution: pending
-rollout: pending
+rollout execution: pending
 FFA/FBA: not promoted
 ```
