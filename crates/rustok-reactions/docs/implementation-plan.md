@@ -16,7 +16,7 @@ last_reviewed: 2026-08-06
 | --- | --- | --- |
 | `REACTIONS-00` | `in_progress` | Neutral API, optional owner module, distribution/server feature selection and provider registries are source-ready; maintainer Cargo/Node verification remains. |
 | `REACTIONS-01` | `in_progress` | Tenant-composite owner schema, immutable catalog snapshots, actor uniqueness and shared Outbox command receipts are source-ready. Regenerate `Cargo.lock` and retain SQLite/PostgreSQL execution evidence. |
-| `REACTIONS-02` | `in_progress` | Actor state and aggregate deltas commit atomically behind one subject serialization row. Add semantic events, repair/reconciliation and retained concurrency evidence. |
+| `REACTIONS-02` | `in_progress` | Actor state, aggregate deltas, typed semantic events and completed shared Outbox receipts now share one transaction. Bounded inspect/repair reconciliation is source-ready; retain rollback, replay, concurrency and repair evidence. |
 | `REACTIONS-03` | `in_progress` | Forum topic/reply provider, optional host materialization and executable composition profile tests are source-ready. Reactions stays outside defaults; retained execution evidence remains pending. |
 | `REACTIONS-04` | `planned` | Second real producer adapter and neutral-contract review. |
 | `REACTIONS-05` | `planned` | Bounded read/write transports and module-owned UI. |
@@ -25,11 +25,11 @@ last_reviewed: 2026-08-06
 ## Ownership
 
 Reactions owns catalog snapshots, actor state, shared-receipt-bound command
-execution and aggregate projections. Producer modules own subject existence,
-current revision, visibility, lifecycle and reaction policy. Profiles owns actor
-presentation. Reputation and achievements consume semantic facts but do not
-mutate reaction state. Notifications may consume future events but are not part
-of command correctness.
+execution, aggregate projections, semantic reaction events and aggregate repair.
+Producer modules own subject existence, current revision, visibility, lifecycle
+and reaction policy. Profiles owns actor presentation. Reputation and
+achievements consume semantic facts but do not mutate reaction state.
+Notifications may consume future events but are not part of command correctness.
 
 ## Persistence invariants
 
@@ -46,6 +46,50 @@ of command correctness.
 
 The initial catalog revision is the producer subject revision. Independent
 catalog revisioning is a later explicit API/migration change.
+
+## Semantic event boundary
+
+`rustok-events::ReactionsEvent` defines two sealed schema-v1 facts:
+
+- `reactions.actor_state.changed` records one committed actor-state transition,
+  the resulting bounded selection and exact added/removed aggregate keys;
+- `reactions.subject.reconciled` records one committed bounded aggregate repair
+  and a bounded/truncated changed-key sample.
+
+The admitted `owner_operation_receipts.id` is the exact typed envelope UUID. A
+changed reaction command writes actor state, aggregate deltas, the semantic event
+and completed shared receipt in one owner transaction. Event conflict or
+unavailability aborts the transaction. Idempotent no-op commands and completed
+receipt replays do not publish another event.
+
+Payloads expose stable tenant-scoped identities through envelope/payload fields,
+positive revisions and bounded reaction keys only. They do not expose producer
+content, visibility denial reasons, profile presentation, claims, roles, locale,
+channel or free-form repair diagnostics.
+
+The typed family is registered in the central closed `ContractEventPayload` and
+schema registry. The committed event-contract digest artifact must be regenerated
+by the maintainer before `--locked` or release evidence is accepted.
+
+## Bounded reconciliation boundary
+
+`ReactionsService` exposes owner-only inspect and repair methods for one exact
+subject. Both require tenant equality and `reactions:reconcile`; repair also
+requires a non-nil command UUID equal to the write idempotency key.
+
+The request supplies an explicit actor-state bound capped at 1,000. Aggregate
+rows are hard-capped at 128 and reported issues at 64. Inspection is read-only.
+Repair is admitted through the shared Outbox receipt ledger, serializes the owner
+subject row and reconstructs `reaction_aggregates` only from valid persisted
+actor selections under the immutable current catalog.
+
+Repair fails closed when the current catalog is missing/corrupt or an actor state
+has a non-positive revision, corrupt/duplicate selection, selection-limit
+violation or key outside the current catalog. It never mutates actor selections,
+rewrites catalog snapshots, reads producer-private tables or guesses producer
+visibility/lifecycle policy. A clean repair is an idempotent receipt-only no-op;
+a drift repair replaces only aggregate rows and publishes one transactional
+`reactions.subject.reconciled` event.
 
 ## Forum producer boundary
 
@@ -92,7 +136,8 @@ Supported profiles are explicit:
   stable owner-missing error before publishing a false runtime.
 
 `mod-forum` does not imply `mod-reactions`, server defaults do not select it and
-`modules.toml` keeps Reactions outside `default_enabled`.
+`modules.toml` keeps Reactions outside `default_enabled` and outside default
+profiles.
 
 ## Executable composition evidence
 
@@ -108,18 +153,20 @@ profile results. Source presence alone does not promote `REACTIONS-03` to done.
 
 ## Immediate next action
 
-After retaining the four composition-profile runs and regenerating `Cargo.lock`,
-add transactional semantic reaction events and bounded catalog/aggregate
-reconciliation. Then add a second real producer before freezing transport or
-presentation contracts.
+Regenerate `Cargo.lock` and the `rustok-events` digest artifact, then retain
+SQLite/PostgreSQL evidence covering changed/no-op/replay event cardinality,
+rollback on event failure, concurrent actor updates, clean/blocked/drift
+reconciliation and receipt replay. After that, add a second real producer and
+review the neutral contract before freezing transport or presentation contracts.
 
 Before release, execute SQLite and PostgreSQL migrations, retain replay,
-concurrency and rollback evidence, and provide reconciliation for catalog and
-aggregate drift.
+concurrency and rollback evidence, and retain bounded repair evidence for catalog
+and aggregate drift.
 
 ## Verification
 
 ```bash
+cargo test -p rustok-events reactions
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
 cargo test -p rustok-forum reaction_subject
@@ -131,12 +178,14 @@ cargo test -p rustok-server --no-default-features --features mod-forum --test re
 cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles reactions_without_forum_materializes_an_empty_subject_registry
 cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles selected_reactions_feature_fails_when_owner_module_is_missing
 cargo test -p rustok-server --no-default-features --features "mod-forum mod-reactions" --test reactions_composition_profiles forum_with_reactions_materializes_topic_and_reply_provider
+cargo run -p rustok-events --example event_contract_digests -- --write
 node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
 node scripts/verify/verify-forum-reaction-subject-provider.mjs
 node scripts/verify/verify-reactions-host-composition.mjs
 node scripts/verify/verify-reactions-composition-profiles.mjs
+node scripts/verify/verify-reactions-events-reconciliation.mjs
 git diff --check
 ```
 
-Tests, checks, lockfile generation and retained runtime evidence are maintainer-run.
+Tests, checks, lockfile/digest generation and retained runtime evidence are maintainer-run.

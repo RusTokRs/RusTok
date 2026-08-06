@@ -1,5 +1,6 @@
 pub mod entities;
 pub mod migrations;
+mod reconciliation;
 mod service;
 
 use async_trait::async_trait;
@@ -11,6 +12,12 @@ use rustok_reactions_api::{
 };
 use sea_orm_migration::MigrationTrait;
 
+pub use reconciliation::{
+    MAX_REACTION_RECONCILIATION_ACTOR_STATES, MAX_REACTION_RECONCILIATION_ISSUES,
+    ReactionAggregateComparison, ReactionReconciliationIssue, ReactionReconciliationReceipt,
+    ReactionReconciliationReport, ReactionReconciliationRequest, ReactionReconciliationStatus,
+    RepairReactionSubjectCommand,
+};
 pub use rustok_reactions_api as api;
 pub use service::ReactionsService;
 

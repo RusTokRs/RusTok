@@ -13,6 +13,7 @@
 - `pub use crate::{ForumSearchProjectionEvent, FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceSellerEvent, MARKETPLACE_SELLER_EVENT_SCHEMAS}`
+- `pub use crate::{ReactionsEvent, REACTIONS_EVENT_SCHEMAS}`
 - `pub use crate::{SocialGraphRelationEvent, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS}`
 - `pub use crate::{TranslationWorkflowEvent, TRANSLATION_WORKFLOW_EVENT_SCHEMAS}`
 - `ContractEventEnvelope::new_with_envelope_id(...)` creates a registered typed envelope with one exact non-nil caller-owned durable identity
@@ -45,6 +46,12 @@
   revision, one bounded projection target type, and a target identity only when
   the scope is a category or topic. The exact legacy root envelope identity is
   carried in typed-envelope `causation_id`, not in the payload.
+- `ReactionsEvent` defines v1 `reactions.actor_state.changed` for one committed
+  actor-state transition plus bounded aggregate deltas, and
+  `reactions.subject.reconciled` for one committed bounded aggregate repair.
+  Tenant and actor are envelope metadata. Owner command/repair identities,
+  subject identity, positive revisions and bounded reaction keys are payload
+  facts; producer content, visibility and presentation remain private.
 - `SocialGraphRelationEvent` defines v1 `social_graph.relation.state_changed`
   as an authoritative fact for one persisted relation revision, with relation id,
   source/target user ids, canonical kind, active state, and revision only. Tenant
@@ -81,6 +88,12 @@
 - Adds locale, channel, visibility, rendered content, document payload, reason,
   claims, roles, or Search `ingest_sequence` to the Forum Search invalidation payload.
 - Adds contact data, source body or profile handle snapshots to Forum mention events instead of stable identities.
+- Publishes a Reactions semantic event outside the owner state/aggregate/receipt
+  transaction, emits an event for a no-op or replay, or uses the user command
+  UUID instead of the admitted owner-operation UUID as envelope identity.
+- Adds producer content, visibility denial reasons, profile presentation,
+  claims, roles, locale, channel or free-form repair diagnostics to Reactions
+  events.
 - Adds idempotency keys, expected revisions, request context, claims, roles, locale,
   channel, or receipt snapshots to Social Graph relation events.
 - Treats a replayed Social Graph relation fact as exactly-once or applies a lower
@@ -131,6 +144,12 @@
   `forum`, and require a non-nil `target_id` for category/topic scope.
 - Forum owner revision and Search-owned `ingest_sequence` remain independent
   counters and must never be compared numerically.
+- Reactions actor-state events require non-nil command, subject and actor UUIDs,
+  positive subject/state revisions, one `add|remove` action, unique bounded key
+  arrays, added keys inside the resulting selection and removed keys outside it.
+- Reactions reconciliation events require a non-nil repair command/subject,
+  positive subject/catalog revisions, non-negative scan counts, at least one
+  changed key and a truthful bounded/truncated changed-key sample.
 - Social Graph relation events accept only non-nil distinct source/target ids,
   canonical `block|mute|follow` kind, and a positive monotonic revision.
 - A Social Graph consumer applies by relation id plus monotonic revision, ignores
@@ -145,6 +164,10 @@
 
 ### Events / Outbox Side Effects
 - Owner modules publish sealed contracts through `TransactionalEventBus::publish_contract_in_tx` inside the owner transaction.
+- Exact write-once owner operations may publish with
+  `publish_contract_once_direct_in_tx_with_envelope_id` using the already
+  admitted owner-operation UUID. Event conflict or unavailability must abort the
+  same transaction as owner state and receipt completion.
 - This crate defines exact envelope identity construction but does not perform
   database insertion, replay admission, conflict classification, source-row
   handoff, relay, retry, DLQ, or retention.
