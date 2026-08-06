@@ -299,7 +299,10 @@ impl IndexSourceContinuationCodec {
         let nonce_end = key_id_end
             .checked_add(NONCE_BYTES)
             .ok_or(IndexSourceContinuationError::MalformedEnvelope)?;
-        if decoded.len() < nonce_end + TAG_BYTES {
+        let minimum_len = nonce_end
+            .checked_add(TAG_BYTES)
+            .ok_or(IndexSourceContinuationError::MalformedEnvelope)?;
+        if decoded.len() < minimum_len {
             return Err(IndexSourceContinuationError::MalformedEnvelope);
         }
         let key_id = std::str::from_utf8(&decoded[2..key_id_end])
@@ -545,7 +548,7 @@ mod tests {
         ));
 
         let mut other_schema = scope.clone();
-        other_schema.schema.version = SchemaVersion::new(2).unwrap();
+        other_schema.schema.version = SchemaVersion::new(2);
         assert!(matches!(
             codec.open(&other_schema, &token, now()),
             Err(IndexSourceContinuationError::SchemaMismatch)
