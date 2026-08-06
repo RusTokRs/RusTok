@@ -32,15 +32,18 @@ causes and SQL text are never returned through the reader contract.
 
 ## Immutable visibility fence
 
-The first page captures `txid_current_snapshot()::text`. The encoded fence also contains:
+The first page captures `txid_current_snapshot()::text`. The encoded fence contains only:
 
 - wire version 1;
-- the non-nil tenant UUID;
-- the exact `SchemaRef`;
+- a domain-separated SHA-256 digest of tenant UUID plus exact `SchemaRef`;
 - the bounded PostgreSQL snapshot token.
 
-Continuation requests must carry the same fence. The reader validates its bounded canonical
-`xmin:xmax:active-xids` form and exact scope before page SQL.
+The full tenant/schema values remain in the typed request and private cursor. Using a fixed 64-byte
+hex digest keeps the fence inside its 512-byte contract even when module/entity identifiers and the
+snapshot token approach their maximum bounds.
+
+Continuation requests must carry the same fence. The reader recomputes the exact scope digest,
+compares it before page SQL, and validates the canonical `xmin:xmax:active-xids` token shape.
 
 Both candidate phases require row insertion versions to satisfy
 `txid_visible_in_snapshot((xmin::text)::bigint, fence::txid_snapshot)`. Consequently, a row version
