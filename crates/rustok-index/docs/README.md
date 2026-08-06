@@ -19,7 +19,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 1. **Schema-Agnostic PostgreSQL JSONB Storage**: Envelopes entity state into benchmarked `JSONB` structures while maintaining independent relational graphs (`index_links`).
 2. **Derived Secondary Indexes**: Automatically creates typed PostgreSQL partial B-Tree expression indexes for scalar fields and GIN containment indexes for arrays.
-3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors use a separate authenticated, confidential, tenant/schema/source-bound codec plus a private server `SecretRef` keyring, sealed one-page service boundary, and bounded GraphQL transport. Drift discovery uses a separate exact-scope candidate contract, read-only PostgreSQL `txid` visibility fence, bounded two-phase keyset reader, double-observed owner/materialized confirmation, serializable idempotent finding persistence, authorization-gated lifecycle audit, durable targeted-repair reservations/receipts, one concrete missing-entity repair path through the canonical mutation inbox, and an immutable authorization-gated recovery ledger for ambiguous `prepared` commands.
+3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors use a separate authenticated, confidential, tenant/schema/source-bound codec plus a private server `SecretRef` keyring, sealed one-page service boundary, and bounded GraphQL transport. Drift discovery uses a separate exact-scope candidate contract, read-only PostgreSQL `txid` visibility fence, bounded two-phase keyset reader, double-observed owner/materialized confirmation, serializable idempotent finding persistence, authorization-gated lifecycle audit, durable targeted-repair reservations/receipts, concrete missing-entity and orphan-link repair paths through command-bound inbox identities, and an immutable authorization-gated recovery ledger for ambiguous `prepared` commands.
 4. **Durable Rebuilds & Outbox Inbox**: Fences stale checkpoint writers with advisory locks, deduplicates mutations via `index_inbox`, and logs consistency findings (`index_consistency_findings`).
 
 ---
@@ -39,6 +39,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Drift Finding Lifecycle](./m6-drift-finding-lifecycle.md)
 - [M6 Targeted Drift Repair](./m6-targeted-drift-repair.md)
 - [M6 Concrete Missing-entity Repair](./m6-missing-entity-repair-composition.md)
+- [M6 Concrete Orphan-link Repair](./m6-orphan-link-repair-composition.md)
 - [M6 Prepared Repair Recovery](./m6-prepared-repair-recovery.md)
 - [M6 Product Locale Absence PostgreSQL Harness](./m6-product-locale-absence-postgres-harness.md)
 - [M6 GraphQL Exact-entity Diagnosis Transport](../../../apps/server/docs/index-drift-diagnosis-graphql-transport.md)
@@ -57,7 +58,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Reconciliation Host Scheduler](./m6-reconciliation-host-scheduler.md)
 - [M6 Drift Finding Inspection](./m6-drift-finding-inspection.md)
 - [M6 Drift Digest Finding Writer](./m6-drift-finding-writer.md)
-- [M6 Bounded Drift Digest Producer](./m6-drift-digest-producer.md)
+- [M6 Bounded Drift Digest Producer](./m6-bounded-drift-digest-producer.md)
 - [M6 Locale-Optional Drift-Finding Scope](./m6-drift-finding-locale-scope.md)
 - [M6 PostgreSQL Drift Snapshot Reader](./m6-postgres-drift-snapshot-reader.md)
 - [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
