@@ -122,8 +122,8 @@ pub use schema_lease::{
 };
 pub use schema_readiness::{
     IndexSchemaReadinessEntry, IndexSchemaReadinessError, IndexSchemaReadinessFailure,
-    IndexSchemaReadinessFailureKind, IndexSchemaReadinessReceipt, IndexSchemaReadinessRequest,
-    MAX_INDEX_SCHEMA_READINESS_SCHEMAS, PostgresIndexSchemaReadinessStore,
+    IndexSchemaReadinessReceipt, IndexSchemaReadinessRequest, MAX_INDEX_SCHEMA_READINESS_SCHEMAS,
+    PostgresIndexSchemaReadinessStore,
 };
 pub use schema_registration::{
     PersistedSchemaRegistrationOutcome, PostgresSchemaRegistrationStore, SchemaRegistrationError,
