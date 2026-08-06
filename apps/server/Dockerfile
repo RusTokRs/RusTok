@@ -21,7 +21,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && rustup target add wasm32-unknown-unknown \
     && CARGO_TARGET_DIR=/tmp/trunk-target \
-       cargo install trunk --version 0.21.14 --locked --root /opt/trunk \
+       cargo install trunk --version "=0.21.14" --locked --root /opt/trunk \
     && rm -rf /tmp/trunk-target
 
 FROM base AS migration
@@ -45,12 +45,16 @@ FROM base AS builder
 ARG SOURCE_DATE_EPOCH=0
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 COPY . .
-RUN bash scripts/build/build-embedded-admin.sh \
-      --tool-root /opt/trunk \
-      --target-dir /workspace/target/admin-assets \
-      --skip-tool-install \
+RUN bash scripts/build/build-pages-inline-edit-deployment.sh \
+      --trunk-tool-root /opt/trunk \
+      --wasm-bindgen-tool-root /opt/wasm-bindgen-cli \
+      --admin-target-dir /workspace/target/admin-assets \
+      --server-target-dir /workspace/target \
+      --skip-trunk-tool-install \
     && test -s /workspace/apps/admin/dist/index.html \
-    && cargo build --locked --release -p rustok-server --bin rustok-server \
+    && test -s /workspace/target/site/assets/pages-inline-edit-bootstrap.js \
+    && test -s /workspace/target/site/assets/pages-inline-edit/rustok_storefront.js \
+    && test -s /workspace/target/site/assets/pages-inline-edit/rustok_storefront_bg.wasm \
     && test -x /workspace/target/release/rustok-server
 
 FROM debian:${DEBIAN_VERSION}-slim AS production
