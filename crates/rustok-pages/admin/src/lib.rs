@@ -86,10 +86,7 @@ pub fn PagesAdmin() -> impl IntoView {
 
     #[cfg(feature = "inline-edit-launch")]
     let inline_edit_launch = view! {
-        <PagesInlineEditLaunch
-            selected_page
-            locale=default_locale.clone()
-        />
+        <PagesInlineEditLaunch selected_page />
     }
     .into_any();
     #[cfg(not(feature = "inline-edit-launch"))]
