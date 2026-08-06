@@ -25,6 +25,9 @@ const featureBody = (manifest, feature, label) => {
 const evidence = JSON.parse(read(
   "crates/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json",
 ));
+const assetEvidence = JSON.parse(read(
+  "crates/rustok-pages/contracts/evidence/pages-inline-edit-asset-delivery-source.json",
+));
 const storefrontCore = read("apps/storefront/src/modules/core.rs");
 const storefrontCargo = read("apps/storefront/Cargo.toml");
 const storefrontBuild = read("apps/storefront/build.rs");
@@ -101,6 +104,15 @@ for (const key of [
     failures.push(`source_contract.${key} must be false`);
   }
 }
+if (assetEvidence.status !== "pages_inline_edit_asset_delivery_source_unvalidated") {
+  failures.push(`linked asset evidence status mismatch: ${assetEvidence.status}`);
+}
+if (assetEvidence.source_contract?.generated_assets_are_embedded_in_server_binary !== true) {
+  failures.push("linked asset evidence must retain binary embedding source");
+}
+if (assetEvidence.source_contract?.asset_http_delivery_observed !== false) {
+  failures.push("linked asset evidence must not claim HTTP execution");
+}
 
 for (const marker of [
   'PAGES_AUTHORING_ROUTE_SEGMENT: &str = "pages-authoring"',
@@ -171,11 +183,18 @@ for (const marker of [
   '"pages-inline-edit-hydrate"',
   '"wasm32-unknown-unknown"',
   '"rustok_storefront.wasm"',
-  'run("wasm-bindgen"',
+  '"--print-wasm-bindgen-version"',
+  'readFileSync(path.join(repoRoot, "Cargo.lock"), "utf8")',
+  '"--locked"',
+  "RUSTOK_WASM_BINDGEN_BIN",
+  'run(wasmBindgen, ["--version"], true)',
+  'run(wasmBindgen, [',
   '"--target"',
   '"web"',
   '"--out-name"',
   '"rustok_storefront"',
+  'process.env.CARGO_TARGET_DIR?.trim()',
+  "renameSync(stagingRoot, targetRoot)",
   'pages-inline-edit-bootstrap.js',
 ]) need(builder, marker, "authoring client artifact builder");
 forbid(builder, "pages-inline-edit,ssr", "authoring client artifact builder");
@@ -201,6 +220,11 @@ need(
   'pages-inline-edit = ["embed-storefront", "mod-pages", "rustok-storefront/pages-inline-edit"]',
   "server opt-in feature",
 );
+need(
+  serverCargo,
+  'pages-inline-edit-assets = ["pages-inline-edit", "rustok-pages/inline-edit-assets"]',
+  "server asset handoff feature",
+);
 forbid(
   featureBody(serverCargo, "default", "server manifest"),
   "pages-inline-edit",
@@ -219,12 +243,14 @@ for (const marker of [
   "authenticated-authoring-route-source-ready",
   "Authenticated authoring route: source-ready",
   "client artifact build and browser execution remain pending",
+  "inline-edit-asset-delivery-source-ready",
 ]) need(canonicalPlan, marker, "canonical Pages/Page Builder plan");
 for (const marker of [
   "authenticated authoring route and shell: source-ready",
   "private, no-store",
   "client artifact build and browser execution remain pending",
   "authenticated route mount remains open",
+  "inline edit asset delivery: source-ready",
 ]) need(localPlan, marker, "Pages local plan");
 for (const marker of [
   "source-ready / execution-pending",
@@ -243,5 +269,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "[verify-pages-authenticated-authoring-route] PASS route_source_ready=true artifact_build=pending browser=pending",
+  "[verify-pages-authenticated-authoring-route] PASS route_source_ready=true asset_delivery_source_ready=true execution=pending browser=pending",
 );

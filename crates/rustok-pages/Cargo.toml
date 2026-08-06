@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[features]
+default = []
+inline-edit-assets = []
+
 [dependencies]
 anyhow.workspace = true
 async-graphql.workspace = true

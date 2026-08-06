@@ -1,3 +1,6 @@
+#[cfg(feature = "inline-edit-assets")]
+mod inline_edit_assets;
+
 use anyhow::Context;
 use axum::{
     Json,
@@ -115,7 +118,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
             axum::routing::post(rollback_page),
         )
         .with_state(publish_runtime);
-    Ok(crate::controllers::axum_router(runtime)?.merge(publish_router))
+    let router = crate::controllers::axum_router(runtime)?.merge(publish_router);
+    #[cfg(feature = "inline-edit-assets")]
+    let router = router.merge(inline_edit_assets::router());
+    Ok(router)
 }
 
 fn page_security(auth: &AuthContext) -> rustok_core::SecurityContext {
