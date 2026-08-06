@@ -1,10 +1,11 @@
 use leptos::prelude::*;
-use leptos_auth::hooks::use_current_user;
+use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use url::form_urlencoded::Serializer;
 use uuid::Uuid;
 
 use crate::access::pages_editor_capability_policy_for_role;
 use crate::core::optional_ui_text;
+use crate::transport;
 
 const PAGES_AUTHORING_PATH: &str = "/modules/pages-authoring";
 const MAX_LOCALE_LENGTH: usize = 64;
@@ -37,20 +38,21 @@ pub(crate) fn authoring_href(page_id: &str, locale: &str) -> Option<String> {
 }
 
 #[component]
-pub(crate) fn PagesInlineEditLaunch(
-    selected_page: Signal<Option<String>>,
-    locale: String,
-) -> impl IntoView {
+pub(crate) fn PagesInlineEditLaunch(selected_page: Signal<Option<String>>) -> impl IntoView {
     let current_user = use_current_user();
-
-    view! {
-        {move || {
+    let token = use_token();
+    let tenant = use_tenant();
+    let launch_resource = LocalResource::new(move || {
+        let selected_page = selected_page.get();
+        let user = current_user.get();
+        let token = token.get();
+        let tenant = tenant.get();
+        async move {
             if !same_origin_launch_enabled(SAME_ORIGIN_BUILD_FLAG) {
-                return ().into_any();
+                return Ok::<Option<String>, transport::TransportError>(None);
             }
 
-            let can_edit = current_user
-                .get()
+            let can_edit = user
                 .as_ref()
                 .map(|user| {
                     pages_editor_capability_policy_for_role(Some(user.role.as_str()))
@@ -60,44 +62,67 @@ pub(crate) fn PagesInlineEditLaunch(
                 })
                 .unwrap_or(false);
             if !can_edit {
-                return ().into_any();
+                return Ok(None);
             }
 
-            let href = selected_page
-                .get()
+            let Some(page_id) = selected_page
                 .as_deref()
-                .and_then(|page_id| authoring_href(page_id, locale.as_str()));
-            let Some(href) = href else {
-                return ().into_any();
+                .and_then(|value| Uuid::parse_str(value.trim()).ok())
+                .filter(|page_id| !page_id.is_nil())
+                .map(|page_id| page_id.hyphenated().to_string())
+            else {
+                return Ok(None);
             };
-
-            view! {
-                <section
-                    class="rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 shadow-sm"
-                    data-pages-inline-edit-launch="same-origin"
-                >
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <div class="text-sm font-semibold text-card-foreground">
-                                "Authenticated inline editor"
-                            </div>
-                            <p class="mt-1 text-xs text-muted-foreground">
-                                "Draft-only. Opens the same-origin authoring route in a new tab and reuses the current direct browser session."
-                            </p>
-                        </div>
-                        <a
-                            class="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-                            href=href
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label="Open authenticated inline editor"
-                        >
-                            "Open inline editor"
-                        </a>
-                    </div>
-                </section>
+            let Some(page) = transport::fetch_page(token, tenant, page_id).await? else {
+                return Ok(None);
+            };
+            if page.status.eq_ignore_ascii_case("published") {
+                return Ok(None);
             }
-            .into_any()
+
+            let Some(locale) = page
+                .translation
+                .as_ref()
+                .map(|translation| translation.locale.as_str())
+                .or_else(|| page.body.as_ref().map(|body| body.locale.as_str()))
+            else {
+                return Ok(None);
+            };
+            Ok(authoring_href(page.id.as_str(), locale))
+        }
+    });
+
+    view! {
+        {move || {
+            launch_resource.get().and_then(|result| match result {
+                Ok(Some(href)) => Some(view! {
+                    <section
+                        class="rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 shadow-sm"
+                        data-pages-inline-edit-launch="same-origin"
+                    >
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-card-foreground">
+                                    "Authenticated inline editor"
+                                </div>
+                                <p class="mt-1 text-xs text-muted-foreground">
+                                    "Draft-only. Opens the exact-locale same-origin authoring route in a new tab and reuses the current direct browser session."
+                                </p>
+                            </div>
+                            <a
+                                class="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                                href=href
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="Open authenticated inline editor"
+                            >
+                                "Open inline editor"
+                            </a>
+                        </div>
+                    </section>
+                }.into_any()),
+                Ok(None) | Err(_) => None,
+            })
         }}
     }
 }
