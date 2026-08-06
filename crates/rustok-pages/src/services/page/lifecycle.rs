@@ -28,6 +28,9 @@ use super::helpers::{
     apply_transition, collect_builder_sources, enforce_expected_version, is_builder_enabled,
     is_builder_preview_enabled, is_builder_properties_enabled, transition_event,
 };
+use super::route::{
+    record_delete_route_tombstones_in_tx, record_published_route_snapshots_in_tx,
+};
 use super::{PAGE_KIND, PageService, PageTransition};
 
 pub const PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED: &str = "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED";
@@ -210,6 +213,8 @@ impl PageService {
             return Err(PagesError::cannot_delete_published());
         }
 
+        record_delete_route_tombstones_in_tx(&txn, tenant_id, page_id).await?;
+
         page_body::Entity::delete_many()
             .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
@@ -268,6 +273,14 @@ impl PageService {
                     format_body_revisions(&current_revisions),
                 ));
             }
+        } else {
+            record_published_route_snapshots_in_tx(
+                &txn,
+                tenant_id,
+                page_id,
+                &existing.status,
+            )
+            .await?;
         }
 
         let now = Utc::now();

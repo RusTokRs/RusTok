@@ -12,7 +12,7 @@ use rustok_content::entities::node::ContentStatus;
 use rustok_core::error::{ErrorKind, RichError};
 
 use crate::dto::PageTranslationInput;
-use crate::entities::{page, page_route_alias, page_translation};
+use crate::entities::{page, page_route_alias, page_route_publication, page_translation};
 use crate::error::{PagesError, PagesResult};
 
 use super::helpers::{normalize_locale, normalize_slug, status_to_storage, storage_to_status};
@@ -23,6 +23,7 @@ pub const PAGE_ROUTE_RESOLUTION_CONFLICT: &str = "PAGE_ROUTE_RESOLUTION_CONFLICT
 const ROUTE_DISPOSITION_REDIRECT: &str = "redirect";
 const ROUTE_DISPOSITION_GONE: &str = "gone";
 const PUBLISHED_SLUG_CHANGE_REASON: &str = "Published page slug changed";
+const PAGE_DELETED_ROUTE_REASON: &str = "Page deleted";
 const MAX_PAGE_ROUTE_ALIAS_REASON_LEN: usize = 500;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -158,6 +159,23 @@ impl PageRouteService {
                         .target_locale
                         .as_deref()
                         .ok_or_else(page_route_resolution_conflict)?;
+                    let target_exists = page::Entity::find_by_id(target_page_id)
+                        .filter(page::Column::TenantId.eq(tenant_id))
+                        .one(&self.db)
+                        .await?
+                        .is_some();
+                    if !target_exists
+                        && page_has_gone_tombstone(&self.db, tenant_id, target_page_id).await?
+                    {
+                        return Ok(PageRouteResolution {
+                            requested_locale: locale,
+                            requested_slug: slug,
+                            requested_page_id: Some(alias.page_id),
+                            disposition: PageRouteDisposition::Gone,
+                            canonical: None,
+                            alias_id: Some(alias.id),
+                        });
+                    }
                     let canonical = self
                         .canonical_descriptor(tenant_id, target_page_id, target_locale)
                         .await?;
@@ -197,6 +215,119 @@ pub(super) async fn ensure_route_alias_claim_available_in_tx(
         return Err(PagesError::duplicate_slug(slug, locale));
     }
     Ok(())
+}
+
+pub(super) async fn record_published_route_snapshots_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    page_status: &str,
+) -> PagesResult<u32> {
+    if storage_to_status(page_status)? != ContentStatus::Published {
+        return Ok(0);
+    }
+
+    let translations = page_translation::Entity::find()
+        .filter(page_translation::Column::TenantId.eq(tenant_id))
+        .filter(page_translation::Column::PageId.eq(page_id))
+        .order_by_asc(page_translation::Column::Locale)
+        .all(txn)
+        .await?;
+    let mut inserted = 0_u32;
+
+    for translation in translations {
+        let locale = normalize_locale(&translation.locale)?;
+        let slug = normalize_slug(&translation.slug)?;
+        let snapshots = page_route_publication::Entity::find()
+            .filter(page_route_publication::Column::TenantId.eq(tenant_id))
+            .filter(page_route_publication::Column::Locale.eq(&locale))
+            .filter(page_route_publication::Column::Slug.eq(&slug))
+            .all(txn)
+            .await?;
+        match snapshots.as_slice() {
+            [] => {
+                page_route_publication::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
+                    page_id: Set(page_id),
+                    locale: Set(locale),
+                    slug: Set(slug),
+                    recorded_at: Set(Utc::now().into()),
+                }
+                .insert(txn)
+                .await?;
+                inserted = inserted
+                    .checked_add(1)
+                    .ok_or_else(page_route_resolution_conflict)?;
+            }
+            [snapshot] if snapshot.page_id == page_id => {}
+            _ => return Err(page_route_resolution_conflict()),
+        }
+    }
+
+    Ok(inserted)
+}
+
+pub(super) async fn record_delete_route_tombstones_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+) -> PagesResult<u32> {
+    let snapshots = page_route_publication::Entity::find()
+        .filter(page_route_publication::Column::TenantId.eq(tenant_id))
+        .filter(page_route_publication::Column::PageId.eq(page_id))
+        .order_by_asc(page_route_publication::Column::RecordedAt)
+        .all(txn)
+        .await?;
+    let reason = normalize_alias_reason(PAGE_DELETED_ROUTE_REASON)?;
+    let mut inserted = 0_u32;
+
+    for snapshot in snapshots {
+        let aliases = page_route_alias::Entity::find()
+            .filter(page_route_alias::Column::TenantId.eq(tenant_id))
+            .filter(page_route_alias::Column::Locale.eq(&snapshot.locale))
+            .filter(page_route_alias::Column::Slug.eq(&snapshot.slug))
+            .all(txn)
+            .await?;
+        match aliases.as_slice() {
+            [] => {
+                record_gone_alias_in_tx(
+                    txn,
+                    tenant_id,
+                    page_id,
+                    &snapshot.locale,
+                    &snapshot.slug,
+                    &reason,
+                )
+                .await?;
+                inserted = inserted
+                    .checked_add(1)
+                    .ok_or_else(page_route_resolution_conflict)?;
+            }
+            [alias]
+                if alias.page_id == page_id
+                    && alias.disposition == ROUTE_DISPOSITION_REDIRECT
+                    && alias.target_page_id.is_some()
+                    && alias.target_locale.is_some() =>
+            {
+                // Preserve immutable redirect history. Once the target page is
+                // physically deleted, resolve() folds this route to Gone by the
+                // target page's retained tombstone rather than rewriting history.
+            }
+            [alias]
+                if alias.page_id == page_id
+                    && alias.disposition == ROUTE_DISPOSITION_GONE
+                    && alias.target_page_id.is_none()
+                    && alias.target_locale.is_none()
+                    && alias.reason == reason =>
+            {
+                // Exact replay is idempotent.
+            }
+            _ => return Err(page_route_resolution_conflict()),
+        }
+    }
+
+    Ok(inserted)
 }
 
 pub(super) async fn record_published_slug_redirects_in_tx(
@@ -302,6 +433,51 @@ async fn record_redirect_alias_in_tx(
         }
         _ => Err(page_route_resolution_conflict()),
     }
+}
+
+async fn record_gone_alias_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+    slug: &str,
+    reason: &str,
+) -> PagesResult<Uuid> {
+    let locale = normalize_locale(locale)?;
+    let slug = normalize_slug(slug)?;
+    let reason = normalize_alias_reason(reason)?;
+    let alias_id = Uuid::new_v4();
+    page_route_alias::ActiveModel {
+        id: Set(alias_id),
+        tenant_id: Set(tenant_id),
+        page_id: Set(page_id),
+        locale: Set(locale),
+        slug: Set(slug),
+        disposition: Set(ROUTE_DISPOSITION_GONE.to_string()),
+        target_page_id: Set(None),
+        target_locale: Set(None),
+        reason: Set(reason),
+        created_at: Set(Utc::now().into()),
+    }
+    .insert(txn)
+    .await?;
+    Ok(alias_id)
+}
+
+async fn page_has_gone_tombstone(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    page_id: Uuid,
+) -> PagesResult<bool> {
+    Ok(page_route_alias::Entity::find()
+        .filter(page_route_alias::Column::TenantId.eq(tenant_id))
+        .filter(page_route_alias::Column::PageId.eq(page_id))
+        .filter(page_route_alias::Column::Disposition.eq(ROUTE_DISPOSITION_GONE))
+        .filter(page_route_alias::Column::TargetPageId.is_null())
+        .filter(page_route_alias::Column::TargetLocale.is_null())
+        .one(db)
+        .await?
+        .is_some())
 }
 
 async fn load_current_published_routes(

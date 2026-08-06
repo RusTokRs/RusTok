@@ -1,12 +1,12 @@
 # Pages / Page Builder Parity Continuation Plan
 
-Date: 2026-08-06
-Status: source-parity-current / host-route-response-source-ready / execution-evidence-pending
+Date: 2026-08-06  
+Status: source-parity-current / delete-route-tombstone-source-ready / execution-evidence-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` consumer-property, publication, artifact, event, routing and cache boundaries
 
 ## Source-of-truth policy
 
-This is the canonical shared continuation cursor. Historical dated packets remain evidence of the source slices that produced the present state, but they do not override this plan.
+This is the canonical shared continuation cursor. Historical dated packets remain evidence for the source slices that produced the present state, but they do not override this plan.
 
 `source-ready` means that code, contracts or retained harness source exists. It does not mean that tests, Cargo, formatting, verifiers, databases, HTTP routes, server functions, production event topology, browsers, workflows, CI, built artifacts or tenant rollout were executed.
 
@@ -14,21 +14,21 @@ Across every retained source packet, execution remains pending until a maintaine
 
 Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy and public reads. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer and artifact producer contracts.
 
-Optional external event infrastructure is outside the active Pages cursor.
+Optional external event infrastructure is outside the active Pages cursor. Optional external delivery infrastructure is outside the active Pages cursor.
 
 ## Rechecked merged cursor
 
-Current `main` contains:
+Current `main` through PR #3020 contains:
 
 - PR #2955 — publish/rollback event-correlation and generation miss/refill contract;
 - PR #2971 — source-ready PostgreSQL publish/rollback outbox-to-cache packet;
 - PR #2974 — source-ready durable relay failure/restart packet;
 - PR #2979 — source-ready SQLite/Axum public artifact HTTP cache packet;
-- PR #2985 — native storefront cache source packet; execution evidence remains pending;
-- PR #2988 — source-ready registered Leptos storefront route;
-- PR #2990 — source-ready routed-channel admission before cache lookup;
-- PR #2992 — source-ready reviewed immutable artifact selection;
-- PR #2995 — source-ready synchronous test-target relay continuity;
+- PR #2985 — native storefront cache source packet;
+- PR #2988 — registered Leptos storefront route source;
+- PR #2990 — routed-channel admission before cache lookup;
+- PR #2992 — reviewed immutable artifact selection;
+- PR #2995 — synchronous test-target relay continuity;
 - PR #2997 — production-listener topology correction;
 - PR #3001 — production synchronous Pages generation gate and process-bounded dedupe;
 - PR #3004 — production gate to registered native route source;
@@ -38,73 +38,60 @@ Current `main` contains:
 - PR #3011 — anonymous storefront dependency-graph source boundary;
 - PR #3014 — anonymous SSR delivery boundary and explicit artifact inspector source;
 - PR #3016 — public detail/list tenant locale fallback parity;
-- PR #3018 — immutable published slug route aliases and localized canonical URLs.
+- PR #3018 — immutable published slug route aliases and localized canonical URLs;
+- PR #3020 — registered host route decision and canonical/redirect/gone response composition.
 
-The current slice mounts the Pages-owned route decision in the public SSR host after channel-module admission. Exact localized canonical routes continue rendering; aliases and noncanonical forms redirect permanently; gone, missing and ambiguous identities stop before SEO/render with explicit terminal statuses.
+The present source slice adds forward lifecycle ownership for delete route tombstones without changing Page Builder/Fly behavior.
+
+## Retained source marker index
+
+This compact index preserves the exact stable source markers consumed by the retained static guards. It is descriptive only and does not promote execution evidence.
+
+- `public-list-locale-fallback-source-ready`; Public list tenant locale fallback: source-ready. The native and GraphQL public detail/list reads share tenant fallback policy, and the cache variant already binds the fallback locale.
+- `published-slug-route-alias-source-ready`; Published slug route aliases: source-ready. Localized canonical Pages routes remain the public identity model. The public host response is now source-ready.
+- `host-route-response-source-ready`; Pages host route response: source-ready. The route decision precedes SEO and SSR rendering.
+- `native-storefront-reviewed-artifact-source-ready`; Native reviewed immutable artifact selection: source-ready. The full Page Builder materialization envelope, durable `NodePublished`, and registered native storefront miss/refill remain source-ready.
+- `native-storefront-channel-admission-source-ready`; Routed-channel admission before native lookup: source-ready. A populated composite cache cannot bypass channel module admission; the verified immutable Page Builder artifact and durable `NodePublished` relay delivery remain downstream boundaries.
+- `selected-immutable-artifact-source-ready`; Selected immutable artifact after draft mutation: source-ready. The current Fly body is not public render authority.
+- `production-relay-generation-gate-source-ready`; Production relay-to-Pages generation gate: source-ready. The production ordering remains: synchronous Pages invalidation now precedes downstream transport acceptance. The gate uses process-bounded dedupe. The retained continuity harness uses a custom synchronous relay target; the test-target packet and does not replace production-gate execution evidence.
+- `production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready. The retained route sequence covers new-key miss/refill/hit; execution remains pending.
+- `production-gate-postgres-restart-source-ready`; Production gate PostgreSQL publish/rollback restart: source-ready. The retained source covers a post-invalidation downstream failure; historical owner-transaction and pre-handler restart packets remain separate.
+- `event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready.
+- `anonymous-storefront-graph-source-ready`; Anonymous storefront authoring exclusion: source-ready. The source guard uses feature-resolved `cargo metadata`; bundle artifact execution remains pending.
+- `anonymous-storefront-ssr-delivery-source-ready`; Anonymous storefront SSR delivery: source-ready. The current public Pages host is SSR-only, and the client bundle gate is conditional.
+- `delete-route-tombstone-source-ready`; Delete route tombstones: source-ready. Historical route backfill/import policy remains open.
+
+Historical host-route marker retained for source-guard compatibility: `Delete tombstones and historical backfill remain open` was the correct PR #3020 boundary and is superseded by the current delete-route-tombstone status above.
 
 ## Current parity state
 
 ### Registered metadata surfaces: source-complete
 
-Published pages mount the same registered panel without an editable Fly canvas. The bespoke `PageMetadataEditor` and its direct workspace metadata transport write are removed.
+Draft Pages workspaces and published Pages-owned metadata surfaces share the registered six-field consumer-property contribution. Published Fly authoring remains unmounted. The bespoke `PageMetadataEditor` and its direct workspace metadata transport write remain absent.
 
-Focused stale-revision and dirty-Fly isolation regressions are source-ready. Their execution and the published browser packet remain open.
+Focused stale-revision, metadata-only transport and dirty-Fly isolation regressions are source-ready. Browser and execution evidence remain pending.
 
-Metadata revision/isolation source packet: ready, unvalidated. A stale metadata revision short-circuits before patch transport; the metadata-only transport request excludes document data; dirty Fly state is not accepted by the metadata owner port. Execution evidence remains pending. Verifier: `verify-pages-metadata-revision-isolation.mjs`.
+### Reviewed publication and immutable rollback: source-complete
 
-### Reviewed publication: source-complete
+Pages owns reviewed publication from exact metadata/body revisions and promoted scenario review through authoritative sanitization, runtime materialization, immutable artifact persistence/binding, published lifecycle, transactional events and durable receipts.
 
-Pages owns the reviewed publish transaction from exact metadata/body revisions and promoted scenario review through authoritative sanitization, runtime materialization, immutable artifact persistence/binding, published state, transactional `NodeUpdated`/`NodePublished` events and the durable publish receipt plus exact artifact manifest.
+Rollback verifies and selects a prior immutable publish manifest, replaces locale bindings and commits lifecycle events plus its receipt without compiling the current draft.
 
-### Immutable rollback: source-complete
+### Cache, native route and production delivery: source-ready
 
-Pages owns the idempotent rollback command and receipt. Rollback verifies and selects a prior immutable publish manifest, replaces locale bindings and commits lifecycle events plus its receipt without compiling the current draft.
+The retained source covers generation-bound artifact and storefront miss/refill/hit, conditional `304`, immutable verification before fill, old-generation physical retention, registered native server functions, channel-module admission before lookup, production generation rotation before transport acknowledgement, process-bounded same-event dedupe, PostgreSQL retry and Memory/OutboxLocal profile parity.
 
-### Public artifact HTTP cache: source-ready
+Execution remains pending.
 
-The retained route packet covers generation-bound miss/refill/hit, conditional `304`, immutable verification before fill and old-generation physical retention. Execution remains pending.
+### Public locale and immutable artifact authority: source-ready
 
-### Native storefront registered route set: source-ready
+Public detail and list reads resolve requested locale → tenant default locale → platform fallback. Exact and fallback public reads remain bound to the selected immutable published artifact after draft mutation until reviewed publish or rollback replaces the binding.
 
-The route set covers cache miss/refill/hit, registered `/api/fn/pages/storefront-data`, channel admission before cache, reviewed immutable selection, integrity-before-fill and old-key retention.
+Execution remains pending.
 
-Native storefront registered server function: source-ready; the real registered Leptos endpoint is retained. Routed-channel module admission remains open for execution, and durable `NodePublished` relay delivery is now connected at source level.
+### Published slug aliases and localized canonical routes: source-ready
 
-### Public list tenant locale fallback: source-ready
-
-`public-list-locale-fallback-source-ready`; Public list tenant locale fallback: source-ready.
-
-Pages exposes a fallback-aware public list owner method. It normalizes the requested and explicit tenant fallback locales and resolves each list translation through:
-
-```text
-requested locale
-  → tenant default locale
-  → platform fallback locale
-```
-
-The existing `list_public_visible` method remains as a platform-fallback wrapper for callers that do not supply tenant policy.
-
-The native and GraphQL public detail/list reads pass the same tenant default locale to the owner. The native cache variant already binds the fallback locale, so this behavior correction does not change namespace, generation, concrete key shape, TTL or capacity. Published-only and channel-visibility filtering remain unchanged.
-
-Source evidence:
-
-- `crates/rustok-pages/src/services/page/read.rs`;
-- `crates/rustok-pages/src/graphql/query.rs`;
-- `crates/rustok-pages/storefront/src/transport/native_server_adapter.rs`;
-- `crates/rustok-pages/tests/page_locale_fallback.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-public-list-locale-fallback-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs`;
-- `docs/modules/pages-page-builder-public-list-locale-fallback-packet-2026-08-05.md`.
-
-Execution evidence remains pending.
-
-### Published slug route aliases: source-ready
-
-`published-slug-route-alias-source-ready`; Published slug route aliases: source-ready.
-
-Pages owns an append-only `page_route_aliases` ledger and a transport-neutral resolver for canonical, redirect and gone dispositions. A rename of a currently published localized slug appends a redirect in the same metadata transaction before the current translation is replaced. Draft-only rename does not create public route history.
-
-The route claim is unique by tenant, locale and slug across current translations and immutable alias history. An old published slug claim cannot be reused by another page. A redirect stores target page plus target locale, not the target slug, so every resolution recomputes the current canonical descriptor and multiple renames do not form redirect chains.
+Pages owns an append-only `page_route_aliases` ledger and a transport-neutral canonical/redirect/gone resolver. Published slug changes append redirects in the metadata transaction. Draft-only renames do not create public history. Old published route claims cannot be reused.
 
 Localized canonical Pages routes and SEO alternates use:
 
@@ -112,32 +99,13 @@ Localized canonical Pages routes and SEO alternates use:
 /{locale}/modules/pages?slug={slug}
 ```
 
-The legacy unprefixed module path remains parseable, but is not emitted as canonical. Current-vs-alias overlap and alias payload drift fail closed with `PAGE_ROUTE_RESOLUTION_CONFLICT`; missing route identity uses `PAGE_ROUTE_NOT_FOUND`.
+The legacy unprefixed module path remains parseable but is not emitted as canonical. Current/history overlap and payload drift fail closed with `PAGE_ROUTE_RESOLUTION_CONFLICT`.
 
-The public host response is now source-ready in the separate host packet below. Delete tombstones, historical backfill/import policy and observed runtime evidence remain open.
-
-Source evidence:
-
-- `crates/rustok-pages/src/migrations/m20260805_000010_create_page_route_aliases.rs`;
-- `crates/rustok-pages/src/entities/page_route_alias.rs`;
-- `crates/rustok-pages/src/services/page/route.rs`;
-- `crates/rustok-pages/src/services/page/metadata.rs`;
-- `crates/rustok-pages/src/services/page/persistence.rs`;
-- `crates/rustok-pages/src/seo_targets.rs`;
-- `crates/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs`;
-- `docs/modules/pages-page-builder-published-slug-route-alias-packet-2026-08-05.md`.
-
-Execution evidence remains pending.
+Execution remains pending.
 
 ### Pages host route response: source-ready
 
-`host-route-response-source-ready`; Pages host route response: source-ready.
-
-The registered `/api/fn/pages/route-decision` storefront adapter resolves trusted tenant/request context, checks the Pages channel-module binding, applies requested → tenant default → platform locale candidates, delegates route ownership to `PageRouteService`, then rechecks target publication and channel visibility.
-
-The route decision precedes SEO and SSR rendering:
+The registered `/api/fn/pages/route-decision` storefront adapter performs trusted tenant/request resolution, channel-module admission, locale fallback and target publication/channel rechecks before SEO and SSR.
 
 ```text
 exact localized canonical → continue SSR
@@ -148,94 +116,40 @@ ambiguous current/history ownership → 409 Conflict
 operational decision failure → 503 Service Unavailable
 ```
 
-Terminal Pages responses use `Cache-Control: private, no-store`. Redirect locations percent-encode the localized slug query value. A target lifecycle race fails closed as not found rather than disclosing or rendering a stale target.
+Terminal Pages responses use `Cache-Control: private, no-store`.
+
+Execution remains pending.
+
+### Delete route tombstones: source-ready
+
+`delete-route-tombstone-source-ready`; Delete route tombstones: source-ready.
+
+Pages now retains a forward-only `page_route_publications` snapshot ledger. A page leaving `published` through unpublish or archive records each localized public route before lifecycle mutation. The ledger has no page foreign key and therefore survives physical deletion.
+
+A never-published draft creates no public snapshot and its slug remains reusable after delete.
+
+For an admitted non-published delete, `PageService::delete` records missing `gone` aliases with stable reason `Page deleted` before deleting bodies, translations and the page row, and before committing `NodeDeleted`. Existing immutable redirect rows are preserved rather than rewritten. When their target page is physically absent and has a retained tombstone, route resolution folds those historical redirects into `Gone`, so every formerly public route reaches the host's existing `410` response.
 
 Source evidence:
 
-- `crates/rustok-pages/storefront/src/transport/host_route_adapter.rs`;
-- `crates/rustok-pages/storefront/src/transport/mod.rs`;
-- `crates/rustok-pages/storefront/src/lib.rs`;
-- `apps/storefront/src/lib.rs`;
-- `crates/rustok-pages/storefront/tests/host_route_decision_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-host-route-response-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs`;
-- `docs/modules/pages-page-builder-host-route-response-packet-2026-08-06.md`.
+- `crates/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs`;
+- `crates/rustok-pages/src/entities/page_route_publication.rs`;
+- `crates/rustok-pages/src/services/page/route.rs`;
+- `crates/rustok-pages/src/services/page/lifecycle.rs`;
+- `crates/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs`;
+- `crates/rustok-pages/contracts/evidence/pages-delete-route-tombstone-source.json`;
+- `crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs`;
+- `docs/modules/pages-page-builder-delete-route-tombstone-packet-2026-08-06.md`.
 
-Execution evidence remains pending. Delete tombstones and historical backfill remain open.
+Historical route backfill/import policy remains open. Execution evidence remains pending.
 
-### Native reviewed immutable artifact selection: source-ready
+### Anonymous storefront boundary: source-ready
 
-`native-storefront-reviewed-artifact-source-ready`; Native reviewed immutable artifact selection: source-ready. Verification reconstructs the full Page Builder materialization envelope before a registered native storefront miss/refill. Durable `NodePublished` delivery remains connected at source level.
+The current public Pages host is SSR-only. Retained source guards exclude Pages/Page Builder/Fly authoring dependencies and executable hydration/bootstrap markers from the selected anonymous host profiles. The explicit built-artifact inspector remains source-ready; build and artifact inspection remain pending.
 
-### Routed-channel admission before native lookup: source-ready
+### Authenticated real-DOM inline editing: open
 
-`native-storefront-channel-admission-source-ready`; Routed-channel admission before native lookup: source-ready. A populated composite cache cannot bypass channel module admission, and successful reads retain a verified immutable Page Builder artifact.
-
-### Selected immutable artifact after draft mutation: source-ready
-
-`selected-immutable-artifact-source-ready`; Selected immutable artifact after draft mutation: source-ready. The current Fly body is not public render authority. Exact and fallback public reads remain bound to the selected immutable published artifact until reviewed publish or rollback replaces the binding.
-
-### Reviewed publish to native refill through synchronous test target: source-ready
-
-The retained PR #2995 harness uses a custom synchronous relay target and proves owner/outbox/handler/registered-route continuity. It is a test-target packet and does not replace production-gate execution evidence.
-
-### Production relay-to-Pages generation gate: source-ready
-
-`production-relay-generation-gate-source-ready`; Production relay-to-Pages generation gate: source-ready. Synchronous Pages invalidation now precedes downstream transport acceptance and uses process-bounded dedupe. The asynchronous module listener remains registered and becomes a same-event rotation no-op.
-
-The handler request and receipt retain event/correlation-bound receipt identity. Cache rotations retain old-generation values physically while current generation keys move to miss/refill.
-
-### Production relay gate to registered native route: source-ready
-
-`production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready. The source retains new-key miss/refill/hit after `NodePublished`, with one production `CacheService` owning generations and bytes. Execution remains pending.
-
-### Production gate PostgreSQL publish/rollback restart: source-ready
-
-`production-gate-postgres-restart-source-ready`; Production gate PostgreSQL publish/rollback restart: source-ready. A post-invalidation downstream failure leaves the durable row pending. Process-bounded dedupe prevents a second rotation when a new relay instance retries the same event in one process. The historical owner-transaction and pre-handler restart packets remain separate.
-
-### Memory and OutboxLocal factory profile parity: source-ready
-
-`event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready. Memory rotates before listener delivery without a durable row. OutboxLocal writes a pending row first and rotates inside the real relay target before acknowledgement. Optional external delivery infrastructure is outside the active Pages cursor.
-
-### Anonymous storefront authoring exclusion: source-ready
-
-`anonymous-storefront-graph-source-ready`; Anonymous storefront authoring exclusion: source-ready.
-
-The retained verifier resolves six feature-resolved `cargo metadata` graphs and follows only normal/build edges; dev-dependencies are excluded. It forbids `rustok-pages-admin`, `rustok-page-builder-admin`, `rustok-admin`, `fly-browser`, `fly-ui` and `fly-leptos` at every reachable depth.
-
-The current host client profiles keep the optional Pages module disabled. The direct Pages hydrate graph remains a library capability check. Compiled bundle artifact execution remains pending.
-
-### Anonymous storefront SSR delivery: source-ready
-
-`anonymous-storefront-ssr-delivery-source-ready`; Anonymous storefront SSR delivery: source-ready.
-
-The current public Pages host is SSR-only:
-
-```text
-anonymous request
-  → apps/storefront SSR router
-  → Pages route decision before SEO/render
-  → Leptos render-to-HTML for exact canonical routes
-  → Pages read-only storefront composition
-  → document + /assets/app.css
-  → no executable client bootstrap
-```
-
-The source regression rejects module scripts, module preload, WASM URLs, hydration entrypoints and Pages/Page Builder/Fly authoring markers in the rendered public document source.
-
-The artifact inspector requires an explicit built SSR artifact, reruns the feature-resolved dependency-graph verifier, records SHA-256 and fails on authoring markers. Missing artifacts cannot pass.
-
-The client bundle gate is conditional: it reopens immediately when host CSR/hydrate enables Pages, a client bootstrap is introduced, or deployable Pages WASM/JS artifacts begin shipping. No client bundle proof is claimed for a bundle that does not currently exist.
-
-Source evidence:
-
-- `apps/storefront/tests/pages_anonymous_ssr_delivery.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-ssr-delivery-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs`;
-- `crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs`;
-- `docs/modules/pages-page-builder-anonymous-storefront-ssr-delivery-packet-2026-08-05.md`.
-
-Execution evidence remains pending.
+Authenticated real-DOM inline editing is not implemented and remains outside this routing/lifecycle slice.
 
 ## Parity matrix
 
@@ -245,10 +159,11 @@ Execution evidence remains pending.
 | Draft/published registered metadata | Complete | Browser execution pending |
 | Reviewed publish and immutable manifest | Complete | Database/runtime evidence pending |
 | Immutable rollback | Complete | Database/runtime evidence pending |
-| Public detail/list tenant locale fallback parity | Source-ready | Focused SQLite/native/GraphQL execution pending |
+| Public detail/list tenant locale fallback | Source-ready | Focused SQLite/native/GraphQL execution pending |
 | Published slug alias ledger and localized canonical URLs | Source-ready | SQLite/PostgreSQL/SEO execution pending |
 | Host canonical/redirect/gone response | Source-ready | Registered server-function and host SSR execution pending |
-| Delete tombstones and historical route backfill | Open | Not implemented |
+| Delete route tombstones for new lifecycle transitions | Source-ready | SQLite/PostgreSQL/host execution pending |
+| Historical route backfill/import | Open | Not implemented |
 | Artifact HTTP cache | Source-ready | SQLite/Axum execution pending |
 | Native storefront route/cache/admission | Source-ready | Route-set execution pending |
 | Selected immutable artifact vs draft body | Source-ready | Focused SQLite execution pending |
@@ -259,30 +174,30 @@ Execution evidence remains pending.
 | Anonymous SSR document boundary | Source-ready | Source regression pending |
 | Anonymous SSR built artifact | Inspector source-ready | Build and inspection pending |
 | Anonymous Pages client bundle | Not currently mounted by host | Gate reopens if introduced |
-| Authenticated real-DOM inline editing | Not implemented | Open |
+| Authenticated real-DOM inline editing | Open | Not implemented |
 
 ## Boundaries
 
-This slice changes the production Pages storefront adapter and SSR host composition. It registers a typed route-decision server function and returns terminal HTTP responses before SEO/render for noncanonical, gone, missing or ambiguous Pages routes.
+This slice changes Pages route-history persistence, lifecycle composition and route resolution.
 
 It does not:
 
 - change Page Builder or Fly behavior;
-- change database schema, page bodies, artifacts, immutable bindings, publish or rollback receipts;
-- change GraphQL schema or REST HTTP API routes;
-- create deletion tombstones or historical route backfill;
-- change the existing channel visibility or module-admission owner policy;
-- change cache namespaces, generation scopes, concrete key shape, TTL or capacity;
+- change page bodies, immutable artifacts, publish or rollback receipts;
+- change GraphQL or REST schemas;
+- add historical route backfill/import;
+- change channel visibility or module-admission policy;
+- change cache namespaces, generation scopes, key shape, TTL or capacity;
 - change event schemas or optional external event infrastructure;
-- claim tests, Cargo, formatting, verifiers, SQLite, Axum, server functions, hosts, browsers, workflows, CI or rollout execution;
+- claim tests, Cargo, formatting, verifiers, SQLite, PostgreSQL, hosts, browsers, workflows, CI or rollout execution;
 - promote FFA or FBA.
 
 ## Next cursor
 
-1. Run the host route response verifier and registered SQLite/Axum server-function regression.
-2. Run the published slug route alias verifier and focused SQLite regression.
-3. Add deletion tombstones while preserving redirect history.
-4. Define historical route backfill/import policy as a separate source slice.
+1. Run the delete route tombstone verifier and focused SQLite regression.
+2. Run the host route response verifier and registered SQLite/Axum server-function regression.
+3. Run the published slug alias verifier and focused SQLite regression.
+4. Define bounded historical route backfill/import policy as a separate source slice.
 5. Run the public list locale fallback verifier and focused Pages locale regression.
 6. Run the native cache, registered server-function and channel-admission guards with their route harnesses.
 7. Run the anonymous dependency-graph and SSR delivery packets plus explicit built-artifact inspection.
@@ -296,17 +211,17 @@ It does not:
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs
+cargo test -p rustok-pages \
+  --test page_delete_route_tombstone_sqlite -- --nocapture
+cargo test -p rustok-pages \
+  --test page_published_slug_route_alias_sqlite -- --nocapture
+cargo check -p rustok-pages --all-targets
+
 node crates/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs
 cargo test -p rustok-pages-storefront --features ssr \
   --test host_route_decision_sqlite -- --nocapture
 cargo test -p rustok-storefront --features ssr --lib -- --nocapture
-cargo check -p rustok-pages-storefront --features ssr --all-targets
-cargo check -p rustok-storefront --features ssr --all-targets
-
-node crates/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs
-cargo test -p rustok-pages \
-  --test page_published_slug_route_alias_sqlite -- --nocapture
-cargo check -p rustok-pages --all-targets
 
 node crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs
 cargo test -p rustok-pages --test page_locale_fallback -- --nocapture
@@ -317,26 +232,6 @@ node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-a
 
 node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs
-
-cargo test -p rustok-storefront --no-default-features --features ssr \
-  --test pages_anonymous_ssr_delivery -- --nocapture
-
-CARGO_TARGET_DIR=target/pages-anonymous-storefront-ssr \
-  cargo build -p rustok-storefront --no-default-features --features ssr --lib
-
-node crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs \
-  --profile host-storefront-ssr \
-  --artifact target/pages-anonymous-storefront-ssr/debug/deps/librustok_storefront-<hash>.rlib \
-  --output /tmp/pages-anonymous-storefront-ssr-artifact.json
-
-node crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
 ```
 
 Any failure or owner-model change must update this shared cursor before FFA/FBA promotion.
