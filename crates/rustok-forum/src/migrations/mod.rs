@@ -54,6 +54,7 @@ mod m20260804_000021_add_forum_topic_fork_operations;
 mod m20260804_000022_add_forum_reply_range_move_operations;
 mod m20260804_000023_advance_forum_reply_range_move_positions;
 mod m20260805_000024_add_forum_topic_route_aliases;
+mod m20260806_000025_add_forum_topic_route_tombstone_visibility;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -122,6 +123,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260804_000022_add_forum_reply_range_move_operations::Migration),
         Box::new(m20260804_000023_advance_forum_reply_range_move_positions::Migration),
         Box::new(m20260805_000024_add_forum_topic_route_aliases::Migration),
+        Box::new(m20260806_000025_add_forum_topic_route_tombstone_visibility::Migration),
     ]
 }
 

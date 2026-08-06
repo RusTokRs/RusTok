@@ -9,6 +9,8 @@
   "owner": "ForumTopicRouteService",
   "storefront_visibility_owner": "ForumTopicAudienceReadService",
   "followup_mount_task": "FORUM-24I",
+  "followup_tombstone_snapshot_task": "FORUM-24J",
+  "followup_gone_consumer_task": "FORUM-24K",
   "input": {
     "tenant_id": "optional routed-tenant assertion",
     "locale": "required localized route segment",
@@ -46,7 +48,7 @@
     "canonical_resolution_reimplemented": false,
     "redirect_target_taken_from_owner": true,
     "resolution_conflicts_fail_closed": true,
-    "gone_policy": "hidden_until_visibility_snapshot_exists"
+    "gone_policy": "hidden_until_FORUM_24K_consumes_FORUM_24J_boolean_owner_decision"
   },
   "compatibility": {
     "graphql_change": "additive_query",
@@ -70,7 +72,7 @@
     ]
   },
   "remaining_scope": [
-    "visibility-authorized gone tombstones",
+    "consume the FORUM-24J boolean tombstone decision and publish authorized GONE",
     "category route identity",
     "canonical link and hreflang policy",
     "SEO integration",

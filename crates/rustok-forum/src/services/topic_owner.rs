@@ -19,6 +19,7 @@ use crate::entities::{forum_reply, forum_solution, forum_topic};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
+use self::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 use super::category::CategoryService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
@@ -135,7 +136,15 @@ impl TopicService {
         )?;
 
         let txn = self.db.begin().await?;
+        ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(&txn, tenant_id)
+            .await?;
         claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
+        ForumTopicRouteTombstoneVisibilityService::lock_topic_audience_scope_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+        )
+        .await?;
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
 
         let public_reply_count = forum_reply::Entity::find()
@@ -164,6 +173,12 @@ impl TopicService {
             None
         };
 
+        ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(
+            &txn,
+            tenant_id,
+            &topic,
+        )
+        .await?;
         ForumTopicRouteService::record_delete_tombstones_in_tx(
             &txn,
             tenant_id,

@@ -57,18 +57,18 @@ Category selection remains on the existing module query route. Selecting a canon
 FORUM-24I does not add:
 
 - public `410 Gone` responses;
-- visibility snapshots for deleted routes;
+- a consumer for a visibility-authorized deleted-route snapshot;
 - category route identity;
 - canonical, hreflang or alternate document metadata;
 - Forum-specific SEO head composition;
 - Next storefront route mounting;
 - runtime, browser or registered-host evidence.
 
-The tombstone ledger still lacks a visibility snapshot, so `GONE` continues to collapse to the same public `404` as hidden or missing content.
+FORUM-24J later adds an immutable boolean-and-channel tombstone visibility owner for newly deleted topics. FORUM-24I remains unchanged: GraphQL and native route DTOs do not expose `GONE`, so the host continues to collapse it to the same public `404` as hidden or missing content. FORUM-24K is responsible for consuming the boolean decision and adding authorized HTTP `410` composition.
 
 ## Compatibility
 
-The GraphQL field remains additive. No migration, storage schema, owner write method, semantic event, admin mutation or receipt changes.
+The GraphQL field remains additive. FORUM-24I itself adds no migration, storage schema, owner write method, semantic event, admin mutation or receipt changes. FORUM-24J is a separate delete-side storage owner slice and does not alter the I transport or HTTP contract.
 
 The existing generic module route remains available for category navigation and direct noncanonical module access. Topic-card navigation cuts over to the canonical topic route.
 
@@ -89,9 +89,9 @@ cargo check -p rustok-forum-storefront --all-targets --features ssr
 cargo check -p rustok-storefront --all-targets --features ssr
 ```
 
-## Remaining FORUM-24 scope
+## Remaining FORUM-24 scope after FORUM-24J
 
-- visibility-authorized deleted-route disclosure and optional public `410`;
+- consume the boolean deleted-route disclosure owner and add authorized public `410`;
 - category route identity and historical aliases;
 - canonical/hreflang document policy;
 - SEO integration across storefront hosts;
