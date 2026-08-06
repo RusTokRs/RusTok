@@ -1,160 +1,109 @@
 # Index reconciliation operator runtime
 
-Status: `sealed_source_page_source_complete_transport_and_owner_execution_pending`.
+Status: `sealed_source_page_graphql_source_complete_owner_execution_pending`.
 
 ## Purpose
 
-The server publishes guarded Index reconciliation, exact-entity diagnosis, and one-page
-missing-entity diagnosis capabilities after replay composition freezes the immutable source and
-schema registries.
-
-`IndexReconciliationOperatorRuntime` privately wraps bounded reconciliation run, cancellation,
-dead-letter inspection, finding inspection, and same-job recovery adapters.
-
-The sibling `IndexDriftDiagnosisOperatorRuntime` privately wraps:
-
-- `PostgresIndexDriftSnapshotReader`;
-- `IndexDriftDigestProducer`;
-- `PostgresIndexDriftFindingWriter`.
+The server publishes guarded reconciliation, exact-entity diagnosis, one-page missing-entity
+diagnosis, and one bounded sealed GraphQL page transport after replay composition freezes the source
+and schema registries.
 
 `IndexDriftSourcePageDiagnosisRuntime` privately composes:
 
-- the frozen `SharedIndexSourceRegistry` for one bounded owner-source page;
-- the guarded `IndexDriftDiagnosisOperatorRuntime` for sequential missing-only candidate diagnosis;
-- an optional server-owned continuation keyring containing only bounded key IDs, `SecretRef` values,
-  lifetime, and the process-owned resolver registry.
+- the frozen `SharedIndexSourceRegistry`;
+- the guarded `IndexDriftDiagnosisOperatorRuntime`;
+- an optional private continuation keyring containing bounded key IDs, `SecretRef` values, lifetime,
+  and the process-owned resolver registry.
 
-The keyring is not published as a separate extension handle. Raw AES key bytes are resolved into one
-short-lived codec for one sealed call and are not retained in settings, logs, errors, or debug output.
+The keyring is not published as an independent extension handle. Raw AES key bytes exist only in one
+short-lived codec created inside a sealed request.
 
 ## Request-bound authority
 
-Every operation requires a non-nil tenant/actor `IndexReconciliationOperatorContext`, a current
-request-scoped RBAC snapshot, and effective `Permission::MODULES_MANAGE`.
+Every operator method requires a non-nil tenant/actor context, a current request-local RBAC snapshot,
+and effective `Permission::MODULES_MANAGE`.
 
-`diagnose_entity(context, key)` and `diagnose_missing_entity_candidate(context, key)` each accept one
-typed `EntityKey`. Authorization runs before request validation, owner-source access, materialized
-reads, typed-state classification, digest production, or finding persistence.
+Exact diagnosis authorizes before key validation or dependency access. The raw internal page method
+authorizes before page-limit validation and scan-request construction.
 
-The raw internal method `diagnose_source_page(context, schema, cursor, limit)` checks authority before
-validating its maximum page size of 32 and constructing `IndexSourceScanRequest`.
+`diagnose_source_page_sealed(context, schema, continuation, limit)` additionally:
 
-The sealed method
-`diagnose_source_page_sealed(context, schema, continuation, limit)` preserves a stronger boundary:
-
-1. authorization precedes untrusted continuation parsing;
-2. the page limit is validated before secret resolution or token work;
-3. canonical tenant/schema/owner/source scope comes from the frozen source registry;
-4. referenced keys are resolved and must decode to exactly 32 bytes;
-5. the token is authenticated, decrypted, scope-checked, and expired;
-6. `IndexSourceScanRequest` is constructed only after token admission;
-7. the existing one-page missing-only path is called exactly once;
-8. any outgoing raw cursor is sealed before the result leaves the service boundary.
+1. authorizes before untrusted continuation parsing;
+2. validates the `1..=32` limit;
+3. derives canonical source scope from the frozen registry;
+4. resolves exact 32-byte keys through the private keyring;
+5. opens and validates the token before constructing `IndexSourceScanRequest`;
+6. diagnoses one page exactly once;
+7. seals any outgoing raw cursor before returning.
 
 ## Published operator surface
 
-`IndexReconciliationOperatorRuntime` exposes only:
-
-- `run(context, request)`;
-- `request_cancel(context, job_id)`;
-- `inspect_dead_letter(context, job_id)`;
-- `inspect_drift_finding(context, finding_id)`;
-- `requeue_dead_letter(context, job_id, reason)`.
-
-`IndexDriftDiagnosisOperatorRuntime` exposes only:
+`IndexDriftDiagnosisOperatorRuntime` exposes:
 
 - `diagnose_entity(context, key)`;
 - `diagnose_missing_entity_candidate(context, key)`.
 
 `IndexDriftSourcePageDiagnosisRuntime` exposes:
 
-- the internal compatibility method `diagnose_source_page(context, schema, cursor, limit)`;
-- the transport-safe internal method
-  `diagnose_source_page_sealed(context, schema, continuation, limit)`.
+- internal `diagnose_source_page(context, schema, cursor, limit)`;
+- transport-safe `diagnose_source_page_sealed(context, schema, continuation, limit)`.
 
-The sealed result contains current-page counts, bounded missing-finding receipts, and one optional
-opaque token. It exposes no raw source cursor, source entity identifier, owner/index record, field,
-link, SQL, database cause, secret reference, key bytes, registry handle, scheduler handle, or repair
-handle.
+The sealed result contains only bounded current-page counters, missing-finding receipts, completion
+state, and an optional opaque token.
 
-The source-page runtime skips retained source `Delete` mutations and sequentially diagnoses only
-source `Upsert` candidates. Materialized `Upsert` or `Delete`, including stale field/link/version
-mismatches, returns `NotCandidate` and does not call the finding recorder through this path.
+## GraphQL transports
 
-## GraphQL diagnosis transport
+The root mutation now contains two deliberately separate operations:
 
-The existing root GraphQL mutation remains only:
+- `diagnoseIndexEntity(input: IndexDriftDiagnosisInput!)` for one caller-known exact entity;
+- `diagnoseIndexSourcePage(input: IndexDriftSourcePageDiagnosisInput!)` for one bounded owner-source
+  page through the sealed continuation boundary.
 
-- `diagnoseIndexEntity(input: IndexDriftDiagnosisInput!): IndexDriftDiagnosisPayload!`.
+The page input contains module, entity, schema version, limit, and optional opaque token strings only.
+Tenant and actor come from authenticated context. Effective `modules:manage` is checked before schema,
+limit, or token parsing.
 
-It diagnoses one caller-known exact entity and exposes only bounded digest/finding-receipt metadata.
-The source-page runtime, sealed method, opaque token, counters, source scan, and server-owned
-continuation keyring are not attached to GraphQL by this slice.
+The page resolver delegates exactly once to `diagnose_source_page_sealed`. It does not call the raw
+page method and accepts no tenant, actor, owner/source identity, raw cursor, entity ID, entity list,
+checkpoint, scheduler, lifecycle, or repair input.
 
-## Confidential source continuation
+The payload exposes current-page aggregate counters, bounded finding receipts, completion state, and
+one opaque token. It exposes no raw cursor, owner/index payload, fields, links, source identity,
+secret reference, key material, SQL, or database cause.
 
-The database-neutral `IndexSourceContinuationCodec` uses AES-256-GCM with exact tenant, schema,
-canonical owner/source, version, issued-at, and expiry claims. One active key seals new tokens while
-bounded retained keys support decryption during rotation.
+## Confidential continuation composition
 
-Server configuration is deployment-owned:
+`IndexSourceContinuationCodec` uses AES-256-GCM and binds encrypted claims to tenant, exact schema,
+canonical owner/source identity, contract version, issued-at, and expiry.
 
-- `RUSTOK_INDEX_SOURCE_CONTINUATION_KEYRING_JSON` stores key IDs and `SecretRef` values only;
-- secret values use URL-safe unpadded base64 and decode to exactly 32 bytes;
-- this slice admits only `env` and `mounted_file` resolver aliases;
-- at most 16 keys and a lifetime of 1 through 900 seconds are allowed.
+`RUSTOK_INDEX_SOURCE_CONTINUATION_KEYRING_JSON` stores only bounded key IDs and secret references.
+The JSON is bounded to 16 KiB before parsing; at most 16 unique references are admitted. Secret
+values must be canonical URL-safe unpadded base64 and decode to exactly 32 bytes.
 
-Synchronous composition validates configuration and resolver policy. Actual asynchronous secret
-resolution occurs inside `diagnose_source_page_sealed` before token parsing or source scan. Failures
-map to bounded server errors without resolver causes, reference names, or key material.
+Synchronous composition validates configuration shape and resolver policy. Asynchronous secret
+resolution occurs inside the sealed method before token parsing or source scan. Resolver causes,
+reference keys, token contents, and key material are never copied into GraphQL errors or debug output.
 
-## Composition
+## Composition order
 
-The server replay composition remains the single source-freezing point:
+1. selected source factories are materialized;
+2. the source registry is frozen;
+3. replay and reconciliation runtimes are composed;
+4. exact diagnosis and optional absence proof are composed;
+5. deployment-owned continuation configuration is validated;
+6. the private keyring is passed directly into the page runtime;
+7. GraphQL schema construction mounts exact diagnosis and the separate sealed source-page mutation.
 
-1. selected PostgreSQL source factories construct ordinary replay sources and optional owner
-   absence providers without executing SQL;
-2. `SharedIndexSourceRegistry` is frozen;
-3. replay runtime and reconciliation work registration are published;
-4. the guarded reconciliation operator is constructed;
-5. exact diagnosis materializes the optional `SharedIndexSourceAbsenceRegistry`, verifying owner
-   parity against the frozen replay registry;
-6. general and missing-only exact diagnosis methods are inserted through one guarded runtime;
-7. if a source registry exists, deployment-owned continuation configuration is validated and one
-   private keyring runtime is built;
-8. one-page diagnosis is inserted with the frozen source registry, exact diagnosis runtime, and the
-   optional private keyring;
-9. GraphQL schema construction receives the frozen `ModuleRuntimeExtensions` and mounts only the
-   bounded exact-entity mutation.
-
-The keyring is passed directly to the page runtime and is never inserted as its own extension.
-Composition performs no diagnosis SQL, secret resolution, source scan, or task spawn.
-
-## Explicit Product locale absence
-
-For Product v1/v2, an empty ordinary targeted load is accepted as source `Missing` only with the
-exact positive `products.index_revision` absence watermark. The reader reloads owner state and the
-same watermark around its materialized snapshot. Changed state/version returns retryable
-`index_drift_source_changed_during_capture`; unavailable proof remains
-`index_drift_source_watermark_missing`.
+Composition performs no secret resolution, source scan, diagnosis SQL, or task spawn.
 
 ## Explicitly open
 
-- a GraphQL, HTTP, CLI, MCP, or native-admin source-page transport;
-- retained secret-resolution, rotation, expiry, authorization, PostgreSQL, and GraphQL execution
-  evidence;
-- cursor persistence, multi-page accumulation, background iteration, scheduling, or restart state;
-- reconciliation run/cancel/inspection/requeue transports;
-- bounded Index-only stale enumeration and orphan-link diagnosis;
-- finding resolution or ignore transitions with actor/reason audit;
-- targeted/full/shadow repair admission, execution, audit, and evidence;
-- operator-visible scheduler health and metrics;
-- locale or partition checkpoint dimensions.
-
-Exact-entity diagnosis, Product locale-absence fencing, exact GraphQL transport, missing-only page
-diagnosis, confidential continuation codec, server-owned SecretRef keyring, and the sealed internal
-page boundary are source complete. Public source-page transport, broader diagnosis, repair, and
-retained execution evidence remain open.
+- retained authorization, key-resolution, rotation, expiry, PostgreSQL, and GraphQL evidence;
+- persisted continuation, multi-page accumulation, background scanning, scheduling, or restart state;
+- stale Index-only and orphan-link discovery;
+- finding resolve/ignore lifecycle;
+- targeted/full/shadow repair;
+- reconciliation command transports and operator-visible scheduler health.
 
 ## Validation ownership
 
