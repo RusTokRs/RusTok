@@ -8,6 +8,7 @@ const files = {
   lib: 'crates/rustok-index/src/lib.rs',
   doc: 'crates/rustok-index/docs/m6-confirmed-candidate-finding-persistence.md',
   confirmationDoc: 'crates/rustok-index/docs/m6-drift-candidate-confirmation.md',
+  lifecycleDoc: 'crates/rustok-index/docs/m6-drift-finding-lifecycle.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -123,22 +124,28 @@ for (const marker of [
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_lifecycle_pending`.',
+  'Status: `source_complete_lifecycle_complete_repair_pending`.',
   '`SERIALIZABLE READ WRITE`',
   '`NotRecorded(MaterializedChanged)`',
   '`index.confirmed_orphan_link.<sha256>`',
   '`index_drift_digest_finding_v1`',
   'remains ignored and returns `Suppressed`',
-  'does not insert the writer into `ModuleRuntimeExtensions`',
+  'does not insert the writer into',
+  'm6-drift-finding-lifecycle.md',
   'No tests, verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('confirmationDoc', [
-  'source_complete_persistence_complete_lifecycle_pending',
+  'source_complete_persistence_complete_lifecycle_complete_repair_pending',
   'm6-confirmed-candidate-finding-persistence.md',
+  'm6-drift-finding-lifecycle.md',
+]);
+requireMarkers('lifecycleDoc', [
+  'Status: `source_complete_repair_pending`.',
+  '`IndexDriftFindingAuthorizedLifecycleCommand`',
 ]);
 requireMarkers('plan', [
-  'M6 - add drift finding lifecycle commands',
-  'source_complete_lifecycle_pending',
+  'M6 - add targeted drift repair',
+  'source_complete_repair_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-confirmed-candidate-persistence.mjs'",
