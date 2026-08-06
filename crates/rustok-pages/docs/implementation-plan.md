@@ -1,7 +1,7 @@
 # Implementation Plan for `rustok-pages`
 
 Date: 2026-08-06  
-Status: `in_progress / host-route-response-source-ready / execution-pending`
+Status: `in_progress / route-history-import-source-ready / execution-pending`
 
 ## Policy: current code only
 
@@ -59,6 +59,11 @@ Optional external event infrastructure is outside the active Pages cursor.
 - [x] Pages owns bounded route/page/artifact cache scopes and generation-aware keys.
 - [x] `page_route_aliases` is an append-only localized public route ledger with a
   unique `(tenant_id, locale, slug)` claim and no foreign key to the current page.
+- [x] `page_route_publications` retains public ownership snapshots without a page
+  foreign key, so deletion can create permanent tombstones.
+- [x] `page_route_history_imports` retains forward-only provenance receipts without
+  a page foreign key and binds each external source record to one normalized route
+  payload and SHA-256 request hash.
 
 ### Admin FFA
 
@@ -74,6 +79,8 @@ Optional external event infrastructure is outside the active Pages cursor.
 - [x] A published metadata slug rename appends immutable redirects before replacing
   translations in the same owner transaction.
 - [x] A draft-only slug rename does not create public route history.
+- [x] A bounded historical route import owner requires `pages:manage`, normalized
+  provenance and exact replay before it mutates route history.
 
 ### Storefront FFA
 
@@ -112,10 +119,20 @@ Optional external event infrastructure is outside the active Pages cursor.
   returns `409`; operational route failures return `503`.
 - [x] Terminal Pages host route responses use `private, no-store`, and canonical
   redirect locations percent-encode the slug query value.
-- [ ] Delete tombstones and historical backfill remain open.
+- [x] Delete tombstones retain every route that was snapshotted before unpublish or
+  archive, preserve existing redirects and reserve claims after physical deletion.
+- [x] The historical route import owner records provenance receipts, exact snapshots
+  and immediate gone routes for already missing pages in one bounded transaction.
+- [x] Automatic inference remains open by design: current draft/archived rows,
+  deleted rows and Page Builder artifacts do not prove complete historical public
+  ownership.
 - [ ] Authenticated real-DOM inline editing is not implemented.
 - [ ] Compiled SSR/CSR/hydrate bundle artifact evidence remains open; client bundle
   proof becomes mandatory when a Pages client bootstrap is introduced.
+
+Historical guard marker retained for packets authored before these slices:
+`Delete tombstones and historical backfill remain open` described the correct
+PR #3020 boundary and is no longer the current implementation status.
 
 ### Page Builder/FBA
 
@@ -130,8 +147,9 @@ Optional external event infrastructure is outside the active Pages cursor.
   health.
 - [x] GraphQL, HTTP and admin transports use typed publish/rollback receipts.
 - [x] Non-builder publication rejects every Fly/GrapesJS body.
-- [x] Page Builder ownership is unchanged by Pages route aliases and host responses;
-  route identity is derived from Pages translations and publication state only.
+- [x] Page Builder ownership is unchanged by Pages route aliases, delete tombstones,
+  historical imports and host responses; route identity is derived from Pages
+  translations, retained route evidence and publication state only.
 - [ ] Accepted execution evidence must correlate receipts, events, generation
   changes, cache misses/refills and public route behavior.
 - [ ] Observed Wave 0/Wave 1 tenant evidence remains open.
@@ -164,7 +182,11 @@ Optional external event infrastructure is outside the active Pages cursor.
     every terminal route decision is `private, no-store`.
 16. Feature-resolved anonymous storefront graphs exclude admin and Fly authoring
     packages through non-dev dependencies.
-17. No block or shadow-editor fallback exists.
+17. Historical route import is explicit, bounded to 100 items, provenance-bound and
+    all-or-nothing; the owner never guesses public history from incomplete state.
+18. A missing-page redirect import requires a direct terminal gone anchor for the
+    same page so redirect resolution cannot depend on a nonexistent canonical row.
+19. No block or shadow-editor fallback exists.
 
 ## Current pipelines
 
@@ -195,6 +217,30 @@ published metadata slug rename
 ```
 
 ```text
+published page leaves public lifecycle
+  → page lock + version/permission check
+  → snapshot every localized public route
+  → unpublish or archive state mutation
+  → later admitted delete
+  → write missing gone aliases and preserve redirects
+  → delete page data + NodeDeleted
+  → commit
+```
+
+```text
+historical route import
+  → pages:manage
+  → normalize source + 1..100 records
+  → verify provenance receipt or bind a new request hash
+  → reject current/snapshot/alias owner overlap
+  → ensure retained publication snapshot
+  → missing page: ensure direct gone or preserved redirect
+  → require page-level terminal gone anchor
+  → insert immutable provenance receipt
+  → commit whole batch
+```
+
+```text
 public Pages host request
   → trusted tenant/request context
   → Pages channel-module admission
@@ -213,12 +259,13 @@ public Pages host request
 
 - **FFA:** `in_progress` — metadata/document separation, reviewed publication,
   rollback, immutable public reads, tenant locale fallback, localized route identity,
-  published-slug redirects and explicit host route responses are source-connected.
-  Browser execution, inline edit and built artifact evidence remain open.
+  published-slug redirects, delete tombstones, explicit historical import and host
+  route responses are source-connected. Browser execution, inline edit and built
+  artifact evidence remain open.
 - **FBA:** `in_progress` — sanitizer/materialization/artifact/receipt boundaries and
-  production-gated cache invalidation are source-connected. Route persistence and
-  response decisions belong to Pages and do not change Page Builder. Execution and
-  rollout remain open.
+  production-gated cache invalidation are source-connected. Route persistence,
+  repair and response decisions belong to Pages and do not change Page Builder.
+  Execution and rollout remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Completed source slices
@@ -263,7 +310,10 @@ public Pages host request
 - Added source responses for exact canonical, permanent redirect, gone, missing,
   conflict and operational failure states.
 - Added percent-encoded canonical locations and private no-store terminal policy.
-- Added a registered SQLite/Axum source harness and fail-closed source contract.
+- Added forward public-route snapshots and delete tombstone composition while
+  preserving immutable redirects.
+- Added the historical route import owner, forward-only provenance receipts,
+  bounded all-or-nothing composition and focused SQLite source regressions.
 - Tests, verifiers, formatters, Cargo commands, databases, server functions, hosts,
   browsers, workflows and CI were not executed by the implementation agent.
 
@@ -271,6 +321,8 @@ public Pages host request
 
 ### P0 — execution evidence
 
+- [ ] Run the historical route import verifier and focused SQLite regression.
+- [ ] Run the delete tombstone verifier and focused SQLite regression.
 - [ ] Run the host route response verifier and registered SQLite/Axum harness.
 - [ ] Run metadata conflict and dirty-Fly isolation packets.
 - [ ] Run selected immutable artifact, native route/cache/admission and generation
@@ -289,8 +341,9 @@ public Pages host request
 - [x] Reserve historical published route claims and fail closed on collisions.
 - [x] Mount `PageRouteService::resolve` in the public host after channel/module
   admission and return canonical, redirect or gone responses.
-- [ ] Add deletion tombstones while preserving existing redirect history.
-- [ ] Define historical route backfill/import policy.
+- [x] Add deletion tombstones while preserving existing redirect history.
+- [x] Define historical route backfill/import policy as explicit provenance import;
+  automatic inference remains open by design.
 - [ ] Compose Navigation-owned menus, SEO and channel visibility with deterministic
   generation-aware cache keys.
 - [ ] Implement authenticated real-DOM inline editing.
@@ -308,9 +361,9 @@ public Pages host request
 ### P2 — operations and rollout
 
 - [ ] Correlate metadata save, document save, publish, rollback, route alias,
-  host response, invalidation and public read in telemetry.
+  tombstone/import receipt, host response, invalidation and public read in telemetry.
 - [ ] Add artifact/manifest integrity audit and repair/rebuild commands.
-- [ ] Audit delete/unpublish/rollback and route tombstone behavior.
+- [ ] Audit delete/unpublish/rollback, tombstone and operator-import behavior.
 - [ ] Run observed internal-tenant Wave 0, then Wave 1 after all gates pass.
 
 ## Verification
@@ -318,6 +371,14 @@ public Pages host request
 Suggested commands; execution is intentionally maintainer-owned:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs
+cargo test -p rustok-pages \
+  --test page_route_history_import_sqlite -- --nocapture
+
+node crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs
+cargo test -p rustok-pages \
+  --test page_delete_route_tombstone_sqlite -- --nocapture
+
 node crates/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs
 cargo test -p rustok-pages-storefront --features ssr \
   --test host_route_decision_sqlite -- --nocapture
