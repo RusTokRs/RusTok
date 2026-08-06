@@ -10,11 +10,11 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumError, ForumTopicRouteDisposition, ForumTopicRouteResolution,
-    ForumTopicRouteService, TopicService,
+    ForumError, ForumTopicReadOperation, ForumTopicReadTransport, ForumTopicRouteDisposition,
+    ForumTopicRouteResolution, ForumTopicRouteService, topic_read_audience_port_context,
 };
 
-use super::{GqlForumTopicRouteDescriptor, query::is_topic_visible_for_channel};
+use super::{ForumGraphqlRuntimeData, GqlForumTopicRouteDescriptor};
 
 const MODULE_SLUG: &str = "forum";
 
@@ -24,7 +24,7 @@ pub(crate) struct ForumTopicRouteQuery;
 #[Object]
 impl ForumTopicRouteQuery {
     /// Resolves one public Forum topic route after rechecking the canonical topic through the
-    /// existing storefront visibility contract.
+    /// exact storefront audience contract.
     ///
     /// Deleted-route tombstones intentionally remain hidden until Forum owns a visibility
     /// snapshot that can authorize a public `gone` response without disclosing private history.
@@ -69,34 +69,50 @@ impl ForumTopicRouteQuery {
             ForumTopicRouteDisposition::Gone => return Ok(None),
         };
 
-        let topic = match TopicService::new(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+        let service = runtime.topic_audience_read_service(db.clone(), event_bus.clone());
+        let visible = if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+            let audience_context = topic_read_audience_port_context(
+                ForumTopicReadTransport::Graphql,
+                ForumTopicReadOperation::SelectedTopic,
                 tenant_id,
-                forum_request_security(ctx),
-                canonical.topic_id,
-                &canonical.locale,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await
-        {
-            Ok(topic) => topic,
-            Err(ForumError::TopicNotFound(_))
-            | Err(ForumError::TopicDeleted)
-            | Err(ForumError::TopicRouteNotFound) => return Ok(None),
-            Err(error) => return Err(async_graphql::Error::new(error.to_string())),
-        };
-
-        if is_public_request(ctx)
-            && (topic.status != crate::constants::topic_status::OPEN
-                || !is_topic_visible_for_channel(
-                    &topic.channel_slugs,
+                auth,
+                ctx.data_opt::<RequestContext>(),
+                canonical.locale.as_str(),
+            )?;
+            service
+                .get_authenticated_storefront_visible_with_audience_context(
+                    tenant_id,
+                    security,
+                    audience_context,
+                    canonical.topic_id,
+                    Some(tenant.default_locale.as_str()),
+                )
+                .await
+        } else {
+            service
+                .get_public_storefront_visible_with_locale_fallback(
+                    tenant_id,
+                    canonical.topic_id,
+                    canonical.locale.as_str(),
+                    Some(tenant.default_locale.as_str()),
                     public_channel_slug(ctx).as_deref(),
-                ))
-        {
-            return Ok(None);
+                )
+                .await
+        };
+        match visible {
+            Ok(Some(_)) => map_public_route_resolution(resolution),
+            Ok(None)
+            | Err(ForumError::TopicNotFound(_))
+            | Err(ForumError::TopicDeleted)
+            | Err(ForumError::TopicRouteNotFound) => Ok(None),
+            Err(error) => Err(async_graphql::Error::new(error.to_string())),
         }
-
-        map_public_route_resolution(resolution)
     }
 }
 
@@ -184,18 +200,6 @@ fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid
     }
 }
 
-fn forum_request_security(ctx: &Context<'_>) -> SecurityContext {
-    ctx.data_opt::<AuthContext>()
-        .map(|auth| {
-            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
-        })
-        .unwrap_or_else(SecurityContext::public_read)
-}
-
-fn is_public_request(ctx: &Context<'_>) -> bool {
-    ctx.data_opt::<AuthContext>().is_none()
-}
-
 fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
     ctx.data_opt::<RequestContext>()
         .and_then(|request| request.channel_slug.clone())
@@ -213,7 +217,7 @@ mod tests {
             locale: "en".to_string(),
             short_id: "000000000000".to_string(),
             slug: "welcome".to_string(),
-            path: "/forum/en/t/000000000000/welcome".to_string(),
+            path: "/en/forum/t/000000000000/welcome".to_string(),
         }
     }
 
