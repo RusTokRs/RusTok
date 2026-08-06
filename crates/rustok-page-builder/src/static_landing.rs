@@ -1,4 +1,7 @@
 use crate::landing::{LandingProjectError, LandingProjectInspection, LandingProjectResult};
+use crate::publish_sanitization::static_publish_resource_limits::{
+    PageBuilderStaticPublishResourceLimitError, validate_static_publish_resource_limits,
+};
 use crate::static_publish_policy::{
     PageBuilderStaticPublishPolicyError, validate_static_publish_document,
 };
@@ -84,12 +87,18 @@ where
         let inspection = self.inspect(project_data)?;
         inspection.require_contract_valid()?;
 
+        // Reject excessive current-tree shape before the recursive public-resource and static
+        // publish policy passes. Recheck after stable-id normalization because generated ids are
+        // part of the exact prepared project that will be hashed and materialized.
+        let mut document = inspection.document().clone();
+        require_static_publish_resource_limits(&document)?;
+
         // GrapesJS permits components without explicit ids. Static rendering uses ids as stable CSS
         // hooks, so normalize a compiler-owned clone before readiness evaluation and rendering. The
         // sequential generator and document traversal make this transformation deterministic while
         // leaving the persisted editor source untouched.
-        let mut document = inspection.document().clone();
         document.ensure_stable_ids(&mut SequentialIdGenerator::new(STATIC_LANDING_ID_PREFIX));
+        require_static_publish_resource_limits(&document)?;
         if !self.render_policy.allow_http {
             require_secure_resource_urls(&document)?;
         }
@@ -101,8 +110,10 @@ where
         &self,
         document: &ProjectDocument,
     ) -> LandingProjectResult<StaticLandingArtifact> {
-        // Runtime bindings can materialize new attributes, CSS and URLs after the authoring document
-        // was prepared. Re-run every public-artifact policy on the exact document being built.
+        // Runtime bindings can materialize new components, attributes, CSS and URLs after the
+        // authoring document was prepared. Re-run every public-artifact policy on the exact
+        // document being built, with bounded shape checks before recursive policy traversal.
+        require_static_publish_resource_limits(document)?;
         if !self.render_policy.allow_http {
             require_secure_resource_urls(document)?;
         }
@@ -129,6 +140,33 @@ where
 
     pub(crate) fn render_policy(&self) -> &RenderPolicy {
         &self.render_policy
+    }
+}
+
+fn require_static_publish_resource_limits(document: &ProjectDocument) -> LandingProjectResult<()> {
+    match validate_static_publish_resource_limits(document) {
+        Ok(_) => Ok(()),
+        Err(PageBuilderStaticPublishResourceLimitError::Rejected { diagnostics }) => {
+            Err(LandingProjectError::Validation {
+                diagnostics: diagnostics
+                    .into_iter()
+                    .map(|diagnostic| ValidationDiagnostic {
+                        severity: ValidationSeverity::Error,
+                        code: diagnostic.code,
+                        path: diagnostic.path,
+                        message: diagnostic.message,
+                    })
+                    .collect(),
+            })
+        }
+        Err(error) => Err(LandingProjectError::Validation {
+            diagnostics: vec![ValidationDiagnostic {
+                severity: ValidationSeverity::Error,
+                code: "landing_static_publish_resource_limits_integrity".to_string(),
+                path: "project".to_string(),
+                message: error.to_string(),
+            }],
+        }),
     }
 }
 
@@ -196,6 +234,7 @@ fn require_secure_resource_urls(document: &ProjectDocument) -> LandingProjectRes
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::publish_sanitization::static_publish_resource_limits::PageBuilderStaticPublishResourceLimits;
     use serde_json::json;
 
     fn project() -> Value {
@@ -343,6 +382,27 @@ mod tests {
             diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.code == "landing_css_value_rejected")
+        );
+    }
+
+    #[test]
+    fn compiler_rechecks_materialized_resource_limits_before_recursive_policy() {
+        let compiler = StaticLandingCompiler::default();
+        let mut document = compiler.prepare_document(&project()).expect("prepared");
+        let page = document.project.pages[0].clone();
+        document.project.pages =
+            vec![page; PageBuilderStaticPublishResourceLimits::default().max_pages + 1];
+
+        let error = compiler
+            .compile_prepared_document(&document)
+            .expect_err("materialized resource limit must be rejected");
+        let LandingProjectError::Validation { diagnostics } = error else {
+            panic!("expected typed validation diagnostics");
+        };
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "landing_page_count_exceeded")
         );
     }
 }
