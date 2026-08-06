@@ -21,7 +21,7 @@ Raw key bytes are resolved only for a single call to
 ## Configuration
 
 The process reads `RUSTOK_INDEX_SOURCE_CONTINUATION_KEYRING_JSON` only when a frozen Index source
-registry exists. Example:
+registry exists. The raw JSON value is rejected above 16 KiB before deserialization. Example:
 
 ```json
 {
@@ -44,26 +44,30 @@ This slice admits only deployment-owned `env` and `mounted_file` aliases. Mounte
 require `RUSTOK_INDEX_SOURCE_CONTINUATION_SECRET_MOUNT_ROOT`.
 
 Key IDs are lowercase machine names using ASCII letters, digits, `-`, `_`, or `.`, and are bounded to
-64 bytes. References must be unique, complete, and permitted by an exact resolver policy. The active
-key must be present in the key map.
+64 bytes. Each reference key is bounded to 256 bytes, must be trimmed ASCII using letters, digits,
+`-`, `_`, `.`, or `/`, and must be unique with its resolver alias. References must be permitted by
+an exact resolver policy. The active key must be present in the key map.
 
 ## Secret wire format
 
-Each referenced secret is URL-safe unpadded base64. Decoding must produce exactly 32 bytes.
+Each referenced secret is canonical URL-safe unpadded base64. A 32-byte value has exactly 43 encoded
+bytes, and that length is checked before base64 decoding. Decoding must then produce exactly 32 bytes.
 
-A blank value, invalid base64, a value of any other length, missing resolver, forbidden reference,
-missing secret, or codec construction failure fails closed. The public server error does not expose
-the resolver cause, reference key, secret value, or decoded material.
+A blank value, noncanonical length, invalid base64, a decoded value of any other length, missing
+resolver, forbidden reference, missing secret, or codec construction failure fails closed. The
+public server error does not expose the resolver cause, reference key, secret value, or decoded
+material.
 
 ## Resolution timing
 
 Module runtime composition is synchronous while `SecretResolverRegistry` resolution is asynchronous.
 Therefore:
 
-- composition validates JSON shape, bounds, active-key presence, unique references, allowed resolver
-  aliases, and resolver policy;
+- composition validates JSON size and shape, active-key presence, unique bounded references, allowed
+  resolver aliases, lifetime, key count, and resolver policy;
 - `diagnose_source_page_sealed` resolves every configured reference before parsing an incoming token
   or constructing `IndexSourceScanRequest`;
+- encoded secret length is checked before decoding;
 - the decoded key map is used to construct one short-lived `IndexSourceContinuationCodec`;
 - the codec opens the incoming token and seals the outgoing cursor within the same request;
 - the local codec and key map are dropped after the call.
