@@ -18,5 +18,22 @@
   "failure": "Topic merge failed",
   "notEnough": "At least two active topics are required.",
   "movedReplies": "Moved replies",
-  "resultingReplies": "Resulting published replies"
+  "resultingReplies": "Resulting published replies",
+  "renameTitle": "Rename topic route",
+  "renameSubtitle": "Change one existing localized topic slug while the Forum owner records the old route as an immutable redirect.",
+  "renameTopic": "Localized topic route",
+  "renameChoose": "Choose a topic",
+  "renameSlug": "New slug",
+  "renameSlugHint": "The owner normalizes the route segment and preserves the previous path.",
+  "renameWarning": "This changes only an existing localized route. Locale creation, route deletion and canonical merge policy remain owner-controlled.",
+  "renamePending": "Renaming…",
+  "renameSubmit": "Rename route",
+  "renameSuccess": "Route rename committed",
+  "renameReplay": "The canonical slug was already current; no new alias was written.",
+  "renameFailure": "Topic route rename failed",
+  "renameErrorTopic": "Choose the topic route to rename.",
+  "renamePreviousPath": "Previous path",
+  "renameCanonicalPath": "Canonical path",
+  "renameLocale": "Locale",
+  "renameAlias": "Alias"
 }
