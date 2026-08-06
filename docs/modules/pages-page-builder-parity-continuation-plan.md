@@ -162,6 +162,8 @@ No shared/CDN document cache is introduced. Execution remains pending.
 
 Only an explicit allow-list of instrumented stable static leaf text nodes receives `contenteditable="plaintext-only"`. Provider-owned nodes, composite nodes with children and template-backed nodes remain read-only. Every node inside a runtime-owned binding, condition or repeater subtree is also excluded, while a static leaf inside an ordinary unowned layout remains eligible. The DOM is a temporary interaction buffer: a single bounded normalized plain-text request is emitted on bubbling `focusout`, and listener/attribute cleanup is deterministic.
 
+An unchanged `focusout` returns `NoContentChange`; it does not advance the accepted sequence, mutate Fly history or change the project hash, so it does not consume the one-commit grant.
+
 `rustok-page-builder-storefront` exposes this surface only behind the optional `inline-edit` feature. Its existing read-only renderer continues to force component instrumentation off, and current Pages anonymous features do not enable `inline-edit`.
 
 `AuthenticatedInlineEditSession` validates grant identity/expiry, monotonic sequence, selected page, exact project hash and component eligibility, then calls a consumer `InlineEditAuthorizationPort` immediately before the sole mutation:
@@ -172,7 +174,7 @@ EditorCommand::Patch
   → Fly history, validation and new project hash
 ```
 
-The result carries the complete current project, previous/new hash and command sequence. The grant is intentionally one-commit because the canonical hash changes; a consumer must persist the result and issue a fresh grant.
+The result carries the complete current project, previous/new hash and command sequence. Because every accepted patch changes canonical content and the project hash, the grant is intentionally one-commit; a consumer must persist the result and issue a fresh grant.
 
 Pages consumer grant issuance and document-only save mount remain open. No Pages transport, auth policy or anonymous mount is claimed by this slice.
 
