@@ -11,6 +11,7 @@ This packet adds machine-locked, maintainer-run tooling for the next Pages inlin
 - embedded admin, dedicated authoring JS/WASM and server binary hashes and sizes;
 - full embedded admin distribution manifests;
 - production image digest and runtime identity;
+- an explicit HTTP target deployment RepoDigest bound to that captured image;
 - authoring asset `200` and conditional `304` behavior;
 - direct-user and denied authoring route cases;
 - reuse of the existing anonymous storefront artifact inspector;
@@ -34,6 +35,7 @@ It owns:
 - fixed asset paths and MIME types;
 - expected authoring admission statuses;
 - source-commit binding;
+- deployment image digest binding;
 - privacy and non-promotion boundaries.
 
 The final aggregate path is:
@@ -89,6 +91,7 @@ scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs
 
 It uses `docker image inspect` but persists only a bounded projection:
 
+- a SHA-256 identity and byte length for the requested image string, not the raw string;
 - canonical image ID;
 - immutable RepoDigests;
 - image size;
@@ -97,7 +100,7 @@ It uses `docker image inspect` but persists only a bounded projection:
 - `/app/rustok-server` entrypoint;
 - selected OCI labels.
 
-`org.opencontainers.image.revision` must equal the checked-out source commit. The raw Docker inspect document and environment values are not persisted.
+`org.opencontainers.image.revision` must equal the checked-out source commit. The raw requested image reference, raw Docker inspect document and environment values are not persisted.
 
 ## HTTP capture
 
@@ -107,7 +110,9 @@ The maintainer runs:
 scripts/evidence/capture-pages-inline-edit-http-evidence.mjs
 ```
 
-The target must be an explicit HTTP(S) origin. The script requests:
+The target must be an explicit HTTP(S) origin plus the immutable RepoDigest recorded for the deployed image. The capture stores that RepoDigest and the assembler requires it to be present in the Docker evidence packet. This records the maintainer's deployment identity and prevents an unbound HTTP packet; it does not independently inspect the external orchestrator.
+
+The script requests:
 
 ```text
 /assets/pages-inline-edit-bootstrap.js
@@ -123,7 +128,8 @@ For every asset it requires:
 - `Cross-Origin-Resource-Policy: same-origin`;
 - a strong full SHA-256 ETag equal to the body hash;
 - empty `304` for exact `If-None-Match`;
-- empty `304` for weak `If-None-Match`.
+- empty `304` for weak `If-None-Match`;
+- the same ETag, cache policy and CORP on both conditional responses.
 
 The authoring route is exercised for:
 
@@ -143,7 +149,7 @@ Cache-Control: private, no-store
 X-Robots-Tag: noindex, nofollow, noarchive
 ```
 
-The successful direct-user HTML must contain the bounded authoring root, bootstrap path, canonical page UUID and exact locale. It must not contain known proof, token, session or signing-secret markers.
+The successful direct-user HTML must contain the bounded authoring root, bootstrap path, exact `data-pages-page-id` UUID and exact `data-pages-locale` value. It must not contain known proof, token, session or signing-secret markers.
 
 Credential values are read only from named environment variables. The evidence stores environment variable names, selected response headers, status, body size and body SHA-256. It never stores Authorization/Cookie values, raw HTML, denial bodies, grants or proofs.
 
@@ -153,7 +159,7 @@ An optional environment variable may provide bounded non-secret common headers:
 RUSTOK_PAGES_INLINE_EDIT_EVIDENCE_COMMON_HEADERS_JSON
 ```
 
-It cannot contain Authorization, Cookie or Set-Cookie.
+It cannot contain Authorization, Cookie or Set-Cookie. Duplicate case-insensitive common header names fail closed.
 
 ## Anonymous artifact input
 
@@ -172,7 +178,7 @@ source_commit: exact current commit
 findings: []
 ```
 
-Every inspected artifact must have an empty `forbidden_markers_found` array.
+Every inspected artifact must have an empty `forbidden_markers_found` array. The feature-resolved dependency graph verifier must also have status `passed`.
 
 Absence of an artifact is not treated as passing evidence.
 
@@ -194,7 +200,13 @@ HTTP capture
 anonymous artifact inspector packet
 ```
 
-The assembler requires all inputs to bind the same current git commit. It additionally binds each HTTP asset body hash to the corresponding built authoring asset hash.
+The assembler requires all inputs to bind the same current git commit. It additionally:
+
+- binds the HTTP target deployment RepoDigest to the Docker evidence RepoDigest set;
+- binds each HTTP asset body hash and byte size to the corresponding built authoring asset;
+- revalidates exact and weak conditional-response headers;
+- revalidates the exact direct-user required/forbidden marker key sets;
+- requires the anonymous dependency graph verifier to have passed.
 
 The aggregate is written through atomic replacement and records SHA-256/size for every input document. It never edits canonical plans or source evidence automatically.
 
@@ -209,14 +221,16 @@ The following values are forbidden from retained evidence:
 - signing keys;
 - raw authoring HTML or denial bodies;
 - raw build logs;
+- raw Docker image request references;
 - full Docker inspect documents.
 
-Only bounded facts, environment variable names, selected headers, hashes, sizes and source identities are retained.
+Only bounded facts, environment variable names, selected headers, hashes, sizes, immutable RepoDigests and source identities are retained.
 
 ## Deliberate limits
 
 This packet does not provide or claim:
 
+- independent external-orchestrator attestation that the named origin points to the recorded digest;
 - browser launch visibility execution;
 - same-origin browser navigation execution;
 - editable real-DOM interaction execution;
@@ -258,6 +272,7 @@ node scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs \
 
 node scripts/evidence/capture-pages-inline-edit-http-evidence.mjs \
   --base-url https://tenant.example \
+  --deployment-image-digest ghcr.io/rustokrs/rustok@sha256:DIGEST \
   --page-id PAGE_UUID \
   --locale en \
   --output target/pages-inline-edit-http.json
