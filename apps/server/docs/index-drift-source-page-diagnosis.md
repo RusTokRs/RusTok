@@ -1,6 +1,6 @@
 # Index drift source-page diagnosis
 
-Status: `missing_only_source_complete_transport_and_owner_execution_pending`.
+Status: `sealed_internal_source_complete_transport_and_owner_execution_pending`.
 
 ## Purpose
 
@@ -8,24 +8,38 @@ The server publishes one internal `IndexDriftSourcePageDiagnosisRuntime` after t
 source registry and guarded exact-entity diagnosis runtime are composed.
 
 The runtime advances diagnosis from caller-known exact entities to one bounded owner-source page
-without introducing a job, loop, scheduler, checkpoint store, or public discovery transport.
+without introducing a job, loop, scheduler, checkpoint store, or public discovery transport. It now
+retains both the historical raw internal method and one sealed method suitable for a future bounded
+transport.
 
-## Request boundary
+## Request boundaries
 
-`diagnose_source_page(context, schema, cursor, limit)` currently accepts:
+`diagnose_source_page(context, schema, cursor, limit)` remains an internal-only compatibility method.
+It accepts one optional server-held `IndexSourceCursor` and one page limit in `1..=32`.
+
+`diagnose_source_page_sealed(context, schema, continuation, limit)` accepts:
 
 - one request-bound `IndexReconciliationOperatorContext`;
 - one typed `SchemaRef`;
-- one optional **server-held** `IndexSourceCursor`;
+- one optional opaque continuation string;
 - one page limit in `1..=32`.
 
-Tenant and actor identities come only from the operator context. The runtime checks the current
-request-local effective `modules:manage` snapshot before validating the page limit or constructing
-`IndexSourceScanRequest`.
+Tenant and actor identities come only from the operator context. Both paths require the current
+request-local effective `modules:manage` snapshot. The sealed path authorizes and validates the page
+limit before parsing the untrusted continuation token.
 
-The frozen source registry then performs exactly one `IndexSource::scan` call. Its existing contract
-revalidates tenant/schema scope, maximum page length, unique entity keys, non-empty continuation,
-and cursor advancement.
+For the sealed path, the runtime then:
+
+1. derives canonical tenant/schema/owner/source scope from the frozen
+   `SharedIndexSourceRegistry`;
+2. resolves the deployment-owned key references into one short-lived codec;
+3. authenticates, decrypts, scope-checks, and expires the incoming token;
+4. constructs `IndexSourceScanRequest` only after token admission;
+5. performs exactly one validated `IndexSource::scan` call;
+6. diagnoses the page once;
+7. seals any returned raw cursor before returning the service result.
+
+The raw cursor is never returned by `diagnose_source_page_sealed`.
 
 ## Missing-only candidate semantics
 
@@ -42,18 +56,14 @@ This slice:
 6. returns `NotCandidate` for materialized `Upsert` or `Delete`, including stale fields, stale links,
    and version differences;
 7. stops on the first source or exact-diagnosis failure;
-8. returns only current-page counters, missing finding receipts, and the server-held next cursor.
+8. returns only current-page counters and bounded missing-finding receipts.
 
 The diagnosis operator repeats request-bound authorization for every candidate before source load,
 materialized reads, typed-state classification, digest calculation, or finding persistence.
 
-The missing-only outcome intentionally exposes no captured state shape. A non-missing candidate is
-reported only through the aggregate `non_missing_count`; raw source and materialized states are not
-returned.
+## Sealed output boundary
 
-## Output boundary
-
-`IndexDriftSourcePageDiagnosisOutcome` contains only:
+`IndexDriftSourcePageDiagnosisSealedOutcome` contains only:
 
 - scanned mutation count;
 - source-present candidate count;
@@ -61,36 +71,53 @@ returned.
 - non-missing candidate count;
 - missing-recorded count;
 - bounded finding receipts only for missing entities;
-- one optional server-owned continuation cursor.
+- one optional `IndexSourceContinuationToken`.
 
-It does not copy source entity IDs, source records, indexed records, fields, links, tenant IDs,
-actor IDs, database errors, SQL, registry handles, or snapshot state into the outcome.
+It contains no raw `IndexSourceCursor`, source entity ID, source record, indexed record, field, link,
+tenant ID, actor ID, database error, SQL, registry handle, snapshot state, key material, or secret
+reference.
 
-The raw cursor is not attached to GraphQL, HTTP, CLI, MCP, or native admin. The cursor is not
-attached to GraphQL by the current internal method. No public identifier discovery surface is added
-by this slice.
+The sealed method and outcome are not attached to GraphQL, HTTP, CLI, MCP, or native admin by this
+slice.
 
-## Confidential continuation prerequisite
+## Deployment-owned keyring
 
-`rustok-index` now provides the transport-neutral `IndexSourceContinuationCodec` and
-`IndexSourceContinuationScope` contracts. The codec encrypts the raw cursor with AES-256-GCM and
-binds authenticated claims to:
+Configuration is read only from `RUSTOK_INDEX_SOURCE_CONTINUATION_KEYRING_JSON`. Example:
 
-- tenant;
-- exact `SchemaRef`;
-- canonical owner module and source name resolved from the frozen source registry;
-- contract version;
-- issued-at time and bounded expiry.
+```json
+{
+  "active_key_id": "current",
+  "lifetime_seconds": 300,
+  "keys": {
+    "current": {
+      "resolver": "env",
+      "key": "RUSTOK_INDEX_SOURCE_CONTINUATION_KEY_CURRENT"
+    },
+    "previous": {
+      "resolver": "mounted_file",
+      "key": "index/continuation/previous"
+    }
+  }
+}
+```
 
-It rejects tampering, wrong scope, unsupported version, expiry, excessive future clock skew,
-oversized tokens, and unavailable or retired key material before returning raw cursor state. This
-is the source-complete server-owned continuation envelope contract; server key composition remains
-open.
+This slice supports deployment-owned `env` and `mounted_file` references. Mounted files require
+`RUSTOK_INDEX_SOURCE_CONTINUATION_SECRET_MOUNT_ROOT`.
 
-The codec is not yet composed into this server runtime. The current page method therefore remains an
-internal-only raw-cursor boundary. A future sealed page method must authorize before token parsing,
-open the token before constructing the source scan request, and seal the returned continuation before
-leaving the service boundary.
+The configuration stores only bounded key IDs and `SecretRef` values. Secret values must be URL-safe
+unpadded base64 and decode to exactly 32 bytes. At most 16 keys are admitted. One active key seals
+new tokens; retained keys remain decrypt-only for rotation. Lifetime is bounded to 1 through 900
+seconds.
+
+Synchronous composition validates configuration shape, key IDs, reference uniqueness, resolver
+policy, active-key presence, key count, and lifetime. Because `SecretResolverRegistry` is asynchronous,
+actual secret resolution and exact-length validation happen inside the sealed request before token
+parsing or source scan. Resolution, decoding, or length failure returns one bounded continuation
+configuration error and exposes no resolver cause, reference key, or secret value.
+
+Raw key bytes exist only inside a local `IndexSourceContinuationCodec` for one sealed call. The
+keyring is passed privately into `IndexDriftSourcePageDiagnosisRuntime`; it is not inserted as a
+separate `ModuleRuntimeExtensions` capability.
 
 ## Deliberate limits
 
@@ -98,8 +125,7 @@ This slice does not add or claim:
 
 - a GraphQL or other public source-page transport;
 - caller-visible raw `IndexSourceCursor` JSON;
-- server continuation-key configuration or secret resolution;
-- a sealed page-runtime method;
+- cloud/Vault/Kubernetes resolver configuration specific to this Index boundary;
 - cursor persistence, multi-page accumulation, background iteration, scheduling, or restart state;
 - Index-only stale enumeration or orphan-link discovery;
 - finding resolve/ignore lifecycle;
@@ -107,19 +133,20 @@ This slice does not add or claim:
 - retained authorization, cryptographic integration, PostgreSQL, GraphQL, workflow, or CI execution
   evidence.
 
-The next safe server slice is a bounded keyring composed from secret references plus one internal
-sealed page method. Public transport remains later and must not expose raw cursor JSON.
+The next safe slice is one bounded transport over `diagnose_source_page_sealed`. It must preserve
+authorization-before-input-parsing, accept no tenant or actor, expose no raw cursor or entity IDs,
+delegate once, and return only bounded counters, receipts, and the opaque token.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index source_continuation -- --nocapture
 cargo test -p rustok-index drift_digest -- --nocapture
-cargo test -p rustok-server index_drift_diagnosis -- --nocapture
+cargo test -p rustok-server index_source_continuation_runtime -- --nocapture
 cargo test -p rustok-server index_drift_source_page_diagnosis -- --nocapture
 cargo test -p rustok-server index_replay_runtime_composition -- --nocapture
 node scripts/verify/verify-index-source-continuation.mjs
-node scripts/verify/verify-index-drift-digest-producer.mjs
+node scripts/verify/verify-index-source-continuation-server.mjs
 node scripts/verify/verify-index-drift-source-page-diagnosis.mjs
 node scripts/verify/verify-index-server-reconciliation-guard.mjs
 node scripts/verify/verify-index-query-contract.mjs
