@@ -1,6 +1,6 @@
 # M6 bounded stale-entity and orphan-link candidate contract
 
-Status: `source_complete_postgres_reader_pending`.
+Status: `source_complete_postgres_reader_complete_confirmation_pending`.
 
 ## Purpose
 
@@ -12,6 +12,9 @@ state that may no longer be justified by an owner source:
 
 This contract discovers bounded candidates only. It does not prove source absence, record a finding,
 resolve or ignore a finding, mutate Index storage, or repair owner state.
+
+The PostgreSQL implementation now exists separately as `PostgresIndexDriftCandidateReader`. See
+[M6 PostgreSQL drift candidate reader](./m6-postgres-drift-candidate-reader.md).
 
 ## Exact request scope
 
@@ -31,9 +34,15 @@ Supplying only a fence or only a cursor fails before reader access.
 
 ## Fence and continuation semantics
 
-The concrete reader chooses the fence on the first page. A PostgreSQL implementation may use a
-captured high-watermark, exported snapshot identity, or another immutable repeatable boundary, but
-it must preserve the same fence for every continuation page.
+The concrete reader chooses the fence on the first page and preserves the same fence for every
+continuation page.
+
+The PostgreSQL implementation binds the exact scope to a bounded `txid_current_snapshot()` token and
+filters materialized row versions through `txid_visible_in_snapshot`. This prevents post-fence insert
+or update versions from appearing later in the same pass. PostgreSQL does not provide stateless
+historical row resurrection, so a later update/delete may conservatively remove an old candidate from
+the current pass; a subsequent bounded pass evaluates the new state. Candidate discovery never
+promotes that omission into a finding.
 
 `IndexDriftCandidatePage::new` rejects:
 
@@ -81,9 +90,9 @@ Candidate ordering is strict and deterministic:
 1. stale entity identities ordered by exact `EntityKey`;
 2. orphan link identities ordered by source key, link name, ordinal, and target identity.
 
-The concrete reader owns the opaque keyset encoding and phase transition. A page cannot return a
-duplicate or descending identity. This permits bounded continuation without collecting arbitrary IDs
-in memory.
+The PostgreSQL reader owns the opaque keyset encoding and phase transition. It executes `limit + 1`
+queries, can transition from stale to orphan candidates within one bounded page, and never collects
+arbitrary IDs in memory.
 
 ## Failure boundary
 
@@ -96,9 +105,8 @@ The contract exposes no SQL, connection error, table name, row payload, owner er
 
 ## Deliberate limits
 
-This slice does not add:
+This slice still does not add:
 
-- a PostgreSQL candidate reader;
 - a GraphQL, HTTP, CLI, MCP, or native-admin transport;
 - source absence verification for a stale candidate;
 - target visibility or owner validation for an orphan link;
@@ -109,22 +117,21 @@ This slice does not add:
 
 ## Next implementation step
 
-Add one PostgreSQL `IndexDriftCandidateReader` that:
+Add one internal candidate confirmation boundary that:
 
-- uses one read-only repeatable boundary or immutable high-watermark fence;
-- performs bounded keyset reads only;
-- never starts with an unbounded in-memory ID collection;
-- returns live, non-deleted `index_entities` as stale candidates for later exact source proof;
-- returns `index_links` whose typed target is absent or deleted as orphan candidates;
-- preserves the contract ordering and exact scope;
-- maps database failures to bounded candidate failure codes;
-- performs no finding write, lifecycle transition, or repair.
+- reloads the exact stale entity through the existing source registry and admitted absence watermark;
+- rejects changed source/materialized identity or source version before any finding write;
+- re-reads the exact orphan source link and typed target state under a bounded boundary;
+- returns typed confirmed/not-candidate outcomes before persistence;
+- performs no public transport, lifecycle transition, scheduling, or repair.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index drift_candidates -- --nocapture
+cargo test -p rustok-index drift_candidate_reader -- --nocapture
 node scripts/verify/verify-index-drift-candidate-contract.mjs
+node scripts/verify/verify-index-postgres-drift-candidate-reader.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
