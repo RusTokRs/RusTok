@@ -2,7 +2,13 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -102,9 +108,7 @@ if (options.image.length > 512 || /[\u0000-\u001f\u007f]/u.test(options.image)) 
   fail("--image is outside the bounded evidence input");
 }
 
-const contract = JSON.parse(
-  execFileSync("cat", [path.join(repoRoot, contractPath)], { encoding: "utf8" }),
-);
+const contract = JSON.parse(readFileSync(path.join(repoRoot, contractPath), "utf8"));
 const head = currentCommit();
 const sourceCommit = options.sourceCommit
   ? requireCommit(options.sourceCommit, "--source-commit")
