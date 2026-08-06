@@ -32,7 +32,9 @@ pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
     MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE,
     ProductAttributeFilter, ProductCatalogSchemaService, ProductIndexLocaleRefreshRecord,
-    ProductIndexLocaleRefreshSource, ProductIndexVariantRefreshRecord,
+    ProductIndexLocaleRefreshSource, ProductIndexRefreshCanonicalWriter,
+    ProductIndexRefreshContract, ProductIndexRefreshContractTarget,
+    ProductIndexRefreshPublicationError, ProductIndexVariantRefreshRecord,
     ProductIndexVariantRefreshSource, StorefrontProductList, StorefrontProductListItem,
     StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
 };
