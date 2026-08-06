@@ -10,6 +10,7 @@ use utoipa::OpenApi;
         crate::controllers::save_page_document,
         crate::http::publish_page,
         crate::http::rollback_page,
+        crate::http::audit_page_artifacts,
         crate::controllers::delete_page,
     ),
     components(
@@ -21,6 +22,9 @@ use utoipa::OpenApi;
             crate::PublishPageResult,
             crate::RollbackPageInput,
             crate::RollbackPageResult,
+            crate::AuditPageArtifactsInput,
+            crate::PageArtifactIntegrityAuditResult,
+            crate::PageArtifactIntegrityFinding,
             crate::PageBodyRevisionInput,
             crate::ReviewedPagePublishRuntimeInput,
             crate::PageBodyInput,
