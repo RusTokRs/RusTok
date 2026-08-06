@@ -1,127 +1,83 @@
-# Checkout compensation cart owner context
+# Checkout cart compensation error safety
 
-Status: **source-ready / unvalidated**
+Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-This source slice closes the consumer-side structured-context gap for the mounted
-checkout compensation service's cart snapshot read and cart release calls in
-`crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs`.
+This source slice closes the Commerce consumer-side error boundary for both cart
+calls made during checkout compensation:
 
-The mounted service already used `CartCheckoutPort`. Before this slice, both cart
-calls constructed a complete `PortContext` inline and then mapped a failed
-`PortError` through the generic commerce boundary mapper with only the stage name.
-Correlation, actor, locale, causation, idempotency, deadline, and truthful
-owner-operation attribution were therefore unavailable at the mapper.
+- `CartCheckoutPort::read_cart_checkout_snapshot`;
+- `CartCheckoutPort::release_cart_checkout`.
 
-This slice is deliberately limited to:
-
-- cart snapshot read through `read_cart_checkout_snapshot`;
-- cart release through `release_cart_checkout`.
-
-Payment, order, and inventory compensation context retention were delivered in
-preceding slices and remain unchanged.
+The mounted `checkout_compensation_error_safe.rs` facade retains
+`checkout_compensation_owner_ports.rs` unchanged as private business logic. It
+wraps the constructor-injected canonical cart port before the retained service can
+use it.
 
 ## Delivered source contract
 
-The mounted service now retains two cart contexts:
+The mounted facade:
 
-- `cart_read_context` is cloned into `CartCheckoutPort::read_cart_checkout_snapshot`
-  and retained for failure mapping;
-- `cart_release_context` is created only for a checking-out cart, cloned into
-  `CartCheckoutPort::release_cart_checkout`, and retained for failure mapping.
+- delegates the original `PortContext`, snapshot request, release request, and
+  successful `CartResponse` unchanged;
+- preserves `PortError.kind`, the exact owner `code`, and `retryable`;
+- replaces owner message text with a Commerce-owned static message before
+  `CheckoutCompensationError::Boundary` construction;
+- therefore prevents owner message text from entering
+  `mark_compensation_retryable` through `compensation.to_string()`;
+- records only bounded context shapes, cart-id shape, snapshot locale
+  presence/length, typed classification, message presence/length, and a redacted
+  diagnostic token;
+- suppresses the retained raw compatibility diagnostic for truthful owners
+  `rustok_payment`, `rustok_order`, `rustok_inventory`, and `rustok_cart`;
+- preserves payment, order, inventory, and cart compensation ordering and
+  lifecycle behavior.
 
-Both failures are attributed to truthful owner `rustok_cart` with exact owner
-operations:
+## Static cart messages
 
-- `read_cart_checkout_snapshot` and commerce stage `read_cart`;
-- `release_cart_checkout` and commerce stage `release_cart`.
-
-The existing shared compensation diagnostic mapper records before public error
-mapping:
-
-- the original `PortError`;
-- correlation id and tenant id;
-- actor, channel, and locale;
-- causation id and traceparent;
-- idempotency key and deadline;
-- owner, exact owner operation, and commerce stage;
-- original code, public-safe message, typed kind, and retryability;
-- boundary `checkout_compensation_owner_port`.
-
-Unavailable, timeout, and invariant failures use error severity. Other owner
-rejections use warning severity.
+- validation: `Checkout cart compensation request is invalid`
+- not found: `Checkout cart compensation resource was not found`
+- conflict: `Checkout cart compensation conflicts with the current cart state`
+- forbidden: `Checkout cart compensation is not permitted`
+- unavailable / timeout: `Checkout cart compensation service is temporarily unavailable`
+- invariant violation: `Checkout cart compensation could not be completed safely`
 
 ## Preserved behavior
 
 This slice does not change:
 
-- compensation claim, lease, retry, or journal behavior;
+- compensation claim, lease, retry, or journal control flow;
 - payment-before-order-before-inventory-before-cart ordering;
-- payment, order, or inventory compensation callsites and context contracts;
-- the cart read context actor, locale, correlation identity, causation id, or
-  deadline;
-- the absence of an idempotency key on the cart snapshot read;
-- the cart release context actor, locale, correlation identity, causation id,
-  deadline, or existing release idempotency key;
-- cart snapshot request identity or locale request;
-- release request identity;
+- cart read context construction or the absence of a read idempotency key;
+- cart release context construction or its existing idempotency key;
+- snapshot request `cart_id` or `locale`;
+- release request `cart_id`;
 - checking-out release admission;
 - active-cart no-op behavior;
 - completed-cart manual reconciliation;
 - abandoned-cart conflict behavior;
 - unknown lifecycle manual reconciliation;
 - post-release active-state validation;
-- `CheckoutCompensationError::Boundary` stage, code, message, or retryability;
+- payment, order, or inventory compensation behavior;
 - FBA or FFA status.
 
-Cart errors do not use the payment/order manual-reconciliation code branch. After
-diagnostics they continue through the generic `Boundary` envelope with stage
-`read_cart` or `release_cart`.
+## Remaining work
 
-## Static evidence
+The checkout compensation owner-port consumer mapper is source-closed for payment,
+order, inventory, and cart. The broader ecommerce mapper task remains open for
+other services and non-`PortError` public envelopes. Compile, runtime, database,
+replay, restart, remote-port, workflow, and CI evidence also remain open.
 
-`scripts/verify/verify-commerce-checkout-compensation-cart-context.mjs` guards:
+## Validation disclosure
 
-- one retained read context, one read delegation clone, and one mapper input;
-- one retained release context, one release delegation clone, and one mapper
-  input;
-- truthful cart owner and exact read/release owner operations;
-- existing read/write context construction and release idempotency semantics;
-- full available `PortContext` fields in diagnostics;
-- original `PortError` code, message, kind, and retryability;
-- typed severity and explicit boundary identity;
-- diagnostics before unchanged owner routing and boundary mapping;
-- unchanged boundary envelope fields;
-- unchanged cart lifecycle behavior and compensation ordering;
-- unchanged payment, order, and inventory mounts;
-- absence of the old inline contexts and context-dropping cart mapper calls.
+No tests, Node verifiers, Cargo commands, formatting, cart scenarios, database
+scenarios, restart scenarios, remote-port scenarios, workflows, or CI were run.
 
-The preceding payment/order and inventory verifiers were synchronized only to
-stop pinning the now-superseded direct cart mapper. Their own boundary assertions
-remain intact.
-
-## Remaining gaps
-
-The master ecommerce correlation-safe mapper task remains open for:
-
-- remaining payment execution and compensation consumers;
-- remaining order and fulfillment consumers;
-- inventory, customer, tax, promotion, and remaining ecommerce adapters;
-- non-`PortError` public envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
-
-No architecture status is promoted from source-only evidence.
-
-## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
+Suggested maintainer checks:
 
 ```bash
 node scripts/verify/verify-commerce-checkout-compensation-cart-context.mjs
-node scripts/verify/verify-commerce-checkout-compensation-inventory-context.mjs
-node scripts/verify/verify-commerce-checkout-compensation-payment-order-context.mjs
 node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-commerce --lib
 ```
