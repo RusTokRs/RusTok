@@ -1,35 +1,33 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked through
-`main@e903e9e5d2a0e186432e436a4dc353b752218219` and active branch
-`agent/index-m6-targeted-drift-repair-20260806`.
+`main@3f9be66d3b3d3ed594ffa1f325b02db728212797` and active branch
+`agent/index-m6-missing-entity-repair-owner-20260806`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - compose targeted repair evidence and owner`
+`M6 - add prepared repair recovery policy`
 
 The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
-confirmation boundary, serializable finding persistence, fail-closed finding lifecycle commands, and
-generic targeted-repair orchestration with durable PostgreSQL reservations/receipts are source
-complete.
+confirmation boundary, serializable finding persistence, fail-closed finding lifecycle commands,
+generic targeted-repair orchestration, durable repair reservations/receipts, and one concrete
+missing-entity evidence/owner composition are source complete.
 
-Targeted repair now:
+Concrete missing-entity repair now:
 
-- accepts one exact tenant/finding/command identity and one typed missing-entity or orphan-link target;
-- authorizes before minting a non-public store/owner capability;
-- verifies the typed target as the cryptographic preimage of the stored finding identity and evidence;
-- reserves at most one active command per finding under a serializable database fence;
-- requires admitted before evidence, one target-kind owner call, and admitted after evidence;
-- persists one immutable terminal repaired/not-repaired receipt;
-- makes exact command replay resumable or terminally idempotent;
-- leaves ambiguous prepared commands fail-closed rather than silently expiring them;
+- accepts only the exact confirmed missing-entity target through a pre-reservation target gate;
+- brackets the exact materialized identity with two authoritative source/absence reads;
+- requires an absence version strictly newer than the live indexed version;
+- applies one typed delete through the established mutation inbox and schema validation;
+- uses the durable repair command UUID as the mutation event and delivery identity;
+- requires an exact tombstone at the admitted absence version before recording `Repaired`;
 - remains unmounted from runtime extensions and public transports.
 
-A concrete evidence reader, concrete idempotent repair owner, prepared-command recovery policy, and
-retained execution evidence remain open.
+Prepared-command recovery policy, orphan-link repair, public transport, and retained execution
+evidence remain open.
 
 ## Rechecked status
 
@@ -61,8 +59,9 @@ retained execution evidence remain open.
 - M6 bounded candidate confirmation and PostgreSQL materialized observer: `source_complete`
 - M6 confirmed-candidate finding persistence: `source_complete`
 - M6 drift finding lifecycle commands: `source_complete`
-- M6 generic targeted drift repair boundary and durable receipt store:
-  `source_complete_owner_composition_pending`
+- M6 generic targeted drift repair boundary and durable receipt store: `source_complete`
+- M6 concrete missing-entity evidence reader and idempotent mutation owner:
+  `source_complete_recovery_policy_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -127,9 +126,12 @@ retained execution evidence remain open.
 - [x] Add one active-command-per-finding serializable reservation and idempotent terminal receipt.
 - [x] Preserve finding and lifecycle rows; successful repair does not silently resolve a finding.
 - [x] Keep repair unmounted from server extensions, public transports, schedulers, and page loops.
-- [ ] Compose one concrete admitted evidence reader.
-- [ ] Compose one concrete idempotent repair owner for the smallest supported target kind.
+- [x] Compose one concrete admitted evidence reader for confirmed missing-entity findings.
+- [x] Compose one concrete idempotent missing-entity delete owner through `PostgresMutationStore`.
+- [x] Gate unsupported orphan-link targets before durable reservation in the concrete composition.
+- [x] Bind mutation retry identity to the durable repair command UUID.
 - [ ] Add prepared-command lease/abandon/recovery policy and lifecycle coordination.
+- [ ] Add a concrete orphan-link repair owner only after recovery policy is admitted.
 - [ ] Retain migration, crash-window, owner-idempotency, and PostgreSQL concurrency evidence.
 
 ## M7 production graph and cutover
@@ -146,34 +148,32 @@ retained execution evidence remain open.
 
 ## Next implementation step
 
-Compose one concrete bounded evidence reader and one concrete idempotent repair owner for the smallest
-supported confirmed finding kind.
+Add a fail-closed recovery policy for durable `prepared` repair commands.
 
 The next slice must:
 
-- reuse the existing source registry, admitted absence proof, and exact materialized observation;
-- derive before/after evidence from typed state rather than caller digests or payloads;
-- support exactly one target kind and reject all others before owner mutation;
-- make the owner mutation idempotent by the durable repair command UUID;
-- apply at most one exact mutation through an existing owner/storage contract;
-- return a bounded owner receipt digest without exposing source or Index payload;
-- preserve the prepared reservation across retryable source/owner/evidence failure;
-- add no public transport, scheduler, automatic finding iteration, or lifecycle transition.
+- distinguish an actively owned attempt from an abandoned or operator-paused attempt;
+- preserve exact tenant, finding, command, target, actor, reason, and payload-digest identity;
+- require an authorized operator capability for resume, abandon, or terminal not-repaired decisions;
+- never infer that an owner side effect did or did not happen from elapsed time alone;
+- support exact command retry without creating a second mutation identity;
+- retain an immutable recovery decision and bounded reason;
+- coordinate with finding lifecycle closure without silently deleting repair history;
+- add no public transport, automatic scanner, scheduler loop, or orphan-link mutation owner.
 
-Prepared-command recovery policy, a second repair kind, public authorization transport, and automatic
-repair remain separate later slices.
+Orphan-link repair, public authorization transport, automatic iteration, and retained production
+evidence remain separate later slices.
 
 ## Owner verification for this slice
 
 ```bash
-cargo test -p rustok-index drift_repair -- --nocapture
+cargo test -p rustok-index drift_missing_entity_repair -- --nocapture
+node scripts/verify/verify-index-missing-entity-repair-composition.mjs
 node scripts/verify/verify-index-targeted-drift-repair.mjs
-node scripts/verify/verify-index-drift-finding-lifecycle.mjs
-node scripts/verify/verify-index-confirmed-candidate-persistence.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-No tests, verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite scenarios, workflows, or
-CI were executed by the implementation agent.
+No tests, Node verifiers, formatting, Cargo checks, migrations, PostgreSQL/SQLite scenarios,
+workflows, or CI were executed by the implementation agent.
