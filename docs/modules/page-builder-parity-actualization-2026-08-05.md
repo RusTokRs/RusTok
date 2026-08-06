@@ -1,7 +1,7 @@
 # Page Builder / Pages Parity Actualization
 
 Date: 2026-08-07
-Status: current-source-overlay / rebuild-provenance-source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / execution-and-rollout-open
+Status: current-source-overlay / rebuild-provenance-source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / explicit-artifact-repair-transport-source-ready / execution-and-rollout-open
 
 This overlay reconciles the Page Builder programme with current `main`. It supersedes stale open-checkbox wording in older broad plans where that wording conflicts with merged source. It does not convert source-ready work into executed evidence.
 
@@ -125,8 +125,8 @@ The broad Phase 6 wording should now be read as follows:
 - GraphQL, HTTP and OpenAPI audit transport: source-ready;
 - explicit append-only rebuild service command: source-ready;
 - Explicit binding replacement service command: source-ready;
-- accepted database and transport evidence: pending;
-- tenant-admin repair transports remain open.
+- Bounded tenant-admin repair transports: source-ready;
+- accepted database and transport evidence: pending.
 
 ### Reviewed publish rebuild provenance
 
@@ -167,7 +167,7 @@ rebuild:<rebuild-operation-uuid>
 
 Ordinary reviewed publish remains on `canonical`. Rebuild inserts a new operation-bound immutable row and a replayable `page_artifact_rebuild_operations` receipt. The source or damaged artifact is never updated or deleted.
 
-The command does not change the published binding, page version, lifecycle state, route/page/artifact generations or event stream. It has no GraphQL, HTTP, OpenAPI, admin UI or worker transport. It is not automatic repair.
+The command does not change the published binding, page version, lifecycle state, route/page/artifact generations or event stream. It remains a distinct owner command and is not automatic repair.
 
 ### Explicit artifact binding replacement
 
@@ -177,17 +177,51 @@ Marker:
 explicit-artifact-binding-replacement-source-ready
 ```
 
-Pages now owns the separate explicit activation command for one exact rebuild receipt.
+Pages owns the separate explicit activation command for one exact rebuild receipt.
 
 The request binds tenant, page, rebuild operation id, expected page version, expected current artifact id and a distinct idempotency key. Tenant-wide `pages:manage` is required. The page must remain published.
 
-The selected rebuild receipt must be valid, its source artifact must equal the caller's expected current artifact, and the locked locale binding must still point to that exact source id. The replacement row must match the receipt's tenant, page, locale, operation-bound instance key, artifact hash and materialization hash. The existing Page Builder artifact verifier runs before the binding update.
+The selected rebuild receipt and retained provenance must be valid and mutually consistent. Its source artifact must equal the caller's expected current artifact, and the locked locale binding must still point to that exact source id and retained body. The replacement row must match the receipt's tenant, page, locale, operation-bound instance key, artifact hash and materialization hash. The existing Page Builder artifact verifier runs before the binding update.
 
 The owner transaction updates one locale binding only, advances the page version once, retains published state, writes `NodeUpdated` plus `NodePublished`, stores `page_artifact_binding_replacement_operations`, and then commits. Cache generation effects remain event-driven after commit; the command never calls cache infrastructure inline.
 
 An exact replay returns the retained result without repeating the binding, version or events. A rebuild receipt may receive only one activation receipt. The damaged source artifact remains unchanged and retained.
 
-No GraphQL, HTTP, OpenAPI, admin UI or worker transport is added. Audit does not schedule rebuild or activation automatically.
+Audit does not schedule rebuild or activation automatically.
+
+### Bounded tenant-admin repair transports
+
+Marker:
+
+```text
+explicit-artifact-repair-transport-source-ready
+```
+
+Pages now exposes the two existing repair owner commands through separate bounded adapters.
+
+GraphQL mounts:
+
+```text
+rebuildPageArtifact
+activateRebuiltPageArtifact
+```
+
+HTTP mounts:
+
+```text
+POST /api/admin/pages/{id}/artifacts/rebuild
+POST /api/admin/pages/{id}/artifacts/activate
+```
+
+OpenAPI registers both routes, their explicit owner inputs and bounded public result schemas.
+
+Both adapter families require the module to be enabled, fence the authenticated actor to the current tenant and require an effective `pages:manage` grant before delegation. The owner commands still enforce the authoritative tenant-wide `PermissionScope::All` scope before writes.
+
+Adapters delegate once to `PageService`. They do not import entities, query artifact/provenance/binding tables, mutate owner records directly, emit lifecycle events or call cache infrastructure. Error mappers use only static public codes and static messages; raw `PagesError` text is never returned.
+
+The bounded rebuild result exposes operation/page/locale identities, source and rebuilt artifact ids, verified artifact/materialization hashes, replay state and timestamp. The bounded activation result exposes operation/page/version/locale identities, rebuild operation id, previous/replacement artifact ids, verified replacement hashes, replay state and timestamp.
+
+Both result shapes omit provenance source id, source publish operation id, storage instance key, idempotency keys, runtime context, materialization identity JSON and runtime snapshots. No discovery/list endpoint or combined repair endpoint is introduced.
 
 Current repair/rebuild matrix:
 
@@ -198,26 +232,27 @@ Current repair/rebuild matrix:
 | Rebuild idempotent receipt | Source-ready | Replay/conflict evidence pending |
 | Canonical/rebuild storage instance identity | Source-ready | Migration and duplicate-identity evidence pending |
 | Explicit binding replacement | Source-ready | SQLite/PostgreSQL, fences, lifecycle and cache evidence pending |
-| Tenant-admin repair transports | Open | Not implemented |
+| Bounded tenant-admin repair transports | Source-ready | GraphQL/HTTP/OpenAPI execution pending |
+| Static public repair errors and bounded results | Source-ready | Response-shape execution pending |
 | Automatic audit-to-rebuild action | Deliberately absent | Not allowed |
 
 ### Status boundary
 
 Source parity has advanced, but execution and rollout remain open.
 
-- No new test, source verifier, Cargo, formatting, migration, database, GraphQL, HTTP, browser, workflow or CI execution is claimed here.
-- No audit, provenance, rebuild, binding replacement, lifecycle/cache observation or tenant rollout scenario was executed.
+- No new test, source verifier, Cargo, formatting, migration, database, GraphQL, HTTP, OpenAPI, browser, workflow or CI execution is claimed here.
+- No audit, provenance, rebuild, binding replacement, repair transport, lifecycle/cache observation or tenant rollout scenario was executed.
 - No FFA/FBA promotion is made.
 
 ## Current next cursor
 
-1. Run the immutable artifact audit, provenance, explicit-rebuild and binding-replacement source guards.
+1. Run the immutable artifact audit, provenance, explicit-rebuild, binding-replacement and repair-transport source guards.
 2. Retain SQLite/PostgreSQL audit evidence for valid canonical/rebuilt records, corruption, partial evidence, authorization and truncation.
 3. Retain provenance migration/publish evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
 4. Retain explicit rebuild evidence for tenant-wide versus owner-scoped Manage, exact replay, idempotency conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction.
 5. Prove rebuild appends a distinct artifact row while the active binding, page version, lifecycle events and cache generations remain unchanged.
 6. Retain Explicit binding replacement evidence for stale page version, stale current artifact, invalid replacement, one-locale mutation, exact replay, one activation per rebuild and unchanged source row.
 7. Observe committed `NodeUpdated`/`NodePublished` processing and route/page/artifact generation changes only after activation commit.
-8. Design bounded tenant-admin repair transports for explicit rebuild and activation without adding automatic audit-to-repair or exposing raw provenance/runtime payloads.
+8. Retain repair transport execution evidence for GraphQL schema mounting, HTTP routes, OpenAPI schemas, current-tenant fences, tenant-wide authorization, static errors and bounded result fields.
 9. Run the static publish resource-limit source guard and accepted real-project policy evidence.
 10. Execute existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
