@@ -83,7 +83,7 @@ if [[ $skip_wasm_bindgen_tool_install -eq 1 ]]; then
 fi
 
 server_rustflags="${RUSTFLAGS:-}"
-admin_rustflags="${RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS:-$server_rustflags}"
+admin_rustflags="${RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS:-}"
 client_rustflags="${RUSTOK_PAGES_INLINE_EDIT_CLIENT_RUSTFLAGS:-$admin_rustflags}"
 RUSTFLAGS="$admin_rustflags" bash "$admin_builder" "${admin_args[@]}"
 RUSTFLAGS="$server_rustflags" \
