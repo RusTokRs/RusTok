@@ -45,16 +45,18 @@ snapshot token approach their maximum bounds.
 Continuation requests must carry the same fence. The reader recomputes the exact scope digest,
 compares it before page SQL, and validates the canonical `xmin:xmax:active-xids` token shape.
 
-Both candidate phases require row insertion versions to satisfy
-`txid_visible_in_snapshot((xmin::text)::bigint, fence::txid_snapshot)`. Consequently, a row version
-inserted or updated after the first-page snapshot cannot appear later in the same pass, including a
+Stale entity rows, link rows, their exact source-entity rows, and deleted target rows must have an
+insertion version visible in the same captured transaction snapshot. Post-fence inserted or updated
+versions therefore cannot be admitted as those candidate components later in the pass, including a
 late commit that began before the first page.
 
 A PostgreSQL snapshot value cannot resurrect a row version that a later transaction has physically
-made invisible through update or delete. Therefore a post-fence mutation may conservatively remove a
-candidate from the remainder of the current pass. It cannot introduce a post-fence row version or
-confirm an inconsistency. A later bounded pass evaluates the new materialized state. The reader is a
-candidate discovery boundary, not retained time-travel storage.
+made invisible through update or delete. A post-fence materialized mutation can therefore
+conservatively remove a candidate from the remainder of the current pass. A current target row whose
+version is not visible in the fence is skipped rather than treated as a deleted target. A physically
+absent target remains only a candidate and must be rechecked by the confirmation boundary. These
+rules cannot confirm an inconsistency; a later bounded pass evaluates the new materialized state.
+The reader is a candidate discovery boundary, not retained time-travel storage.
 
 ## Private cursor
 
@@ -99,9 +101,11 @@ The orphan phase:
 
 - scopes `index_links` to the same source tenant and exact source schema;
 - joins the exact current source entity/version and requires it to be live;
-- requires both link and source entity row versions to be visible in the captured fence;
+- requires both link and source-entity row versions to be visible in the captured fence;
 - left-joins the typed target key;
-- retains only absent or deleted target rows;
+- accepts a deleted target only when that tombstone version is visible in the same fence;
+- skips a present target whose current version is post-fence;
+- retains a physically absent target only as a candidate for later exact confirmation;
 - applies strict tuple keyset ordering;
 - reads at most `limit + 1` rows.
 
