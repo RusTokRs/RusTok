@@ -152,7 +152,11 @@ const document = {
   status: "passed",
   source_commit: sourceCommit,
   captured_at: new Date().toISOString(),
-  requested_image: options.image,
+  requested_image: {
+    bytes: Buffer.byteLength(options.image),
+    sha256: sha256(options.image),
+    raw_value_persisted: false,
+  },
   image_id: image.Id,
   repo_digests: repoDigests,
   size_bytes: image.Size,
@@ -175,6 +179,7 @@ const document = {
     raw_document_persisted: false,
   },
   privacy: {
+    requested_image_value_persisted: false,
     docker_inspect_document_persisted: false,
     environment_values_persisted: false,
     credentials_persisted: false,
