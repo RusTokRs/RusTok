@@ -11,8 +11,6 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const shipping = read('crates/rustok-commerce/src/controllers/admin/shipping.rs');
-const apiPorts = read('crates/rustok-api/src/ports.rs');
-const fulfillmentErrors = read('crates/rustok-fulfillment/src/error.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -30,8 +28,21 @@ const between = (content, start, end, label) => {
   }
   return content.slice(startIndex, endIndex);
 };
+const requireBefore = (content, first, second, label) => {
+  const firstIndex = content.indexOf(first);
+  const secondIndex = content.indexOf(second);
+  if (firstIndex < 0 || secondIndex < 0 || firstIndex > secondIndex) {
+    failures.push(`${label}: ${first} must precede ${second}`);
+  }
+};
 
-const legacyMapper = between(
+const diagnosticProjection = between(
+  shipping,
+  'struct AdminShippingOptionDiagnosticContext {',
+  'fn map_shipping_profile_error(',
+  'admin shipping diagnostic projection',
+);
+const mutationMapper = between(
   shipping,
   'fn map_admin_shipping_option_error(',
   'fn admin_shipping_option_read_port_context(',
@@ -81,26 +92,44 @@ const deactivateRoute = between(
 );
 const reactivateStart = shipping.indexOf('pub async fn reactivate_shipping_option(');
 const reactivateRoute = reactivateStart < 0 ? '' : shipping.slice(reactivateStart);
-if (reactivateStart < 0) failures.push('reactivate shipping option route: unable to isolate source block');
+if (reactivateStart < 0) {
+  failures.push('reactivate shipping option route: unable to isolate source block');
+}
 
 for (const [value, label] of [
-  ['PortActor, PortContext, PortError, PortErrorKind, RequestContext', 'typed port imports'],
-  ['use rustok_fulfillment::error::FulfillmentError;', 'typed mutation error import'],
-  ['ListAllShippingOptionProjectionsRequest', 'admin list request'],
-  ['ReadShippingOptionProjectionRequest', 'admin lookup request'],
-  [
-    'const ADMIN_SHIPPING_OPTION_OWNER: &str = "rustok_fulfillment.admin_shipping_options";',
-    'owner constant',
-  ],
-  [
-    'const ADMIN_SHIPPING_BOUNDARY: &str = "commerce_admin_shipping_http";',
-    'boundary constant',
-  ],
-  ['struct AdminShippingOptionErrorContext {', 'error context'],
-  ['tenant_id: Uuid,', 'tenant field'],
-  ['shipping_option_id: Option<Uuid>,', 'option identity field'],
-  ["operation: &'static str,", 'operation field'],
+  ['struct AdminShippingOptionErrorContext {', 'typed error context'],
+  ['tenant_id: Uuid,', 'typed tenant identity'],
+  ['shipping_option_id: Option<Uuid>,', 'typed option identity'],
+  ["operation: &'static str,", 'typed operation'],
+  ['struct AdminShippingOptionDiagnosticContext {', 'bounded route diagnostic context'],
+  ['struct AdminShippingOptionPortDiagnosticContext {', 'bounded port diagnostic context'],
+  ['struct AdminShippingOptionPortDiagnosticError', 'bounded port diagnostic error'],
+  ['struct AdminShippingDiagnosticError;', 'bounded owner diagnostic error'],
+  ['formatter.write_str("redacted")', 'redacted Debug output'],
+  ["fn uuid_shape(value: Uuid) -> &'static str", 'required UUID shape helper'],
+  ["fn optional_uuid_shape(value: Option<Uuid>) -> &'static str", 'optional UUID shape helper'],
+  ["fn text_presence_shape(value: &str) -> &'static str", 'text presence helper'],
+  ["fn optional_text_presence_shape(value: Option<&str>) -> &'static str", 'optional text presence helper'],
+  ['"nil"', 'nil UUID shape'],
+  ['"non_nil"', 'non-nil UUID shape'],
+  ['"absent"', 'absent optional shape'],
+  ['"present_nil"', 'present nil optional shape'],
+  ['"present_non_nil"', 'present non-nil optional shape'],
+  ['"empty"', 'empty text shape'],
+  ['"present_empty"', 'present empty text shape'],
+  ['"present_non_empty"', 'present non-empty text shape'],
 ]) requireText(shipping, value, label);
+
+for (const [value, label] of [
+  ['tenant_id: uuid_shape(context.tenant_id)', 'tenant projection'],
+  ['shipping_option_id: optional_uuid_shape(context.shipping_option_id)', 'option projection'],
+  ['operation: context.operation', 'operation projection'],
+  ['correlation_id: text_presence_shape(context.correlation_id.as_str())', 'correlation projection'],
+  ['actor: text_presence_shape(context.actor.id.as_str())', 'actor projection'],
+  ['channel: optional_text_presence_shape(context.channel.as_deref())', 'channel projection'],
+  ['locale: context.locale.len()', 'locale projection'],
+  ['deadline_ms: context.deadline_ms', 'deadline projection'],
+]) requireText(diagnosticProjection, value, label);
 
 for (const [value, label] of [
   ['PortActor::user(auth.user_id.to_string())', 'authenticated actor'],
@@ -111,36 +140,64 @@ for (const [value, label] of [
 ]) requireText(readContextBuilder, value, label);
 
 for (const [value, label] of [
-  ['error: PortError,', 'owned typed port cause'],
-  ['PortErrorKind::Validation', 'validation kind'],
-  ['PortErrorKind::NotFound', 'not-found kind'],
-  ['PortErrorKind::Conflict', 'conflict kind'],
-  ['PortErrorKind::Forbidden', 'forbidden kind'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'unavailable kinds'],
-  ['PortErrorKind::InvariantViolation', 'invariant kind'],
-  ['StatusCode::BAD_REQUEST', 'bad-request status'],
-  ['StatusCode::NOT_FOUND', 'not-found status'],
-  ['StatusCode::CONFLICT', 'conflict status'],
-  ['StatusCode::UNAUTHORIZED', 'forbidden status'],
-  ['StatusCode::SERVICE_UNAVAILABLE', 'unavailable status'],
-  ['StatusCode::INTERNAL_SERVER_ERROR', 'invariant status'],
-  ['"commerce_admin_fulfillment_invalid"', 'validation code'],
-  ['"commerce_admin_not_found"', 'not-found code'],
-  ['"commerce_admin_fulfillment_state_conflict"', 'conflict code'],
-  ['"commerce_permission_denied"', 'forbidden code'],
-  ['"commerce_admin_fulfillment_storage_unavailable"', 'storage code'],
-  ['"commerce_admin_fulfillment_failed"', 'fail-closed code'],
-  ['error = ?error', 'typed internal cause'],
-  ['owner_operation,', 'owner operation log'],
-  ['correlation_id = %port_context.correlation_id', 'correlation log'],
-  ['actor = ?port_context.actor', 'actor log'],
-  ['channel = ?port_context.channel', 'channel log'],
-  ['locale = %port_context.locale', 'locale log'],
-  ['deadline_ms = ?port_context.deadline_ms', 'deadline log'],
-  ['internal_code = %error.code', 'owner code log'],
-  ['retryable = error.retryable', 'retryability log'],
-  ['HttpError::new(status, code, message)', 'static public envelope'],
+  ['FulfillmentError::Validation(_)', 'mutation validation variant'],
+  ['FulfillmentError::ShippingOptionNotFound(_)', 'mutation option not-found variant'],
+  ['FulfillmentError::FulfillmentNotFound(_)', 'mutation fulfillment not-found variant'],
+  ['FulfillmentError::InvalidTransition { .. }', 'mutation conflict variant'],
+  ['FulfillmentError::Database(_)', 'mutation database variant'],
+  ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'mutation context shadow'],
+  ['let error = AdminShippingDiagnosticError;', 'mutation error shadow'],
+  ['error = ?error', 'redacted mutation error event'],
+  ['tenant_id = %context.tenant_id', 'bounded mutation tenant event'],
+  ['shipping_option_id = ?context.shipping_option_id', 'bounded mutation option event'],
+  ['HttpError::new(status, code, message)', 'mutation static envelope'],
+]) requireText(mutationMapper, value, label);
+requireBefore(
+  mutationMapper,
+  'FulfillmentError::Validation(_)',
+  'let context = AdminShippingOptionDiagnosticContext::from(&context);',
+  'mutation typed policy selection',
+);
+requireBefore(
+  mutationMapper,
+  'let error = AdminShippingDiagnosticError;',
+  'tracing::error!(',
+  'mutation diagnostic shadow',
+);
+
+for (const [value, label] of [
+  ['PortErrorKind::Validation', 'port validation kind'],
+  ['PortErrorKind::NotFound', 'port not-found kind'],
+  ['PortErrorKind::Conflict', 'port conflict kind'],
+  ['PortErrorKind::Forbidden', 'port forbidden kind'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'port unavailable kinds'],
+  ['PortErrorKind::InvariantViolation', 'port invariant kind'],
+  ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'port route context shadow'],
+  ['let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);', 'port metadata shadow'],
+  ['let error = AdminShippingOptionPortDiagnosticError {', 'port error shadow'],
+  ['code: error.code.as_str()', 'stable internal code capture'],
+  ['retryable: error.retryable', 'retryability capture'],
+  ['correlation_id = %port_context.correlation_id', 'bounded correlation event'],
+  ['actor = ?port_context.actor', 'bounded actor event'],
+  ['channel = ?port_context.channel', 'bounded channel event'],
+  ['locale = %port_context.locale', 'bounded locale event'],
+  ['deadline_ms = ?port_context.deadline_ms', 'deadline event'],
+  ['internal_code = %error.code', 'stable code event'],
+  ['retryable = error.retryable', 'retryability event'],
+  ['HttpError::new(status, code, message)', 'port static envelope'],
 ]) requireText(portMapper, value, label);
+requireBefore(
+  portMapper,
+  'PortErrorKind::Validation',
+  'let context = AdminShippingOptionDiagnosticContext::from(&context);',
+  'port typed policy selection',
+);
+requireBefore(
+  portMapper,
+  'let error = AdminShippingOptionPortDiagnosticError {',
+  'tracing::error!(',
+  'port diagnostic shadow',
+);
 
 for (const [block, operation, request, label] of [
   [
@@ -173,22 +230,8 @@ for (const [block, operation, label] of [
 ]) {
   requireText(block, 'FulfillmentService::new(runtime.db_clone())', `${label} lifecycle service`);
   requireText(block, operation, `${label} service operation`);
-  requireText(block, 'map_admin_shipping_option_error(', `${label} legacy typed mapper`);
+  requireText(block, 'map_admin_shipping_option_error(', `${label} typed mapper`);
 }
-
-for (const [value, label] of [
-  ['FulfillmentError::Validation(_)', 'mutation validation variant'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'mutation not-found variant'],
-  ['FulfillmentError::FulfillmentNotFound(_)', 'mutation fulfillment variant'],
-  ['FulfillmentError::InvalidTransition { .. }', 'mutation conflict variant'],
-  ['FulfillmentError::Database(_)', 'mutation database variant'],
-]) requireText(legacyMapper, value, label);
-
-for (const [content, value, label] of [
-  [apiPorts, 'pub enum PortErrorKind {', 'owner port error kinds'],
-  [apiPorts, 'InvariantViolation,', 'owner invariant kind'],
-  [fulfillmentErrors, 'ShippingOptionNotFound(Uuid)', 'owner shipping-option variant'],
-]) requireText(content, value, label);
 
 for (const value of [
   'error.to_string()',
@@ -199,9 +242,9 @@ for (const value of [
   '.map_err(super::map_fulfillment_error)?;',
 ]) forbidText(shipping, value, 'unsafe admin shipping-option public conversion');
 
-const legacyMapperUses = shipping.match(/map_admin_shipping_option_error\(/g) ?? [];
-if (legacyMapperUses.length !== 5) {
-  failures.push(`expected mutation mapper definition plus four uses, found ${legacyMapperUses.length}`);
+const mutationMapperUses = shipping.match(/map_admin_shipping_option_error\(/g) ?? [];
+if (mutationMapperUses.length !== 5) {
+  failures.push(`expected mutation mapper definition plus four uses, found ${mutationMapperUses.length}`);
 }
 const portMapperUses = shipping.match(/map_admin_shipping_option_port_error\(/g) ?? [];
 if (portMapperUses.length !== 3) {
@@ -215,5 +258,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin shipping-option reads use typed owner-port context while mutations retain typed lifecycle envelopes',
+  '✔ Commerce admin shipping-option reads and mutations retain typed policy while emitting only bounded diagnostics',
 );
