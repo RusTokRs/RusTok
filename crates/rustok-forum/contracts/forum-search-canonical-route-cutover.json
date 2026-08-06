@@ -48,7 +48,11 @@
     "compatibility_fallback_added": false,
     "search_storage_schema_changed": false,
     "owner_event_schema_changed": false,
-    "projection_invalidation_protocol_changed": false
+    "projection_invalidation_protocol_changed": false,
+    "harness_task": "FORUM-24R",
+    "evidence_contract": "crates/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json",
+    "executable_target": "crates/rustok-search/tests/forum_canonical_route_reindex_postgres.rs",
+    "execution_status": "maintainer_pending"
   },
   "compatibility": {
     "graphql_result_shape_changed": false,
@@ -63,9 +67,11 @@
     "executed_by_implementation_agent": false,
     "commands": [
       "node scripts/verify/verify-forum-search-canonical-route-cutover.mjs",
+      "node scripts/verify/verify-forum-search-canonical-route-reindex-harness.mjs",
       "node scripts/verify/verify-search-canonical-url-contract.mjs",
       "node scripts/verify/verify-forum-public-discovery-seo.mjs",
       "cargo test -p rustok-search engine::tests -- --nocapture",
+      "cargo test -p rustok-search --test forum_canonical_route_reindex_postgres -- --nocapture",
       "cargo test -p rustok-forum --test search_canonical_route_cutover_contract -- --nocapture",
       "cargo check -p rustok-forum --all-targets",
       "cargo check -p rustok-search --all-targets --features graphql"
