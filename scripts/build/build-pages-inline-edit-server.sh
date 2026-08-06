@@ -77,8 +77,11 @@ wasm_bindgen="$tool_root/bin/wasm-bindgen"
   exit 1
 }
 
+server_rustflags="${RUSTFLAGS:-}"
+client_rustflags="${RUSTOK_PAGES_INLINE_EDIT_CLIENT_RUSTFLAGS:-}"
 rustup target add wasm32-unknown-unknown
 CARGO_TARGET_DIR="$target_dir" \
+RUSTFLAGS="$client_rustflags" \
 RUSTOK_PAGES_INLINE_EDIT_PROFILE="$profile" \
 RUSTOK_WASM_BINDGEN_BIN="$wasm_bindgen" \
 node "$client_builder"
@@ -97,7 +100,7 @@ cargo_args=(
 if [[ "$profile" == "release" ]]; then
   cargo_args+=(--release)
 fi
-CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
+CARGO_TARGET_DIR="$target_dir" RUSTFLAGS="$server_rustflags" cargo "${cargo_args[@]}"
 test -x "$target_dir/$profile/rustok-server"
 
 echo "✔ built rustok-server with embedded Pages inline edit assets ($profile, wasm-bindgen $wasm_bindgen_version)"

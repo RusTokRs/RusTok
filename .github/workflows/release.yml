@@ -39,13 +39,13 @@ jobs:
       created_epoch: ${{ steps.source.outputs.created_epoch }}
     steps:
       - name: Checkout tagged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
@@ -130,13 +130,13 @@ jobs:
         -C link-arg=-Wl,--build-id=none
     steps:
       - name: Checkout exact release commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
           cache: npm
@@ -148,20 +148,16 @@ jobs:
           rustup default 1.96.0
           rustc --version --verbose
 
-      - name: Build embedded admin assets
+      - name: Build same-origin Pages inline edit release composition
         env:
-          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
-        run: >-
-          bash scripts/build/build-embedded-admin.sh
-          --tool-root "$GITHUB_WORKSPACE/.tools/trunk-0.21.14"
-          --target-dir "$GITHUB_WORKSPACE/target/admin-assets"
-
-      - name: Build locked release binary
+          RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
         run: |
           test "$(uname -m)" = "x86_64"
-          test -s apps/admin/dist/index.html
-          cargo build --locked --release -p rustok-server --bin rustok-server
-          test -x "$CARGO_TARGET_DIR/release/rustok-server"
+          bash scripts/build/build-pages-inline-edit-deployment.sh \
+            --trunk-tool-root "$GITHUB_WORKSPACE/.tools/trunk-0.21.14" \
+            --wasm-bindgen-tool-root "$GITHUB_WORKSPACE/.tools/wasm-bindgen-cli" \
+            --admin-target-dir "$GITHUB_WORKSPACE/target/admin-assets" \
+            --server-target-dir "$CARGO_TARGET_DIR"
 
       - name: Package deterministic archive
         id: package
@@ -217,13 +213,13 @@ jobs:
         -C link-arg=-Wl,--build-id=none
     steps:
       - name: Checkout exact release commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
           cache: npm
@@ -235,20 +231,16 @@ jobs:
           rustup default 1.96.0
           rustc --version --verbose
 
-      - name: Rebuild embedded admin assets
+      - name: Rebuild same-origin Pages inline edit release composition
         env:
-          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
-        run: >-
-          bash scripts/build/build-embedded-admin.sh
-          --tool-root "$GITHUB_WORKSPACE/.tools/trunk-0.21.14"
-          --target-dir "$GITHUB_WORKSPACE/target/admin-assets"
-
-      - name: Rebuild locked release binary
+          RUSTOK_EMBEDDED_ADMIN_RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
         run: |
           test "$(uname -m)" = "x86_64"
-          test -s apps/admin/dist/index.html
-          cargo build --locked --release -p rustok-server --bin rustok-server
-          test -x "$CARGO_TARGET_DIR/release/rustok-server"
+          bash scripts/build/build-pages-inline-edit-deployment.sh \
+            --trunk-tool-root "$GITHUB_WORKSPACE/.tools/trunk-0.21.14" \
+            --wasm-bindgen-tool-root "$GITHUB_WORKSPACE/.tools/wasm-bindgen-cli" \
+            --admin-target-dir "$GITHUB_WORKSPACE/target/admin-assets" \
+            --server-target-dir "$CARGO_TARGET_DIR"
 
       - name: Repackage and compare digest
         env:
@@ -284,18 +276,18 @@ jobs:
       digest: ${{ steps.image-metadata.outputs.digest }}
     steps:
       - name: Checkout release image definition
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
       - name: Download reproducible server archive
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: release-binary-${{ github.run_id }}
           path: binary-artifacts
@@ -439,24 +431,24 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Checkout release scripts
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
       - name: Download binary assets
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: release-binary-${{ github.run_id }}
           path: release-artifacts
 
       - name: Download container identity
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: release-container-${{ github.run_id }}
           path: release-artifacts
@@ -500,18 +492,18 @@ jobs:
       contents: write
     steps:
       - name: Checkout exact release notes
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
       - name: Download finalized release assets
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: release-final-${{ github.run_id }}
           path: release-artifacts
