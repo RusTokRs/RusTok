@@ -1,0 +1,44 @@
+{
+  "status": "commerce_admin_reconciliation_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/controllers/reconciliation.rs",
+    "scripts/verify/verify-commerce-admin-fulfillment-reconciliation-error-context.mjs",
+    "crates/rustok-commerce/docs/admin-reconciliation-diagnostic-safety.md",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "raw_fulfillment_error_logged": false,
+    "raw_fulfillment_orchestration_error_logged": false,
+    "raw_serialization_error_logged": false,
+    "raw_tenant_uuid_logged": false,
+    "raw_actor_uuid_logged": false,
+    "raw_provider_operation_uuid_logged": false,
+    "redacted_error_debug_logged": true,
+    "required_uuid_shapes_logged": true,
+    "optional_uuid_shapes_logged": true,
+    "typed_policy_selection_precedes_projection": true,
+    "fulfillment_owner_policy_preserved": true,
+    "orchestration_policy_preserved": true,
+    "encoding_policy_preserved": true,
+    "six_route_contexts_preserved": true,
+    "manage_permission_preserved": true,
+    "owner_calls_preserved": true,
+    "provider_registry_composition_preserved": true,
+    "limits_and_stale_clamp_preserved": true,
+    "successful_response_envelopes_preserved": true,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}
