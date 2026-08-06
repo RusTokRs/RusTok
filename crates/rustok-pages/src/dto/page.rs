@@ -191,7 +191,6 @@ pub struct PageResponse {
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
-    pub archived_at: Option<String>,
     pub translation: Option<PageTranslationResponse>,
     pub translations: Vec<PageTranslationResponse>,
     pub body: Option<PageBodyResponse>,
