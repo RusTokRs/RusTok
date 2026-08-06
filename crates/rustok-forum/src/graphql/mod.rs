@@ -18,6 +18,7 @@ mod storefront_read_state;
 mod topic_fork_mutation;
 mod topic_merge_mutation;
 mod topic_reply_range_move_mutation;
+mod topic_slug_rename_mutation;
 mod topic_split_mutation;
 mod types;
 
@@ -55,6 +56,9 @@ pub use topic_merge_mutation::{
 pub use topic_reply_range_move_mutation::{
     GqlForumReplyRangeMove, MoveForumTopicReplyRangeGraphqlInput,
 };
+pub use topic_slug_rename_mutation::{
+    GqlForumTopicRouteDescriptor, GqlForumTopicSlugRename, RenameForumTopicSlugGraphqlInput,
+};
 pub use topic_split_mutation::{GqlForumTopicSplit, SplitForumTopicRepliesGraphqlInput};
 pub use types::*;
 
@@ -83,5 +87,6 @@ pub struct ForumMutation(
     topic_fork_mutation::ForumTopicForkMutation,
     topic_merge_mutation::ForumTopicMergeMutation,
     topic_reply_range_move_mutation::ForumTopicReplyRangeMoveMutation,
+    topic_slug_rename_mutation::ForumTopicSlugRenameMutation,
     topic_split_mutation::ForumTopicSplitMutation,
 );
