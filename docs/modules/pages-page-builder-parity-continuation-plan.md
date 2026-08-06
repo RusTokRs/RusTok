@@ -43,7 +43,7 @@ Current `main` through PR #3029 contains:
 - PR #3026 — forward public-route snapshots and delete tombstone composition;
 - PR #3029 — explicit bounded historical route import with provenance receipts.
 
-The present source slice composes Pages generations, channel identity, Navigation-owned menus and SEO-owned output into a deterministic canonical SSR ETag without changing Page Builder/Fly behavior.
+The present source slice composes Pages generations, channel identity, Navigation-owned menus, SEO-owned output and the exact rendered canonical document into a deterministic ETag without changing Page Builder/Fly behavior.
 
 ## Retained source marker index
 
@@ -63,7 +63,7 @@ This compact index preserves the exact stable source markers consumed by the ret
 - `anonymous-storefront-ssr-delivery-source-ready`; Anonymous storefront SSR delivery: source-ready. The current public Pages host is SSR-only, and the client bundle gate is conditional.
 - `delete-route-tombstone-source-ready`; Delete route tombstones: source-ready.
 - `route-history-import-source-ready`; Historical route import: source-ready. The owner accepts explicit bounded provenance records; automatic historical inference remains deliberately unsupported.
-- `storefront-composition-etag-source-ready`; Pages storefront Navigation/SEO composition ETag: source-ready. Exact canonical SSR binds Pages generations, channel identity and actual Navigation/SEO owner payloads.
+- `storefront-composition-etag-source-ready`; Pages storefront Navigation/SEO composition ETag: source-ready. Exact canonical SSR binds Pages generations, channel identity, actual Navigation/SEO owner payloads and the exact rendered HTML.
 
 Historical host-route marker retained for source-guard compatibility: `Delete tombstones and historical backfill remain open` was the correct PR #3020 boundary and is superseded by the current tombstone and explicit import statuses above.
 
@@ -159,19 +159,22 @@ For an exact localized canonical Pages request, the route adapter now exposes ch
 
 The storefront host then loads Navigation Header and Footer through the existing Navigation-owned transport and loads the resolved SEO page context through the existing SEO owner path. A `StorefrontNavigationSnapshot` is supplied to the same Leptos SSR owner, so `NavigationHeaderMenu` and `NavigationView` reuse the preloaded menus rather than issuing duplicate SSR requests.
 
+The host renders the canonical document before deciding a conditional response. This is deliberate: the Pages component may read the owner cache during SSR, so an earlier route-decision generation snapshot alone cannot prove which body was rendered during a concurrent rotation.
+
 The final `pages_storefront_composition_v1` ETag binds:
 
 - canonical page id, slug and effective locale;
 - request locale and channel identity;
 - route, page and artifact generations;
 - the actual resolved Navigation header/footer payloads;
-- the actual resolved SEO page context.
+- the actual resolved SEO page context;
+- a SHA-256 hash of the exact final rendered HTML.
 
-The deterministic serialized payload is hashed with SHA-256. A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modified`. Canonical ETag responses use `Cache-Control: private, no-cache`; terminal Pages route responses continue to use `private, no-store` and never claim a composition ETag.
+The deterministic serialized payload is hashed with SHA-256. A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modified` only after reconstructing that exact document identity. Canonical ETag responses use `Cache-Control: private, no-cache`; terminal Pages route responses continue to use `private, no-store` and never claim a composition ETag.
 
 If the Pages generation runtime is absent or the generation read fails, SSR continues without an ETag. This avoids a false cache identity while preserving fail-open rendering after all authorization and route checks have succeeded.
 
-No shared/CDN full-document cache is introduced. Navigation menu policy and SEO resolution remain with their owners.
+No shared/CDN full-document cache is introduced, and the conditional request does not skip SSR work. Navigation menu policy and SEO resolution remain with their owners.
 
 Source evidence:
 
@@ -231,6 +234,7 @@ It does not:
 - change Navigation menu identity, bindings, locale fallback or database ownership;
 - change SEO providers, targets or schemas;
 - add a shared/CDN full-document cache;
+- skip SSR work for conditional requests;
 - change Page Builder or Fly behavior;
 - change page bodies, immutable artifacts, publish or rollback receipts;
 - change GraphQL, REST or admin surfaces;
