@@ -92,10 +92,11 @@ The broad Phase 4 wording should now be read as follows:
 
 ### Immutable artifact integrity audit
 
-Marker:
+Markers:
 
 ```text
 immutable-artifact-integrity-audit-source-ready
+immutable-artifact-integrity-audit-transport-source-ready
 ```
 
 Pages now owns a bounded read-only immutable artifact integrity audit for one exact tenant and page.
@@ -106,29 +107,40 @@ Each record is reconstructed through the Page Builder static artifact and materi
 
 The result contains only artifact id, fixed SHA-256 locale and record-identity hashes, one public finding code, hashed internal diagnostics, counts, truncation flags and a deterministic audit hash. It does not return raw locale, stored build/artifact/content/materialization hashes, HTML, CSS, runtime snapshots, materialization identity JSON or internal error text.
 
-This command does not write artifact or binding rows, emit lifecycle/cache events, publish, rollback, repair or rebuild. Public GraphQL/HTTP/admin transport is not added in this slice. Automatic repair/rebuild remains open as a separate source cursor.
+The GraphQL and HTTP audit transport is now source-ready:
+
+- GraphQL mutation `auditPageArtifacts` is mounted into `PagesMutation`;
+- HTTP registers `POST /api/admin/pages/{id}/artifacts/audit`;
+- OpenAPI includes the route and bounded owner DTOs;
+- both adapters require effective `pages:manage`, fence the current tenant and delegate to the owner service;
+- the owner service still performs the authoritative `PermissionScope::All` check;
+- adapters return static public error codes and never copy internal `PagesError` text;
+- neither adapter queries artifact tables, writes records or emits events.
+
+This command and its transports do not publish, rollback, repair or rebuild. No admin UI is added. Automatic repair/rebuild remains open as a separate source cursor.
 
 The broad Phase 6 wording should now be read as follows:
 
 - bounded read-only integrity-audit command: source-ready;
-- public audit transport and accepted database evidence: pending;
+- GraphQL, HTTP and OpenAPI transport: source-ready;
+- accepted database and transport evidence: pending;
 - repair/rebuild remains open.
 
-Any local Pages heading claiming that all remaining work is execution evidence only is now stale: audit transport and repair/rebuild are still open source tasks.
+Any local Pages heading claiming that all remaining work is execution evidence only is still stale because repair/rebuild remains an open source task.
 
 ### Status boundary
 
 Source parity has advanced, but execution and rollout remain open.
 
-- No new test, verifier, Cargo, database, HTTP, browser, workflow or CI execution is claimed here.
-- No audit database scenario, publish/materialization scenario or repair was executed.
+- No new test, verifier, Cargo, database, GraphQL, HTTP, browser, workflow or CI execution is claimed here.
+- No audit database or transport scenario, publish/materialization scenario or repair was executed.
 - No FFA/FBA promotion is made.
 
 ## Current next cursor
 
-1. Run the immutable artifact audit source guard and focused Pages tests.
+1. Run the immutable artifact audit command and transport source guards plus focused Pages tests.
 2. Retain SQLite/PostgreSQL audit evidence for valid legacy/current records, corruption, partial evidence, tenant-wide versus owner-scoped authorization and 513-row truncation.
-3. Add a bounded tenant-wide owner GraphQL/HTTP transport for the audit result without exposing artifact payloads.
+3. Retain GraphQL/HTTP/OpenAPI evidence for current-tenant fencing, static public errors and bounded result parity.
 4. Design repair/rebuild as a separate explicit command with immutable source provenance and no in-place artifact mutation.
 5. Run the static publish resource-limit source guard and retain accepted real-project policy evidence.
 6. Execute the existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
