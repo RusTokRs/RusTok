@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+use std::fmt;
 use std::time::Duration;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -269,6 +270,18 @@ impl PortError {
         }
     }
 }
+
+impl fmt::Display for PortError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{:?}[{}]: {}",
+            self.kind, self.code, self.message
+        )
+    }
+}
+
+impl std::error::Error for PortError {}
 
 #[derive(Serialize)]
 struct PortErrorRef<'a> {

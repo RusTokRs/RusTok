@@ -48,6 +48,37 @@ const ACTIVE_CYCLE_DELAY: Duration = Duration::from_millis(1);
 
 static HANDOFF_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct HandoffWorkerCycleOutcome {
+    pub(crate) calls: usize,
+    pub(crate) claimed: usize,
+    pub(crate) published: usize,
+    pub(crate) conflicts: usize,
+    pub(crate) unavailable: usize,
+    pub(crate) reached_empty: bool,
+}
+
+#[cfg(test)]
+impl HandoffWorkerCycleOutcome {
+    pub(crate) fn had_error(self) -> bool {
+        self.conflicts > 0 || self.unavailable > 0
+    }
+
+    pub(crate) fn next_delay(
+        self,
+        config: CommentsTcpDelegationScheduleAuditHandoffWorkerConfig,
+    ) -> Duration {
+        if self.had_error() {
+            config.retry_delay
+        } else if !self.reached_empty && self.calls >= config.max_claims_per_cycle {
+            ACTIVE_CYCLE_DELAY
+        } else {
+            config.idle_poll
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CommentsTcpDelegationScheduleAuditHandoffWorkerConfig {
     control_plane_tenant_id: Uuid,
