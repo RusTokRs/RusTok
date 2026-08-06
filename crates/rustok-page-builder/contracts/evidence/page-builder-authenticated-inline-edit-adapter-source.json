@@ -18,6 +18,7 @@
     "runtime_bound_conditional_and_repeated_subtrees_are_excluded": true,
     "provider_and_composite_components_are_excluded": true,
     "static_leaf_children_in_unowned_layouts_remain_eligible": true,
+    "unchanged_focusout_does_not_consume_grant": true,
     "server_authorization_port_precedes_mutation": true,
     "exact_project_hash_precedes_mutation": true,
     "monotonic_sequence_precedes_mutation": true,
