@@ -30,6 +30,8 @@ The host receives only a visibility-admitted route resolution and performs HTTP 
 - missing, deleted, hidden, channel-restricted or `GONE`: return private `404 Not Found`;
 - transport/domain failure without a public typed route result: return private `503 Service Unavailable`.
 
+Axum-decoded route segments are passed only to the module owner for resolution. Canonical equality is checked against `OriginalUri.path()`, so case variants and percent-encoded noncanonical paths redirect instead of being mistaken for exact canonical requests.
+
 Redirect and terminal responses use `Cache-Control: private, no-store`.
 
 ## Dual transport
