@@ -49,8 +49,8 @@ Before an authoritative Product graph consumer or Storefront cutover is admitted
 caller can require the exact selected schema set, including the currently selected contracts:
 
 - `rustok-product::product@2`;
-- `rustok-product::product-variant@2`;
-- `rustok-channel::sales-channel@1`.
+- `rustok-product::product_variant@2`;
+- `rustok-channel::sales_channel@1`.
 
 The gate is generic and accepts no Product-domain types. Future selected modules can use the same
 contract without Index-core changes.
