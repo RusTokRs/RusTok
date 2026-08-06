@@ -36,6 +36,7 @@ pub struct ForumCategoryRouteResolution {
     pub requested_slug: String,
     pub disposition: ForumCategoryRouteDisposition,
     pub canonical: ForumCategoryRouteDescriptor,
+    pub alias_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -43,15 +44,19 @@ struct CategoryRouteCandidate {
     category_id: Uuid,
     locale: String,
     active: bool,
+    alias_id: Option<Uuid>,
 }
 
-/// Forum-owned localized category route identity resolver.
+/// Forum-owned localized category route identity and immutable alias resolver.
 ///
-/// Category slugs are locale-aware translation fields and are already unique per
-/// tenant/locale in Forum persistence. The canonical route is
-/// `/{locale}/forum/c/{slug}`. Reverse lookup follows the shared Forum locale
-/// precedence: requested locale, explicit fallback, platform fallback, then one
-/// unambiguous first-available category.
+/// Category slugs are locale-aware translation fields. Current and historical
+/// routes share one tenant/locale/slug namespace. The canonical route is
+/// `/{locale}/forum/c/{slug}` and hierarchy is intentionally absent from it.
+///
+/// Reverse lookup follows the shared Forum locale precedence: requested locale,
+/// explicit fallback, platform fallback, then one unambiguous first-available
+/// category. Exact-locale aliases therefore precede fallback-locale current
+/// routes instead of allowing an old route to be shadowed.
 ///
 /// This owner intentionally does not authorize storefront disclosure. Callers
 /// must recheck category audience, channel and module visibility before exposing
@@ -121,7 +126,8 @@ impl ForumCategoryRouteService {
                 fallback_locale.as_deref(),
             )
             .await?;
-        let disposition = if requested_locale == canonical.locale
+        let disposition = if candidate.alias_id.is_none()
+            && requested_locale == canonical.locale
             && requested_slug == canonical.slug
         {
             ForumCategoryRouteDisposition::Canonical
@@ -134,6 +140,7 @@ impl ForumCategoryRouteService {
             requested_slug,
             disposition,
             canonical,
+            alias_id: candidate.alias_id,
         })
     }
 }
@@ -198,14 +205,52 @@ async fn load_route_candidates(
     if translations.len() > MAX_FORUM_CATEGORY_ROUTE_CANDIDATES as usize {
         return Err(ForumError::CategoryRouteResolutionConflict);
     }
-    if translations.is_empty() {
-        return Err(ForumError::CategoryRouteNotFound);
+
+    let mut candidates = Vec::with_capacity(translations.len());
+    if !translations.is_empty() {
+        let category_ids = translations
+            .iter()
+            .map(|translation| translation.category_id)
+            .collect::<HashSet<_>>();
+        let (existing_ids, archived_ids) =
+            load_category_route_state(db, tenant_id, &category_ids).await?;
+        if existing_ids != category_ids {
+            return Err(ForumError::CategoryRouteResolutionConflict);
+        }
+
+        for translation in translations {
+            let locale = normalize_stored_locale(translation.locale.as_str())?;
+            let stored_slug = normalize_stored_slug(translation.slug.as_str())?;
+            if stored_slug != slug {
+                return Err(ForumError::CategoryRouteResolutionConflict);
+            }
+            candidates.push(CategoryRouteCandidate {
+                category_id: translation.category_id,
+                locale,
+                active: !archived_ids.contains(&translation.category_id),
+                alias_id: None,
+            });
+        }
     }
 
-    let category_ids = translations
-        .iter()
-        .map(|translation| translation.category_id)
-        .collect::<HashSet<_>>();
+    candidates.extend(load_alias_route_candidates(db, tenant_id, slug).await?);
+    if candidates.len() > MAX_FORUM_CATEGORY_ROUTE_CANDIDATES as usize {
+        return Err(ForumError::CategoryRouteResolutionConflict);
+    }
+    if candidates.is_empty() {
+        return Err(ForumError::CategoryRouteNotFound);
+    }
+    Ok(candidates)
+}
+
+async fn load_category_route_state(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    category_ids: &HashSet<Uuid>,
+) -> ForumResult<(HashSet<Uuid>, HashSet<Uuid>)> {
+    if category_ids.is_empty() {
+        return Ok((HashSet::new(), HashSet::new()));
+    }
     let category_id_list = category_ids.iter().copied().collect::<Vec<_>>();
     let existing_ids = forum_category::Entity::find()
         .filter(forum_category::Column::TenantId.eq(tenant_id))
@@ -215,9 +260,6 @@ async fn load_route_candidates(
         .into_iter()
         .map(|category| category.id)
         .collect::<HashSet<_>>();
-    if existing_ids != category_ids {
-        return Err(ForumError::CategoryRouteResolutionConflict);
-    }
     let archived_ids = forum_category_lifecycle::Entity::find()
         .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
         .filter(forum_category_lifecycle::Column::CategoryId.is_in(category_id_list))
@@ -226,22 +268,7 @@ async fn load_route_candidates(
         .into_iter()
         .map(|lifecycle| lifecycle.category_id)
         .collect::<HashSet<_>>();
-
-    translations
-        .into_iter()
-        .map(|translation| {
-            let locale = normalize_stored_locale(translation.locale.as_str())?;
-            let stored_slug = normalize_stored_slug(translation.slug.as_str())?;
-            if stored_slug != slug {
-                return Err(ForumError::CategoryRouteResolutionConflict);
-            }
-            Ok(CategoryRouteCandidate {
-                category_id: translation.category_id,
-                locale,
-                active: !archived_ids.contains(&translation.category_id),
-            })
-        })
-        .collect()
+    Ok((existing_ids, archived_ids))
 }
 
 fn select_route_candidate<'a>(
@@ -337,6 +364,15 @@ fn normalize_route_slug(value: &str) -> ForumResult<String> {
     Ok(normalized)
 }
 
+fn normalize_route_slug_for_write(value: &str) -> ForumResult<String> {
+    normalize_route_slug(value).map_err(|error| match error {
+        ForumError::CategoryRouteNotFound => ForumError::Validation(
+            "Forum category route slug must contain a valid route segment".to_string(),
+        ),
+        other => other,
+    })
+}
+
 fn normalize_stored_locale(value: &str) -> ForumResult<String> {
     normalize_route_locale(value).map_err(|_| ForumError::CategoryRouteResolutionConflict)
 }
@@ -358,6 +394,7 @@ mod tests {
             category_id,
             locale: locale.to_string(),
             active,
+            alias_id: None,
         }
     }
 
@@ -394,6 +431,30 @@ mod tests {
             select_route_candidate(&archived, "fr", Some("en")),
             Err(ForumError::CategoryRouteNotFound)
         ));
+    }
+
+    #[test]
+    fn exact_alias_precedes_fallback_current_route() {
+        let alias_id = Uuid::new_v4();
+        let exact_category_id = Uuid::new_v4();
+        let fallback_category_id = Uuid::new_v4();
+        let candidates = [
+            CategoryRouteCandidate {
+                category_id: fallback_category_id,
+                locale: "en".to_string(),
+                active: true,
+                alias_id: None,
+            },
+            CategoryRouteCandidate {
+                category_id: exact_category_id,
+                locale: "fr".to_string(),
+                active: true,
+                alias_id: Some(alias_id),
+            },
+        ];
+        let selected = select_route_candidate(&candidates, "fr", Some("en")).expect("exact");
+        assert_eq!(selected.category_id, exact_category_id);
+        assert_eq!(selected.alias_id, Some(alias_id));
     }
 
     #[test]
