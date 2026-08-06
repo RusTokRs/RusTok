@@ -93,8 +93,8 @@ async fn pages_inline_edit_bootstrap(
                 &locale,
             )
             .await
-            .map_err(ServerFnError::new)?;
-        issue_bootstrap(&context, document, current_unix_ms()?).map_err(ServerFnError::new)
+            .map_err(pages_server_error)?;
+        issue_bootstrap(&context, document, current_unix_ms()?).map_err(pages_server_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -114,13 +114,12 @@ async fn pages_inline_edit_commit(
         use rustok_pages::{PageBodyInput, SavePageDocumentInput};
 
         let context = InlineEditServerContext::extract().await?;
-        let now_unix_ms = current_unix_ms()?;
+        let received_at_unix_ms = current_unix_ms()?;
         let claims = context
             .keyring
-            .verify(request.authorization_proof(), now_unix_ms)
-            .map_err(ServerFnError::new)?;
-        ensure_claims_match_request(&context, &claims, &request)
-            .map_err(ServerFnError::new)?;
+            .verify(request.authorization_proof(), received_at_unix_ms)
+            .map_err(pages_server_error)?;
+        ensure_claims_match_request(&context, &claims, &request).map_err(pages_server_error)?;
 
         let document = context
             .service
@@ -131,27 +130,42 @@ async fn pages_inline_edit_commit(
                 &claims.locale,
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(pages_server_error)?;
         if document.revision_id != claims.revision_id {
-            return Err(ServerFnError::new(
+            return Err(pages_server_error(
                 rustok_pages::inline_edit_context_mismatch(
                     "Pages inline edit body revision changed after grant issuance",
                 ),
             ));
         }
         let canonical = decode_canonical_document(&document.project_data)
-            .map_err(ServerFnError::new)?;
+            .map_err(pages_server_error)?;
         if canonical.fly_page_id != claims.fly_page_id
             || canonical.project_hash.0 != claims.project_hash
         {
-            return Err(ServerFnError::new(
+            return Err(pages_server_error(
                 rustok_pages::inline_edit_context_mismatch(
                     "Pages inline edit Fly document identity changed after grant issuance",
                 ),
             ));
         }
 
+        let authorization_time_unix_ms = current_unix_ms()?;
         let proof = request.authorization_proof().to_string();
+        let authorization_claims = context
+            .keyring
+            .verify(&proof, authorization_time_unix_ms)
+            .map_err(pages_server_error)?;
+        if authorization_claims != claims {
+            return Err(pages_server_error(
+                rustok_pages::inline_edit_context_mismatch(
+                    "Pages inline edit grant identity changed during commit authorization",
+                ),
+            ));
+        }
+        ensure_claims_match_request(&context, &authorization_claims, &request)
+            .map_err(pages_server_error)?;
+
         let adapter_grant = InlineEditGrant::new(
             claims.session_id.to_string(),
             claims.fly_page_id.clone(),
@@ -165,16 +179,25 @@ async fn pages_inline_edit_commit(
             document.project_data,
             PageSelection::First,
             adapter_grant,
-            now_unix_ms,
+            authorization_time_unix_ms,
         )
         .map_err(ServerFnError::new)?;
         let claims_for_authorization = claims.clone();
         let result = session
-            .apply_authorized(request, now_unix_ms, &move |candidate: &InlineEditRequest| {
-                request_matches_claims(candidate, &claims_for_authorization, &proof)
-            })
+            .apply_authorized(
+                request,
+                authorization_time_unix_ms,
+                &move |candidate: &InlineEditRequest| {
+                    request_matches_claims(candidate, &claims_for_authorization, &proof)
+                },
+            )
             .map_err(ServerFnError::new)?;
 
+        context
+            .service
+            .ensure_builder_inline_edit_enabled_for_tenant(context.tenant_id)
+            .await
+            .map_err(pages_server_error)?;
         let saved = context
             .service
             .save_document(
@@ -192,13 +215,13 @@ async fn pages_inline_edit_commit(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(pages_server_error)?;
         let revision_id = saved
             .body
             .filter(|body| body.locale == claims.locale)
             .map(|body| body.updated_at)
             .ok_or_else(|| {
-                ServerFnError::new(rustok_pages::inline_edit_context_mismatch(
+                pages_server_error(rustok_pages::inline_edit_context_mismatch(
                     "Pages document save did not return the committed inline edit locale",
                 ))
             })?;
@@ -213,9 +236,9 @@ async fn pages_inline_edit_commit(
             next_document,
             claims.fly_page_id,
             result.project_hash,
-            now_unix_ms,
+            current_unix_ms()?,
         )
-        .map_err(ServerFnError::new)
+        .map_err(pages_server_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -359,15 +382,17 @@ impl InlineEditServerContext {
             .await
             .map_err(ServerFnError::new)?;
         if !principal.kind.is_direct_user() || auth.session_id.is_nil() {
-            return Err(ServerFnError::new(
-                "Pages inline editing requires a direct authenticated user session",
+            return Err(pages_server_error(
+                rustok_pages::inline_edit_context_mismatch(
+                    "Pages inline editing requires a direct authenticated user session",
+                ),
             ));
         }
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
         if auth.tenant_id != tenant.id {
-            return Err(ServerFnError::new(
+            return Err(pages_server_error(
                 rustok_pages::inline_edit_context_mismatch(
                     "Pages inline edit authenticated tenant does not match request tenant",
                 ),
@@ -376,11 +401,10 @@ impl InlineEditServerContext {
         let request = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
-        if request
-            .as_ref()
-            .is_some_and(|request| request.tenant_id != tenant.id || request.user_id != Some(auth.user_id))
-        {
-            return Err(ServerFnError::new(
+        if request.as_ref().is_some_and(|request| {
+            request.tenant_id != tenant.id || request.user_id != Some(auth.user_id)
+        }) {
+            return Err(pages_server_error(
                 rustok_pages::inline_edit_context_mismatch(
                     "Pages inline edit request context identity does not match authentication",
                 ),
@@ -390,14 +414,14 @@ impl InlineEditServerContext {
             .shared_get::<rustok_pages::PageInlineEditKeyring>()
             .ok_or_else(|| {
                 ServerFnError::new(
-                    "Pages inline edit signing keyring is not configured in the host runtime",
+                    "PAGE_INLINE_EDIT_SIGNING_UNAVAILABLE: Inline editing is not configured on this host.",
                 )
             })?;
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
                 ServerFnError::new(
-                    "Pages inline edit requires TransactionalEventBus in host runtime context",
+                    "PAGE_INLINE_EDIT_RUNTIME_UNAVAILABLE: Inline editing persistence is unavailable.",
                 )
             })?;
         let security = rustok_core::security_context_from_access_token(
@@ -405,6 +429,11 @@ impl InlineEditServerContext {
             &auth.grant_type,
             &auth.permissions,
         );
+        let service = rustok_pages::PageService::new(runtime.db_clone(), event_bus);
+        service
+            .ensure_builder_inline_edit_enabled_for_tenant(tenant.id)
+            .await
+            .map_err(pages_server_error)?;
         Ok(Self {
             tenant_id: tenant.id,
             auth,
@@ -414,7 +443,7 @@ impl InlineEditServerContext {
                 .as_ref()
                 .and_then(|request| normalize_channel_slug(request.channel_slug.as_deref())),
             keyring,
-            service: rustok_pages::PageService::new(runtime.db_clone(), event_bus),
+            service,
         })
     }
 }
@@ -567,6 +596,20 @@ fn current_unix_ms() -> Result<u64, ServerFnError> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(ServerFnError::new)?;
     u64::try_from(elapsed.as_millis()).map_err(ServerFnError::new)
+}
+
+#[cfg(feature = "ssr")]
+fn pages_server_error(error: rustok_pages::PagesError) -> ServerFnError {
+    let rich: rustok_core::error::RichError = error.into();
+    let code = rich
+        .error_code
+        .as_deref()
+        .unwrap_or("PAGE_INLINE_EDIT_FAILED");
+    let message = rich
+        .user_message
+        .as_deref()
+        .unwrap_or("The inline edit request could not be completed.");
+    ServerFnError::new(format!("{code}: {message}"))
 }
 
 #[cfg(test)]
