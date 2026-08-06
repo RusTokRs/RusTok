@@ -83,8 +83,9 @@ for (const key of [
   "dom_is_a_temporary_focusout_buffer",
   "dom_listener_cleanup_restores_attributes",
   "only_allowlisted_components_receive_contenteditable",
-  "runtime_bound_conditional_and_repeated_components_are_excluded",
-  "provider_and_nested_components_are_excluded",
+  "runtime_bound_conditional_and_repeated_subtrees_are_excluded",
+  "provider_and_composite_components_are_excluded",
+  "static_leaf_children_in_unowned_layouts_remain_eligible",
   "server_authorization_port_precedes_mutation",
   "exact_project_hash_precedes_mutation",
   "monotonic_sequence_precedes_mutation",
@@ -165,6 +166,8 @@ for (const marker of [
   "request.sequence <= self.last_sequence",
   "request.expected_project_hash != current_hash",
   "runtime_owned_component_ids",
+  "collect_runtime_owned_subtree",
+  "ancestor_blocked",
   '"flyRuntimeBindings"',
   '"flyRuntimeConditions"',
   '"flyRuntimeRepeaters"',
@@ -182,9 +185,10 @@ for (const marker of [
   "data-inline-session",
   "data-inline-revision",
   "data-inline-project-hash",
-  "only_static_leaf_text_components_are_exposed_to_real_dom_editing",
+  "only_static_leaf_text_components_outside_runtime_subtrees_are_editable",
   "authorized_request_applies_one_canonical_fly_patch",
-  "stale_replay_dynamic_bound_and_rejected_authorization_fail_closed",
+  "stale_replay_dynamic_bound_repeated_and_rejected_authorization_fail_closed",
+  '"repeated-child"',
 ]) need(inline, marker, "Page Builder canonical inline session");
 forbid(inline, "data-inline-proof", "Page Builder authorization proof DOM boundary");
 
@@ -215,6 +219,7 @@ for (const marker of [
   "feature-gated authenticated real-DOM adapter",
   "one canonical Fly `EditorCommand::Patch`",
   "Pages consumer grant issuance and save transport remain open",
+  "runtime-owned subtrees",
 ]) need(actualization, marker, "Page Builder actualization overlay");
 for (const marker of [
   "source-ready / execution-pending",
@@ -223,6 +228,7 @@ for (const marker of [
   "64 KiB",
   "EditorCommand::Patch",
   "new grant",
+  "runtime-owned subtree",
   "Execution evidence remains pending",
 ]) need(packet, marker, "authenticated inline adapter packet");
 
