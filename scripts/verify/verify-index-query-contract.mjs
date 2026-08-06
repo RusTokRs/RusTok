@@ -20,6 +20,7 @@ const scripts = [
   'verify-index-source-replay-contract.mjs',
   'verify-index-source-absence-watermark.mjs',
   'verify-index-source-continuation.mjs',
+  'verify-index-source-continuation-server.mjs',
   'verify-index-product-absence-postgres-harness.mjs',
   'verify-index-replay-job-leases.mjs',
   'verify-index-replay-multipage-runner.mjs',
