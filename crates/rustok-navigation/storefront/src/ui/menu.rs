@@ -142,8 +142,7 @@ fn render_header_child(item: StorefrontMenuItem) -> AnyView {
     .into_any()
 }
 
-fn render_footer_menu(menu: StorefrontMenu, presentation: MenuPresentation) -> AnyView {
-    let _ = presentation;
+fn render_footer_menu(menu: StorefrontMenu) -> AnyView {
     let label = menu.name;
     view! {
         <nav aria-label=label>
