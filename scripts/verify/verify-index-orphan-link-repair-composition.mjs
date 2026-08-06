@@ -134,7 +134,7 @@ if (ownerStart < 0 || ownerEnd <= ownerStart) {
 }
 const owner = production.slice(ownerStart, ownerEnd);
 requireMarkers('source', [
-  'self.mutations\n            .apply(authorized.command().command_id(), target)',
+  '.mutations\n            .apply(authorized.command().command_id(), target)',
   'owner_receipt_digest(authorized, finding, target, outcome)',
 ]);
 for (const forbidden of [
@@ -191,7 +191,7 @@ requireMarkers('genericDoc', [
   'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   '`materialize_postgres_index_drift_orphan_link_repair_service`',
   '`PostgresIndexOrphanLinkMutationStore`',
-  'An absent link without the exact applied delivery is never accepted as convergence',
+  'treats an absent link as convergence only when the exact command-bound inbox delivery',
 ]);
 requireMarkers('doc', [
   'Status: `source_complete_owner_execution_pending`.',
