@@ -8,6 +8,14 @@ use crate::core::optional_ui_text;
 
 const PAGES_AUTHORING_PATH: &str = "/modules/pages-authoring";
 const MAX_LOCALE_LENGTH: usize = 64;
+const SAME_ORIGIN_BUILD_FLAG: Option<&str> =
+    option_env!("RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN");
+
+fn same_origin_launch_enabled(value: Option<&str>) -> bool {
+    value
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+}
 
 pub(crate) fn authoring_href(page_id: &str, locale: &str) -> Option<String> {
     let page_id = Uuid::parse_str(page_id.trim()).ok()?;
@@ -20,8 +28,9 @@ pub(crate) fn authoring_href(page_id: &str, locale: &str) -> Option<String> {
         return None;
     }
 
+    let canonical_page_id = page_id.hyphenated().to_string();
     let query = Serializer::new(String::new())
-        .append_pair("page_id", page_id.hyphenated().to_string().as_str())
+        .append_pair("page_id", canonical_page_id.as_str())
         .append_pair("lang", locale.as_str())
         .finish();
     Some(format!("{PAGES_AUTHORING_PATH}?{query}"))
@@ -36,6 +45,10 @@ pub(crate) fn PagesInlineEditLaunch(
 
     view! {
         {move || {
+            if !same_origin_launch_enabled(SAME_ORIGIN_BUILD_FLAG) {
+                return ().into_any();
+            }
+
             let can_edit = current_user
                 .get()
                 .as_ref()
@@ -91,7 +104,7 @@ pub(crate) fn PagesInlineEditLaunch(
 
 #[cfg(test)]
 mod tests {
-    use super::authoring_href;
+    use super::{authoring_href, same_origin_launch_enabled};
 
     #[test]
     fn builds_only_the_fixed_same_origin_authoring_path() {
@@ -125,5 +138,14 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn same_origin_build_acknowledgement_is_explicit() {
+        assert!(same_origin_launch_enabled(Some("true")));
+        assert!(same_origin_launch_enabled(Some(" TRUE ")));
+        assert!(!same_origin_launch_enabled(Some("1")));
+        assert!(!same_origin_launch_enabled(Some("false")));
+        assert!(!same_origin_launch_enabled(None));
     }
 }
