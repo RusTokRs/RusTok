@@ -11,7 +11,10 @@ hydrate = [
   "leptos/hydrate",
   "fly-leptos?/wasm-client",
 ]
-ssr = ["leptos/ssr"]
+ssr = [
+  "leptos/ssr",
+  "fly-leptos?/ssr",
+]
 inline-edit = ["dep:fly-leptos"]
 
 [dependencies]
