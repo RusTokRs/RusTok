@@ -43,6 +43,24 @@ Current `main` through PR #3020 contains:
 
 The present source slice adds forward lifecycle ownership for delete route tombstones without changing Page Builder/Fly behavior.
 
+## Retained source marker index
+
+This compact index preserves the exact stable source markers consumed by the retained static guards. It is descriptive only and does not promote execution evidence.
+
+- `public-list-locale-fallback-source-ready`; Public list tenant locale fallback: source-ready. The native and GraphQL public detail/list reads share tenant fallback policy, and the cache variant already binds the fallback locale.
+- `published-slug-route-alias-source-ready`; Published slug route aliases: source-ready. Localized canonical Pages routes remain the public identity model. The public host response is now source-ready.
+- `host-route-response-source-ready`; Pages host route response: source-ready. The route decision precedes SEO and SSR rendering.
+- `native-storefront-reviewed-artifact-source-ready`; Native reviewed immutable artifact selection: source-ready.
+- `native-storefront-channel-admission-source-ready`; Routed-channel admission before native lookup: source-ready.
+- `selected-immutable-artifact-source-ready`; Selected immutable artifact after draft mutation: source-ready. The current Fly body is not public render authority.
+- `production-relay-generation-gate-source-ready`; Production relay-to-Pages generation gate: source-ready. Synchronous Pages invalidation now precedes downstream transport acceptance and uses process-bounded dedupe.
+- `production-relay-native-route-source-ready`; Production relay gate to registered native route: source-ready.
+- `production-gate-postgres-restart-source-ready`; Production gate PostgreSQL publish/rollback restart: source-ready.
+- `event-delivery-profile-parity-source-ready`; Memory and OutboxLocal factory profile parity: source-ready.
+- `anonymous-storefront-graph-source-ready`; Anonymous storefront authoring exclusion: source-ready.
+- `anonymous-storefront-ssr-delivery-source-ready`; Anonymous storefront SSR delivery: source-ready.
+- `delete-route-tombstone-source-ready`; Delete route tombstones: source-ready. Historical route backfill/import policy remains open.
+
 ## Current parity state
 
 ### Registered metadata surfaces: source-complete
