@@ -59,6 +59,7 @@ const scripts = [
   'verify-index-replay-retry-store.mjs',
   'verify-index-replay-dead-letter-admission.mjs',
   'verify-index-product-source.mjs',
+  'verify-index-product-locale-refresh-ledger.mjs',
   'verify-index-product-variant-source.mjs',
   'verify-index-product-graph-source.mjs',
   'verify-index-product-tombstone-source.mjs',
