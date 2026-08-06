@@ -2,6 +2,11 @@ mod localized_route;
 
 pub use localized_route::*;
 
+#[cfg(feature = "inline-edit")]
+mod inline_edit;
+#[cfg(feature = "inline-edit")]
+pub use inline_edit::*;
+
 use fly::{PageHead, RenderPolicy, RenderedPage, RuntimeRenderResult};
 use leptos::prelude::*;
 use rustok_page_builder::render::{

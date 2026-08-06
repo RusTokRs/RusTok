@@ -1,0 +1,42 @@
+{
+  "status": "commerce_graphql_channel_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/graphql/mod.rs",
+    "scripts/verify/verify-commerce-graphql-root-error-safety.mjs",
+    "crates/rustok-commerce/docs/graphql-channel-diagnostic-safety.md",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "storage_error_payload_logged": false,
+    "raw_tenant_uuid_logged": false,
+    "raw_channel_uuid_logged": false,
+    "raw_channel_slug_logged": false,
+    "diagnostic_error_debug_redacted": true,
+    "tenant_uuid_shape_logged": true,
+    "optional_channel_uuid_shape_logged": true,
+    "optional_channel_slug_shape_logged": true,
+    "dependency_error_event_bounded": true,
+    "disabled_channel_warning_bounded": true,
+    "channel_owner_call_preserved": true,
+    "request_context_optional_behavior_preserved": true,
+    "availability_public_message_preserved": true,
+    "disabled_public_message_preserved": true,
+    "module_not_enabled_code_preserved": true,
+    "product_mapper_delegation_preserved": true,
+    "query_routing_preserved": true,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, mounted GraphQL scenarios, or CI were executed."
+}

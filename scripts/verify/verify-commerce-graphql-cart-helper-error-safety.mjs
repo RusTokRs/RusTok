@@ -94,6 +94,7 @@ for (const value of [
 }
 
 for (const [value, label] of [
+  ['PortActorKind', 'actor kind import'],
   ['PortError, PortErrorKind', 'port error imports'],
   [
     'const STOREFRONT_CART_HELPER_BOUNDARY: &str = "commerce_graphql_storefront_cart_helper";',
@@ -104,6 +105,38 @@ for (const [value, label] of [
     'const STOREFRONT_CUSTOMER_OWNER_OPERATION: &str = "read_customer_projection_by_user";',
     'exact customer owner operation',
   ],
+  ['struct StorefrontCustomerDiagnosticContext', 'bounded customer context'],
+  ['impl From<&PortContext> for StorefrontCustomerDiagnosticContext', 'customer context projection'],
+  ['tenant_id_shape: identity_text_shape(context.tenant_id.as_str())', 'tenant identity shape'],
+  ['actor_kind: actor_kind_name(&context.actor.kind)', 'actor kind projection'],
+  ['actor_id_shape: identity_text_shape(context.actor.id.as_str())', 'actor identity shape'],
+  ['claim_count: context.claims.len()', 'claim count'],
+  ['role_count: context.roles.len()', 'role count'],
+  ['channel_shape: optional_text_shape(context.channel.as_deref())', 'channel shape'],
+  ['locale_shape: text_shape(context.locale.as_str())', 'locale shape'],
+  [
+    'correlation_id_shape: text_shape(context.correlation_id.as_str())',
+    'correlation shape',
+  ],
+  [
+    'causation_id_shape: optional_text_shape(context.causation_id.as_deref())',
+    'causation shape',
+  ],
+  [
+    'traceparent_shape: optional_text_shape(context.traceparent.as_deref())',
+    'trace shape',
+  ],
+  [
+    'idempotency_key_shape: optional_text_shape(context.idempotency_key.as_deref())',
+    'idempotency shape',
+  ],
+  ['deadline_ms: context.deadline_ms', 'deadline fact'],
+  ['struct StorefrontCustomerDiagnosticError;', 'redacted customer diagnostic error'],
+  ['formatter.write_str("redacted")', 'redacted customer Debug'],
+  ['fn actor_kind_name(kind: &PortActorKind)', 'actor kind helper'],
+  ['fn identity_text_shape(value: &str)', 'identity shape helper'],
+  ['fn text_shape(value: &str)', 'text shape helper'],
+  ['fn optional_text_shape(value: Option<&str>)', 'optional text shape helper'],
   ['fn customer_port_graphql_error(', 'customer mapper'],
   ['fn cart_port_source_owner(', 'cart source-owner classifier'],
   ['pub(crate) fn cart_port_error(', 'cart mapper'],
@@ -140,29 +173,51 @@ for (const [value, label] of [
   ['"CUSTOMER_ACCESS_DENIED"', 'customer forbidden code'],
   ['"CUSTOMER_TEMPORARILY_UNAVAILABLE"', 'customer availability code'],
   ['"CUSTOMER_OPERATION_FAILED"', 'customer invariant code'],
+  ['let technical = matches!(', 'technical severity selection'],
   [
     'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
     'technical customer severity classification',
   ],
+  [
+    'let diagnostic_context = StorefrontCustomerDiagnosticContext::from(context);',
+    'bounded customer context projection',
+  ],
+  ['let owner_code = error.code.clone();', 'retained owner code'],
+  ['let owner_kind = error.kind.clone();', 'retained owner kind'],
+  ['let owner_retryable = error.retryable;', 'retained owner retryability'],
+  ['let owner_message_shape = text_shape(error.message.as_str());', 'owner message shape'],
+  ['let owner_message_len = error.message.len();', 'owner message length'],
+  ['let error = StorefrontCustomerDiagnosticError;', 'customer diagnostic shadow'],
+  ['if technical {', 'technical branch'],
   ['tracing::error!(', 'technical customer error severity'],
   ['tracing::warn!(', 'ordinary customer rejection severity'],
-  ['error = ?error', 'original customer error evidence'],
+  ['error = ?error', 'redacted customer error field'],
   ['owner = STOREFRONT_CUSTOMER_OWNER', 'truthful customer owner field'],
   ['owner_operation = STOREFRONT_CUSTOMER_OWNER_OPERATION', 'exact owner operation field'],
   ['consumer_operation,', 'consumer operation field'],
-  ['correlation_id = %context.correlation_id', 'customer correlation context'],
-  ['tenant_id = %context.tenant_id', 'customer tenant context'],
-  ['actor = ?context.actor', 'customer actor context'],
-  ['channel = ?context.channel', 'customer channel context'],
-  ['locale = %context.locale', 'customer locale context'],
-  ['causation_id = ?context.causation_id', 'customer causation context'],
-  ['traceparent = ?context.traceparent', 'customer trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'customer idempotency context'],
-  ['deadline_ms = ?context.deadline_ms', 'customer deadline context'],
-  ['internal_code = %error.code', 'customer internal code'],
-  ['internal_message = %error.message', 'customer internal message'],
-  ['error_kind = ?error.kind', 'customer typed error kind'],
-  ['owner_retryable = error.retryable', 'customer owner retryability'],
+  ['tenant_id_shape = diagnostic_context.tenant_id_shape', 'tenant shape log'],
+  ['actor_kind = diagnostic_context.actor_kind', 'actor kind log'],
+  ['actor_id_shape = diagnostic_context.actor_id_shape', 'actor identity shape log'],
+  ['claim_count = diagnostic_context.claim_count', 'claim count log'],
+  ['role_count = diagnostic_context.role_count', 'role count log'],
+  ['channel_shape = diagnostic_context.channel_shape', 'channel shape log'],
+  ['locale_shape = diagnostic_context.locale_shape', 'locale shape log'],
+  [
+    'correlation_id_shape = diagnostic_context.correlation_id_shape',
+    'correlation shape log',
+  ],
+  ['causation_id_shape = diagnostic_context.causation_id_shape', 'causation shape log'],
+  ['traceparent_shape = diagnostic_context.traceparent_shape', 'trace shape log'],
+  [
+    'idempotency_key_shape = diagnostic_context.idempotency_key_shape',
+    'idempotency shape log',
+  ],
+  ['deadline_ms = ?diagnostic_context.deadline_ms', 'customer deadline fact'],
+  ['owner_code = %owner_code', 'customer owner code'],
+  ['owner_message_shape,', 'customer owner message shape'],
+  ['owner_message_len,', 'customer owner message length'],
+  ['owner_kind = ?owner_kind', 'customer typed owner kind'],
+  ['owner_retryable,', 'customer owner retryability'],
   ['public_code = code', 'customer public code'],
   ['public_retryable = retryable', 'customer public retryability'],
   ['boundary = STOREFRONT_CART_HELPER_BOUNDARY', 'customer GraphQL boundary'],
@@ -176,11 +231,46 @@ for (const [value, label] of [
   requireText(customerMapper, value, label);
 }
 
+for (const value of [
+  'correlation_id = %context.correlation_id',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'internal_code = %error.code',
+  'internal_message = %error.message',
+  'owner_kind = ?error.kind',
+  'owner_retryable = error.retryable',
+]) {
+  forbidText(customerMapper, value, 'raw customer diagnostic');
+}
+
 const policyIndex = customerMapper.indexOf('let (message, code, retryable) = match &error.kind');
-const diagnosticsIndex = customerMapper.indexOf('match &error.kind', policyIndex + 1);
+const projectionIndex = customerMapper.indexOf(
+  'let diagnostic_context = StorefrontCustomerDiagnosticContext::from(context);',
+);
+const shadowIndex = customerMapper.indexOf('let error = StorefrontCustomerDiagnosticError;');
+const diagnosticIndex = customerMapper.indexOf('tracing::error!(');
 const returnIndex = customerMapper.lastIndexOf('public_graphql_error(message, code, retryable)');
-if (!(policyIndex >= 0 && policyIndex < diagnosticsIndex && diagnosticsIndex < returnIndex)) {
-  failures.push('customer error must be mapped, diagnosed, and then returned in order');
+if (
+  !(
+    policyIndex >= 0 &&
+    policyIndex < projectionIndex &&
+    projectionIndex < shadowIndex &&
+    shadowIndex < diagnosticIndex &&
+    diagnosticIndex < returnIndex
+  )
+) {
+  failures.push('customer error must be mapped, projected, shadowed, diagnosed, and returned in order');
+}
+if ((customerMapper.match(/let error = StorefrontCustomerDiagnosticError;/g) ?? []).length !== 1) {
+  failures.push('expected one customer diagnostic shadow');
+}
+if ((customerMapper.match(/error = \?error/g) ?? []).length !== 2) {
+  failures.push('expected two redacted customer diagnostic error fields');
 }
 
 for (const [value, label] of [
@@ -317,5 +407,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL storefront cart helpers use typed line-item outcomes, stable public envelopes, retained owner context, and private layered routing',
+  '✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded customer diagnostics, typed line-item outcomes, and private layered routing',
 );

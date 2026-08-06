@@ -3,6 +3,20 @@ use ::rustok_fulfillment::error::FulfillmentError;
 use ::rustok_order::error::OrderError;
 use ::rustok_payment::error::PaymentError;
 
+const QUERY_ERROR_BOUNDARY: &str = "commerce_graphql_query";
+
+struct QueryDiagnosticError;
+
+impl std::fmt::Debug for QueryDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn text_presence_shape(value: &str) -> &'static str {
+    if value.is_empty() { "empty" } else { "present" }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum BoundaryError {
     Graphql(Error),
@@ -36,11 +50,18 @@ impl BoundaryError {
 
 impl QueryGraphqlMessage for String {
     fn into_query_boundary(self) -> BoundaryError {
+        let message_presence = text_presence_shape(&self);
+        let message_len = self.len();
+        let error = QueryDiagnosticError;
         tracing::error!(
-            error_message = %self,
+            error = ?error,
+            source_owner = "commerce_graphql_query.dynamic_message",
+            error_kind = "dynamic_message",
+            message_presence,
+            message_len,
             public_code = "COMMERCE_QUERY_OPERATION_FAILED",
             retryable = false,
-            boundary = "commerce_graphql_query",
+            boundary = QUERY_ERROR_BOUNDARY,
             "commerce GraphQL query dynamic error was redacted"
         );
         BoundaryError::public(
@@ -76,14 +97,15 @@ impl From<String> for BoundaryError {
 }
 
 impl From<sea_orm::DbErr> for BoundaryError {
-    fn from(error: sea_orm::DbErr) -> Self {
+    fn from(_error: sea_orm::DbErr) -> Self {
+        let error = QueryDiagnosticError;
         tracing::error!(
             error = ?error,
             owner = "sea_orm",
             error_kind = "database",
             public_code = "COMMERCE_QUERY_TEMPORARILY_UNAVAILABLE",
             retryable = true,
-            boundary = "commerce_graphql_query",
+            boundary = QUERY_ERROR_BOUNDARY,
             "commerce GraphQL query database operation failed"
         );
         Self::public(
@@ -105,7 +127,7 @@ impl From<rustok_product::CommerceError> for BoundaryError {
 
 impl From<crate::CommerceError> for BoundaryError {
     fn from(error: crate::CommerceError) -> Self {
-        let (message, code, retryable, error_kind) = match error {
+        let (message, code, retryable, error_kind) = match &error {
             crate::CommerceError::Database(_) => (
                 "Commerce data is temporarily unavailable",
                 "COMMERCE_QUERY_TEMPORARILY_UNAVAILABLE",
@@ -119,12 +141,14 @@ impl From<crate::CommerceError> for BoundaryError {
                 "commerce",
             ),
         };
+        let error = QueryDiagnosticError;
         tracing::error!(
             error = ?error,
+            owner = "rustok_commerce",
             error_kind,
             public_code = code,
             retryable,
-            boundary = "commerce_graphql_query",
+            boundary = QUERY_ERROR_BOUNDARY,
             "commerce GraphQL owner operation failed"
         );
         Self::public(message, code, retryable)
@@ -160,13 +184,14 @@ impl From<FulfillmentError> for BoundaryError {
                 "database",
             ),
         };
+        let error = QueryDiagnosticError;
         tracing::error!(
             error = ?error,
             owner = "rustok_fulfillment",
             error_kind,
             public_code = code,
             retryable,
-            boundary = "commerce_graphql_query",
+            boundary = QUERY_ERROR_BOUNDARY,
             "commerce GraphQL fulfillment query failed"
         );
         Self::public(message, code, retryable)
@@ -209,13 +234,14 @@ impl From<OrderError> for BoundaryError {
                 "core",
             ),
         };
+        let error = QueryDiagnosticError;
         tracing::error!(
             error = ?error,
             owner = "rustok_order",
             error_kind,
             public_code = code,
             retryable,
-            boundary = "commerce_graphql_query",
+            boundary = QUERY_ERROR_BOUNDARY,
             "commerce GraphQL order query failed"
         );
         Self::public(message, code, retryable)
@@ -265,13 +291,14 @@ impl From<PaymentError> for BoundaryError {
                 "configuration",
             ),
         };
+        let error = QueryDiagnosticError;
         tracing::error!(
             error = ?error,
             owner = "rustok_payment",
             error_kind,
             public_code = code,
             retryable,
-            boundary = "commerce_graphql_query",
+            boundary = QUERY_ERROR_BOUNDARY,
             "commerce GraphQL payment query failed"
         );
         Self::public(message, code, retryable)
