@@ -160,7 +160,7 @@ No shared/CDN document cache is introduced. Execution remains pending.
 
 `fly-leptos` now provides a reusable real-DOM adapter whose trusted grant binds session, stable selected page, consumer revision, exact Fly project hash, opaque authorization proof and expiry. The proof is redacted from `Debug` and never rendered into DOM.
 
-Only an explicit allow-list of instrumented stable static leaf text nodes receives `contenteditable="plaintext-only"`. Provider-owned nodes, composite nodes with children and template-backed nodes remain read-only. Every node inside a runtime-owned binding, condition or repeater subtree is also excluded, while a static leaf inside an ordinary unowned layout remains eligible. The DOM is a temporary interaction buffer: a single bounded normalized plain-text request is emitted on bubbling `focusout`, and listener/attribute cleanup is deterministic.
+Only an explicit allow-list of instrumented stable noninteractive static leaf text nodes receives `contenteditable="plaintext-only"`. Provider-owned nodes, composite nodes with children and template-backed nodes remain read-only. Every node inside a runtime-owned binding, condition or repeater subtree is also excluded, while a static leaf inside an ordinary unowned layout remains eligible. Interactive controls such as links, buttons and labels are excluded so editing cannot also activate storefront navigation or actions. The DOM is a temporary interaction buffer: a single bounded normalized plain-text request is emitted on bubbling `focusout`, and listener/attribute cleanup is deterministic.
 
 An unchanged `focusout` returns `NoContentChange`; it does not advance the accepted sequence, mutate Fly history or change the project hash, so it does not consume the one-commit grant.
 
@@ -230,7 +230,7 @@ It does not:
 - add a Pages save server function, GraphQL mutation, HTTP route or persistence path;
 - mount editing in the anonymous storefront;
 - treat DOM as a document tree or hidden authority;
-- edit rich text, nested markup, provider components, composite component content or runtime-owned subtrees;
+- edit rich text, nested markup, interactive controls, provider components, composite component content or runtime-owned subtrees;
 - change Pages persistence, lifecycle, route claims, caches or events;
 - change Page Builder publish, rollback, sanitizer, materialization or artifacts;
 - change database schemas or migrations;
