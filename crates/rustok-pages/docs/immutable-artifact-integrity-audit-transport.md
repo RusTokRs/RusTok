@@ -68,7 +68,7 @@ Both adapters expose only:
 - bounded counts and truncation flags;
 - deterministic audit hash.
 
-They do not expose raw locale, stored build/artifact/content/materialization hashes, HTML, CSS, runtime snapshots, materialization identity JSON or internal integrity errors.
+The transport does not expose raw locale, stored build/artifact/content/materialization hashes, HTML, CSS, runtime snapshots, materialization identity JSON or internal integrity errors.
 
 GraphQL maps owner counts into GraphQL signed integers only after the owner service has bounded every value to at most 512. HTTP reuses the owner DTO without transformation.
 
