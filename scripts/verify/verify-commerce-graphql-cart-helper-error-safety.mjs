@@ -95,6 +95,14 @@ for (const value of [
   'async_graphql::Error::new(error.to_string())',
   'async_graphql::Error::new(format!("{error}"))',
   'pub use super::legacy_helpers::*;',
+  'format!("{error:?}")',
+  'detail.contains(',
+  'super::legacy_helpers::resolve_storefront_line_item_input(',
+  'super::legacy_helpers::validate_storefront_line_item_quantity(',
+  'Variant not found',
+  'Product not found',
+  'does not have enough available inventory',
+  'Invalid JSON metadata payload',
 ]) {
   forbidText(facadeSource, value, 'storefront cart compatibility safe helper facade');
 }
@@ -168,6 +176,14 @@ for (const [value, label] of [
   ['"Selected shipping option is invalid"', 'shipping selection message'],
   ['"Cart pricing could not be refreshed"', 'reprice fallback message'],
   ['extensions.set("retryable", retryable)', 'retryability extension'],
+  [
+    'super::typed_line_item_helpers::resolve_storefront_line_item_input(',
+    'compatibility resolve cutover',
+  ],
+  [
+    'super::typed_line_item_helpers::validate_storefront_line_item_quantity(',
+    'compatibility quantity cutover',
+  ],
 ]) {
   requireText(facadeSource, value, label);
 }
@@ -547,8 +563,15 @@ for (const operation of [
 }
 
 const legacyCalls = facadeSource.match(/super::legacy_helpers::[a-z_]+\(/g) ?? [];
-if (legacyCalls.length !== 5) {
-  failures.push(`expected 5 compatibility legacy helper calls, found ${legacyCalls.length}`);
+if (legacyCalls.length !== 3) {
+  failures.push(`expected 3 remaining compatibility legacy helper calls, found ${legacyCalls.length}`);
+}
+const typedCompatibilityCalls =
+  facadeSource.match(
+    /super::typed_line_item_helpers::(?:resolve_storefront_line_item_input|validate_storefront_line_item_quantity)\(/g,
+  ) ?? [];
+if (typedCompatibilityCalls.length !== 2) {
+  failures.push(`expected 2 typed compatibility helper calls, found ${typedCompatibilityCalls.length}`);
 }
 const typedExports = layeredSource.match(
   /resolve_storefront_line_item_input|validate_storefront_line_item_quantity/g,
@@ -564,5 +587,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded customer, legacy, and typed line-item diagnostics, typed outcomes, and private layered routing',
+  '✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded diagnostics, typed line-item compatibility delegation, typed outcomes, and private layered routing',
 );

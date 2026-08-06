@@ -1,0 +1,51 @@
+{
+  "status": "commerce_graphql_line_item_compatibility_cutover_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs",
+    "crates/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs",
+    "crates/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs",
+    "scripts/verify/verify-commerce-graphql-line-item-compatibility-cutover.mjs",
+    "scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs",
+    "crates/rustok-commerce/docs/graphql-line-item-compatibility-cutover.md",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "resolve_wrapper_signature_preserved": true,
+    "quantity_wrapper_signature_preserved": true,
+    "resolve_wrapper_argument_order_preserved": true,
+    "quantity_wrapper_argument_order_preserved": true,
+    "resolve_wrapper_delegates_to_typed_helper": true,
+    "quantity_wrapper_delegates_to_typed_helper": true,
+    "resolve_legacy_helper_call_removed": true,
+    "quantity_legacy_helper_call_removed": true,
+    "debug_string_classification_removed": true,
+    "substring_policy_matching_removed": true,
+    "compatibility_envelope_remapping_removed": true,
+    "typed_public_policy_preserved": true,
+    "typed_diagnostic_redaction_preserved": true,
+    "typed_pricing_delegation_preserved": true,
+    "typed_inventory_delegation_preserved": true,
+    "layered_typed_exports_preserved": true,
+    "remaining_enrichment_legacy_wrapper_preserved": true,
+    "remaining_shipping_option_legacy_wrapper_preserved": true,
+    "remaining_repricing_legacy_wrapper_preserved": true,
+    "customer_diagnostic_contract_preserved": true,
+    "cart_port_diagnostic_contract_preserved": true,
+    "legacy_graphql_diagnostic_contract_preserved": true,
+    "remaining_adapter_cleanup_closed": false,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, or CI were executed."
+}
