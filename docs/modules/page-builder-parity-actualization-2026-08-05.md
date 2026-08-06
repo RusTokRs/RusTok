@@ -1,7 +1,7 @@
 # Page Builder / Pages Parity Actualization
 
 Date: 2026-08-06
-Status: current-source-overlay / rebuild-provenance-source-ready / execution-and-rollout-open
+Status: current-source-overlay / rebuild-provenance-source-ready / explicit-artifact-rebuild-source-ready / execution-and-rollout-open
 
 This overlay reconciles the Page Builder programme with current `main`. It supersedes stale open-checkbox wording in older broad plans where that wording conflicts with merged source. It does not convert source-ready work into executed evidence.
 
@@ -99,15 +99,15 @@ immutable-artifact-integrity-audit-source-ready
 immutable-artifact-integrity-audit-transport-source-ready
 ```
 
-Pages now owns a bounded read-only immutable artifact integrity audit for one exact tenant and page.
+Pages owns a bounded read-only immutable artifact integrity audit for one exact tenant and page.
 
 The command accepts only tenant-wide `pages:manage` (`PermissionScope::All`); owner-scoped Manage is rejected. It reads through one transaction and scans at most 512 records ordered by creation time and artifact id. It requests one extra row and sets `truncated=true` instead of claiming a complete audit when more retained records exist.
 
-Each record is reconstructed through the Page Builder static artifact and materialization contracts. The audit checks owner identity, static artifact hashes, build/renderer metadata, output byte limits, complete current materialization evidence and exact legacy all-`NULL` compatibility. Partial evidence fails closed.
+Each record is reconstructed through the Page Builder static artifact and materialization contracts. The audit checks owner identity, canonical or operation-bound storage instance identity, static artifact hashes, build/renderer metadata, output byte limits, complete current materialization evidence and exact legacy all-`NULL` compatibility. Partial evidence fails closed.
 
-The result contains only artifact id, fixed SHA-256 locale and record-identity hashes, one public finding code, hashed internal diagnostics, counts, truncation flags and a deterministic audit hash. It does not return raw locale, stored build/artifact/content/materialization hashes, HTML, CSS, runtime snapshots, materialization identity JSON or internal error text.
+The result contains only artifact id, fixed SHA-256 locale and record-identity hashes, one public finding code, hashed internal diagnostics, counts, truncation flags and a deterministic audit hash. The internal record identity now also binds `instance_key`. It does not return raw locale, storage instance key, stored build/artifact/content/materialization hashes, HTML, CSS, runtime snapshots, materialization identity JSON or internal error text.
 
-The GraphQL and HTTP audit transport is now source-ready:
+The GraphQL and HTTP audit transport is source-ready:
 
 - GraphQL mutation `auditPageArtifacts` is mounted into `PagesMutation`;
 - HTTP registers `POST /api/admin/pages/{id}/artifacts/audit`;
@@ -117,16 +117,15 @@ The GraphQL and HTTP audit transport is now source-ready:
 - adapters return static public error codes and never copy internal `PagesError` text;
 - neither adapter queries artifact tables, writes records or emits events.
 
-This command and its transports do not publish, rollback, repair or rebuild. No admin UI is added. Automatic repair/rebuild remains open as a separate source cursor.
+The audit remains read-only and does not invoke the rebuild command automatically. No admin rebuild UI is added.
 
 The broad Phase 6 wording should now be read as follows:
 
 - bounded read-only integrity-audit command: source-ready;
-- GraphQL, HTTP and OpenAPI transport: source-ready;
+- GraphQL, HTTP and OpenAPI audit transport: source-ready;
+- explicit append-only rebuild service command: source-ready;
 - accepted database and transport evidence: pending;
-- repair/rebuild remains open.
-
-Any local Pages heading claiming that all remaining work is execution evidence only is still stale because repair/rebuild remains an open source task.
+- explicit binding replacement remains open.
 
 ### Reviewed publish rebuild provenance
 
@@ -136,31 +135,66 @@ Marker:
 publish-rebuild-provenance-source-ready
 ```
 
-New reviewed publish receipts now retain one locale-specific immutable source row in `page_publish_rebuild_sources` in the same owner transaction as the publish operation and immutable artifact manifest.
+New reviewed publish receipts retain one locale-specific immutable source row in `page_publish_rebuild_sources` in the same owner transaction as the publish operation and immutable artifact manifest.
 
 The source row records the exact selected page-body identity, format and revision, the canonical sanitized Page Builder project and sanitized hash, the reviewed runtime hash, artifact source/artifact/materialization hashes, materialization identity, runtime snapshots and a deterministic provenance hash.
 
 The existing publish-receipt hook re-reads the exact locale binding and body, re-sanitizes through the canonical Page Builder policy, verifies the sanitization envelope, requires complete reviewed materialization evidence and recomputes both locale-ordered `sanitized_set_hash` and `artifact_set_hash`. Any mismatch aborts the surrounding publication transaction.
 
-Existing publish operations are not backfilled. Existing artifact rows and bindings are not changed. The provenance row deliberately survives loss of its referenced artifact row and therefore remains usable as investigation input. The complete runtime context is not duplicated; a future command must obtain an explicitly reviewed context and prove its review/context hashes against retained evidence.
+Existing publish operations are not backfilled. Existing artifact rows and bindings are not changed. The provenance row deliberately survives loss of its referenced artifact row and remains usable as investigation input. The complete runtime context is not duplicated; rebuild requires an explicitly reviewed context and proves its review, scenario and context hashes against retained evidence.
 
-This closes the immutable source provenance prerequisite only. The repair/rebuild command remains open, as do authorization, idempotency, append-only replacement, explicit binding switch, lifecycle/cache effects and transports. No automatic repair is introduced.
+### Explicit immutable artifact rebuild
+
+Marker:
+
+```text
+explicit-artifact-rebuild-source-ready
+```
+
+Pages now has an explicit tenant-admin service command for one exact retained provenance row.
+
+The request binds tenant, page, source id, expected provenance hash, idempotency key and a fresh `ReviewedPagePublishRuntimeInput`. Tenant-wide `pages:manage` is required. The command never reads the mutable current draft.
+
+Before compilation it recomputes the provenance hash, re-sanitizes the retained sanitized source, verifies the sanitizer envelope and requires exact review hash, runtime scenario and runtime-context hash parity. The rebuilt source, static artifact, materialization hash, materialization identity and runtime snapshots must reproduce the retained reviewed publication exactly.
+
+`page_static_landing_artifacts` now separates deterministic content identity from storage instance identity:
+
+```text
+canonical
+rebuild:<rebuild-operation-uuid>
+```
+
+Ordinary reviewed publish remains on `canonical`. Rebuild inserts a new operation-bound immutable row and a replayable `page_artifact_rebuild_operations` receipt. The source or damaged artifact is never updated or deleted.
+
+The command does not change the published binding, page version, lifecycle state, route/page/artifact generations or event stream. It has no GraphQL, HTTP, OpenAPI, admin UI or worker transport. It is not automatic repair.
+
+Current repair/rebuild matrix:
+
+| Capability | Source state | Execution state |
+| --- | --- | --- |
+| Immutable rebuild provenance | Source-ready | Migration/publish evidence pending |
+| Explicit append-only repair/rebuild command | Source-ready | SQLite/PostgreSQL and authorization evidence pending |
+| Rebuild idempotent receipt | Source-ready | Replay/conflict evidence pending |
+| Canonical/rebuild storage instance identity | Source-ready | Migration and duplicate-identity evidence pending |
+| Explicit binding replacement | Open | Not implemented |
+| Automatic audit-to-rebuild action | Deliberately absent | Not allowed |
 
 ### Status boundary
 
 Source parity has advanced, but execution and rollout remain open.
 
-- No new test, verifier, Cargo, formatting, migration, database, GraphQL, HTTP, browser, workflow or CI execution is claimed here.
-- No audit database or transport scenario, provenance migration/publish scenario, publish/materialization scenario or repair was executed.
+- No new test, source verifier, Cargo, formatting, migration, database, GraphQL, HTTP, browser, workflow or CI execution is claimed here.
+- No audit, provenance, rebuild, binding replacement or tenant rollout scenario was executed.
 - No FFA/FBA promotion is made.
 
 ## Current next cursor
 
-1. Run the immutable artifact audit command and transport source guards plus focused Pages tests.
-2. Retain SQLite/PostgreSQL audit evidence for valid legacy/current records, corruption, partial evidence, tenant-wide versus owner-scoped authorization and 513-row truncation.
-3. Retain GraphQL/HTTP/OpenAPI evidence for current-tenant fencing, static public errors and bounded result parity.
-4. Run the reviewed publish rebuild-provenance source guard and retain SQLite/PostgreSQL evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
-5. Design an explicit tenant-wide repair/rebuild command that selects one provenance row, reauthorizes the exact runtime context, appends a new immutable artifact and never updates the damaged artifact in place.
-6. Keep any binding switch separately authorized and idempotent, with lifecycle/cache effects only after the explicit switch.
-7. Run the static publish resource-limit source guard and retain accepted real-project policy evidence.
-8. Execute the existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
+1. Run the immutable artifact audit, provenance and explicit-rebuild source guards.
+2. Retain SQLite/PostgreSQL audit evidence for valid canonical/rebuilt records, corruption, partial evidence, authorization and truncation.
+3. Retain provenance migration/publish evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
+4. Retain explicit rebuild evidence for tenant-wide versus owner-scoped Manage, exact replay, idempotency conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction.
+5. Prove rebuild appends a distinct artifact row while the active binding, page version, lifecycle events and cache generations remain unchanged.
+6. Design Explicit binding replacement as a separate tenant-wide idempotent command with expected current binding, expected rebuild receipt and expected page version.
+7. Emit lifecycle/cache effects only after that later explicit switch commits.
+8. Run the static publish resource-limit source guard and accepted real-project policy evidence.
+9. Execute existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
