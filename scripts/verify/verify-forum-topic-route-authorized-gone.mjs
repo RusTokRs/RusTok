@@ -58,15 +58,16 @@ try {
 
 for (const marker of [
   "async fn forum_storefront_topic_route(",
-  "map_legacy_public_route_resolution(resolution)",
+  "resolve_authorized_public_route(\n            ctx, tenant_id, locale, short_id, slug, false,",
   "ForumTopicRouteDisposition::Gone => return Ok(None)",
   "async fn forum_storefront_topic_route_decision(",
+  "resolve_authorized_public_route(\n            ctx, tenant_id, locale, short_id, slug, true,",
   "GqlForumStorefrontTopicRouteDecisionDisposition::Gone",
   "pub canonical: Option<GqlForumTopicRouteDescriptor>",
   "ForumTopicRouteTombstoneVisibilityService::new(db.clone())",
   ".can_disclose_public_gone(",
   "public_channel_slug(ctx).as_deref()",
-  "if !channel_enabled",
+  "if !gone_channel_enabled",
 ]) {
   requireText(source.graphql, marker, paths.graphql);
 }
@@ -106,6 +107,7 @@ for (const marker of [
   "request.channel_slug.as_deref()",
   "StorefrontForumTopicRouteDisposition::Gone",
   "(StorefrontForumTopicRouteDisposition::Gone, None)",
+  "let gone_channel_enabled = if authenticated",
 ]) {
   requireText(source.nativeAdapter, marker, paths.nativeAdapter);
 }
@@ -156,7 +158,7 @@ for (const marker of [
 for (const marker of [
   "legacy",
   "forumStorefrontTopicRouteDecision",
-  "private `410 Gone`",
+  "private HTTP `410 Gone`",
   "Authentication never broadens",
   "No tests, verifiers, formatting, Cargo commands",
 ]) {
@@ -173,7 +175,7 @@ for (const marker of [
   requireText(source.contract, marker, paths.contract);
 }
 for (const marker of [
-  "legacy_field_still_hides_gone",
+  "graphql_keeps_legacy_field_and_adds_authorized_decision",
   "storefront_transports_share_terminal_decision_shape",
   "host_maps_only_authorized_terminal_decision_to_private_gone",
 ]) {
