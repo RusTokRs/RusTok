@@ -566,6 +566,7 @@ pub fn router() -> Router {
             "/{locale}/forum/t/{short_id}/{slug}",
             get(
                 |Path((locale_path_prefix, short_id, slug)): Path<(String, String, String)>,
+                 original_uri: axum::extract::OriginalUri,
                  nonce: Option<Extension<CspNonce>>,
                  axum::extract::Query(params): axum::extract::Query<
                     std::collections::HashMap<String, String>,
@@ -574,6 +575,7 @@ pub fn router() -> Router {
                         resolve_storefront_locale(Some(locale_path_prefix.as_str()), &params);
                     let nonce = nonce.as_ref().map(|Extension(value)| value);
                     forum_topic_route::render_forum_topic_route_response(
+                        original_uri.0.path().to_string(),
                         locale_path_prefix,
                         effective_locale,
                         short_id,
