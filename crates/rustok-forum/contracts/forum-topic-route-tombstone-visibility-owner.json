@@ -31,12 +31,19 @@
   },
   "lock_order": [
     "category_tree",
-    "topic_audience",
-    "topic_row"
+    "topic_row",
+    "topic_audience"
   ],
+  "lock_owner_reuse": {
+    "category_tree": "category_audience::lock_category_tree_in_tx",
+    "topic_audience": "topic_audience_lock::lock_topic_audience_scopes_in_tx",
+    "custom_advisory_namespace_added": false
+  },
   "delete_order": [
-    "lock snapshot scopes",
-    "claim and reload topic row",
+    "lock category policy scope",
+    "claim topic row",
+    "lock exact topic audience scope",
+    "reload locked topic",
     "record immutable visibility snapshot",
     "record route tombstones",
     "soft-delete topic thread"
