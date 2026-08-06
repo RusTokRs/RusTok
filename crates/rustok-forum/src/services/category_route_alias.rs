@@ -174,13 +174,9 @@ async fn load_alias_route_candidates(
             FROM forum_category_route_aliases
             WHERE tenant_id = $1 AND slug = $2
             ORDER BY locale, alias_id
-            LIMIT $3
+            LIMIT 65
             "#,
-            vec![
-                tenant_id.into(),
-                slug.into(),
-                (MAX_FORUM_CATEGORY_ROUTE_CANDIDATES + 1).into(),
-            ],
+            vec![tenant_id.into(), slug.into()],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
@@ -189,13 +185,9 @@ async fn load_alias_route_candidates(
             FROM forum_category_route_aliases
             WHERE tenant_id = ? AND slug = ?
             ORDER BY locale, alias_id
-            LIMIT ?
+            LIMIT 65
             "#,
-            vec![
-                tenant_id.into(),
-                slug.into(),
-                (MAX_FORUM_CATEGORY_ROUTE_CANDIDATES + 1).into(),
-            ],
+            vec![tenant_id.into(), slug.into()],
         ),
         backend => return Err(unsupported_category_route_backend(backend)),
     };
@@ -325,17 +317,18 @@ fn stored_category_route_alias_from_row(
 ) -> ForumResult<StoredCategoryRouteAlias> {
     let alias_id: Uuid = row.try_get("", "alias_id")?;
     let category_id: Uuid = row.try_get("", "category_id")?;
+    let locale: String = row.try_get("", "locale")?;
+    let slug: String = row.try_get("", "slug")?;
+    let reason: String = row.try_get("", "reason")?;
     if alias_id.is_nil() || category_id.is_nil() {
         return Err(ForumError::CategoryRouteResolutionConflict);
     }
     Ok(StoredCategoryRouteAlias {
         alias_id,
         category_id,
-        locale: normalize_stored_locale(row.try_get::<String>("", "locale")?.as_str())?,
-        slug: normalize_stored_slug(row.try_get::<String>("", "slug")?.as_str())?,
-        reason: normalize_category_route_alias_reason(
-            row.try_get::<String>("", "reason")?.as_str(),
-        )?,
+        locale: normalize_stored_locale(&locale)?,
+        slug: normalize_stored_slug(&slug)?,
+        reason: normalize_category_route_alias_reason(&reason)?,
     })
 }
 
