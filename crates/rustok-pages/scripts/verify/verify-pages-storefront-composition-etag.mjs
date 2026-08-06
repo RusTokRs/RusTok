@@ -86,6 +86,7 @@ for (const key of [
   "composition_etag_uses_sha256",
   "composition_etag_is_canonical_only",
   "terminal_routes_never_claim_composition_etag",
+  "nonce_bearing_html_never_claims_composition_etag",
   "strong_weak_and_list_if_none_match_are_supported",
   "matching_if_none_match_returns_304",
   "conditional_304_uses_fully_rendered_document_identity",
@@ -170,6 +171,7 @@ for (const marker of [
   'PAGES_STOREFRONT_COMPOSITION_FORMAT: &str = "pages_storefront_composition_v1"',
   'PAGES_STOREFRONT_REVALIDATE_CACHE_CONTROL: &str = "private, no-cache"',
   "StorefrontPageRouteDisposition::Canonical",
+  'rendered_html.contains(" nonce=\\\"")',
   "canonical_page_id: decision.canonical_page_id.as_deref()?",
   "route_generation: decision.route_generation?",
   "page_generation: decision.page_generation?",
@@ -184,7 +186,8 @@ for (const marker of [
   "candidate == \"*\"",
   "composition_etag_is_stable_and_binds_every_dependency",
   "changed rendered HTML should still produce an ETag",
-  "incomplete_or_terminal_decisions_do_not_claim_composition_cache_identity",
+  "incomplete_terminal_or_nonce_bearing_documents_do_not_claim_cache_identity",
+  'nonce=\\"request-specific\\"',
 ]) need(composition, marker, "Pages composition ETag contract");
 need(cargo, "sha2.workspace = true", "storefront composition dependency");
 
@@ -261,6 +264,7 @@ for (const marker of [
   "SSR render with the preloaded Navigation snapshot",
   "pages_storefront_composition_v1",
   "exact final rendered HTML document",
+  "Nonce-bearing HTML also disables the ETag",
   "304 Not Modified",
   "private, no-cache",
   "Execution evidence remains pending",
