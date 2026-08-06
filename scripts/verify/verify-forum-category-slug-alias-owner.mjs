@@ -41,6 +41,10 @@ function forbidText(content, marker, label) {
   if (content.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
+function occurrenceCount(content, marker) {
+  return content.split(marker).length - 1;
+}
+
 const source = Object.fromEntries(
   Object.entries(paths).map(([key, value]) => [key, read(value)]),
 );
@@ -107,9 +111,7 @@ for (const marker of [
 ]) {
   requireText(source.owner, marker, paths.owner);
 }
-if (
-  source.owner.matches("ensure_current_route_key_available_in_tx(").length !== 2
-) {
+if (occurrenceCount(source.owner, "ensure_current_route_key_available_in_tx(") !== 2) {
   failures.push(
     `${paths.owner}: create and new-translation paths must both reserve route keys`,
   );
