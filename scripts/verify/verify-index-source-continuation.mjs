@@ -9,6 +9,7 @@ const files = {
   pageRuntime: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
   graphql: "apps/server/src/graphql/index_drift_diagnosis.rs",
   doc: "crates/rustok-index/docs/m6-source-continuation-codec.md",
+  serverDoc: "crates/rustok-index/docs/m6-source-continuation-server-keyring.md",
   plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };
@@ -136,7 +137,9 @@ for (const secretLeak of [
 
 requireMarkers("pageRuntime", [
   "next_cursor: Option<rustok_index::IndexSourceCursor>",
-  "The continuation cursor remains server-owned and is not attached to GraphQL",
+  "next_token: Option<rustok_index::IndexSourceContinuationToken>",
+  "pub async fn diagnose_source_page_sealed(",
+  "The raw continuation cursor remains server-owned and is not attached to GraphQL",
 ]);
 for (const leaked of [
   "IndexSourceContinuationCodec",
@@ -149,25 +152,31 @@ for (const leaked of [
 }
 
 requireMarkers("doc", [
-  "Status: `source_complete_server_key_composition_pending`.",
+  "Status: `source_complete_server_composition_complete_transport_pending`.",
   "AES-256-GCM",
   "fresh 96-bit operating-system nonce",
   "canonical owner module",
   "canonical source name",
   "between 1 second and 15 minutes",
   "A token naming a removed or otherwise unavailable key fails closed",
-  "does not add or claim",
+  "Server composition",
   "No tests, verifiers, formatting, Cargo checks",
+]);
+requireMarkers("serverDoc", [
+  "Status: `source_complete_transport_and_owner_execution_pending`.",
+  "SecretRef",
+  "exactly 32 bytes",
+  "diagnose_source_page_sealed",
 ]);
 requireMarkers("plan", [
   "M6 authenticated and confidential source continuation codec",
-  "source_complete_server_key_composition_pending",
+  "source_complete_server_composition_complete_transport_pending",
+  "M6 server-owned source continuation keyring and sealed page boundary",
 ]);
 requireMarkers("aggregate", ["'verify-index-source-continuation.mjs'"]);
 
 for (const claim of [
   "tests passed",
-  "server key composition is complete",
   "source-page transport is complete",
   "retained evidence admitted",
 ]) {
