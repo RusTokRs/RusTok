@@ -81,12 +81,17 @@ for (const key of [
   "grant_binds_session_page_revision_hash_expiry_and_proof",
   "authorization_proof_is_redacted_from_debug",
   "authorization_proof_is_not_rendered_into_dom",
+  "grant_session_is_not_rendered_into_dom",
+  "dom_root_identity_uses_page_and_project_hash",
   "plain_text_is_bounded_and_normalized",
   "dom_is_a_temporary_focusout_buffer",
   "dom_listener_cleanup_restores_attributes",
   "only_allowlisted_components_receive_contenteditable",
-  "runtime_bound_conditional_and_repeated_components_are_excluded",
-  "provider_and_nested_components_are_excluded",
+  "runtime_bound_conditional_and_repeated_subtrees_are_excluded",
+  "provider_and_composite_components_are_excluded",
+  "interactive_controls_are_excluded",
+  "static_leaf_children_in_unowned_layouts_remain_eligible",
+  "unchanged_focusout_does_not_consume_grant",
   "server_authorization_port_precedes_mutation",
   "exact_project_hash_precedes_mutation",
   "monotonic_sequence_precedes_mutation",
@@ -167,8 +172,17 @@ for (const marker of [
   "GrapesJsCodec::encode_value(self.editor.document())",
   "policy.instrument_components = true",
   "PageBuilderAuthenticatedInlineStorefront",
+  "let root_id = inline_root_id(&grant);",
+  "fn inline_root_id(grant: &AuthenticatedInlineEditGrant) -> String",
+  "dom_id(grant.page_id())",
+  "grant.expected_project_hash().hex()",
+  "inline_dom_identity_excludes_grant_session_and_authorization_proof",
 ]) need(inline, marker, "Page Builder canonical inline session");
-forbid(inline, "data-inline-proof", "Page Builder authorization proof DOM boundary");
+for (const marker of [
+  "data-inline-proof",
+  "data-inline-session",
+  "dom_id(grant.session_id())",
+]) forbid(inline, marker, "Page Builder secret/session DOM boundary");
 
 const apply = between(
   inline,
@@ -237,5 +251,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "[verify-page-builder-authenticated-inline-edit-adapter] PASS adapter_source_ready=true historical_consumer_boundary=retained execution=pending",
+  "[verify-page-builder-authenticated-inline-edit-adapter] PASS adapter_source_ready=true session_dom_exposure=false historical_consumer_boundary=retained execution=pending",
 );
