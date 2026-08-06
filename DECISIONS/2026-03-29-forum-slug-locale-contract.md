@@ -116,3 +116,25 @@ This amendment supersedes the ID-only statement in section 4 for category route
 identity only. It does not add a GraphQL field, REST endpoint, storefront mount,
 category alias history, hreflang or SEO publication policy. The later FORUM-24
 topic-route slices define their own separate stable-short-identity contract.
+
+## 2026-08-06 amendment — FORUM-24M category slug history
+
+FORUM-24M defines the history rule for the flat localized category route:
+
+- changing either an explicit category slug or the existing name-derived slug
+  records the old `(tenant, locale, slug)` key in an immutable redirect ledger;
+- current and historical route keys share one namespace;
+- a historical key cannot be reused by another category or reclaimed by its
+  original category;
+- category creation and new translation creation consult the same reservation
+  owner, so alias protection cannot be bypassed through a second write path;
+- exact-locale aliases participate in the same locale precedence as current
+  translations and therefore precede fallback-locale current routes;
+- the alias target is the same category identity and its current canonical slug
+  is recomputed rather than copied into history;
+- archived categories remain undisclosed through both current and historical
+  routes;
+- alias resolution still does not authorize visibility or SEO publication.
+
+This amendment adds no hierarchy-derived path, move redirect, category tombstone,
+GraphQL field, REST endpoint, storefront mount, hreflang or SEO publication rule.
