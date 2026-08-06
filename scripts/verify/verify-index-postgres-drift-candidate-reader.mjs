@@ -44,6 +44,10 @@ requireMarkers('source', [
   'txid_visible_in_snapshot((e.xmin::text)::bigint, $5::txid_snapshot)',
   'txid_visible_in_snapshot((l.xmin::text)::bigint, $5::txid_snapshot)',
   'txid_visible_in_snapshot((s.xmin::text)::bigint, $5::txid_snapshot)',
+  'const SCOPE_DIGEST_DOMAIN: &[u8] = b"index_drift_candidate_scope_v1";',
+  'scope_digest: String',
+  'wire.scope_digest != scope_digest(request.scope())',
+  'scope_digest: scope_digest(request.scope())',
   'request.limit() + 1',
   'remaining + 1',
   'load_stale_rows(',
@@ -66,6 +70,7 @@ requireMarkers('source', [
   'index_drift_candidate_materialized_invalid',
   'materialize_postgres_index_drift_candidate_reader(',
   'snapshot_token_validation_is_bounded_and_canonical',
+  'compact_fence_remains_scope_bound',
   'cursor_is_scope_bound_and_phase_typed',
 ]);
 
@@ -129,6 +134,8 @@ requireMarkers('doc', [
   'Status: `source_complete_candidate_confirmation_pending`.',
   '`REPEATABLE READ READ ONLY`',
   '`txid_current_snapshot()::text`',
+  'domain-separated SHA-256 digest',
+  'keeps the fence inside its 512-byte contract',
   '`txid_visible_in_snapshot((xmin::text)::bigint, fence::txid_snapshot)`',
   'post-fence mutation may conservatively remove a candidate',
   '`limit + 1`',
