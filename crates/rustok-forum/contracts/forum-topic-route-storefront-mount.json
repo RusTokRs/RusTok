@@ -1,0 +1,93 @@
+{
+  "contract": "forum_topic_route_storefront_mount_v1",
+  "task": "FORUM-24I",
+  "parent_task": "FORUM-24",
+  "extends": ["FORUM-24A", "FORUM-24H"],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "canonical_route": "/{locale}/forum/t/{short_id}/{slug}",
+  "route_owner": "ForumTopicRouteService",
+  "visibility_owner": "ForumTopicAudienceReadService",
+  "package": "rustok-forum-storefront",
+  "host": "rustok-storefront",
+  "transport": {
+    "facade": "resolve_storefront_topic_route",
+    "native_selected_for": ["ssr", "hydrate"],
+    "graphql_selected_for": ["headless", "csr"],
+    "automatic_fallback": false,
+    "graphql_field": "forumStorefrontTopicRoute",
+    "native_endpoint": "forum/storefront-topic-route",
+    "exact_audience_recheck_both_paths": true
+  },
+  "topic_card_cutover": {
+    "legacy_topic_query_links_emitted": false,
+    "localized_canonical_links_emitted": true,
+    "short_identity_length": 12,
+    "source_identity": "admitted topic UUID",
+    "source_locale": "effective topic locale",
+    "source_slug": "topic translation slug",
+    "category_query_links_unchanged": true
+  },
+  "host_composition": {
+    "router": "rustok_storefront::router",
+    "standalone_and_embedded": true,
+    "actual_request_path_source": "Axum OriginalUri.path",
+    "decoded_segments_used_only_for_owner_input": true,
+    "host_reads_forum_storage": false,
+    "host_reads_alias_ledger": false,
+    "host_recomputes_redirect_target": false,
+    "canonical_exact": "SSR existing Forum module page with owner topic UUID",
+    "redirect_or_nonexact_raw_path": "308 private no-store",
+    "missing_hidden_deleted_or_gone": "404 private no-store",
+    "transport_or_untyped_domain_failure": "503 private no-store",
+    "query_topic_identity_overwritten_by_owner": true
+  },
+  "disclosure": {
+    "public_dispositions": ["CANONICAL", "REDIRECT"],
+    "historical_topic_id_exposed": false,
+    "alias_id_exposed": false,
+    "alias_reason_exposed": false,
+    "gone_exposed": false,
+    "hidden_and_missing_indistinguishable": true
+  },
+  "compatibility": {
+    "database_schema_changed": false,
+    "migration_added": false,
+    "owner_write_changed": false,
+    "semantic_event_changed": false,
+    "admin_contract_changed": false,
+    "graphql_change": "existing additive field retained",
+    "generic_module_category_route_retained": true,
+    "seo_changed": false,
+    "hreflang_changed": false
+  },
+  "verification": {
+    "graphql_guard": "scripts/verify/verify-forum-topic-route-storefront-graphql.mjs",
+    "mount_guard": "scripts/verify/verify-forum-topic-route-storefront-mount.mjs",
+    "maintainer_commands": [
+      "node scripts/verify/verify-forum-topic-route-storefront-graphql.mjs",
+      "node scripts/verify/verify-forum-topic-route-storefront-mount.mjs",
+      "cargo test -p rustok-forum --test topic_route_storefront_graphql_contract -- --nocapture",
+      "cargo test -p rustok-forum-storefront core::tests -- --nocapture",
+      "cargo test -p rustok-storefront forum_topic_route::tests -- --nocapture",
+      "cargo check -p rustok-forum --all-targets",
+      "cargo check -p rustok-forum-storefront --all-targets --features ssr",
+      "cargo check -p rustok-storefront --all-targets --features ssr"
+    ]
+  },
+  "remaining_scope": [
+    "visibility-authorized gone disclosure",
+    "category route identity",
+    "canonical and hreflang document policy",
+    "Forum SEO composition",
+    "Next storefront parity",
+    "maintainer runtime and browser evidence"
+  ],
+  "non_claims": [
+    "no test verifier formatter Cargo workflow registered-host browser or CI execution is claimed",
+    "no public 410 response is claimed",
+    "no category route identity is claimed",
+    "no SEO or hreflang integration is claimed",
+    "FORUM-24 remains planned"
+  ]
+}

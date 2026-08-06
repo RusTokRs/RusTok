@@ -15,7 +15,7 @@ forumStorefrontTopicRoute(
 ): GqlForumStorefrontTopicRouteResolution
 ```
 
-The query composes the existing `ForumTopicRouteService` and then rechecks the returned canonical topic through the same `TopicService` storefront read contract used by `forumStorefrontTopic`.
+The query composes the existing `ForumTopicRouteService` and then rechecks the returned canonical topic through `ForumTopicAudienceReadService`, the same exact category/topic audience owner used by the selected storefront topic transport.
 
 ## Visibility contract
 
@@ -25,12 +25,13 @@ The resolver:
 - treats `tenantId` only as an assertion against the routed tenant;
 - checks the public channel module toggle for anonymous requests;
 - resolves canonical and redirect history through `ForumTopicRouteService`;
-- reopens the owner-provided canonical topic through `TopicService::get_with_locale_fallback`;
-- uses the trusted permission snapshot for authenticated requests and `SecurityContext::public_read()` for anonymous requests;
-- requires an anonymous canonical topic to remain open and visible in the routed public channel;
+- reopens the owner-provided canonical topic through `ForumTopicAudienceReadService`;
+- supplies the trusted permission snapshot and exact GraphQL audience port context for authenticated requests;
+- uses the owner public storefront path for anonymous requests;
+- retains category audience, topic audience, open-status and routed-channel visibility enforcement inside the exact owner;
 - returns `null` when the route or canonical topic is missing, deleted, or not storefront-visible.
 
-The transport does not read the alias table, calculate short identities, normalize route segments, or recompute redirect targets.
+The transport does not read the alias table, calculate short identities, normalize route segments, recompute redirect targets, or reproduce category/topic audience policy.
 
 ## Public response
 
@@ -51,17 +52,15 @@ It intentionally does not expose:
 
 The existing tombstone ledger proves route history but does not retain the visibility policy that applied before deletion. Returning a public `410 Gone` for every stored tombstone could therefore disclose a formerly private or channel-restricted topic.
 
-FORUM-24H fails closed and returns `null` for `ForumTopicRouteDisposition::Gone`. A later slice must define a visibility-authorized tombstone snapshot or another owner-approved disclosure policy before storefront hosts may emit `410`.
+FORUM-24H fails closed and returns `null` for `ForumTopicRouteDisposition::Gone`. A later owner slice must define a visibility-authorized tombstone snapshot or another approved disclosure policy before storefront hosts may emit `410`.
 
 ## Compatibility
 
-This is an additive GraphQL query. It changes no owner method, mutation, database schema, migration, event, admin workflow, storefront host route, canonical link, hreflang, or SEO policy.
-
-The existing query-string storefront links remain unchanged in this slice. The new transport is the prerequisite for a later canonical route mount and redirect composition.
+This is an additive GraphQL query. It changes no route owner method, mutation, database schema, migration, event or admin workflow. FORUM-24I later composes the query and equivalent native owner path into the Rust storefront host.
 
 ## Verification handoff
 
-No commands were executed while preparing this source slice. Maintainers can run:
+No commands were executed while preparing or aligning this source slice. Maintainers can run:
 
 ```bash
 node scripts/verify/verify-forum-topic-route-identity-owner.mjs
@@ -71,11 +70,9 @@ cargo test -p rustok-forum --test topic_route_storefront_graphql_contract -- --n
 cargo check -p rustok-forum --all-targets
 ```
 
-## Remaining FORUM-24 scope
+## Remaining FORUM-24 scope after FORUM-24I
 
-- mount canonical topic routes in storefront hosts;
-- compose HTTP redirect behavior;
 - define visibility-authorized deleted-route handling;
 - add category route identity;
-- define canonical and hreflang policy;
+- define canonical and hreflang document policy;
 - integrate SEO and capture runtime evidence.

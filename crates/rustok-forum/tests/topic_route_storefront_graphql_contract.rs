@@ -38,20 +38,21 @@ fn graphql_schema_exposes_visibility_safe_storefront_topic_route_resolution() {
 }
 
 #[test]
-fn storefront_topic_route_query_rechecks_visibility_and_hides_tombstone_identity() {
+fn storefront_topic_route_query_rechecks_exact_audience_and_hides_tombstone_identity() {
     for marker in [
         "require_module_enabled(ctx, MODULE_SLUG).await?",
         "require_public_forum_channel_enabled(ctx).await?",
         "Permission denied: tenant scope mismatch",
         "ForumTopicRouteService::new(db.clone())",
         ".resolve(tenant_id, &locale, &short_id, &slug)",
-        "TopicService::new(db.clone(), event_bus.clone())",
-        ".get_with_locale_fallback(",
-        "forum_request_security(ctx)",
-        "crate::constants::topic_status::OPEN",
-        "is_topic_visible_for_channel(",
+        ".topic_audience_read_service(db.clone(), event_bus.clone())",
+        "topic_read_audience_port_context(",
+        "ForumTopicReadTransport::Graphql",
+        "ForumTopicReadOperation::SelectedTopic",
+        ".get_authenticated_storefront_visible_with_audience_context(",
+        ".get_public_storefront_visible_with_locale_fallback(",
+        "SecurityContext::from_permission_snapshot",
         "ForumTopicRouteDisposition::Gone => return Ok(None)",
-        "SecurityContext::public_read",
         "ChannelService::new(db.clone())",
     ] {
         assert!(
@@ -61,6 +62,9 @@ fn storefront_topic_route_query_rechecks_visibility_and_hides_tombstone_identity
     }
 
     for forbidden in [
+        "TopicService::new",
+        "is_topic_visible_for_channel(",
+        "crate::constants::topic_status::OPEN",
         "pub requested_topic_id",
         "pub alias_id",
         "GqlForumStorefrontTopicRouteDisposition::Gone",

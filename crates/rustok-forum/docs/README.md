@@ -52,7 +52,8 @@ notifications module, and cross-module release gates.
 - FORUM-24E provides a bounded, cursor-resumable owner repair that ensures exact route aliases for immutable merge receipts created before FORUM-24B.
 - FORUM-24F exposes the localized topic slug rename owner through an additive routed-tenant GraphQL mutation while preserving owner-defined update and ownership semantics.
 - FORUM-24G composes that mutation in the module-owned Leptos and Next-admin packages without adding route, alias, merge or locale-selection policy to either UI.
-- FORUM-24H exposes visibility-safe storefront canonical/redirect resolution through GraphQL, rechecks the canonical topic through the existing storefront read contract, and hides `gone` until a visibility-authorized tombstone policy exists.
+- FORUM-24H exposes visibility-safe storefront canonical/redirect resolution through GraphQL, rechecks the canonical topic through the exact category/topic audience owner, and hides `gone` until a visibility-authorized tombstone policy exists.
+- FORUM-24I composes the canonical localized topic route in `rustok-forum-storefront` and the shared Rust storefront router, cuts topic-card navigation over from UUID query links, preserves native/GraphQL audience parity, and keeps missing/hidden/deleted/`gone` indistinguishable as public `404`.
 
 ## Verification
 
@@ -60,6 +61,8 @@ notifications module, and cross-module release gates.
 - `cargo xtask module test forum`
 - `npm run verify:forum:admin-boundary`
 - `npm run verify:forum:storefront-boundary`
+- `node scripts/verify/verify-forum-topic-route-storefront-graphql.mjs`
+- `node scripts/verify/verify-forum-topic-route-storefront-mount.mjs`
 - task-specific owner, transport, UI and runtime commands from the canonical plan
 
 ## Related documents
@@ -91,6 +94,7 @@ notifications module, and cross-module release gates.
 - [FORUM-24F topic slug rename GraphQL transport](./forum-24f-topic-slug-rename-graphql-transport.md)
 - [FORUM-24G topic slug rename admin UI](./forum-24g-topic-slug-rename-admin-ui.md)
 - [FORUM-24H storefront topic route GraphQL transport](./forum-24h-topic-route-storefront-graphql.md)
+- [FORUM-24I storefront topic route mount](./forum-24i-topic-route-storefront-mount.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)

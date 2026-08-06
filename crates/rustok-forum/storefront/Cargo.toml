@@ -10,6 +10,7 @@ hydrate = ["leptos/hydrate"]
 ssr = [
     "leptos/ssr",
     "dep:leptos_axum",
+    "dep:rustok-channel",
     "dep:rustok-core",
     "dep:rustok-forum",
     "dep:rustok-outbox",
@@ -25,6 +26,7 @@ rustok-graphql.workspace = true
 leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 rustok-api = { workspace = true, default-features = false }
+rustok-channel = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-forum = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
