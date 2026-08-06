@@ -23,16 +23,22 @@ The slice includes:
 
 `rustok-forum-storefront` owns route DTOs, selected-path transport selection and topic-card href policy. The host does not query Forum persistence, inspect the alias ledger, resolve merge receipts, calculate redirect targets or authorize topics.
 
-The host receives only a visibility-admitted route resolution and performs HTTP composition:
+The original FORUM-24I host composition was:
 
-- exact `CANONICAL` path: render the existing Forum module page with the owner-resolved topic UUID injected into request context;
-- `REDIRECT` or a nonexact raw locale/identity/slug path: return private `308 Permanent Redirect` to `canonical.path`;
-- missing, deleted, hidden, channel-restricted or `GONE`: return private `404 Not Found`;
-- transport/domain failure without a public typed route result: return private `503 Service Unavailable`.
+- exact `CANONICAL`: render the existing Forum module page;
+- `REDIRECT` or nonexact raw path: private `308 Permanent Redirect`;
+- missing, hidden, deleted, channel-restricted or `GONE`: private `404 Not Found`;
+- transport failure: private `503 Service Unavailable`.
+
+FORUM-24K extends only the terminal decision:
+
+- an owner-authorized `GONE` becomes private `410 Gone`;
+- missing, unsnapshotted, formerly private, disabled-channel or channel-mismatched routes remain private `404`;
+- malformed decision shapes and snapshot integrity conflicts become private `503`.
+
+The host still does not authorize `GONE`; GraphQL or native transport must already have consumed `ForumTopicRouteTombstoneVisibilityService::can_disclose_public_gone`. Redirect and terminal responses use `Cache-Control: private, no-store`.
 
 Axum-decoded route segments are passed only to the module owner for resolution. Canonical equality is checked against `OriginalUri.path()`, so case variants and percent-encoded noncanonical paths redirect instead of being mistaken for exact canonical requests.
-
-Redirect and terminal responses use `Cache-Control: private, no-store`.
 
 ## Dual transport
 
@@ -42,9 +48,11 @@ The storefront package exposes one facade:
 resolve_storefront_topic_route(locale, short_id, slug)
 ```
 
-SSR/hydrate selects the native server function. Headless/CSR selects the additive `forumStorefrontTopicRoute` GraphQL query. There is no automatic fallback between selected paths.
+SSR/hydrate selects the native server function. Headless/CSR selects GraphQL. There is no automatic fallback between selected paths.
 
-The native path composes `ForumTopicRouteService` with `ForumTopicAudienceReadService`, the routed tenant, optional trusted auth snapshot, request channel and exact native audience port context. The GraphQL query is aligned to the same audience owner and exact GraphQL port context.
+FORUM-24K switches the GraphQL adapter from the legacy canonical/redirect-only `forumStorefrontTopicRoute` field to additive `forumStorefrontTopicRouteDecision`. The native endpoint remains `forum/storefront-topic-route`. Both paths consume the same boolean tombstone owner and share the same `CANONICAL | REDIRECT | GONE` DTO.
+
+Canonical and redirect results retain exact `ForumTopicAudienceReadService` parity. Authentication does not broaden deletion-time public tombstone disclosure.
 
 ## Topic-card cutover
 
@@ -52,25 +60,11 @@ Topic cards no longer emit `?topic=<uuid>` links. The module core derives the de
 
 Category selection remains on the existing module query route. Selecting a canonical topic route reopens the topic through the owner-resolved UUID before rendering.
 
-## Deliberate exclusions
-
-FORUM-24I does not add:
-
-- public `410 Gone` responses;
-- a consumer for a visibility-authorized deleted-route snapshot;
-- category route identity;
-- canonical, hreflang or alternate document metadata;
-- Forum-specific SEO head composition;
-- Next storefront route mounting;
-- runtime, browser or registered-host evidence.
-
-FORUM-24J later adds an immutable boolean-and-channel tombstone visibility owner for newly deleted topics. FORUM-24I remains unchanged: GraphQL and native route DTOs do not expose `GONE`, so the host continues to collapse it to the same public `404` as hidden or missing content. FORUM-24K is responsible for consuming the boolean decision and adding authorized HTTP `410` composition.
-
 ## Compatibility
 
-The GraphQL field remains additive. FORUM-24I itself adds no migration, storage schema, owner write method, semantic event, admin mutation or receipt changes. FORUM-24J is a separate delete-side storage owner slice and does not alter the I transport or HTTP contract.
+FORUM-24K adds a new GraphQL field instead of widening the legacy enum or making the legacy canonical field nullable. The existing generic module route remains available for category navigation and direct noncanonical module access.
 
-The existing generic module route remains available for category navigation and direct noncanonical module access. Topic-card navigation cuts over to the canonical topic route.
+No FORUM-24K migration, owner write, semantic event, admin mutation, SEO or hreflang change is introduced.
 
 ## Verification handoff
 
@@ -81,18 +75,19 @@ Maintainers can run:
 ```bash
 node scripts/verify/verify-forum-topic-route-storefront-graphql.mjs
 node scripts/verify/verify-forum-topic-route-storefront-mount.mjs
+node scripts/verify/verify-forum-topic-route-authorized-gone.mjs
 cargo test -p rustok-forum --test topic_route_storefront_graphql_contract -- --nocapture
-cargo test -p rustok-forum-storefront core::tests -- --nocapture
+cargo test -p rustok-forum --test topic_route_authorized_gone_transport_contract -- --nocapture
+cargo test -p rustok-forum-storefront model::tests -- --nocapture
 cargo test -p rustok-storefront forum_topic_route::tests -- --nocapture
 cargo check -p rustok-forum --all-targets
 cargo check -p rustok-forum-storefront --all-targets --features ssr
 cargo check -p rustok-storefront --all-targets --features ssr
 ```
 
-## Remaining FORUM-24 scope after FORUM-24J
+## Remaining FORUM-24 scope after FORUM-24K
 
-- consume the boolean deleted-route disclosure owner and add authorized public `410`;
 - category route identity and historical aliases;
 - canonical/hreflang document policy;
 - SEO integration across storefront hosts;
-- maintainer runtime evidence.
+- maintainer migration, runtime and browser evidence.
