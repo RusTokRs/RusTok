@@ -23,12 +23,21 @@ function parseArguments(argv) {
     if (argument === "--help" || argument === "-h") {
       console.log(
         "usage: capture-pages-inline-edit-http-evidence.mjs " +
-          "--base-url URL --page-id UUID --locale LOCALE --output FILE " +
-          "[--source-commit SHA]",
+          "--base-url URL --deployment-image-digest REPO@sha256:DIGEST " +
+          "--page-id UUID --locale LOCALE --output FILE [--source-commit SHA]",
       );
       process.exit(0);
     }
-    if (["--base-url", "--page-id", "--locale", "--output", "--source-commit"].includes(argument)) {
+    if (
+      [
+        "--base-url",
+        "--deployment-image-digest",
+        "--page-id",
+        "--locale",
+        "--output",
+        "--source-commit",
+      ].includes(argument)
+    ) {
       const value = argv[index + 1];
       if (!value) fail(`${argument} requires a value`);
       const key = argument
@@ -102,6 +111,9 @@ function commonHeaders() {
     if (["authorization", "cookie", "set-cookie"].includes(normalized)) {
       fail(`${name} must not carry authorization or cookie headers`);
     }
+    if (Object.hasOwn(headers, normalized)) {
+      fail(`${name} contains a duplicate case-insensitive header ${normalized}`);
+    }
     if (
       typeof headerValue !== "string" ||
       headerValue.length > 4096 ||
@@ -134,6 +146,26 @@ function requireBaseUrl(value) {
   return parsed.origin;
 }
 
+function requireDeploymentImageDigest(value) {
+  if (
+    typeof value !== "string" ||
+    value.length > 512 ||
+    /[\s\u0000-\u001f\u007f]/u.test(value) ||
+    value.includes("://")
+  ) {
+    fail("--deployment-image-digest must be a bounded Docker RepoDigest");
+  }
+  const parts = value.split("@");
+  if (
+    parts.length !== 2 ||
+    parts[0].length === 0 ||
+    !/^sha256:[0-9a-f]{64}$/u.test(parts[1])
+  ) {
+    fail("--deployment-image-digest must be REPOSITORY@sha256:DIGEST");
+  }
+  return value;
+}
+
 function requireUuid(value) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value)) {
     fail("--page-id must be a UUID");
@@ -144,12 +176,10 @@ function requireUuid(value) {
 function requireLocale(value) {
   if (
     typeof value !== "string" ||
-    value.trim() !== value ||
-    value.length === 0 ||
     Buffer.byteLength(value, "utf8") > 64 ||
-    /[\u0000-\u001f\u007f/\\?#]/u.test(value)
+    !/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,63})$/u.test(value)
   ) {
-    fail("--locale must be a non-empty bounded path-safe locale");
+    fail("--locale must be a bounded canonical locale token");
   }
   return value;
 }
@@ -256,6 +286,18 @@ async function captureAsset(baseUrl, specification) {
     fail(`${specification.id} weak If-None-Match must return empty 304`);
   }
   requireHeader(weak, "etag", etag, `${specification.id} weak 304`);
+  requireHeader(
+    weak,
+    "cache-control",
+    contract.http_capture.asset_cache_control,
+    `${specification.id} weak 304`,
+  );
+  requireHeader(
+    weak,
+    "cross-origin-resource-policy",
+    contract.http_capture.asset_cross_origin_resource_policy,
+    `${specification.id} weak 304`,
+  );
 
   return {
     id: specification.id,
@@ -277,9 +319,7 @@ function scenarioHeaders(scenario, shared) {
     ? boundedSecretEnvironment(scenario.cookie_env, 16_384)
     : null;
   if (!authorization && !cookie) {
-    fail(
-      `${scenario.id} requires ${scenario.authorization_env} or ${scenario.cookie_env}`,
-    );
+    fail(`${scenario.id} requires ${scenario.authorization_env} or ${scenario.cookie_env}`);
   }
   const headers = { ...shared.headers };
   const environmentNames = [...shared.environment_names];
@@ -291,7 +331,7 @@ function scenarioHeaders(scenario, shared) {
     headers.cookie = cookie;
     environmentNames.push(scenario.cookie_env);
   }
-  return { headers, environment_names: environmentNames.sort() };
+  return { headers, environment_names: [...new Set(environmentNames)].sort() };
 }
 
 async function captureAuthoringScenario(baseUrl, pageId, locale, scenario, shared) {
@@ -323,10 +363,10 @@ async function captureAuthoringScenario(baseUrl, pageId, locale, scenario, share
       markerChecks[marker] = html.includes(marker);
       if (!markerChecks[marker]) fail(`direct_user HTML is missing ${marker}`);
     }
-    markerChecks.page_id = html.includes(pageId);
-    markerChecks.locale = html.includes(locale);
+    markerChecks.page_id = html.includes(`data-pages-page-id="${pageId}"`);
+    markerChecks.locale = html.includes(`data-pages-locale="${locale}"`);
     if (!markerChecks.page_id || !markerChecks.locale) {
-      fail("direct_user HTML must bind the requested page id and exact locale");
+      fail("direct_user HTML must bind the requested page id and exact locale attributes");
     }
     const lower = html.toLowerCase();
     for (const marker of contract.http_capture.direct_user_forbidden_markers) {
@@ -359,10 +399,19 @@ function writeAtomic(output, document) {
 }
 
 const options = parseArguments(process.argv.slice(2));
-for (const required of ["baseUrl", "pageId", "locale", "output"]) {
-  if (!options[required]) fail(`--${required.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+for (const required of [
+  "baseUrl",
+  "deploymentImageDigest",
+  "pageId",
+  "locale",
+  "output",
+]) {
+  if (!options[required]) {
+    fail(`--${required.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+  }
 }
 const baseUrl = requireBaseUrl(options.baseUrl);
+const deploymentImageDigest = requireDeploymentImageDigest(options.deploymentImageDigest);
 const pageId = requireUuid(options.pageId);
 const locale = requireLocale(options.locale);
 const head = currentCommit();
@@ -390,6 +439,7 @@ const document = {
   captured_at: new Date().toISOString(),
   target: {
     origin: baseUrl,
+    deployment_image_digest: deploymentImageDigest,
     page_id_shape: "uuid",
     locale,
   },
