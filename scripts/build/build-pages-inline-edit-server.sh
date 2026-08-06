@@ -63,7 +63,7 @@ wasm_bindgen_version=$(node "$client_builder" --print-wasm-bindgen-version)
 if [[ $skip_tool_install -eq 0 ]]; then
   CARGO_TARGET_DIR="$tool_root/target" \
     cargo install wasm-bindgen-cli \
-      --version "$wasm_bindgen_version" \
+      --version "=$wasm_bindgen_version" \
       --locked \
       --root "$tool_root"
 fi
