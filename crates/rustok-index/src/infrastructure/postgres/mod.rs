@@ -45,6 +45,7 @@ mod source_replay_runner_tests;
 pub use drift_candidate_observer::{
     IndexDriftCandidateObserverCompositionError,
     PostgresIndexDriftCandidateMaterializedObserver,
+    materialize_postgres_index_drift_candidate_confirmer,
     materialize_postgres_index_drift_candidate_observer,
 };
 pub use drift_candidate_reader::{
