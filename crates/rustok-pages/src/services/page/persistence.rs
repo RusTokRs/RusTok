@@ -6,7 +6,9 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::dto::PageTranslationInput;
-use crate::entities::{page, page_body, page_channel_visibility, page_translation};
+use crate::entities::{
+    page, page_body, page_channel_visibility, page_route_publication, page_translation,
+};
 use crate::error::{PagesError, PagesResult};
 
 use super::helpers::{normalize_locale, normalize_slug};
@@ -49,6 +51,19 @@ impl PageService {
         if select.one(txn).await?.is_some() {
             return Err(PagesError::duplicate_slug(&slug, &locale));
         }
+
+        let snapshots = page_route_publication::Entity::find()
+            .filter(page_route_publication::Column::TenantId.eq(tenant_id))
+            .filter(page_route_publication::Column::Locale.eq(&locale))
+            .filter(page_route_publication::Column::Slug.eq(&slug))
+            .all(txn)
+            .await?;
+        match snapshots.as_slice() {
+            [] => {}
+            [snapshot] if Some(snapshot.page_id) == exclude_page_id => {}
+            _ => return Err(PagesError::duplicate_slug(&slug, &locale)),
+        }
+
         ensure_route_alias_claim_available_in_tx(txn, tenant_id, &locale, &slug).await
     }
 
