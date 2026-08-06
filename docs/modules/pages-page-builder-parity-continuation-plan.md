@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-06  
-Status: source-parity-current / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / release-integration-admin-launch-browser-pending
+Status: source-parity-current / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-admin-build-browser-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` document, publication, artifact, routing, cache and authenticated inline-authoring boundaries
 
 ## Source-of-truth policy
@@ -12,13 +12,13 @@ This is the canonical shared continuation cursor. Historical dated packets remai
 
 Across every retained source packet, execution remains pending until a maintainer records reproducible command output and artifact evidence.
 
-Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy, public reads, authenticated inline grants/save transport and the module-owned inline asset HTTP contract. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer, artifact producer contracts and reusable real-DOM inline adapter/session. Navigation owns menu identity and active-menu policy. SEO providers own resolved SEO documents. Hosts compose owner results, authenticated route admission, CSP and HTTP response policy but do not recreate Pages document, route or asset policy.
+Pages and Page Builder continue as one vertical pipeline with explicit owners. Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy, public reads, authenticated inline grants/save transport and the module-owned inline asset HTTP contract. Pages admin owns the optional same-origin authoring launch control. Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer, artifact producer contracts and reusable real-DOM inline adapter/session. Navigation owns menu identity and active-menu policy. SEO providers own resolved SEO documents. Hosts compose owner results, authenticated route admission, CSP and HTTP response policy but do not recreate Pages document, route, asset or launch policy.
 
 Optional external event infrastructure is outside the active Pages cursor. Optional external delivery infrastructure is outside the active Pages cursor.
 
 ## Rechecked merged cursor
 
-Current `main` through PR #3056 contains:
+Current `main` through PR #3060 contains:
 
 - PR #2955 — publish/rollback event-correlation and generation miss/refill contract;
 - PR #2971 — source-ready PostgreSQL publish/rollback outbox-to-cache packet;
@@ -45,9 +45,10 @@ Current `main` through PR #3056 contains:
 - PR #3032 — exact rendered Pages/Navigation/SEO private revalidation ETag;
 - PR #3039 — reusable authenticated real-DOM adapter and canonical Fly patch session;
 - PR #3049 — Pages-owned signed inline grants, bootstrap/commit transport and document-only save consumer;
-- PR #3056 — authenticated authoring module route, admission/response policy and client export/build source.
+- PR #3056 — authenticated authoring module route, admission/response policy and client export/build source;
+- PR #3060 — Pages-owned binary-embedded authoring assets and exact-lock client/server build orchestration source.
 
-The present source slice adds a Pages-owned feature-gated router for the three fixed authoring assets, compile-time binary embedding, exact MIME/revalidation/ETag/CORP behavior and an exact-lock client/server build orchestrator. Release workflow and admin launch integration remain pending. Client/server build, HTTP delivery and browser execution remain pending.
+The present source slice adds a Pages admin-owned, non-default launch control for the authenticated authoring route. It requires an explicit compile-time same-origin acknowledgement, a selected non-nil page UUID, bounded encoded locale and effective editor role capability. Admin asset/release/Docker build integration and all browser execution remain pending.
 
 ## Retained source marker index
 
@@ -71,13 +72,16 @@ This index preserves exact stable source markers consumed by retained static gua
 - `authenticated-inline-adapter-source-ready`; Authenticated real-DOM inline adapter: source-ready. Fly remains the sole document authority.
 - `authenticated-inline-consumer-source-ready`; Pages authenticated inline consumer: source-ready. Signed grants, direct-user/session binding, opt-in server functions and the existing document-save owner are composed.
 - `authenticated-authoring-route-source-ready`; Authenticated authoring route: source-ready. The existing module-page route mounts the consumer behind direct-user/session/`pages:update` admission and private non-indexable response policy; client artifact build and browser execution remain pending.
-- `inline-edit-asset-delivery-source-ready`; Dedicated authoring asset delivery: source-ready. Pages conditionally embeds and serves the fixed bootstrap/JS/WASM contract; release workflow and admin launch integration remain pending.
+- `inline-edit-asset-delivery-source-ready`; Dedicated authoring asset delivery: source-ready. Pages conditionally embeds and serves the fixed bootstrap/JS/WASM contract; release workflow integration remains pending.
+- `inline-edit-admin-launch-source-ready`; Admin-owned inline authoring launch: source-ready. A selected page gets a fixed same-origin route link only under non-default feature and explicit compile-time deployment acknowledgement; admin asset build and browser execution remain pending.
 
 Historical host-route marker retained for source-guard compatibility: `Delete tombstones and historical backfill remain open` was the correct PR #3020 boundary and is superseded by current tombstone and explicit import statuses.
 
 Historical adapter marker retained for source-guard compatibility: `Pages consumer grant issuance and document-only save mount remain open` was the correct PR #3039 boundary and is superseded by the current consumer status.
 
 Historical consumer marker retained for source-guard compatibility: `authenticated route mount remains open` was the correct PR #3049 boundary and is superseded by the authenticated authoring route source.
+
+Historical asset-delivery marker retained for source-guard compatibility: `release workflow and admin launch integration remain pending` was the correct PR #3060 boundary. The admin launch source is now ready; release/admin asset build integration remains open.
 
 ## Current parity state
 
@@ -216,32 +220,59 @@ Fixed contract:
 
 JavaScript uses `text/javascript; charset=utf-8`; WASM uses `application/wasm`. Stable paths use `Cache-Control: public, max-age=0, must-revalidate`, full SHA-256 ETags, exact/weak `If-None-Match` handling with `304`, and `Cross-Origin-Resource-Policy: same-origin`.
 
-The client builder now reads the exact `wasm-bindgen` version from `Cargo.lock`, rejects a mismatched CLI, uses Cargo `--locked`, respects external `CARGO_TARGET_DIR`, validates outputs and atomically publishes the generated pair. `scripts/build/build-pages-inline-edit-server.sh` installs/verifies that exact CLI, prepares all assets and then builds `rustok-server --features pages-inline-edit-assets`.
+The client builder reads the exact `wasm-bindgen` version from `Cargo.lock`, rejects a mismatched CLI, uses Cargo `--locked`, respects external `CARGO_TARGET_DIR`, validates outputs and atomically publishes the generated pair. `scripts/build/build-pages-inline-edit-server.sh` installs/verifies that exact CLI, prepares all assets and then builds `rustok-server --features pages-inline-edit-assets`.
 
-Release workflow and admin launch integration remain pending. Production Docker builder integration remains pending. No client artifact, embedded server binary, HTTP asset response or browser result is claimed.
+Release workflow and production Docker builder integration remain pending. No client artifact, embedded server binary, HTTP asset response or browser result is claimed.
+
+### Admin-owned inline authoring launch: source-ready
+
+`rustok-pages-admin/inline-edit-launch` owns the launch component. `rustok-admin/pages-inline-edit-launch` forwards the non-default feature at the application package.
+
+The component uses only:
+
+```text
+/modules/pages-authoring?page_id=<canonical UUID>&lang=<form-encoded locale>
+```
+
+It requires the exact compile-time acknowledgement `RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN=true`. Absent, false or alternative values render nothing. This prevents a standalone/token-based admin build from silently creating a same-origin link to the wrong host.
+
+The selected page must be a non-nil UUID. Locale is non-empty, bounded to 64 bytes, free of control characters and encoded through `url::form_urlencoded::Serializer`. The current canonical admin role must have effective Pages edit capability before the control is displayed.
+
+The presentation gate is not authorization. Direct-user/session/`pages:update` admission and Pages owner-aware document checks remain downstream and authoritative.
+
+The href contains no bearer token, session, grant, proof, signing material, arbitrary origin or redirect target. The new-tab link uses `noopener noreferrer`. The custom data marker contains only the literal `same-origin` classification.
+
+Admin asset build integration and browser execution remain pending. No rendered launch control or successful navigation is claimed.
 
 Source evidence:
 
+- `apps/admin/Cargo.toml`;
 - `apps/storefront/src/modules/core.rs`;
 - `apps/storefront/public/assets/pages-inline-edit-bootstrap.js`;
 - `apps/storefront/scripts/build-pages-inline-edit-client.mjs`;
 - `apps/server/src/middleware/auth_context.rs`;
 - `apps/server/Cargo.toml`;
+- `crates/rustok-pages/admin/Cargo.toml`;
+- `crates/rustok-pages/admin/src/lib.rs`;
+- `crates/rustok-pages/admin/src/inline_edit_launch.rs`;
 - `crates/rustok-pages/src/http.rs`;
 - `crates/rustok-pages/src/http/inline_edit_assets.rs`;
 - `scripts/build/build-pages-inline-edit-server.sh`;
 - `crates/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json`;
 - `crates/rustok-pages/contracts/evidence/pages-inline-edit-asset-delivery-source.json`;
+- `crates/rustok-pages/contracts/evidence/pages-inline-edit-admin-launch-source.json`;
 - `crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs`;
 - `crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs`;
+- `crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs`;
 - `docs/modules/pages-page-builder-authenticated-authoring-route-packet-2026-08-06.md`;
-- `docs/modules/pages-page-builder-inline-edit-asset-delivery-packet-2026-08-06.md`.
+- `docs/modules/pages-page-builder-inline-edit-asset-delivery-packet-2026-08-06.md`;
+- `docs/modules/pages-page-builder-inline-edit-admin-launch-packet-2026-08-06.md`.
 
 ### Anonymous storefront boundary: source-ready
 
 The public Pages route remains SSR-only. Retained source guards exclude Pages/Page Builder/Fly authoring dependencies and executable hydration/bootstrap markers from selected anonymous host profiles. The explicit built-artifact inspector remains source-ready; build and artifact inspection remain pending.
 
-The authenticated inline and asset profiles are opt-in and are not part of the six retained anonymous dependency graphs. Anonymous public HTML does not reference the authoring bootstrap source.
+The authenticated inline, asset and admin-launch profiles are opt-in and are not part of the six retained anonymous dependency graphs. Anonymous public HTML does not reference the authoring bootstrap source.
 
 ## Parity matrix
 
@@ -262,8 +293,8 @@ The authenticated inline and asset profiles are opt-in and are not part of the s
 | Authenticated authoring route mount | Source-ready | HTTP/browser execution pending |
 | Dedicated authoring client export | Source-ready | WASM build and artifact inspection pending |
 | Binary-embedded authoring asset router | Source-ready | Server build and HTTP `200`/`304` evidence pending |
+| Admin-owned launch link | Source-ready | Admin asset build, render and navigation pending |
 | Release workflow/Docker integration | Open | Not implemented |
-| Admin-owned launch link | Open | Not implemented |
 | Artifact HTTP cache | Source-ready | SQLite/Axum execution pending |
 | Native storefront route/cache/admission | Source-ready | Route-set execution pending |
 | Selected immutable artifact vs draft body | Source-ready | Focused SQLite execution pending |
@@ -277,46 +308,54 @@ The authenticated inline and asset profiles are opt-in and are not part of the s
 
 ## Boundaries
 
-This slice changes only Pages-owned asset HTTP source, opt-in server feature composition and exact-lock client/server build orchestration around the existing authenticated consumer and route.
+This slice changes only Pages admin launch source and opt-in feature composition around the existing authenticated route.
 
 It does not:
 
 - mount editing in the anonymous storefront or change the public Pages route;
 - accept delegated or service principals;
+- move bearer tokens, grants or proofs into links or DOM data;
+- accept a caller-provided launch origin or redirect target;
 - create a second Pages document persistence path;
 - edit published immutable documents;
 - change database schemas or migrations;
 - add GraphQL or REST mutations;
 - change publish, rollback, artifact, cache or event schemas;
-- integrate release workflow, production Docker or admin navigation;
-- claim tests, Cargo, formatting, verifiers, SSR/WASM builds, generated assets, server binaries, HTTP execution, browsers, dependency graphs, workflows, CI or rollout execution;
+- integrate embedded-admin, release workflow or production Docker builds;
+- claim tests, Cargo, formatting, verifiers, SSR/WASM builds, generated assets, server binaries, launch rendering, HTTP execution, browsers, dependency graphs, workflows, CI or rollout execution;
 - promote FFA or FBA.
 
 ## Next cursor
 
-1. Integrate `scripts/build/build-pages-inline-edit-server.sh` into deterministic release build and reproducibility jobs while retaining pinned actions and binary reproducibility.
-2. Integrate the same exact-lock path into the production Docker builder.
-3. Add an admin-owned launch link under a matching opt-in admin feature.
-4. Run the asset-delivery, authenticated-route and consumer static guards plus focused Cargo/Rust checks.
-5. Build the client and embedded server binary; retain JS/WASM/binary hashes, sizes and import evidence.
-6. Prove same-origin `200`/`304`, MIME, ETag, CORP and production CSP behavior.
-7. Execute direct-user allowed and anonymous/service/delegated/permission-denied HTTP cases.
-8. Observe browser edit, save, replacement grant, stale revision, replay and expiry behavior.
-9. Re-run anonymous dependency graph and built-artifact exclusion evidence.
-10. Complete workflow and observed tenant rollout evidence before promotion.
+1. Update the deterministic embedded-admin build to enable `pages-inline-edit-launch` and set `RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN=true` only for the same-origin deployment.
+2. Integrate `scripts/build/build-pages-inline-edit-server.sh` into deterministic release build and reproducibility jobs while retaining pinned actions and binary reproducibility.
+3. Integrate the same exact-lock path into the production Docker builder.
+4. Update protected release-infrastructure guards and approval fixtures.
+5. Run the admin-launch, asset-delivery, authenticated-route and consumer static guards plus focused Cargo/Rust checks.
+6. Build admin/client assets and embedded server binary; retain hashes, sizes and import evidence.
+7. Prove role-visible/hidden launch states and same-origin navigation.
+8. Prove same-origin `200`/`304`, MIME, ETag, CORP and production CSP behavior.
+9. Execute direct-user allowed and anonymous/service/delegated/permission-denied HTTP cases.
+10. Observe browser edit, save, replacement grant, stale revision, replay and expiry behavior.
+11. Re-run anonymous dependency graph and built-artifact exclusion evidence.
+12. Complete workflow and observed tenant rollout evidence before promotion.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
+cargo test -p rustok-pages-admin --features inline-edit-launch --all-targets -- --nocapture
+cargo check -p rustok-admin --no-default-features \
+  --features hydrate,pages-inline-edit-launch \
+  --target wasm32-unknown-unknown
 node apps/storefront/scripts/build-pages-inline-edit-client.mjs --print-wasm-bindgen-version
 bash scripts/build/build-pages-inline-edit-server.sh
 cargo test -p rustok-pages --features inline-edit-assets --all-targets -- --nocapture
-cargo test -p rustok-pages-storefront --features inline-edit,ssr --all-targets -- --nocapture
 cargo check -p rustok-storefront --no-default-features \
   --features pages-inline-edit-hydrate --target wasm32-unknown-unknown
 cargo check -p rustok-server --features pages-inline-edit-assets

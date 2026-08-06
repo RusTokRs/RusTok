@@ -1,7 +1,7 @@
 # Implementation Plan for `rustok-pages`
 
 Date: 2026-08-06  
-Status: `in_progress / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / release-integration-admin-launch-browser-pending`
+Status: `in_progress / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-admin-build-browser-pending`
 
 ## Policy: current code only
 
@@ -19,7 +19,7 @@ Forbidden:
 - direct DOM-to-database persistence;
 - fallback signing secrets or unsigned inline-edit claims.
 
-Fly remains the only visual document and command authority. Pages owns page identity, localization, document revisions, lifecycle, route history, immutable published bindings, caches, authenticated inline grants/save transport and the module-owned inline asset HTTP contract. The host owns authenticated route admission, CSP and response composition, but not Pages document policy.
+Fly remains the only visual document and command authority. Pages owns page identity, localization, document revisions, lifecycle, route history, immutable published bindings, caches, authenticated inline grants/save transport and the module-owned inline asset HTTP contract. Pages admin owns the optional authoring launch control. The host owns authenticated route admission, CSP and response composition, but not Pages document policy.
 
 ## Current source state
 
@@ -60,7 +60,7 @@ Fly remains the only visual document and command authority. Pages owns page iden
 - The anonymous storefront dependency graph verifier retains six feature-resolved profiles.
 - Compiled SSR/CSR/hydrate bundle artifact evidence remains open.
 - The public Pages route remains SSR-only and unchanged.
-- Authenticated inline and asset profiles are opt-in and are not enabled by retained anonymous default/CSR/hydrate/SSR profiles.
+- Authenticated inline, asset and admin-launch profiles are opt-in and are not enabled by retained anonymous default/CSR/hydrate/SSR profiles.
 - The authoring bootstrap is referenced only by the registered authenticated authoring page.
 
 ## Authenticated inline editing
@@ -142,6 +142,8 @@ rustok-storefront/pages-inline-edit-hydrate
 rustok-server/pages-inline-edit
 rustok-pages/inline-edit-assets
 rustok-server/pages-inline-edit-assets
+rustok-pages-admin/inline-edit-launch
+rustok-admin/pages-inline-edit-launch
 ```
 
 The storefront crate exposes a feature/target-gated `start_pages_inline_edit_client` WASM export. The authoring bootstrap imports only fixed same-origin paths after it finds the authoring root. Before mounting the client surface, the export removes the SSR shell to avoid duplicate editor instances.
@@ -156,7 +158,7 @@ Fixed paths:
 
 ### Inline edit asset delivery: source-ready
 
-The Pages module HTTP owner now conditionally merges an exact asset router under `rustok-pages/inline-edit-assets`. All three generated files are embedded into the server binary. Missing files fail asset-profile compilation, so an incomplete authoring deployment cannot silently fall back to a runtime filesystem.
+The Pages module HTTP owner conditionally merges an exact asset router under `rustok-pages/inline-edit-assets`. All three generated files are embedded into the server binary. Missing files fail asset-profile compilation, so an incomplete authoring deployment cannot silently fall back to a runtime filesystem.
 
 The fixed stable paths use explicit JavaScript/WASM MIME types, `Cache-Control: public, max-age=0, must-revalidate`, full SHA-256 ETags, exact/weak `If-None-Match` handling and `Cross-Origin-Resource-Policy: same-origin`.
 
@@ -164,7 +166,26 @@ The fixed stable paths use explicit JavaScript/WASM MIME types, `Cache-Control: 
 
 `scripts/build/build-pages-inline-edit-server.sh` installs or verifies the exact CLI, builds all three assets first and then compiles `rustok-server --features pages-inline-edit-assets`. Binary-only packaging remains compatible because no runtime asset directory is required.
 
-The source boundary is complete, but release workflow integration remains pending. Production Docker builder integration remains pending. The admin-owned launch link remains pending. No generated artifact, embedded binary, HTTP response or browser result is claimed.
+Release workflow integration remains pending. Production Docker builder integration remains pending. No generated artifact, embedded binary, HTTP response or browser result is claimed.
+
+Historical asset-delivery marker retained for verifier compatibility: `admin-owned launch link remains pending` and `release workflow and admin launch integration remain pending` were correct for PR #3060 and are superseded by the admin-launch source below while release integration remains open.
+
+### Admin-owned inline edit launch: source-ready
+
+`rustok-pages-admin/inline-edit-launch` owns a feature-gated launch control in the Pages admin shell. `rustok-admin/pages-inline-edit-launch` is the app-level pass-through feature. Neither is enabled by default.
+
+The control is rendered only when:
+
+- `RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN=true` was present at compile time;
+- a selected page parses as a non-nil UUID;
+- locale input is non-empty, no longer than 64 bytes and contains no control characters;
+- the current canonical admin role has effective Pages edit capability.
+
+The link is fixed to `/modules/pages-authoring`, form-encodes only `page_id` and `lang`, opens in a new tab with `noopener noreferrer`, and accepts no caller-provided origin. Tokens, sessions, grants and authorization proofs are not written into the href or custom data attributes.
+
+The role check controls presentation only. The existing authoring route and Pages owner checks remain authoritative. The control is explicitly draft-only; published, disabled, unauthorized or stale cases continue to fail closed downstream.
+
+Admin asset build integration remains pending. No rendered control, navigation or browser result is claimed.
 
 Source:
 
@@ -173,7 +194,10 @@ Source:
 - `src/services/page/inline_edit_runtime.rs`;
 - `src/http.rs`;
 - `src/http/inline_edit_assets.rs`;
+- `admin/src/inline_edit_launch.rs`;
+- `admin/src/lib.rs`;
 - `storefront/src/inline_edit.rs`;
+- `apps/admin/Cargo.toml`;
 - `apps/storefront/src/modules/core.rs`;
 - `apps/storefront/public/assets/pages-inline-edit-bootstrap.js`;
 - `apps/storefront/scripts/build-pages-inline-edit-client.mjs`;
@@ -182,9 +206,11 @@ Source:
 - `contracts/evidence/pages-authenticated-inline-consumer-source.json`;
 - `contracts/evidence/pages-authenticated-authoring-route-source.json`;
 - `contracts/evidence/pages-inline-edit-asset-delivery-source.json`;
+- `contracts/evidence/pages-inline-edit-admin-launch-source.json`;
 - `scripts/verify/verify-pages-authenticated-inline-consumer.mjs`;
 - `scripts/verify/verify-pages-authenticated-authoring-route.mjs`;
-- `scripts/verify/verify-pages-inline-edit-asset-delivery.mjs`.
+- `scripts/verify/verify-pages-inline-edit-asset-delivery.mjs`;
+- `scripts/verify/verify-pages-inline-edit-admin-launch.mjs`.
 
 ## Retained source markers
 
@@ -215,22 +241,25 @@ These phrases remain for static guard compatibility:
 - client artifact build and browser execution remain pending;
 - inline edit asset delivery: source-ready;
 - release workflow integration remains pending;
-- admin-owned launch link remains pending.
+- admin-owned launch link remains pending;
+- admin-owned inline edit launch: source-ready;
+- admin asset build integration remains pending.
 
 ## Next implementation order
 
 ### P0 — deployment composition
 
+- [ ] Update the deterministic embedded-admin build to enable `pages-inline-edit-launch` and set `RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN=true` only for the same-origin deployment.
 - [ ] Integrate `build-pages-inline-edit-server.sh` into both deterministic release build and reproducibility jobs.
 - [ ] Integrate the same exact-lock build path into the production Docker builder.
 - [ ] Update protected release-infrastructure guards and approvals without weakening pinned actions or reproducibility.
-- [ ] Add an admin-owned launch link under a matching opt-in admin feature.
 
 ### P1 — maintainer execution evidence
 
-- [ ] Run the asset-delivery, authenticated-route and consumer static guards.
-- [ ] Run focused Pages/router/auth tests and server Cargo checks.
-- [ ] Run the exact client/server orchestrator and retain generated file hashes/sizes plus binary digest.
+- [ ] Run the admin-launch, asset-delivery, authenticated-route and consumer static guards.
+- [ ] Run focused Pages admin/router/auth tests and Cargo checks.
+- [ ] Run the exact admin/client/server build path and retain generated file hashes/sizes plus binary digest.
+- [ ] Prove same-origin role-visible and role-hidden launch states.
 - [ ] Prove same-origin `200` and `304` delivery of all three fixed assets with exact MIME, ETag and CORP headers.
 - [ ] Prove anonymous/public Pages HTML does not reference or fetch the authoring bootstrap.
 - [ ] Execute direct-user allowed and anonymous/service/delegated/permission-denied HTTP cases.
@@ -245,18 +274,22 @@ These phrases remain for static guard compatibility:
 
 ## Execution status
 
-No tests, static verifiers, formatting, Cargo checks, SQLite/PostgreSQL scenarios, SSR/WASM builds, client/server artifact builders, HTTP hosts, asset delivery, browsers, dependency graphs, workflows or CI were executed by the implementation agent.
+No tests, static verifiers, formatting, Cargo checks, SQLite/PostgreSQL scenarios, SSR/WASM builds, admin/client/server artifact builders, HTTP hosts, asset delivery, browser navigation, dependency graphs, workflows or CI were executed by the implementation agent.
 
 Suggested commands, intentionally not run:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
+cargo test -p rustok-pages-admin --features inline-edit-launch --all-targets -- --nocapture
+cargo check -p rustok-admin --no-default-features \
+  --features hydrate,pages-inline-edit-launch \
+  --target wasm32-unknown-unknown
 node apps/storefront/scripts/build-pages-inline-edit-client.mjs --print-wasm-bindgen-version
 bash scripts/build/build-pages-inline-edit-server.sh
 cargo test -p rustok-pages --features inline-edit-assets --all-targets -- --nocapture
-cargo test -p rustok-pages-storefront --features inline-edit,ssr --all-targets -- --nocapture
 cargo check -p rustok-storefront --no-default-features \
   --features pages-inline-edit-hydrate --target wasm32-unknown-unknown
 cargo check -p rustok-server --features pages-inline-edit-assets
