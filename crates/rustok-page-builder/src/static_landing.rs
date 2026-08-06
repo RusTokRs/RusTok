@@ -1,7 +1,4 @@
 use crate::landing::{LandingProjectError, LandingProjectInspection, LandingProjectResult};
-use crate::publish_sanitization::static_publish_resource_limits::{
-    PageBuilderStaticPublishResourceLimitError, validate_static_publish_resource_limits,
-};
 use crate::static_publish_policy::{
     PageBuilderStaticPublishPolicyError, validate_static_publish_document,
 };
@@ -11,6 +8,13 @@ use fly::{
     ValidationLimits, ValidationSeverity, build_static_landing_artifact_with_renderer,
 };
 use serde_json::Value;
+
+#[path = "static_publish_resource_limits.rs"]
+pub mod static_publish_resource_limits;
+
+use static_publish_resource_limits::{
+    PageBuilderStaticPublishResourceLimitError, validate_static_publish_resource_limits,
+};
 
 const STATIC_LANDING_ID_PREFIX: &str = "fly-static";
 
@@ -234,7 +238,7 @@ fn require_secure_resource_urls(document: &ProjectDocument) -> LandingProjectRes
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::publish_sanitization::static_publish_resource_limits::PageBuilderStaticPublishResourceLimits;
+    use super::static_publish_resource_limits::PageBuilderStaticPublishResourceLimits;
     use serde_json::json;
 
     fn project() -> Value {
