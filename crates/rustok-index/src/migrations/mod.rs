@@ -4,6 +4,7 @@ mod m20260727_000003_create_index_operations;
 mod m20260803_000004_create_index_reconciliation_recovery;
 mod m20260804_000005_relax_index_finding_locale_scope;
 mod m20260806_000006_add_index_finding_lifecycle_audit;
+mod m20260806_000007_add_index_finding_repair_commands;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::sea_orm::DbBackend;
@@ -38,6 +39,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260803_000004_create_index_reconciliation_recovery::Migration),
         Box::new(m20260804_000005_relax_index_finding_locale_scope::Migration),
         Box::new(m20260806_000006_add_index_finding_lifecycle_audit::Migration),
+        Box::new(m20260806_000007_add_index_finding_repair_commands::Migration),
     ]
 }
 
@@ -66,6 +68,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260806_000006_add_index_finding_lifecycle_audit",
             vec!["m20260804_000005_relax_index_finding_locale_scope"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260806_000007_add_index_finding_repair_commands",
+            vec!["m20260806_000006_add_index_finding_lifecycle_audit"],
         ),
     ]
 }

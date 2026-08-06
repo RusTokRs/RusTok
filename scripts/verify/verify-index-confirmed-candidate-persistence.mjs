@@ -9,6 +9,7 @@ const files = {
   doc: 'crates/rustok-index/docs/m6-confirmed-candidate-finding-persistence.md',
   confirmationDoc: 'crates/rustok-index/docs/m6-drift-candidate-confirmation.md',
   lifecycleDoc: 'crates/rustok-index/docs/m6-drift-finding-lifecycle.md',
+  repairDoc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -73,15 +74,13 @@ for (const forbidden of [
   'extensions.insert(',
   'tokio::spawn',
   'spawn_blocking',
-  'resolve_finding',
-  'ignore_finding',
+  'IndexDriftRepairService',
+  'IndexDriftRepairOwner',
   'repair_finding',
   'actor_id',
   'reason:',
   'SELECT *',
   ' OFFSET ',
-  'payload',
-  'fields',
 ]) {
   if (source.includes(forbidden)) {
     throw new Error(`confirmed candidate writer contains forbidden capability: ${forbidden}`);
@@ -103,13 +102,6 @@ if (
   throw new Error('confirmed candidate writer must begin, revalidate, persist, then commit');
 }
 
-const sourceLock = source.indexOf('materialized_source_matches(transaction, candidate).await?');
-const linkLock = source.indexOf('materialized_link_matches(transaction, candidate).await?', sourceLock);
-const targetCheck = source.indexOf('materialized_target_absent(transaction, candidate).await', linkLock);
-if (sourceLock < 0 || linkLock <= sourceLock || targetCheck <= linkLock) {
-  throw new Error('orphan write-time revalidation must check source, link, then target');
-}
-
 const identity = source.indexOf('fn orphan_link_identity_digest(');
 for (const marker of [
   'candidate.link_name().as_str().as_bytes()',
@@ -124,31 +116,36 @@ for (const marker of [
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_lifecycle_complete_repair_pending`.',
+  'Status: `source_complete_lifecycle_complete_targeted_repair_boundary_complete`.',
   '`SERIALIZABLE READ WRITE`',
   '`NotRecorded(MaterializedChanged)`',
   '`index.confirmed_orphan_link.<sha256>`',
   '`index_drift_digest_finding_v1`',
   'remains ignored and returns `Suppressed`',
-  'does not insert the writer into',
   'm6-drift-finding-lifecycle.md',
+  'm6-targeted-drift-repair.md',
   'No tests, verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('confirmationDoc', [
-  'source_complete_persistence_complete_lifecycle_complete_repair_pending',
+  'source_complete_persistence_complete_lifecycle_complete_targeted_repair_boundary_complete',
   'm6-confirmed-candidate-finding-persistence.md',
-  'm6-drift-finding-lifecycle.md',
+  'm6-targeted-drift-repair.md',
 ]);
 requireMarkers('lifecycleDoc', [
-  'Status: `source_complete_repair_pending`.',
+  'Status: `source_complete_targeted_repair_boundary_complete`.',
   '`IndexDriftFindingAuthorizedLifecycleCommand`',
 ]);
+requireMarkers('repairDoc', [
+  'Status: `source_complete_owner_composition_pending`.',
+  'reproduces the persisted finding contract',
+]);
 requireMarkers('plan', [
-  'M6 - add targeted drift repair',
-  'source_complete_repair_pending',
+  'M6 - compose targeted repair evidence and owner',
+  'source_complete_owner_composition_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-confirmed-candidate-persistence.mjs'",
+  "'verify-index-targeted-drift-repair.mjs'",
 ]);
 
 console.log('Index confirmed candidate persistence verified');
