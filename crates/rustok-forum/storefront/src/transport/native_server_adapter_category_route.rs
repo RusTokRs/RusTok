@@ -83,7 +83,7 @@ async fn storefront_category_route_native(
             )
             .map_err(server_error)?;
             service
-                .get_authenticated_storefront_visible_with_audience_context(
+                .get_authenticated_storefront_list_visible_with_audience_context(
                     tenant.id,
                     security,
                     context,
@@ -103,7 +103,7 @@ async fn storefront_category_route_native(
         };
 
         match visible {
-            Ok(_) => map_native_category_route_resolution(resolution).map(Some),
+            Ok(_) => Ok(Some(map_native_category_route_resolution(resolution))),
             Err(ForumError::CategoryNotFound(_)) | Err(ForumError::CategoryRouteNotFound) => {
                 Ok(None)
             }
@@ -122,7 +122,7 @@ async fn storefront_category_route_native(
 #[cfg(feature = "ssr")]
 fn map_native_category_route_resolution(
     resolution: rustok_forum::ForumCategoryRouteResolution,
-) -> Result<StorefrontForumCategoryRouteResolution, ServerFnError> {
+) -> StorefrontForumCategoryRouteResolution {
     let disposition = match resolution.disposition {
         rustok_forum::ForumCategoryRouteDisposition::Canonical => {
             StorefrontForumCategoryRouteDisposition::Canonical
@@ -131,7 +131,7 @@ fn map_native_category_route_resolution(
             StorefrontForumCategoryRouteDisposition::Redirect
         }
     };
-    Ok(StorefrontForumCategoryRouteResolution {
+    StorefrontForumCategoryRouteResolution {
         requested_locale: resolution.requested_locale,
         requested_slug: resolution.requested_slug,
         disposition,
@@ -141,5 +141,5 @@ fn map_native_category_route_resolution(
             slug: resolution.canonical.slug,
             path: resolution.canonical.path,
         },
-    })
+    }
 }
