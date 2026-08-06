@@ -8,7 +8,7 @@ mod retained_restart_ambiguity_evidence {
         ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
         QueryResult, Statement,
     };
-    use sea_orm_migration::SchemaManager;
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
     use uuid::Uuid;
 
     use super::super::{

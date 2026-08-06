@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{PortError, RequestContext};
+use rustok_api::{PortError, RequestContext, RichTextDocument};
 use rustok_core::{MigrationSource, SecurityContext, UserRole, events::EventTransport};
 use rustok_events::{
     ContractEventEnvelope, ContractEventPayload, DomainEvent, EventEnvelope,
@@ -610,9 +610,7 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
                 category_id: category.id,
                 title: format!("D10 normal delivery {TOPIC_MARKER}"),
                 slug: Some("d10-normal-delivery-topic".to_string()),
-                body: format!("Current Forum owner body {TOPIC_MARKER}"),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: RichTextDocument::single_paragraph(format!("Current Forum owner body {TOPIC_MARKER}")),
                 metadata: json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -981,7 +979,7 @@ async fn load_checkpoint(
             vec![tenant_id.into()],
         ))
         .await?;
-    row.map(|row| {
+    row.map(|row| -> std::result::Result<CheckpointSnapshot, sea_orm::DbErr> {
         Ok(CheckpointSnapshot {
             owner_revision: row.try_get("", "owner_revision")?,
             event_id: row.try_get("", "event_id")?,

@@ -938,7 +938,7 @@ async fn load_checkpoint(
             vec![tenant_id.into()],
         ))
         .await?;
-    row.map(|row| {
+    row.map(|row| -> std::result::Result<CheckpointSnapshot, sea_orm::DbErr> {
         Ok(CheckpointSnapshot {
             owner_revision: row.try_get("", "owner_revision")?,
             event_id: row.try_get("", "event_id")?,

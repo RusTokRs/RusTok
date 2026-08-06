@@ -25,7 +25,6 @@ use tracing::warn;
 
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
-const DIRECT_GRANT_TYPE: &str = "direct";
 const AUTHORIZATION_CODE_GRANT_TYPE: &str = "authorization_code";
 const CLIENT_CREDENTIALS_GRANT_TYPE: &str = "client_credentials";
 

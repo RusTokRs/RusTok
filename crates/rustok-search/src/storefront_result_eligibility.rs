@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{AuthContext, PortError, RequestContext};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::storefront_category_scope::StorefrontSearchTransport;
 
 pub const MAX_FORUM_SEARCH_RESULT_CANDIDATES: usize = 100;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StorefrontSearchResultCandidateKind {
     ForumTopic,
     ForumReply,
@@ -25,7 +26,7 @@ impl StorefrontSearchResultCandidateKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct StorefrontSearchResultCandidate {
     pub document_id: Uuid,
     pub kind: StorefrontSearchResultCandidateKind,

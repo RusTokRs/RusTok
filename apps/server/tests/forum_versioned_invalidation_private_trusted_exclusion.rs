@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{PortActor, PortContext, PortError, RequestContext};
+use rustok_api::{PortActor, PortContext, PortError, RequestContext, RichTextDocument};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_events::{
     ContractEventEnvelope, ContractEventPayload, DomainEvent, EventEnvelope,
@@ -926,11 +926,9 @@ fn topic_input(
     CreateTopicInput {
         locale: "en".to_string(),
         category_id,
-        body: format!("{title} body"),
+        body: RichTextDocument::single_paragraph(format!("{title} body")),
         title,
         slug: Some(slug.to_string()),
-        body_format: "markdown".to_string(),
-        content_json: None,
         metadata: json!({}),
         tags: Vec::new(),
         channel_slugs,

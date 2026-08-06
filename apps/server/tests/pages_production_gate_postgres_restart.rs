@@ -18,7 +18,7 @@ use rustok_outbox::{
 };
 use rustok_pages::{
     PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PageCacheInvalidationEventHandler,
-    PageCacheScope, PagesCacheInvalidationRuntime, PagesCacheReadPort, PagesCacheReadRuntime,
+    PageCacheScope, PagesCacheInvalidationRuntime, PagesCacheReadRuntime,
     PagesModule, page_cache_key, storefront_pages_cache_key,
 };
 use rustok_server::common::settings::RustokSettings;

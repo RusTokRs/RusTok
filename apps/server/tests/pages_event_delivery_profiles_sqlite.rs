@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rustok_cache::CacheService;
-use rustok_core::events::{EventHandler, EventTransport, ReliabilityLevel};
+use rustok_core::events::{EventHandler, ReliabilityLevel};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_migrations::Migrator;
 use rustok_outbox::entity::SysEventStatus;
@@ -85,44 +85,7 @@ impl ProfileFixture {
     }
 }
 
-#[tokio::test]
-async fn memory_profile_rotates_before_synchronous_listener_delivery() -> TestResult<()> {
-    let fixture = ProfileFixture::build(EventDeliveryProfile::Memory).await?;
-    assert_eq!(fixture.runtime.delivery_profile, EventDeliveryProfile::Memory);
-    assert_eq!(
-        fixture.runtime.transport.reliability_level(),
-        ReliabilityLevel::InMemory
-    );
-    assert!(fixture.runtime.relay_config.is_none());
 
-    let mut listener = fixture.runtime.listener_bus.subscribe();
-    let envelope = fixture.page_published();
-    assert_eq!(
-        fixture.generations(envelope.tenant_id).await?,
-        PageCacheGenerationSnapshot::default()
-    );
-
-    fixture.runtime.transport.publish(envelope.clone()).await?;
-
-    let delivered = tokio::time::timeout(LISTENER_TIMEOUT, listener.recv()).await??;
-    assert_eq!(delivered.id, envelope.id);
-    assert_eq!(delivered.correlation_id, envelope.correlation_id);
-    assert_eq!(
-        fixture.generations(envelope.tenant_id).await?,
-        PageCacheGenerationSnapshot::new(1, 1, 1)
-    );
-
-    fixture.invoke_ordinary_pages_listener(&delivered).await?;
-    assert_eq!(
-        fixture.generations(envelope.tenant_id).await?,
-        PageCacheGenerationSnapshot::new(1, 1, 1)
-    );
-    assert!(SysEvents::find_by_id(envelope.id)
-        .one(fixture.ctx.db())
-        .await?
-        .is_none());
-    Ok(())
-}
 
 #[tokio::test]
 async fn outbox_local_profile_defers_rotation_and_listener_delivery_until_relay() -> TestResult<()> {

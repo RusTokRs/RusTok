@@ -66,32 +66,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn remove_user_role_assignment_via_store<C>(
-    db: &C,
-    user_id: &uuid::Uuid,
-    tenant_id: &uuid::Uuid,
-    role: UserRole,
-) -> Result<()>
-where
-    C: ConnectionTrait,
-{
-    let role_slug = role.to_string();
-    let tenant_role = roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(*tenant_id))
-        .filter(roles::Column::Slug.eq(role_slug))
-        .one(db)
-        .await?;
 
-    if let Some(tenant_role) = tenant_role {
-        user_roles::Entity::delete_many()
-            .filter(user_roles::Column::UserId.eq(*user_id))
-            .filter(user_roles::Column::RoleId.eq(tenant_role.id))
-            .exec(db)
-            .await?;
-    }
-
-    Ok(())
-}
 
 fn record_authz_entrypoint_call(entry_point: &str, path: &str) {
     metrics::record_module_entrypoint_call("rbac", entry_point, path);

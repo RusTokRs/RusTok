@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{PortError, RequestContext};
+use rustok_api::{PortError, RequestContext, RichTextDocument};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_events::{
     ContractEventEnvelope, ContractEventPayload, DomainEvent, EventEnvelope,
@@ -374,9 +374,7 @@ async fn run_translation_moderation_proof(db: &DatabaseConnection) -> TestResult
             UpdateTopicInput {
                 locale: "fr".to_string(),
                 title: Some(format!("Sujet D14 {FRENCH_TOPIC_MARKER}")),
-                body: Some(format!("Corps français D14 {FRENCH_TOPIC_MARKER}")),
-                body_format: Some("markdown".to_string()),
-                content_json: None,
+                body: Some(RichTextDocument::single_paragraph(format!("Corps français D14 {FRENCH_TOPIC_MARKER}"))),
                 metadata: None,
                 tags: None,
                 channel_slugs: None,
@@ -623,9 +621,7 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
                 category_id: category.id,
                 title: format!("D14 English topic {ENGLISH_TOPIC_MARKER}"),
                 slug: Some("d14-english-topic".to_string()),
-                body: format!("D14 English body {ENGLISH_TOPIC_MARKER}"),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: RichTextDocument::single_paragraph(format!("D14 English body {ENGLISH_TOPIC_MARKER}")),
                 metadata: json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -639,9 +635,7 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: format!("D14 pending reply {APPROVED_REPLY_MARKER}"),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: RichTextDocument::single_paragraph(format!("D14 pending reply {APPROVED_REPLY_MARKER}")),
                 parent_reply_id: None,
             },
         )

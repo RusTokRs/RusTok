@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{PortError, RequestContext};
+use rustok_api::{PortError, RequestContext, RichTextDocument};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_events::{
     ContractEventEnvelope, ContractEventPayload, DomainEvent, EventEnvelope,
@@ -628,9 +628,7 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
                 category_id: source.id,
                 title: format!("D16 topic {TOPIC_MARKER}"),
                 slug: Some("d16-topic-move".to_string()),
-                body: format!("D16 topic body {TOPIC_MARKER}"),
-                body_format: "markdown".to_string(),
-                content_json: None,
+                body: RichTextDocument::single_paragraph(format!("D16 topic body {TOPIC_MARKER}")),
                 metadata: json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -644,9 +642,7 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: format!("D16 approved reply {REPLY_MARKER}"),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: RichTextDocument::single_paragraph(format!("D16 approved reply {REPLY_MARKER}")),
                 parent_reply_id: None,
             },
         )
