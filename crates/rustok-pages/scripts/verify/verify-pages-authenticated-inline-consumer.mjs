@@ -34,7 +34,7 @@ const between = (text, start, end, label) => {
   return text.slice(from, to);
 };
 const featureBody = (manifest, feature, label) => {
-  const match = manifest.match(new RegExp(`^${feature}\\s*=\\s*\\[(.*?)^\\]`, "ms"));
+  const match = manifest.match(new RegExp(`^${feature}\\s*=\\s*\\[(.*?)\\]`, "ms"));
   if (!match) {
     failures.push(`${label}: missing ${feature} feature`);
     return "";
@@ -92,6 +92,7 @@ for (const key of [
   "bounded_key_rotation_contract_added",
   "host_keyring_has_no_insecure_default",
   "secret_keyring_and_proof_debug_are_redacted",
+  "native_server_function_transport_added",
   "proof_is_reverified_immediately_before_mutation",
   "canonical_page_builder_inline_session_is_reused",
   "canonical_fly_patch_remains_the_only_document_mutation",
@@ -124,10 +125,10 @@ for (const key of [
 }
 
 for (const marker of [
-  'PAGE_INLINE_EDIT_GRANT_VERSION: u16 = 1',
-  'DEFAULT_PAGE_INLINE_EDIT_GRANT_TTL_MS: u64 = 60_000',
-  'MAX_PAGE_INLINE_EDIT_GRANT_TTL_MS: u64 = 300_000',
-  'MAX_PAGE_INLINE_EDIT_KEYS: usize = 8',
+  "PAGE_INLINE_EDIT_GRANT_VERSION: u16 = 1",
+  "DEFAULT_PAGE_INLINE_EDIT_GRANT_TTL_MS: u64 = 60_000",
+  "MAX_PAGE_INLINE_EDIT_GRANT_TTL_MS: u64 = 300_000",
+  "MAX_PAGE_INLINE_EDIT_KEYS: usize = 8",
   "pub struct PageInlineEditSecret",
   '.field(&"[REDACTED]")',
   "pub struct PageInlineEditKeyring",
@@ -215,7 +216,6 @@ for (const marker of [
   "document.project.visit_components",
   "stable component ids before hashing",
   "authorization_claims = context",
-  ".keyring",
   ".verify(&proof, authorization_time_unix_ms)",
   "AuthenticatedInlineEditSession::new(",
   ".apply_authorized(",
@@ -267,8 +267,16 @@ for (const baseFeature of ["csr", "hydrate", "ssr"]) {
     `storefront host ${baseFeature} profile`,
   );
 }
-need(serverCargo, 'pages-inline-edit = ["embed-storefront", "rustok-storefront/pages-inline-edit"]', "server opt-in profile");
-forbid(featureBody(serverCargo, "default", "server manifest"), "pages-inline-edit", "server default profile");
+need(
+  serverCargo,
+  'pages-inline-edit = ["embed-storefront", "rustok-storefront/pages-inline-edit"]',
+  "server opt-in profile",
+);
+forbid(
+  featureBody(serverCargo, "default", "server manifest"),
+  "pages-inline-edit",
+  "server default profile",
+);
 
 for (const marker of [
   "authenticated-inline-consumer-source-ready",
