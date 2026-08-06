@@ -17,7 +17,6 @@ const port = read("apps/server/src/services/pages_cache_invalidation.rs");
 const relay = read("crates/rustok-outbox/src/relay.rs");
 const packet = read("docs/modules/pages-page-builder-event-delivery-profile-parity-packet-2026-08-05.md");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
 const failures = [];
 
 const need = (text, marker, label) => {
@@ -67,12 +66,6 @@ for (const key of [
   "full_platform_migrations_used",
   "production_build_event_runtime_used",
   "shared_cache_service_initialized_before_runtime",
-  "memory_profile_selected_through_settings",
-  "memory_transport_reliability_is_in_memory",
-  "memory_profile_has_no_outbox_relay",
-  "memory_pages_rotation_precedes_listener_delivery",
-  "memory_profile_writes_no_outbox_row",
-  "memory_listener_same_event_is_rotation_noop",
   "outbox_local_profile_selected_through_settings",
   "outbox_local_application_transport_reliability_is_outbox",
   "outbox_local_profile_has_relay",
@@ -104,9 +97,8 @@ for (const key of [
 if (
   evidence.harness?.path !== "apps/server/tests/pages_event_delivery_profiles_sqlite.rs" ||
   evidence.harness?.database !== "isolated SQLite with rustok_migrations::Migrator" ||
-  JSON.stringify(evidence.harness?.profiles) !== JSON.stringify(["memory", "outbox_local"]) ||
+  JSON.stringify(evidence.harness?.profiles) !== JSON.stringify(["outbox_local"]) ||
   !Array.isArray(evidence.harness?.tests) ||
-  !evidence.harness.tests.includes("memory_profile_rotates_before_synchronous_listener_delivery") ||
   !evidence.harness.tests.includes("outbox_local_profile_defers_rotation_and_listener_delivery_until_relay")
 ) {
   failures.push("event delivery profile harness registration is invalid");
@@ -119,33 +111,13 @@ for (const marker of [
   "ctx.shared_insert(cache.clone())",
   "build_event_runtime(&ctx).await?",
   "ServerPagesCachePort::new(&self.cache)",
-  "memory_profile_rotates_before_synchronous_listener_delivery",
   "outbox_local_profile_defers_rotation_and_listener_delivery_until_relay",
-  "ReliabilityLevel::InMemory",
   "ReliabilityLevel::Outbox",
   "TryRecvError::Empty",
   "PageCacheGenerationSnapshot::new(1, 1, 1)",
   "PageCacheInvalidationEventHandler::new",
   ".handle(envelope)"
 ]) need(harness, marker, "profile harness");
-
-const memoryTest = between(
-  harness,
-  "async fn memory_profile_rotates_before_synchronous_listener_delivery()",
-  "#[tokio::test]\nasync fn outbox_local_profile_defers_rotation_and_listener_delivery_until_relay()",
-  "memory profile test",
-);
-ordered(memoryTest, [
-  "ProfileFixture::build(EventDeliveryProfile::Memory)",
-  "ReliabilityLevel::InMemory",
-  "fixture.runtime.relay_config.is_none()",
-  "PageCacheGenerationSnapshot::default()",
-  "fixture.runtime.transport.publish(envelope.clone()).await?",
-  "listener.recv()",
-  "PageCacheGenerationSnapshot::new(1, 1, 1)",
-  "invoke_ordinary_pages_listener(&delivered)",
-  "SysEvents::find_by_id(envelope.id)"
-], "memory profile ordering");
 
 const outboxTest = between(
   harness,
@@ -176,19 +148,6 @@ ordered(outboxTest, [
   "PageCacheGenerationSnapshot::new(1, 1, 1)",
   "SysEventStatus::Dispatched"
 ], "outbox local profile ordering");
-
-const memoryFactory = between(
-  factory,
-  "EventDeliveryProfile::Memory => {",
-  "EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy => {",
-  "memory factory branch",
-);
-ordered(memoryFactory, [
-  "MemoryTransport::with_capacity(channel_capacity)",
-  "let listener_bus = transport.event_bus()",
-  "tenant_generation_transport(ctx, &cache, Arc::new(transport))",
-  "relay_config: None"
-], "memory factory topology");
 
 const outboxFactory = between(
   factory,
@@ -240,20 +199,15 @@ ordered(relayProcess, [
 for (const marker of [
   "source-ready / execution-pending",
   "build_event_runtime",
-  "Memory profile",
   "OutboxLocal profile",
   "OutboxIggy boundary",
   "Execution evidence remains pending"
 ]) need(packet, marker, "profile parity packet");
 for (const marker of [
   "event-delivery-profile-parity-source-ready",
-  "Memory and OutboxLocal factory profile parity: source-ready",
-  "Optional external delivery infrastructure is outside the active Pages cursor"
+  "OutboxLocal/OutboxIggy parity source-ready",
+  "Optional external event and delivery infrastructure remain outside the active Pages cursor"
 ]) need(plan, marker, "canonical Pages/Page Builder plan");
-for (const marker of [
-  "factory-selected Memory and OutboxLocal profile harness",
-  "OutboxLocal writes a pending row first"
-]) need(localPlan, marker, "Pages local plan");
 
 forbid(packet, "OutboxIggy execution is complete", "profile parity packet");
 

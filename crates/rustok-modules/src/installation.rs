@@ -30,9 +30,6 @@ use crate::{
     TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 
-const WASM_COMPONENT_MEDIA_TYPE: &str = "application/wasm";
-const SIDECAR_MEDIA_TYPE: &str = "application/vnd.rustok.sidecar.v1";
-const STATIC_PROMOTION_MEDIA_TYPE: &str = "application/vnd.rustok.static-promotion.v1";
 const MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES: usize = 16 * 1024;
 
 /// Hard bounds applied before an artifact enters the admission pipeline. The
@@ -3594,9 +3591,7 @@ fn expected_media_types_for(kind: ArtifactPayloadKind) -> &'static str {
         ArtifactPayloadKind::Rhai => {
             "application/vnd.rustok.rhai.source.v1 or application/vnd.rustok.rhai.workspace.v1"
         }
-        ArtifactPayloadKind::WasmComponent => WASM_COMPONENT_MEDIA_TYPE,
-        ArtifactPayloadKind::Sidecar => SIDECAR_MEDIA_TYPE,
-        ArtifactPayloadKind::StaticPromoted => STATIC_PROMOTION_MEDIA_TYPE,
+        _ => kind.oci_layer_media_type(),
     }
 }
 
@@ -3607,7 +3602,7 @@ fn valid_media_type_for(kind: ArtifactPayloadKind, media_type: &str) -> bool {
             crate::MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE
                 | rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
         ),
-        _ => media_type == expected_media_types_for(kind),
+        _ => media_type == kind.oci_layer_media_type(),
     }
 }
 

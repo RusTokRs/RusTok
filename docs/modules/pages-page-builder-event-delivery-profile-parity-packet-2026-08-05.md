@@ -5,27 +5,9 @@ Status: source-ready / execution-pending
 
 ## Purpose
 
-Retain one server integration source that constructs the real event runtime through `build_event_runtime` for the two locally executable delivery profiles and proves that the production Pages generation gate preserves each profile's distinct durability boundary.
+Retain one server integration source that constructs the real event runtime through `build_event_runtime` for `outbox_local` and proves that the production Pages generation gate preserves its durable delivery boundary. The packet also records the `outbox_iggy` factory boundary without requiring external Iggy infrastructure.
 
 Earlier packets exercised the gate through manually assembled relay targets. This packet covers the factory-selected topology itself.
-
-## Memory profile
-
-```text
-RustokSettings.events.delivery_profile = Memory
-  → build_event_runtime
-  → MemoryTransport
-  → TenantGenerationDeliveryGate
-  → TenantCacheGenerationTransport
-application publish
-  → synchronous Pages generation rotation
-  → listener_bus delivery
-  → no sys_events row
-ordinary Pages listener
-  → same-event duplicate no-op
-```
-
-The retained source requires `ReliabilityLevel::InMemory`, no relay configuration, route/page/artifact generations `0/0/0 → 1/1/1` before the listener receives the envelope, and no durable outbox row for the event UUID.
 
 ## OutboxLocal profile
 

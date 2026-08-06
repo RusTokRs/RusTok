@@ -190,7 +190,6 @@ forbid(
 );
 
 for (const marker of [
-  "EventDeliveryProfile::Memory",
   "EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy",
   "TenantGenerationDeliveryGate::new",
   "OutboxRelay::new(ctx.db_clone(), relay_target)"

@@ -54,7 +54,7 @@ No build, workflow, Docker, HTTP or browser execution is claimed.
 - `production-relay-generation-gate-source-ready` — synchronous generation gate source-ready.
 - `production-relay-native-route-source-ready` — gate-to-native-route composition source-ready.
 - `production-gate-postgres-restart-source-ready` — PostgreSQL retry source-ready.
-- `event-delivery-profile-parity-source-ready` — Memory/OutboxLocal parity source-ready.
+- `event-delivery-profile-parity-source-ready` — OutboxLocal/OutboxIggy parity source-ready.
 - `anonymous-storefront-graph-source-ready` — anonymous dependency exclusion source-ready.
 - `anonymous-storefront-ssr-delivery-source-ready` — anonymous SSR-only delivery source-ready.
 - `delete-route-tombstone-source-ready` — delete tombstones source-ready.

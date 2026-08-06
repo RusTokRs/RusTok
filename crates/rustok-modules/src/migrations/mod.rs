@@ -14,6 +14,7 @@ mod m20260716_000013_artifact_admission_commands;
 mod m20260716_000014_artifact_secret_bindings;
 mod m20260716_000015_artifact_execution_audit;
 mod m20260716_000016_artifact_execution_audit_metrics;
+mod m20260717_000002_create_registry_publish_build_staging;
 mod m20260717_000017_artifact_tenant_lifecycle_idempotency_command;
 mod m20260717_000018_artifact_event_deliveries;
 mod m20260717_000019_artifact_schedule_deliveries;
@@ -60,6 +61,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000014_artifact_secret_bindings::Migration),
         Box::new(m20260716_000015_artifact_execution_audit::Migration),
         Box::new(m20260716_000016_artifact_execution_audit_metrics::Migration),
+        Box::new(m20260717_000002_create_registry_publish_build_staging::Migration),
         Box::new(m20260717_000017_artifact_tenant_lifecycle_idempotency_command::Migration),
         Box::new(m20260717_000018_artifact_event_deliveries::Migration),
         Box::new(m20260717_000019_artifact_schedule_deliveries::Migration),

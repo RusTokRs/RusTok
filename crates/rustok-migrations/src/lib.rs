@@ -46,7 +46,6 @@ mod m20260426_000001_create_install_sessions;
 mod m20260501_000001_create_platform_composition_state;
 mod m20260522_000001_add_module_operation_correlation_id;
 mod m20260717_000001_create_registry_publication_evidence;
-mod m20260717_000002_create_registry_publish_build_staging;
 mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
 mod m20260718_000001_add_module_operation_idempotency_key;
 mod m20260718_000002_add_registry_publication_idempotency;
@@ -350,7 +349,6 @@ impl MigratorTrait for Migrator {
             Box::new(m20260419_000001_normalize_registry_governance_event_payloads::Migration),
             Box::new(m20260426_000001_create_install_sessions::Migration),
             Box::new(m20260717_000001_create_registry_publication_evidence::Migration),
-            Box::new(m20260717_000002_create_registry_publish_build_staging::Migration),
             Box::new(m20260717_000003_add_registry_artifact_origin_and_external_staging::Migration),
             Box::new(m20260723_000001_create_event_delivery_settings::Migration),
             Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
@@ -557,7 +555,7 @@ fn sort_migrations_by_dependencies(
 #[cfg(test)]
 mod tests {
     use super::{
-        sort_migrations_by_dependencies, MigrationDescriptor, Migrator, APPEND_ONLY_MIGRATION_TAIL,
+        APPEND_ONLY_MIGRATION_TAIL, MigrationDescriptor, Migrator, sort_migrations_by_dependencies,
     };
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;

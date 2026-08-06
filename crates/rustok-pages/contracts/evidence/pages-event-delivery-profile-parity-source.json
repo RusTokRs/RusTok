@@ -9,7 +9,6 @@
     "format_run": false,
     "verifiers_run": false,
     "sqlite_run": false,
-    "memory_profile_run": false,
     "outbox_local_profile_run": false,
     "outbox_iggy_profile_run": false,
     "workflow_checks_run": false,
@@ -21,12 +20,6 @@
     "full_platform_migrations_used": true,
     "production_build_event_runtime_used": true,
     "shared_cache_service_initialized_before_runtime": true,
-    "memory_profile_selected_through_settings": true,
-    "memory_transport_reliability_is_in_memory": true,
-    "memory_profile_has_no_outbox_relay": true,
-    "memory_pages_rotation_precedes_listener_delivery": true,
-    "memory_profile_writes_no_outbox_row": true,
-    "memory_listener_same_event_is_rotation_noop": true,
     "outbox_local_profile_selected_through_settings": true,
     "outbox_local_application_transport_reliability_is_outbox": true,
     "outbox_local_profile_has_relay": true,
@@ -52,12 +45,10 @@
   "harness": {
     "path": "apps/server/tests/pages_event_delivery_profiles_sqlite.rs",
     "tests": [
-      "memory_profile_rotates_before_synchronous_listener_delivery",
       "outbox_local_profile_defers_rotation_and_listener_delivery_until_relay"
     ],
     "database": "isolated SQLite with rustok_migrations::Migrator",
     "profiles": [
-      "memory",
       "outbox_local"
     ]
   }

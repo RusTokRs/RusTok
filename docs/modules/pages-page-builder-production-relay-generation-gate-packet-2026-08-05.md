@@ -12,7 +12,7 @@ This slice closes that source gap in production code. It does not replace the mo
 
 ## Production transport placement
 
-`TenantGenerationDeliveryGate` is already mounted by `tenant_generation_transport` for the memory, OutboxLocal and OutboxIggy delivery profiles.
+`TenantGenerationDeliveryGate` is already mounted by `tenant_generation_transport` for the OutboxLocal and OutboxIggy delivery profiles.
 
 With `mod-pages`, the gate now owns this ordering:
 
@@ -45,7 +45,7 @@ The UUID is recorded before downstream delivery. If the downstream transport rej
 
 ## Asynchronous listener compatibility
 
-The Pages module listener remains registered for all profiles. This preserves the established module-owned listener model and memory-profile delivery.
+The Pages module listener remains registered for both profiles. This preserves the established module-owned listener model.
 
 When the listener later receives an event already handled by the synchronous gate, it constructs another `ServerPagesCachePort`, resolves the same process-bounded successful-event set, and returns a valid current receipt without another generation bump.
 

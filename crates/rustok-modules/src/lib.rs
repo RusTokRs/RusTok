@@ -53,7 +53,7 @@ mod static_package;
 mod trust;
 
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use artifact::{
@@ -416,6 +416,27 @@ pub struct ModulesModule;
 impl MigrationSource for ModulesModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        vec![
+            MigrationDependencyDescriptor::new(
+                "m20260717_000002_create_registry_publish_build_staging",
+                vec!["m20260403_000002_create_registry_publish_tables"],
+            ),
+            MigrationDependencyDescriptor::new(
+                "m20260722_000034_static_promotions",
+                vec!["m20260403_000002_create_registry_publish_tables"],
+            ),
+            MigrationDependencyDescriptor::new(
+                "m20260727_000040_registry_platform_admission_contracts",
+                vec!["m20260403_000002_create_registry_publish_tables"],
+            ),
+            MigrationDependencyDescriptor::new(
+                "m20260727_000041_registry_release_artifact_contracts",
+                vec!["m20260717_000002_create_registry_publish_build_staging"],
+            ),
+        ]
     }
 }
 

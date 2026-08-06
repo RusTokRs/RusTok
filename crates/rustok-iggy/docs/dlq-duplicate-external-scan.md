@@ -124,8 +124,8 @@ opt-in and requires:
 RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES
 ```
 
-The integration changes neither `memory` nor `outbox_local`, creates no second
-transport, and cannot become a Profiles authorization input.
+The integration does not change `outbox_local`, creates no second transport,
+and cannot become a Profiles authorization input.
 
 ## Privacy boundary
 

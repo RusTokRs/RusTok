@@ -35,8 +35,8 @@ delivery.
 ## Consequences
 
 - A lightweight production installation can use `outbox_local` without Iggy.
-- Local development and test environments use `outbox_local`; a memory
-  delivery profile and its fallback path are not part of the platform.
+- Local development and test environments use `outbox_local`; no fallback path
+  is part of the platform.
 - Production Iggy failures are explicit at startup instead of silently changing
   delivery semantics.
 - Operators must include a controlled restart after profile changes.

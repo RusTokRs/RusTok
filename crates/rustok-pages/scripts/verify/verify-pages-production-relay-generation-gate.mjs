@@ -114,9 +114,8 @@ ordered(gate, [
 ], "delivery gate ordering");
 
 const transportUses = factory.match(/tenant_generation_transport\(/g)?.length ?? 0;
-if (transportUses < 3) failures.push(`event factory: expected two calls plus definition, found ${transportUses}`);
+if (transportUses < 2) failures.push(`event factory: expected one call plus definition, found ${transportUses}`);
 for (const marker of [
-  "EventDeliveryProfile::Memory",
   "EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy",
   "TenantGenerationDeliveryGate::new"
 ]) need(factory, marker, "event factory");

@@ -136,8 +136,8 @@ RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=fair_window
 RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=moving_window
 ```
 
-`memory` and `outbox_local` remain intentional not-applicable modes and do not
-resolve Iggy. All modes use explicit offsets and `auto_commit=false`; no broker
+`outbox_local` remains an intentional not-applicable mode and does not resolve
+Iggy. All modes use explicit offsets and `auto_commit=false`; no broker
 consumer offset is stored.
 
 Moving mode has no production defaults and requires reviewed fail-closed

@@ -78,7 +78,7 @@ This keeps listener ownership but requires a broader durable-consumer protocol.
 
 Use Option A for Pages cache generation rotation. The work is bounded, idempotent, server-local and already expressed as a typed invalidation request/receipt. Other asynchronous module listeners can continue to consume the downstream event after the generation gate succeeds.
 
-The implementation must explicitly prevent duplicate rotation by the existing Pages module listener under outbox profiles while preserving listener behavior for memory-only delivery.
+The implementation must explicitly prevent duplicate rotation by the existing Pages module listener under both outbox delivery profiles.
 
 ## Source changes in this correction
 

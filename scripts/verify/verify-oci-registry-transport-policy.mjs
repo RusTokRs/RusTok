@@ -25,13 +25,24 @@ try {
     'max_decompressed_bytes: u64',
     'strict_oci_distribution_client_with_policy',
     'policy.validate()?',
-    'config.protocol = ClientProtocol::Https',
-    'config.accept_invalid_certificates = !policy.verify_tls',
-    'config.platform_resolver = None',
-    'config.max_concurrent_upload = policy.max_concurrent_requests',
-    'config.max_concurrent_download = policy.max_concurrent_requests',
   ]) {
     if (!source.includes(marker)) fail(`OCI transport policy is missing marker: ${marker}`);
+  }
+
+  const clientConstruction = source.slice(
+    source.indexOf('pub fn strict_oci_distribution_client_with_policy'),
+    source.indexOf('/// Referrer evidence classes admitted by the publication and trust pipelines.'),
+  );
+  for (const marker of [
+    'protocol: ClientProtocol::Https',
+    'accept_invalid_certificates: !policy.verify_tls',
+    'platform_resolver: None',
+    'max_concurrent_upload: policy.max_concurrent_requests',
+    'max_concurrent_download: policy.max_concurrent_requests',
+  ]) {
+    if (!clientConstruction.includes(marker)) {
+      fail(`strict OCI client construction is missing: ${marker}`);
+    }
   }
 
   const validation = source.slice(source.indexOf('pub fn validate(&self) -> Result<(), String>'));

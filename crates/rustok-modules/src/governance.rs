@@ -10123,7 +10123,7 @@ mod tests {
                   signature_digest, provenance_reference, provenance_digest, sbom_reference, \
                   sbom_digest, admission_reference, admission_digest, recorded_at) \
                  VALUES ('request-1', 'local', 'registry.example', 'modules/sample', ?, ?, ?, ?, \
-                         'wasm_component', 'application/wasm', 'evidence://signature', ?, \
+                         'wasm_component', 'application/vnd.rustok.wasm.component.v1+wasm', 'evidence://signature', ?, \
                          'evidence://provenance', ?, 'evidence://sbom', ?, \
                          'evidence://platform-admission', ?, datetime('now'))"
                     .to_string(),
@@ -10452,7 +10452,9 @@ mod tests {
             evidence: ArtifactVerificationEvidence {
                 manifest_digest: format!("sha256:{}", "a".repeat(64)),
                 payload_digest: format!("sha256:{}", "e".repeat(64)),
-                media_type: "application/wasm".to_string(),
+                media_type: ArtifactPayloadKind::WasmComponent
+                    .oci_layer_media_type()
+                    .to_string(),
                 signer_identity: "build-service:production".to_string(),
                 trust_policy_revision: 7,
                 capability_policy_revision: 9,
