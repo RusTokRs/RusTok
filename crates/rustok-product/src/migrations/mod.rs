@@ -28,6 +28,7 @@ mod m20260731_000003_bump_product_index_revision_for_variant_membership;
 mod m20260731_000004_add_product_index_tombstones;
 mod m20260806_000005_add_product_index_locale_refresh_ledger;
 mod m20260806_000006_add_product_variant_index_refresh_ledger;
+mod m20260806_000007_add_product_index_refresh_relay_cursors;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -62,6 +63,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260731_000004_add_product_index_tombstones::Migration),
         Box::new(m20260806_000005_add_product_index_locale_refresh_ledger::Migration),
         Box::new(m20260806_000006_add_product_variant_index_refresh_ledger::Migration),
+        Box::new(m20260806_000007_add_product_index_refresh_relay_cursors::Migration),
     ]
 }
 
