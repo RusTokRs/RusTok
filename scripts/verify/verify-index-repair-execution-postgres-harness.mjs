@@ -4,9 +4,15 @@ import { readFile } from 'node:fs/promises';
 
 const files = {
   support: 'crates/rustok-index/tests/support/drift_repair.rs',
+  environment: 'crates/rustok-index/tests/drift_repair_postgres_environment_test.rs',
   recovery: 'crates/rustok-index/tests/drift_repair_recovery_postgres_test.rs',
   execution: 'crates/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs',
+  contract:
+    'crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json',
+  runner: 'scripts/evidence/capture-index-repair-postgres.mjs',
+  retainedVerifier: 'scripts/verify/verify-index-repair-retained-evidence.mjs',
   doc: 'crates/rustok-index/docs/m6-repair-execution-postgres-harness.md',
+  admissionDoc: 'crates/rustok-index/docs/m6-repair-retained-evidence-admission.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -49,6 +55,14 @@ requireMarkers('support', [
   'index_confirmed_orphan_link_identity_v1',
   'max_connections(1)',
   'SET search_path TO',
+]);
+
+requireMarkers('environment', [
+  'repair_evidence_environment_reports_postgres_version',
+  "current_setting('server_version') AS server_version",
+  "current_setting('server_version_num') AS server_version_num",
+  'RUSTOK_INDEX_REPAIR_EVIDENCE postgres_server_version=',
+  'RUSTOK_INDEX_REPAIR_EVIDENCE postgres_server_version_num=',
 ]);
 
 requireMarkers('recovery', [
@@ -94,7 +108,7 @@ requireMarkers('execution', [
   'index_drift_repair_owner_unavailable',
 ]);
 
-for (const name of ['support', 'recovery', 'execution']) {
+for (const name of ['support', 'environment', 'recovery', 'execution']) {
   for (const forbidden of [
     '#[ignore]',
     'async_graphql',
@@ -110,28 +124,82 @@ for (const name of ['support', 'recovery', 'execution']) {
   }
 }
 
+requireMarkers('contract', [
+  '"packet": "concrete-repair-postgres-execution-contract"',
+  '"status": "runtime_execution_contract_locked"',
+  '"execution_scope": "opt_in_postgresql_runtime_execution_pending"',
+  '"evidence_status": "runtime_execution_pending"',
+  '"drift_repair_postgres_environment_test"',
+  '"drift_repair_recovery_postgres_test"',
+  '"drift_repair_concrete_execution_postgres_test"',
+  '"migrations_recovery_guard_and_concurrent_reservation_are_executable"',
+  '"missing_and_orphan_crash_windows_resume_exactly"',
+  '"recovery_admission_fences_side_effect_and_completion"',
+  '"orphan_commitments_and_normal_mutations_fail_closed"',
+]);
+
+requireMarkers('runner', [
+  'validateDatabaseUrl()',
+  'classifyDatabaseUrl(value)',
+  'ensureCleanCommit()',
+  '["status", "--porcelain=v1", "--untracked-files=all"]',
+  'const initialSourceSha256 = sourceHashes();',
+  'const finalSourceSha256 = sourceHashes();',
+  'requireOneMarker(',
+  'requirePassedCase(output, requiredCase.case)',
+  'sanitizeOutput(result.stdout, databaseUrl.value)',
+  'assertSanitizedLog("retained stdout", stdoutLog)',
+  'writePacketAndLogs(packet, stdoutLog, stderrLog)',
+  'working_tree_clean_before_run: true',
+  'source_unchanged_during_run: true',
+  'final_status: "pass"',
+]);
+
+requireMarkers('retainedVerifier', [
+  'PostgreSQL owner execution remains pending',
+  'retained evidence packet and both logs must appear atomically',
+  'retained evidence is stale for source file',
+  'verifyNoSecrets("retained evidence packet", evidenceText)',
+  'all required cases passed',
+]);
+
 requireMarkers('doc', [
   'Status: `source_ready_owner_execution_pending`.',
   'executable source, not admitted production evidence',
   '`RUSTOK_INDEX_TEST_DATABASE_URL`',
   'independent one-connection pools',
+  '`drift_repair_postgres_environment_test`',
   '**pause before owner admission**',
   '**abandon after side effect but before completion**',
   'source-version movement',
   'exact link substitution',
   'authoritative target restoration',
   'target absence-version movement',
+  '`capture-index-repair-postgres.mjs`',
   'Tests, Node verifiers, formatting, Cargo checks',
 ]);
 
-for (const forbidden of [
-  'Status: `complete`',
-  'PostgreSQL execution passed',
-  'all scenarios passed',
-  'CI passed',
-]) {
-  if (content.doc.includes(forbidden)) {
-    throw new Error(`${files.doc} overclaims unexecuted evidence with ${forbidden}`);
+requireMarkers('admissionDoc', [
+  'Status: `source_complete_owner_execution_pending`.',
+  'runtime_execution_pending',
+  'clean Git commit',
+  'complete retained stdout and stderr',
+  'does not emit the connection URL',
+  'A partial set is rejected by the verifier.',
+  'Do not hand edit the runtime packet',
+  'were not executed by the implementation agent',
+]);
+
+for (const name of ['doc', 'admissionDoc']) {
+  for (const forbidden of [
+    'Status: `complete`',
+    'PostgreSQL execution passed',
+    'all scenarios passed',
+    'CI passed',
+  ]) {
+    if (content[name].includes(forbidden)) {
+      throw new Error(`${files[name]} overclaims unexecuted evidence with ${forbidden}`);
+    }
   }
 }
 
@@ -143,6 +211,7 @@ requireMarkers('plan', [
 ]);
 requireMarkers('aggregate', [
   "'verify-index-repair-execution-postgres-harness.mjs'",
+  "'verify-index-repair-retained-evidence.mjs'",
 ]);
 
-console.log('Index concrete repair PostgreSQL harness verified');
+console.log('Index concrete repair PostgreSQL harness and admission contract verified');
