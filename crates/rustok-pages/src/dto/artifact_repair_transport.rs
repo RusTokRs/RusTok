@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::{RebuildPageArtifactResult, ReplacePageArtifactBindingResult};
+use super::artifact_binding_replacement::ReplacePageArtifactBindingResult;
+use super::page::RebuildPageArtifactResult;
 
 /// Bounded public receipt returned after one explicit immutable artifact rebuild.
 ///
