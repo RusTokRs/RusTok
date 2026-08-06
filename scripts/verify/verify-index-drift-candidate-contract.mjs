@@ -7,6 +7,7 @@ const files = {
   applicationMod: 'crates/rustok-index/src/application/mod.rs',
   doc: 'crates/rustok-index/docs/m6-bounded-drift-candidates.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  recheck: 'crates/rustok-index/docs/implementation-recheck-2026-08-06-bounded-drift-candidates.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 
@@ -129,7 +130,16 @@ requireMarkers('doc', [
   'PostgreSQL `IndexDriftCandidateReader`',
 ]);
 requireMarkers('plan', [
-  'M6 - bound stale Index-only entity and orphan-link diagnosis',
+  'M6 - compose the bounded PostgreSQL drift candidate reader',
+  'M6 bounded stale-entity and orphan-link candidate contract',
+  'source_complete_postgres_reader_pending',
+  '[x] Add a database-neutral bounded candidate contract',
+]);
+requireMarkers('recheck', [
+  'Audited baseline: `main@53aeddfbf05ceccea27f6c2f639af904c3ace6b2`.',
+  'The only main delta after the baseline is Pages storefront Navigation/SEO ETag composition.',
+  'This recheck does not claim:',
+  'did not run tests, JavaScript verifiers',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-drift-candidate-contract.mjs'",
