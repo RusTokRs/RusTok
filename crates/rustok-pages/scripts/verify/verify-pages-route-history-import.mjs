@@ -248,7 +248,7 @@ for (const marker of [
 for (const marker of [
   "historical route import owner",
   "provenance receipts",
-  "automatic inference remains open by design",
+  "Automatic inference remains open by design",
 ]) need(localPlan, marker, "Pages local plan");
 for (const marker of [
   "source-ready / execution-pending",
