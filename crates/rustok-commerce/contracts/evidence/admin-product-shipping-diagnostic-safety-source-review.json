@@ -1,0 +1,40 @@
+{
+  "status": "commerce_admin_product_shipping_diagnostic_safety_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/rustok-commerce/src/controllers/admin/products.rs",
+    "scripts/verify/verify-commerce-admin-product-shipping-profile-error-context.mjs",
+    "crates/rustok-commerce/docs/admin-product-shipping-diagnostic-safety.md",
+    "crates/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "raw_commerce_error_logged": false,
+    "raw_tenant_uuid_logged": false,
+    "raw_actor_uuid_logged": false,
+    "raw_product_uuid_logged": false,
+    "raw_shipping_profile_uuid_logged": false,
+    "redacted_error_debug_logged": true,
+    "required_uuid_shapes_logged": true,
+    "optional_uuid_shapes_logged": true,
+    "shipping_profile_not_found_identity_adoption_preserved": true,
+    "typed_policy_selection_precedes_shadowing": true,
+    "http_policy_preserved": true,
+    "validator_preserved": true,
+    "create_and_update_callsites_preserved": true,
+    "permissions_preserved": true,
+    "catalog_owner_calls_preserved": true,
+    "broad_ecommerce_cleanup_closed": false,
+    "runtime_evidence_claimed": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+}
