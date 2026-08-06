@@ -33,6 +33,8 @@ It allowlists three commands:
 3. `drift_repair_concrete_execution_postgres_test` for concrete crash, retry, recovery-race,
    commitment-change, and ordinary-mutation serialization behavior.
 
+The environment target does not emit the connection URL, host, database name, username, or password.
+
 The contract remains `runtime_execution_pending`. A missing runtime packet and missing logs are the
 expected repository state before the owner executes the capture runner.
 
