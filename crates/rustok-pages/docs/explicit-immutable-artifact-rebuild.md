@@ -93,7 +93,7 @@ Suggested commands, intentionally not run in this slice:
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
-cargo test -p rustok-pages explicit_artifact_rebuild -- --nocapture
+cargo test -p rustok-pages --test explicit_artifact_rebuild_sqlite -- --nocapture
 cargo check -p rustok-pages --all-targets
 ```
 
