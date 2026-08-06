@@ -150,10 +150,35 @@ for (const [value, label] of [
   ['PortErrorKind::InvariantViolation', 'invariant classification'],
   ['"FULFILLMENT_ACCESS_DENIED"', 'forbidden code'],
   ['"FULFILLMENT_OPERATION_FAILED"', 'invariant code'],
-  ['correlation_id = %context.correlation_id', 'correlation logging'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline logging'],
+  ['struct FulfillmentQueryDiagnosticError;', 'redacted diagnostic token'],
+  ['formatter.write_str("redacted")', 'redacted diagnostic Debug'],
+  ['fn fulfillment_query_context_facts(', 'bounded context facts'],
+  ['fn optional_uuid_shape(', 'resource shape helper'],
+  ['tenant_id_length = facts.tenant_id_length', 'tenant length logging'],
+  ['actor_kind = facts.actor_kind', 'actor kind logging'],
+  ['actor_id_length = facts.actor_id_length', 'actor length logging'],
+  ['correlation_id_length = facts.correlation_id_length', 'correlation length logging'],
+  ['deadline_ms = ?facts.deadline_ms', 'deadline logging'],
+  ['shipping_option_id_shape', 'shipping option shape logging'],
+  ['fulfillment_id_shape', 'fulfillment shape logging'],
+  ['order_id_shape', 'order shape logging'],
   ['owner_code = %error.code', 'owner code logging'],
+  ['owner_message_presence', 'owner message presence logging'],
+  ['owner_message_length', 'owner message length logging'],
+  ['tracing::error!(', 'technical severity'],
+  ['tracing::warn!(', 'ordinary rejection severity'],
 ]) requireText(portBoundary, value, label);
+for (const value of [
+  'error = ?error',
+  'correlation_id = %context.correlation_id',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'shipping_option_id = ?shipping_option_id',
+  'fulfillment_id = ?fulfillment_id',
+  'order_id = ?order_id',
+  'owner_kind = ?error.kind',
+  'public_message,',
+]) forbidText(portBoundary, value, 'raw fulfillment query diagnostic');
 for (const value of ['impl std::fmt::Display', 'impl Display', 'format!("{}", self.0)']) {
   forbidText(shim, value, 'typed boundary text serialization');
 }
@@ -221,5 +246,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ mounted Commerce GraphQL shipping-option and fulfillment lifecycle reads retain host-scoped owner ports, typed failures, optional not-found, and two-second context policy',
+  '✔ mounted Commerce GraphQL shipping-option and fulfillment lifecycle reads retain host-scoped owner ports, typed failures, bounded diagnostics, optional not-found, and two-second context policy',
 );
