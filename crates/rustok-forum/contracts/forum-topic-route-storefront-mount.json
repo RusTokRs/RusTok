@@ -31,6 +31,8 @@
   "host_composition": {
     "router": "rustok_storefront::router",
     "standalone_and_embedded": true,
+    "actual_request_path_source": "Axum OriginalUri.path",
+    "decoded_segments_used_only_for_owner_input": true,
     "host_reads_forum_storage": false,
     "host_reads_alias_ledger": false,
     "host_recomputes_redirect_target": false,
