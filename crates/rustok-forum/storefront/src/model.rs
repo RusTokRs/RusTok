@@ -138,6 +138,32 @@ pub struct ForumReplyDetail {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum StorefrontForumCategoryRouteDisposition {
+    Canonical,
+    Redirect,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StorefrontForumCategoryRouteDescriptor {
+    #[serde(rename = "categoryId")]
+    pub category_id: String,
+    pub locale: String,
+    pub slug: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StorefrontForumCategoryRouteResolution {
+    #[serde(rename = "requestedLocale")]
+    pub requested_locale: String,
+    #[serde(rename = "requestedSlug")]
+    pub requested_slug: String,
+    pub disposition: StorefrontForumCategoryRouteDisposition,
+    pub canonical: StorefrontForumCategoryRouteDescriptor,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum StorefrontForumTopicRouteDisposition {
     Canonical,
     Redirect,
@@ -170,7 +196,8 @@ pub struct StorefrontForumTopicRouteResolution {
 #[cfg(test)]
 mod tests {
     use super::{
-        ForumCategoryListItem, ForumTopicListItem, StorefrontForumTopicRouteDisposition,
+        ForumCategoryListItem, ForumTopicListItem, StorefrontForumCategoryRouteDisposition,
+        StorefrontForumCategoryRouteResolution, StorefrontForumTopicRouteDisposition,
         StorefrontForumTopicRouteResolution,
     };
 
@@ -222,6 +249,29 @@ mod tests {
         .expect("topic");
         assert_eq!(topic.is_unread, None);
         assert_eq!(topic.unread_count, None);
+    }
+
+    #[test]
+    fn category_route_payload_uses_graphql_enum_and_field_names() {
+        let route: StorefrontForumCategoryRouteResolution = serde_json::from_value(
+            serde_json::json!({
+                "requestedLocale": "en",
+                "requestedSlug": "old-general",
+                "disposition": "REDIRECT",
+                "canonical": {
+                    "categoryId": "12345678-9abc-4def-8123-456789abcdef",
+                    "locale": "en",
+                    "slug": "general",
+                    "path": "/en/forum/c/general"
+                }
+            }),
+        )
+        .expect("category route payload");
+        assert_eq!(
+            route.disposition,
+            StorefrontForumCategoryRouteDisposition::Redirect
+        );
+        assert_eq!(route.canonical.slug, "general");
     }
 
     #[test]
