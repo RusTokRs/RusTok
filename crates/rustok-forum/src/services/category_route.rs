@@ -385,6 +385,8 @@ fn forum_category_route_path(locale: &str, slug: &str) -> String {
     format!("/{locale}/forum/c/{slug}")
 }
 
+include!("category_route_alias.rs");
+
 #[cfg(test)]
 mod tests {
     use super::*;
