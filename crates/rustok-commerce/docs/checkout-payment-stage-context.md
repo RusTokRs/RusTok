@@ -1,95 +1,123 @@
-# Checkout payment stage owner context
+# Checkout payment stage error safety
 
-Status: **source-ready / unvalidated**
+Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-This slice retains the complete `PortContext` at the commerce consumer boundary for the four canonical payment execution calls used by the durable checkout stage executor:
+This source wave closes the payment-execution mapper gap on the mounted durable
+checkout path.
+
+`checkout_payment_stages.rs` is now a thin facade over the retained
+`checkout_payment_stages_legacy.rs` implementation. The legacy implementation
+keeps the established prepare, authorize, capture, read, checkpoint, replay, and
+collection-validation behavior unchanged. A payment-port adapter now intercepts
+owner failures before they reach the legacy stage mapper.
+
+The adapter covers the four canonical `CheckoutPaymentExecutionPort` calls:
 
 - `prepare_checkout_collection`;
 - `authorize_checkout_collection`;
 - `capture_checkout_collection`;
 - `read_checkout_collection`.
 
-The exact context delegated to `rustok-payment` is cloned for the owner call and retained for diagnostics if that call returns `PortError`.
+## Public and persisted error policy
 
-## Retained diagnostic context
+The owner code and retryability remain unchanged. The owner message is not copied
+into `CheckoutPaymentStageError::Boundary`, the staged pipeline error string, or
+the checkout operation journal.
 
-The boundary event records:
+| Owner kind | Stage message |
+| --- | --- |
+| `Validation` | `Checkout payment request is invalid` |
+| `NotFound` | `Checkout payment resource was not found` |
+| `Conflict` | `Checkout payment state conflicts with the requested operation` |
+| `Forbidden` | `Checkout payment operation is not permitted` |
+| `Unavailable` / `Timeout` | `Checkout payment service is temporarily unavailable` |
+| `InvariantViolation` | `Checkout payment operation could not be completed safely` |
 
-- truthful owner `rustok_payment`;
-- correlation and tenant identity;
-- actor, channel, and locale;
-- causation and traceparent;
-- idempotency key when the stage is a write;
-- owner deadline;
-- exact owner operation and commerce payment stage;
-- owner code, typed kind, and retryability;
-- explicit boundary `commerce_checkout_payment_stage`.
+The existing boundary variant remains structurally compatible:
 
-Unavailable, timeout, and invariant failures use error severity. Validation, not-found, conflict, and forbidden rejections use warning severity.
+- `stage` remains the commerce payment stage;
+- `code` remains the payment owner code;
+- `message` is now the static kind-based stage message;
+- `retryable` remains the payment owner value.
 
-## Payment owner local outcomes
+This wave intentionally does not change staged-checkout failure disposition.
+Existing pipeline persistence and compensation admission continue to classify the
+same error variants as before.
 
-The canonical payment execution entrypoint now also retains the accepted `PortContext` and safe request
-facts across the unchanged prepare, authorize, capture, and read owner calls. Exact stable identity,
-collection, lifecycle, provider, storage, and manual-reconciliation envelopes receive owner-local
-diagnostics while returning the same `PortError`.
+## Context propagation
 
-Potentially unvalidated currency, plan-hash, provider-id, and provider-payment-id strings are represented
-only by their character lengths; request metadata is not logged. The complete owner classification and
-pass-through contract is documented in
-[`../../rustok-payment/docs/checkout-execution-local-context.md`](../../rustok-payment/docs/checkout-execution-local-context.md).
+The complete canonical `PortContext` is still delegated to the payment owner.
+Correlation, tenant, actor, channel, locale, causation, trace, idempotency, and
+deadline values are therefore preserved for owner policy and remote-adapter
+compatibility.
+
+The Commerce consumer boundary no longer logs those raw values. It records only:
+
+- a diagnostic token whose `Debug` output is `redacted`;
+- owner operation, owner code, typed kind, and retryability;
+- tenant and actor identity shapes;
+- actor kind plus claim and role counts;
+- channel, locale, correlation, causation, trace, and idempotency presence shapes;
+- deadline milliseconds;
+- owner-message presence and character length;
+- the stable boundary `commerce_checkout_payment_execution_adapter`.
+
+Unavailable, timeout, and invariant failures use error severity. Validation,
+not-found, conflict, and forbidden outcomes use warning severity.
+
+## Legacy isolation
+
+The retained legacy source still contains its former local mapper and logger, but
+the mounted facade:
+
+1. supplies a sanitizing payment-port implementation;
+2. converts canonical `PortError` into a bounded private error before delegation
+   returns to the legacy stage;
+3. shadows the legacy tracing macros so the old raw-context event is not emitted;
+4. keeps the legacy module private;
+5. exposes the same public executor methods and canonical
+   `with_payment_port(Arc<dyn CheckoutPaymentExecutionPort>)` builder.
+
+The retained source blob is copied without business-logic edits. It is not a
+second mounted implementation.
 
 ## Preserved contracts
 
-This change does not alter:
+This wave does not alter:
 
-- `CheckoutPaymentExecutionPort` requests or responses;
-- payment owner provider or lifecycle policy;
+- payment owner requests, responses, provider policy, or lifecycle policy;
 - prepare, authorize, capture, or read ordering;
+- write idempotency keys, causation, locale, or deadlines;
 - checkout stage checkpoints or bounded loop behavior;
-- collection identity and captured-amount validation;
-- `CheckoutPaymentStageError::Boundary` fields;
-- public stage, code, message, or retryability propagation;
-- payment context correlation, causation, idempotency, locale, or deadline construction.
+- collection identity, status, or captured-amount validation;
+- successful checkout DTOs;
+- public executor method names or canonical custom-port injection;
+- HTTP, GraphQL, or native field/route contracts;
+- Commerce FFA/FBA status.
 
-## Static evidence
+## Evidence
 
-`scripts/verify/verify-commerce-checkout-payment-stage-context.mjs` guards:
-
-- all four retained context values and owner delegations;
-- exact payment owner operations and commerce stages;
-- complete structured diagnostic fields;
-- severity classification;
-- preservation of the existing boundary payload and checkpoints;
-- removal of the former context-dropping `boundary_error` helper;
-- absence of inline context construction at the four owner calls.
-
-`scripts/verify/verify-payment-checkout-execution-local-context.mjs` separately guards owner-side
-post-delegation safe-fact retention, stable local-outcome classification, raw-string exclusion, unknown
-error pass-through, and same delegated error return.
-
-## Validation status
-
-Tests, Cargo commands, formatting commands, verifier execution, workflow checks, and CI were intentionally not run by the implementation agent, per maintainer instruction.
-
-Intended focused checks:
-
-```bash
-node scripts/verify/verify-payment-checkout-execution-local-context.mjs
-node scripts/verify/verify-commerce-checkout-payment-stage-context.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
-cargo check -p rustok-payment --lib
-cargo check -p rustok-commerce --lib
-```
+- `crates/rustok-commerce/contracts/evidence/checkout-payment-stage-error-safety-source-review.json`
+- `scripts/verify/verify-commerce-checkout-payment-stage-context.mjs`
 
 ## Remaining work
 
-This work does not close:
+- Execute the focused verifier and compile the Commerce library.
+- Exercise prepare, authorize, capture, and read failure scenarios and inspect the
+  checkout operation journal.
+- Continue payment compensation, order, fulfillment, inventory, promotion, and
+  remaining non-`PortError` mapper cleanup.
+- Remove the retained legacy stage source only after compile, replay, mounted
+  parity, and upgraded-path evidence.
 
-- payment owner-side policy, tenant, or checkout-operation causation diagnostics;
-- checkout payment compensation local outcomes and boundaries;
-- GraphQL and HTTP payment query/mutation adapters;
-- remaining customer, tax, promotion, ecommerce, and non-`PortError` public envelopes;
-- runtime evidence or any FBA/FFA status promotion.
+## Intended checks
+
+```bash
+node scripts/verify/verify-commerce-checkout-payment-stage-context.mjs
+cargo check -p rustok-commerce --lib
+```
+
+No tests, Node verifiers, Cargo commands, formatting, payment-provider calls,
+database scenarios, workflows, or CI were executed.
