@@ -21,6 +21,55 @@ pub use marketplace_financial::{
 pub use mutations::CommerceMutation;
 pub use types::*;
 
+const COMMERCE_GRAPHQL_CHANNEL_OWNER: &str = "rustok_commerce.storefront_channel";
+const COMMERCE_GRAPHQL_CHANNEL_BOUNDARY: &str = "commerce_graphql_channel_admission";
+const COMMERCE_GRAPHQL_CHANNEL_OPERATION: &str = "require_storefront_channel_enabled";
+
+#[derive(Clone, Copy)]
+struct CommerceGraphqlChannelDiagnosticContext {
+    tenant_id_shape: &'static str,
+    channel_id_shape: &'static str,
+    channel_slug_shape: &'static str,
+}
+
+impl From<&RequestContext> for CommerceGraphqlChannelDiagnosticContext {
+    fn from(context: &RequestContext) -> Self {
+        Self {
+            tenant_id_shape: uuid_shape(context.tenant_id),
+            channel_id_shape: optional_uuid_shape(context.channel_id),
+            channel_slug_shape: optional_text_shape(context.channel_slug.as_deref()),
+        }
+    }
+}
+
+struct CommerceGraphqlChannelDiagnosticError;
+
+impl std::fmt::Debug for CommerceGraphqlChannelDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: uuid::Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<uuid::Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
+fn optional_text_shape(value: Option<&str>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_empty() => "empty",
+        Some(_) => "present",
+    }
+}
+
 #[derive(MergedObject, Default)]
 pub struct CommerceQueryRoot(
     query::CommerceQuery,
@@ -131,16 +180,23 @@ pub(crate) async fn require_storefront_channel_enabled(ctx: &Context<'_>) -> Res
         return Ok(());
     };
 
+    let diagnostic_context = CommerceGraphqlChannelDiagnosticContext::from(request_context);
     let db = ctx.data::<DatabaseConnection>()?;
     let enabled = is_module_enabled_for_request_channel(db, request_context, MODULE_SLUG)
         .await
-        .map_err(|error| {
+        .map_err(|_error| {
+            let error = CommerceGraphqlChannelDiagnosticError;
             tracing::error!(
                 error = ?error,
-                tenant_id = %request_context.tenant_id,
-                channel_id = ?request_context.channel_id,
-                channel_slug = ?request_context.channel_slug,
-                operation = "require_storefront_channel_enabled",
+                owner = COMMERCE_GRAPHQL_CHANNEL_OWNER,
+                tenant_id_shape = diagnostic_context.tenant_id_shape,
+                channel_id_shape = diagnostic_context.channel_id_shape,
+                channel_slug_shape = diagnostic_context.channel_slug_shape,
+                operation = COMMERCE_GRAPHQL_CHANNEL_OPERATION,
+                error_kind = "storage",
+                public_code = "COMMERCE_AVAILABILITY_UNAVAILABLE",
+                retryable = true,
+                boundary = COMMERCE_GRAPHQL_CHANNEL_BOUNDARY,
                 "commerce GraphQL channel module check failed"
             );
             <FieldError as GraphQLError>::internal_error(
@@ -150,10 +206,15 @@ pub(crate) async fn require_storefront_channel_enabled(ctx: &Context<'_>) -> Res
 
     if !enabled {
         tracing::warn!(
-            tenant_id = %request_context.tenant_id,
-            channel_id = ?request_context.channel_id,
-            channel_slug = ?request_context.channel_slug,
-            operation = "require_storefront_channel_enabled",
+            owner = COMMERCE_GRAPHQL_CHANNEL_OWNER,
+            tenant_id_shape = diagnostic_context.tenant_id_shape,
+            channel_id_shape = diagnostic_context.channel_id_shape,
+            channel_slug_shape = diagnostic_context.channel_slug_shape,
+            operation = COMMERCE_GRAPHQL_CHANNEL_OPERATION,
+            error_kind = "module_disabled",
+            public_code = "MODULE_NOT_ENABLED",
+            retryable = false,
+            boundary = COMMERCE_GRAPHQL_CHANNEL_BOUNDARY,
             "commerce GraphQL module is disabled for the request channel"
         );
         return Err(
