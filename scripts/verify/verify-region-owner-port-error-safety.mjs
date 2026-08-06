@@ -111,6 +111,7 @@ for (const marker of [
   'actor_id_length: context.actor.id.chars().count()',
   'claim_count: context.claims.len()',
   'role_count: context.roles.len()',
+  'correlation_id_length: context.correlation_id.chars().count()',
   'channel_present: context.channel.is_some()',
   'locale_length: context.locale.chars().count()',
   'causation_id_present: context.causation_id.is_some()',
@@ -144,7 +145,7 @@ for (const marker of [
 ]) requireText(admission, marker, `${paths.ports}: preserved admission return`);
 
 for (const marker of [
-  'correlation_id = %context.correlation_id',
+  'correlation_id_length = context_facts.correlation_id_length',
   'tenant_id_length = context_facts.tenant_id_length',
   'operation = owner_operation',
   'code = %error.code',
@@ -163,6 +164,7 @@ for (const marker of [
 ]) requireText(tenantParser, marker, `${paths.ports}: stable tenant parser`);
 
 for (const marker of [
+  'correlation_id_length = context_facts.correlation_id_length',
   'tenant_id_parse_failed = true',
   'tenant_id_length = context_facts.tenant_id_length',
   'boundary = REGION_READ_PORT_BOUNDARY',
@@ -176,6 +178,7 @@ for (const marker of [
 ]) requireText(validation, marker, `${paths.ports}: preserved direct validation`);
 
 for (const marker of [
+  'correlation_id_length = context_facts.correlation_id_length',
   'selector_kind = request_facts.selector_kind',
   'selector_uuid_non_nil = ?request_facts.selector_uuid_non_nil',
   'country_code_length = ?request_facts.country_code_length',
@@ -202,7 +205,7 @@ for (const marker of [
   'tracing::error!(',
   'tracing::warn!(',
   'owner = REGION_OWNER',
-  'correlation_id = %context.correlation_id',
+  'correlation_id_length = context_facts.correlation_id_length',
   'operation = owner_operation',
   'error_variant = error_facts.error_variant',
   'text_field_count = error_facts.text_field_count',
@@ -251,6 +254,7 @@ for (const forbidden of [
   'error = ?error',
   'error = %error',
   'internal_message = %error.message',
+  'correlation_id = %context.correlation_id',
   'tenant_id = %context.tenant_id',
   'actor = ?context.actor',
   'channel = ?context.channel',
@@ -271,6 +275,7 @@ for (const [key, expected] of Object.entries({
   complete_port_error_logged_by_admission: false,
   port_error_message_text_logged_by_admission: false,
   raw_context_logged: false,
+  raw_correlation_id_logged: false,
   raw_region_uuid_logged: false,
   raw_country_code_logged: false,
   static_owner_messages: true,
@@ -295,6 +300,7 @@ for (const [key, expected] of Object.entries({
   database_payload_removed_from_diagnostics: true,
   admission_payload_removed_from_diagnostics: true,
   context_payload_removed_from_diagnostics: true,
+  raw_correlation_id_removed_from_diagnostics: true,
   request_identity_payload_removed_from_diagnostics: true,
   broad_ecommerce_cleanup_remains_open: true,
   runtime_evidence_claimed: false,
@@ -308,6 +314,7 @@ for (const marker of [
   'Status: **source-ready / unvalidated**',
   '`RegionReadPort`',
   '`region request is invalid`',
+  'raw correlation id is no longer emitted',
   'bounded context',
   'No tests, Node verifiers, Cargo commands, formatting, workflows, CI, or mounted runtime validation',
 ]) requireText(document, marker, `${paths.document}: documentation contract`);

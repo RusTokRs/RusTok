@@ -25,11 +25,11 @@ Stable public codes, `PortErrorKind` values, and retryability are preserved.
 
 ## Bounded diagnostics
 
-Owner events retain the correlation id, exact owner operation, stable code, retryability where applicable, and the Region owner boundary label.
+Owner events retain the exact owner operation, stable code, retryability where applicable, and the Region owner boundary label. The raw correlation id is no longer emitted; diagnostics retain only its character length.
 
 Request context is represented only through bounded context shape:
 
-- tenant and actor-id character lengths;
+- tenant, actor-id, and correlation-id character lengths;
 - a closed actor-kind label;
 - claim and role counts;
 - optional channel, causation, trace, and idempotency presence/length;
@@ -42,7 +42,7 @@ Read requests are represented only through bounded selector and locale shape:
 - country-code presence and length;
 - requested and tenant-default locale presence and length.
 
-Owner failures retain a closed error-variant label plus aggregate text, UUID, and opaque-payload facts. Database errors, validation text, country codes, region UUIDs, and complete `PortError` envelopes are not recorded.
+Owner failures retain a closed error-variant label plus aggregate text, UUID, and opaque-payload facts. Database errors, validation text, country codes, region UUIDs, complete `PortError` envelopes, and raw correlation ids are not recorded.
 
 ## Severity
 

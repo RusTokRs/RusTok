@@ -18,6 +18,7 @@
     "complete_port_error_logged_by_admission": false,
     "port_error_message_text_logged_by_admission": false,
     "raw_context_logged": false,
+    "raw_correlation_id_logged": false,
     "raw_region_uuid_logged": false,
     "raw_country_code_logged": false,
     "static_owner_messages": true,

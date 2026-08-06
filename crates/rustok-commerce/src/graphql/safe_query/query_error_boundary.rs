@@ -1,9 +1,11 @@
 use ::async_graphql::{Error, ErrorExtensions};
+use ::rustok_api::{PortError, PortErrorKind};
 use ::rustok_fulfillment::error::FulfillmentError;
 use ::rustok_order::error::OrderError;
 use ::rustok_payment::error::PaymentError;
 
 const QUERY_ERROR_BOUNDARY: &str = "commerce_graphql_query";
+const QUERY_REGION_ERROR_BOUNDARY: &str = "commerce_graphql_query_region";
 
 struct QueryDiagnosticError;
 
@@ -31,6 +33,16 @@ pub(crate) trait QueryGraphqlMessage {
     fn into_query_boundary(self) -> BoundaryError;
 }
 
+pub(crate) struct RegionGraphqlMessage {
+    error: PortError,
+}
+
+impl RegionGraphqlMessage {
+    pub(crate) fn new(error: PortError) -> Self {
+        Self { error }
+    }
+}
+
 impl BoundaryError {
     pub(crate) fn new<M>(message: M) -> Self
     where
@@ -45,6 +57,88 @@ impl BoundaryError {
             code,
             retryable,
         }
+    }
+}
+
+impl QueryGraphqlMessage for RegionGraphqlMessage {
+    fn into_query_boundary(self) -> BoundaryError {
+        let (message, code, retryable, error_kind, technical) = match &self.error.kind {
+            PortErrorKind::Validation => (
+                "Region query is invalid",
+                "REGION_REQUEST_INVALID",
+                false,
+                "validation",
+                false,
+            ),
+            PortErrorKind::NotFound => (
+                "Region data was not found",
+                "REGION_RESOURCE_NOT_FOUND",
+                false,
+                "not_found",
+                false,
+            ),
+            PortErrorKind::Conflict => (
+                "Region state conflicts with this query",
+                "REGION_STATE_CONFLICT",
+                false,
+                "conflict",
+                false,
+            ),
+            PortErrorKind::Forbidden => (
+                "Region query is not permitted",
+                "REGION_ACCESS_DENIED",
+                false,
+                "forbidden",
+                false,
+            ),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                "Region data is temporarily unavailable",
+                "REGION_TEMPORARILY_UNAVAILABLE",
+                true,
+                "unavailable",
+                true,
+            ),
+            PortErrorKind::InvariantViolation => (
+                "Region query could not be completed safely",
+                "REGION_OPERATION_FAILED",
+                false,
+                "invariant",
+                true,
+            ),
+        };
+        let owner_message_presence = text_presence_shape(&self.error.message);
+        let owner_message_len = self.error.message.chars().count();
+        let diagnostic_error = QueryDiagnosticError;
+        if technical {
+            tracing::error!(
+                error = ?diagnostic_error,
+                owner = "rustok_region",
+                error_kind,
+                owner_code = %self.error.code,
+                owner_message_presence,
+                owner_message_len,
+                owner_retryable = self.error.retryable,
+                public_code = code,
+                retryable,
+                boundary = QUERY_REGION_ERROR_BOUNDARY,
+                "commerce GraphQL region query failed"
+            );
+        } else {
+            tracing::warn!(
+                error = ?diagnostic_error,
+                owner = "rustok_region",
+                error_kind,
+                owner_code = %self.error.code,
+                owner_message_presence,
+                owner_message_len,
+                owner_retryable = self.error.retryable,
+                public_code = code,
+                retryable,
+                boundary = QUERY_REGION_ERROR_BOUNDARY,
+                "commerce GraphQL region query was rejected"
+            );
+        }
+        BoundaryError::public(message, code, retryable)
     }
 }
 

@@ -18,6 +18,7 @@
     "database_payload_removed_from_diagnostics": true,
     "admission_payload_removed_from_diagnostics": true,
     "context_payload_removed_from_diagnostics": true,
+    "raw_correlation_id_removed_from_diagnostics": true,
     "request_identity_payload_removed_from_diagnostics": true,
     "bounded_context_and_request_shape_retained": true,
     "closed_owner_error_variant_retained": true,

@@ -80,4 +80,17 @@ use self::rustok_api_shim as rustok_api;
 use self::rustok_fulfillment_shim as rustok_fulfillment;
 use self::rustok_order_shim as rustok_order;
 
+// The unchanged compatibility resolver formats the Region owner code and message
+// before constructing a GraphQL error. Intercept only that exact source expression
+// inside the safe-query include so the complete typed PortError reaches the
+// transport mapper. Every other format invocation keeps standard Rust behavior.
+macro_rules! format {
+    ("{}: {}", error.code, error.message) => {
+        super::query_error_boundary::RegionGraphqlMessage::new(error)
+    };
+    ($($tokens:tt)*) => {
+        ::std::format!($($tokens)*)
+    };
+}
+
 include!("../query.rs");
