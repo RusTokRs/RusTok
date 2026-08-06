@@ -1,6 +1,6 @@
 # M6 PostgreSQL drift candidate reader
 
-Status: `source_complete_candidate_confirmation_pending`.
+Status: `source_complete_downstream_confirmation_and_persistence_complete`.
 
 ## Purpose
 
@@ -123,12 +123,15 @@ The materializer performs no SQL and starts no task. The reader is exported by `
 not inserted into `ModuleRuntimeExtensions`, server services, GraphQL, HTTP, CLI, MCP, or native
 admin.
 
-## Deliberate limits
+## Downstream boundary
 
-This slice does not add:
+`IndexDriftCandidateConfirmer` now performs exact owner/materialized confirmation, and
+`PostgresIndexDriftConfirmedCandidateWriter` performs serializable write-time revalidation plus
+idempotent finding persistence. Both remain internal and unmounted.
 
-- exact owner-source confirmation for stale candidates;
-- target-owner visibility or lifecycle confirmation for orphan links;
+The reader itself still does not add:
+
+- owner-source calls or target-owner confirmation;
 - finding persistence, resolve/ignore lifecycle, or repair;
 - a sealed candidate continuation codec or public transport;
 - cursor persistence, background iteration, scheduling, or cross-page accumulation;
@@ -136,14 +139,9 @@ This slice does not add:
 
 ## Next implementation step
 
-Add one internal candidate confirmation boundary:
-
-- stale entity candidates must use the existing exact source load and admitted absence watermark
-  rules before they can become missing findings;
-- orphan-link candidates must re-read the exact source link and typed target state under a bounded
-  boundary before they can become orphan findings;
-- candidate source version and identity must still match before recording;
-- no public transport, lifecycle command, scheduler, or repair should be added in that slice.
+Add internal fail-closed resolve and ignore lifecycle commands with authorized actor identity,
+bounded reason, exact state preconditions, and immutable audit evidence. Keep public transport,
+scheduling, and repair separate.
 
 ## Suggested maintainer validation
 

@@ -18,6 +18,8 @@ enum ForumTopicHostAction {
         canonical_path: String,
     },
     Redirect(String),
+    Gone,
+    Invalid,
 }
 
 pub(crate) async fn render_forum_topic_route_response(
@@ -51,6 +53,14 @@ pub(crate) async fn render_forum_topic_route_response(
 
     match forum_topic_host_action(requested_path.as_str(), &resolution) {
         ForumTopicHostAction::Redirect(location) => private_permanent_redirect(location.as_str()),
+        ForumTopicHostAction::Gone => private_status_response(
+            StatusCode::GONE,
+            "This Forum topic route is no longer available",
+        ),
+        ForumTopicHostAction::Invalid => private_status_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Forum topic route resolution is temporarily unavailable",
+        ),
         ForumTopicHostAction::Render {
             topic_id,
             canonical_path: _,
@@ -76,15 +86,24 @@ fn forum_topic_host_action(
     requested_path: &str,
     resolution: &StorefrontForumTopicRouteResolution,
 ) -> ForumTopicHostAction {
-    let canonical_path = resolution.canonical.path.clone();
-    if resolution.disposition == StorefrontForumTopicRouteDisposition::Redirect
-        || requested_path != canonical_path
-    {
-        ForumTopicHostAction::Redirect(canonical_path)
-    } else {
-        ForumTopicHostAction::Render {
-            topic_id: resolution.canonical.topic_id.clone(),
-            canonical_path,
+    match (resolution.disposition, resolution.canonical.as_ref()) {
+        (StorefrontForumTopicRouteDisposition::Gone, None) => ForumTopicHostAction::Gone,
+        (StorefrontForumTopicRouteDisposition::Gone, Some(_))
+        | (StorefrontForumTopicRouteDisposition::Canonical, None)
+        | (StorefrontForumTopicRouteDisposition::Redirect, None) => ForumTopicHostAction::Invalid,
+        (StorefrontForumTopicRouteDisposition::Redirect, Some(canonical)) => {
+            ForumTopicHostAction::Redirect(canonical.path.clone())
+        }
+        (StorefrontForumTopicRouteDisposition::Canonical, Some(canonical))
+            if requested_path != canonical.path =>
+        {
+            ForumTopicHostAction::Redirect(canonical.path.clone())
+        }
+        (StorefrontForumTopicRouteDisposition::Canonical, Some(canonical)) => {
+            ForumTopicHostAction::Render {
+                topic_id: canonical.topic_id.clone(),
+                canonical_path: canonical.path.clone(),
+            }
         }
     }
 }
@@ -94,21 +113,26 @@ mod tests {
     use super::*;
     use rustok_forum_storefront::StorefrontForumTopicRouteDescriptor;
 
+    fn descriptor() -> StorefrontForumTopicRouteDescriptor {
+        StorefrontForumTopicRouteDescriptor {
+            topic_id: "12345678-9abc-4def-8123-456789abcdef".to_string(),
+            locale: "en".to_string(),
+            short_id: "123456789abc".to_string(),
+            slug: "welcome".to_string(),
+            path: "/en/forum/t/123456789abc/welcome".to_string(),
+        }
+    }
+
     fn resolution(
         disposition: StorefrontForumTopicRouteDisposition,
+        canonical: Option<StorefrontForumTopicRouteDescriptor>,
     ) -> StorefrontForumTopicRouteResolution {
         StorefrontForumTopicRouteResolution {
             requested_locale: "en".to_string(),
             requested_short_id: "123456789abc".to_string(),
             requested_slug: "welcome".to_string(),
             disposition,
-            canonical: StorefrontForumTopicRouteDescriptor {
-                topic_id: "12345678-9abc-4def-8123-456789abcdef".to_string(),
-                locale: "en".to_string(),
-                short_id: "123456789abc".to_string(),
-                slug: "welcome".to_string(),
-                path: "/en/forum/t/123456789abc/welcome".to_string(),
-            },
+            canonical,
         }
     }
 
@@ -117,7 +141,10 @@ mod tests {
         assert_eq!(
             forum_topic_host_action(
                 "/en/forum/t/123456789abc/welcome",
-                &resolution(StorefrontForumTopicRouteDisposition::Canonical),
+                &resolution(
+                    StorefrontForumTopicRouteDisposition::Canonical,
+                    Some(descriptor()),
+                ),
             ),
             ForumTopicHostAction::Render {
                 topic_id: "12345678-9abc-4def-8123-456789abcdef".to_string(),
@@ -143,10 +170,41 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                forum_topic_host_action(requested_path, &resolution(disposition)),
+                forum_topic_host_action(
+                    requested_path,
+                    &resolution(disposition, Some(descriptor())),
+                ),
                 ForumTopicHostAction::Redirect(
                     "/en/forum/t/123456789abc/welcome".to_string()
                 )
+            );
+        }
+    }
+
+    #[test]
+    fn authorized_gone_has_terminal_host_action() {
+        assert_eq!(
+            forum_topic_host_action(
+                "/en/forum/t/123456789abc/retired-topic",
+                &resolution(StorefrontForumTopicRouteDisposition::Gone, None),
+            ),
+            ForumTopicHostAction::Gone
+        );
+    }
+
+    #[test]
+    fn malformed_transport_shapes_fail_closed() {
+        for resolution in [
+            resolution(StorefrontForumTopicRouteDisposition::Gone, Some(descriptor())),
+            resolution(StorefrontForumTopicRouteDisposition::Canonical, None),
+            resolution(StorefrontForumTopicRouteDisposition::Redirect, None),
+        ] {
+            assert_eq!(
+                forum_topic_host_action(
+                    "/en/forum/t/123456789abc/welcome",
+                    &resolution,
+                ),
+                ForumTopicHostAction::Invalid
             );
         }
     }

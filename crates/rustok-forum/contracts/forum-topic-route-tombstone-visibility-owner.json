@@ -3,6 +3,7 @@
   "task": "FORUM-24J",
   "parent_task": "FORUM-24",
   "extends": ["FORUM-24C", "FORUM-24H", "FORUM-24I"],
+  "extended_by": ["FORUM-24K"],
   "status": "source_ready_maintainer_execution_pending",
   "canonical_plan_status": "planned",
   "owner": "ForumTopicRouteTombstoneVisibilityService",
@@ -29,11 +30,7 @@
     "category_tree_scope_locked": true,
     "topic_audience_scope_locked": true
   },
-  "lock_order": [
-    "category_tree",
-    "topic_row",
-    "topic_audience"
-  ],
+  "lock_order": ["category_tree", "topic_row", "topic_audience"],
   "lock_owner_reuse": {
     "category_tree": "category_audience::lock_category_tree_in_tx",
     "topic_audience": "topic_audience_lock::lock_topic_audience_scopes_in_tx",
@@ -66,37 +63,42 @@
     "existing_channels_appended": false,
     "payload_drift": "fail_closed_conflict"
   },
-  "compatibility": {
+  "FORUM_24J_compatibility": {
     "graphql_changed": false,
     "native_storefront_transport_changed": false,
     "storefront_http_changed": false,
-    "public_gone_exposed": false,
-    "public_410_added": false,
+    "public_gone_exposed_in_this_slice": false,
+    "public_410_added_in_this_slice": false,
     "route_identity_changed": false,
     "alias_schema_changed": false,
     "semantic_event_changed": false,
     "admin_contract_changed": false
   },
+  "consumer": {
+    "task": "FORUM-24K",
+    "graphql_and_native_use_boolean_only": true,
+    "host_reads_snapshot_storage": false,
+    "authorized_gone_status": 410,
+    "unauthorized_or_missing_snapshot_status": 404
+  },
   "historical_policy": {
     "topics_deleted_before_snapshot_migration": "hidden",
-    "same_topic_slug_alias_after_snapshotted_delete": "future_consumer_may_authorize",
+    "same_topic_slug_alias_after_snapshotted_delete": "FORUM_24K_may_authorize",
     "cross_topic_merge_target_disappearance": "hidden_without_separate_source_snapshot_proof"
   },
   "verification": {
     "contract_test": "crates/rustok-forum/tests/topic_route_tombstone_visibility_contract.rs",
     "verifier": "scripts/verify/verify-forum-topic-route-tombstone-visibility-owner.mjs",
+    "consumer_verifier": "scripts/verify/verify-forum-topic-route-authorized-gone.mjs",
     "maintainer_commands": [
       "node scripts/verify/verify-forum-topic-route-tombstone-visibility-owner.mjs",
+      "node scripts/verify/verify-forum-topic-route-authorized-gone.mjs",
       "cargo test -p rustok-forum --test topic_route_tombstone_visibility_contract -- --nocapture",
       "cargo test -p rustok-forum topic_owner::route_tombstone_visibility::tests -- --nocapture",
       "cargo check -p rustok-forum --all-targets"
     ]
   },
-  "next_task": "FORUM-24K consume the boolean owner decision in GraphQL, native storefront transport and Rust host HTTP composition",
   "remaining_scope": [
-    "publish authorized GONE through GraphQL and native storefront DTOs",
-    "map authorized GONE to private 410 in the Rust host",
-    "retain hidden and missing indistinguishability when snapshot authorization fails",
     "category route identity",
     "canonical and hreflang document policy",
     "Forum SEO composition",
@@ -104,8 +106,7 @@
   ],
   "non_claims": [
     "no test verifier formatter Cargo migration workflow browser or CI execution is claimed",
-    "no public GONE transport is claimed",
-    "no public 410 response is claimed",
+    "FORUM-24J itself added no transport or HTTP behavior",
     "no historical snapshot backfill is claimed",
     "FORUM-24 remains planned"
   ]

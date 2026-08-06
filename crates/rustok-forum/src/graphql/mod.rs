@@ -58,6 +58,7 @@ pub use topic_reply_range_move_mutation::{
     GqlForumReplyRangeMove, MoveForumTopicReplyRangeGraphqlInput,
 };
 pub use topic_route_query::{
+    GqlForumStorefrontTopicRouteDecision, GqlForumStorefrontTopicRouteDecisionDisposition,
     GqlForumStorefrontTopicRouteDisposition, GqlForumStorefrontTopicRouteResolution,
 };
 pub use topic_slug_rename_mutation::{

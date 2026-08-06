@@ -1,6 +1,6 @@
 # M6 bounded stale-entity and orphan-link candidate contract
 
-Status: `source_complete_postgres_reader_complete_confirmation_pending`.
+Status: `source_complete_downstream_confirmation_and_persistence_complete`.
 
 ## Purpose
 
@@ -13,7 +13,7 @@ state that may no longer be justified by an owner source:
 This contract discovers bounded candidates only. It does not prove source absence, record a finding,
 resolve or ignore a finding, mutate Index storage, or repair owner state.
 
-The PostgreSQL implementation now exists separately as `PostgresIndexDriftCandidateReader`. See
+The PostgreSQL implementation exists separately as `PostgresIndexDriftCandidateReader`. See
 [M6 PostgreSQL drift candidate reader](./m6-postgres-drift-candidate-reader.md).
 
 ## Exact request scope
@@ -103,27 +103,30 @@ arbitrary IDs in memory.
 
 The contract exposes no SQL, connection error, table name, row payload, owner error, or secret.
 
-## Deliberate limits
+## Downstream boundary
 
-This slice still does not add:
+The database-neutral contract remains unchanged and capability-minimal. Separate internal slices now
+provide:
 
-- a GraphQL, HTTP, CLI, MCP, or native-admin transport;
-- source absence verification for a stale candidate;
-- target visibility or owner validation for an orphan link;
-- drift finding persistence or lifecycle commands;
+- `PostgresIndexDriftCandidateReader` for bounded PostgreSQL discovery;
+- `IndexDriftCandidateConfirmer` for exact owner/materialized confirmation;
+- `PostgresIndexDriftConfirmedCandidateWriter` for serializable write-time revalidation and
+  idempotent finding persistence.
+
+These downstream capabilities remain unmounted. The candidate contract itself still does not add:
+
+- GraphQL, HTTP, CLI, MCP, or native-admin transport;
+- source loads, absence providers, PostgreSQL access, or finding writes;
+- resolve/ignore lifecycle commands or actor audit;
 - cursor persistence, background scanning, scheduling, or cross-page accumulation;
 - targeted, full, shadow, or automatic repair;
 - retained execution evidence.
 
 ## Next implementation step
 
-Add one internal candidate confirmation boundary that:
-
-- reloads the exact stale entity through the existing source registry and admitted absence watermark;
-- rejects changed source/materialized identity or source version before any finding write;
-- re-reads the exact orphan source link and typed target state under a bounded boundary;
-- returns typed confirmed/not-candidate outcomes before persistence;
-- performs no public transport, lifecycle transition, scheduling, or repair.
+Add internal fail-closed resolve and ignore lifecycle commands with authorized actor identity,
+bounded reason, exact state preconditions, and immutable audit evidence. Keep public transport,
+scheduling, and repair separate.
 
 ## Suggested maintainer validation
 

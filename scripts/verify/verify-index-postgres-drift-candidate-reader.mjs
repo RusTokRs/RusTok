@@ -139,7 +139,7 @@ if (
 }
 
 requireMarkers('doc', [
-  'Status: `source_complete_candidate_confirmation_pending`.',
+  'Status: `source_complete_downstream_confirmation_and_persistence_complete`.',
   '`REPEATABLE READ READ ONLY`',
   '`txid_current_snapshot()::text`',
   'domain-separated SHA-256 digest',
@@ -149,13 +149,13 @@ requireMarkers('doc', [
   'version is not visible in the fence is skipped',
   '`limit + 1`',
   'does not record a finding',
-  'candidate confirmation boundary',
+  'PostgresIndexDriftConfirmedCandidateWriter',
   'No tests, verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('plan', [
-  'M6 - confirm bounded stale and orphan candidates',
+  'M6 - add drift finding lifecycle commands',
   'M6 PostgreSQL drift candidate reader',
-  'source_complete_candidate_confirmation_pending',
+  'source_complete_lifecycle_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-postgres-drift-candidate-reader.mjs'",

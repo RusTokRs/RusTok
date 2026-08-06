@@ -1,6 +1,6 @@
 # M6 bounded drift candidate confirmation
 
-Status: `source_complete_finding_persistence_pending`.
+Status: `source_complete_persistence_complete_lifecycle_pending`.
 
 ## Purpose
 
@@ -102,34 +102,36 @@ are not propagated.
 
 PostgreSQL and owner sources do not share a transaction. The confirmer therefore performs bounded
 double observations rather than claiming cross-owner atomicity. State may still change after the
-final observation; the outcome is point-in-time confirmation for the next internal persistence
-step, not retained evidence or a repair authorization.
+final observation; the outcome is point-in-time confirmation for the internal persistence step, not
+repair authorization.
 
-A later persistence slice must revalidate any assumptions required by its write transaction and
-must remain idempotent.
+`PostgresIndexDriftConfirmedCandidateWriter` now revalidates the exact materialized identity/version/
+link state and records the finding in one serializable PostgreSQL transaction. The persistence
+contract is documented separately in `m6-confirmed-candidate-finding-persistence.md`.
 
 ## Deliberate limits
 
-This slice does not add:
+The confirmation and persistence slices do not add:
 
 - page iteration, cursor persistence, background execution, scheduling, or restart state;
-- finding persistence, digest projection, resolve/ignore lifecycle, or actor audit;
+- resolve/ignore lifecycle, actor/reason audit, or authorization;
 - GraphQL, HTTP, CLI, MCP, native-admin, or public continuation transport;
 - targeted, shadow, full, or automatic repair;
 - retained PostgreSQL, owner-source, concurrency, workflow, or CI evidence.
 
 ## Next implementation step
 
-Add one internal persistence adapter for confirmed candidates. It must accept only
-`IndexDriftConfirmedCandidate`, derive deterministic bounded finding identity/evidence, revalidate
-write-time scope/version assumptions, and delegate idempotently to Index-owned finding storage.
-Keep lifecycle commands, public transport, scheduling, and repair out of that slice.
+Add fail-closed finding resolve and ignore lifecycle commands with authorized actor identity, bounded
+reason, exact state preconditions, and immutable audit evidence. Keep public transport and repair out
+of that slice.
 
 ## Suggested maintainer validation
 
 ```bash
 cargo test -p rustok-index drift_candidate_confirmation -- --nocapture
+cargo test -p rustok-index drift_confirmed_candidate_writer -- --nocapture
 node scripts/verify/verify-index-drift-candidate-confirmation.mjs
+node scripts/verify/verify-index-confirmed-candidate-persistence.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check

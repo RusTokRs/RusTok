@@ -57,6 +57,34 @@ impl std::fmt::Debug for StorefrontCustomerDiagnosticError {
     }
 }
 
+struct StorefrontCartPortDiagnosticError {
+    code: String,
+    kind: PortErrorKind,
+    retryable: bool,
+    message_shape: &'static str,
+    message_len: usize,
+}
+
+impl std::fmt::Debug for StorefrontCartPortDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+struct StorefrontLegacyGraphqlDiagnosticError;
+
+impl From<async_graphql::Error> for StorefrontLegacyGraphqlDiagnosticError {
+    fn from(_error: async_graphql::Error) -> Self {
+        Self
+    }
+}
+
+impl std::fmt::Debug for StorefrontLegacyGraphqlDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
 fn actor_kind_name(kind: &PortActorKind) -> &'static str {
     match kind {
         PortActorKind::User => "user",
@@ -73,6 +101,18 @@ fn identity_text_shape(value: &str) -> &'static str {
         Ok(value) if value.is_nil() => "uuid_nil",
         Ok(_) => "uuid_non_nil",
         Err(_) => "opaque",
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
     }
 }
 
@@ -254,12 +294,25 @@ pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
         ),
     };
 
+    let source_owner = cart_port_source_owner(&error);
+    let message_shape = text_shape(error.message.as_str());
+    let message_len = error.message.len();
+    let error = StorefrontCartPortDiagnosticError {
+        code: error.code,
+        kind: error.kind,
+        retryable: error.retryable,
+        message_shape,
+        message_len,
+    };
+
     tracing::error!(
         error = ?error,
         owner = "rustok_commerce.graphql_cart_helper",
-        source_owner = cart_port_source_owner(&error),
+        source_owner,
         operation = "storefront_cart_port",
         owner_code = %error.code,
+        owner_message_shape = error.message_shape,
+        owner_message_len = error.message_len,
         owner_kind = ?error.kind,
         owner_retryable = error.retryable,
         public_code = code,
@@ -309,11 +362,15 @@ fn legacy_graphql_error(
     code: &'static str,
     retryable: bool,
 ) -> async_graphql::Error {
+    let tenant_id_shape = uuid_shape(tenant_id);
+    let resource_id_shape = optional_uuid_shape(resource_id);
+    let error = StorefrontLegacyGraphqlDiagnosticError::from(error);
+
     tracing::error!(
         error = ?error,
         owner = "rustok_commerce.graphql_cart_helper",
-        tenant_id = %tenant_id,
-        resource_id = ?resource_id,
+        tenant_id_shape,
+        resource_id_shape,
         operation,
         error_kind = "legacy_graphql_error",
         public_code = code,
