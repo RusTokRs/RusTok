@@ -22,6 +22,12 @@ pub enum ForumError {
     #[error("Category not found: {0}")]
     CategoryNotFound(Uuid),
 
+    #[error("Forum category route was not found")]
+    CategoryRouteNotFound,
+
+    #[error("Forum category route resolution is inconsistent")]
+    CategoryRouteResolutionConflict,
+
     #[error("Topic not found: {0}")]
     TopicNotFound(Uuid),
 
@@ -193,6 +199,10 @@ impl ForumError {
             Self::TopicRouteNotFound => "FORUM_TOPIC_ROUTE_NOT_FOUND",
             Self::TopicRouteResolutionConflict => {
                 "FORUM_TOPIC_ROUTE_RESOLUTION_CONFLICT"
+            }
+            Self::CategoryRouteNotFound => "FORUM_CATEGORY_ROUTE_NOT_FOUND",
+            Self::CategoryRouteResolutionConflict => {
+                "FORUM_CATEGORY_ROUTE_RESOLUTION_CONFLICT"
             }
             Self::TopicMergeAudienceReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_AUDIENCE_RECONCILIATION_CONFLICT"
