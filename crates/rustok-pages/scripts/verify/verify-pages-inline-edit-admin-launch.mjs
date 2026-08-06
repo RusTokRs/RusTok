@@ -71,6 +71,10 @@ for (const key of [
   "same_origin_acknowledgement_defaults_to_disabled",
   "selected_page_uuid_is_required",
   "nil_page_uuid_is_rejected",
+  "existing_pages_admin_transport_is_reused",
+  "selected_page_detail_is_reloaded_before_launch",
+  "exact_translation_or_body_locale_is_used",
+  "published_page_launch_is_hidden",
   "locale_is_bounded",
   "locale_is_form_urlencoded",
   "fixed_authoring_route_is_used",
@@ -142,7 +146,7 @@ for (const marker of [
   '#[cfg(feature = "inline-edit-launch")]\nmod inline_edit_launch;',
   '#[cfg(feature = "inline-edit-launch")]\nuse inline_edit_launch::PagesInlineEditLaunch;',
   '#[cfg(feature = "inline-edit-launch")]\n    let inline_edit_launch = view!',
-  '<PagesInlineEditLaunch',
+  '<PagesInlineEditLaunch selected_page />',
   '{inline_edit_launch}',
   '#[cfg(not(feature = "inline-edit-launch"))]',
 ]) need(pagesAdminLib, marker, "Pages admin shell mount");
@@ -153,6 +157,10 @@ for (const marker of [
   'value.eq_ignore_ascii_case("true")',
   "Uuid::parse_str",
   "page_id.is_nil()",
+  "transport::fetch_page(token, tenant, page_id).await?",
+  'page.status.eq_ignore_ascii_case("published")',
+  "translation.locale.as_str()",
+  "body.locale.as_str()",
   "const MAX_LOCALE_LENGTH: usize = 64",
   "locale.chars().any(char::is_control)",
   "Serializer::new(String::new())",
@@ -163,7 +171,7 @@ for (const marker of [
   'target="_blank"',
   'rel="noopener noreferrer"',
   'data-pages-inline-edit-launch="same-origin"',
-  '"Draft-only. Opens the same-origin authoring route',
+  '"Draft-only. Opens the exact-locale same-origin authoring route',
 ]) need(launch, marker, "Pages admin launch source");
 for (const marker of [
   "RUSTOK_API_URL",
@@ -203,5 +211,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "[verify-pages-inline-edit-admin-launch] PASS source_ready=true admin_asset_build=pending browser=pending",
+  "[verify-pages-inline-edit-admin-launch] PASS source_ready=true exact_draft_identity=true admin_asset_build=pending browser=pending",
 );
