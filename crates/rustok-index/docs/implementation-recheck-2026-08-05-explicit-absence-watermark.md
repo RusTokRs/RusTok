@@ -2,65 +2,54 @@
 
 Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`.
 Latest default-branch delta checked through
-`main@1e31db0149618369d35cc0d2ae3494634bfee573`.
-The seventeen main commits after this branch merge base touch Commerce diagnostics, Forum
-module-owned GraphQL transports, Inventory/Order diagnostics, and Pages/Page Builder delivery and
-evidence. They do not overlap `rustok-index`, Product Index composition, the server Index GraphQL
-root, diagnosis composition, or Index guards changed by this branch.
+`main@5bbaaaf6cb17b846a5c6c280b8b2501c229cdc64`.
+
+Forty commits are present on `main` after this branch merge base. They touch Commerce diagnostics,
+Forum GraphQL/admin and route ownership, Pages/Page Builder route and delivery work, event-delivery
+settings, and general server configuration. They do not modify `crates/rustok-index`, Product Index
+composition, the server Index GraphQL files, Index diagnosis/page composition, or Index verifier
+files changed by this branch. `apps/server/Cargo.toml` changed on `main`; this continuation-codec
+slice changes `crates/rustok-index/Cargo.toml`, not the server manifest.
+
 Rechecked predecessor: PR #2983 at
 `cea5e0544049c0d9610b85de67f53b9c7e6a02d4`.
 
-## Rechecked predecessor
+## Rechecked guarded diagnosis
 
-The guarded exact-entity diagnosis change remains internally consistent at source level:
+The guarded exact-entity diagnosis remains internally consistent at source level:
 
 - authorization is request-bound and precedes digest request validation and dependency access;
-- the accepted key is one typed `EntityKey` and must match the authorized tenant;
-- composition reuses the frozen source/schema registries and publishes no scheduler, repair,
-  reader, writer, registry, or connection handle;
-- the predecessor itself claimed no GraphQL, HTTP, CLI, admin, MCP, or other transport;
-- PR #2983 had no review threads, submitted reviews, or conversation comments;
-- tests and retained execution evidence remain owner-owned and pending.
+- one typed `EntityKey` must match the authorized tenant;
+- composition reuses frozen source/schema registries;
+- exact GraphQL accepts no caller-selected tenant or actor;
+- missing-only discovery remains separate from general caller-known exact mismatch diagnosis;
+- no repair, lifecycle, scheduler, raw registry, or database handle is exposed.
 
-One guard defect was found during the recheck. The snapshot-reader verifier searched for the
-misspelled marker `PostgreSIndexDriftSnapshotReader`, while the implementation correctly defines
-`PostgresIndexDriftSnapshotReader`. This branch corrects that verifier marker. A separate inherited
-reconciliation verifier typo was corrected without changing runner behavior.
+PR #2986 had no conversation comments or review threads at this recheck. Tests and retained execution
+evidence remain owner-owned and pending.
 
 ## Explicit absence contract
 
-The branch retains the database-neutral optional registry without weakening ordinary targeted load:
+The branch retains the database-neutral optional absence registry without weakening ordinary targeted
+load:
 
 - `IndexSourceAbsenceWatermark` carries one exact typed key and one positive source version;
-- `IndexSourceAbsenceProvider` returns `Some(watermark)`, non-authoritative `None`, or one existing
-  bounded retryable/permanent `IndexSourceFailure`;
 - provider names, schema sets, and schema-identity ownership are bounded and deterministic;
 - materialization requires the frozen canonical replay source registry;
 - every provider owner must equal the replay source owner for every exact schema;
 - registry lookup performs one exact call and rejects cross-scope evidence;
-- existing `IndexSource::scan` and `IndexSource::load` implementations remain source-compatible.
-
-## Production continuation
+- existing `IndexSource::scan` and `IndexSource::load` remain source-compatible.
 
 The selected Product bridge registers `ProductLocaleAbsenceProvider` as
 `product-locale-absence-postgres` for Product schema versions 1 and 2. It returns positive
 `products.index_revision` only when the live Product exists, the exact translation locale is absent,
 and no exact Product tombstone owns that locale.
 
-This is a truthful source high-watermark because Product translation insert, delete, and reassignment
-advance the same revision. Hard deletes remain ordinary retained `Delete` mutations rather than
-being reclassified as `Missing`.
-
-Guarded diagnosis materializes the optional absence registry after the canonical source registry
-and attaches it privately to `PostgresIndexDriftSnapshotReader`. For an empty load the reader requires
-an exact watermark, opens the existing read-only repeatable-read materialized snapshot, and reloads
-both ordinary source state and the watermark before accepting the pair.
-
-The reader compares the typed `Missing` state plus positive absence version. A changed version, a
-newly appearing source mutation, or loss of proof after the first positive observation returns
-retryable `index_drift_source_changed_during_capture`. The absence version is domain-tagged into the
-opaque boundary only for source `Missing`; existing Upsert/Delete boundary derivation remains
-unchanged.
+The reader compares typed `Missing` plus the positive absence version around its materialized
+PostgreSQL snapshot. A changed version, newly appearing source mutation, or lost proof after the
+first positive observation returns retryable `index_drift_source_changed_during_capture`. The
+absence version is domain-tagged into the opaque boundary only for source `Missing`; existing
+Upsert/Delete boundary derivation remains unchanged.
 
 Missing registration, provider `None`, key mismatch, zero version, and malformed evidence remain
 fail-closed. An empty targeted load alone still returns `index_drift_source_watermark_missing`.
@@ -68,105 +57,84 @@ fail-closed. An empty targeted load alone still returns `index_drift_source_wate
 ## Source-ready PostgreSQL continuation
 
 `crates/rustok-distribution/tests/product_locale_absence_postgres.rs` retains the real-migration
-Product locale absence scenario without replacing either production adapter:
-
-- it applies the complete Product migration list and every Index migration inside one isolated
-  PostgreSQL schema;
-- it builds selected runtime extensions from the real `IndexModule` and `ProductModule`;
-- it materializes the production Product replay source, owner-bound absence registry, and
-  `PostgresIndexDriftSnapshotReader` through their public composition functions;
-- a stable French-locale absence must return exact source/materialized `Missing` states with a
-  bounded `pg:` boundary;
-- a second scenario blocks only the exact `index_entities` materialized read, waits through
-  `pg_stat_activity`, inserts the requested Product translation through a separate connection, and
-  requires retryable `index_drift_source_changed_during_capture` after the real second owner read.
-
-The harness uses separate one-connection pools for owner source reads, snapshot capture, locking,
-translation writing, and observation. It copies neither the Product provider SQL nor a fake
-`IndexSourceAbsenceProvider`, and it adds no test callback to production code.
+Product locale absence scenario without replacing either production adapter. It composes production
+sources and the production snapshot reader, verifies stable exact locale absence, and performs a
+deterministic concurrent translation insertion while the exact materialized read is blocked.
 
 The harness is `source_ready_owner_execution_pending`. Its presence is not retained execution
-evidence; the repository owner must run and admit the PostgreSQL output.
+evidence; the repository owner must run and admit its PostgreSQL output.
 
 ## Bounded GraphQL transport continuation
 
-`apps/server/src/graphql/index_drift_diagnosis.rs` mounts one root mutation over the existing
-guarded diagnosis operator:
+`apps/server/src/graphql/index_drift_diagnosis.rs` mounts one exact caller-known mutation:
 
-- `IndexDriftDiagnosisInput` contains only string module/entity/version/entity-id fields and an
-  optional locale; tenant and actor are absent;
-- tenant and actor are derived from authenticated GraphQL request context;
-- the task-local effective `modules:manage` snapshot is checked before parsing any untrusted
-  identifier, schema version, UUID, or locale;
+- tenant and actor come from authenticated request context;
+- effective `modules:manage` is checked before parsing untrusted identity strings;
 - every string is bounded before domain parsing;
-- the resulting key is exactly one tenant-bound `EntityKey`;
-- the resolver delegates once to `IndexDriftDiagnosisOperatorRuntime::diagnose_entity`, which
-  repeats the same request-bound authorization before dependency access;
-- the payload exposes only consistent/mismatch status, bounded SHA-256 digests, and finding receipt
-  metadata;
-- dependency failures expose only fixed public codes, retryability, and an existing bounded
-  dependency code.
+- one tenant-bound `EntityKey` is built;
+- the resolver delegates once to guarded `diagnose_entity`;
+- output contains only bounded digest and finding-receipt metadata.
 
-The transport performs no SeaORM query and owns no database connection, source/schema/absence
-registry, batch, scan, scheduler, finding lifecycle, or repair capability. A source guard retains the
-schema mount, authorization-before-parsing order, exact-key construction, bounded output, and open
-execution status.
+The transport performs no SeaORM query and owns no source scan, source continuation, scheduler,
+finding lifecycle, or repair capability.
 
 ## Missing-only outcome continuation
 
-`IndexDriftDigestProducer` preserves its existing general `produce(request)` behavior and adds a
-separate missing-only path:
+`IndexDriftDigestProducer` preserves general `produce(request)` behavior and adds a separate
+missing-only path:
 
-- `produce_missing_entity_candidate(request)` captures one exact pair through the existing reader;
-- `produce_missing_entity_candidate_from_pair(request, pair)` accepts one already-captured pair;
-- both source and materialized states are scope-checked and validated through the frozen
-  `SchemaRegistry` before classification;
-- only source `Upsert` plus materialized `Missing` computes and persists a mismatch;
-- source `Missing`/`Delete` and materialized `Upsert`/`Delete` return bounded `NotCandidate` without
-  recorder access;
-- stale fields, stale links, and source-version-only differences are therefore not recorded through
-  the missing-only path;
-- `IndexDriftMissingEntityCandidateOutcome` contains no raw key, record, state, or snapshot boundary.
+- every captured source/materialized state is exact-scope checked and validated before
+  classification;
+- only source `Upsert` plus materialized `Missing` computes and records a mismatch;
+- source `Missing`/`Delete` and materialized `Upsert`/`Delete` return `NotCandidate` without recorder
+  access;
+- stale fields, stale links, and source-version-only differences are not recorded through this path;
+- `IndexDriftMissingEntityCandidateOutcome` exposes no raw key, record, state, or boundary.
 
-`IndexDriftDiagnosisOperatorRuntime::diagnose_missing_entity_candidate` preserves the same
-request-bound authorization-before-validation order as general exact diagnosis. It is internal and is
-not mounted into GraphQL.
+`IndexDriftSourcePageDiagnosisRuntime` scans at most one owner page with limit `1..=32`, skips
+retained source deletes, sequentially invokes missing-only exact diagnosis, and returns only aggregate
+counts, missing finding receipts, and one internal server-held cursor. It owns no loop, checkpoint,
+scheduler, public transport, lifecycle, or repair capability.
 
-## One-page missing-entity continuation
+## Confidential source continuation
 
-`IndexDriftSourcePageDiagnosisRuntime` is composed only after the frozen
-`SharedIndexSourceRegistry` and guarded exact diagnosis runtime exist.
+`IndexSourceContinuationCodec` is now source complete as a database-neutral transport prerequisite.
+It is intentionally distinct from the query `CursorCodec`, whose checksum is not keyed encryption.
 
-Its one method:
+The source continuation contract:
 
-- derives tenant from `IndexReconciliationOperatorContext` and accepts no caller-selected tenant;
-- checks the current request-local effective `modules:manage` snapshot before page-limit validation;
-- allows one `SchemaRef`, one optional server-held `IndexSourceCursor`, and a limit in `1..=32`;
-- performs exactly one validated `IndexSource::scan` call;
-- skips retained source `Delete` mutations;
-- sequentially delegates every source `Upsert` to missing-only exact diagnosis;
-- records findings only for materialized `Missing`;
-- returns aggregate non-missing and missing-recorded counts, bounded receipts, and the server-held
-  next cursor;
-- owns no loop, checkpoint store, job, scheduler, task, transport, lifecycle, or repair handle.
+- constructs canonical tenant/schema/owner/source scope only from the frozen
+  `SharedIndexSourceRegistry`;
+- encrypts the complete raw `IndexSourceCursor` with AES-256-GCM and a fresh 96-bit OS nonce;
+- authenticates a domain, version, and bounded key id as additional data;
+- keeps tenant, exact `SchemaRef`, canonical owner/source identity, issued-at, expiry, and raw cursor
+  only inside ciphertext;
+- allows one active sealing key and bounded retained decrypt-only rotation keys;
+- limits lifetime to 1 second through 15 minutes and future clock skew to 30 seconds;
+- independently bounds encoded input, decoded envelope, and decrypted claims;
+- rejects tampering, unsupported versions, tenant/schema/source mismatch, invalid lifetime, future
+  issuance, expiry, and unavailable or retired keys before returning raw cursor state;
+- redacts key bytes and token content from `Debug`.
 
-It is not mounted into GraphQL, HTTP, CLI, MCP, or native admin, and it copies no source entity
-identifier, owner payload, or captured typed state into its outcome.
+The codec itself reads no environment, configuration, database, or secret resolver. Server keyring
+composition is intentionally still open, so the existing page runtime remains internal and raw-cursor
+only. Neither the codec nor the page runtime is mounted into GraphQL.
 
 ## Open cursor
 
-The next implementation step is a server-owned continuation codec that keeps raw
-`IndexSourceCursor` JSON confidential and binds the public token to tenant, exact schema, canonical
-source identity, version, issue time, and bounded expiry. Tampering, scope mismatch, expiry,
-oversized tokens, and unavailable or rotated key material must fail before source scan.
+The next implementation step is server-owned continuation key composition from bounded secret
+references, followed by one internal sealed page method. The server must resolve exact 32-byte AES
+keys, expose only the opaque codec, authorize before parsing an incoming token, open before building
+the source scan request, and seal the outgoing continuation before returning from the service
+boundary.
 
-Product locale PostgreSQL harness execution, GraphQL execution evidence, source-page transport,
-cursor persistence, multi-page lifecycle, stale Index-only discovery, orphan-link diagnosis,
-automatic finding resolution, resolve/ignore commands, and repair remain open.
+Public source-page transport, cursor persistence, multi-page lifecycle, stale Index-only discovery,
+orphan-link diagnosis, automatic finding resolution, resolve/ignore commands, and repair remain
+open.
 
 ## Validation ownership
 
-Suggested commands are retained in the dated implementation plan and the explicit watermark,
-harness, GraphQL transport, digest producer, and source-page diagnosis documents. Per maintainer
-instruction, this implementation agent did not run tests, JavaScript verifiers, formatting, Cargo
-checks, PostgreSQL or GraphQL scenarios, workflows, or CI.
+Suggested commands are retained in the dated implementation plan and the continuation, absence,
+harness, GraphQL, digest-producer, and source-page documents. Per maintainer instruction, this
+implementation agent did not run tests, JavaScript verifiers, formatting, Cargo checks,
+cryptographic integration, PostgreSQL or GraphQL scenarios, workflows, or CI.
