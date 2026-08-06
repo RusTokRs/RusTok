@@ -6,7 +6,7 @@ license.workspace = true
 description.workspace = true
 
 [lib]
-crate-type = ["rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["ssr"]
@@ -19,6 +19,7 @@ pages-inline-edit = [
 pages-inline-edit-hydrate = [
   "hydrate",
   "pages-inline-edit",
+  "dep:wasm-bindgen",
   "rustok-pages-storefront/hydrate",
 ]
 ssr = [
@@ -122,12 +123,19 @@ rustok-profiles-storefront = { path = "../../crates/rustok-profiles/storefront",
 rustok-region-storefront = { path = "../../crates/rustok-region/storefront", default-features = false, optional = true }
 rustok-search-storefront = { path = "../../crates/rustok-search/storefront", default-features = false, optional = true }
 console_error_panic_hook = "0.1"
-web-sys = { version = "0.3", features = ["Location", "Window"] }
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", features = ["Document", "Element", "Location", "Window"] }
 
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }
+
+[package.metadata.pages-inline-edit-client]
+bootstrap-path = "/assets/pages-inline-edit-bootstrap.js"
+module-path = "/assets/pages-inline-edit/rustok_storefront.js"
+wasm-path = "/assets/pages-inline-edit/rustok_storefront_bg.wasm"
+export = "start_pages_inline_edit_client"
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
