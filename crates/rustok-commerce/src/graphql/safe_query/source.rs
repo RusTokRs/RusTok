@@ -79,6 +79,8 @@ mod rustok_customer_shim;
 mod rustok_fulfillment_shim;
 #[path = "source/rustok_order_shim.rs"]
 mod rustok_order_shim;
+#[path = "source/rustok_payment_shim.rs"]
+mod rustok_payment_shim;
 #[path = "source/rustok_pricing_shim.rs"]
 mod rustok_pricing_shim;
 
@@ -87,6 +89,7 @@ use self::rustok_channel_shim as rustok_channel;
 use self::rustok_customer_shim as rustok_customer;
 use self::rustok_fulfillment_shim as rustok_fulfillment;
 use self::rustok_order_shim as rustok_order;
+use self::rustok_payment_shim as rustok_payment;
 use self::rustok_pricing_shim as rustok_pricing;
 
 // The unchanged compatibility resolver formats the Region owner code and message
