@@ -31,7 +31,9 @@ pub fn pages_storefront_composition_etag(
     navigation: &StorefrontNavigationSnapshot,
     rendered_html: &str,
 ) -> Option<String> {
-    if decision.disposition != StorefrontPageRouteDisposition::Canonical {
+    if decision.disposition != StorefrontPageRouteDisposition::Canonical
+        || rendered_html.contains(" nonce=\"")
+    {
         return None;
     }
     let payload = PagesCompositionPayload {
@@ -188,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_or_terminal_decisions_do_not_claim_composition_cache_identity() {
+    fn incomplete_terminal_or_nonce_bearing_documents_do_not_claim_cache_identity() {
         let mut incomplete = decision();
         incomplete.route_generation = None;
         assert!(
@@ -211,6 +213,17 @@ mod tests {
                 &None,
                 &navigation("About"),
                 "<html>about</html>",
+            )
+            .is_none()
+        );
+
+        assert!(
+            pages_storefront_composition_etag(
+                "en",
+                &decision(),
+                &None,
+                &navigation("About"),
+                "<html><script nonce=\"request-specific\"></script></html>",
             )
             .is_none()
         );
