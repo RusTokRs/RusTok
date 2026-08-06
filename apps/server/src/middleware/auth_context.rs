@@ -24,11 +24,20 @@ pub async fn resolve_optional(
     next: Next,
 ) -> Response {
     let (mut parts, body) = req.into_parts();
+    let request_path = parts.uri.path().to_string();
+    let pages_inline_authoring_surface =
+        is_pages_inline_authoring_surface(request_path.as_str());
+    let pages_inline_authoring = pages_inline_authoring_surface
+        || is_pages_inline_authoring_server_fn(request_path.as_str());
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
     let host_authority = match take_host_authority(&mut parts.headers) {
         Ok(authority) => authority,
         Err(crate::error::Error::Unauthorized(_)) => {
-            return (StatusCode::FORBIDDEN, HOST_AUTHORITY_REQUIRED).into_response();
+            return pages_inline_authoring_response(
+                (StatusCode::FORBIDDEN, HOST_AUTHORITY_REQUIRED).into_response(),
+                pages_inline_authoring,
+                pages_inline_authoring_surface,
+            );
         }
         Err(error) => {
             tracing::error!(
@@ -36,61 +45,77 @@ pub async fn resolve_optional(
                 code = "host_authority.configuration_invalid",
                 "host authority credential configuration is invalid"
             );
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Host authority configuration is invalid",
-            )
-                .into_response();
+            return pages_inline_authoring_response(
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Host authority configuration is invalid",
+                )
+                    .into_response(),
+                pages_inline_authoring,
+                pages_inline_authoring_surface,
+            );
         }
     };
-    let pages_inline_authoring_surface = is_pages_inline_authoring_surface(parts.uri.path());
-    let pages_inline_authoring =
-        pages_inline_authoring_surface || is_pages_inline_authoring_server_fn(parts.uri.path());
     let human_user_only =
-        is_human_user_self_service_path(parts.uri.path()) || pages_inline_authoring;
+        is_human_user_self_service_path(request_path.as_str()) || pages_inline_authoring;
     let request_method = parts.method.clone();
-    let request_path = parts.uri.path().to_string();
     let mut rbac_scope = None;
 
     match resolve_current_user(&mut parts, &ctx).await {
         Ok(current_user) => {
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
-                return (
-                    StatusCode::FORBIDDEN,
-                    "Human-user, storefront, and interactive admin endpoints do not accept service credentials",
-                )
-                    .into_response();
+                return pages_inline_authoring_response(
+                    (
+                        StatusCode::FORBIDDEN,
+                        "Human-user, storefront, and interactive admin endpoints do not accept service credentials",
+                    )
+                        .into_response(),
+                    pages_inline_authoring,
+                    pages_inline_authoring_surface,
+                );
             }
             if pages_inline_authoring {
                 if !current_user.principal_kind.is_direct_user() {
-                    return (
-                        StatusCode::FORBIDDEN,
-                        "Pages inline authoring requires a direct authenticated user session",
-                    )
-                        .into_response();
+                    return pages_inline_authoring_response(
+                        (
+                            StatusCode::FORBIDDEN,
+                            "Pages inline authoring requires a direct authenticated user session",
+                        )
+                            .into_response(),
+                        true,
+                        pages_inline_authoring_surface,
+                    );
                 }
                 if current_user.session_id.is_nil() {
-                    return (
-                        StatusCode::UNAUTHORIZED,
-                        "Pages inline authoring requires a non-empty authenticated session",
-                    )
-                        .into_response();
+                    return pages_inline_authoring_response(
+                        (
+                            StatusCode::UNAUTHORIZED,
+                            "Pages inline authoring requires a non-empty authenticated session",
+                        )
+                            .into_response(),
+                        true,
+                        pages_inline_authoring_surface,
+                    );
                 }
                 if !has_effective_permission(
                     &current_user.permissions,
                     &Permission::PAGES_UPDATE,
                 ) {
-                    return (
-                        StatusCode::FORBIDDEN,
-                        "pages:update is required for Pages inline authoring",
-                    )
-                        .into_response();
+                    return pages_inline_authoring_response(
+                        (
+                            StatusCode::FORBIDDEN,
+                            "pages:update is required for Pages inline authoring",
+                        )
+                            .into_response(),
+                        true,
+                        pages_inline_authoring_surface,
+                    );
                 }
             }
             if current_user.actor_kind == SecurityActorKind::Service {
                 if let Some(message) = service_forum_boundary_violation(
                     &request_method,
-                    &request_path,
+                    request_path.as_str(),
                     &current_user.permissions,
                 ) {
                     return (StatusCode::FORBIDDEN, message).into_response();
@@ -119,7 +144,11 @@ pub async fn resolve_optional(
             }));
         }
         Err((status, message)) if presented_credentials || pages_inline_authoring => {
-            return (status, message).into_response();
+            return pages_inline_authoring_response(
+                (status, message).into_response(),
+                pages_inline_authoring,
+                pages_inline_authoring_surface,
+            );
         }
         Err(_) => {}
     }
@@ -128,16 +157,30 @@ pub async fn resolve_optional(
         parts.extensions.insert(host_authority);
     }
     let req = Request::from_parts(parts, body);
-    let mut response = with_host_authority_scope(
+    let response = with_host_authority_scope(
         host_authority,
         with_rbac_request_scope(rbac_scope, next.run(req)),
     )
     .await;
-    if pages_inline_authoring_surface {
+    pages_inline_authoring_response(
+        response,
+        pages_inline_authoring,
+        pages_inline_authoring_surface,
+    )
+}
+
+fn pages_inline_authoring_response(
+    mut response: Response,
+    pages_inline_authoring: bool,
+    pages_inline_authoring_surface: bool,
+) -> Response {
+    if pages_inline_authoring {
         response.headers_mut().insert(
             "cache-control",
             HeaderValue::from_static(PAGES_AUTHORING_CACHE_CONTROL),
         );
+    }
+    if pages_inline_authoring_surface {
         response.headers_mut().insert(
             "x-robots-tag",
             HeaderValue::from_static(PAGES_AUTHORING_ROBOTS_POLICY),
@@ -239,17 +282,12 @@ mod tests {
     use super::{
         PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
         is_human_user_self_service_path, is_pages_inline_authoring_server_fn,
-        is_pages_inline_authoring_surface, resolve_optional, service_forum_boundary_violation,
+        is_pages_inline_authoring_surface, pages_inline_authoring_response,
+        service_forum_boundary_violation,
     };
-    use axum::{
-        Router,
-        body::Body,
-        http::{HeaderMap, Method, Request, StatusCode, header::AUTHORIZATION},
-        middleware,
-        routing::get,
-    };
+    use axum::http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION};
+    use axum::response::IntoResponse;
     use rustok_api::Permission;
-    use tower::ServiceExt;
     use uuid::Uuid;
 
     #[test]
@@ -303,12 +341,38 @@ mod tests {
     }
 
     #[test]
-    fn pages_authoring_response_policy_is_private_and_non_indexable() {
-        assert_eq!(PAGES_AUTHORING_CACHE_CONTROL, "private, no-store");
-        assert_eq!(
-            PAGES_AUTHORING_ROBOTS_POLICY,
-            "noindex, nofollow, noarchive"
+    fn pages_authoring_responses_are_private_and_html_is_non_indexable() {
+        let html = pages_inline_authoring_response(
+            StatusCode::OK.into_response(),
+            true,
+            true,
         );
+        assert_eq!(
+            html.headers()
+                .get("cache-control")
+                .and_then(|value| value.to_str().ok()),
+            Some(PAGES_AUTHORING_CACHE_CONTROL)
+        );
+        assert_eq!(
+            html.headers()
+                .get("x-robots-tag")
+                .and_then(|value| value.to_str().ok()),
+            Some(PAGES_AUTHORING_ROBOTS_POLICY)
+        );
+
+        let server_fn = pages_inline_authoring_response(
+            StatusCode::OK.into_response(),
+            true,
+            false,
+        );
+        assert_eq!(
+            server_fn
+                .headers()
+                .get("cache-control")
+                .and_then(|value| value.to_str().ok()),
+            Some(PAGES_AUTHORING_CACHE_CONTROL)
+        );
+        assert!(server_fn.headers().get("x-robots-tag").is_none());
     }
 
     #[test]
