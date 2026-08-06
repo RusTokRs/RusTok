@@ -16,10 +16,12 @@ const files = {
   rebuildService: "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
   pageServices: "crates/rustok-pages/src/services/page/mod.rs",
   services: "crates/rustok-pages/src/services/mod.rs",
+  crateRoot: "crates/rustok-pages/src/lib.rs",
   publishManifest: "crates/rustok-pages/src/services/page/publish_manifest.rs",
   dto: "crates/rustok-pages/src/dto/page.rs",
   dtoMod: "crates/rustok-pages/src/dto/mod.rs",
   audit: "crates/rustok-pages/src/services/page/artifact_integrity_audit.rs",
+  regression: "crates/rustok-pages/tests/explicit_artifact_rebuild_sqlite.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-rebuild-source.json",
   packet: "crates/rustok-pages/docs/explicit-immutable-artifact-rebuild.md",
   actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",
@@ -179,6 +181,9 @@ forbid(sources.artifactService, "active.update(txn).await?; // rebuild", "artifa
 
 for (const marker of [
   "pub async fn rebuild_immutable_artifact",
+  "PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT",
+  "PAGE_ARTIFACT_REBUILD_SOURCE_INVALID",
+  "PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY",
   "enforce_tenant_wide_manage(&security)?",
   "input.source_id",
   "input.expected_provenance_hash",
@@ -219,15 +224,29 @@ requireOrdered(
 );
 
 need(sources.publishManifest, "pub(super) fn rebuild_source_provenance_hash", "provenance helper");
-need(sources.publishManifest, "pub(super) fn stable_publish_identity_hash", "identity helper");
 need(sources.dto, "pub struct RebuildPageArtifactInput", "rebuild input");
 need(sources.dto, "pub struct RebuildPageArtifactResult", "rebuild result");
 need(sources.dtoMod, "RebuildPageArtifactInput", "DTO export");
 need(sources.pageServices, "mod artifact_rebuild;", "page service registry");
 need(sources.pageServices, "PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT", "page service export");
 need(sources.services, "PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT", "service export");
+need(sources.crateRoot, "PageArtifactRebuildOperation", "crate entity export");
+need(sources.crateRoot, "PagePublishRebuildSource", "crate provenance export");
+need(sources.crateRoot, "PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY", "crate rebuild code export");
 need(sources.audit, "record.instance_key", "audit instance identity");
 need(sources.audit, "is_valid_artifact_instance_key", "audit instance validation");
+
+for (const marker of [
+  "explicit_rebuild_appends_exact_artifact_without_switching_public_binding",
+  "Mutable draft must not become rebuild authority",
+  "corrupted retained artifact",
+  "rebuild_immutable_artifact(",
+  "assert_eq!(binding_after.artifact_id, binding_before.artifact_id)",
+  "assert_eq!(page_after.version, page_before.version)",
+  "assert!(replay.replayed)",
+]) {
+  need(sources.regression, marker, "SQLite regression");
+}
 
 for (const marker of [
   "Explicit Immutable Artifact Rebuild",
