@@ -112,7 +112,7 @@ async fn readiness_requires_the_complete_exact_tenant_schema_set() {
             .iter()
             .map(|entry| entry.reference.clone())
             .collect::<Vec<_>>(),
-        request(&schemas).schemas()
+        request(&schemas).schemas().to_vec()
     );
 }
 
