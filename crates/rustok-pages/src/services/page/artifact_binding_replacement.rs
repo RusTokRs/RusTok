@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_api::{Action, Resource};
-use rustok_core::{PermissionScope, SecurityContext};
+use rustok_core::{CONTENT_FORMAT_GRAPESJS, PermissionScope, SecurityContext};
 use rustok_events::DomainEvent;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait,
@@ -13,12 +13,13 @@ use uuid::Uuid;
 use crate::dto::{ReplacePageArtifactBindingInput, ReplacePageArtifactBindingResult};
 use crate::entities::{
     page, page_artifact_binding_replacement_operation, page_artifact_rebuild_operation,
-    page_published_landing_artifact, page_static_landing_artifact,
+    page_publish_rebuild_source, page_published_landing_artifact, page_static_landing_artifact,
 };
 use crate::error::{PagesError, PagesResult};
 use crate::services::page_builder_artifact::PageBuilderArtifactService;
 
 use super::helpers::{apply_transition, enforce_expected_version};
+use super::publish_manifest::{is_sha256, rebuild_source_provenance_hash};
 use super::{PAGE_KIND, PageService, PageTransition};
 
 pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT: &str =
@@ -37,9 +38,10 @@ impl PageService {
     /// Activates one exact rebuilt immutable artifact for its locale in one owner transaction.
     ///
     /// The command requires tenant-wide `pages:manage`, a page-version fence and the exact current
-    /// binding artifact id. It verifies the rebuild receipt and replacement artifact, updates one
-    /// localized binding, advances the page version, emits lifecycle events and stores one replayable
-    /// activation receipt atomically. It never compiles, sanitizes, rebuilds or reads the mutable body.
+    /// binding artifact id. It verifies the rebuild receipt, retained provenance and replacement
+    /// artifact, updates one localized binding, advances the page version, emits lifecycle events and
+    /// stores one replayable activation receipt atomically. It never compiles, sanitizes, rebuilds or
+    /// reads the mutable body.
     pub async fn replace_rebuilt_artifact_binding(
         &self,
         tenant_id: Uuid,
@@ -112,6 +114,10 @@ impl PageService {
         )
         .await?;
         verify_rebuild_receipt(&rebuild)?;
+        let source =
+            load_rebuild_source_in_tx(&txn, tenant_id, page_id, rebuild.source_id).await?;
+        verify_rebuild_source(&source)?;
+        ensure_rebuild_matches_source(&rebuild, &source)?;
         if rebuild.source_artifact_id != input.expected_current_artifact_id {
             return Err(replacement_current_conflict(
                 "expected current artifact is not the source artifact of the selected rebuild receipt",
@@ -138,6 +144,11 @@ impl PageService {
             rebuild.locale.as_str(),
         )
         .await?;
+        if binding.page_body_id != source.page_body_id {
+            return Err(replacement_current_conflict(
+                "current locale binding body does not match retained rebuild provenance",
+            ));
+        }
         if binding.artifact_id != input.expected_current_artifact_id {
             return Err(replacement_current_conflict(format!(
                 "current locale binding changed: expected artifact `{}`, found `{}`",
@@ -250,6 +261,24 @@ async fn load_rebuild_operation_in_tx(
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
     }
     .ok_or_else(|| replacement_target_invalid("selected rebuild receipt is unavailable"))
+}
+
+async fn load_rebuild_source_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    source_id: Uuid,
+) -> PagesResult<page_publish_rebuild_source::Model> {
+    let query = || {
+        page_publish_rebuild_source::Entity::find_by_id(source_id)
+            .filter(page_publish_rebuild_source::Column::TenantId.eq(tenant_id))
+            .filter(page_publish_rebuild_source::Column::PageId.eq(page_id))
+    };
+    match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    }
+    .ok_or_else(|| replacement_target_invalid("selected rebuild provenance is unavailable"))
 }
 
 async fn load_binding_for_update_in_tx(
@@ -390,6 +419,84 @@ fn verify_rebuild_receipt(operation: &page_artifact_rebuild_operation::Model) ->
     Ok(())
 }
 
+fn verify_rebuild_source(source: &page_publish_rebuild_source::Model) -> PagesResult<()> {
+    if source.id.is_nil()
+        || source.operation_id.is_nil()
+        || source.tenant_id.is_nil()
+        || source.page_id.is_nil()
+        || source.page_body_id.is_nil()
+        || source.artifact_id.is_nil()
+        || source.locale.trim().is_empty()
+        || source.locale.trim() != source.locale
+        || source.source_format != CONTENT_FORMAT_GRAPESJS
+        || source.source_revision.trim().is_empty()
+    {
+        return Err(replacement_target_invalid(
+            "selected rebuild provenance has invalid identity evidence",
+        ));
+    }
+    for value in [
+        source.sanitized_hash.as_str(),
+        source.source_hash.as_str(),
+        source.review_hash.as_str(),
+        source.artifact_hash.as_str(),
+        source.materialization_hash.as_str(),
+        source.provenance_hash.as_str(),
+    ] {
+        if !is_sha256(value) {
+            return Err(replacement_target_invalid(
+                "selected rebuild provenance contains an invalid SHA-256 identity",
+            ));
+        }
+    }
+    let expected = rebuild_source_provenance_hash(
+        source.operation_id,
+        source.tenant_id,
+        source.page_id,
+        source.page_body_id,
+        source.locale.as_str(),
+        source.source_format.as_str(),
+        source.source_revision.as_str(),
+        source.artifact_id,
+        source.sanitized_hash.as_str(),
+        source.source_hash.as_str(),
+        source.review_hash.as_str(),
+        source.artifact_hash.as_str(),
+        source.materialization_hash.as_str(),
+        &source.materialization_identity,
+        &source.runtime_snapshots,
+    )
+    .map_err(|error| replacement_target_invalid(error.to_string()))?;
+    if expected != source.provenance_hash {
+        return Err(replacement_target_invalid(
+            "selected rebuild provenance hash failed validation",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_rebuild_matches_source(
+    rebuild: &page_artifact_rebuild_operation::Model,
+    source: &page_publish_rebuild_source::Model,
+) -> PagesResult<()> {
+    if rebuild.source_id != source.id
+        || rebuild.source_publish_operation_id != source.operation_id
+        || rebuild.tenant_id != source.tenant_id
+        || rebuild.page_id != source.page_id
+        || rebuild.locale != source.locale
+        || rebuild.source_artifact_id != source.artifact_id
+        || rebuild.expected_provenance_hash != source.provenance_hash
+        || rebuild.review_hash != source.review_hash
+        || rebuild.rebuilt_artifact_hash != source.artifact_hash
+        || rebuild.rebuilt_materialization_hash != source.materialization_hash
+    {
+        return Err(replacement_target_invalid(
+            "selected rebuild receipt does not match its retained provenance source",
+        ));
+    }
+    Ok(())
+}
+
 fn verify_replacement_operation(
     operation: &page_artifact_binding_replacement_operation::Model,
 ) -> PagesResult<()> {
@@ -500,10 +607,6 @@ fn normalize_idempotency_key(value: &str) -> PagesResult<String> {
         )));
     }
     Ok(normalized.to_string())
-}
-
-fn is_sha256(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
