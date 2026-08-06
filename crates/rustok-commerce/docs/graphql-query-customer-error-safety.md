@@ -4,7 +4,7 @@ Status: `source_closed_unvalidated`
 
 ## Scope
 
-This source wave closes the currently identified dynamic customer `PortError` handling gap in the mounted Commerce GraphQL query facade.
+This source contract closes the currently identified dynamic customer `PortError` handling gap in the mounted Commerce GraphQL query facade and records the correlation-safe Customer read diagnostics consumed by that facade.
 
 The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged. Its three customer-by-user reads continue to serve:
 
@@ -43,20 +43,11 @@ The complete owner `PortError`, owner message content, owner code, and owner ret
 
 ## Bounded diagnostics
 
-The transport boundary retains:
+The Commerce transport boundary retains a redacted diagnostic token, closed owner kind, stable owner code, owner retryability, owner-message presence/length, selected public code, and retryability. The complete `PortError` and owner-message content are not logged.
 
-- a diagnostic token whose `Debug` output is always `redacted`;
-- closed owner kind;
-- stable owner code;
-- owner retryability;
-- owner-message presence and character length;
-- selected public code and retryability;
-- error severity for unavailable, timeout, and invariant failures;
-- warning severity for validation, conflict, forbidden, and other ordinary rejections.
+The Customer owner and canonical in-process read layers now retain correlation-ID character length instead of the raw correlation ID across policy admission, list validation, tenant parsing, owner failure, and local delegated-outcome events. Other context and request values remain represented only through bounded presence, length, count, and closed-label facts.
 
-The complete `PortError` and owner-message content are not logged.
-
-Identity-not-found outcomes are already recorded by the Customer owner boundary and preserve their existing auth/optional transport semantics without a duplicate Commerce failure event.
+Identity-not-found outcomes preserve their existing auth/optional transport semantics without a duplicate Commerce failure event.
 
 ## Preserved contracts
 
@@ -68,15 +59,17 @@ Identity-not-found outcomes are already recorded by the Customer owner boundary 
 
 ## Still open
 
-- Execute the focused source verifier and Cargo checks.
+- Execute the focused source verifiers and Cargo checks.
 - Retain mounted success, missing identity, validation, unavailable, timeout, and invariant GraphQL evidence.
-- Remove raw correlation-id payloads from remaining Customer owner diagnostics.
-- Continue tax, promotion, inventory, remaining adapter, and non-`PortError` ecommerce envelope cleanup.
+- Continue tax, promotion, inventory, remaining adapter, write-side Customer, and non-`PortError` ecommerce envelope cleanup.
 
 ## Intended checks
 
 ```bash
 node scripts/verify/verify-commerce-graphql-query-customer-error-safety.mjs
+node scripts/verify/verify-customer-owner-error-diagnostic-safety.mjs
+node scripts/verify/verify-customer-read-policy-context.mjs
+node scripts/verify/verify-customer-read-local-context.mjs
 cargo check -p rustok-commerce --lib
 cargo check -p rustok-customer --lib
 ```

@@ -207,6 +207,7 @@ fn parse_port_tenant_id(
 
 struct CustomerReadContextFacts {
     tenant_id_length: usize,
+    correlation_id_length: usize,
     actor_kind: &'static str,
     actor_id_length: usize,
     claim_count: usize,
@@ -247,6 +248,7 @@ fn customer_read_context_facts(context: &PortContext) -> CustomerReadContextFact
     };
     CustomerReadContextFacts {
         tenant_id_length: context.tenant_id.chars().count(),
+        correlation_id_length: context.correlation_id.chars().count(),
         actor_kind,
         actor_id_length: context.actor.id.chars().count(),
         claim_count: context.claims.len(),
@@ -304,7 +306,7 @@ fn log_customer_read_admission_rejection(
     let context_facts = customer_read_context_facts(context);
     tracing::warn!(
         owner = "rustok_customer",
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context_facts.correlation_id_length,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
         actor_id_length = context_facts.actor_id_length,
@@ -342,7 +344,7 @@ fn log_customer_list_validation_rejection(
     let request_facts = customer_list_request_facts(request);
     tracing::warn!(
         owner = "rustok_customer",
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context_facts.correlation_id_length,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
         actor_id_length = context_facts.actor_id_length,
@@ -368,7 +370,7 @@ fn log_customer_tenant_parse_rejection(context: &PortContext, owner_operation: &
     let context_facts = customer_read_context_facts(context);
     tracing::warn!(
         owner = "rustok_customer",
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context_facts.correlation_id_length,
         tenant_id_length = context_facts.tenant_id_length,
         actor_kind = context_facts.actor_kind,
         actor_id_length = context_facts.actor_id_length,
@@ -455,7 +457,7 @@ fn log_customer_owner_failure(
     if technical_failure {
         tracing::error!(
             owner = "rustok_customer",
-            correlation_id = %context.correlation_id,
+            correlation_id_length = context_facts.correlation_id_length,
             tenant_id_length = context_facts.tenant_id_length,
             actor_kind = context_facts.actor_kind,
             actor_id_length = context_facts.actor_id_length,
@@ -485,7 +487,7 @@ fn log_customer_owner_failure(
     } else {
         tracing::warn!(
             owner = "rustok_customer",
-            correlation_id = %context.correlation_id,
+            correlation_id_length = context_facts.correlation_id_length,
             tenant_id_length = context_facts.tenant_id_length,
             actor_kind = context_facts.actor_kind,
             actor_id_length = context_facts.actor_id_length,
