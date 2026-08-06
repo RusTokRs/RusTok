@@ -36,6 +36,7 @@ const scripts = [
   'verify-index-confirmed-candidate-persistence.mjs',
   'verify-index-drift-finding-lifecycle.mjs',
   'verify-index-targeted-drift-repair.mjs',
+  'verify-index-missing-entity-repair-composition.mjs',
   'verify-index-reconciliation-retry-store.mjs',
   'verify-index-reconciliation-runner-retry.mjs',
   'verify-index-reconciliation-host-scheduler.mjs',
