@@ -152,7 +152,8 @@ for (const marker of [
 for (const marker of [
   "delete-route-tombstone-source-ready",
   "Delete route tombstones: source-ready",
-  "Historical route backfill/import policy remains open",
+  "route-history-import-source-ready",
+  "Historical route import: source-ready",
 ]) need(plan, marker, "canonical plan");
 for (const marker of [
   "Delete route tombstones",

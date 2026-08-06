@@ -10,6 +10,7 @@ mod read;
 mod reviewed_publish;
 mod rollback;
 mod route;
+mod route_history_import;
 
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
@@ -30,6 +31,11 @@ pub use lifecycle::PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED;
 pub use route::{
     PAGE_ROUTE_NOT_FOUND, PAGE_ROUTE_RESOLUTION_CONFLICT, PageRouteDescriptor,
     PageRouteDisposition, PageRouteResolution, PageRouteService,
+};
+pub use route_history_import::{
+    ImportPageRouteHistoryInput, MAX_PAGE_ROUTE_HISTORY_IMPORT_ITEMS,
+    PAGE_ROUTE_HISTORY_IMPORT_CONFLICT, PageRouteHistoryImportItem,
+    PageRouteHistoryImportResult, PageRouteHistoryImportService,
 };
 
 pub(super) const PAGE_KIND: &str = "page";
