@@ -90,19 +90,43 @@ The broad Phase 4 wording should now be read as follows:
 - global project/page/component/depth/asset/style budgets: source-ready;
 - accepted parser, real-project, runtime and tenant evidence: pending.
 
+### Immutable artifact integrity audit
+
+Marker:
+
+```text
+immutable-artifact-integrity-audit-source-ready
+```
+
+Pages now owns a bounded read-only immutable artifact integrity audit for one exact tenant and page.
+
+The command requires tenant-wide `pages:manage`, reads through one transaction and scans at most 512 records ordered by creation time and artifact id. It requests one extra row and sets `truncated=true` instead of claiming a complete audit when more retained records exist.
+
+Each record is reconstructed through the Page Builder static artifact and materialization contracts. The audit checks owner identity, static artifact hashes, build/renderer metadata, output byte limits, complete current materialization evidence and exact legacy all-`NULL` compatibility. Partial evidence fails closed.
+
+The result contains only bounded artifact identity, one public finding code, hashed internal diagnostics, counts, truncation flags and a deterministic audit hash. It does not return HTML, CSS, runtime snapshots, materialization identity JSON or internal error text.
+
+This command does not write artifact or binding rows, emit lifecycle/cache events, publish, rollback, repair or rebuild. Public GraphQL/HTTP/admin transport is not added in this slice. Automatic repair/rebuild remains open as a separate source cursor.
+
+The broad Phase 6 wording should now be read as follows:
+
+- bounded read-only integrity-audit command: source-ready;
+- public audit transport and accepted database evidence: pending;
+- repair/rebuild remains open.
+
 ### Status boundary
 
 Source parity has advanced, but execution and rollout remain open.
 
 - No new test, verifier, Cargo, database, HTTP, browser, workflow or CI execution is claimed here.
-- No publish/materialization scenario was executed.
+- No audit database scenario, publish/materialization scenario or repair was executed.
 - No FFA/FBA promotion is made.
 
 ## Current next cursor
 
-1. Run the static publish resource-limit source guard and focused Page Builder tests.
-2. Retain accepted real-project policy evidence covering HTML/CSS/URL/attribute rejection and every global budget boundary.
-3. Execute the existing metadata conflict/isolation and published metadata browser packets.
-4. Mount and execute the real Pages native storefront server-function route with trusted host context, database fixtures and `PagesCacheReadRuntime`.
-5. Retain one exact-revision continuity packet from durable `NodePublished` relay delivery through generation rotation to native storefront miss/refill/hit.
-6. Complete compilation, artifact/HTTP/browser, anonymous-bundle and tenant Wave evidence before promotion.
+1. Run the immutable artifact audit source guard and focused Pages tests.
+2. Retain SQLite/PostgreSQL audit evidence for valid legacy/current records, corruption, partial evidence, authorization and 513-row truncation.
+3. Add a bounded owner-only GraphQL/HTTP transport for the audit result without exposing artifact payloads.
+4. Design repair/rebuild as a separate explicit command with immutable source provenance and no in-place artifact mutation.
+5. Run the static publish resource-limit source guard and retain accepted real-project policy evidence.
+6. Execute the existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
