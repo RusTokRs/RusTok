@@ -51,6 +51,7 @@ notifications module, and cross-module release gates.
 - FORUM-24D adds an explicit owner command for localized topic slug changes with atomic old-route aliases and delete/merge lifecycle resolution.
 - FORUM-24E provides a bounded, cursor-resumable owner repair that ensures exact route aliases for immutable merge receipts created before FORUM-24B.
 - FORUM-24F exposes the localized topic slug rename owner through an additive routed-tenant GraphQL mutation while preserving owner-defined update and ownership semantics.
+- FORUM-24G composes that mutation in the module-owned Leptos and Next-admin packages without adding route, alias, merge or locale-selection policy to either UI.
 
 ## Verification
 
@@ -87,6 +88,7 @@ notifications module, and cross-module release gates.
 - [FORUM-24D topic slug rename owner](./forum-24d-topic-slug-rename-owner.md)
 - [FORUM-24E historical merge route backfill](./forum-24e-topic-merge-route-backfill.md)
 - [FORUM-24F topic slug rename GraphQL transport](./forum-24f-topic-slug-rename-graphql-transport.md)
+- [FORUM-24G topic slug rename admin UI](./forum-24g-topic-slug-rename-admin-ui.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
