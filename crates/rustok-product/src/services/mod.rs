@@ -3,6 +3,7 @@ pub mod catalog_schema;
 pub mod catalog_schema_service;
 mod index_refresh;
 mod index_refresh_publication;
+mod index_refresh_relay;
 mod write_transaction;
 
 pub use catalog::{
@@ -20,4 +21,8 @@ pub use index_refresh::{
 pub use index_refresh_publication::{
     ProductIndexRefreshCanonicalWriter, ProductIndexRefreshContract,
     ProductIndexRefreshContractTarget, ProductIndexRefreshPublicationError,
+};
+pub use index_refresh_relay::{
+    ProductIndexRefreshEventFactory, ProductIndexRefreshRelayError,
+    ProductIndexRefreshRelayStep, ProductIndexRefreshRelayStepOutcome,
 };

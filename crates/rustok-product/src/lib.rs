@@ -34,7 +34,9 @@ pub use services::{
     ProductAttributeFilter, ProductCatalogSchemaService, ProductIndexLocaleRefreshRecord,
     ProductIndexLocaleRefreshSource, ProductIndexRefreshCanonicalWriter,
     ProductIndexRefreshContract, ProductIndexRefreshContractTarget,
-    ProductIndexRefreshPublicationError, ProductIndexVariantRefreshRecord,
+    ProductIndexRefreshEventFactory, ProductIndexRefreshPublicationError,
+    ProductIndexRefreshRelayError, ProductIndexRefreshRelayStep,
+    ProductIndexRefreshRelayStepOutcome, ProductIndexVariantRefreshRecord,
     ProductIndexVariantRefreshSource, StorefrontProductList, StorefrontProductListItem,
     StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
 };
