@@ -296,7 +296,10 @@ function validateDocker(input, head) {
     fail("Docker evidence identity, status, or source commit drifted");
   }
   requireIsoTimestamp(document.captured_at, "Docker captured_at");
-  requireString(document.requested_image, "Docker requested_image", 512);
+  if (!/^sha256:[0-9a-f]{64}$/u.test(document.requested_image ?? "")) {
+    fail("Docker requested_image must retain only a SHA-256 request identity");
+  }
+  requirePositiveInteger(document.requested_image_bytes, "Docker requested_image_bytes");
   if (!/^sha256:[0-9a-f]{64}$/u.test(document.image_id ?? "")) {
     fail("Docker image_id must be a canonical SHA-256 digest");
   }
@@ -335,6 +338,7 @@ function validateDocker(input, head) {
     fail("Docker capture persisted the raw inspect document");
   }
   if (
+    document.privacy?.requested_image_value_persisted !== false ||
     document.privacy?.docker_inspect_document_persisted !== false ||
     document.privacy?.environment_values_persisted !== false ||
     document.privacy?.credentials_persisted !== false
@@ -398,7 +402,7 @@ function validateCredentialEnvironmentNames(scenario, specification) {
   }
 }
 
-function validateHttp(input, head, build) {
+function validateHttp(input, head, build, docker) {
   const document = input.document;
   if (
     document.format !== contract.http_capture.format ||
@@ -411,6 +415,13 @@ function validateHttp(input, head, build) {
   requireString(document.target?.origin, "HTTP target origin", 2048);
   requireString(document.target?.locale, "HTTP target locale", 64);
   if (document.target?.page_id_shape !== "uuid") fail("HTTP target page id shape drifted");
+  if (
+    contract.http_capture.deployment_image_digest_required !== true ||
+    typeof document.target?.deployment_image_digest !== "string" ||
+    !docker.repo_digests.includes(document.target.deployment_image_digest)
+  ) {
+    fail("HTTP target deployment image digest is not present in Docker evidence");
+  }
 
   if (
     !Array.isArray(document.assets) ||
@@ -628,7 +639,7 @@ const buildA = validateBuild(inputs.build_a, "build-a", head);
 const buildB = validateBuild(inputs.build_b, "build-b", head);
 compareBuilds(buildA, buildB);
 const docker = validateDocker(inputs.docker, head);
-const http = validateHttp(inputs.http, head, buildA);
+const http = validateHttp(inputs.http, head, buildA, docker);
 const anonymous = validateAnonymous(inputs.anonymous, head);
 
 const inputManifest = Object.fromEntries(
@@ -675,6 +686,7 @@ const document = {
   },
   http: {
     origin: http.target.origin,
+    deployment_image_digest: http.target.deployment_image_digest,
     locale: http.target.locale,
     assets: http.assets,
     authoring: http.authoring,
@@ -698,6 +710,7 @@ const document = {
     raw_response_bodies_persisted: false,
     raw_command_logs_persisted: false,
     docker_inspect_document_persisted: false,
++    requested_image_reference_persisted: false,
   },
 };
 
