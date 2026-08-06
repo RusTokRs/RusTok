@@ -11,7 +11,8 @@ use rustok_pages::{
 use rustok_pages::entities::{page_route_alias, page_route_history_import, page_route_publication};
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
