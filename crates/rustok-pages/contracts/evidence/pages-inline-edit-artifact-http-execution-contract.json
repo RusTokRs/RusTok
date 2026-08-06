@@ -50,6 +50,7 @@
   },
   "http_capture": {
     "format": "pages_inline_edit_http_execution_v1",
+    "deployment_image_digest_required": true,
     "asset_paths": [
       {
         "id": "authoring_bootstrap",
@@ -165,7 +166,8 @@
       "raw_html",
       "raw_denial_body",
       "raw_command_log",
-      "docker_inspect_document"
+      "docker_inspect_document",
+      "requested_image_reference"
     ]
   }
 }
