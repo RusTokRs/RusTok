@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "contract": "reactions_optional_host_composition_v1",
+  "owner_module": "reactions",
+  "owner_feature": "mod-reactions",
+  "default_enabled": false,
+  "forum_implies_owner": false,
+  "status": "source_ready_maintainer_execution_pending",
+  "host_materialization": {
+    "requires_owner_registry": true,
+    "after_forum_audience_facts": true,
+    "after_forum_recipient_context": true,
+    "before_notification_source_materialization": true
+  },
+  "profiles": {
+    "forum_without_reactions": {
+      "forum_available": true,
+      "owner_registry_materialized": false,
+      "provider_materialized": false
+    },
+    "reactions_without_forum": {
+      "forum_available": false,
+      "owner_registry_materialized": true,
+      "provider_sources": []
+    },
+    "forum_with_reactions": {
+      "forum_available": true,
+      "owner_registry_materialized": true,
+      "provider_sources": [
+        {
+          "source": "forum",
+          "kinds": ["topic", "reply"]
+        }
+      ]
+    }
+  },
+  "required_files": [
+    "modules.toml",
+    "crates/rustok-forum/Cargo.toml",
+    "crates/rustok-distribution/Cargo.toml",
+    "crates/rustok-distribution/src/lib.rs",
+    "apps/server/Cargo.toml",
+    "apps/server/src/services/module_event_dispatcher.rs",
+    "crates/rustok-reactions/docs/implementation-plan.md",
+    "crates/rustok-forum/docs/implementation-plan.md",
+    "scripts/verify/verify-reactions-host-composition.mjs"
+  ]
+}

@@ -118,7 +118,8 @@ for (const fragment of [
   "| `REACTIONS-01` | `in_progress` |",
   "| `REACTIONS-02` | `in_progress` |",
   "shared Outbox",
-  "Forum `topic` and `reply` `ReactionSubjectProvider`",
+  "`ReactionSubjectProviderFactory`",
+  "enabled/disabled runtime evidence",
 ]) {
   if (!plan.includes(fragment)) fail(`Reactions plan is missing ${fragment}`);
 }
@@ -126,8 +127,8 @@ for (const fragment of [
 for (const fragment of [
   "| `FORUM-18` | `in_progress` |",
   "tenant-composite persistence",
-  "Forum `topic` and `reply`",
-  "`ReactionSubjectProvider`",
+  "Forum provider factory supports `topic` and `reply`",
+  "optional `mod-reactions`",
   "Existing Forum votes remain Forum semantics",
 ]) {
   if (!forumPlan.includes(fragment)) fail(`Forum plan is missing ${fragment}`);

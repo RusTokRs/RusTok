@@ -14,10 +14,10 @@ last_reviewed: 2026-08-06
 
 | Task | Status | Deliverable |
 | --- | --- | --- |
-| `REACTIONS-00` | `in_progress` | Neutral API, optional module registration and provider registry are source-ready; maintainer Cargo/Node verification remains. |
+| `REACTIONS-00` | `in_progress` | Neutral API, optional owner module, distribution/server feature selection and provider registries are source-ready; maintainer Cargo/Node verification remains. |
 | `REACTIONS-01` | `in_progress` | Tenant-composite owner schema, immutable catalog snapshots, actor uniqueness and shared Outbox command receipts are source-ready. Regenerate `Cargo.lock` and retain SQLite/PostgreSQL execution evidence. |
 | `REACTIONS-02` | `in_progress` | Actor state and aggregate deltas commit atomically behind one subject serialization row. Add semantic events, repair/reconciliation and retained concurrency evidence. |
-| `REACTIONS-03` | `in_progress` | Forum topic/reply provider factory, exact current-revision/visibility authorization and the Reactions-disabled Forum profile are source-ready. Add optional distribution/host materialization and retain enabled/disabled runtime evidence. |
+| `REACTIONS-03` | `in_progress` | Forum topic/reply provider factory and optional distribution/server host materialization are source-ready. Reactions stays outside default profiles; enabled/disabled runtime evidence remains. |
 | `REACTIONS-04` | `planned` | Second real producer adapter and neutral-contract review. |
 | `REACTIONS-05` | `planned` | Bounded read/write transports and module-owned UI. |
 | `REACTIONS-06` | `planned` | Runtime evidence, FBA contracts, import/reconciliation and release profiles. |
@@ -66,12 +66,36 @@ Forum registers a neutral `ReactionSubjectProviderFactory` for `topic` and
 Forum remains fully usable when Reactions is absent. The neutral factory may be
 registered without materializing a Reactions owner runtime.
 
+## Optional host composition boundary
+
+`mod-reactions` is now an explicit optional feature in `rustok-distribution` and
+`rustok-server`. It registers `ReactionsModule`, contributes the owner migration
+source and materializes the reaction subject registry only after host providers
+have been composed.
+
+The executable host fails closed when the feature is selected but
+`ReactionsModule` is absent from the supplied `ModuleRegistry`. When Forum is
+also selected, materialization happens after Forum audience facts and exact
+recipient-context providers exist, so the Forum factory cannot be built with a
+broader or incomplete authority boundary.
+
+Supported source profiles are explicit:
+
+- Forum without Reactions: Forum remains available; the neutral factory is not
+  materialized into an owner registry.
+- Reactions without Forum: the owner registry materializes with no Forum source.
+- Forum with Reactions: the registry materializes the `forum` source with
+  `topic` and `reply` kinds.
+
+`mod-forum` does not imply `mod-reactions`, server defaults do not select it and
+`modules.toml` keeps Reactions outside `default_enabled`.
+
 ## Immediate next action
 
-Add optional `mod-reactions` selection to `rustok-distribution` and the server,
-materialize source factories after host facts providers exist, keep Reactions
-outside default profiles, and retain both enabled and disabled Forum composition
-evidence.
+Retain enabled/disabled runtime evidence for the three composition profiles,
+including a selected-feature/missing-registry startup failure. Then add semantic
+reaction events, catalog/aggregate reconciliation and a second real producer
+before freezing transport or presentation contracts.
 
 Before release, regenerate `Cargo.lock`, execute SQLite and PostgreSQL migrations,
 retain replay/concurrency/rollback evidence, add semantic reaction events and
@@ -86,9 +110,12 @@ cargo test -p rustok-forum reaction_subject
 cargo check -p rustok-reactions-api --all-targets
 cargo check -p rustok-reactions --all-targets
 cargo check -p rustok-forum --all-targets
+cargo check -p rustok-distribution --features "mod-forum mod-reactions"
+cargo check -p rustok-server --no-default-features --features "mod-forum mod-reactions"
 node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
 node scripts/verify/verify-forum-reaction-subject-provider.mjs
+node scripts/verify/verify-reactions-host-composition.mjs
 git diff --check
 ```
 

@@ -110,8 +110,8 @@ const forumPlan = read("crates/rustok-forum/docs/implementation-plan.md");
 for (const fragment of [
   "| Reaction catalog, actor reactions and aggregate reaction counts | `rustok-reactions` |",
   "| `FORUM-18` | `in_progress` |",
-  "Forum `topic` and `reply`",
-  "`ReactionSubjectProvider`",
+  "Forum provider factory supports `topic` and `reply`",
+  "optional `mod-reactions`",
   "Existing Forum votes remain Forum semantics",
 ]) {
   if (!forumPlan.includes(fragment)) fail(`Forum plan is missing ${fragment}`);
