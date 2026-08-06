@@ -61,6 +61,7 @@ notifications module, and cross-module release gates.
 - FORUM-24M composes explicit and name-derived category slug changes into an append-only tenant/locale route ledger, permanently reserves historical keys, and resolves exact-locale aliases before fallback current routes; transport, tombstone disclosure and SEO remain follow-up scope.
 - FORUM-24N exposes visibility-safe category route decisions through additive GraphQL and native storefront transports, rechecks the canonical category through the exact audience owner, and leaves host mounting, links, HTTP status policy and SEO unchanged.
 - FORUM-24O mounts the canonical localized category route in the shared Rust storefront, cuts category-card links over from UUID query selection, and applies private fail-closed `308`, `404` and `503` host policy without adding category tombstones or SEO composition.
+- FORUM-24P rewrites Forum category/topic SEO canonical, alternate, bulk and sitemap routes through the route owners, recognizes localized public paths, keeps visibility rechecks exact, and composes the existing SEO head on both Rust storefront route mounts.
 
 ## Verification
 
@@ -76,6 +77,7 @@ notifications module, and cross-module release gates.
 - `node scripts/verify/verify-forum-category-slug-alias-owner.mjs`
 - `node scripts/verify/verify-forum-category-route-storefront-transport.mjs`
 - `node scripts/verify/verify-forum-category-route-storefront-mount.mjs`
+- `node scripts/verify/verify-forum-canonical-route-seo-policy.mjs`
 - task-specific owner, transport, UI and runtime commands from the canonical plan
 
 ## Related documents
@@ -115,6 +117,7 @@ notifications module, and cross-module release gates.
 - [FORUM-24M category slug alias owner](./forum-24m-category-slug-alias-owner.md)
 - [FORUM-24N category route storefront transport](./forum-24n-category-route-storefront-transport.md)
 - [FORUM-24O category route storefront mount](./forum-24o-category-route-storefront-mount.md)
+- [FORUM-24P canonical route SEO policy](./forum-24p-canonical-route-seo-policy.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)

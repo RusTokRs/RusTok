@@ -46,16 +46,8 @@ requireText(
   'public discovery service export',
 );
 requireText(lib, 'ForumPublicDiscoveryService', 'crate public discovery export');
-requireText(
-  lib,
-  'mod seo_audience_targets;',
-  'exact SEO wrapper module',
-);
-requireText(
-  lib,
-  '#[path = "seo_targets.rs"]',
-  'legacy SEO mapper path preservation',
-);
+requireText(lib, 'mod seo_audience_targets;', 'exact SEO wrapper module');
+requireText(lib, 'mod seo_targets;', 'legacy SEO mapper module preservation');
 requireText(
   lib,
   'seo_audience_targets::ForumCategorySeoTargetProvider',
@@ -74,8 +66,11 @@ for (const marker of [
   'async fn resolve_route(',
   'async fn list_bulk_summaries(',
   'async fn sitemap_candidates(',
-  'legacy_category().load_target',
-  'legacy_topic().load_target',
+  'category_provider().load_target',
+  'topic_provider().load_target',
+  'ForumCategoryRouteService',
+  'ForumTopicRouteService',
+  'parse_canonical_forum_route',
 ]) {
   requireText(seo, marker, 'exact SEO wrapper');
 }
@@ -105,8 +100,16 @@ for (const marker of [
 ]) {
   requireText(searchEngine, marker, 'canonical Forum Search result routes');
 }
-requireText(storefrontCore, '?category={category_id}', 'Forum category query key');
-requireText(storefrontCore, '?topic={topic_id}', 'Forum topic query key');
+for (const marker of [
+  'Some(format!("/{locale}/forum/c/{slug}"))',
+  'Some(format!("/{locale}/forum/t/{short_id}/{slug}"))',
+  'category_href(item.effective_locale.as_str(), item.slug.as_str())',
+  'topic_href(',
+]) {
+  requireText(storefrontCore, marker, 'Forum canonical storefront route');
+}
+rejectText(storefrontCore, '?category={category_id}', 'retired category UUID card route');
+rejectText(storefrontCore, '?topic={topic_id}', 'retired topic UUID card route');
 rejectText(
   searchIngestion,
   'DomainEvent::ForumTopicCreated',

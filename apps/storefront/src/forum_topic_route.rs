@@ -7,6 +7,8 @@ use rustok_forum_storefront::{
 };
 use rustok_web::CspNonce;
 
+use crate::shared::context::seo_page_context::fetch_seo_page_context;
+
 use super::{private_permanent_redirect, private_status_response, render_module_page_with_nonce};
 
 const FORUM_ROUTE_SEGMENT: &str = "forum";
@@ -66,12 +68,26 @@ pub(crate) async fn render_forum_topic_route_response(
             canonical_path: _,
         } => {
             query_params.insert("topic".to_string(), topic_id);
+            query_params.remove("category");
+            let seo_context = match fetch_seo_page_context(
+                effective_locale.as_str(),
+                FORUM_ROUTE_SEGMENT,
+                &query_params,
+            )
+            .await
+            {
+                Ok(context) => context,
+                Err(error) => {
+                    eprintln!("failed to resolve Forum topic SEO context: {error}");
+                    None
+                }
+            };
             Html(
                 render_module_page_with_nonce(
                     effective_locale.as_str(),
                     FORUM_ROUTE_SEGMENT,
                     query_params,
-                    None,
+                    seo_context.as_ref(),
                     csp_nonce,
                     None,
                 )
@@ -80,6 +96,12 @@ pub(crate) async fn render_forum_topic_route_response(
             .into_response()
         }
     }
+}
+
+fn safe_owner_path(path: &str) -> bool {
+    path.starts_with('/')
+        && !path.starts_with("//")
+        && !path.chars().any(char::is_control)
 }
 
 fn forum_topic_host_action(
@@ -91,21 +113,36 @@ fn forum_topic_host_action(
         (StorefrontForumTopicRouteDisposition::Gone, Some(_))
         | (StorefrontForumTopicRouteDisposition::Canonical, None)
         | (StorefrontForumTopicRouteDisposition::Redirect, None) => ForumTopicHostAction::Invalid,
-        (StorefrontForumTopicRouteDisposition::Redirect, Some(canonical)) => {
-            ForumTopicHostAction::Redirect(canonical.path.clone())
-        }
-        (StorefrontForumTopicRouteDisposition::Canonical, Some(canonical))
-            if requested_path != canonical.path =>
+        (StorefrontForumTopicRouteDisposition::Redirect, Some(canonical))
+            if valid_topic_descriptor(canonical) =>
         {
             ForumTopicHostAction::Redirect(canonical.path.clone())
         }
-        (StorefrontForumTopicRouteDisposition::Canonical, Some(canonical)) => {
+        (StorefrontForumTopicRouteDisposition::Canonical, Some(canonical))
+            if valid_topic_descriptor(canonical) && requested_path != canonical.path =>
+        {
+            ForumTopicHostAction::Redirect(canonical.path.clone())
+        }
+        (StorefrontForumTopicRouteDisposition::Canonical, Some(canonical))
+            if valid_topic_descriptor(canonical) =>
+        {
             ForumTopicHostAction::Render {
                 topic_id: canonical.topic_id.clone(),
                 canonical_path: canonical.path.clone(),
             }
         }
+        _ => ForumTopicHostAction::Invalid,
     }
+}
+
+fn valid_topic_descriptor(
+    canonical: &rustok_forum_storefront::StorefrontForumTopicRouteDescriptor,
+) -> bool {
+    !canonical.topic_id.trim().is_empty()
+        && !canonical.locale.trim().is_empty()
+        && !canonical.short_id.trim().is_empty()
+        && !canonical.slug.trim().is_empty()
+        && safe_owner_path(canonical.path.as_str())
 }
 
 #[cfg(test)]
@@ -194,10 +231,32 @@ mod tests {
 
     #[test]
     fn malformed_transport_shapes_fail_closed() {
+        let mut external = descriptor();
+        external.path = "https://example.invalid/topic".to_string();
+        let mut protocol_relative = descriptor();
+        protocol_relative.path = "//example.invalid/topic".to_string();
+        let mut header_injection = descriptor();
+        header_injection.path = "/en/forum/t/123456789abc/welcome\r\nX-Test: injected".to_string();
+        let mut missing_identity = descriptor();
+        missing_identity.topic_id.clear();
+
         for resolution in [
             resolution(StorefrontForumTopicRouteDisposition::Gone, Some(descriptor())),
             resolution(StorefrontForumTopicRouteDisposition::Canonical, None),
             resolution(StorefrontForumTopicRouteDisposition::Redirect, None),
+            resolution(StorefrontForumTopicRouteDisposition::Redirect, Some(external)),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(protocol_relative),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(header_injection),
+            ),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Canonical,
+                Some(missing_identity),
+            ),
         ] {
             assert_eq!(
                 forum_topic_host_action(

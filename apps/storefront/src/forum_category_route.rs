@@ -7,6 +7,8 @@ use rustok_forum_storefront::{
 };
 use rustok_web::CspNonce;
 
+use crate::shared::context::seo_page_context::fetch_seo_page_context;
+
 use super::{private_permanent_redirect, private_status_response, render_module_page_with_nonce};
 
 const FORUM_ROUTE_SEGMENT: &str = "forum";
@@ -59,12 +61,25 @@ pub(crate) async fn render_forum_category_route_response(
         ForumCategoryHostAction::Render { category_id } => {
             query_params.insert("category".to_string(), category_id);
             query_params.remove("topic");
+            let seo_context = match fetch_seo_page_context(
+                effective_locale.as_str(),
+                FORUM_ROUTE_SEGMENT,
+                &query_params,
+            )
+            .await
+            {
+                Ok(context) => context,
+                Err(error) => {
+                    eprintln!("failed to resolve Forum category SEO context: {error}");
+                    None
+                }
+            };
             Html(
                 render_module_page_with_nonce(
                     effective_locale.as_str(),
                     FORUM_ROUTE_SEGMENT,
                     query_params,
-                    None,
+                    seo_context.as_ref(),
                     csp_nonce,
                     None,
                 )

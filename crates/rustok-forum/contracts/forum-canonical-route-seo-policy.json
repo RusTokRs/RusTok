@@ -1,0 +1,89 @@
+{
+  "contract": "forum_canonical_route_seo_policy_v1",
+  "task": "FORUM-24P",
+  "parent_task": "FORUM-24",
+  "extends": [
+    "FORUM-20BI",
+    "FORUM-24A",
+    "FORUM-24I",
+    "FORUM-24K",
+    "FORUM-24L",
+    "FORUM-24O"
+  ],
+  "status": "source_ready_maintainer_execution_pending",
+  "canonical_plan_status": "planned",
+  "canonical_routes": {
+    "category_shape": "/{locale}/forum/c/{slug}",
+    "topic_shape": "/{locale}/forum/t/{short_id}/{slug}",
+    "category_owner": "ForumCategoryRouteService",
+    "topic_owner": "ForumTopicRouteService",
+    "legacy_uuid_module_routes_still_resolvable": true,
+    "legacy_uuid_module_routes_emitted_as_public_canonical": false,
+    "legacy_uuid_module_routes_emitted_as_public_alternates": false,
+    "legacy_uuid_module_routes_emitted_by_public_bulk_or_sitemap": false,
+    "managed_authoring_legacy_load_preserved": true
+  },
+  "hreflang": {
+    "owner_descriptors_only": true,
+    "available_locale_fallback_not_emitted_as_exact_alternate": true,
+    "sorted_and_deduplicated": true,
+    "maximum_alternates": 64,
+    "canonical_locale_included": true,
+    "x_default_selection_changed": false
+  },
+  "route_resolution": {
+    "canonical_category_paths_recognized": true,
+    "canonical_topic_paths_recognized": true,
+    "category_alias_resolves_to_canonical_target": true,
+    "topic_alias_resolves_to_canonical_target": true,
+    "authorized_topic_gone_excluded_from_seo": true,
+    "route_conflicts_fail_closed": true
+  },
+  "public_discovery": {
+    "authoring_scope_preserved": true,
+    "public_category_rechecked_by_exact_owner": true,
+    "public_topic_rechecked_by_exact_owner": true,
+    "private_pending_archived_or_hidden_targets_absent": true,
+    "channel_visibility_rechecked": true,
+    "host_does_not_reauthorize": true
+  },
+  "document": {
+    "category_schema": "CollectionPage",
+    "topic_schema": "DiscussionForumPosting",
+    "question_answer_schema_added": false,
+    "title_description_robots_open_graph_policy_changed": false,
+    "canonical_and_alternate_routes_rewritten": true,
+    "template_route_fields_rewritten": true
+  },
+  "rust_storefront": {
+    "category_route_fetches_seo_context": true,
+    "topic_route_fetches_seo_context": true,
+    "owner_route_decision_remains_http_authority": true,
+    "seo_redirect_does_not_override_route_owner": true,
+    "seo_failure_degrades_to_document_without_seo_head": true,
+    "seo_failure_turns_public_route_into_outage": false,
+    "untrusted_category_query_removed_from_topic_route": true,
+    "untrusted_topic_query_removed_from_category_route": true
+  },
+  "compatibility": {
+    "topic_or_category_write_contract_changed": false,
+    "route_alias_storage_changed": false,
+    "tombstone_policy_changed": false,
+    "search_result_routes_changed": false,
+    "next_storefront_changed": false,
+    "new_migration": false
+  },
+  "verification": {
+    "executed_by_implementation_agent": false,
+    "commands": [
+      "node scripts/verify/verify-forum-canonical-route-seo-policy.mjs",
+      "node scripts/verify/verify-forum-public-discovery-seo.mjs",
+      "cargo test -p rustok-forum seo_audience_targets::tests -- --nocapture",
+      "cargo test -p rustok-forum --test canonical_route_seo_policy_contract -- --nocapture",
+      "cargo test -p rustok-storefront forum_category_route::tests -- --nocapture",
+      "cargo test -p rustok-storefront forum_topic_route::tests -- --nocapture",
+      "cargo check -p rustok-forum --all-targets",
+      "cargo check -p rustok-storefront --all-targets --features ssr"
+    ]
+  }
+}
