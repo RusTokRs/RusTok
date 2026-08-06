@@ -7,7 +7,7 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{SchemaFingerprint, SchemaRef, SchemaRegistry};
+use crate::{PersistedSchemaReadinessFailure, SchemaFingerprint, SchemaRef, SchemaRegistry};
 
 pub const MAX_INDEX_SCHEMA_READINESS_SCHEMAS: usize = 64;
 
@@ -54,18 +54,10 @@ impl IndexSchemaReadinessRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IndexSchemaReadinessFailureKind {
-    Missing,
-    Inactive,
-    FingerprintMismatch,
-    ContractMismatch,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexSchemaReadinessFailure {
     pub reference: SchemaRef,
-    pub kind: IndexSchemaReadinessFailureKind,
+    pub reason: PersistedSchemaReadinessFailure,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,9 +107,9 @@ pub enum IndexSchemaReadinessError {
 /// Bounded fail-closed readiness gate over the tenant-scoped `index_schemas` registry.
 ///
 /// The gate never writes schema rows. Source-owned schema registration remains owned by
-/// [`super::PostgresSchemaRegistrationStore`]. This type verifies one explicit, bounded schema
-/// set in one storage statement so a consumer cutover cannot mistake runtime capability presence
-/// for persisted tenant readiness.
+/// `PostgresSchemaRegistrationStore`. This type verifies one explicit, bounded schema set in one
+/// storage statement so a consumer cutover cannot mistake runtime capability presence for persisted
+/// tenant readiness.
 #[derive(Clone)]
 pub struct PostgresIndexSchemaReadinessStore {
     db: DatabaseConnection,
@@ -182,25 +174,25 @@ impl PostgresIndexSchemaReadinessStore {
             let Some(persisted) = stored.get(key) else {
                 failures.push(IndexSchemaReadinessFailure {
                     reference: expected_schema.reference.clone(),
-                    kind: IndexSchemaReadinessFailureKind::Missing,
+                    reason: PersistedSchemaReadinessFailure::Missing,
                 });
                 continue;
             };
 
-            let kind = if persisted.status != "active" {
-                Some(IndexSchemaReadinessFailureKind::Inactive)
+            let reason = if persisted.status != "active" {
+                Some(PersistedSchemaReadinessFailure::Inactive)
             } else if persisted.fingerprint != expected_schema.fingerprint.to_string() {
-                Some(IndexSchemaReadinessFailureKind::FingerprintMismatch)
+                Some(PersistedSchemaReadinessFailure::FingerprintMismatch)
             } else if persisted.schema_json != expected_schema.schema_json {
-                Some(IndexSchemaReadinessFailureKind::ContractMismatch)
+                Some(PersistedSchemaReadinessFailure::ContractMismatch)
             } else {
                 None
             };
 
-            if let Some(kind) = kind {
+            if let Some(reason) = reason {
                 failures.push(IndexSchemaReadinessFailure {
                     reference: expected_schema.reference.clone(),
-                    kind,
+                    reason,
                 });
             }
         }
@@ -232,15 +224,9 @@ struct StoredSchema {
 }
 
 fn stored_schema(row: QueryResult) -> Result<StoredSchema, IndexSchemaReadinessError> {
-    let module_name: String = row
-        .try_get("", "module_name")
-        .map_err(storage_error)?;
-    let entity_name: String = row
-        .try_get("", "entity_name")
-        .map_err(storage_error)?;
-    let schema_version: i64 = row
-        .try_get("", "schema_version")
-        .map_err(storage_error)?;
+    let module_name: String = row.try_get("", "module_name").map_err(storage_error)?;
+    let entity_name: String = row.try_get("", "entity_name").map_err(storage_error)?;
+    let schema_version: i64 = row.try_get("", "schema_version").map_err(storage_error)?;
     let schema_version = u32::try_from(schema_version)
         .ok()
         .filter(|version| *version > 0)
