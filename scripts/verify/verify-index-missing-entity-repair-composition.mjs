@@ -139,7 +139,7 @@ if (
 }
 
 requireMarkers('genericDoc', [
-  'Status: `source_complete_recovery_aware_orphan_pending`.',
+  'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   '`materialize_postgres_index_drift_missing_entity_repair_service`',
   'rejects `OrphanLink` before the generic reservation store',
   '`PostgresMutationStore`',
@@ -160,13 +160,14 @@ requireMarkers('recoveryDoc', [
   'same command UUID',
 ]);
 requireMarkers('plan', [
-  'M6 - compose concrete orphan-link repair',
+  'M6 - retain concrete repair execution evidence',
   'source_complete_recovery_aware_owner_execution_pending',
-  'Bind mutation retry identity to the durable repair command UUID.',
+  'Bind missing-entity retry identity to the durable repair command UUID.',
   'Add fail-closed prepared-command pause/resume/abandon recovery and lifecycle coordination.',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-missing-entity-repair-composition.mjs'",
+  "'verify-index-orphan-link-repair-composition.mjs'",
   "'verify-index-prepared-repair-recovery.mjs'",
 ]);
 
