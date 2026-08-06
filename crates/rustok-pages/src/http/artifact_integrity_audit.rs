@@ -22,7 +22,7 @@ const PAGE_ARTIFACT_INTEGRITY_AUDIT_INVALID_INPUT: &str =
 const PAGE_ARTIFACT_INTEGRITY_AUDIT_FAILED: &str = "PAGE_ARTIFACT_INTEGRITY_AUDIT_FAILED";
 
 #[derive(Clone)]
-struct PagesArtifactAuditHttpRuntime {
+pub(crate) struct PagesArtifactAuditHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
 }
@@ -54,7 +54,7 @@ impl PagesArtifactAuditHttpRuntime {
         (status = 500, description = "Audit could not be completed")
     )
 )]
-pub async fn audit_page_artifacts(
+pub(crate) async fn audit_page_artifacts(
     State(runtime): State<PagesArtifactAuditHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
