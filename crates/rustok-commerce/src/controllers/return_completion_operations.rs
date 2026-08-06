@@ -17,6 +17,78 @@ use crate::dto::OrderReturnResponse;
 use crate::services::{ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse};
 use crate::{PostOrderOrchestrationError, ReturnCompletionOrchestrationService};
 
+const RETURN_COMPLETION_OPERATOR_OWNER: &str =
+    "rustok_commerce.return_completion_operation";
+const RETURN_COMPLETION_OPERATOR_BOUNDARY: &str =
+    "commerce_admin_return_completion_operation_http";
+
+type ReturnCompletionOperatorHttpPolicy =
+    (StatusCode, &'static str, &'static str, &'static str);
+
+#[derive(Clone, Copy)]
+struct ReturnCompletionOperatorErrorContext {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    operation_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl ReturnCompletionOperatorErrorContext {
+    fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        operation_id: Option<Uuid>,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            operation_id,
+            operation,
+        }
+    }
+}
+
+struct ReturnCompletionOperatorDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    operation_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&ReturnCompletionOperatorErrorContext>
+    for ReturnCompletionOperatorDiagnosticContext
+{
+    fn from(context: &ReturnCompletionOperatorErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            operation_id: optional_uuid_shape(context.operation_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct ReturnCompletionOperatorDiagnosticError;
+
+impl std::fmt::Debug for ReturnCompletionOperatorDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, ToSchema, IntoParams)]
 pub struct AdminListReturnCompletionOperationsParams {
     #[serde(flatten)]
@@ -71,7 +143,17 @@ pub async fn list_return_completion_operations(
                 },
             )
             .await
-            .map_err(map_operator_error)?;
+            .map_err(|error| {
+                map_operator_error(
+                    ReturnCompletionOperatorErrorContext::new(
+                        tenant.id,
+                        auth.user_id,
+                        None,
+                        "list_return_completion_operations",
+                    ),
+                    error,
+                )
+            })?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -106,7 +188,17 @@ pub async fn show_return_completion_operation(
             .with_payment_provider_registry(runtime.payment_provider_registry())
             .get_operation(tenant.id, id)
             .await
-            .map_err(map_operator_error)?;
+            .map_err(|error| {
+                map_operator_error(
+                    ReturnCompletionOperatorErrorContext::new(
+                        tenant.id,
+                        auth.user_id,
+                        Some(id),
+                        "show_return_completion_operation",
+                    ),
+                    error,
+                )
+            })?;
     Ok(Json(operation))
 }
 
@@ -139,17 +231,31 @@ pub async fn retry_return_completion_operation(
             .with_payment_provider_registry(runtime.payment_provider_registry())
             .retry_operation(tenant.id, auth.user_id, id)
             .await
-            .map_err(map_operator_error)?;
+            .map_err(|error| {
+                map_operator_error(
+                    ReturnCompletionOperatorErrorContext::new(
+                        tenant.id,
+                        auth.user_id,
+                        Some(id),
+                        "retry_return_completion_operation",
+                    ),
+                    error,
+                )
+            })?;
     Ok(Json(order_return))
 }
 
-fn map_operator_error(error: PostOrderOrchestrationError) -> HttpError {
+fn return_completion_operator_policy(
+    error: &PostOrderOrchestrationError,
+) -> Option<ReturnCompletionOperatorHttpPolicy> {
     match error {
         PostOrderOrchestrationError::Validation(message) if message.contains("was not found") => {
-            HttpError::not_found(
+            Some((
+                StatusCode::NOT_FOUND,
                 "return_completion_operation_not_found",
                 "Return completion operation not found",
-            )
+                "not_found",
+            ))
         }
         PostOrderOrchestrationError::Validation(message)
             if message.contains("currently leased")
@@ -160,19 +266,49 @@ fn map_operator_error(error: PostOrderOrchestrationError) -> HttpError {
                 || message.contains("already bound to another command")
                 || message.contains("command hash does not match") =>
         {
-            HttpError::new(
+            Some((
                 StatusCode::CONFLICT,
                 "return_completion_operation_conflict",
-                message,
-            )
+                "Return completion operation conflicts with the current state",
+                "conflict",
+            ))
         }
         PostOrderOrchestrationError::Order(
             rustok_order::error::OrderError::Database(_) | rustok_order::error::OrderError::Core(_),
-        ) => HttpError::new(
+        ) => Some((
             StatusCode::SERVICE_UNAVAILABLE,
             "return_completion_storage_unavailable",
             "Return completion recovery storage is unavailable",
-        ),
-        other => super::admin::map_post_order_orchestration_error(other),
+            "storage_unavailable",
+        )),
+        _ => None,
     }
+}
+
+fn map_operator_error(
+    context: ReturnCompletionOperatorErrorContext,
+    error: PostOrderOrchestrationError,
+) -> HttpError {
+    let Some((status, code, message, error_kind)) =
+        return_completion_operator_policy(&error)
+    else {
+        return super::admin::map_post_order_orchestration_error(error);
+    };
+    let context = ReturnCompletionOperatorDiagnosticContext::from(&context);
+    let error = ReturnCompletionOperatorDiagnosticError;
+    tracing::error!(
+        error = ?error,
+        owner = RETURN_COMPLETION_OPERATOR_OWNER,
+        source_owner = "rustok_commerce.post_order_orchestration",
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        operation_id = ?context.operation_id,
+        operation = %context.operation,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = RETURN_COMPLETION_OPERATOR_BOUNDARY,
+        "commerce admin return completion operation failed"
+    );
+    HttpError::new(status, code, message)
 }
