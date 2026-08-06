@@ -17,6 +17,7 @@ mod registry;
 mod source_absence;
 mod source_continuation;
 mod source_event_id;
+mod source_refresh_event;
 mod source_registry;
 mod source_replay;
 mod source_schema_registry;
@@ -39,6 +40,8 @@ mod postgres_query_result_tests;
 mod query_snapshot_tests;
 #[cfg(test)]
 mod reference;
+#[cfg(test)]
+mod source_refresh_event_tests;
 #[cfg(test)]
 mod source_replay_tests;
 
@@ -136,6 +139,11 @@ pub use source_continuation::{
     IndexSourceContinuationToken,
 };
 pub use source_event_id::{IndexSourceEventIdError, derive_index_source_event_id};
+pub use source_refresh_event::{
+    IndexSourceRefreshEventDelivery, IndexSourceRefreshEventError,
+    IndexSourceRefreshEventProcessError, IndexSourceRefreshEventProcessOutcome,
+    IndexSourceRefreshEventWorker,
+};
 pub use source_registry::{
     IndexSource, IndexSourceCatalog, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,
     IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch, IndexSourceLoadRequest,
