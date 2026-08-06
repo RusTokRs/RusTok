@@ -134,6 +134,11 @@
   },
   "required_source_files": [
     "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
+    "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-evidence-harness-source.json",
+    "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs",
+    "crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
+    "docs/modules/pages-page-builder-inline-edit-artifact-http-evidence-harness-packet-2026-08-06.md",
+    "docs/modules/pages-page-builder-inline-edit-execution-plan.md",
     "scripts/build/build-embedded-admin.sh",
     "scripts/build/build-pages-inline-edit-deployment.sh",
     "scripts/build/build-pages-inline-edit-server.sh",
