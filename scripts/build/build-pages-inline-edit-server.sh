@@ -78,7 +78,7 @@ wasm_bindgen="$tool_root/bin/wasm-bindgen"
 }
 
 server_rustflags="${RUSTFLAGS:-}"
-client_rustflags="${RUSTOK_PAGES_INLINE_EDIT_CLIENT_RUSTFLAGS:-$server_rustflags}"
+client_rustflags="${RUSTOK_PAGES_INLINE_EDIT_CLIENT_RUSTFLAGS:-}"
 rustup target add wasm32-unknown-unknown
 CARGO_TARGET_DIR="$target_dir" \
 RUSTFLAGS="$client_rustflags" \
