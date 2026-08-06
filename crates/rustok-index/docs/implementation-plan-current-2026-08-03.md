@@ -1,40 +1,54 @@
 # Current `rustok-index` implementation plan — 2026-08-03
 
 Status overlay rechecked through
-`main@d890fd6f29a3c1dc2b883d570af9b3e9c094342d` and active branch
-`agent/index-m6-prepared-repair-recovery-20260806`.
+`main@31e430a7917fec226da09620684b2a1994841d35`, stacked parent PR #3067 at
+`7ababf39e26de9d2039c864d5092147d52d50d1a`, and active branch
+`agent/index-m6-orphan-link-repair-20260806`.
 
-The non-overlapping merge-base-to-main review is retained in
-`implementation-main-delta-2026-08-06-1240.md`.
+The non-overlapping current-main review is retained in
+`implementation-main-delta-2026-08-06-1335.md`.
 
 When this dated overlay conflicts with the older canonical plan, this file is the current source of
 truth. Historical architecture and milestone context remain in `implementation-plan.md`.
 
 ## Current cursor
 
-`M6 - compose concrete orphan-link repair`
+`M6 - retain concrete repair execution evidence`
 
 The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
 confirmation boundary, serializable finding persistence, fail-closed finding lifecycle commands,
-generic targeted-repair orchestration, durable repair reservations/receipts, one concrete
-missing-entity evidence/owner composition, and authorization-gated prepared-command recovery are
-source complete.
+generic targeted-repair orchestration, durable repair reservations/receipts, authorization-gated
+prepared-command recovery, and concrete recovery-aware repair compositions for missing entities and
+orphan links are source complete.
 
-Concrete missing-entity repair now:
+Concrete missing-entity repair:
 
 - accepts only the exact confirmed missing-entity target through a pre-reservation target gate;
 - brackets the exact materialized identity with two authoritative source/absence reads;
 - requires an absence version strictly newer than the live indexed version;
 - applies one typed delete through the established mutation inbox and schema validation;
 - uses the durable repair command UUID as the mutation event and delivery identity;
-- requires an exact tombstone at the admitted absence version before recording `Repaired`;
-- creates one immutable revision-0 active recovery decision for each new reservation;
-- requires active recovery state before retry, owner mutation, and receipt completion;
-- serializes pause/abandon against the owner call with the exact command advisory fence;
-- fails legacy decision-less, paused, and abandoned prepared commands closed;
-- remains unmounted from runtime extensions and public transports.
+- requires an exact tombstone at the admitted absence version before recording `Repaired`.
 
-Orphan-link repair, public transport, automatic iteration, and retained execution evidence remain
+Concrete orphan-link repair:
+
+- accepts only the exact confirmed orphan-link target through a pre-reservation target gate;
+- revalidates source key/version, link name, ordinal, linked target, and target absence proof;
+- brackets one repeatable-read materialized snapshot with stable source and target authority reads;
+- delegates exact edge removal to a typed persistence owner rather than SQL in the repair owner;
+- preserves source entity version, payload, and every unrelated link;
+- binds the exact removal digest and inbox delivery to the durable repair command UUID;
+- accepts an absent edge as convergence only with the exact command-bound applied delivery.
+
+Both concrete paths:
+
+- create one immutable revision-0 active recovery decision for each new reservation;
+- require active recovery state before retry, owner mutation, and receipt completion;
+- serialize pause/abandon against the owner call with the exact command advisory fence;
+- fail legacy decision-less, paused, and abandoned prepared commands closed;
+- remain unmounted from runtime extensions and public transports.
+
+Public transport, automatic iteration, time-derived leases, and retained execution evidence remain
 open.
 
 ## Rechecked status
@@ -72,6 +86,8 @@ open.
   `source_complete_recovery_aware_owner_execution_pending`
 - M6 prepared repair pause/resume/abandon recovery policy:
   `source_complete_owner_execution_pending`
+- M6 concrete orphan-link evidence reader and command-bound edge-removal owner:
+  `source_complete_recovery_aware_owner_execution_pending`
 - M7 Product/ProductVariant/SalesChannel bounded replay graph:
   `source_complete_owner_execution_pending`
 
@@ -138,13 +154,16 @@ open.
 - [x] Keep repair unmounted from server extensions, public transports, schedulers, and page loops.
 - [x] Compose one concrete admitted evidence reader for confirmed missing-entity findings.
 - [x] Compose one concrete idempotent missing-entity delete owner through `PostgresMutationStore`.
-- [x] Gate unsupported orphan-link targets before durable reservation in the concrete composition.
-- [x] Bind mutation retry identity to the durable repair command UUID.
+- [x] Bind missing-entity retry identity to the durable repair command UUID.
 - [x] Add fail-closed prepared-command pause/resume/abandon recovery and lifecycle coordination.
 - [x] Retain immutable command-scoped recovery decisions and require active state at owner/completion.
-- [ ] Add a concrete orphan-link repair owner behind the admitted recovery boundary.
+- [x] Compose one exact orphan-link evidence reader with stable source and target authority reads.
+- [x] Compose one command-bound exact edge-removal persistence owner behind the recovery boundary.
+- [x] Preserve source entity version/payload and unrelated links during orphan repair.
+- [x] Require exact applied inbox proof before admitting an absent edge as convergence.
 - [ ] Add time-derived lease expiry only with retained owner-liveness and crash-window evidence.
-- [ ] Retain migration, crash-window, owner-idempotency, and PostgreSQL concurrency evidence.
+- [ ] Retain migration, crash-window, owner-idempotency, recovery-race, and PostgreSQL concurrency
+      evidence for both concrete repair paths.
 
 ## M7 production graph and cutover
 
@@ -160,31 +179,32 @@ open.
 
 ## Next implementation step
 
-Compose one concrete bounded repair path for confirmed orphan-link findings behind the existing
-recovery-aware boundary.
+Retain executable evidence for the complete concrete repair boundary before exposing it through a
+public command surface or automatic iterator.
 
-The next slice must:
+The next slice must cover:
 
-- accept only the exact `index.confirmed_orphan_link.<sha256>` persisted commitment;
-- re-read the exact source entity, link name, ordinal, linked target, and target absence proof;
-- reject a changed source link, target identity, ordinal, source version, or absence version;
-- apply one typed idempotent link-removal mutation through an established owner boundary rather than
-  direct repair SQL;
-- bind mutation event and inbox identity to the durable repair command UUID;
-- preserve the active recovery fence through the owner call and completion trigger;
-- require admitted before and after evidence before recording `Repaired`;
-- add no public transport, automatic scanner, scheduler loop, or lifecycle auto-resolution.
+- migration up/down and database-trigger behavior for repair reservations and recovery decisions;
+- missing-entity mutation commit followed by crash before receipt, then exact resumed convergence;
+- orphan-link edge removal and inbox completion in one transaction;
+- orphan-link crash after edge commit but before repair receipt, then exact duplicate convergence;
+- link substitution, source-version movement, target restoration, and target-absence-version movement;
+- pause/abandon racing before owner admission and after owner side effect but before completion;
+- command UUID payload reuse, stale recovery revisions, duplicate decisions, and completion guard;
+- PostgreSQL concurrent reservation, recovery, owner, and completion behavior.
 
-Public authorization transport, automatic iteration, time-derived leases, and retained production
-evidence remain separate later slices.
+Public authorization transport, automatic iteration, time-derived leases, and lifecycle
+auto-resolution remain separate later slices.
 
 ## Owner verification for this slice
 
 ```bash
 cargo test -p rustok-index drift_repair -- --nocapture
 cargo test -p rustok-index drift_missing_entity_repair -- --nocapture
+cargo test -p rustok-index drift_orphan_link_repair -- --nocapture
 node scripts/verify/verify-index-prepared-repair-recovery.mjs
 node scripts/verify/verify-index-missing-entity-repair-composition.mjs
+node scripts/verify/verify-index-orphan-link-repair-composition.mjs
 node scripts/verify/verify-index-targeted-drift-repair.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
