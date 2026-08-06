@@ -12,6 +12,7 @@ const files = {
   lib: 'crates/rustok-index/src/lib.rs',
   doc: 'crates/rustok-index/docs/m6-drift-finding-lifecycle.md',
   repairDoc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
+  concreteDoc: 'crates/rustok-index/docs/m6-missing-entity-repair-composition.md',
   plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
@@ -203,17 +204,23 @@ requireMarkers('doc', [
   'No tests, verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('repairDoc', [
-  'Status: `source_complete_owner_composition_pending`.',
+  'Status: `source_complete_missing_entity_composed_recovery_pending`.',
   'prepared -> completed',
+  '`materialize_postgres_index_drift_missing_entity_repair_service`',
+]);
+requireMarkers('concreteDoc', [
+  'Status: `source_complete_recovery_policy_pending`.',
+  'does not support orphan-link repair',
 ]);
 requireMarkers('plan', [
-  'M6 - compose targeted repair evidence and owner',
+  'M6 - add prepared repair recovery policy',
   'M6 drift finding lifecycle commands: `source_complete`',
-  'source_complete_owner_composition_pending',
+  'source_complete_recovery_policy_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-drift-finding-lifecycle.mjs'",
   "'verify-index-targeted-drift-repair.mjs'",
+  "'verify-index-missing-entity-repair-composition.mjs'",
 ]);
 
 console.log('Index drift finding lifecycle boundary verified');

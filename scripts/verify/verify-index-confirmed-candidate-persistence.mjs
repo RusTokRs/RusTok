@@ -136,16 +136,18 @@ requireMarkers('lifecycleDoc', [
   '`IndexDriftFindingAuthorizedLifecycleCommand`',
 ]);
 requireMarkers('repairDoc', [
-  'Status: `source_complete_owner_composition_pending`.',
+  'Status: `source_complete_missing_entity_composed_recovery_pending`.',
   'reproduces the persisted finding contract',
+  '`PostgresMutationStore`',
 ]);
 requireMarkers('plan', [
-  'M6 - compose targeted repair evidence and owner',
-  'source_complete_owner_composition_pending',
+  'M6 - add prepared repair recovery policy',
+  'source_complete_recovery_policy_pending',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-confirmed-candidate-persistence.mjs'",
   "'verify-index-targeted-drift-repair.mjs'",
+  "'verify-index-missing-entity-repair-composition.mjs'",
 ]);
 
 console.log('Index confirmed candidate persistence verified');
