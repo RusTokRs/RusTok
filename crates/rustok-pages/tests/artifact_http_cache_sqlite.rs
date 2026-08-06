@@ -331,6 +331,7 @@ async fn insert_published_artifact(db: &DatabaseConnection) -> TestResult<Artifa
         css: Set(rendered.css.clone()),
         content_hash: Set(rendered.content_hash.clone()),
         landing_sections: Set(serde_json::to_value(&rendered.landing_sections)?),
+        instance_key: Set("canonical".to_string()),
         created_at: Set(now),
     }
     .insert(db)

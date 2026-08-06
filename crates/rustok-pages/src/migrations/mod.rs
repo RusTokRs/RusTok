@@ -13,6 +13,7 @@ mod m20260805_000010_create_page_route_aliases;
 mod m20260806_000011_create_page_route_publications;
 mod m20260806_000012_create_page_route_history_imports;
 mod m20260806_000013_create_page_publish_rebuild_sources;
+mod m20260806_000014_add_explicit_artifact_rebuild;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -34,6 +35,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260806_000011_create_page_route_publications::Migration),
         Box::new(m20260806_000012_create_page_route_history_imports::Migration),
         Box::new(m20260806_000013_create_page_publish_rebuild_sources::Migration),
+        Box::new(m20260806_000014_add_explicit_artifact_rebuild::Migration),
     ]
 }
 

@@ -29,6 +29,7 @@ pub struct Model {
     pub css: String,
     pub content_hash: String,
     pub landing_sections: Json,
+    pub instance_key: String,
     pub created_at: DateTimeWithTimeZone,
 }
 

@@ -22,6 +22,8 @@ use crate::error::{PagesError, PagesResult};
 const MAX_DOCUMENT_HTML_BYTES: usize = 2 * 1024 * 1024;
 const MAX_BODY_HTML_BYTES: usize = 1536 * 1024;
 const MAX_CSS_BYTES: usize = 512 * 1024;
+pub(crate) const CANONICAL_ARTIFACT_INSTANCE_KEY: &str = "canonical";
+const REBUILD_ARTIFACT_INSTANCE_PREFIX: &str = "rebuild:";
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledLandingArtifact {
@@ -66,7 +68,7 @@ impl PageBuilderArtifactService {
             .map_err(artifact_integrity_error)?;
         enforce_size_limits(&compiled.page)?;
         let identity = &compiled.artifact.identity;
-        if let Some(existing) = find_artifact_in_tx(
+        if let Some(existing) = find_canonical_artifact_in_tx(
             txn,
             tenant_id,
             page_id,
@@ -82,53 +84,29 @@ impl PageBuilderArtifactService {
         }
 
         let artifact_id = Uuid::new_v4();
-        let model = page_static_landing_artifact::ActiveModel {
-            id: Set(artifact_id),
-            tenant_id: Set(tenant_id),
-            page_id: Set(page_id),
-            locale: Set(compiled.locale.clone()),
-            source_hash: Set(identity.source_hash.clone()),
-            build_hash: Set(identity.build_hash.clone()),
-            artifact_hash: Set(compiled.artifact.artifact_hash.clone()),
-            materialization_hash: Set(Some(compiled.materialization_hash.clone())),
-            materialization_identity: Set(Some(compiled.materialization_identity.clone())),
-            runtime_snapshots: Set(Some(compiled.runtime_snapshots.clone())),
-            renderer_id: Set(identity.renderer.id.clone()),
-            renderer_release: Set(identity.renderer.release.clone()),
-            identity: Set(to_json(identity, "landing build identity")?),
-            registry: Set(to_json(&compiled.artifact.registry, "component registry")?),
-            page_index: Set(i32::try_from(compiled.page.page_index)
-                .map_err(|_| PagesError::validation("static landing page index exceeds i32"))?),
-            fly_page_id: Set(compiled.page.page_id.clone()),
-            slug: Set(compiled.page.slug.clone()),
-            head: Set(to_json(&compiled.page.head, "page head")?),
-            document_html: Set(compiled.page.document_html.clone()),
-            body_html: Set(compiled.page.body_html.clone()),
-            css: Set(compiled.page.css.clone()),
-            content_hash: Set(compiled.page.content_hash.clone()),
-            landing_sections: Set(to_json(
-                &compiled.page.landing_sections,
-                "landing section manifest",
-            )?),
-            created_at: Set(Utc::now().into()),
-        };
+        page_static_landing_artifact::Entity::insert(artifact_model(
+            artifact_id,
+            tenant_id,
+            page_id,
+            compiled,
+            CANONICAL_ARTIFACT_INSTANCE_KEY,
+        )?)
+        .on_conflict(
+            OnConflict::columns([
+                page_static_landing_artifact::Column::TenantId,
+                page_static_landing_artifact::Column::PageId,
+                page_static_landing_artifact::Column::Locale,
+                page_static_landing_artifact::Column::BuildHash,
+                page_static_landing_artifact::Column::MaterializationHash,
+                page_static_landing_artifact::Column::InstanceKey,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_without_returning(txn)
+        .await?;
 
-        page_static_landing_artifact::Entity::insert(model)
-            .on_conflict(
-                OnConflict::columns([
-                    page_static_landing_artifact::Column::TenantId,
-                    page_static_landing_artifact::Column::PageId,
-                    page_static_landing_artifact::Column::Locale,
-                    page_static_landing_artifact::Column::BuildHash,
-                    page_static_landing_artifact::Column::MaterializationHash,
-                ])
-                .do_nothing()
-                .to_owned(),
-            )
-            .exec_without_returning(txn)
-            .await?;
-
-        let stored = find_artifact_in_tx(
+        let stored = find_canonical_artifact_in_tx(
             txn,
             tenant_id,
             page_id,
@@ -145,6 +123,55 @@ impl PageBuilderArtifactService {
         verify_record(&stored)?;
         ensure_same_artifact(&stored, compiled)?;
         Ok(stored.id)
+    }
+
+    pub(crate) async fn append_rebuilt_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        compiled: &CompiledLandingArtifact,
+        rebuild_operation_id: Uuid,
+    ) -> PagesResult<(Uuid, String)> {
+        compiled_materialization(compiled)?
+            .verify_integrity()
+            .map_err(artifact_integrity_error)?;
+        enforce_size_limits(&compiled.page)?;
+        if rebuild_operation_id.is_nil() {
+            return Err(PagesError::validation(
+                "artifact rebuild operation id must not be nil",
+            ));
+        }
+        let instance_key = rebuild_artifact_instance_key(rebuild_operation_id);
+        validate_instance_key(&instance_key)?;
+        let artifact_id = Uuid::new_v4();
+        page_static_landing_artifact::Entity::insert(artifact_model(
+            artifact_id,
+            tenant_id,
+            page_id,
+            compiled,
+            &instance_key,
+        )?)
+        .exec_without_returning(txn)
+        .await?;
+
+        let stored = page_static_landing_artifact::Entity::find_by_id(artifact_id)
+            .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+            .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| {
+                PagesError::artifact_integrity(
+                    "rebuilt static landing artifact insert completed without a readable record",
+                )
+            })?;
+        verify_record(&stored)?;
+        ensure_same_artifact(&stored, compiled)?;
+        if stored.instance_key != instance_key {
+            return Err(PagesError::artifact_integrity(
+                "rebuilt static landing artifact instance identity drifted",
+            ));
+        }
+        Ok((stored.id, instance_key))
     }
 
     pub(crate) async fn bind_existing_body_in_tx(
@@ -260,6 +287,48 @@ impl PageBuilderArtifactService {
     }
 }
 
+fn artifact_model(
+    artifact_id: Uuid,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    compiled: &CompiledLandingArtifact,
+    instance_key: &str,
+) -> PagesResult<page_static_landing_artifact::ActiveModel> {
+    validate_instance_key(instance_key)?;
+    let identity = &compiled.artifact.identity;
+    Ok(page_static_landing_artifact::ActiveModel {
+        id: Set(artifact_id),
+        tenant_id: Set(tenant_id),
+        page_id: Set(page_id),
+        locale: Set(compiled.locale.clone()),
+        source_hash: Set(identity.source_hash.clone()),
+        build_hash: Set(identity.build_hash.clone()),
+        artifact_hash: Set(compiled.artifact.artifact_hash.clone()),
+        materialization_hash: Set(Some(compiled.materialization_hash.clone())),
+        materialization_identity: Set(Some(compiled.materialization_identity.clone())),
+        runtime_snapshots: Set(Some(compiled.runtime_snapshots.clone())),
+        renderer_id: Set(identity.renderer.id.clone()),
+        renderer_release: Set(identity.renderer.release.clone()),
+        identity: Set(to_json(identity, "landing build identity")?),
+        registry: Set(to_json(&compiled.artifact.registry, "component registry")?),
+        page_index: Set(i32::try_from(compiled.page.page_index)
+            .map_err(|_| PagesError::validation("static landing page index exceeds i32"))?),
+        fly_page_id: Set(compiled.page.page_id.clone()),
+        slug: Set(compiled.page.slug.clone()),
+        head: Set(to_json(&compiled.page.head, "page head")?),
+        document_html: Set(compiled.page.document_html.clone()),
+        body_html: Set(compiled.page.body_html.clone()),
+        css: Set(compiled.page.css.clone()),
+        content_hash: Set(compiled.page.content_hash.clone()),
+        landing_sections: Set(to_json(
+            &compiled.page.landing_sections,
+            "landing section manifest",
+        )?),
+        instance_key: Set(instance_key.to_string()),
+        created_at: Set(Utc::now().into()),
+    })
+}
+
 async fn page_is_visible_for_channel_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -331,7 +400,7 @@ async fn load_bound_artifact_in_tx(
     published_record(record).map(Some)
 }
 
-async fn find_artifact_in_tx(
+async fn find_canonical_artifact_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     page_id: Uuid,
@@ -345,6 +414,10 @@ async fn find_artifact_in_tx(
         .filter(page_static_landing_artifact::Column::Locale.eq(locale))
         .filter(page_static_landing_artifact::Column::BuildHash.eq(build_hash))
         .filter(page_static_landing_artifact::Column::MaterializationHash.eq(materialization_hash))
+        .filter(
+            page_static_landing_artifact::Column::InstanceKey
+                .eq(CANONICAL_ARTIFACT_INSTANCE_KEY),
+        )
         .one(txn)
         .await?)
 }
@@ -366,6 +439,7 @@ fn published_record(
 }
 
 fn verify_record(record: &page_static_landing_artifact::Model) -> PagesResult<()> {
+    validate_instance_key(&record.instance_key)?;
     let identity: StaticLandingBuildIdentity =
         from_json(&record.identity, "landing build identity")?;
     let registry: ComponentRegistryManifest = from_json(&record.registry, "component registry")?;
@@ -476,6 +550,32 @@ fn ensure_same_artifact(
     Ok(())
 }
 
+pub(crate) fn rebuild_artifact_instance_key(operation_id: Uuid) -> String {
+    format!("{REBUILD_ARTIFACT_INSTANCE_PREFIX}{operation_id}")
+}
+
+fn validate_instance_key(value: &str) -> PagesResult<()> {
+    if value == CANONICAL_ARTIFACT_INSTANCE_KEY {
+        return Ok(());
+    }
+    let Some(operation_id) = value.strip_prefix(REBUILD_ARTIFACT_INSTANCE_PREFIX) else {
+        return Err(PagesError::artifact_integrity(
+            "stored static landing artifact has an invalid instance key",
+        ));
+    };
+    let operation_id = Uuid::parse_str(operation_id).map_err(|_| {
+        PagesError::artifact_integrity(
+            "stored rebuilt static landing artifact instance key is not a UUID",
+        )
+    })?;
+    if operation_id.is_nil() {
+        return Err(PagesError::artifact_integrity(
+            "stored rebuilt static landing artifact instance key is nil",
+        ));
+    }
+    Ok(())
+}
+
 fn enforce_size_limits(page: &StaticLandingPage) -> PagesResult<()> {
     enforce_max(
         "document HTML",
@@ -537,5 +637,14 @@ mod tests {
     fn size_limit_rejects_oversized_document() {
         assert!(enforce_max("document HTML", 11, 10).is_err());
         assert!(enforce_max("document HTML", 10, 10).is_ok());
+    }
+
+    #[test]
+    fn rebuild_instance_key_is_bounded_and_typed() {
+        let operation_id = Uuid::new_v4();
+        let key = rebuild_artifact_instance_key(operation_id);
+        assert!(key.len() <= 64);
+        validate_instance_key(&key).expect("rebuild instance key");
+        assert!(validate_instance_key("rebuild:not-a-uuid").is_err());
     }
 }

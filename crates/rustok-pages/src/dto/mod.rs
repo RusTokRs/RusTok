@@ -4,6 +4,7 @@ pub mod page;
 pub use page::{
     CreatePageInput, ListPagesFilter, PageBodyInput, PageBodyResponse, PageBodyRevisionInput,
     PageListItem, PageResponse, PageTranslationInput, PageTranslationResponse,
-    PatchPageMetadataInput, PublishPageInput, PublishPageResult, ReviewedPagePublishRuntimeInput,
-    RollbackPageInput, RollbackPageResult, SavePageDocumentInput,
+    PatchPageMetadataInput, PublishPageInput, PublishPageResult, RebuildPageArtifactInput,
+    RebuildPageArtifactResult, ReviewedPagePublishRuntimeInput, RollbackPageInput,
+    RollbackPageResult, SavePageDocumentInput,
 };

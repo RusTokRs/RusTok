@@ -15,7 +15,7 @@ use crate::entities::{
 };
 use crate::error::{PagesError, PagesResult};
 
-const PAGE_PUBLISH_REBUILD_SOURCE_FORMAT: &str = "pages_publish_rebuild_source_v1";
+pub(super) const PAGE_PUBLISH_REBUILD_SOURCE_FORMAT: &str = "pages_publish_rebuild_source_v1";
 
 struct PreparedPublishArtifactManifest {
     locale: String,
@@ -153,12 +153,9 @@ where
             }
         }
 
-        let materialization_identity_hash = stable_hash(&materialization_identity)?;
-        let runtime_snapshots_hash = stable_hash(&runtime_snapshots)?;
         let source_revision = body.updated_at.to_string();
         let sanitized_hash = sanitized.sanitized_hash().to_string();
-        let provenance_hash = stable_hash(&(
-            PAGE_PUBLISH_REBUILD_SOURCE_FORMAT,
+        let provenance_hash = rebuild_source_provenance_hash(
             operation.id,
             operation.tenant_id,
             operation.page_id,
@@ -172,9 +169,9 @@ where
             operation.review_hash.as_str(),
             artifact.artifact_hash.as_str(),
             materialization_hash.as_str(),
-            materialization_identity_hash.as_str(),
-            runtime_snapshots_hash.as_str(),
-        ))?;
+            &materialization_identity,
+            &runtime_snapshots,
+        )?;
 
         rows.push(PreparedPublishArtifactManifest {
             locale: binding.locale,
@@ -265,6 +262,50 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn rebuild_source_provenance_hash(
+    operation_id: Uuid,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    page_body_id: Uuid,
+    locale: &str,
+    source_format: &str,
+    source_revision: &str,
+    artifact_id: Uuid,
+    sanitized_hash: &str,
+    source_hash: &str,
+    review_hash: &str,
+    artifact_hash: &str,
+    materialization_hash: &str,
+    materialization_identity: &Value,
+    runtime_snapshots: &Value,
+) -> PagesResult<String> {
+    let materialization_identity_hash = stable_hash(materialization_identity)?;
+    let runtime_snapshots_hash = stable_hash(runtime_snapshots)?;
+    stable_hash(&(
+        PAGE_PUBLISH_REBUILD_SOURCE_FORMAT,
+        operation_id,
+        tenant_id,
+        page_id,
+        page_body_id,
+        locale,
+        source_format,
+        source_revision,
+        artifact_id,
+        sanitized_hash,
+        source_hash,
+        review_hash,
+        artifact_hash,
+        materialization_hash,
+        materialization_identity_hash.as_str(),
+        runtime_snapshots_hash.as_str(),
+    ))
+}
+
+pub(super) fn stable_publish_identity_hash(value: &impl Serialize) -> PagesResult<String> {
+    stable_hash(value)
+}
+
 fn stable_hash(value: &impl Serialize) -> PagesResult<String> {
     let bytes = serde_json::to_vec(value).map_err(|error| {
         PagesError::publish_operation_integrity(format!(
@@ -277,6 +318,6 @@ fn stable_hash(value: &impl Serialize) -> PagesResult<String> {
         .collect())
 }
 
-fn is_sha256(value: &str) -> bool {
+pub(super) fn is_sha256(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
