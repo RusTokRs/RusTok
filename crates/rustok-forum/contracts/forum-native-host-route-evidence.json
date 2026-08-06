@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "module": "forum",
+  "surface": "native_host_canonical_route_decision",
+  "task": "FORUM-24S",
+  "parent_task": "FORUM-24",
+  "upstream_tasks": [
+    "FORUM-24I",
+    "FORUM-24N",
+    "FORUM-24O",
+    "FORUM-24P",
+    "FORUM-24Q",
+    "FORUM-24R"
+  ],
+  "status": "executable_no_run",
+  "compile_policy": "not_run_by_request",
+  "test_target": "crates/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs",
+  "registered_host": {
+    "router": "Axum /api/fn/{*fn_name}",
+    "dispatcher": "leptos_axum::handle_server_fns_with_context",
+    "runtime_context": "rustok_api::HostRuntimeContext",
+    "tenant_authority": "rustok_api::TenantContextExtension",
+    "category_endpoint": "/api/fn/forum/storefront-category-route",
+    "topic_endpoint": "/api/fn/forum/storefront-topic-route",
+    "category_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
+    "topic_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
+    "anonymous_auth_context": true,
+    "channel_context_present": false
+  },
+  "fixture_owner_writes": {
+    "category_create": "CategoryService::create",
+    "category_rename": "CategoryService::update",
+    "topic_create": "TopicService::create",
+    "topic_rename": "TopicService::rename_slug",
+    "direct_route_alias_inserts": false
+  },
+  "cases": [
+    {
+      "name": "registered_category_canonical",
+      "expected": "the registered category server function returns the owner canonical localized path"
+    },
+    {
+      "name": "registered_category_redirect",
+      "expected": "a category slug changed through the owner resolves through the registered host as redirect to the new localized path"
+    },
+    {
+      "name": "registered_topic_canonical",
+      "expected": "the registered topic server function returns the owner canonical short-id and slug path"
+    },
+    {
+      "name": "registered_topic_redirect",
+      "expected": "a topic slug changed through the owner resolves through the registered host as redirect to the new localized path"
+    },
+    {
+      "name": "registered_missing_fail_closed",
+      "expected": "missing category and topic routes return an absent optional result without canonical or redirect disclosure"
+    },
+    {
+      "name": "trusted_tenant_context",
+      "expected": "tenant identity reaches both server functions through TenantContextExtension rather than form input"
+    }
+  ],
+  "preserved_boundaries": {
+    "production_runtime_code_changed": false,
+    "route_owner_changed": false,
+    "visibility_policy_changed": false,
+    "channel_policy_changed": false,
+    "graphql_contract_changed": false,
+    "storefront_dto_changed": false,
+    "storage_schema_changed": false,
+    "event_schema_changed": false,
+    "migration_added": false,
+    "browser_evidence_claimed": false
+  },
+  "verification": {
+    "executed_by_implementation_agent": false,
+    "commands": [
+      "node scripts/verify/verify-forum-native-host-route-evidence.mjs",
+      "cargo test -p rustok-forum-storefront --features ssr --test native_host_route_decision_sqlite -- --nocapture"
+    ]
+  },
+  "remaining_runtime_evidence": [
+    "execute the SQLite registered-host target",
+    "retain mounted shared-storefront HTTP response evidence",
+    "retain browser navigation evidence for canonical category, topic and reply Search destinations",
+    "execute the FORUM-24R PostgreSQL reindex target and deployment reindex"
+  ]
+}

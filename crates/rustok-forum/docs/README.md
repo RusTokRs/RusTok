@@ -64,6 +64,7 @@ notifications module, and cross-module release gates.
 - FORUM-24P rewrites Forum category/topic SEO canonical, alternate, bulk and sitemap routes through the route owners, recognizes localized public paths, keeps visibility rechecks exact, and composes the existing SEO head on both Rust storefront route mounts.
 - FORUM-24Q cuts Forum Search navigation over to exact owner-projected localized category/topic routes, validates route envelopes centrally in Search, and leaves stale UUID route documents non-navigable until reindex without adding a compatibility fallback.
 - FORUM-24R adds an executable PostgreSQL harness for the FORUM-24Q reindex handoff, exercising real owner writes, the durable Forum inbox, staged tenant replacement, canonical Search URL acceptance and cross-tenant isolation without changing runtime code.
+- FORUM-24S adds executable SQLite evidence that the native category and topic route decisions resolve through registered Axum/Leptos server-function endpoints with trusted host and tenant context, owner-created aliases and fail-closed missing results.
 
 ## Verification
 
@@ -82,6 +83,7 @@ notifications module, and cross-module release gates.
 - `node scripts/verify/verify-forum-canonical-route-seo-policy.mjs`
 - `node scripts/verify/verify-forum-search-canonical-route-cutover.mjs`
 - `node scripts/verify/verify-forum-search-canonical-route-reindex-harness.mjs`
+- `node scripts/verify/verify-forum-native-host-route-evidence.mjs`
 - task-specific owner, transport, UI and runtime commands from the canonical plan
 
 ## Related documents
@@ -124,6 +126,7 @@ notifications module, and cross-module release gates.
 - [FORUM-24P canonical route SEO policy](./forum-24p-canonical-route-seo-policy.md)
 - [FORUM-24Q Search canonical route cutover](./forum-24q-search-canonical-route-cutover.md)
 - [FORUM-24R Search canonical-route reindex harness](./forum-24r-search-canonical-route-reindex-harness.md)
+- [FORUM-24S registered native-host route evidence](./forum-24s-native-host-route-evidence.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
