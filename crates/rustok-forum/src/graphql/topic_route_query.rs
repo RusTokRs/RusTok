@@ -34,7 +34,7 @@ impl ForumTopicRouteQuery {
         slug: String,
     ) -> Result<Option<GqlForumStorefrontTopicRouteResolution>> {
         let Some(resolution) = resolve_authorized_public_route(
-            ctx, tenant_id, locale, short_id, slug,
+            ctx, tenant_id, locale, short_id, slug, false,
         )
         .await?
         else {
@@ -54,7 +54,7 @@ impl ForumTopicRouteQuery {
         slug: String,
     ) -> Result<Option<GqlForumStorefrontTopicRouteDecision>> {
         let Some(resolution) = resolve_authorized_public_route(
-            ctx, tenant_id, locale, short_id, slug,
+            ctx, tenant_id, locale, short_id, slug, true,
         )
         .await?
         else {
@@ -101,6 +101,7 @@ async fn resolve_authorized_public_route(
     locale: String,
     short_id: String,
     slug: String,
+    disclose_gone: bool,
 ) -> Result<Option<ForumTopicRouteResolution>> {
     require_module_enabled(ctx, MODULE_SLUG).await?;
 
@@ -127,7 +128,7 @@ async fn resolve_authorized_public_route(
     };
 
     if resolution.disposition == ForumTopicRouteDisposition::Gone {
-        if !channel_enabled {
+        if !disclose_gone || !channel_enabled {
             return Ok(None);
         }
         let topic_id = resolution.requested_topic_id.ok_or_else(|| {
