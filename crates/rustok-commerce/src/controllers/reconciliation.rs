@@ -23,6 +23,68 @@ const ADMIN_RECONCILIATION_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_r
 const ADMIN_RECONCILIATION_ORCHESTRATION_OWNER: &str = "rustok_commerce.fulfillment_reconciliation";
 const ADMIN_RECONCILIATION_BOUNDARY: &str = "commerce_admin_reconciliation_http";
 
+#[derive(Clone, Copy)]
+struct AdminReconciliationErrorContext {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    provider_operation_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl AdminReconciliationErrorContext {
+    fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        provider_operation_id: Option<Uuid>,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            provider_operation_id,
+            operation,
+        }
+    }
+}
+
+struct AdminReconciliationDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    provider_operation_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminReconciliationErrorContext> for AdminReconciliationDiagnosticContext {
+    fn from(context: &AdminReconciliationErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            provider_operation_id: optional_uuid_shape(context.provider_operation_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminReconciliationDiagnosticError;
+
+impl std::fmt::Debug for AdminReconciliationDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ListReconciliationParams {
     pub limit: Option<u64>,
@@ -74,9 +136,12 @@ async fn list_reconciliation_required(
         .await
         .map_err(|error| {
             map_reconciliation_fulfillment_error(
-                tenant.id,
-                None,
-                "list_reconciliation_required",
+                AdminReconciliationErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    "list_reconciliation_required",
+                ),
                 error,
             )
         })?;
@@ -97,9 +162,12 @@ async fn quarantine_stale_executing(
         .await
         .map_err(|error| {
             map_reconciliation_fulfillment_error(
-                tenant.id,
-                None,
-                "quarantine_stale_executing",
+                AdminReconciliationErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    "quarantine_stale_executing",
+                ),
                 error,
             )
         })?;
@@ -119,9 +187,12 @@ async fn resolve_unknown_as_failed(
         .await
         .map_err(|error| {
             map_reconciliation_fulfillment_error(
-                tenant.id,
-                Some(operation_id),
-                "resolve_unknown_as_failed",
+                AdminReconciliationErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(operation_id),
+                    "resolve_unknown_as_failed",
+                ),
                 error,
             )
         })?;
@@ -136,20 +207,19 @@ async fn resolve_unknown_as_succeeded(
     Json(input): Json<ResolveUnknownSucceededInput>,
 ) -> HttpResult<Json<provider_operation::Model>> {
     require_manage_permission(&auth)?;
+    let context = AdminReconciliationErrorContext::new(
+        tenant.id,
+        auth.user_id,
+        Some(operation_id),
+        "resolve_unknown_as_succeeded",
+    );
     let provider_reference = input.provider_result.external_reference.clone();
     let provider_result = serde_json::to_value(input.provider_result)
-        .map_err(|error| map_provider_result_encoding_error(tenant.id, operation_id, error))?;
+        .map_err(|error| map_provider_result_encoding_error(context, error))?;
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .resolve_unknown_as_succeeded(tenant.id, operation_id, provider_reference, provider_result)
         .await
-        .map_err(|error| {
-            map_reconciliation_fulfillment_error(
-                tenant.id,
-                Some(operation_id),
-                "resolve_unknown_as_succeeded",
-                error,
-            )
-        })?;
+        .map_err(|error| map_reconciliation_fulfillment_error(context, error))?;
     Ok(Json(operation))
 }
 
@@ -165,9 +235,12 @@ async fn retry_local_persistence(
         .await
         .map_err(|error| {
             map_reconciliation_orchestration_error(
-                tenant.id,
-                Some(operation_id),
-                "retry_local_persistence",
+                AdminReconciliationErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(operation_id),
+                    "retry_local_persistence",
+                ),
                 error,
             )
         })?;
@@ -187,9 +260,12 @@ async fn retry_create_label(
         .await
         .map_err(|error| {
             map_reconciliation_orchestration_error(
-                tenant.id,
-                Some(operation_id),
-                "retry_create_label",
+                AdminReconciliationErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(operation_id),
+                    "retry_create_label",
+                ),
                 error,
             )
         })?;
@@ -197,9 +273,7 @@ async fn retry_create_label(
 }
 
 fn map_reconciliation_fulfillment_error(
-    tenant_id: Uuid,
-    provider_operation_id: Option<Uuid>,
-    operation: &'static str,
+    context: AdminReconciliationErrorContext,
     error: FulfillmentError,
 ) -> HttpError {
     let (status, code, message, error_kind) = match &error {
@@ -228,12 +302,15 @@ fn map_reconciliation_fulfillment_error(
             "database",
         ),
     };
+    let context = AdminReconciliationDiagnosticContext::from(&context);
+    let error = AdminReconciliationDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_RECONCILIATION_FULFILLMENT_OWNER,
-        tenant_id = %tenant_id,
-        provider_operation_id = ?provider_operation_id,
-        operation,
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        provider_operation_id = %context.provider_operation_id,
+        operation = %context.operation,
         error_kind,
         public_code = code,
         status = %status,
@@ -244,14 +321,12 @@ fn map_reconciliation_fulfillment_error(
 }
 
 fn map_reconciliation_orchestration_error(
-    tenant_id: Uuid,
-    provider_operation_id: Option<Uuid>,
-    operation: &'static str,
+    context: AdminReconciliationErrorContext,
     error: FulfillmentOrchestrationError,
 ) -> HttpError {
     match error {
         FulfillmentOrchestrationError::Fulfillment(error) => {
-            map_reconciliation_fulfillment_error(tenant_id, provider_operation_id, operation, error)
+            map_reconciliation_fulfillment_error(context, error)
         }
         error => {
             let (status, code, message, error_kind) = match &error {
@@ -284,12 +359,15 @@ fn map_reconciliation_orchestration_error(
                     "nested fulfillment errors are handled before orchestration mapping"
                 ),
             };
+            let context = AdminReconciliationDiagnosticContext::from(&context);
+            let error = AdminReconciliationDiagnosticError;
             tracing::error!(
                 error = ?error,
                 owner = ADMIN_RECONCILIATION_ORCHESTRATION_OWNER,
-                tenant_id = %tenant_id,
-                provider_operation_id = ?provider_operation_id,
-                operation,
+                tenant_id = %context.tenant_id,
+                actor_id = %context.actor_id,
+                provider_operation_id = %context.provider_operation_id,
+                operation = %context.operation,
                 error_kind,
                 public_code = code,
                 status = %status,
@@ -302,18 +380,20 @@ fn map_reconciliation_orchestration_error(
 }
 
 fn map_provider_result_encoding_error(
-    tenant_id: Uuid,
-    provider_operation_id: Uuid,
-    error: serde_json::Error,
+    context: AdminReconciliationErrorContext,
+    _error: serde_json::Error,
 ) -> HttpError {
     let status = axum::http::StatusCode::INTERNAL_SERVER_ERROR;
     let code = "commerce_admin_fulfillment_reconciliation_encoding_failed";
+    let context = AdminReconciliationDiagnosticContext::from(&context);
+    let error = AdminReconciliationDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_RECONCILIATION_ORCHESTRATION_OWNER,
-        tenant_id = %tenant_id,
-        provider_operation_id = %provider_operation_id,
-        operation = "resolve_unknown_as_succeeded",
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        provider_operation_id = %context.provider_operation_id,
+        operation = %context.operation,
         error_kind = "encoding",
         public_code = code,
         status = %status,
