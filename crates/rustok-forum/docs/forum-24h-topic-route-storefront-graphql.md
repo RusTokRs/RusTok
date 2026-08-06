@@ -50,13 +50,13 @@ It intentionally does not expose:
 
 ## Why `GONE` remains hidden
 
-The existing tombstone ledger proves route history but does not retain the visibility policy that applied before deletion. Returning a public `410 Gone` for every stored tombstone could therefore disclose a formerly private or channel-restricted topic.
+At the time of FORUM-24H, the tombstone ledger had no visibility snapshot, so returning a public `410 Gone` could disclose a formerly private or channel-restricted topic.
 
-FORUM-24H fails closed and returns `null` for `ForumTopicRouteDisposition::Gone`. A later owner slice must define a visibility-authorized tombstone snapshot or another approved disclosure policy before storefront hosts may emit `410`.
+FORUM-24J later adds an immutable boolean-and-channel visibility snapshot owner for newly deleted topics. FORUM-24H itself remains unchanged and still returns `null` for `ForumTopicRouteDisposition::Gone`; the GraphQL consumer is deliberately deferred to FORUM-24K. Until that consumer validates the snapshot through the owner, this transport does not expose public `GONE`.
 
 ## Compatibility
 
-This is an additive GraphQL query. It changes no route owner method, mutation, database schema, migration, event or admin workflow. FORUM-24I later composes the query and equivalent native owner path into the Rust storefront host.
+This is an additive GraphQL query. It changes no route owner method, mutation, database schema, migration, event or admin workflow. FORUM-24I later composes the query and equivalent native owner path into the Rust storefront host. FORUM-24J changes delete-side owner storage only and does not alter this query output.
 
 ## Verification handoff
 
@@ -70,9 +70,9 @@ cargo test -p rustok-forum --test topic_route_storefront_graphql_contract -- --n
 cargo check -p rustok-forum --all-targets
 ```
 
-## Remaining FORUM-24 scope after FORUM-24I
+## Remaining FORUM-24 scope after FORUM-24J
 
-- define visibility-authorized deleted-route handling;
+- consume the visibility-authorized snapshot in GraphQL/native transport and host HTTP policy;
 - add category route identity;
 - define canonical and hreflang document policy;
 - integrate SEO and capture runtime evidence.
