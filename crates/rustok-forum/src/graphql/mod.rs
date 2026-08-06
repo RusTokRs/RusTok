@@ -18,6 +18,7 @@ mod storefront_read_state;
 mod topic_fork_mutation;
 mod topic_merge_mutation;
 mod topic_reply_range_move_mutation;
+mod topic_route_query;
 mod topic_slug_rename_mutation;
 mod topic_split_mutation;
 mod types;
@@ -56,6 +57,9 @@ pub use topic_merge_mutation::{
 pub use topic_reply_range_move_mutation::{
     GqlForumReplyRangeMove, MoveForumTopicReplyRangeGraphqlInput,
 };
+pub use topic_route_query::{
+    GqlForumStorefrontTopicRouteDisposition, GqlForumStorefrontTopicRouteResolution,
+};
 pub use topic_slug_rename_mutation::{
     GqlForumTopicRouteDescriptor, GqlForumTopicSlugRename, RenameForumTopicSlugGraphqlInput,
 };
@@ -72,6 +76,7 @@ pub struct ForumQuery(
     storefront_read_state::ForumStorefrontReadStateQuery,
     storefront_audience_topic::ForumStorefrontAudienceTopicQuery,
     storefront_audience_topics::ForumStorefrontAudienceTopicsQuery,
+    topic_route_query::ForumTopicRouteQuery,
 );
 
 #[derive(MergedObject, Default)]
