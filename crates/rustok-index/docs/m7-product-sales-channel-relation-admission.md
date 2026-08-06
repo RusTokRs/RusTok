@@ -46,13 +46,18 @@ separate deterministic Index event identity for each locale.
 The owner storage is append-only and independent from both owner revision columns. For each exact
 `(tenant_id, product_id)` identity it persists:
 
-- a tenant-local positive sequence number for bounded change consumption;
+- one positive sequence number; change consumption remains tenant-scoped;
 - a positive contiguous relation epoch beginning at `1`;
 - the complete resolved Channel UUID set as canonical bounded JSON.
 
-The writer serializes one relation identity with a PostgreSQL advisory transaction lock. Equal
-membership is returned as an idempotent `Unchanged` result without advancing the epoch. Changed
-membership appends exactly one next epoch in the same transaction.
+The writer first requires the exact live Product row under `FOR KEY SHARE`, then serializes one
+relation identity with a PostgreSQL advisory transaction lock. Equal membership is returned as an
+idempotent `Unchanged` result without advancing the epoch. Changed membership appends exactly one
+next epoch in the same transaction.
+
+That lock order fences a stale resolver against concurrent Product deletion. Product deletion owns
+the Product row first and its `AFTER DELETE` trigger then takes the same relation advisory lock, so a
+post-delete non-empty relation cannot be appended after the retained empty epoch.
 
 The owner API also provides bounded append-only change pages, current-state scans in Product UUID
 order, and exact current targeted loads. It does not read Channel tables or import Channel types.
@@ -85,12 +90,19 @@ The next source slice must live in a layer that can observe both selected Produc
 It must:
 
 1. read current canonical `metadata.channel_visibility.allowed_channel_slugs` from Product;
-2. resolve only current matching Channel UUIDs for the same tenant;
+2. resolve the current Channel UUID membership for the same tenant according to the reviewed
+   visibility semantics;
 3. submit the complete resolved UUID set to `ProductSalesChannelIndexRelationStore::replace`;
 4. re-run on Product visibility changes and on Channel create/delete/slug movement that can change a
    Product's resolved set;
 5. preserve bounded work and idempotent retry behavior;
 6. never move Channel SQL or a `rustok-channel` dependency into `rustok-product`.
+
+A critical semantic boundary remains open for explicit review: the Product contract treats an empty
+`allowed_channel_slugs` list as **unrestricted**, while an empty resolved relation UUID set means
+**no Index link targets**. The resolver must not copy an empty slug allowlist to an empty relation
+snapshot. It must define and preserve how unrestricted Product visibility resolves against the
+current tenant Channel universe.
 
 The resolver may be eventually triggered by owner events, but the relation owner commit itself must
 remain atomic and monotonic.
@@ -113,6 +125,7 @@ digest admission. This relation owner storage does not bypass that gate.
 This slice does not yet add:
 
 - the cross-owner Product visibility to Channel UUID resolver;
+- the reviewed unrestricted-visibility resolution policy;
 - Channel create/delete/slug-change integration;
 - initial backfill for existing Products;
 - a new Product Index schema version or Product-to-SalesChannel `IndexLink`;
