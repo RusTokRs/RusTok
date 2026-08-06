@@ -2,6 +2,8 @@
 mod reconciliation_operator;
 #[path = "index_drift_diagnosis_operator.rs"]
 mod drift_diagnosis_operator;
+#[path = "index_source_continuation_runtime.rs"]
+mod source_continuation_runtime;
 #[path = "index_drift_source_page_diagnosis.rs"]
 mod drift_source_page_diagnosis;
 
@@ -10,7 +12,7 @@ pub use drift_diagnosis_operator::{
 };
 pub use drift_source_page_diagnosis::{
     IndexDriftSourcePageDiagnosisError, IndexDriftSourcePageDiagnosisOutcome,
-    IndexDriftSourcePageDiagnosisRuntime,
+    IndexDriftSourcePageDiagnosisRuntime, IndexDriftSourcePageDiagnosisSealedOutcome,
 };
 pub use reconciliation_operator::{
     IndexReconciliationOperatorContext, IndexReconciliationOperatorError,
@@ -167,7 +169,21 @@ pub(crate) fn materialize_index_replay_runtime(
     }
     reconciliation_operator::materialize_index_reconciliation_operator(extensions, db.clone())?;
     drift_diagnosis_operator::materialize_index_drift_diagnosis_operator(extensions, db)?;
-    drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(extensions)?;
+    let continuation = if extensions.contains::<rustok_index::SharedIndexSourceRegistry>() {
+        source_continuation_runtime::materialize_index_source_continuation_keyring().map_err(
+            |_| {
+                ServerError::Message(
+                    "Index source continuation deployment keyring composition failed".to_string(),
+                )
+            },
+        )?
+    } else {
+        None
+    };
+    drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(
+        extensions,
+        continuation,
+    )?;
     Ok(())
 }
 
