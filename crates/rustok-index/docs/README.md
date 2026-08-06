@@ -26,6 +26,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 ## Reference Documents
 
+- [Source Module Integration Contract](./module-source-integration.md)
 - [Live Implementation Plan](./implementation-plan.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
 - [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
