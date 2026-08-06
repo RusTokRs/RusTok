@@ -55,8 +55,11 @@ A successful request does not silently update the Fly project. The consumer call
 - the request hash equals the exact current Fly project hash;
 - the component belongs to the selected page;
 - the component is a stable static leaf plain-text component;
-- the component is not provider-owned, nested, template-backed, runtime-bound, conditional or repeated;
+- the component is not provider-owned, a composite node with children, or template-backed;
+- the component is outside every runtime-owned subtree rooted at a binding, condition or repeater target;
 - the consumer authorization port accepts the request immediately before mutation.
+
+A static leaf inside an ordinary unowned layout remains eligible. By contrast, a repeated container blocks its entire subtree, preventing duplicate rendered instances from sharing one editable component identity.
 
 The only mutation is:
 
@@ -92,7 +95,7 @@ This slice does not:
 - add a Pages document-save server function, GraphQL mutation or HTTP route;
 - mount inline editing in the anonymous storefront;
 - persist on DOM input or focusout by itself;
-- edit rich text, nested markup, dynamic bindings, repeaters, conditions or provider-owned components;
+- edit rich text, nested markup, dynamic bindings, runtime-owned subtrees or provider-owned components;
 - add overlays, resize, DnD, properties or full-authoring controls to storefront;
 - change publish, rollback, artifacts, caches, events or database schemas;
 - claim tests, Cargo, WASM, browser, graph, workflow, CI or rollout execution;
