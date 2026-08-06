@@ -98,7 +98,9 @@ async fn alias_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64
             [tenant_id.into()],
         ))
         .await?
-        .ok_or("alias count row is missing")?;
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "alias count row is missing")
+        })?;
     Ok(row.try_get("", "alias_count")?)
 }
 
