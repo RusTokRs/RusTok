@@ -54,6 +54,48 @@ impl AdminProductShippingProfileErrorContext {
     }
 }
 
+struct AdminProductShippingProfileDiagnosticContext {
+    tenant_id: &'static str,
+    actor_id: &'static str,
+    product_id: &'static str,
+    shipping_profile_id: &'static str,
+    operation: &'static str,
+}
+
+impl From<&AdminProductShippingProfileErrorContext>
+    for AdminProductShippingProfileDiagnosticContext
+{
+    fn from(context: &AdminProductShippingProfileErrorContext) -> Self {
+        Self {
+            tenant_id: uuid_shape(context.tenant_id),
+            actor_id: uuid_shape(context.actor_id),
+            product_id: optional_uuid_shape(context.product_id),
+            shipping_profile_id: optional_uuid_shape(context.shipping_profile_id),
+            operation: context.operation,
+        }
+    }
+}
+
+struct AdminProductShippingProfileDiagnosticError;
+
+impl std::fmt::Debug for AdminProductShippingProfileDiagnosticError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("redacted")
+    }
+}
+
+fn uuid_shape(value: Uuid) -> &'static str {
+    if value.is_nil() { "nil" } else { "non_nil" }
+}
+
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
 fn admin_product_shipping_profile_error_policy(
     error: &CommerceError,
 ) -> AdminProductShippingProfileHttpPolicy {
@@ -116,13 +158,15 @@ fn map_admin_product_shipping_profile_error(
 ) -> HttpError {
     adopt_admin_product_shipping_profile_error_identity(&mut context, &error);
     let (status, code, message, error_kind) = admin_product_shipping_profile_error_policy(&error);
+    let context = AdminProductShippingProfileDiagnosticContext::from(&context);
+    let error = AdminProductShippingProfileDiagnosticError;
     tracing::error!(
         error = ?error,
         owner = ADMIN_PRODUCT_SHIPPING_PROFILE_OWNER,
         tenant_id = %context.tenant_id,
         actor_id = %context.actor_id,
-        product_id = ?context.product_id,
-        shipping_profile_id = ?context.shipping_profile_id,
+        product_id = %context.product_id,
+        shipping_profile_id = %context.shipping_profile_id,
         operation = %context.operation,
         error_kind,
         public_code = code,
