@@ -12,6 +12,8 @@ truth. Historical architecture and milestone context remain in `implementation-p
 
 `M6 - execute and admit concrete repair evidence`
 
+Previous source cursor: `M6 - retain concrete repair execution evidence`.
+
 The database-neutral stale/orphan candidate contract, PostgreSQL bounded reader, application
 confirmation boundary, serializable finding persistence, fail-closed finding lifecycle commands,
 generic targeted-repair orchestration, durable repair reservations/receipts, authorization-gated
