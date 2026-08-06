@@ -19,7 +19,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 1. **Schema-Agnostic PostgreSQL JSONB Storage**: Envelopes entity state into benchmarked `JSONB` structures while maintaining independent relational graphs (`index_links`).
 2. **Derived Secondary Indexes**: Automatically creates typed PostgreSQL partial B-Tree expression indexes for scalar fields and GIN containment indexes for arrays.
-3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; source-page diagnosis keeps owner cursors server-side until a confidential tenant/schema-bound envelope is admitted.
+3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors now have a separate authenticated, confidential, tenant/schema/source-bound codec before any future transport exposure.
 4. **Durable Rebuilds & Outbox Inbox**: Fences stale checkpoint writers with advisory locks, deduplicates mutations via `index_inbox`, and logs consistency findings (`index_consistency_findings`).
 
 ---
@@ -29,6 +29,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [Live Implementation Plan](./implementation-plan.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
 - [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
+- [M6 Confidential Source Continuation Codec](./m6-source-continuation-codec.md)
 - [M6 Product Locale Absence PostgreSQL Harness](./m6-product-locale-absence-postgres-harness.md)
 - [M6 GraphQL Exact-entity Diagnosis Transport](../../../apps/server/docs/index-drift-diagnosis-graphql-transport.md)
 - [M6 One-page Missing-entity Diagnosis](../../../apps/server/docs/index-drift-source-page-diagnosis.md)
