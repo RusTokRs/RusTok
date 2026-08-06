@@ -46,12 +46,13 @@ fn migration_adds_sealed_append_only_snapshot_storage() {
 }
 
 #[test]
-fn delete_locks_then_snapshots_before_tombstone_and_soft_delete() {
+fn delete_matches_canonical_policy_lock_order_before_snapshot() {
     require_order(
         TOPIC_OWNER,
         &[
-            "ForumTopicRouteTombstoneVisibilityService::lock_delete_scope_in_tx(",
+            "ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(",
             "claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?",
+            "ForumTopicRouteTombstoneVisibilityService::lock_topic_audience_scope_in_tx(",
             "ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(",
             "ForumTopicRouteService::record_delete_tombstones_in_tx(",
             "mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?",
@@ -63,10 +64,10 @@ fn delete_locks_then_snapshots_before_tombstone_and_soft_delete() {
 }
 
 #[test]
-fn snapshot_reuses_visibility_owners_and_seals_exact_channel_scope() {
+fn snapshot_reuses_visibility_and_lock_owners_and_seals_exact_channel_scope() {
     for marker in [
-        "lock_category_tree_in_tx(txn, tenant_id).await?",
-        "FORUM_TOPIC_AUDIENCE_LOCK_NAMESPACE",
+        "lock_category_tree_in_tx(txn, tenant_id).await",
+        "lock_topic_audience_scopes_in_tx(txn, tenant_id, &[topic_id]).await",
         "is_category_public_to_anonymous(txn, tenant_id, topic.category_id)",
         "load_policy_for_topic(txn, tenant_id, topic)",
         "ForumAudienceEvaluator::decide(",
@@ -93,6 +94,7 @@ fn snapshot_reuses_visibility_owners_and_seals_exact_channel_scope() {
 
     for forbidden in [
         "forum_category_policy::",
+        "hashtextextended",
         "async_graphql",
         "axum::",
         "StatusCode::GONE",
