@@ -1,14 +1,14 @@
 # Pages / Page Builder Explicit Repair PostgreSQL Continuation
 
 Date: 2026-08-07  
-Status: source-ready / explicit-artifact-repair-postgres-harness-source-ready / execution-pending  
+Status: source-ready / explicit-artifact-repair-postgres-harness-source-ready / explicit-artifact-repair-failure-harness-source-ready / execution-pending  
 Scope: PostgreSQL receipt constraints, rebuild/activation transaction atomicity and activation lifecycle evidence
 
 ## Rechecked source state
 
-Current `main` already contains the explicit append-only immutable artifact rebuild command, the separate rebuilt-artifact activation command, bounded GraphQL/HTTP/OpenAPI transports, generated transport-contract coverage and request-level tenant/permission/static-error harnesses.
+Current `main` already contains the explicit append-only immutable artifact rebuild command, the separate rebuilt-artifact activation command, bounded GraphQL/HTTP/OpenAPI transports, generated transport-contract coverage, request-level tenant/permission/static-error harnesses and a focused SQLite negative repair harness.
 
-The remaining database evidence gap is stronger than the existing SQLite regressions: the forward-only rebuild storage identity, rebuild receipt uniqueness, activation receipt uniqueness and event-plus-receipt transaction behavior also need a real PostgreSQL target using the production migrations.
+The PostgreSQL database evidence gap is stronger than the positive SQLite regressions: the forward-only rebuild storage identity, rebuild receipt uniqueness, activation receipt uniqueness and event-plus-receipt transaction behavior also need a real PostgreSQL target using the production migrations. Negative provenance/runtime/version/target/lifecycle rejection paths are now retained separately by the SQLite failure packet and remain execution-pending.
 
 ## PostgreSQL repair harness
 
@@ -106,6 +106,24 @@ After rollback:
 
 This packet proves that a PostgreSQL receipt constraint failure cannot strand a preceding page mutation or durable outbox write from the same owner transaction.
 
+## Negative repair companion packet
+
+Marker:
+
+```text
+explicit-artifact-repair-failure-harness-source-ready
+```
+
+`crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs` now retains the previously open negative source matrix:
+
+- rebuild provenance corruption rejection;
+- rebuild reviewed-runtime mismatch rejection;
+- activation stale-version rejection;
+- activation invalid-replacement rejection;
+- activation unpublished-page rejection.
+
+Each rejected command is surrounded by a durable state snapshot covering receipts, artifact count, current binding, page version/status and outbox row count. The negative packet does not replace PostgreSQL execution; it separates owner rejection semantics from PostgreSQL constraint/transaction evidence.
+
 ## Evidence boundary
 
 Machine source evidence:
@@ -120,15 +138,28 @@ Status remains:
 pages_explicit_artifact_repair_postgres_source_unvalidated
 ```
 
+Negative source evidence:
+
+```text
+crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-failures-source.json
+```
+
+Status remains:
+
+```text
+pages_explicit_artifact_repair_failures_source_unvalidated
+```
+
 Execution is empty. Every validation flag remains false until maintainer execution.
 
-Fail-closed source guard:
+Fail-closed source guards:
 
 ```text
 crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
 ```
 
-The guard itself is intentionally not run in this slice.
+The guards themselves are intentionally not run in this slice.
 
 ## Updated parity matrix
 
@@ -138,8 +169,10 @@ The guard itself is intentionally not run in this slice.
 | Rebuild PostgreSQL real-migration harness | Source-ready | PostgreSQL execution pending |
 | Rebuild exact replay/conflict on PostgreSQL | Harness-ready | Execution pending |
 | Rebuild receipt unique constraint + rollback | Harness-ready | Execution pending |
+| Rebuild provenance/runtime failure matrix | Harness-ready | SQLite execution pending |
 | Explicit rebuilt-artifact activation | Source-ready | Runtime evidence pending |
 | Activation stale-current fence on PostgreSQL | Harness-ready | Execution pending |
+| Activation stale-version/invalid-target/unpublished matrix | Harness-ready | SQLite execution pending |
 | Activation exact replay/rebuild reuse fence | Harness-ready | Execution pending |
 | Activation receipt unique rebuild constraint | Harness-ready | Execution pending |
 | Activation `NodeUpdated` + `NodePublished` durable pair | Harness-ready | Execution pending |
@@ -150,18 +183,19 @@ The guard itself is intentionally not run in this slice.
 
 ## Next cursor
 
-1. Run the transport schema, request-contract and PostgreSQL repair harnesses and retain accepted execution evidence.
-2. Run the corresponding source guards plus the existing explicit rebuild/activation guards.
-3. Add/retain failure evidence for rebuild provenance corruption and reviewed-runtime mismatch.
-4. Add/retain activation stale-version, invalid replacement and unpublished-page rejection evidence beyond the stale-current/reuse cases in this PostgreSQL packet.
-5. Observe the committed activation lifecycle pair through the real cache invalidation handler and prove route/page/artifact generations rotate only after commit.
-6. Retain tenant/browser rollout evidence and keep automatic audit-to-repair absent before any FFA/FBA promotion.
+1. Run the transport schema, request-contract, PostgreSQL repair and negative SQLite repair harnesses and retain accepted execution evidence.
+2. Run the corresponding source guards plus the existing explicit rebuild/activation/provenance guards.
+3. Retain byte-for-byte successful rebuild reproduction evidence alongside the now source-ready negative matrix.
+4. Observe the committed activation lifecycle pair through the real cache invalidation handler and prove route/page/artifact generations rotate only after commit.
+5. Retain tenant/browser rollout evidence and keep automatic audit-to-repair absent before any FFA/FBA promotion.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
+cargo test -p rustok-pages --test explicit_artifact_repair_failures_sqlite -- --nocapture
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture
@@ -172,4 +206,4 @@ node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-re
 cargo check -p rustok-pages --all-targets
 ```
 
-Tests, source verifiers, Cargo commands, formatting, PostgreSQL execution, lifecycle-handler/cache observation, GraphQL/HTTP requests, workflows and CI were intentionally not run.
+Tests, source verifiers, Cargo commands, formatting, SQLite/PostgreSQL execution, lifecycle-handler/cache observation, GraphQL/HTTP requests, workflows and CI were intentionally not run.
