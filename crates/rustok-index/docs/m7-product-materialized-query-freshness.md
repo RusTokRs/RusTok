@@ -58,8 +58,8 @@ query snapshot:
 - witness Channel generation equals current tenant Channel generation;
 - no visibility convergence request is newer than the witness Product revision.
 
-This is the existing Product root/source-read -> mutation-apply fence, now reusable when Product appears
-as any governed materialized entity relation.
+This is the existing Product source-read -> mutation-apply fence, now reusable when Product appears as
+any governed materialized entity relation.
 
 ### ProductVariant
 
@@ -68,9 +68,9 @@ tenant/UUID and:
 
 `product_variants.index_revision = index_entities.source_version`.
 
-Therefore a delayed stale ProductVariant mutation or a stale materialized ProductVariant after owner
-delete cannot participate in Product `variants` projection/filter/order semantics before the corrective
-Index mutation arrives.
+A delayed stale ProductVariant row therefore cannot contribute its old payload to Product `variants`
+projection/filter/order semantics after the owner revision has advanced or the owner row has been
+deleted.
 
 ### SalesChannel
 
@@ -79,10 +79,10 @@ and:
 
 `channels.index_revision = index_entities.source_version`.
 
-Therefore stale/deleted SalesChannel materialization cannot participate in Product `sales_channels`
-projection/filter/order semantics while the Product root itself remains current.
+A stale/deleted SalesChannel row therefore cannot contribute its old payload to Product
+`sales_channels` projection/filter/order semantics while the Product root itself remains current.
 
-## Query surfaces protected
+## Query surfaces fenced against stale target payloads
 
 The same composite admission is applied before or inside every materialized target relation used by:
 
@@ -93,8 +93,14 @@ The same composite admission is applied before or inside every materialized targ
 - many-cardinality `MIN`/`MAX` aggregate ordering;
 - exact-count recompilation of the same plan.
 
-This closes the previous source-level linked-target availability gap without making generic Index code
+This closes the stale-materialized-target participation path without making generic Index code
 understand Product, ProductVariant, or SalesChannel owner storage.
+
+It does **not** yet prove complete linked-target availability semantics. In particular, a source link
+may exist while its target has not yet been materialized, and existing left-join / many-subquery
+semantics can represent an unavailable target as a missing/null relation. Complete Product graph parity
+still requires retained evidence and an explicit fail-closed policy for that availability window so a
+missing target cannot be mistaken for authoritative owner null/absence semantics.
 
 ## Retained PostgreSQL packets
 
@@ -126,7 +132,9 @@ SalesChannel SchemaRefs. Do not add another Product schema or compatibility vers
 Still required before Storefront cutover:
 
 - implement recreate-safe monotonic ProductVariant and SalesChannel source clocks;
-- retain PostgreSQL linked-target stale/delete/recreate query evidence after that clock change;
+- define and retain fail-closed linked-target availability semantics for link-present / target-missing
+  windows;
+- retain PostgreSQL linked-target stale/delete/recreate/query evidence after those source changes;
 - execute/admit the retained Product freshness/convergence/identity packets;
 - complete Product/ProductVariant/SalesChannel query equivalence and linked-target availability proof;
 - admit canonical Product typed events only after event-contract digest verification;
