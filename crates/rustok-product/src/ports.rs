@@ -88,8 +88,9 @@ pub struct AdminProductsRequest {
     pub raw_status: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    /// Preserve the mounted legacy REST projection: empty missing titles and normalized
+    /// shipping-profile metadata fallback. Owner-native callers leave this disabled.
     pub empty_missing_title: bool,
-    pub legacy_shipping_profile_fallback: bool,
     pub page: u64,
     pub per_page: u64,
 }
@@ -190,7 +191,6 @@ impl ProductCatalogReadPort for crate::CatalogService {
             vendor,
             product_type,
             empty_missing_title,
-            legacy_shipping_profile_fallback,
             page,
             per_page,
         } = request;
@@ -206,7 +206,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
             vendor.as_deref(),
             product_type.as_deref(),
             empty_missing_title,
-            legacy_shipping_profile_fallback,
+            empty_missing_title,
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
@@ -533,7 +533,7 @@ mod tests {
 
         assert_eq!(error.kind, PortErrorKind::Validation);
         assert_eq!(error.code, "product.per_page_invalid");
-        assert_eq!(error.message, "admin products page size is invalid");
+        assert_eq!(error.message, "published products page size is invalid");
 
         request.per_page = MAX_PUBLISHED_PRODUCTS_PER_PAGE;
         assert!(
