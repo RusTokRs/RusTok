@@ -1,92 +1,92 @@
 # M7 Product-to-SalesChannel cross-owner resolver
 
-Status: `source_complete_durable_triggering_and_runtime_evidence_pending`.
+Status: `freshness_watermark_source_complete_runtime_evidence_pending`.
 
-## Purpose
+## Current contract
 
-The Product owner persists a dedicated monotonic Product-to-SalesChannel relation epoch but
-intentionally does not read Channel storage. `rustok-distribution` is the selected composition boundary
-that can resolve Product visibility metadata against current tenant SalesChannel identities.
+`rustok-distribution::product_index::channel_relation_resolver` is the selected cross-owner boundary
+for Product visibility to SalesChannel UUID membership. It does not write Index tables, publish broker
+events, mutate Product metadata, or own a background loop.
 
-`ProductSalesChannelRelationResolver` reads Product visibility and current Channel identities, then
-submits only the complete resolved UUID membership to
-`ProductSalesChannelIndexRelationStore::replace`. It does not write Index rows, mutate Product
-metadata, publish events, or own a background loop.
+For one exact Product it observes in PostgreSQL `REPEATABLE READ`, `READ ONLY`:
 
-The canonical Product Index source already consumes the resulting relation through
-`product_index_graph_projection_snapshots` and materializes the `sales_channels` link. The resolver is
-therefore no longer waiting on a future Product schema; its remaining gap is durable convergence.
+- canonical Product channel visibility;
+- current Product `index_revision`;
+- current tenant Channel identity generation;
+- the complete resolved Channel UUID membership.
 
-## Visibility policy
+Visibility policy remains:
 
-- missing `metadata.channel_visibility` means unrestricted visibility;
-- an empty canonical `allowed_channel_slugs` array also means unrestricted visibility;
-- unrestricted visibility resolves to every current tenant Channel identity;
-- a non-empty allowlist resolves Channel UUIDs by canonical `lower(btrim(slug))` membership;
-- malformed, non-canonical, duplicate, or non-string visibility fails closed;
-- deleted Channel identities disappear from the next resolved set;
-- an unresolved restricted slug contributes no target until a matching Channel exists.
+- missing visibility or an empty allowlist is unrestricted;
+- unrestricted means every current tenant Channel identity;
+- restricted visibility resolves canonical `lower(btrim(slug))` membership;
+- malformed/non-canonical/duplicate visibility fails closed;
+- `channels.is_active` is not relation identity state.
 
-The resolver deliberately does **not** filter `channels.is_active`. Relation membership represents
-identity resolution; Channel runtime availability remains Channel-owned.
+The resolver is bounded to at most 1024 visibility slugs, 1024 resolved Channel UUIDs, 64 Products per
+tenant page, and three stabilization attempts.
 
-## Bounded contract
+## Membership and freshness
 
-- at most 1024 canonical visibility slugs;
-- at most 1024 resolved Channel UUID targets;
-- at most 64 Products in one tenant convergence page;
-- at most three exact Product stabilization attempts.
+Resolution now has two Product-owned durable outputs with different semantics:
 
-Tenant sweep enumeration uses stable Product UUID keyset ordering with one-row lookahead.
+1. `ProductSalesChannelIndexRelationStore::replace` owns the complete UUID membership and advances
+   `relation_epoch` only when that membership changes.
+2. `ProductSalesChannelIndexRelationFreshnessStore::record` owns an append-only witness that the exact
+   retained relation epoch was checked against current Product visibility and current tenant Channel
+   identity generation.
 
-## Cross-owner consistency
+After the relation write, the resolver opens a fresh repeatable-read observation. It accepts only when
+the newly observed UUID set equals the membership retained by the relation owner, then records that
+second observation as the freshness witness. If numeric freshness watermarks race backwards relative to
+an already retained witness, the resolver retries within the same three-attempt bound.
 
-For one Product, resolver stabilization is:
+A freshness-only owner change does not fabricate a new relation epoch. For example, a Channel slug
+change can advance Channel identity generation while leaving an unrestricted Product's UUID membership
+unchanged; only the freshness witness advances.
 
-1. read Product visibility plus resolved Channel IDs in PostgreSQL `REPEATABLE READ`, `READ ONLY`;
-2. commit the observation;
-3. call the Product-owned relation writer;
-4. observe the same inputs again in a fresh read-only repeatable-read transaction;
-5. accept only if UUID membership is unchanged;
-6. retry at most three times, then return `ConcurrentChange`.
+## Channel identity generation
 
-Product hard deletion remains fenced by the owner writer's live-row lock. A Product that disappears
-during reconciliation returns `ProductNotFound` rather than recreating relation state.
+`rustok-channel` owns `channel_index_identity_generations`, a durable tenant-scoped generation updated
+transactionally by Channel insert/delete/id/tenant/canonical-slug changes. Unrelated Channel state such
+as `is_active`, targets, OAuth configuration, or resolution policies does not invalidate Product graph
+membership.
 
-This is not an atomic cross-owner snapshot, durable watermark, checkpoint, or event acknowledgement.
+A tenant with no historical Channel identity has generation `0`. Once the first Channel identity
+mutation occurs, the positive generation is retained even if all Channels are later deleted.
 
-## Tenant convergence page
+## Replay boundary
 
-`reconcile_tenant_page` reconciles at most 64 current Products in UUID order. A partial page can be
-retried from the same input cursor because unchanged owner membership is idempotent. Products created
-behind an already-consumed cursor still require durable owner triggering or a later sweep.
+The canonical Product Index source already materializes the `sales_channels` link. Live replay is now
+fail-closed unless the latest freshness witness for the projection's exact relation epoch matches:
 
-## Module boundary
+- current canonical Product visibility; and
+- current tenant Channel identity generation.
 
-Channel SQL exists only in `rustok-distribution`. `rustok-product` stays independent from
-`rustok-channel` and `rustok-index` and accepts only resolved UUID membership.
+Product locale absence uses the same freshness gate. Product hard-delete replay remains independent of
+a live witness because it removes the graph.
 
-The canonical Product Index source does not query `channels`; it reads only Product-owned relation and
-projection state. This keeps replay deterministic over retained owner facts.
+This is an admitted source-level freshness watermark, not an automatic convergence scheduler. Owner
+changes intentionally make live Product replay unavailable until an exact reconciliation or bounded
+tenant sweep records a current witness.
 
 ## Still open
 
-- durable Product-visibility and Channel-identity triggers or an admitted relation freshness
-  watermark/checkpoint;
-- host retry/lease/checkpoint composition for convergence if event-driven triggering is not used;
-- retained PostgreSQL concurrency/restart/delete-recreate/out-of-order evidence;
-- Storefront or production Index cutover.
-
-Incremental typed Product event wiring remains separately gated on event-contract digest admission.
+- retained PostgreSQL concurrency/restart/delete-recreate/freshness evidence;
+- host scheduling or owner-triggered reconciliation if automatic convergence latency is required;
+- Product typed event routes after event-contract digest admission;
+- complete Product/Variant/Channel query equivalence and Storefront cutover evidence.
 
 ## Maintainer verification
 
 ```bash
-cargo test -p rustok-distribution product_sales_channel -- --nocapture
+node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs
 node scripts/verify/verify-index-product-channel-relation-ledger.mjs
-node scripts/verify/verify-index-product-channel-relation-admission.mjs
 node scripts/verify/verify-index-product-source.mjs
+node scripts/verify/verify-index-query-contract.mjs
+cargo check -p rustok-channel --all-targets
+cargo check -p rustok-product --all-targets
 cargo check -p rustok-distribution --all-targets
 git diff --check
 ```
