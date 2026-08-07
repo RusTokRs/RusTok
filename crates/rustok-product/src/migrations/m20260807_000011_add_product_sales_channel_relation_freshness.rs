@@ -60,6 +60,14 @@ CREATE INDEX idx_product_sales_channel_index_relation_freshness_current
         sequence_no DESC
     );
 
+CREATE INDEX idx_product_sales_channel_index_relation_freshness_relation_current
+    ON product_sales_channel_index_relation_freshness_snapshots (
+        tenant_id,
+        product_id,
+        relation_epoch,
+        sequence_no DESC
+    );
+
 CREATE OR REPLACE FUNCTION rustok_product_guard_channel_relation_freshness_snapshot()
 RETURNS trigger
 LANGUAGE plpgsql
