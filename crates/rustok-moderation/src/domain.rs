@@ -192,7 +192,7 @@ impl ModerationApplicationOperationStatus {
     }
 
     pub const fn is_terminal(self) -> bool {
-        matches!(Self::Applied | Self::Rejected | Self::OperatorReview, self)
+        matches!(self, Self::Applied | Self::Rejected | Self::OperatorReview)
     }
 }
 
