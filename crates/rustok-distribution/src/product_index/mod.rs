@@ -70,6 +70,7 @@ mod tests {
             .get::<rustok_index::PostgresIndexQueryAdmissionCatalog>()
             .expect("Product selection must publish Product and ProductVariant query admissions");
         assert_eq!(admissions.len(), 2);
+        assert_eq!(admissions.link_availability_len(), 1);
         assert!(!extensions.contains::<ModuleWorkRegistrations>());
     }
 
@@ -87,6 +88,7 @@ mod tests {
             .get::<rustok_index::PostgresIndexQueryAdmissionCatalog>()
             .expect("Product+Channel selection must publish graph entity admissions");
         assert_eq!(admissions.len(), 3);
+        assert_eq!(admissions.link_availability_len(), 1);
         let registrations = extensions
             .get::<ModuleWorkRegistrations>()
             .expect("Product+Channel composition must publish convergence work");

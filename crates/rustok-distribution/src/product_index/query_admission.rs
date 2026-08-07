@@ -2,6 +2,7 @@ use rustok_core::ModuleRuntimeExtensions;
 use rustok_index::{
     EntityName, ModuleName, PostgresQueryEntityAdmission, SchemaRef, SchemaVersion,
     register_postgres_index_query_admission,
+    register_postgres_index_query_link_target_availability,
 };
 
 const PRODUCT_QUERY_MATERIALIZED_FRESHNESS: &str = r#"
@@ -85,13 +86,24 @@ pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core:
         return Ok(());
     }
 
+    let product_schema = product_schema_ref()?;
     register_rule(
         extensions,
         "product",
-        product_schema_ref()?,
+        product_schema.clone(),
         PRODUCT_QUERY_MATERIALIZED_FRESHNESS,
         "Product",
     )?;
+    register_postgres_index_query_link_target_availability(
+        extensions,
+        "product",
+        product_schema,
+    )
+    .map_err(|error| {
+        rustok_core::Error::Validation(format!(
+            "selected Product Index linked-target availability registration failed: {error}"
+        ))
+    })?;
     register_rule(
         extensions,
         "product",

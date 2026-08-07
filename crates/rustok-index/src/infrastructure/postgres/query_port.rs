@@ -35,10 +35,10 @@ struct RequiredSchemaContract {
 
 /// PostgreSQL execution adapter for the transport-neutral [`IndexQueryPort`].
 ///
-/// The adapter compiles through the owned immutable registry, applies any trusted root-row
-/// admission rule before filter/order/pagination/count execution, verifies every schema touched by
-/// the plan against tenant-scoped persisted registration, and executes the page plus optional exact
-/// count inside one read-only repeatable-read snapshot.
+/// The adapter compiles through the owned immutable registry, applies query-path-scoped generic
+/// link-target availability and trusted owner entity admission before filter/order/pagination/count
+/// execution, verifies every schema touched by the plan against tenant-scoped persisted registration,
+/// and executes the page plus optional exact count inside one read-only repeatable-read snapshot.
 #[derive(Clone)]
 pub struct PostgresIndexQueryPort {
     db: DatabaseConnection,
@@ -81,6 +81,11 @@ impl PostgresIndexQueryPort {
         page_query: &CompiledPostgresPageQuery,
     ) -> Result<CompiledPostgresQuery, IndexQueryExecutionError> {
         let mut compiled = page_query.compiled().clone();
+        self.admissions
+            .apply_link_target_availability(query, &mut compiled)
+            .map_err(|error| {
+                IndexQueryExecutionError::contract_preparation(query.schema.clone(), error)
+            })?;
         if let Some(descriptor) = self.admissions.get(&query.schema) {
             descriptor
                 .admission()
