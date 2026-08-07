@@ -1,6 +1,6 @@
 # Explicit Immutable Artifact Rebuild
 
-Date: 2026-08-06  
+Date: 2026-08-07  
 Status: `source-ready / maintainer-validation-pending`
 
 ## Purpose
@@ -22,7 +22,7 @@ idempotency key
 reviewed runtime context
 ```
 
-It requires tenant-wide `pages:manage` (`PermissionScope::All`). Owner-scoped Manage is insufficient.
+It requires tenant-wide `pages:manage` (`PermissionScope::All`). Under the current request permission bridge effective Pages Manage resolves to `All` when present and `None` when absent; there is no current Pages Manage `Own` request state. The owner service still checks `PermissionScope::All` before input validation or writes as defense in depth.
 
 The mutable current Pages body is never read. The retained sanitized project is re-sanitized through the canonical Page Builder policy and its sanitized hash and provenance hash are recomputed before compilation.
 
@@ -79,11 +79,10 @@ This command does not:
 - rotate route, page or artifact cache generations;
 - publish, rollback or unpublish a page;
 - read the mutable current draft;
-- add GraphQL, HTTP, OpenAPI, admin UI or background worker transport;
 - automatically react to an audit finding;
 - promote FFA or FBA.
 
-Binding replacement remains a separate idempotent tenant-admin command. Only that later command may create lifecycle/cache effects after it proves the replacement artifact and active binding state.
+Bounded GraphQL/HTTP/OpenAPI transports now expose this existing owner command separately from activation. Binding replacement remains a separate idempotent tenant-admin command. Only activation may create lifecycle/cache effects after it proves the replacement artifact and active binding state.
 
 ## Maintainer validation
 
@@ -97,4 +96,4 @@ cargo test -p rustok-pages --test explicit_artifact_rebuild_sqlite -- --nocaptur
 cargo check -p rustok-pages --all-targets
 ```
 
-SQLite/PostgreSQL migration, authorization, exact replay, source corruption, runtime mismatch, append-only insertion and unchanged-binding evidence remain pending.
+SQLite/PostgreSQL migration, Manage present/absent authorization, exact replay, source corruption, runtime mismatch, append-only insertion and unchanged-binding evidence remain pending.

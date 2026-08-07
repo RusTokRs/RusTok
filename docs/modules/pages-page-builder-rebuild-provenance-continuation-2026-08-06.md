@@ -1,23 +1,25 @@
 # Pages / Page Builder Rebuild Provenance Continuation
 
 Date: 2026-08-07  
-Status: source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / explicit-artifact-repair-transport-source-ready / execution-pending
-Scope: Pages immutable artifact audit, reviewed publication provenance, append-only rebuild, explicit activation, bounded tenant-admin repair transports and the next execution-evidence boundary
+Status: source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / explicit-artifact-repair-transport-source-ready / request-contract-harness-source-ready / execution-pending
+Scope: Pages immutable artifact audit, reviewed publication provenance, append-only rebuild, explicit activation, bounded tenant-admin repair transports and request-level evidence
 
 ## Rechecked parity cursor
 
-Current `main` before this slice contains:
+Current `main` contains:
 
 - provider-owned reviewed static publish resource limits from PR #3099;
 - the bounded Pages immutable artifact integrity audit from PR #3103;
 - tenant-admin GraphQL, HTTP and OpenAPI audit adapters from PR #3107;
 - one immutable sanitized rebuild source per locale for new reviewed publications from PR #3112;
 - the explicit append-only immutable artifact rebuild command from PR #3115;
-- the explicit rebuilt-artifact binding activation command from PR #3126.
+- the explicit rebuilt-artifact binding activation command from PR #3126;
+- bounded explicit rebuild/activation transports from PR #3128;
+- a generated GraphQL/OpenAPI transport contract harness from PR #3133.
 
 The audit can identify invalid, partial or oversized retained artifacts. Rebuild provenance supplies the exact historical sanitized source and reviewed artifact/runtime identities without treating the mutable current draft as authority. Rebuild can retain a second verified immutable copy without overwriting the damaged row or changing what is public. Activation can switch one exact locale binding only after explicit current-state fences.
 
-The remaining source gap was a bounded tenant-admin transport surface that delegates to those separate owner commands without combining them into automatic repair.
+The current source cursor is request-level authorization and static-error evidence for those bounded transports.
 
 ## Explicit append-only rebuild
 
@@ -93,7 +95,7 @@ Marker:
 explicit-artifact-repair-transport-source-ready
 ```
 
-`PagesMutation` now mounts two separate explicit mutations:
+`PagesMutation` mounts two separate explicit mutations:
 
 ```text
 rebuildPageArtifact
@@ -107,7 +109,7 @@ POST /api/admin/pages/{id}/artifacts/rebuild
 POST /api/admin/pages/{id}/artifacts/activate
 ```
 
-Both GraphQL and HTTP adapters require the Pages module, current-tenant identity and an effective `pages:manage` grant before delegation. The owner services independently retain the authoritative tenant-wide `PermissionScope::All` check before writes.
+GraphQL checks tenant module enablement before resolver authorization. Both transport families enforce current-tenant identity and an effective `pages:manage` grant before owner delegation. The owner services independently retain the authoritative `PermissionScope::All` check before writes.
 
 The adapters delegate once to the owner commands. They do not import entities, query artifact/provenance/binding tables, emit events or touch cache generations. Public errors use fixed codes and messages and never copy `PagesError` text.
 
@@ -116,6 +118,29 @@ HTTP accepts the existing explicit owner inputs. GraphQL mirrors those command f
 `PagesApiDoc` registers both routes and bounded result schemas.
 
 The transports do not select repair inputs for the caller, chain audit into rebuild, chain rebuild into activation or add a combined repair endpoint.
+
+## Authorization actualization
+
+Marker:
+
+```text
+explicit-artifact-repair-pages-manage-all-none-actualized
+```
+
+The earlier cursor incorrectly asked for an `owner-scoped pages:manage` request case. Under the current request bridge and RBAC scope function, Pages Manage is binary:
+
+```text
+pages:manage present  -> PermissionScope::All
+pages:manage absent   -> PermissionScope::None
+```
+
+`PermissionScope::Own` is not currently representable for Pages Manage. The owner `PermissionScope::All` checks remain defense in depth for direct/internal callers and future authorization-model changes, but request evidence must test Manage present/absent rather than claim a nonexistent owner-scoped grant.
+
+The request-level harness source is tracked in:
+
+```text
+docs/modules/pages-page-builder-repair-request-contract-continuation-2026-08-07.md
+```
 
 ## Preserved boundaries
 
@@ -147,6 +172,9 @@ The repair path still does not:
 | Binding replacement tenant-wide authorization | Source-ready | Scope execution pending |
 | Binding replacement exact idempotent receipt | Source-ready | Replay/conflict execution pending |
 | Bounded tenant-admin repair transports | Source-ready | GraphQL/HTTP/OpenAPI execution pending |
+| Generated GraphQL/OpenAPI transport contract harness | Source-ready | Maintainer execution pending |
+| Request-level tenant/Manage/static-error harness | Source-ready | Maintainer execution pending |
+| Pages Manage `All`/`None` semantics | Source actualized | Maintainer execution pending |
 | Static public repair errors and bounded results | Source-ready | Response-shape execution pending |
 | Automatic repair | Deliberately absent | Not allowed |
 | FFA/FBA promotion | Open | Not promoted |
@@ -163,22 +191,25 @@ The repair path still does not:
 
 ## Next cursor
 
-1. Execute the provenance, explicit-rebuild, explicit-binding-replacement and repair-transport source guards.
-2. Retain SQLite/PostgreSQL migration evidence for canonical defaults, operation-bound duplicate identities and activation receipt constraints.
-3. Prove tenant-wide Manage succeeds and owner-scoped Manage rejects before rebuild or activation writes through both GraphQL and HTTP.
-4. Prove GraphQL schema mounting, current-tenant override rejection, bounded result fields and static public errors.
-5. Prove HTTP route mounting, current-tenant rejection, status/code mapping, bounded result fields and OpenAPI registration.
-6. Retain rebuild exact replay/conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction evidence.
-7. Prove rebuild appends one artifact while binding, page version, events and cache generations remain unchanged.
-8. Prove activation rejects stale version, stale current artifact, reused rebuild, missing/invalid replacement and unpublished state atomically.
-9. Prove successful activation changes one locale binding, advances one version, retains both artifact rows and produces one lifecycle pair plus one receipt; observe cache generations only after committed events.
-10. Retain repair transport execution evidence and keep automatic audit-to-repair behavior absent before browser/tenant evidence and FFA/FBA promotion.
+1. Execute the generated transport contract and request-level repair contract harnesses; retain schema/OpenAPI and request-response evidence.
+2. Run provenance, rebuild, activation, transport and request-contract source guards.
+3. Retain SQLite/PostgreSQL migration evidence for canonical defaults, operation-bound duplicate identities and activation receipt constraints.
+4. Prove Manage present reaches owner validation and Manage absent/current-tenant mismatch fail closed through both GraphQL and HTTP.
+5. Retain rebuild exact replay/conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction evidence.
+6. Prove rebuild appends one artifact while binding, page version, events and cache generations remain unchanged.
+7. Prove activation rejects stale version, stale current artifact, reused rebuild, missing/invalid replacement and unpublished state atomically.
+8. Prove successful activation changes one locale binding, advances one version, retains both artifact rows and produces one lifecycle pair plus one receipt; observe cache generations only after committed events.
+9. Keep automatic audit-to-repair behavior absent before browser/tenant evidence and FFA/FBA promotion.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+cargo test -p rustok-pages --test explicit_artifact_repair_transport_contract -- --nocapture
+cargo test -p rustok-pages --test explicit_artifact_repair_request_contract -- --nocapture
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs

@@ -22,7 +22,7 @@ expected current artifact id
 idempotency key
 ```
 
-It requires tenant-wide `pages:manage` (`PermissionScope::All`). Owner-scoped Manage is insufficient.
+It requires tenant-wide `pages:manage` (`PermissionScope::All`). Under the current request permission bridge effective Pages Manage resolves to `All` when present and `None` when absent; there is no current Pages Manage `Own` request state. The owner service still requires `PermissionScope::All` before input validation or writes as defense in depth.
 
 The expected current artifact must be the source artifact recorded by the selected rebuild receipt. The live locale binding must still point to that exact artifact when the owner transaction acquires its lock.
 
@@ -83,8 +83,9 @@ This command does not:
 - replace more than one locale binding;
 - publish an unpublished page;
 - select a rebuild automatically from audit findings;
-- add GraphQL, HTTP, OpenAPI, admin UI or worker transport;
 - promote FFA or FBA.
+
+Bounded GraphQL/HTTP/OpenAPI transports now expose activation separately from rebuild. No transport combines audit, rebuild and activation into an automatic action.
 
 ## Maintainer validation
 
@@ -98,4 +99,4 @@ cargo test -p rustok-pages --test explicit_artifact_binding_replacement_sqlite -
 cargo check -p rustok-pages --all-targets
 ```
 
-SQLite/PostgreSQL migration, tenant-wide authorization, stale version/current-binding rejection, provenance mismatch rejection, replacement corruption rejection, lifecycle/cache observation and exact replay evidence remain pending.
+SQLite/PostgreSQL migration, Manage present/absent authorization, stale version/current-binding rejection, provenance mismatch rejection, replacement corruption rejection, lifecycle/cache observation and exact replay evidence remain pending.

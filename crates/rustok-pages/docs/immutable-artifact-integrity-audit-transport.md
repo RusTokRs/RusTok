@@ -1,6 +1,6 @@
 # Pages Immutable Artifact Integrity Audit Transport
 
-Date: 2026-08-06  
+Date: 2026-08-07  
 Status: `source-ready / maintainer-validation-pending`
 
 ## Purpose
@@ -34,7 +34,7 @@ The mutation:
 - delegates to the owner service;
 - returns only the bounded owner result.
 
-The service remains authoritative for tenant-wide `PermissionScope::All`. A transport-visible Manage permission cannot upgrade an owner-scoped security snapshot.
+The service remains authoritative for tenant-wide `PermissionScope::All`. Under the current request permission bridge, Pages Manage resolves to `All` when effective `pages:manage` is present and to `None` when absent; there is no current Pages Manage `Own` request state. The service-level `All` check remains defense in depth.
 
 ## HTTP
 
@@ -114,10 +114,10 @@ cargo check -p rustok-pages
 
 Retained execution should cover:
 
-- GraphQL and HTTP success with tenant-wide `pages:manage`;
+- GraphQL and HTTP success with current-tenant effective `pages:manage`;
 - missing authentication;
 - missing Manage permission;
-- owner-scoped Manage rejection by the service;
+- current Pages Manage `All`/`None` scope semantics plus the service `All` guard;
 - current-tenant mismatch rejection;
 - negative, zero and above-limit record inputs;
 - page-not-found mapping;
