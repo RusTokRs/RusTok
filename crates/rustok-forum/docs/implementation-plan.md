@@ -163,10 +163,11 @@ materializes exactly the topic/reply adapters; Forum without Moderation remains
 valid. The Moderation owner has source-ready durable application operations and
 one-attempt dispatch: typed-effect-only migration/backfill, atomic pending intent,
 bounded due/lease CAS, exact immutable command reconstruction, exact adapter
-selection, decision-UUID domain idempotency, bounded retry classification and
-applied-evidence validation. Background scheduling, case/application audit
-lifecycle, operator recovery and retained runtime/concurrency evidence remain
-pending.
+selection, decision-UUID domain idempotency, bounded retry/review/rejection
+classification and applied-evidence validation. Stale reviewed-revision conflicts
+and mismatched successful evidence stop in operator review. Background
+scheduling, case/application audit lifecycle, operator recovery and retained
+runtime/concurrency evidence remain pending.
 
 ## Program ledger
 
@@ -191,7 +192,7 @@ pending.
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
-| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, trusted application callers, permanent topic lock, exact reply Hidden/Removed/RejectPublication, optional host materialization, Moderation-owned durable application operations and bounded one-attempt exact adapter dispatch are source-ready. Retain host plus PostgreSQL/SQLite migration/lease/dispatch/lost-response/concurrency and Forum accounting/event/tombstone/solution evidence; keep `Unpublished` distinct/fail-closed. Remaining code work is background scheduling, case/application audit lifecycle/events and operator recovery. Moderation keeps cases, decisions, appeals and audit. |
+| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, trusted application callers, permanent topic lock, exact reply Hidden/Removed/RejectPublication, optional host materialization, Moderation-owned durable application operations and bounded one-attempt exact adapter dispatch are source-ready. Retain host plus PostgreSQL/SQLite migration/lease/dispatch/lost-response/concurrency and Forum accounting/event/tombstone/solution evidence; keep `Unpublished` distinct/fail-closed. Stale revision conflicts and invalid successful evidence stop for operator review. Remaining code work is background scheduling, case/application audit lifecycle/events and operator recovery. Moderation keeps cases, decisions, appeals and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
@@ -374,17 +375,19 @@ terminal states and exact `ModerationDecisionApplication` evidence before
 `applied`. This state belongs exclusively to Moderation; Forum neither stores nor
 reads it.
 
-The Moderation one-attempt dispatcher is also source-ready. It claims at most one
+The Moderation one-attempt dispatcher is source-ready. It claims at most one
 exact due tenant/decision operation, reconstructs the immutable command from
 Moderation decision/effect/case state, validates exact decision hash and reviewed
 subject, looks up only the stored module/kind adapter and invokes it as trusted
 service `rustok-moderation`. The domain `PortContext.idempotency_key` remains the
 immutable decision UUID across all lease attempts; the lease token only varies the
 attempt correlation. Missing adapter and retryable neutral errors schedule
-bounded retry; invariant/corrupt owner input requires operator review; other
-non-retryable neutral port errors are rejected. A successful result still passes
-through exact applied-evidence and live-lease validation. Background scheduling,
-case/application audit lifecycle/events and operator recovery remain owner work.
+bounded retry. Non-retryable `Conflict` (including stale reviewed revision) and
+`InvariantViolation`, corrupt immutable command state and mismatched successful
+application evidence require operator review. Other non-retryable neutral port
+errors are rejected. A successful result becomes applied only after exact
+evidence and live-lease validation. Background scheduling, case/application audit
+lifecycle/events and operator recovery remain owner work.
 
 The existing Reactions/current-revision clock is intentionally not reused for
 Moderation because it does not advance on every lifecycle/enforcement mutation.
@@ -511,6 +514,10 @@ Hosts register/mount packages and do not absorb policy.
 - Moderation dispatch must select exactly the stored subject module/kind adapter.
   Missing or retryable adapters/errors remain retryable; there is no fallback to
   another producer or subject kind and no guessed applied result.
+- Non-retryable Moderation `Conflict`/`InvariantViolation`, including stale
+  reviewed revision, and mismatched successful application evidence require
+  operator review; they must not be silently retried or collapsed into ordinary
+  rejection/applied success.
 - Legacy decisions without typed effects remain non-dispatchable; a stale worker
   lease must not bypass the Forum domain receipt or exact reviewed revision.
 - FORUM-19 owns only subject-local moderation revision clocks and local enforcement
@@ -668,7 +675,8 @@ materialization. Retain clean/upgraded PostgreSQL/SQLite evidence for
 decision/effect/pending-operation/event/receipt commit, bounded due ordering,
 concurrent claim, lease expiry/reclaim, stale-token rejection, exact immutable
 command reconstruction, exact adapter selection, missing-adapter retry,
-retryable/non-retryable classification, decision-UUID lost-response replay and
+retryable/non-retryable classification, stale-conflict operator-review,
+invalid-success-evidence operator-review, decision-UUID lost-response replay and
 applied-evidence validation. Also retain the Forum moderation subject revision
 migration/trigger, shared-receipt replay/request-conflict, stale revision, trusted
 caller and concurrent content/lifecycle evidence plus hide/reject/removal
