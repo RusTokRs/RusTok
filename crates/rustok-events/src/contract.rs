@@ -7,12 +7,9 @@ use uuid::Uuid;
 
 use crate::{
     BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
-use crate::{
-    BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
     ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
     RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent,
     TranslationWorkflowEvent, ValidateEvent,
-};
 };
 
 pub(crate) mod sealed {
