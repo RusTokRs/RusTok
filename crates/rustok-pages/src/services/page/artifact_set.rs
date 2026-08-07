@@ -311,6 +311,7 @@ async fn load_recovered_current_publish_set_in_tx(
         txn,
         operation,
         &sources,
+        &current_members,
         &physically_lost_manifest_locales,
         current_page.version,
     )
@@ -323,6 +324,7 @@ async fn verify_physical_loss_activation_prefix_in_tx(
     txn: &DatabaseTransaction,
     operation: &page_publish_operation::Model,
     sources: &[page_publish_rebuild_source::Model],
+    current_members: &[ArtifactSetMember],
     required_locales: &std::collections::BTreeSet<String>,
     current_page_version: i32,
 ) -> PagesResult<()> {
@@ -367,8 +369,27 @@ async fn verify_physical_loss_activation_prefix_in_tx(
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
     };
 
+    let required_current_artifacts = required_locales
+        .iter()
+        .map(|locale| {
+            let member = current_members
+                .iter()
+                .find(|member| member.locale == *locale)
+                .ok_or_else(|| {
+                    PagesError::rollback_target_unavailable(format!(
+                        "physical-loss activation prefix required locale `{locale}` is not current",
+                    ))
+                })?;
+            Ok((locale.clone(), member.artifact_id))
+        })
+        .collect::<PagesResult<std::collections::BTreeMap<_, _>>>()?;
+
     let mut cursor = anchor_version;
-    let mut prefix_locales = std::collections::BTreeSet::new();
+    let mut latest_by_locale = std::collections::BTreeMap::<
+        String,
+        (Uuid, page_artifact_rebuild_operation::Model),
+    >::new();
+    let mut proven_required_locales = std::collections::BTreeSet::new();
     for (index, activation) in activations.into_iter().enumerate() {
         if index >= MAX_RECOVERED_ACTIVATION_PREFIX {
             return Err(PagesError::rollback_target_unavailable(
@@ -381,11 +402,6 @@ async fn verify_physical_loss_activation_prefix_in_tx(
             ));
         }
         verify_activation_receipt_for_rollback(&activation)?;
-        if !prefix_locales.insert(activation.locale.clone()) {
-            return Err(PagesError::rollback_target_unavailable(
-                "physical-loss activation prefix repeats a locale before recovery is complete",
-            ));
-        }
         let source = sources
             .iter()
             .find(|source| source.locale == activation.locale)
@@ -417,42 +433,104 @@ async fn verify_physical_loss_activation_prefix_in_tx(
             ));
         }
 
-        let artifact_query = || {
-            page_static_landing_artifact::Entity::find_by_id(rebuild.rebuilt_artifact_id)
-                .filter(page_static_landing_artifact::Column::TenantId.eq(operation.tenant_id))
-                .filter(page_static_landing_artifact::Column::PageId.eq(operation.page_id))
-                .filter(page_static_landing_artifact::Column::Locale.eq(source.locale.as_str()))
-        };
-        let artifact = match txn.get_database_backend() {
-            DbBackend::Sqlite => artifact_query().one(txn).await?,
-            DbBackend::Postgres | DbBackend::MySql => {
-                artifact_query().lock_shared().one(txn).await?
-            }
-        }
-        .ok_or_else(|| {
-            PagesError::rollback_target_unavailable(
-                "physical-loss activation prefix rebuilt artifact is unavailable",
+        if let Some((_, previous_rebuild)) = latest_by_locale.get(&activation.locale)
+            && recovery_artifact_if_present_for_rollback_in_tx(
+                txn,
+                operation,
+                activation.locale.as_str(),
+                previous_rebuild.rebuilt_artifact_id,
             )
-        })?;
-        if artifact.instance_key != rebuild.artifact_instance_key
-            || artifact.artifact_hash != rebuild.rebuilt_artifact_hash
-            || artifact.materialization_hash.as_deref()
-                != Some(rebuild.rebuilt_materialization_hash.as_str())
+            .await?
+            .is_some()
         {
             return Err(PagesError::rollback_target_unavailable(
-                "physical-loss activation prefix rebuilt artifact drifted from its receipt",
+                "physical-loss activation prefix repeated a locale while its prior rebuilt artifact still exists",
             ));
         }
 
+        latest_by_locale.insert(
+            activation.locale.clone(),
+            (source.page_body_id, rebuild),
+        );
+        if required_current_artifacts
+            .get(&activation.locale)
+            .is_some_and(|artifact_id| *artifact_id == activation.replacement_artifact_id)
+        {
+            proven_required_locales.insert(activation.locale.clone());
+        }
+
         cursor = activation.result_version;
-        if required_locales.is_subset(&prefix_locales) {
+        if required_locales.is_subset(&proven_required_locales) {
+            for (locale, (page_body_id, latest_rebuild)) in &latest_by_locale {
+                let current = current_members
+                    .iter()
+                    .find(|member| member.locale == *locale)
+                    .ok_or_else(|| {
+                        PagesError::rollback_target_unavailable(format!(
+                            "physical-loss activation prefix locale `{locale}` is no longer current",
+                        ))
+                    })?;
+                if current.artifact_id != latest_rebuild.rebuilt_artifact_id
+                    || current.artifact_hash != latest_rebuild.rebuilt_artifact_hash
+                    || current.materialization_hash.as_deref()
+                        != Some(latest_rebuild.rebuilt_materialization_hash.as_str())
+                {
+                    return Err(PagesError::rollback_target_unavailable(format!(
+                        "physical-loss activation prefix latest locale `{locale}` does not match the current repaired artifact",
+                    )));
+                }
+                let artifact = recovery_artifact_if_present_for_rollback_in_tx(
+                    txn,
+                    operation,
+                    locale.as_str(),
+                    latest_rebuild.rebuilt_artifact_id,
+                )
+                .await?
+                .ok_or_else(|| {
+                    PagesError::rollback_target_unavailable(
+                        "physical-loss activation prefix latest rebuilt artifact is unavailable",
+                    )
+                })?;
+                if artifact.instance_key != latest_rebuild.artifact_instance_key
+                    || artifact.artifact_hash != latest_rebuild.rebuilt_artifact_hash
+                    || artifact.materialization_hash.as_deref()
+                        != Some(latest_rebuild.rebuilt_materialization_hash.as_str())
+                {
+                    return Err(PagesError::rollback_target_unavailable(
+                        "physical-loss activation prefix latest rebuilt artifact drifted from its receipt",
+                    ));
+                }
+                if *page_body_id == Uuid::nil() {
+                    return Err(PagesError::rollback_target_unavailable(
+                        "physical-loss activation prefix latest repaired body identity is invalid",
+                    ));
+                }
+            }
             return Ok(());
         }
     }
 
     Err(PagesError::rollback_target_unavailable(
-        "physical-loss activation prefix does not contain every repaired locale whose manifest was lost",
+        "physical-loss activation prefix does not reach every current repaired locale whose manifest was lost",
     ))
+}
+
+async fn recovery_artifact_if_present_for_rollback_in_tx(
+    txn: &DatabaseTransaction,
+    operation: &page_publish_operation::Model,
+    locale: &str,
+    artifact_id: Uuid,
+) -> PagesResult<Option<page_static_landing_artifact::Model>> {
+    let query = || {
+        page_static_landing_artifact::Entity::find_by_id(artifact_id)
+            .filter(page_static_landing_artifact::Column::TenantId.eq(operation.tenant_id))
+            .filter(page_static_landing_artifact::Column::PageId.eq(operation.page_id))
+            .filter(page_static_landing_artifact::Column::Locale.eq(locale))
+    };
+    Ok(match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    })
 }
 
 async fn resolve_repair_activation_anchor_in_tx(
