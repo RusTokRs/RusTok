@@ -44,15 +44,21 @@ crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.m
 
 The harness is environment-gated by `RUSTOK_PAGES_TEST_DATABASE_URL` with `DATABASE_URL` fallback and accepts PostgreSQL URLs only. It creates an isolated schema, applies the real `OutboxModule` and `PagesModule` migrations, seeds only the Pages module enablement fixture, and drops the schema after the scenario.
 
-## Exact rebuild reproduction packet
+## Reviewed publish revision contract
 
-The harness reviewed-publishes one GrapesJS page through `PageService` using the canonical body revision:
+The repair-cache fixture follows the current production `reviewed_publish::body_revision_snapshot` contract exactly:
 
 ```text
-updated_at:sha256(format\0content)
+body.updated_at.to_string()
 ```
 
-It retains the complete canonical `page_static_landing_artifacts` model in memory before deliberately damaging the persisted canonical HTML/body/CSS payload.
+The harness therefore sends the matching created-body DTO `updated_at` value directly. It does not append a content digest. The source guard reads the production reviewed-publish owner and fails closed if the stale `updated_at:sha256(format\0content)` fixture construction returns.
+
+This correction changes test scaffolding only; production reviewed-publish behavior is unchanged.
+
+## Exact rebuild reproduction packet
+
+The harness reviewed-publishes one GrapesJS page through `PageService`, then retains the complete canonical `page_static_landing_artifacts` model in memory before deliberately damaging the persisted canonical HTML/body/CSS payload.
 
 The explicit rebuild then runs from the retained reviewed provenance. The rebuilt row must match the pre-damage canonical model exactly after normalizing only the three storage-instance fields that are expected to differ:
 
@@ -128,6 +134,7 @@ pages_explicit_artifact_repair_cache_source_unvalidated
 
 | Capability | Source state | Execution state |
 | --- | --- | --- |
+| Reviewed publish revision fixture | Owner-aligned | Execution pending |
 | Explicit rebuild owner | Source-ready | Runtime evidence pending |
 | Rebuild provenance/runtime negative matrix | Harness-ready | SQLite execution pending |
 | PostgreSQL rebuild/activation receipt atomicity | Harness-ready | PostgreSQL execution pending |
