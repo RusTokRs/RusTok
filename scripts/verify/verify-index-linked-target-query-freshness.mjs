@@ -114,13 +114,15 @@ for (const [relative, source] of [
 }
 
 requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', [
-  'Query surfaces protected',
+  'Query surfaces fenced against stale target payloads',
   'many-cardinality nested projections',
   'many-cardinality `EXISTS` filters',
   'many-cardinality `MIN`/`MAX` aggregate ordering',
+  'does **not** yet prove complete linked-target availability semantics',
+  'link exists while its target has not yet been materialized',
   'Explicit remaining recreate boundary',
   'hard delete followed by recreation of the same UUID can reset',
   'next source slice must make those two owner source clocks monotonic',
 ]);
 
-console.log('[verify-index-linked-target-query-freshness] linked target freshness source contract verified');
+console.log('[verify-index-linked-target-query-freshness] linked target stale-payload fence and remaining availability gate verified');
