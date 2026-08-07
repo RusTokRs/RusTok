@@ -47,6 +47,16 @@ requireText(
 );
 requireText(
   ports,
+  "product.admin_list_unavailable",
+  "ProductCatalogReadPort admin list must remain an optional fail-closed capability",
+);
+requireText(
+  ports,
+  "product admin listing is unavailable",
+  "optional Product admin list capability must expose a stable unavailable message",
+);
+requireText(
+  ports,
   "require_policy(PortCallPolicy::read())",
   "admin list owner call must preserve read deadline policy",
 );
