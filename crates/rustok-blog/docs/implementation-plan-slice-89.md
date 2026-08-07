@@ -224,7 +224,7 @@ Slice 89 does not modify:
 
 ### Explicit non-claims
 
-Slice 89 does not claim:
+The source implementation still does not claim:
 
 - that a Blog audit row calls this writer in production;
 - an atomic Blog-row-to-`sys_events` transaction;
@@ -233,13 +233,15 @@ Slice 89 does not claim:
 - `FOR UPDATE SKIP LOCKED` handoff execution;
 - canonical relay, retry, DLQ, or cleanup execution;
 - PostgreSQL concurrency or ambiguous-commit evidence;
-- Rust unit/integration test execution;
-- JavaScript verifier execution;
 - mounted runtime or production validation.
 
-Status: `canonical_writer_source_ready_compile_check_pending`.
-Test policy: `not_run_by_request`.
-Verifier policy: `not_run_by_request`.
+Status: `canonical_writer_source_ready_focused_validation_passed`.
+Focused validation on 2026-08-06 passed the exact envelope identity test, the
+SQLite write-once integration test (2 tests), the write-once unit comparison
+tests (2 tests), the full `rustok-outbox` suite (33 tests), and both Blog
+Comments historical contract verifiers. The selected `rustok-server` adapter
+test could not execute because this host exhausted virtual memory while
+compiling unrelated Admin crates; no mounted adapter result is claimed.
 
 ## Next implementation results
 
@@ -256,7 +258,7 @@ Verifier policy: `not_run_by_request`.
    canonical `sys_events` retention.
 6. Add mounted runtime composition and canonical relay retry/DLQ evidence.
 
-## Suggested maintainer verification — intentionally not run as tests
+## Focused verification
 
 ```bash
 cargo test -p rustok-events contract::tests::explicit_contract_envelope_identity_is_exact_and_correlated -- --nocapture

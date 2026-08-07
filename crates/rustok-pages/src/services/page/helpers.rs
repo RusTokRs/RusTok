@@ -234,6 +234,31 @@ pub(super) fn enforce_expected_version(expected: Option<i32>, actual: i32) -> Pa
     Ok(())
 }
 
+pub(super) fn page_resource_revision(page: &page::Model) -> PagesResult<i64> {
+    let revision = i64::from(page.version);
+    (revision > 0)
+        .then_some(revision)
+        .ok_or_else(|| PagesError::version_exhausted(page.id))
+}
+
+pub(super) fn next_page_version(page_id: Uuid, revision: i32) -> PagesResult<i32> {
+    revision
+        .checked_add(1)
+        .filter(|next_revision| revision > 0 && *next_revision > 0)
+        .ok_or_else(|| PagesError::version_exhausted(page_id))
+}
+
+pub(super) fn next_page_translation_revision(
+    page_id: Uuid,
+    locale: &str,
+    revision: i64,
+) -> PagesResult<i64> {
+    revision
+        .checked_add(1)
+        .filter(|next_revision| revision > 0 && *next_revision > 0)
+        .ok_or_else(|| PagesError::translation_revision_exhausted(page_id, locale))
+}
+
 pub(super) fn apply_transition(
     active: &mut page::ActiveModel,
     transition: Option<PageTransition>,

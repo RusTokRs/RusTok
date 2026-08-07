@@ -14,6 +14,7 @@ pub struct Model {
     pub slug: String,
     pub meta_title: Option<String>,
     pub meta_description: Option<String>,
+    pub revision: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

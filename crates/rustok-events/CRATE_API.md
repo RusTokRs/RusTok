@@ -19,6 +19,8 @@
 - `ContractEventEnvelope::new_caused_by(...)` creates a registered typed envelope with one exact non-nil predecessor envelope identity
 - `ContractEventEnvelope::{correlation_id, causation_id, tenant_id, actor_id}` expose validated envelope scope metadata
 - `ContractEventEnvelope::{payload, into_payload}` return only semantically validated typed payloads
+- `DomainEvent::allows_platform_scope()` identifies the only root events that may
+  use the platform nil-tenant sentinel
 - `pub fn event_schema(event_type: &str) -> Option<&'static EventSchema>`
 - `pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema>`
 - `pub fn domain_event_json_schema() -> serde_json::Value`
@@ -108,7 +110,9 @@
 - Every root and typed-family event validates before durable publication and again after
   durable/streaming deserialization.
 - Envelope event type/schema version must match the typed payload and a registered schema.
-- Tenant, envelope, correlation, causation, and optional actor identities must not be nil.
+- Envelope, correlation, causation, and optional actor identities must not be nil.
+  The tenant identity may be nil only for an explicitly platform-capable root
+  event; typed contract envelopes and all other root events reject the sentinel.
 - Exact envelope identity construction preserves the existing serialized shape;
   it changes constructor ownership only and requires `correlation_id == id` for
   the newly constructed envelope.

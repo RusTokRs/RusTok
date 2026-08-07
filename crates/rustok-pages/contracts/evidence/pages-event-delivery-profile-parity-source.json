@@ -9,7 +9,7 @@
     "format_run": false,
     "verifiers_run": false,
     "sqlite_run": false,
-    "outbox_local_profile_run": false,
+    "outbox_profile_run": false,
     "outbox_iggy_profile_run": false,
     "workflow_checks_run": false,
     "ci_run": false,
@@ -20,16 +20,16 @@
     "full_platform_migrations_used": true,
     "production_build_event_runtime_used": true,
     "shared_cache_service_initialized_before_runtime": true,
-    "outbox_local_profile_selected_through_settings": true,
-    "outbox_local_application_transport_reliability_is_outbox": true,
-    "outbox_local_profile_has_relay": true,
-    "outbox_local_publish_persists_pending_before_rotation": true,
-    "outbox_local_listener_is_silent_before_relay": true,
-    "outbox_local_real_relay_used": true,
-    "outbox_local_production_gate_rotates_before_listener_delivery": true,
-    "outbox_local_rotation_precedes_durable_acknowledgement": true,
-    "outbox_local_success_marks_row_dispatched": true,
-    "outbox_local_listener_same_event_is_rotation_noop": true,
+    "outbox_profile_selected_through_settings": true,
+    "outbox_application_transport_reliability_is_outbox": true,
+    "outbox_profile_has_relay": true,
+    "outbox_publish_persists_pending_before_rotation": true,
+    "outbox_listener_is_silent_before_relay": true,
+    "outbox_real_relay_used": true,
+    "outbox_production_gate_rotates_before_listener_delivery": true,
+    "outbox_rotation_precedes_durable_acknowledgement": true,
+    "outbox_success_marks_row_dispatched": true,
+    "outbox_listener_same_event_is_rotation_noop": true,
     "outbox_iggy_factory_branch_preserved_but_not_executed": true,
     "production_pages_behavior_changed": false,
     "production_page_builder_behavior_changed": false,
@@ -45,11 +45,11 @@
   "harness": {
     "path": "apps/server/tests/pages_event_delivery_profiles_sqlite.rs",
     "tests": [
-      "outbox_local_profile_defers_rotation_and_listener_delivery_until_relay"
+      "outbox_profile_defers_rotation_and_listener_delivery_until_relay"
     ],
     "database": "isolated SQLite with rustok_migrations::Migrator",
     "profiles": [
-      "outbox_local"
+      "outbox"
     ]
   }
 }

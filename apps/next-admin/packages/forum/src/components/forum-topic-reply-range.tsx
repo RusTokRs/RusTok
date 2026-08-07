@@ -14,8 +14,8 @@ import {
   type ForumReplyRangeMoveIdentity,
   type ForumReplyRangeMoveReceipt
 } from '../core/topic-reply-range';
-import en from '../locales/reply-range-en.json';
-import ru from '../locales/reply-range-ru.json';
+import en from './reply-range/locales/en.json';
+import ru from './reply-range/locales/ru.json';
 
 type ClientGqlOpts = Pick<GqlOpts, 'tenantId' | 'tenantSlug'>;
 

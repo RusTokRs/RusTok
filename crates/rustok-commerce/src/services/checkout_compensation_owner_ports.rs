@@ -628,7 +628,7 @@ fn log_owner_boundary_error(
             );
         }
         _ => {
-            tracing::warn!(
+            tracing::warn_event!(
                 error = ?error,
                 owner = owner,
                 correlation_id = %context.correlation_id,

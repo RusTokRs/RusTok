@@ -14,7 +14,7 @@ and could suggest that Iggy was optional even when selected.
 
 RusToK has exactly two global event-delivery profiles:
 
-- `outbox_local` for transactional single-node delivery and the default
+- `outbox` for transactional single-node delivery and the default
   profile;
 - `outbox_iggy` for transactional Iggy-backed high-throughput or multi-process
   delivery.
@@ -34,8 +34,8 @@ delivery.
 
 ## Consequences
 
-- A lightweight production installation can use `outbox_local` without Iggy.
-- Local development and test environments use `outbox_local`; no fallback path
+- A lightweight production installation can use `outbox` without Iggy.
+- Local development and test environments use `outbox`; no fallback path
   is part of the platform.
 - Production Iggy failures are explicit at startup instead of silently changing
   delivery semantics.

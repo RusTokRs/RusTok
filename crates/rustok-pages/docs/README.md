@@ -19,6 +19,10 @@ channel visibility and deterministic published artifacts.
   baselines and immutable landing artifacts;
 - language-agnostic base rows with normalized `VARCHAR(32)` parallel locale records,
   tenant-composite ownership and one effective locale per response;
+- exact `pages/page_metadata` Translation provider snapshots and owner-local
+  application for title, review-only slug, meta title and meta description;
+- per-locale revisions and a content-free owner change journal; Translation
+  never receives direct Pages table-write access;
 - GraphQL/REST adapters and Leptos admin/storefront packages;
 - canonical Fly writes through `body.format = "grapesjs"`;
 - deterministic publish/build/integrity and storefront artifact delivery;

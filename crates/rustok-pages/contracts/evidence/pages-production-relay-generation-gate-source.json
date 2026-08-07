@@ -21,7 +21,7 @@
     "asynchronous_module_listener_remains_registered": true,
     "asynchronous_module_listener_duplicate_is_rotation_noop": true,
     "memory_profile_listener_delivery_preserved": true,
-    "outbox_local_delivery_preserved": true,
+    "outbox_delivery_preserved": true,
     "outbox_iggy_delivery_preserved": true,
     "process_restart_may_conservatively_rotate_again": true,
     "production_pages_behavior_changed": true,
@@ -42,7 +42,7 @@
   "validation": {
     "unit_tests_observed": false,
     "memory_profile_observed": false,
-    "outbox_local_observed": false,
+    "outbox_observed": false,
     "outbox_iggy_observed": false,
     "downstream_retry_observed": false,
     "async_listener_duplicate_observed": false,

@@ -14,6 +14,7 @@ pub mod page_route_history_import;
 pub mod page_route_publication;
 pub mod page_static_landing_artifact;
 pub mod page_translation;
+pub mod translation_change;
 
 pub use page::Entity as Page;
 pub use page_builder_scenario_baseline::Entity as PageBuilderScenarioBaseline;

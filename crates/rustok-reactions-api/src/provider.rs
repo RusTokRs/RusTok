@@ -156,8 +156,8 @@ pub enum ReactionSubjectRegistryError {
     DuplicateSource(ReactionSourceSlug),
     #[error("reaction subject factory `{0}` is already registered")]
     DuplicateFactory(ReactionSourceSlug),
-    #[error("reaction subject provider `{source}` exposes an invalid kind set")]
-    InvalidKinds { source: ReactionSourceSlug },
+    #[error("reaction subject provider `{subject_source}` exposes an invalid kind set")]
+    InvalidKinds { subject_source: ReactionSourceSlug },
     #[error("reaction subject factory `{declared}` built provider `{built}`")]
     FactorySourceMismatch {
         declared: ReactionSourceSlug,
@@ -197,10 +197,7 @@ impl ReactionSubjectRegistry {
         Ok(())
     }
 
-    pub fn get(
-        &self,
-        source: &ReactionSourceSlug,
-    ) -> Option<Arc<dyn ReactionSubjectProvider>> {
+    pub fn get(&self, source: &ReactionSourceSlug) -> Option<Arc<dyn ReactionSubjectProvider>> {
         self.providers.get(source).cloned()
     }
 
@@ -240,12 +237,12 @@ fn validate_provider_kinds(
 ) -> Result<(), ReactionSubjectRegistryError> {
     if kinds.is_empty() || kinds.len() > MAX_REACTION_PROVIDER_KINDS {
         return Err(ReactionSubjectRegistryError::InvalidKinds {
-            source: source.clone(),
+            subject_source: source.clone(),
         });
     }
     if kinds.iter().collect::<BTreeSet<_>>().len() != kinds.len() {
         return Err(ReactionSubjectRegistryError::InvalidKinds {
-            source: source.clone(),
+            subject_source: source.clone(),
         });
     }
     Ok(())
@@ -325,10 +322,9 @@ pub fn register_reaction_subject_provider_factory<F>(
 where
     F: ReactionSubjectProviderFactory + 'static,
 {
-    let registry =
-        extensions.get_or_insert_with::<Arc<ReactionSubjectFactoryRegistry>, _>(|| {
-            Arc::new(ReactionSubjectFactoryRegistry::default())
-        });
+    let registry = extensions.get_or_insert_with::<Arc<ReactionSubjectFactoryRegistry>, _>(|| {
+        Arc::new(ReactionSubjectFactoryRegistry::default())
+    });
     Arc::make_mut(registry).register(factory)
 }
 
@@ -343,12 +339,13 @@ pub fn materialize_reaction_subject_registry(
         .unwrap_or_else(|| Arc::new(ReactionSubjectFactoryRegistry::default()));
 
     for (declared, factory) in &factories.factories {
-        let provider = factory.build(host).map_err(|error| {
-            ReactionSubjectRegistryError::FactoryBuild {
-                source: declared.clone(),
-                error,
-            }
-        })?;
+        let provider =
+            factory
+                .build(host)
+                .map_err(|error| ReactionSubjectRegistryError::FactoryBuild {
+                    source: declared.clone(),
+                    error,
+                })?;
         let built = provider.source();
         if &built != declared {
             return Err(ReactionSubjectRegistryError::FactorySourceMismatch {

@@ -12,7 +12,7 @@ This slice closes that source gap in production code. It does not replace the mo
 
 ## Production transport placement
 
-`TenantGenerationDeliveryGate` is already mounted by `tenant_generation_transport` for the OutboxLocal and OutboxIggy delivery profiles.
+`TenantGenerationDeliveryGate` is already mounted by `tenant_generation_transport` for the Outbox and OutboxIggy delivery profiles.
 
 With `mod-pages`, the gate now owns this ordering:
 

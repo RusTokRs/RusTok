@@ -25,7 +25,7 @@ pub fn EventsAdmin() -> impl IntoView {
         move || (token.get(), tenant.get()),
         move |(token, tenant)| async move { transport::fetch_configuration(token, tenant).await },
     );
-    let (selected_profile, set_selected_profile) = signal(String::from("outbox_local"));
+    let (selected_profile, set_selected_profile) = signal(String::from("outbox"));
     let (loaded, set_loaded) = signal(false);
     let (saving, set_saving) = signal(false);
     let (save_result, set_save_result) = signal(Option::<Result<String, String>>::None);

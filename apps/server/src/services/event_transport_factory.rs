@@ -90,12 +90,12 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
 
     let runtime = match delivery_profile {
-        EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy => {
+        EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy => {
             // Keep the application-facing transport concrete so TransactionalEventBus can
             // downcast to OutboxTransport and write into the caller's database transaction.
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
             let (relay_target, listener_bus, iggy_mode) = match delivery_profile {
-                EventDeliveryProfile::OutboxLocal => {
+                EventDeliveryProfile::Outbox => {
                     let transport = MemoryTransport::with_capacity(channel_capacity);
                     let listener_bus = transport.event_bus();
                     (

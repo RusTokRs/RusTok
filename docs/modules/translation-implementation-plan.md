@@ -147,7 +147,7 @@ This is the active cross-cutting implementation plan. As of 2026-08-03:
 - `rustok-translation-targets` now defines the neutral provider/resource/field,
   exact-locale, revision, validation, apply, progress, change-cursor, and
   interchange contracts;
-- Media, Taxonomy, Blog category, and Navigation menu are registered owner
+- Media, Taxonomy, Blog category, Navigation menu, and Pages metadata are registered owner
   providers. Media's exact-locale CAS apply, stable receipt, append-only tenant cursor, and content-free owner
   event are transactional; every other Media translation write emits the same
   repair evidence. Its aggregate progress counts only exact target-row values
@@ -166,7 +166,12 @@ This is the active cross-cutting implementation plan. As of 2026-08-03:
   provider applies an exact locale aggregate containing the menu name and every
   item title through `MenuService`, with resource/source/target CAS, the shared
   receipt ledger, and a content-free owner cursor; it does not claim a generic
-  menu event. Taxonomy-owned tags and Blog posts remain outside this pilot;
+  menu event. Pages' `pages/page_metadata` provider exposes exact `title`,
+  review-only `slug`, optional `meta_title`, and optional `meta_description`.
+  It applies through `PageService` with page resource/source/target CAS, the
+  shared receipt ledger, a content-free owner cursor, and the existing
+  `NodeUpdated` owner event. Fly/GrapesJS bodies remain outside this pilot.
+  Taxonomy-owned tags and Blog posts remain outside this pilot;
 - module-owned Leptos and Next admin workbenches now expose six parity tabs for
   policy, target, inventory, progress, reviewed workflow, versioned
   glossaries, and Translation Memory. Both use URL-owned `glossary_id` and
@@ -314,7 +319,7 @@ until after the module exists.
 | Establish tenant locale ownership | Completed: `rustok-tenant` owns revisioned policy read/replace, CAS, durable idempotency receipts, canonical/default/fallback/cycle invariants, and server middleware consumes the port | Add the admin transport over the same owner service without restoring direct SQL |
 | Remove locale DTO drift | Media now converts translation writes to canonical `TenantLocale`; Content, Product, Shipping, and other candidate owners still apply different length/case rules | Every translatable owner accepts the canonical locale type instead of package-local five- or ten-character validators or whole-tag lowercasing |
 | Resolve owner/schema drift | Product translation entities are duplicated in `rustok-product` and `rustok-commerce-foundation`; Pages/Navigation, Content/SEO, and Blog/Taxonomy also have stale ownership evidence | Registry/docs/migrations/entities identify one physical and semantic owner per target kind; superseded internal paths are deleted atomically |
-| Make owner writes safe | Media, Taxonomy, Blog category, and Navigation menu now have registered exact-locale providers. All use owner CAS, durable receipt replay, and append-only owner change cursors; Media also emits its neutral owner event, Blog emits its existing Search reindex request, and Navigation applies its full menu locale aggregate without inventing a generic event. Product, Shipping, and other candidates still have full-set or unguarded writes | Each remaining onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
+| Make owner writes safe | Media, Taxonomy, Blog category, Navigation menu, and Pages metadata now have registered exact-locale providers. All use owner CAS, durable receipt replay, and append-only owner change cursors; Media also emits its neutral owner event, Blog emits its existing Search reindex request, Navigation applies its full menu locale aggregate without inventing a generic event, and Pages applies localized metadata through its existing `NodeUpdated` owner event. Product, Shipping, and other candidates still have full-set or unguarded writes | Each remaining onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
 | Correct Flex exact semantics | [`flex::attached`](../../crates/flex/src/attached.rs) can seed/read from the first available locale and the standalone host service uses tenant default locale | Exact source/target APIs never synthesize an existing translation; only schema-declared `is_localized` leaves are exposed |
 | Type localized settings | [`ModuleSettingSpec`](../../crates/rustok-modules/src/settings.rs) and host settings writes have no localized-leaf, sensitivity, or revision contract | A named owner exposes stable field IDs, `localized` and field-policy metadata, parallel localized rows, CAS, events, and secret-safe validation |
 | Finish semantic string classification | Product image alt text has base/translation drift; Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
@@ -337,7 +342,7 @@ and exclusion reason.
 | --- | --- | --- |
 | Content | node title/slug/excerpt and body | Register only live Content-owned target kinds; long body follows the canonical richtext profile |
 | Blog | post title/excerpt/body/SEO and category copy | Registered `blog/category` pilot supplies exact `name`, review-only `slug`, optional `description`, resource/source/target CAS, durable receipt replay, and an append-only owner cursor with transactional Search reindex. Posts join the editorial wave; Taxonomy-owned tags are not duplicated; production enablement requires PostgreSQL concurrency and cursor-recovery evidence |
-| Pages | title/slug/meta copy and localized body | Metadata first; visual documents only through a lossless owner segment extractor/materializer and body-revision CAS |
+| Pages | title/slug/meta copy and localized body | Registered `pages/page_metadata` pilot supplies exact title, review-only slug, optional meta copy, resource/source/target CAS, durable receipt replay, existing Pages owner events, and a content-free cursor. Visual documents still require a lossless owner segment extractor/materializer and body-revision CAS; production enablement requires PostgreSQL concurrency and cursor-recovery evidence |
 | Navigation | menu name and item title | Registered `navigation/menu` pilot applies the full menu locale aggregate through Navigation-owned CAS, shared durable receipt replay, and content-free cursor evidence; production enablement still requires PostgreSQL concurrent-aggregate and cursor-recovery evidence |
 | Forum | category, topic, and reply copy | Category may onboard early; topic/reply are UGC and require opt-in, moderation, revisions, and no author-content overwrite |
 | Product/catalog | product/variant/options, attributes, category/schema labels, SEO, image alt, localized Flex values | Dedicated catalog wave after per-locale CAS, owner extraction cleanup, SEO precedence, and removal of base/translation image-alt drift |
@@ -1273,7 +1278,8 @@ Deliverables:
   manifest, migrations, permissions, workers, FBA evidence, and synchronized
   readiness records;
 - [x] implement provider-level exact-locale coverage and opaque-cursor
-  freshness, with Media, Taxonomy, Blog category, and Navigation menu registered
+  freshness, with Media, Taxonomy, Blog category, Navigation menu, and Pages
+  metadata registered
   aggregates and Translation-side fact validation;
 - [x] complete required-target-locale policies and deterministic Phase 1 QA;
   job completion, safe
@@ -1315,6 +1321,12 @@ target:
    change-cursor repair are present. The menu name and every item title apply
    atomically; retain PostgreSQL concurrent aggregate apply and cursor-recovery
    evidence before production inventory enablement.
+5. Pages metadata copy: provider registration, exact title/slug/meta snapshots,
+   resource/source/target CAS, durable receipt replay, existing owner event,
+   and append-only content-free change-cursor repair are present. Fly/GrapesJS
+   body content remains a separate Page Builder target; retain PostgreSQL
+   migration, concurrent apply, and cursor-recovery evidence before production
+   inventory enablement.
 
 The conformance suite still contains non-production reference fixtures for
 long/structured content, Product/commerce, and a localized setting so the

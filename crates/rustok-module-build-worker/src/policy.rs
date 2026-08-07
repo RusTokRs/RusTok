@@ -461,10 +461,10 @@ fn inspect_source(
     if actual_lock_digest != policy.lock_digest {
         return Err(SourcePolicyError::DependencyPolicyDenied);
     }
-    let lock = std::str::from_utf8(&lock_bytes)
-        .map_err(|_| SourcePolicyError::DependencyPolicyDenied)?
-        .parse::<toml::Value>()
-        .map_err(|_| SourcePolicyError::DependencyPolicyDenied)?;
+    let lock: toml::Value = toml::from_str(
+        std::str::from_utf8(&lock_bytes).map_err(|_| SourcePolicyError::DependencyPolicyDenied)?,
+    )
+    .map_err(|_| SourcePolicyError::DependencyPolicyDenied)?;
     inspect_resolved_lock_graph(&lock, policy)?;
 
     reject_cargo_config(source_dir)?;
@@ -558,10 +558,10 @@ fn inspect_manifest(
     policy: &ModuleBuildDependencyPolicy,
 ) -> Result<(), SourcePolicyError> {
     let contents = read_bounded(manifest_path, MAX_MANIFEST_BYTES)?;
-    let manifest = std::str::from_utf8(&contents)
-        .map_err(|_| SourcePolicyError::DependencyPolicyDenied)?
-        .parse::<toml::Value>()
-        .map_err(|_| SourcePolicyError::DependencyPolicyDenied)?;
+    let manifest: toml::Value = toml::from_str(
+        std::str::from_utf8(&contents).map_err(|_| SourcePolicyError::DependencyPolicyDenied)?,
+    )
+    .map_err(|_| SourcePolicyError::DependencyPolicyDenied)?;
     let table = manifest
         .as_table()
         .ok_or(SourcePolicyError::DependencyPolicyDenied)?;
@@ -844,7 +844,7 @@ mod tests {
     }
 
     fn lock(source: &str) -> toml::Value {
-        source.parse().expect("Cargo.lock fixture")
+        toml::from_str(source).expect("Cargo.lock fixture")
     }
 
     fn package_mut(lock: &mut toml::Value, index: usize) -> &mut toml::Value {

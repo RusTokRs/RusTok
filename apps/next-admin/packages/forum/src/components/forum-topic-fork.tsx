@@ -20,8 +20,8 @@ import {
   type ForumTopicForkReceipt,
   type ForumTopicForkReplyPage
 } from '../core/topic-fork';
-import en from '../locales/fork-en.json';
-import ru from '../locales/fork-ru.json';
+import en from './fork/locales/en.json';
+import ru from './fork/locales/ru.json';
 
 type ClientGqlOpts = Pick<GqlOpts, 'tenantId' | 'tenantSlug'>;
 

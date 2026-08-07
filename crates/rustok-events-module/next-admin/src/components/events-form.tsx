@@ -42,7 +42,7 @@ export function EventsForm({ status, configuration, token, tenantSlug }: EventsF
   const [result, setResult] = useState<{ ok: boolean; msg?: string } | null>(null);
 
   const profileOptions = [
-    { value: 'outbox_local', label: t('transport.outboxLocal') },
+    { value: 'outbox', label: t('transport.outbox') },
     { value: 'outbox_iggy', label: t('transport.outboxIggy') }
   ];
   const restartRequired = profile !== configuration.activeProfile || configuration.restartRequired;

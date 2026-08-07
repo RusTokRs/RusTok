@@ -33,6 +33,8 @@ mod mcp;
 mod migrations;
 #[cfg(feature = "oci-distribution")]
 mod oci;
+#[cfg(feature = "oci-distribution")]
+mod oci_transport;
 mod operation_store;
 mod policy;
 mod policy_revision_consumer;
@@ -299,7 +301,6 @@ pub use oci::{
     OciArtifactPublicationReceipt, OciArtifactPublicationTarget, OciArtifactPublisher,
     OciBuildPublicationArtifact, OciBuildPublicationBlob, OciDistributionArtifactPublisher,
     OciDistributionArtifactRegistry, OciRegistryProxyMode, OciRegistryTransportPolicy,
-    strict_oci_distribution_client, strict_oci_distribution_client_with_policy,
 };
 pub use operation_store::{
     ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,

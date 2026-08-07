@@ -680,25 +680,27 @@ component/payload digest distinct from that OCI manifest identity and requires
 the matching author, build-service, platform-admission, and marketplace facts
 before final publication.
 
-The public OCI reader and publisher constructors now always create the strict
-distribution client: HTTPS only, invalid certificates rejected, no platform
-resolver, and one concurrent upload/download. OCI identities are constrained to
+The public OCI reader and publisher constructors now create the platform-owned
+strict registry transport. It enforces HTTPS, verified TLS, no redirects, no
+process/system proxy, connection/request deadlines, bounded retries, bounded
+transfer and decompressed response size, identity-only response encoding, and
+one request at a time. It holds that request permit through response streaming,
+rejects cross-origin upload locations, and never forwards Basic credentials to
+a different host. The transport owns only the digest/tag manifest and streaming
+blob reads plus monolithic blob and manifest writes used by the control plane;
+unsupported OCI workflows fail closed. `oci-distribution` remains only for its
+OCI data model and registry-auth DTO. OCI identities are constrained to
 registry host, repository, and digest rather than URLs; the build worker obtains
 repository-bound credentials only after its credential-broker lease. The
-registry adapter additionally bounds complete descriptor/layer admission to five
+registry adapter separately bounds complete descriptor/layer admission to five
 minutes, streams the config only after its declared descriptor-size check, and
 cancellation-safely deletes a partial staging file. Config and payload streams
 reject received bytes beyond their OCI-declared size before extending memory or
 disk staging, and reject a final size mismatch before descriptor parsing or
-payload digest acceptance. The current distribution library still buffers
-manifests and does not expose redirect, proxy, retry, per-request timeout, or
-decompression controls. Those controls therefore remain an explicit deployment
-egress responsibility, together with manifest and transfer ceilings; the worker
-separately bounds its complete publication window to 15 minutes. The OCI adapter
-also cancels a complete artifact-and-referrer publication after ten minutes,
-leaving bounded time for Cosign within that worker deadline. This is a
-deliberately partial OCI transport policy, not evidence that the remaining
-controls are implemented.
+payload digest acceptance. The worker separately bounds its complete
+publication window to 15 minutes, while the OCI adapter cancels a complete
+artifact-and-referrer publication after ten minutes, leaving bounded time for
+Cosign within that worker deadline.
 
 Artifact Event bindings now declare up to 32 exact or terminal-wildcard topics
 inside the admitted descriptor. The generic dispatcher matches only those
@@ -1437,6 +1439,22 @@ and installation lifecycle preconditions before that command may delete data.
 - Publish declarative UI contributions and bind actions to admitted runtime
   bindings; custom untrusted UI and native UI follow the central isolation and
   static-promotion rules.
+
+## Planned Cross-Module Release Safety Integration
+
+`rustok-modules` remains the sole production owner of immutable release
+selection, update preflight, activation, rollback, incident receipts, and
+desired-versus-observed rollout state. The cross-module adoption plan is
+documented in [Module Release and Rollback Plan](../../../docs/modules/module-release-rollback-plan.md).
+It requires stateful module owners to declare data compatibility and recovery
+evidence in their local plans; it does not permit module-local rollback
+implementations, mutable artifact replacement, or automatic database restore.
+
+The mechanism must present a WordPress-like operator update experience only
+over this immutable owner model. Automatic rollback is limited to an eligible
+direct predecessor during the observation window. An irreversible data
+checkpoint closes that path and creates a controlled recovery-required outcome
+instead of reactivating incompatible code.
 
 ## Verification
 

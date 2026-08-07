@@ -141,7 +141,7 @@ RusToK enforces strict system-wide invariants across all layers:
 
 ### 3. Transactional Outbox, Event Replay, and Idempotent Read Models
 
-- Entity mutations and cross-module `DomainEvent` records are written to `sys_events` within the same atomic database transaction (`outbox_local`).
+- Entity mutations and cross-module `DomainEvent` records are written to `sys_events` within the same atomic database transaction (`outbox`).
 - High-throughput setups use native Iggy event streaming (`outbox_iggy`) with append-only event logs and stream replay capabilities.
 - Read projections (`rustok-index`) enforce checksummed keyset pagination (`CursorCodec`) and deterministic idempotency across process restarts.
 

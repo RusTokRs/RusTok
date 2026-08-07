@@ -27,7 +27,7 @@ const EVALUATION_FLAGS: [&str; 5] = [
 pub enum DlqDuplicateAlertDeployment {
     Disabled,
     Unavailable,
-    OutboxLocal,
+    Outbox,
     IggyBundled,
     IggyExternal,
 }
@@ -37,7 +37,7 @@ impl DlqDuplicateAlertDeployment {
         match self {
             Self::Disabled => "disabled",
             Self::Unavailable => "unavailable",
-            Self::OutboxLocal => "outbox_local",
+            Self::Outbox => "outbox",
             Self::IggyBundled => "iggy_bundled",
             Self::IggyExternal => "iggy_external",
         }

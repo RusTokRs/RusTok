@@ -397,10 +397,18 @@ async fn admin_fulfillment_transport_rejects_overfulfillment_for_order_line_item
         "unexpected overfulfillment body: {}",
         String::from_utf8_lossy(&create_body)
     );
+    let create_body = String::from_utf8_lossy(&create_body);
     assert!(
-        String::from_utf8_lossy(&create_body).contains("no remaining quantity"),
-        "unexpected overfulfillment body: {}",
-        String::from_utf8_lossy(&create_body)
+        create_body.contains("commerce_admin_fulfillment_invalid"),
+        "unexpected overfulfillment body: {create_body}",
+    );
+    assert!(
+        create_body.contains("Fulfillment request is invalid"),
+        "unexpected overfulfillment body: {create_body}",
+    );
+    assert!(
+        !create_body.contains("no remaining quantity"),
+        "overfulfillment response leaked an internal detail: {create_body}",
     );
 }
 

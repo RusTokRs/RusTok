@@ -2,7 +2,7 @@ mod artifact_integrity_audit;
 #[cfg(feature = "inline-edit-assets")]
 mod inline_edit_assets;
 
-pub use artifact_integrity_audit::audit_page_artifacts;
+pub use artifact_integrity_audit::{__path_audit_page_artifacts, audit_page_artifacts};
 
 use anyhow::Context;
 use axum::{
@@ -157,6 +157,17 @@ fn map_publication_error(error: PagesError) -> HttpError {
             StatusCode::CONFLICT,
             "PAGE_METADATA_VERSION_CONFLICT",
             message,
+        ),
+        PagesError::VersionExhausted { .. } => {
+            HttpError::internal("The page version is unavailable. Contact an administrator.")
+        }
+        PagesError::TranslationRevisionExhausted { .. } => HttpError::internal(
+            "The page translation version is unavailable. Contact an administrator.",
+        ),
+        PagesError::TranslationConflict(_) => HttpError::new(
+            StatusCode::CONFLICT,
+            "PAGE_TRANSLATION_CONFLICT",
+            "The page translation changed while this operation was pending.",
         ),
         PagesError::PublishRuntimeReviewInvalid(_) => HttpError::new(
             StatusCode::BAD_REQUEST,

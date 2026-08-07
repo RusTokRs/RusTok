@@ -15,6 +15,9 @@ channel visibility, deterministic published landing artifacts and page routes.
   `body.format = "grapesjs"` and `pages[].component` as the component-tree
   authority.
 - Validate builder feature policy and optimistic page revisions.
+- Provide the `pages/page_metadata` Translation target through exact locale
+  snapshots, owner-local resource/source/target CAS, durable receipts and a
+  content-free change cursor.
 - Build, persist and serve deterministic immutable landing artifacts.
 - Publish module-owned Leptos admin and storefront packages.
 - Enforce `pages:*` permissions in adapters and services.
@@ -43,6 +46,8 @@ compatibility or drop migration is retained.
 - `rustok-channel` supplies channel module gating; Pages owns page-level channel
   visibility.
 - `rustok-api` supplies tenant/auth/request contracts.
+- `rustok-translation-targets` supplies the neutral owner-provider contract;
+  Translation reads and applies Pages metadata only through `PageService`.
 - `rustok-core` supplies module contracts and `SecurityContext`.
 - `apps/server` composes the module router and GraphQL roots.
 - `apps/admin` mounts `rustok-pages-admin::PagesAdmin`.

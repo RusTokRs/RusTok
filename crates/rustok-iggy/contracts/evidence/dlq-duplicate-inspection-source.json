@@ -133,7 +133,7 @@
     "iggy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
     "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
     "memory": "not_applicable",
-    "outbox_local": "not_applicable",
+    "outbox": "not_applicable",
     "outbox_iggy_modes": [
       "bundled",
       "external"

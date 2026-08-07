@@ -157,7 +157,7 @@ RusTok solves this with **`rustok-index`** ([crates/rustok-index](crates/rustok-
 
 ### 4. Event Streaming & Transactional Outbox (Iggy & `sys_events`)
 RusTok implements reliable event-driven delivery without forcing heavy message brokers onto lightweight deployments:
-- **Transactional Outbox (`outbox_local`)**: Events (`IndexMutation`, `OrderPaid`, etc.) are written to PostgreSQL `sys_events` in the exact same database transaction as domain entity writes. In-process Tokio background workers process events asynchronously with zero data loss.
+- **Transactional Outbox (`outbox`)**: Events (`IndexMutation`, `OrderPaid`, etc.) are written to PostgreSQL `sys_events` in the exact same database transaction as domain entity writes. In-process Tokio background workers process events asynchronously with zero data loss.
 - **Native Rust Event Streaming (`outbox_iggy`)**: For high-throughput or distributed deployments, RusTok integrates with **[Iggy](https://iggy.rs)** (`rustok-iggy`), an ultra-fast streaming broker written in Rust. Iggy provides append-only event logs, **Event Replay**, and consumer groups with minimal RAM usage.
 
 ### 5. Compile-Time Manifest Composition (`modules.toml`)

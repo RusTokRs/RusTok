@@ -23,6 +23,15 @@ pub enum PagesError {
         actual_version: i32,
     },
 
+    #[error("Page version is invalid or exhausted: {page_id}")]
+    VersionExhausted { page_id: Uuid },
+
+    #[error("Page translation revision is invalid or exhausted: {page_id}/{locale}")]
+    TranslationRevisionExhausted { page_id: Uuid, locale: String },
+
+    #[error("Page translation conflict: {0}")]
+    TranslationConflict(String),
+
     #[error("Cannot delete published page")]
     CannotDeletePublished,
 
@@ -179,6 +188,24 @@ impl From<PagesError> for RichError {
             .with_field("expected_version", expected_version.to_string())
             .with_field("actual_version", actual_version.to_string())
             .with_error_code("PAGE_METADATA_VERSION_CONFLICT"),
+            PagesError::VersionExhausted { page_id } => RichError::new(
+                ErrorKind::Internal,
+                format!("Page {page_id} has an invalid or exhausted version"),
+            )
+            .with_user_message("The page version is unavailable. Contact an administrator.")
+            .with_field("page_id", page_id.to_string())
+            .with_error_code("PAGE_VERSION_EXHAUSTED"),
+            PagesError::TranslationRevisionExhausted { page_id, locale } => RichError::new(
+                ErrorKind::Internal,
+                format!("Page {page_id} locale {locale} has an invalid or exhausted translation revision"),
+            )
+            .with_user_message("The page translation version is unavailable. Contact an administrator.")
+            .with_field("page_id", page_id.to_string())
+            .with_field("locale", locale)
+            .with_error_code("PAGE_TRANSLATION_REVISION_EXHAUSTED"),
+            PagesError::TranslationConflict(message) => RichError::new(ErrorKind::Conflict, message)
+                .with_user_message("The page translation changed while this operation was pending.")
+                .with_error_code("PAGE_TRANSLATION_CONFLICT"),
             PagesError::CannotDeletePublished => {
                 RichError::new(ErrorKind::BusinessLogic, "Cannot delete published page")
                     .with_user_message("Published pages cannot be deleted. Unpublish them first.")
@@ -280,6 +307,21 @@ impl PagesError {
 
     pub fn validation(message: impl Into<String>) -> Self {
         Self::Validation(message.into())
+    }
+
+    pub fn version_exhausted(page_id: Uuid) -> Self {
+        Self::VersionExhausted { page_id }
+    }
+
+    pub fn translation_revision_exhausted(page_id: Uuid, locale: impl Into<String>) -> Self {
+        Self::TranslationRevisionExhausted {
+            page_id,
+            locale: locale.into(),
+        }
+    }
+
+    pub fn translation_conflict(message: impl Into<String>) -> Self {
+        Self::TranslationConflict(message.into())
     }
 
     pub fn artifact_integrity(message: impl Into<String>) -> Self {

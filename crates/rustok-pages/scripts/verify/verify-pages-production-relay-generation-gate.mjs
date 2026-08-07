@@ -57,7 +57,7 @@ for (const key of [
   "asynchronous_module_listener_remains_registered",
   "asynchronous_module_listener_duplicate_is_rotation_noop",
   "memory_profile_listener_delivery_preserved",
-  "outbox_local_delivery_preserved",
+  "outbox_delivery_preserved",
   "outbox_iggy_delivery_preserved",
   "process_restart_may_conservatively_rotate_again",
   "production_pages_behavior_changed",
@@ -116,7 +116,7 @@ ordered(gate, [
 const transportUses = factory.match(/tenant_generation_transport\(/g)?.length ?? 0;
 if (transportUses < 2) failures.push(`event factory: expected one call plus definition, found ${transportUses}`);
 for (const marker of [
-  "EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy",
+  "EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy",
   "TenantGenerationDeliveryGate::new"
 ]) need(factory, marker, "event factory");
 

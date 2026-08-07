@@ -20,7 +20,7 @@
     "IggyDlqDuplicateAlertScanMode"
   ],
   "delivery_profiles": {
-    "outbox_local": "not_applicable",
+    "outbox": "not_applicable",
     "outbox_iggy": "iggy_observer"
   },
   "iggy_modes": {
@@ -32,7 +32,7 @@
     "enable_env": "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED",
     "background_workers_required": true,
     "event_runtime_required": true,
-    "outbox_local_requires_iggy": false,
+    "outbox_requires_iggy": false,
     "outbox_iggy_requires_shared_transport": true,
     "outbox_iggy_missing_active_mode_fails_closed": true,
     "observer_startup_failure_is_non_fatal": true,

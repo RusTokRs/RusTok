@@ -29,10 +29,8 @@ mod safe_boundary {
     use serde_json::Value;
     use uuid::Uuid;
 
-    const PAYMENT_MANUAL_CODE: &str =
-        "payment.checkout_compensation_manual_reconciliation";
-    const ORDER_MANUAL_CODE: &str =
-        "order.checkout_compensation_manual_reconciliation";
+    const PAYMENT_MANUAL_CODE: &str = "payment.checkout_compensation_manual_reconciliation";
+    const ORDER_MANUAL_CODE: &str = "order.checkout_compensation_manual_reconciliation";
 
     #[derive(Clone, Copy)]
     pub(crate) struct BoundaryFacts {
@@ -146,7 +144,11 @@ mod safe_boundary {
     }
 
     fn uuid_shape(value: Uuid) -> &'static str {
-        if value.is_nil() { "uuid_nil" } else { "uuid_non_nil" }
+        if value.is_nil() {
+            "uuid_nil"
+        } else {
+            "uuid_non_nil"
+        }
     }
 
     fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
@@ -395,7 +397,9 @@ mod rustok_payment_shim {
             context: PortContext,
             request: CheckoutPaymentCompensationRequest,
         ) -> Result<Option<::rustok_payment::PaymentCollectionStatusSnapshot>, PortError> {
-            self.inner.compensate_checkout_payment(context, request).await
+            self.inner
+                .compensate_checkout_payment(context, request)
+                .await
         }
     }
 
@@ -514,7 +518,7 @@ mod tracing_shim {
         }};
     }
 
-    macro_rules! warn {
+    macro_rules! warn_event {
         (error = ?$error:expr, owner = $owner:expr, $($rest:tt)*) => {{
             if $owner != "rustok_payment" && $owner != "rustok_order" {
                 ::tracing::warn!(error = ?$error, owner = $owner, $($rest)*);
@@ -523,7 +527,7 @@ mod tracing_shim {
     }
 
     pub(crate) use error;
-    pub(crate) use warn;
+    pub(crate) use warn_event;
 }
 
 mod legacy {
@@ -590,9 +594,7 @@ impl CheckoutCompensationService {
         payment_compensation_port: Arc<dyn CanonicalCheckoutPaymentCompensationPort>,
     ) -> Self {
         self.inner = self.inner.with_payment_compensation_port(
-            rustok_payment_shim::wrap_checkout_payment_compensation_port(
-                payment_compensation_port,
-            ),
+            rustok_payment_shim::wrap_checkout_payment_compensation_port(payment_compensation_port),
         );
         self
     }

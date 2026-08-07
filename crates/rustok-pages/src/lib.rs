@@ -52,6 +52,10 @@ pub mod migrations;
 pub mod openapi;
 mod seo_targets;
 pub mod services;
+mod translation_evidence;
+mod translation_target;
+#[cfg(test)]
+mod translation_target_tests;
 
 pub use cache_invalidation::{
     MAX_PAGE_CACHE_KEY_VARIANT_BYTES, MAX_PAGE_CACHE_VALUE_BYTES, PAGE_CACHE_MUTABLE_SCOPES,
@@ -98,6 +102,7 @@ pub use services::{
     SaveIfCurrentScenarioBaselineRequest, inline_edit_context_mismatch,
     page_inline_edit_keyring_from_environment,
 };
+pub use translation_target::PagesMetadataTranslationTargetProvider;
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
@@ -130,7 +135,7 @@ impl RusToKModule for PagesModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "page_builder"]
+        &["content", "page_builder", "outbox"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -197,5 +202,9 @@ impl RusToKModule for PagesModule {
 impl MigrationSource for PagesModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
     }
 }

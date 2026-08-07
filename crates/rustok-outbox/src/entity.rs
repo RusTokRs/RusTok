@@ -17,7 +17,7 @@ pub enum SysEventStatus {
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "sys_events")]
 pub struct Model {
-    #[sea_orm(primary_key)]
+    #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     /// Event type string for fast filtering (e.g., "node.created")
     pub event_type: String,

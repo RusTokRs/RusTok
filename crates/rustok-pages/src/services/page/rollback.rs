@@ -14,12 +14,13 @@ use crate::dto::{RollbackPageInput, RollbackPageResult};
 use crate::entities::{page, page_publish_operation, page_rollback_operation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
+use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 use super::artifact_set::{
     ArtifactSetMember, artifact_set_hash, load_current_published_set_in_tx,
     load_publish_manifest_in_tx, replace_current_published_set_in_tx,
 };
-use super::helpers::{apply_transition, enforce_expected_version};
+use super::helpers::{apply_transition, enforce_expected_version, next_page_version};
 use super::{PAGE_KIND, PageService, PageTransition};
 
 const PAGE_ROLLBACK_OPERATION_FORMAT: &str = "page_rollback_operation_v1";
@@ -100,11 +101,24 @@ impl PageService {
         replace_current_published_set_in_tx(&txn, tenant_id, page_id, &target_members).await?;
 
         let now = Utc::now();
+        let next_version = next_page_version(page_id, existing_page.version)?;
         let mut active: page::ActiveModel = existing_page.into();
         active.updated_at = Set(now.into());
-        active.version = Set(active.version.take().unwrap_or(1) + 1);
+        active.version = Set(next_version);
         apply_transition(&mut active, Some(PageTransition::Publish), now);
         let rolled_back_page = active.update(&txn).await?;
+
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                page_id,
+                resource_revision: i64::from(rolled_back_page.version),
+                operation: "lifecycle",
+                lifecycle: "active",
+            },
+        )
+        .await?;
 
         self.event_bus
             .publish_in_tx(

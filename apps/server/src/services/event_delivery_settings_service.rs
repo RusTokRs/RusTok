@@ -26,7 +26,7 @@ impl std::fmt::Display for EventDeliverySettingsError {
         match self {
             Self::InvalidProfile(value) => write!(
                 formatter,
-                "invalid event delivery profile `{value}`; expected outbox_local or outbox_iggy"
+                "invalid event delivery profile `{value}`; expected outbox or outbox_iggy"
             ),
             Self::IggyNotConfigured(reason) => write!(
                 formatter,

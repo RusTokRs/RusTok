@@ -12,8 +12,7 @@ use axum::{
 };
 use sha2::{Digest, Sha256};
 
-pub(super) const PAGES_INLINE_EDIT_BOOTSTRAP_PATH: &str =
-    "/assets/pages-inline-edit-bootstrap.js";
+pub(super) const PAGES_INLINE_EDIT_BOOTSTRAP_PATH: &str = "/assets/pages-inline-edit-bootstrap.js";
 pub(super) const PAGES_INLINE_EDIT_MODULE_PATH: &str =
     "/assets/pages-inline-edit/rustok_storefront.js";
 pub(super) const PAGES_INLINE_EDIT_WASM_PATH: &str =
@@ -54,7 +53,11 @@ async fn wasm_asset(headers: HeaderMap) -> Response {
     asset_response(&headers, WASM_BYTES, "application/wasm")
 }
 
-fn asset_response(headers: &HeaderMap, bytes: &'static [u8], content_type: &'static str) -> Response {
+fn asset_response(
+    headers: &HeaderMap,
+    bytes: &'static [u8],
+    content_type: &'static str,
+) -> Response {
     let etag = content_etag(bytes);
     let not_modified = headers
         .get(IF_NONE_MATCH)
@@ -124,7 +127,10 @@ mod tests {
         let etag = content_etag(b"pages-inline-edit");
         assert_eq!(etag.len(), 66);
         assert!(if_none_match_matches(etag.as_str(), etag.as_str()));
-        assert!(if_none_match_matches(format!("W/{etag}").as_str(), etag.as_str()));
+        assert!(if_none_match_matches(
+            format!("W/{etag}").as_str(),
+            etag.as_str()
+        ));
         assert!(if_none_match_matches("*", etag.as_str()));
         assert!(!if_none_match_matches("\"different\"", etag.as_str()));
     }

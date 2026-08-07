@@ -159,7 +159,7 @@ It handles every active delivery profile explicitly:
 
 ```text
 memory        -> not applicable, no Iggy access
-outbox_local  -> not applicable, no Iggy access
+outbox        -> not applicable, no Iggy access
 outbox_iggy   -> bundled or external read-only Iggy observer
 ```
 

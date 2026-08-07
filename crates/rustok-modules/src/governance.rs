@@ -8763,7 +8763,7 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
     use super::*;
-    use crate::{TrustEvidenceKind, TrustEvidenceReference};
+    use crate::{ArtifactPayloadKind, TrustEvidenceKind, TrustEvidenceReference};
 
     fn trust_evidence(digest_character: char) -> Vec<TrustEvidenceReference> {
         [

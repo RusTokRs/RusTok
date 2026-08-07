@@ -2,7 +2,7 @@ use sea_orm::prelude::*;
 
 use rustok_core::generate_id;
 
-use super::_entities::tenant_modules::{self, ActiveModel, Entity, Model};
+use super::_entities::tenant_modules::{self, ActiveModel, Entity};
 
 impl ActiveModel {
     pub fn enable(tenant_id: Uuid, module_slug: &str) -> Self {
@@ -46,44 +46,6 @@ impl Entity {
 
         Ok(modules.into_iter().map(|m| m.module_slug).collect())
     }
-
-    #[allow(dead_code)]
-    pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        module_slug: &str,
-        enabled: bool,
-    ) -> Result<Model, DbErr> {
-        let existing = Self::find()
-            .filter(tenant_modules::Column::TenantId.eq(tenant_id))
-            .filter(tenant_modules::Column::ModuleSlug.eq(module_slug))
-            .one(db)
-            .await?;
-
-        match existing {
-            Some(model) => {
-                let mut active: ActiveModel = model.into();
-                active.enabled = sea_orm::ActiveValue::Set(enabled);
-                active.update(db).await
-            }
-            None => {
-                let mut active = ActiveModel::enable(tenant_id, module_slug);
-                active.enabled = sea_orm::ActiveValue::Set(enabled);
-                active.insert(db).await
-            }
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    module_slug: &str,
-    enabled: bool,
-) -> Result<Model, DbErr> {
-    Entity::upsert_flag_without_lifecycle_for_migrations_only(db, tenant_id, module_slug, enabled)
-        .await
 }
 
 pub async fn find_enabled(db: &DatabaseConnection, tenant_id: Uuid) -> Result<Vec<String>, DbErr> {

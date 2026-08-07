@@ -5,14 +5,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const sourcePath = path.join(root, 'crates/rustok-modules/src/oci.rs');
+const policyPath = path.join(root, 'crates/rustok-modules/src/oci.rs');
+const transportPath = path.join(root, 'crates/rustok-modules/src/oci_transport.rs');
 
 function fail(message) {
   throw new Error(`[verify-oci-registry-transport-policy] ${message}`);
 }
 
 try {
-  const source = fs.readFileSync(sourcePath, 'utf8');
+  const policy = fs.readFileSync(policyPath, 'utf8');
+  const transport = fs.readFileSync(transportPath, 'utf8');
   for (const marker of [
     'pub struct OciRegistryTransportPolicy',
     'pub enum OciRegistryProxyMode',
@@ -23,29 +25,36 @@ try {
     'max_retries: u8',
     'max_transfer_bytes: u64',
     'max_decompressed_bytes: u64',
-    'strict_oci_distribution_client_with_policy',
-    'policy.validate()?',
+    'strict_oci_registry_transport',
   ]) {
-    if (!source.includes(marker)) fail(`OCI transport policy is missing marker: ${marker}`);
+    if (!policy.includes(marker)) fail(`OCI transport policy is missing marker: ${marker}`);
   }
 
-  const clientConstruction = source.slice(
-    source.indexOf('pub fn strict_oci_distribution_client_with_policy'),
-    source.indexOf('/// Referrer evidence classes admitted by the publication and trust pipelines.'),
+  const clientConstruction = transport.slice(
+    transport.indexOf('pub(crate) fn with_policy'),
+    transport.indexOf('pub(crate) async fn pull_manifest'),
   );
   for (const marker of [
-    'protocol: ClientProtocol::Https',
-    'accept_invalid_certificates: !policy.verify_tls',
-    'platform_resolver: None',
-    'max_concurrent_upload: policy.max_concurrent_requests',
-    'max_concurrent_download: policy.max_concurrent_requests',
+    'Client::builder()',
+    '.https_only(true)',
+    '.redirect(RedirectPolicy::none())',
+    '.no_proxy()',
+    '.timeout(timeout)',
+    '.connect_timeout(timeout)',
+    '.no_gzip()',
+    '.no_brotli()',
+    '.no_deflate()',
+    '.no_zstd()',
+    '.retry(reqwest::retry::never())',
+    'policy.validate()?',
+    'Semaphore::new(policy.max_concurrent_requests)',
   ]) {
     if (!clientConstruction.includes(marker)) {
       fail(`strict OCI client construction is missing: ${marker}`);
     }
   }
 
-  const validation = source.slice(source.indexOf('pub fn validate(&self) -> Result<(), String>'));
+  const validation = policy.slice(policy.indexOf('pub fn validate(&self) -> Result<(), String>'));
   for (const marker of [
     'self.allow_redirects',
     'self.allow_cross_host_auth',
@@ -57,6 +66,18 @@ try {
     'self.max_decompressed_bytes > self.max_transfer_bytes',
   ]) {
     if (!validation.includes(marker)) fail(`OCI transport policy validation is missing: ${marker}`);
+  }
+
+  for (const marker of [
+    'if same_origin(&registry_origin, &challenge.realm)',
+    'Authorization::None',
+    'OCI registry returned an upload location outside its origin',
+    'response.bytes_stream()',
+    'max_decompressed_bytes',
+  ]) {
+    if (!transport.includes(marker)) {
+      fail(`strict OCI transport is missing a required boundary control: ${marker}`);
+    }
   }
 
   console.log('[verify-oci-registry-transport-policy] strict OCI transport policy verified');

@@ -20,8 +20,8 @@ import {
   type ForumTopicSplitReceipt,
   type ForumTopicSplitReplyPage
 } from '../core/topic-split';
-import en from '../locales/split-en.json';
-import ru from '../locales/split-ru.json';
+import en from './split/locales/en.json';
+import ru from './split/locales/ru.json';
 
 type ClientGqlOpts = Pick<GqlOpts, 'tenantId' | 'tenantSlug'>;
 

@@ -130,7 +130,7 @@ The host now owns a separate integration that composes the scanner, policy, and 
 
 ```text
 memory        -> not applicable, no Iggy access
-outbox_local  -> not applicable, no Iggy access
+outbox        -> not applicable, no Iggy access
 outbox_iggy   -> bundled or external read-only observer
 ```
 

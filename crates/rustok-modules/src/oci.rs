@@ -2,11 +2,8 @@
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use http::HeaderValue;
 use oci_distribution::{
-    Client, Reference,
-    client::{ClientConfig, ClientProtocol, Config, ImageLayer},
-    manifest::{OCI_IMAGE_MEDIA_TYPE, OciDescriptor, OciImageManifest},
+    manifest::{OCI_IMAGE_MEDIA_TYPE, OciDescriptor},
     secrets::RegistryAuth,
 };
 use serde::{Deserialize, Serialize};
@@ -20,6 +17,7 @@ use crate::{
     ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ControlPlaneInfrastructure,
     ModuleArtifactDescriptor, ModuleArtifactPackage, ModuleBuildOutcome, ModuleBuildRequest,
     ModuleBuildResult, ModuleInstallationError, OciArtifactReference,
+    oci_transport::{Blob, OciRegistryTransport, RegistryReference},
 };
 
 /// Stable OCI config media type for a serialized immutable module descriptor.
@@ -45,19 +43,17 @@ const OCI_REGISTRY_ADMISSION_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// its deployment-owned fifteen-minute credential lease.
 const OCI_REGISTRY_PUBLICATION_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
-/// Proxy handling mode for the registry egress boundary. The OCI client does
-/// not expose proxy hooks, so production deployments must enforce this mode
-/// at the dedicated egress boundary rather than inheriting process settings.
+/// Proxy handling mode for the registry egress boundary. The client always
+/// ignores process and system proxy settings; an approved deployment boundary
+/// may still provide transparent egress routing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OciRegistryProxyMode {
     Disabled,
     DeploymentBoundaryOnly,
 }
 
-/// Explicit registry transport and egress policy. Client-enforced fields are
-/// applied by `strict_oci_distribution_client_with_policy`; fields without
-/// upstream client hooks are deployment obligations and remain validated here
-/// so a weaker policy cannot be constructed accidentally.
+/// Explicit registry transport and egress policy. The registry transport
+/// validates this complete policy before it creates any HTTP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OciRegistryTransportPolicy {
     pub allow_redirects: bool,
@@ -139,31 +135,11 @@ impl Drop for ArtifactStagingFile {
     }
 }
 
-/// Constructs the strict subset of registry transport policy that the current
-/// OCI Distribution client can enforce itself. Redirect/proxy enforcement is
-/// intentionally left to the deployment egress boundary until the client is
-/// replaced by a transport with explicit hooks for those policies.
-pub fn strict_oci_distribution_client() -> Result<Client, String> {
-    strict_oci_distribution_client_with_policy(OciRegistryTransportPolicy::strict())
-}
-
-/// Constructs the OCI client after validating the complete transport policy.
-/// The upstream client currently exposes only a subset of these controls;
-/// timeout, redirect, proxy, retry, and decompression enforcement remains at
-/// the deployment-owned egress boundary.
-pub fn strict_oci_distribution_client_with_policy(
-    policy: OciRegistryTransportPolicy,
-) -> Result<Client, String> {
-    policy.validate()?;
-    let config = ClientConfig {
-        protocol: ClientProtocol::Https,
-        accept_invalid_certificates: !policy.verify_tls,
-        platform_resolver: None,
-        max_concurrent_upload: policy.max_concurrent_requests,
-        max_concurrent_download: policy.max_concurrent_requests,
-        ..Default::default()
-    };
-    Client::try_from(config).map_err(|error| error.to_string())
+/// Constructs the only OCI registry transport used by module artifact
+/// publication and admission. Its policy is enforced by the client rather than
+/// delegated to process environment or network defaults.
+fn strict_oci_registry_transport() -> Result<OciRegistryTransport, String> {
+    OciRegistryTransport::with_policy(OciRegistryTransportPolicy::strict())
 }
 
 /// Referrer evidence classes admitted by the publication and trust pipelines.
@@ -205,8 +181,9 @@ impl OciArtifactPublicationTarget {
         .map_err(|error| OciArtifactPublicationError::InvalidTarget(error.to_string()))
     }
 
-    fn tag_reference(&self, tag: String) -> Reference {
-        Reference::with_tag(self.registry.clone(), self.repository.clone(), tag)
+    fn tag_reference(&self, tag: String) -> Result<RegistryReference, OciArtifactPublicationError> {
+        RegistryReference::new(self.registry.clone(), self.repository.clone(), tag)
+            .map_err(OciArtifactPublicationError::InvalidTarget)
     }
 
     fn digest_reference(&self, digest: String) -> OciArtifactReference {
@@ -360,16 +337,15 @@ pub enum OciArtifactPublicationError {
 /// referrers with an exact subject descriptor.
 #[derive(Clone)]
 pub struct OciDistributionArtifactPublisher {
-    client: Client,
+    client: OciRegistryTransport,
     auth: RegistryAuth,
 }
 
 impl OciDistributionArtifactPublisher {
-    /// Creates a publisher that uses the mandatory strict registry transport
-    /// subset. Callers cannot supply a client with weaker TLS settings.
+    /// Creates a publisher with the mandatory client-enforced registry policy.
     pub fn strict(auth: RegistryAuth) -> Result<Self, OciArtifactPublicationError> {
         Ok(Self {
-            client: strict_oci_distribution_client()
+            client: strict_oci_registry_transport()
                 .map_err(OciArtifactPublicationError::Registry)?,
             auth,
         })
@@ -390,31 +366,24 @@ impl OciArtifactPublisher for OciDistributionArtifactPublisher {
             let descriptor_bytes = serde_json::to_vec(&bundle.descriptor)
                 .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
             let primary_tag = derived_tag("artifact", &[&sha256_digest(&descriptor_bytes)]);
-            let primary_write_reference = target.tag_reference(primary_tag);
-            let layer = ImageLayer::new(
-                bundle.payload,
-                bundle
-                    .descriptor
-                    .payload_kind
-                    .oci_layer_media_type()
-                    .to_string(),
-                None,
-            );
-            let config = Config::new(
-                descriptor_bytes,
-                MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE.to_string(),
-                None,
-            );
-            let mut manifest = OciImageManifest::build(std::slice::from_ref(&layer), &config, None);
-            manifest.media_type = Some(OCI_IMAGE_MEDIA_TYPE.to_string());
-            manifest.artifact_type = Some(layer.media_type.clone());
+            let primary_write_reference = target.tag_reference(primary_tag)?;
+            let descriptor_digest = sha256_digest(&descriptor_bytes);
+            let layers = [Blob {
+                media_type: bundle.descriptor.payload_kind.oci_layer_media_type(),
+                digest: &bundle.descriptor.artifact_digest,
+                bytes: &bundle.payload,
+            }];
             self.client
-                .push(
+                .push_artifact(
                     &primary_write_reference,
-                    &[layer],
-                    config,
                     &self.auth,
-                    Some(manifest),
+                    Blob {
+                        media_type: MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE,
+                        digest: &descriptor_digest,
+                        bytes: &descriptor_bytes,
+                    },
+                    &layers,
+                    bundle.descriptor.payload_kind.oci_layer_media_type(),
                 )
                 .await
                 .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
@@ -472,7 +441,7 @@ impl OciDistributionArtifactPublisher {
             ));
         }
         let signature_tag = cosign_signature_tag(&artifact.digest)?;
-        let write_reference = target.tag_reference(signature_tag);
+        let write_reference = target.tag_reference(signature_tag)?;
         self.resolve_published_reference(target, &write_reference)
             .await
     }
@@ -497,23 +466,23 @@ impl OciDistributionArtifactPublisher {
                 &artifact.layer.digest,
                 &artifact.layer.media_type,
             ],
-        ));
-        let layer = ImageLayer::new(
-            artifact.layer.bytes,
-            artifact.layer.media_type.clone(),
-            None,
-        );
-        let config = Config::new(artifact.config.bytes, artifact.config.media_type, None);
-        let mut manifest = OciImageManifest::build(std::slice::from_ref(&layer), &config, None);
-        manifest.media_type = Some(OCI_IMAGE_MEDIA_TYPE.to_string());
-        manifest.artifact_type = Some(artifact.layer.media_type);
+        ))?;
+        let layers = [Blob {
+            media_type: &artifact.layer.media_type,
+            digest: &artifact.layer.digest,
+            bytes: &artifact.layer.bytes,
+        }];
         self.client
-            .push(
+            .push_artifact(
                 &write_reference,
-                &[layer],
-                config,
                 &self.auth,
-                Some(manifest),
+                Blob {
+                    media_type: &artifact.config.media_type,
+                    digest: &artifact.config.digest,
+                    bytes: &artifact.config.bytes,
+                },
+                &layers,
+                &artifact.layer.media_type,
             )
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
@@ -544,18 +513,24 @@ impl OciDistributionArtifactPublisher {
         let write_reference = target.tag_reference(derived_current_tag(
             "evidence",
             &[&subject.digest, &evidence.media_type, &evidence.digest],
-        ));
+        ))?;
         let empty_config_digest = sha256_digest(OCI_EMPTY_CONFIG_BYTES);
         self.client
             .push_blob(
                 &write_reference,
+                &self.auth,
                 OCI_EMPTY_CONFIG_BYTES,
                 &empty_config_digest,
             )
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         self.client
-            .push_blob(&write_reference, &evidence.bytes, &evidence.digest)
+            .push_blob(
+                &write_reference,
+                &self.auth,
+                &evidence.bytes,
+                &evidence.digest,
+            )
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         let manifest = OciReferrerManifest {
@@ -587,11 +562,7 @@ impl OciDistributionArtifactPublisher {
         let body = serde_json::to_vec(&manifest)
             .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
         self.client
-            .push_manifest_raw(
-                &write_reference,
-                body,
-                HeaderValue::from_static(OCI_IMAGE_MEDIA_TYPE),
-            )
+            .push_manifest(&write_reference, &self.auth, body, OCI_IMAGE_MEDIA_TYPE)
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         self.resolve_published_reference(target, &write_reference)
@@ -608,18 +579,24 @@ impl OciDistributionArtifactPublisher {
         let write_reference = target.tag_reference(derived_tag(
             "referrer",
             &[&subject.digest, kind.media_type(), &evidence.digest],
-        ));
+        ))?;
         let empty_config_digest = sha256_digest(OCI_EMPTY_CONFIG_BYTES);
         self.client
             .push_blob(
                 &write_reference,
+                &self.auth,
                 OCI_EMPTY_CONFIG_BYTES,
                 &empty_config_digest,
             )
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         self.client
-            .push_blob(&write_reference, &evidence.bytes, &evidence.digest)
+            .push_blob(
+                &write_reference,
+                &self.auth,
+                &evidence.bytes,
+                &evidence.digest,
+            )
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         let manifest = OciReferrerManifest {
@@ -651,11 +628,7 @@ impl OciDistributionArtifactPublisher {
         let body = serde_json::to_vec(&manifest)
             .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
         self.client
-            .push_manifest_raw(
-                &write_reference,
-                body,
-                HeaderValue::from_static(OCI_IMAGE_MEDIA_TYPE),
-            )
+            .push_manifest(&write_reference, &self.auth, body, OCI_IMAGE_MEDIA_TYPE)
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         self.resolve_published_reference(target, &write_reference)
@@ -666,14 +639,15 @@ impl OciDistributionArtifactPublisher {
         &self,
         reference: &OciArtifactReference,
     ) -> Result<i64, OciArtifactPublicationError> {
-        let image = Reference::with_digest(
+        let image = RegistryReference::new(
             reference.registry.clone(),
             reference.repository.clone(),
             reference.digest.clone(),
-        );
+        )
+        .map_err(OciArtifactPublicationError::Registry)?;
         let (body, digest) = self
             .client
-            .pull_manifest_raw(&image, &self.auth, &[])
+            .pull_manifest(&image, &self.auth)
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         let expected = sha256_digest(&body);
@@ -693,11 +667,11 @@ impl OciDistributionArtifactPublisher {
     async fn resolve_published_reference(
         &self,
         target: &OciArtifactPublicationTarget,
-        write_reference: &Reference,
+        write_reference: &RegistryReference,
     ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
         let (body, received) = self
             .client
-            .pull_manifest_raw(write_reference, &self.auth, &[])
+            .pull_manifest(write_reference, &self.auth)
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         let expected = sha256_digest(&body);
@@ -813,27 +787,14 @@ fn cosign_signature_tag(digest: &str) -> Result<String, OciArtifactPublicationEr
 /// verifies descriptor identity and the downloaded payload bytes.
 #[derive(Clone)]
 pub struct OciDistributionArtifactRegistry {
-    client: Client,
+    client: OciRegistryTransport,
     auth: RegistryAuth,
     infrastructure: ControlPlaneInfrastructure,
 }
 
 impl OciDistributionArtifactRegistry {
-    fn with_client(
-        client: Client,
-        auth: RegistryAuth,
-        infrastructure: ControlPlaneInfrastructure,
-    ) -> Self {
-        Self {
-            client,
-            auth,
-            infrastructure,
-        }
-    }
-
-    /// Creates an authenticated registry adapter with the mandatory strict
-    /// transport subset. Callers cannot supply a client with weaker TLS
-    /// settings.
+    /// Creates an authenticated registry adapter with the mandatory
+    /// client-enforced registry policy.
     pub fn strict(auth: RegistryAuth) -> Result<Self, ModuleInstallationError> {
         Self::strict_with_infrastructure(auth, ControlPlaneInfrastructure::default())
     }
@@ -842,11 +803,11 @@ impl OciDistributionArtifactRegistry {
         auth: RegistryAuth,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Result<Self, ModuleInstallationError> {
-        Ok(Self::with_client(
-            strict_oci_distribution_client().map_err(ModuleInstallationError::Registry)?,
+        Ok(Self {
+            client: strict_oci_registry_transport().map_err(ModuleInstallationError::Registry)?,
             auth,
             infrastructure,
-        ))
+        })
     }
 
     /// Creates an anonymous registry adapter with the strict transport subset
@@ -863,14 +824,14 @@ impl OciDistributionArtifactRegistry {
 
     fn image_reference(
         reference: &OciArtifactReference,
-    ) -> Result<Reference, ModuleInstallationError> {
+    ) -> Result<RegistryReference, ModuleInstallationError> {
         reference.validate()?;
-        Reference::try_from(reference.canonical().as_str()).map_err(|error| {
-            ModuleInstallationError::Registry(format!(
-                "invalid OCI distribution reference `{}`: {error}",
-                reference.canonical()
-            ))
-        })
+        RegistryReference::new(
+            reference.registry.clone(),
+            reference.repository.clone(),
+            reference.digest.clone(),
+        )
+        .map_err(ModuleInstallationError::Registry)
     }
 }
 
@@ -972,7 +933,7 @@ impl OciDistributionArtifactRegistry {
     /// callers can validate it.
     async fn pull_config_to_memory(
         &self,
-        image: &Reference,
+        image: &RegistryReference,
         config: &oci_distribution::manifest::OciDescriptor,
         limits: ArtifactAdmissionLimits,
     ) -> Result<Vec<u8>, ModuleInstallationError> {
@@ -989,7 +950,7 @@ impl OciDistributionArtifactRegistry {
         })?;
         let stream = self
             .client
-            .pull_blob_stream(image, config)
+            .pull_blob_stream(image, &config.digest, &self.auth)
             .await
             .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
         futures_util::pin_mut!(stream);
@@ -1026,7 +987,7 @@ impl OciDistributionArtifactRegistry {
     /// check; this method deliberately avoids an unbounded network `Vec<u8>`.
     async fn pull_payload_to_temporary_storage(
         &self,
-        image: &Reference,
+        image: &RegistryReference,
         layer: &oci_distribution::manifest::OciDescriptor,
         expected_digest: &str,
         limits: ArtifactAdmissionLimits,
@@ -1044,7 +1005,7 @@ impl OciDistributionArtifactRegistry {
             .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
         let stream = self
             .client
-            .pull_blob_stream(image, layer)
+            .pull_blob_stream(image, &layer.digest, &self.auth)
             .await
             .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
         futures_util::pin_mut!(stream);
@@ -1137,7 +1098,7 @@ mod tests {
         let image = OciDistributionArtifactRegistry::image_reference(&reference)
             .expect("digest-pinned reference");
 
-        assert_eq!(image.to_string(), reference.canonical());
+        assert_eq!(image.canonical(), reference.canonical());
     }
 
     #[test]

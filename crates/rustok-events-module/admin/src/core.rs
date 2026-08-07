@@ -1,6 +1,6 @@
 pub const DELIVERY_PROFILES: [(&str, &str, &str); 2] = [
     (
-        "outbox_local",
+        "outbox",
         "Outbox",
         "Transactional database outbox with a lightweight in-process relay.",
     ),

@@ -22,11 +22,12 @@ use crate::error::{
     PagesError, PagesResult,
 };
 use crate::services::rbac::enforce_owned_scope;
+use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 use super::document::document_revision_conflict;
 use super::helpers::{
     apply_transition, collect_builder_sources, enforce_expected_version, is_builder_enabled,
-    is_builder_preview_enabled, is_builder_properties_enabled, transition_event,
+    is_builder_preview_enabled, is_builder_properties_enabled, next_page_version, transition_event,
 };
 use super::route::{
     record_delete_route_tombstones_in_tx, record_published_route_snapshots_in_tx,
@@ -213,7 +214,21 @@ impl PageService {
             return Err(PagesError::cannot_delete_published());
         }
 
+        let resource_revision = i64::from(next_page_version(page_id, existing.version)?);
+
         record_delete_route_tombstones_in_tx(&txn, tenant_id, page_id).await?;
+
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                page_id,
+                resource_revision,
+                operation: "delete",
+                lifecycle: "deleted",
+            },
+        )
+        .await?;
 
         page_body::Entity::delete_many()
             .filter(page_body::Column::TenantId.eq(tenant_id))
@@ -284,11 +299,29 @@ impl PageService {
         }
 
         let now = Utc::now();
+        let next_version = next_page_version(page_id, existing.version)?;
+        let lifecycle = if transition == PageTransition::Archive {
+            "archived"
+        } else {
+            "active"
+        };
         let mut active: page::ActiveModel = existing.into();
         active.updated_at = Set(now.into());
-        active.version = Set(active.version.take().unwrap_or(1) + 1);
+        active.version = Set(next_version);
         apply_transition(&mut active, Some(transition), now);
-        active.update(&txn).await?;
+        let transitioned_page = active.update(&txn).await?;
+
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                page_id,
+                resource_revision: i64::from(transitioned_page.version),
+                operation: "lifecycle",
+                lifecycle,
+            },
+        )
+        .await?;
 
         self.event_bus
             .publish_in_tx(

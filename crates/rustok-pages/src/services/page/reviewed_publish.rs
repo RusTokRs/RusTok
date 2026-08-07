@@ -29,11 +29,12 @@ use crate::error::{PagesError, PagesResult};
 use crate::services::PageBuilderArtifactService;
 use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::rbac::enforce_owned_scope;
+use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 use super::document::document_revision_conflict;
 use super::helpers::{
     apply_transition, collect_builder_sources, enforce_expected_version, is_builder_enabled,
-    is_builder_publish_enabled, normalize_locale,
+    is_builder_publish_enabled, next_page_version, normalize_locale,
 };
 use super::{PAGE_KIND, PageService, PageTransition};
 
@@ -143,11 +144,24 @@ impl PageService {
         }
 
         let now = Utc::now();
+        let next_version = next_page_version(page_id, existing_page.version)?;
         let mut active: page::ActiveModel = existing_page.into();
         active.updated_at = Set(now.into());
-        active.version = Set(active.version.take().unwrap_or(1) + 1);
+        active.version = Set(next_version);
         apply_transition(&mut active, Some(PageTransition::Publish), now);
         let published_page = active.update(&txn).await?;
+
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                page_id,
+                resource_revision: i64::from(published_page.version),
+                operation: "lifecycle",
+                lifecycle: "active",
+            },
+        )
+        .await?;
 
         self.event_bus
             .publish_in_tx(

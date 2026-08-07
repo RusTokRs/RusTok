@@ -66,16 +66,16 @@ for (const key of [
   "full_platform_migrations_used",
   "production_build_event_runtime_used",
   "shared_cache_service_initialized_before_runtime",
-  "outbox_local_profile_selected_through_settings",
-  "outbox_local_application_transport_reliability_is_outbox",
-  "outbox_local_profile_has_relay",
-  "outbox_local_publish_persists_pending_before_rotation",
-  "outbox_local_listener_is_silent_before_relay",
-  "outbox_local_real_relay_used",
-  "outbox_local_production_gate_rotates_before_listener_delivery",
-  "outbox_local_rotation_precedes_durable_acknowledgement",
-  "outbox_local_success_marks_row_dispatched",
-  "outbox_local_listener_same_event_is_rotation_noop",
+  "outbox_profile_selected_through_settings",
+  "outbox_application_transport_reliability_is_outbox",
+  "outbox_profile_has_relay",
+  "outbox_publish_persists_pending_before_rotation",
+  "outbox_listener_is_silent_before_relay",
+  "outbox_real_relay_used",
+  "outbox_production_gate_rotates_before_listener_delivery",
+  "outbox_rotation_precedes_durable_acknowledgement",
+  "outbox_success_marks_row_dispatched",
+  "outbox_listener_same_event_is_rotation_noop",
   "outbox_iggy_factory_branch_preserved_but_not_executed"
 ]) {
   if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
@@ -97,9 +97,9 @@ for (const key of [
 if (
   evidence.harness?.path !== "apps/server/tests/pages_event_delivery_profiles_sqlite.rs" ||
   evidence.harness?.database !== "isolated SQLite with rustok_migrations::Migrator" ||
-  JSON.stringify(evidence.harness?.profiles) !== JSON.stringify(["outbox_local"]) ||
+  JSON.stringify(evidence.harness?.profiles) !== JSON.stringify(["outbox"]) ||
   !Array.isArray(evidence.harness?.tests) ||
-  !evidence.harness.tests.includes("outbox_local_profile_defers_rotation_and_listener_delivery_until_relay")
+  !evidence.harness.tests.includes("outbox_profile_defers_rotation_and_listener_delivery_until_relay")
 ) {
   failures.push("event delivery profile harness registration is invalid");
 }
@@ -111,7 +111,7 @@ for (const marker of [
   "ctx.shared_insert(cache.clone())",
   "build_event_runtime(&ctx).await?",
   "ServerPagesCachePort::new(&self.cache)",
-  "outbox_local_profile_defers_rotation_and_listener_delivery_until_relay",
+  "outbox_profile_defers_rotation_and_listener_delivery_until_relay",
   "ReliabilityLevel::Outbox",
   "TryRecvError::Empty",
   "PageCacheGenerationSnapshot::new(1, 1, 1)",
@@ -121,12 +121,12 @@ for (const marker of [
 
 const outboxTest = between(
   harness,
-  "async fn outbox_local_profile_defers_rotation_and_listener_delivery_until_relay()",
+  "async fn outbox_profile_defers_rotation_and_listener_delivery_until_relay()",
   "\n}",
-  "outbox local profile test",
+  "outbox profile test",
 );
 for (const marker of [
-  "ProfileFixture::build(EventDeliveryProfile::OutboxLocal)",
+  "ProfileFixture::build(EventDeliveryProfile::Outbox)",
   "ReliabilityLevel::Outbox",
   "SysEventStatus::Pending",
   "PageCacheGenerationSnapshot::default()",
@@ -136,7 +136,7 @@ for (const marker of [
   "SysEventStatus::Dispatched",
   "PageCacheGenerationSnapshot::new(1, 1, 1)",
   "invoke_ordinary_pages_listener(&delivered)"
-]) need(outboxTest, marker, "outbox local profile test");
+]) need(outboxTest, marker, "outbox profile test");
 ordered(outboxTest, [
   "fixture.runtime.transport.publish(envelope.clone()).await?",
   "SysEvents::find_by_id(envelope.id)",
@@ -147,17 +147,17 @@ ordered(outboxTest, [
   "listener.recv()",
   "PageCacheGenerationSnapshot::new(1, 1, 1)",
   "SysEventStatus::Dispatched"
-], "outbox local profile ordering");
+], "outbox profile ordering");
 
 const outboxFactory = between(
   factory,
-  "EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy => {",
+  "EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy => {",
   "// Module listeners are started immediately after this function returns",
   "outbox factory branch",
 );
 for (const marker of [
   "OutboxTransport::new(ctx.db_clone())",
-  "EventDeliveryProfile::OutboxLocal =>",
+  "EventDeliveryProfile::Outbox =>",
   "EventDeliveryProfile::OutboxIggy =>",
   "ArtifactEventProjectionTransport::new",
   "tenant_generation_transport(ctx, &cache, relay_target)",
@@ -199,13 +199,13 @@ ordered(relayProcess, [
 for (const marker of [
   "source-ready / execution-pending",
   "build_event_runtime",
-  "OutboxLocal profile",
+  "Outbox profile",
   "OutboxIggy boundary",
   "Execution evidence remains pending"
 ]) need(packet, marker, "profile parity packet");
 for (const marker of [
   "event-delivery-profile-parity-source-ready",
-  "OutboxLocal/OutboxIggy parity source-ready",
+  "Outbox/OutboxIggy parity source-ready",
   "Optional external event and delivery infrastructure remain outside the active Pages cursor"
 ]) need(plan, marker, "canonical Pages/Page Builder plan");
 

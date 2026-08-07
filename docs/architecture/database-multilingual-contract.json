@@ -71,7 +71,17 @@
           "path": "crates/rustok-pages/src/migrations/mod.rs",
           "required_markers": [
             "mod m20260721_000003_expand_pages_locale_storage_columns;",
-            "Box::new(m20260721_000003_expand_pages_locale_storage_columns::Migration)"
+            "Box::new(m20260721_000003_expand_pages_locale_storage_columns::Migration)",
+            "mod m20260806_000014_add_translation_target_support;",
+            "m20260806_000014_add_translation_target_support::Migration"
+          ]
+        },
+        {
+          "path": "crates/rustok-pages/src/migrations/m20260806_000014_add_translation_target_support.rs",
+          "required_markers": [
+            "PageTranslations::Revision",
+            "PagesTranslationChanges::Table",
+            "pages_translation_changes"
           ]
         }
       ]

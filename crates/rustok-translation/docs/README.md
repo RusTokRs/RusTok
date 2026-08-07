@@ -157,19 +157,21 @@ CAS revision and disabled-locale evidence, while required-target progress fails
 closed until an authorized replacement revalidates it.
 
 Registered pilot aggregates are `media/asset`, `taxonomy/term`,
-`blog/category`, and `navigation/menu`.
+`blog/category`, `navigation/menu`, and `pages/page_metadata`.
 Translation never reads their tables: each owner supplies exact target facts and
 an opaque owner cursor. Media counts source-eligible active assets in a stable
 change window; Taxonomy counts active terms; Blog counts categories with an
-exact source row; Navigation counts only full exact menu aggregates. Taxonomy
-and Blog expose exact `name`, review-only `slug`, and optional `description`;
-Navigation exposes a required menu name plus one required exact title per menu
-item. Blog applies through its category service and emits the existing Search
-reindex request transactionally; Navigation applies through `MenuService` and
-uses its content-free cursor journal rather than claiming a generic owner
-event. Runtime locale fallback does not contribute to any aggregate. All four
-pilots still require their documented production database evidence before
-inventory enablement.
+exact source row; Navigation counts only full exact menu aggregates; Pages
+counts active Pages with an exact source metadata row. Taxonomy and Blog expose
+exact `name`, review-only `slug`, and optional `description`; Navigation exposes
+a required menu name plus one required exact title per menu item; Pages exposes
+title, review-only slug, and optional SEO metadata. Blog applies through its
+category service and emits the existing Search reindex request transactionally;
+Navigation applies through `MenuService` and uses its content-free cursor
+journal rather than claiming a generic owner event; Pages applies through
+`PageService` and emits the existing `NodeUpdated` event. Runtime locale
+fallback does not contribute to any aggregate. All five pilots still require
+their documented production database evidence before inventory enablement.
 
 `rustok-translation-targets` remains a separate Cargo package even if its
 physical directory is later moved under `crates/rustok-translation/`. This

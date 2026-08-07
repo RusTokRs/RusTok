@@ -99,6 +99,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 ### Implementation Plans and Machine-Readable Contracts
 
 - [Implementation Plans Registry](./modules/implementation-plans-registry.md)
+- [Module Release and Rollback Plan](./modules/module-release-rollback-plan.md) — immutable production release identity, safe update/rollback, and module data readiness.
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 39-operation admin contract, guarded human workflow controls, and AI machine-translation workflow
@@ -132,6 +133,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Architecture and Foundation
 
+- [ADR: Module release rollback safety](../DECISIONS/2026-08-06-module-release-rollback-safety.md) — immutable production release identity, safe automatic rollback, and controlled data recovery.
+- [ADR: Platform-owned OCI registry transport boundary](../DECISIONS/2026-08-06-oci-registry-transport-boundary.md) — client-enforced OCI egress policy for module publication and admission.
 - [ADR: Translation control plane and owner-owned localized data](../DECISIONS/2026-07-26-translation-control-plane-boundary.md)
 - [ADR: Shared owner-operation receipt ledger](../DECISIONS/2026-08-03-owner-operation-receipts.md)
 - [ADR: Richtext capability boundary and single-document contract](../DECISIONS/2026-07-22-richtext-capability-boundary.md)

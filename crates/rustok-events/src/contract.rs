@@ -7,9 +7,9 @@ use uuid::Uuid;
 
 use crate::{
     BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
-    ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent,
-    MarketplaceSellerEvent, RbacArtifactPermissionEvent, RbacRoleMutationEvent,
-    SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
+    ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
+    RbacArtifactPermissionEvent, RbacRoleMutationEvent, SocialGraphRelationEvent,
+    TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -266,7 +266,12 @@ impl ContractEventEnvelope {
         if self.correlation_id.is_nil() {
             return Err(EventValidationError::NilUuid("correlation_id").into());
         }
-        if self.tenant_id.is_nil() {
+        if self.tenant_id.is_nil()
+            && !matches!(
+                &self.event,
+                ContractEventPayload::Root(event) if event.allows_platform_scope()
+            )
+        {
             return Err(EventValidationError::NilUuid("tenant_id").into());
         }
         if self
@@ -414,9 +419,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            EventContractEnvelopeError::Validation(EventValidationError::NilUuid(
-                "causation_id"
-            ))
+            EventContractEnvelopeError::Validation(EventValidationError::NilUuid("causation_id"))
         ));
     }
 
@@ -451,6 +454,45 @@ mod tests {
         assert!(matches!(
             error,
             EventContractEnvelopeError::Validation(EventValidationError::NilUuid("id"))
+        ));
+    }
+
+    #[test]
+    fn platform_scoped_root_event_accepts_the_root_tenant_sentinel() {
+        let envelope = ContractEventEnvelope::new(
+            Uuid::nil(),
+            None,
+            DomainEvent::ModuleArtifactAdmitted {
+                installation_id: Uuid::new_v4(),
+                artifact_digest: "sha256:artifact".to_string(),
+                media_type: "application/vnd.rustok.wasm.component.v1+wasm".to_string(),
+                size_bytes: 1,
+            },
+        )
+        .expect("platform-scoped root event should validate");
+
+        envelope
+            .validate_registered_schema()
+            .expect("platform-scoped root event should remain valid");
+    }
+
+    #[test]
+    fn tenant_scoped_root_event_rejects_the_root_tenant_sentinel() {
+        let error = ContractEventEnvelope::new(
+            Uuid::nil(),
+            None,
+            DomainEvent::ModuleBuildQueued {
+                request_id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                project_id: "module-build-test".to_string(),
+                attempt: 1,
+            },
+        )
+        .expect_err("tenant-scoped root event must fail closed");
+
+        assert!(matches!(
+            error,
+            EventContractEnvelopeError::Validation(EventValidationError::NilUuid("tenant_id"))
         ));
     }
 }

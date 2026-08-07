@@ -40,11 +40,11 @@ No Profiles API, storage, policy port, GraphQL field, storefront behavior, or au
 The server observer handles all event-delivery profiles explicitly:
 
 ```text
-outbox_local  -> NotApplicableOutboxLocal
+outbox        -> NotApplicableOutbox
 outbox_iggy   -> IggyBundled or IggyExternal
 ```
 
-`outbox_local` does not request an Iggy transport, does not open a broker connection, and does not require alert threshold configuration. Its not-applicable state is valid platform operation, not a Profiles degradation.
+`outbox` does not request an Iggy transport, does not open a broker connection, and does not require alert threshold configuration. Its not-applicable state is valid platform operation, not a Profiles degradation.
 
 Only `outbox_iggy` resolves the shared `IggyTransport` already created by the event runtime. The observer never creates a second transport or bundled broker process.
 

@@ -194,9 +194,7 @@ impl SystemQuery {
             .map(|runtime| runtime.delivery_profile)
             .unwrap_or(ev.delivery_profile)
         {
-            crate::common::settings::EventDeliveryProfile::OutboxLocal => {
-                "outbox_local".to_string()
-            }
+            crate::common::settings::EventDeliveryProfile::Outbox => "outbox".to_string(),
             crate::common::settings::EventDeliveryProfile::OutboxIggy => "outbox_iggy".to_string(),
         };
         let iggy_mode = ev.iggy.mode.to_string();
@@ -220,7 +218,7 @@ impl SystemQuery {
             max_attempts: ev.relay_retry_policy.max_attempts,
             pending_events,
             dlq_events,
-            available_transports: vec!["outbox_local".to_string(), "outbox_iggy".to_string()],
+            available_transports: vec!["outbox".to_string(), "outbox_iggy".to_string()],
         })
     }
 

@@ -8,8 +8,8 @@ use rustok_cache::CacheService;
 use rustok_core::events::{EventHandler, ReliabilityLevel};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_migrations::Migrator;
-use rustok_outbox::entity::SysEventStatus;
 use rustok_outbox::SysEvents;
+use rustok_outbox::entity::SysEventStatus;
 use rustok_pages::{
     PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PageCacheInvalidationEventHandler,
     PagesCacheInvalidationRuntime, PagesCacheReadPort,
@@ -85,14 +85,12 @@ impl ProfileFixture {
     }
 }
 
-
-
 #[tokio::test]
-async fn outbox_local_profile_defers_rotation_and_listener_delivery_until_relay() -> TestResult<()> {
-    let fixture = ProfileFixture::build(EventDeliveryProfile::OutboxLocal).await?;
+async fn outbox_profile_defers_rotation_and_listener_delivery_until_relay() -> TestResult<()> {
+    let fixture = ProfileFixture::build(EventDeliveryProfile::Outbox).await?;
     assert_eq!(
         fixture.runtime.delivery_profile,
-        EventDeliveryProfile::OutboxLocal
+        EventDeliveryProfile::Outbox
     );
     assert_eq!(
         fixture.runtime.transport.reliability_level(),
@@ -102,7 +100,7 @@ async fn outbox_local_profile_defers_rotation_and_listener_delivery_until_relay(
         .runtime
         .relay_config
         .as_ref()
-        .ok_or_else(|| std::io::Error::other("OutboxLocal runtime is missing its relay"))?
+        .ok_or_else(|| std::io::Error::other("Outbox runtime is missing its relay"))?
         .relay
         .clone();
 
@@ -113,7 +111,7 @@ async fn outbox_local_profile_defers_rotation_and_listener_delivery_until_relay(
     let pending = SysEvents::find_by_id(envelope.id)
         .one(fixture.ctx.db())
         .await?
-        .ok_or_else(|| std::io::Error::other("OutboxLocal publish did not persist an event"))?;
+        .ok_or_else(|| std::io::Error::other("Outbox publish did not persist an event"))?;
     assert_eq!(pending.status, SysEventStatus::Pending);
     assert_eq!(pending.retry_count, 0);
     assert!(pending.dispatched_at.is_none());
@@ -136,7 +134,7 @@ async fn outbox_local_profile_defers_rotation_and_listener_delivery_until_relay(
     let dispatched = SysEvents::find_by_id(envelope.id)
         .one(fixture.ctx.db())
         .await?
-        .ok_or_else(|| std::io::Error::other("relayed OutboxLocal event disappeared"))?;
+        .ok_or_else(|| std::io::Error::other("relayed Outbox event disappeared"))?;
     assert_eq!(dispatched.status, SysEventStatus::Dispatched);
     assert_eq!(dispatched.retry_count, 0);
     assert!(dispatched.dispatched_at.is_some());

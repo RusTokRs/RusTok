@@ -70,7 +70,9 @@ predecessor matches the durable cursor. Exact replays are acknowledged as
 duplicates and divergent or out-of-order transitions are rejected as stale.
 `SeaOrmModulePolicyRevisionConsumer` persists the cursor under tenant RLS and
 advances it atomically with the gate result; it is consumer state, not another
-event journal.
+event journal. Hosts obtain this durable consumer through
+`ModuleControlPlane::policy_revision_consumer`, so commit-time lifecycle
+serialization cannot bypass the owner facade.
 
 The caller-supplied SeaORM connection and owner-opened transaction form the
 transactional storage boundary. `ControlPlaneInfrastructure` carries the
@@ -78,6 +80,9 @@ object-safe `rustok-outbox::TransactionalEventWriter`; owner commands append
 their envelope through that port in the same transaction as state and audit
 facts. Redacted runtime audit remains behind `ExecutionObserver`, and domain
 audit facts remain owner rows/outbox events rather than a second audit journal.
+Platform-scope artifact and static-distribution events use the root event
+contract's nil-tenant sentinel only through its explicit event allow-list;
+tenant-scoped events fail closed if that sentinel is supplied.
 
 Secret values never cross the artifact capability response. The sandbox-visible
 `platform.secrets.acquire_handle` operation returns only logical reference and
@@ -135,16 +140,16 @@ short-lived lease through its deployment-owned credential broker. Credentials
 never enter module contracts, descriptors, build requests, runner output, or
 artifact persistence.
 
-`strict_oci_distribution_client` configures the enforceable subset of registry
-transport policy through `OciRegistryTransportPolicy`: HTTPS only, certificate
-validation, no redirects or cross-host authentication, deployment-boundary-only
-proxy handling, bounded request/retry/transfer/decompression ceilings, no
-image-index fallback, and one concurrent upload/download. The client applies
-the controls exposed by `oci-distribution`; the deployment egress boundary
-must enforce the remaining redirect, proxy, retry, timeout, and decompression
-controls because the upstream client has no corresponding hooks. A weaker
-policy is rejected before client construction, and deployment verification of
-those boundary controls remains tracked in the central plan.
+The internal OCI registry transport applies the complete
+`OciRegistryTransportPolicy` itself: HTTPS only, verified TLS, no redirects,
+no process or system proxy, bounded connection/request deadlines, bounded
+retries, transfer/decompression ceilings, and one concurrent request. It
+rejects non-identity content encoding, holds its concurrency permit for the
+complete stream, accepts upload locations only on the original HTTPS origin,
+and never forwards Basic credentials to a different host. Bearer token service
+requests may be cross-host only without those credentials. `oci-distribution`
+supplies only the OCI data-model and registry-auth DTOs; its HTTP client is not
+used by repository-owned production code.
 
 During admission, `ModuleInstaller` verifies the OCI package and places its
 payload in an `ArtifactBlobStore` under the descriptor payload digest.

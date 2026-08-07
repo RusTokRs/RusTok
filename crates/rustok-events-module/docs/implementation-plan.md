@@ -86,7 +86,7 @@ evidence are retained.
     shell composition, so server-only page exports cannot enter the client
     module graph;
   - canonical event/runtime verification remains tracked by `rustok-events`;
-  - Events UI exposes only the two durable profiles (`outbox_local` default and
+  - Events UI exposes only the two durable profiles (`outbox` default and
     `outbox_iggy`); the removed process-local profile has no transport, UI, or
     configuration fallback;
   - source inspection proves host-global Events and Iggy controls require a

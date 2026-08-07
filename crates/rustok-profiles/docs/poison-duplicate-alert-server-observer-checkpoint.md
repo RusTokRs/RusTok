@@ -21,11 +21,11 @@ The observer is not a Profiles service. Profiles continues to consume authoritat
 ```text
 disabled      -> Disabled
 startup issue -> Unavailable, no task or snapshot
-outbox_local  -> NotApplicableOutboxLocal
+outbox        -> NotApplicableOutbox
 outbox_iggy   -> IggyBundled or IggyExternal
 ```
 
-For `outbox_local`, no shared Iggy transport is requested, no broker connection is opened, and no alert thresholds are required. For `outbox_iggy`, the observer reuses the exact active transport configuration. Missing active mode or invalid observer configuration fails closed into non-fatal `Unavailable` state.
+For `outbox`, no shared Iggy transport is requested, no broker connection is opened, and no alert thresholds are required. For `outbox_iggy`, the observer reuses the exact active transport configuration. Missing active mode or invalid observer configuration fails closed into non-fatal `Unavailable` state.
 
 Event delivery and module projection remain active.
 

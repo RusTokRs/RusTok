@@ -76,6 +76,7 @@ const APPEND_ONLY_MIGRATION_TAIL: &[&str] = &[
     "m20260803_000016_add_blog_category_translation_target_support",
     "m20260803_000017_add_translation_target_support",
     "m20260803_000001_canonicalize_artifact_permissions",
+    "m20260806_000014_add_translation_target_support",
 ];
 
 struct ModuleMigrationSource {

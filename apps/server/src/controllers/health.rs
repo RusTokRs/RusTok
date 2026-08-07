@@ -1177,8 +1177,7 @@ mod tests {
             vec!["tenants", "users"]
         );
 
-        settings.events.delivery_profile =
-            crate::common::settings::EventDeliveryProfile::OutboxLocal;
+        settings.events.delivery_profile = crate::common::settings::EventDeliveryProfile::Outbox;
         assert_eq!(
             required_database_schema_tables(&settings),
             vec!["tenants", "users", "sys_events"]

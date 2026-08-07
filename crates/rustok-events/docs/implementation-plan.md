@@ -22,6 +22,9 @@ version-1 schemas until remote-consumer migration ownership is retained.
 Root and typed envelopes validate at publication, outbox, relay, and JSON/MessagePack
 decode boundaries. `EventRuntime` is published before dispatcher startup and owns the
 shared Iggy transport used by outbound relay and approved inbound consumers.
+The root envelope uses the nil tenant UUID only for the explicit allow-list of
+platform-capable module events; every other root and typed contract envelope
+rejects the sentinel before persistence or relay.
 
 The typed-family implementation includes sealed
 `social_graph.relation.state_changed` v1. Its payload contains relation id,
@@ -121,6 +124,9 @@ Contract tests cover public event-contract use cases.
 - [x] Keep one canonical event/envelope/schema definition in `rustok-events`.
 - [x] Validate root and typed payloads at publication, relay, and decode boundaries.
 - [x] Keep registry, wire schemas, and committed digest artifact synchronized.
+- [x] Restrict the root nil-tenant platform sentinel to an explicit module-event
+  allow-list; all other root and typed envelopes reject it. The release artifact
+  was reverified by `canonical_contracts` (14 passing tests) on 2026-08-06.
 - [x] Own and guard outbound relay lifecycle.
 - [x] Add sealed `social_graph.relation.state_changed` v1 and transactional publication.
 - [x] Add bounded authoritative Social Graph replay.

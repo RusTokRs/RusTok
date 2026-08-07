@@ -13,9 +13,7 @@ use rustok_web::{HttpError, HttpResult};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{
-    AuditPageArtifactsInput, PageArtifactIntegrityAuditResult, PageService, PagesError,
-};
+use crate::{AuditPageArtifactsInput, PageArtifactIntegrityAuditResult, PageService, PagesError};
 
 const PAGE_ARTIFACT_INTEGRITY_AUDIT_INVALID_INPUT: &str =
     "PAGE_ARTIFACT_INTEGRITY_AUDIT_INVALID_INPUT";
@@ -112,9 +110,7 @@ fn page_security(auth: &AuthContext) -> rustok_core::SecurityContext {
 
 fn map_artifact_audit_error(error: PagesError) -> HttpError {
     match error {
-        PagesError::PageNotFound(_) => {
-            HttpError::not_found("PAGE_NOT_FOUND", "Page not found")
-        }
+        PagesError::PageNotFound(_) => HttpError::not_found("PAGE_NOT_FOUND", "Page not found"),
         PagesError::Forbidden(_) => {
             HttpError::forbidden("PAGES_PERMISSION_DENIED", "Permission denied")
         }

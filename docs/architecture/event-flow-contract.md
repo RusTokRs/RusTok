@@ -57,7 +57,7 @@ Publisher must not treat the event bus as its read-model API.
 ### Global delivery profiles
 
 The server selects one process-wide delivery profile, never a tenant-specific
-broker setting. `outbox_local` is the durable single-node default; and
+broker setting. `outbox` is the durable single-node default; and
 `outbox_iggy` is the durable high-throughput/multi-process path. Both profiles
 write business state and the outbox record atomically. Only `outbox_iggy`
 depends on Iggy.

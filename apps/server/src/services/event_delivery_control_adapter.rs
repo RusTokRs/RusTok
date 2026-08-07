@@ -50,7 +50,7 @@ impl EventDeliveryControl for ServerEventDeliveryControl {
         actor_id: Uuid,
     ) -> Result<EventDeliveryUpdateOutcome, String> {
         let profile = EventDeliveryProfile::parse(&profile)
-            .ok_or_else(|| "profile must be one of: outbox_local, outbox_iggy".to_string())?;
+            .ok_or_else(|| "profile must be one of: outbox, outbox_iggy".to_string())?;
         EventDeliverySettingsService::save_profile(&self.runtime, profile, actor_id)
             .await
             .map_err(|error| error.to_string())?;

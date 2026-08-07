@@ -44,7 +44,7 @@ to pull ecommerce or content surfaces it doesn't need.
 - `database` — critical check for DB availability;
 - `database_schema` — critical check for mandatory runtime schema tables:
   `tenants`, `users`, `sys_events` when the active delivery profile is
-  `outbox_local` or `outbox_iggy`, and
+  `outbox` or `outbox_iggy`, and
   `search_documents` when `rustok.features.search_indexing = true`;
 - `cache_backend` — basic check of tenant cache path;
 - `marketplace_providers` — non-critical snapshot of configured catalog

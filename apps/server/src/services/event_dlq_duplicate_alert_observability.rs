@@ -277,7 +277,7 @@ fn project_runtime(
             false,
             false,
         ),
-        EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal => (
+        EventDlqDuplicateAlertObserverMode::NotApplicableOutbox => (
             EventDlqDuplicateAlertHealthState::NotApplicable,
             None,
             None,
@@ -400,9 +400,7 @@ const fn metric_deployment(mode: EventDlqDuplicateAlertObserverMode) -> MetricDe
     match mode {
         EventDlqDuplicateAlertObserverMode::Disabled => MetricDeployment::Disabled,
         EventDlqDuplicateAlertObserverMode::Unavailable => MetricDeployment::Unavailable,
-        EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal => {
-            MetricDeployment::OutboxLocal
-        }
+        EventDlqDuplicateAlertObserverMode::NotApplicableOutbox => MetricDeployment::Outbox,
         EventDlqDuplicateAlertObserverMode::IggyBundled => MetricDeployment::IggyBundled,
         EventDlqDuplicateAlertObserverMode::IggyExternal => MetricDeployment::IggyExternal,
     }

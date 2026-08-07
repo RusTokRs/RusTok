@@ -12,6 +12,7 @@ use crate::dto::{CreatePageInput, PageResponse};
 use crate::entities::page;
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_scope;
+use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 use super::helpers::{
     body_uses_builder_capability, build_page_metadata, normalize_channel_slugs, normalize_locale,
@@ -78,7 +79,7 @@ impl PageService {
                 .await?;
         }
 
-        page::ActiveModel {
+        let created_page = page::ActiveModel {
             id: Set(page_id),
             tenant_id: Set(tenant_id),
             author_id: Set(security.user_id),
@@ -100,6 +101,18 @@ impl PageService {
             .await?;
         self.upsert_body_in_tx(&txn, tenant_id, page_id, body, now)
             .await?;
+
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                page_id,
+                resource_revision: i64::from(created_page.version),
+                operation: "upsert",
+                lifecycle: "active",
+            },
+        )
+        .await?;
 
         self.event_bus
             .publish_in_tx(

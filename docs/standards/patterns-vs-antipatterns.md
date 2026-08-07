@@ -89,7 +89,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 | # | ✅ Correct | ❌ Incorrect | Why | Details |
 |---|-------------|---------------|--------|--------|
 | 4.1 | `publish_in_tx()` — event in the same transaction as write | `publish()` (fire-and-forget) for business events | Event can go out when transaction rolls back | [ai/KNOWN_PITFALLS.md §Outbox](../ai/KNOWN_PITFALLS.md) |
-| 4.2 | `outbox_local` or `outbox_iggy` | Process-local event delivery profile | Event loss on restart, no guarantees | [references/outbox/README.md](../references/outbox/README.md) |
+| 4.2 | `outbox` or `outbox_iggy` | Process-local event delivery profile | Event loss on restart, no guarantees | [references/outbox/README.md](../references/outbox/README.md) |
 | 4.3 | Outbox relay worker is running | Production without relay worker | Events permanently stuck in `sys_events` | [ai/KNOWN_PITFALLS.md §Outbox](../ai/KNOWN_PITFALLS.md) |
 | 4.4 | `DomainEvent` with `tenant_id` in payload | Events without tenant_id | Index cannot determine which tenant the event belongs to | — |
 | 4.5 | Idempotent event handlers | Event handler without idempotency check | Data duplication on retry/replay | [CONTRIBUTING.md](../../CONTRIBUTING.md) |

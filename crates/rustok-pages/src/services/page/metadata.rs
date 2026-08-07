@@ -12,10 +12,11 @@ use crate::dto::{PageResponse, PatchPageMetadataInput};
 use crate::entities::page;
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
+use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 use super::helpers::{
-    build_page_metadata, enforce_expected_version, normalize_channel_slugs, normalize_slug,
-    storage_to_status, validate_page_translations,
+    build_page_metadata, enforce_expected_version, next_page_version, normalize_channel_slugs,
+    normalize_slug, storage_to_status, validate_page_translations,
 };
 use super::route::record_published_slug_redirects_in_tx;
 use super::{PAGE_KIND, PageService};
@@ -100,12 +101,17 @@ impl PageService {
         }
 
         let now = Utc::now();
+        let next_version = next_page_version(page_id, locked.version)?;
+        let lifecycle = match storage_to_status(&locked_status)? {
+            ContentStatus::Archived => "archived",
+            ContentStatus::Draft | ContentStatus::Published => "active",
+        };
         let mut active: page::ActiveModel = locked.into();
         active.template = Set(template);
         active.metadata = Set(metadata);
         active.updated_at = Set(now.into());
-        active.version = Set(active.version.take().unwrap_or(1) + 1);
-        active.update(&txn).await?;
+        active.version = Set(next_version);
+        let updated_page = active.update(&txn).await?;
 
         if let Some(translations) = input.translations.as_deref() {
             self.replace_translations_in_tx(&txn, tenant_id, page_id, translations)
@@ -115,6 +121,18 @@ impl PageService {
             self.replace_channel_visibility_in_tx(&txn, tenant_id, page_id, channel_slugs)
                 .await?;
         }
+
+        record_translation_change_in_tx(
+            &txn,
+            TranslationChangeEvidence {
+                tenant_id,
+                page_id,
+                resource_revision: i64::from(updated_page.version),
+                operation: "upsert",
+                lifecycle,
+            },
+        )
+        .await?;
 
         self.event_bus
             .publish_in_tx(

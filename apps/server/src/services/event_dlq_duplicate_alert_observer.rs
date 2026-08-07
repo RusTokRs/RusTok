@@ -44,7 +44,7 @@ const STARTUP_RUNTIME_UNAVAILABLE: &str =
 pub enum EventDlqDuplicateAlertObserverMode {
     Disabled,
     Unavailable,
-    NotApplicableOutboxLocal,
+    NotApplicableOutbox,
     IggyBundled,
     IggyExternal,
 }
@@ -130,7 +130,7 @@ pub async fn start_event_dlq_duplicate_alert_observer(ctx: &ServerRuntimeContext
     };
     if matches!(
         mode,
-        EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal
+        EventDlqDuplicateAlertObserverMode::NotApplicableOutbox
     ) {
         tracing::info!(
             delivery_profile = runtime.delivery_profile.as_str(),
@@ -414,9 +414,7 @@ fn observer_mode(
     iggy_mode: Option<&IggyMode>,
 ) -> Result<EventDlqDuplicateAlertObserverMode> {
     match profile {
-        EventDeliveryProfile::OutboxLocal => {
-            Ok(EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal)
-        }
+        EventDeliveryProfile::Outbox => Ok(EventDlqDuplicateAlertObserverMode::NotApplicableOutbox),
         EventDeliveryProfile::OutboxIggy => match iggy_mode {
             Some(IggyMode::Bundled) => Ok(EventDlqDuplicateAlertObserverMode::IggyBundled),
             Some(IggyMode::External) => Ok(EventDlqDuplicateAlertObserverMode::IggyExternal),
@@ -489,8 +487,8 @@ mod tests {
     #[test]
     fn every_event_delivery_profile_has_an_explicit_observer_mode() {
         assert_eq!(
-            observer_mode(EventDeliveryProfile::OutboxLocal, None).unwrap(),
-            EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal
+            observer_mode(EventDeliveryProfile::Outbox, None).unwrap(),
+            EventDlqDuplicateAlertObserverMode::NotApplicableOutbox
         );
         assert_eq!(
             observer_mode(EventDeliveryProfile::OutboxIggy, Some(&IggyMode::Bundled)).unwrap(),

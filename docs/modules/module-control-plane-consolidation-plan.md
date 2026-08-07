@@ -264,7 +264,7 @@ keep custom code limited to RusToK domain contracts.
 | WebAssembly runtime | `wasmtime` Component Model, fuel, epochs, store limits |
 | Rust component build | Native pinned Cargo targeting `wasm32-wasip2`, `wit-bindgen`, Rust's Component Model linker, `wasm-tools` |
 | Cargo graph inspection | `cargo metadata` / `cargo_metadata` |
-| OCI transport | Existing `oci-distribution` adapter |
+| OCI transport | Platform-owned strict OCI Distribution transport over `reqwest`; `oci-distribution` is limited to OCI data-model and auth DTOs |
 | Artifact bytes | OCI digest semantics plus an `ArtifactBlobStore` port backed by platform-controlled content-addressed object storage; reuse `rustok-storage` adapters where they satisfy CAS requirements |
 | Module dependency solving | `pubgrub` behind a RusToK provider adapter; replacement requires a documented incompatibility/ADR, never a naive recursive resolver |
 | Settings/action schemas | JSON Schema Draft 2020-12 validated with the maintained `jsonschema` crate; generate host-owned schemas with `schemars` where useful |
@@ -880,8 +880,10 @@ adapter and must not be used as artifact identity or durable policy state.
   RBAC permission evaluation remains a separate RBAC-owner
   authorization adapter. `EffectivePolicyService` likewise owns the
   tenant override read and Core/default composition shared by server guards,
-  GraphQL, and installer adapters. The static write-path verifier rejects direct
-  construction of these extracted SeaORM services outside the owner crate.
+  GraphQL, and installer adapters. It also supplies the tenant-scoped
+  policy-revision cursor required for commit-time lifecycle serialization. The
+  static write-path verifier rejects direct construction of these extracted
+  SeaORM services outside the owner crate.
   Promotion request and approval are a separate platform-scoped owner
   subservice. It accepts only an active `platform_built` release and reloads the
   completed build request/result, source identity, dependency-lock digest, and
@@ -1098,6 +1100,11 @@ transactional outbox write. This replaces calls that accidentally placed an
 event ID in the envelope tenant field and a tenant ID in the actor field. The
 same verifier rejects direct `EventEnvelope::new` calls elsewhere in the owner
 crate so that metadata cannot silently drift again.
+
+The root event contract encodes platform scope as the nil tenant sentinel only
+for an explicit allow-list of platform-capable module events. Every other event
+remains tenant-scoped and rejects the sentinel at both root and typed-contract
+envelope validation boundaries.
 
 The static verifier must reject SQL/entity writes to these aggregates outside
 the owner implementation and migrations:
@@ -1651,6 +1658,17 @@ remains a separate destructive command.
 - Namespaced storage tests prove tenant/module isolation, quotas, revisions,
   backup/export, and explicit purge behavior.
 
+Focused verification on 2026-08-06 passed `cargo test --locked -p rustok-modules --lib`
+(186 tests), `cargo test --locked -p rustok-modules --test policy_commit_guard_sqlite`
+(one test), and `cargo test --locked -p rustok-events --test canonical_contracts`
+(14 tests), including platform-scope envelope validation and the reviewed
+event-contract release artifact. The control-plane write-path, strict OCI
+transport, and lifecycle-bypass verifiers also pass; the last now proves the
+obsolete direct toggle helper is absent rather than allowing a migration-only
+exception. The server-adapter check remains an environment follow-up: this host
+exhausts virtual memory while compiling the unrelated `rustok-admin` crate
+before the selected adapter test binary can run.
+
 ## Phase 4 - Isolated Rust Module Build Worker
 
 ### Objective
@@ -1994,7 +2012,10 @@ authoring-request attempt also exceeded that window, but after the dependency
 cache completed both owner request/policy tests passed. The expanded
 six-command CLI provider test again exceeded 60 seconds while compiling
 dependencies and was terminated, so the new CLI command still lacks direct
-crate compile evidence. No full compile or test suite was run.
+crate compile evidence. `cargo test --locked -p rustok-module-build-worker` now
+passes all seven unit tests, including immutable `Cargo.lock` policy fixtures
+parsed as TOML documents rather than scalar values; its isolation verifier also
+passes. No workspace-wide compile or test suite was run.
 
 ## Phase 5 - OCI Publication, Signatures, SBOM, and Provenance
 
@@ -2042,34 +2063,29 @@ trust policy before admission.
   credential is retained only in worker memory for OCI and a private temporary
   Cosign Docker configuration, then removed; the worker no longer reads direct
   registry username/password environment variables.
-- [ ] Define registry redirect, cross-host auth, TLS, proxy, timeout, retry,
-  maximum-size, and decompression policies explicitly. The enforced client
-  subset now uses the typed `OciRegistryTransportPolicy`: HTTPS only, verified
-  TLS, redirects and cross-host authentication disabled, deployment-boundary
-  proxy mode, bounded request/retry/transfer/decompression ceilings, disabled
-  platform resolver, and serialized uploads/downloads. A weaker policy is
-  rejected before client construction and the policy is the only public
-  construction path for the distribution reader and publisher. Registry
-  transport source is covered by
-  `verify-oci-registry-transport-policy.mjs`; deployment egress still must
-  provide the corresponding redirect/proxy/retry/decompression enforcement.
-  references are host/repository/digest identities rather than URLs, and the
+- [x] Define and enforce registry redirect, cross-host authentication, TLS, proxy, timeout, retry,
+  maximum-size, and decompression policy. The typed
+  `OciRegistryTransportPolicy` is applied by the platform-owned OCI
+  Distribution transport: HTTPS-only routing, verified TLS, redirects disabled,
+  no process/system proxy, connection/request deadlines, bounded manual retry,
+  transfer and decompressed-response ceilings, identity-only response encoding,
+  and request-wide semaphore bounds. The transport disables `reqwest` retries
+  and automatic decompression, rejects cross-origin upload locations, and
+  permits a cross-host bearer-token lookup only without forwarding Basic
+  credentials. It owns digest/tag manifest reads, streaming blob reads,
+  monolithic blob uploads, and manifest writes; unsupported workflows fail
+  closed.
+  OCI identities remain host/repository/digest values rather than URLs, and the
   publisher receives credentials only after the worker has obtained a
-  repository-bound lease. The current `oci-distribution` client exposes no
-  redirect, proxy, retry, per-request timeout, or decompression hooks, so the
-  deployment egress boundary must deny redirects and cross-host credential
-  forwarding, restrict proxy use to that boundary, enforce connection and
-  request deadlines, and apply retry and transfer/decompression ceilings. The
-  adapter independently bounds complete descriptor/layer admission to five
-  minutes, streams config only after its declared descriptor-size check, and
-  cancellation-safely deletes a partial staging file. Config and payload streams
-  reject bytes beyond their OCI-declared size before extending memory or disk
-  staging, and require an exact final size before parsing or digest acceptance.
-  The current client still buffers manifests, so manifest and transfer ceilings
-  remain egress controls. The adapter also cancels a complete artifact-and-referrer
-  publication after ten minutes, leaving bounded time for Cosign inside the
-  worker's separate 15-minute credential window. This item remains open until
-  the remaining egress controls are configured and verified.
+  repository-bound lease. `oci-distribution` remains only for OCI data-model
+  and registry-auth DTOs; repository-owned production code does not construct
+  its network client. The adapter independently bounds complete descriptor/layer
+  admission to five minutes, streams config only after its declared
+  descriptor-size check, cancellation-safely deletes partial staging, and
+  rejects received bytes beyond declared size before parsing or digest
+  acceptance. Source and unit coverage are provided by
+  `verify-oci-registry-transport-policy.mjs` and `rustok-modules` transport
+  tests. See [ADR: Platform-Owned OCI Registry Transport Boundary](../../DECISIONS/2026-08-06-oci-registry-transport-boundary.md).
 
 ### 5.2 Signing
 

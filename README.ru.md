@@ -157,7 +157,7 @@ RusTok решает это с помощью **`rustok-index`** ([crates/rustok-
 
 ### 4. Событийный стриминг и Transactional Outbox (Iggy & `sys_events`)
 RusTok реализует надежную событийную доставку без навязывания тяжелых брокеров для небольших установок:
-- **Transactional Outbox (`outbox_local`)**: События (`IndexMutation`, `OrderPaid` и т.д.) записываются в PostgreSQL таблицу `sys_events` в той же транзакции БД, что и сущности домена. Асинхронные воркеры Tokio разгребают события в фоне без потери данных.
+- **Transactional Outbox (`outbox`)**: События (`IndexMutation`, `OrderPaid` и т.д.) записываются в PostgreSQL таблицу `sys_events` в той же транзакции БД, что и сущности домена. Асинхронные воркеры Tokio разгребают события в фоне без потери данных.
 - **Нативный Rust-стриминг событий (`outbox_iggy`)**: Для высоких нагрузок RusTok интегрируется с **[Iggy](https://iggy.rs)** (`rustok-iggy`) — ультрабыстрым брокером стриминга на Rust. Iggy дает упорядоченный лог событий, **Event Replay (перепроигрывание)** и Consumer Groups с минимальным потреблением ОЗУ.
 
 ### 5. Сборка манифестом во время компиляции (`modules.toml`)

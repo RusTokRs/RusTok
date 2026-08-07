@@ -28,10 +28,10 @@ use crate::{
     SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretService,
     SeaOrmArtifactSecretUseService, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModuleArtifactSecurityService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
-    SeaOrmModuleGovernanceService, SeaOrmModulePromotionService,
-    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionRolloutService,
-    SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
-    StorageArtifactBlobStore,
+    SeaOrmModuleGovernanceService, SeaOrmModulePolicyRevisionConsumer,
+    SeaOrmModulePromotionService, SeaOrmModuleStaticDistributionReleaseService,
+    SeaOrmModuleStaticDistributionRolloutService, SeaOrmModuleStaticDistributionService,
+    SeaOrmModuleStaticDistributionWorkerService, StorageArtifactBlobStore,
 };
 use rustok_storage::StorageRuntime;
 
@@ -577,6 +577,12 @@ impl ModuleControlPlane {
         EffectivePolicyService {
             lifecycle: self.lifecycle(registry, default_enabled_modules),
         }
+    }
+
+    /// Returns the durable tenant-policy cursor owner. Hosts use this facade
+    /// boundary when a transaction must serialize with lifecycle transitions.
+    pub fn policy_revision_consumer(&self) -> SeaOrmModulePolicyRevisionConsumer {
+        SeaOrmModulePolicyRevisionConsumer::new(self.db.clone())
     }
 
     pub fn static_distribution_effective_policy<'a>(

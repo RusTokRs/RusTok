@@ -32,7 +32,9 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   `VARCHAR(32)` by an irreversible PostgreSQL migration.
 - **Pages** — base page rows remain language-agnostic; translations and bodies
   are parallel records. A forward migration widens page and body locale columns
-  to `VARCHAR(32)`.
+  to `VARCHAR(32)`. The Pages metadata Translation pilot adds an exact-locale
+  revision to `page_translations` and a content-free `pages_translation_changes`
+  journal without moving localized copy into the Translation schema.
 - **Navigation** — `rustok-navigation` owns language-agnostic menu/menu-item
   rows and their parallel localized records. Clean schema creation uses
   `VARCHAR(32)` locale columns and tenant-composite uniqueness; Pages does not

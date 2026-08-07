@@ -90,7 +90,7 @@ impl EventEnvelope {
         if self.correlation_id.is_nil() {
             return Err(EventValidationError::NilUuid("correlation_id").into());
         }
-        if self.tenant_id.is_nil() {
+        if self.tenant_id.is_nil() && !self.event.allows_platform_scope() {
             return Err(EventValidationError::NilUuid("tenant_id").into());
         }
         validators::validate_optional_uuid("causation_id", &self.causation_id)?;
@@ -923,6 +923,35 @@ pub enum DomainEvent {
 }
 
 impl DomainEvent {
+    /// Returns whether this event may be emitted by the platform scope.
+    ///
+    /// The root envelope represents platform scope with the nil tenant UUID.
+    /// Every event not listed here remains tenant-scoped and rejects that
+    /// sentinel at the durable event boundary.
+    pub fn allows_platform_scope(&self) -> bool {
+        matches!(
+            self,
+            Self::ModuleArtifactAdmitted { .. }
+                | Self::ModuleArtifactReverified { .. }
+                | Self::ModuleArtifactRolledBack { .. }
+                | Self::ModuleArtifactUninstalled { .. }
+                | Self::ModuleArtifactMigrationCheckpointed { .. }
+                | Self::ModuleArtifactDeactivated { .. }
+                | Self::ModuleStaticPromotionRequested { .. }
+                | Self::ModuleStaticPromotionApproved { .. }
+                | Self::ModuleStaticDistributionBuildQueued { .. }
+                | Self::ModuleStaticDistributionBuildClaimed { .. }
+                | Self::ModuleStaticDistributionBuildCompleted { .. }
+                | Self::ModuleStaticDistributionReleaseActivated { .. }
+                | Self::ModuleStaticDistributionRollbackBuildQueued { .. }
+                | Self::ModuleStaticDistributionReleaseRevoked { .. }
+                | Self::ModuleStaticDistributionRolloutRequested { .. }
+                | Self::ModuleStaticDistributionNodeObserved { .. }
+                | Self::ModuleStaticDistributionRolloutStatusChanged { .. }
+                | Self::ModuleArtifactSecurityStateChanged { .. }
+        )
+    }
+
     pub fn event_type(&self) -> &'static str {
         match self {
             Self::NodeCreated { .. } => "node.created",
@@ -3349,5 +3378,43 @@ mod tests {
         };
 
         assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn platform_scoped_module_event_accepts_the_root_tenant_sentinel() {
+        let envelope = EventEnvelope::new(
+            Uuid::nil(),
+            None,
+            DomainEvent::ModuleArtifactAdmitted {
+                installation_id: Uuid::new_v4(),
+                artifact_digest: "sha256:artifact".to_string(),
+                media_type: "application/vnd.rustok.wasm.component.v1+wasm".to_string(),
+                size_bytes: 1,
+            },
+        );
+
+        assert!(envelope.validate_registered_schema().is_ok());
+    }
+
+    #[test]
+    fn tenant_scoped_module_event_rejects_the_root_tenant_sentinel() {
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(
+            Uuid::nil(),
+            None,
+            DomainEvent::ModuleBuildQueued {
+                request_id: Uuid::new_v4(),
+                tenant_id,
+                project_id: "module-build-test".to_string(),
+                attempt: 1,
+            },
+        );
+
+        assert!(matches!(
+            envelope.validate_registered_schema(),
+            Err(EventEnvelopeError::Validation(
+                EventValidationError::NilUuid("tenant_id")
+            ))
+        ));
     }
 }

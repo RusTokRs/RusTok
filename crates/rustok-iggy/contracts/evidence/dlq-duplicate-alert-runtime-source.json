@@ -106,7 +106,7 @@
     "iggy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
     "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
     "delivery_profiles": [
-      "outbox_local_not_applicable",
+      "outbox_not_applicable",
       "outbox_iggy_bundled",
       "outbox_iggy_external"
     ],

@@ -98,7 +98,7 @@ if (
 
 if (
   !same(contract.delivery_profiles, {
-    outbox_local: "not_applicable",
+    outbox: "not_applicable",
     outbox_iggy: "iggy_observer",
   }) ||
   !same(contract.iggy_modes, {
@@ -114,7 +114,7 @@ if (
   contract.activation?.enable_env !== "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED" ||
   contract.activation?.background_workers_required !== true ||
   contract.activation?.event_runtime_required !== true ||
-  contract.activation?.outbox_local_requires_iggy !== false ||
+  contract.activation?.outbox_requires_iggy !== false ||
   contract.activation?.outbox_iggy_requires_shared_transport !== true ||
   contract.activation?.outbox_iggy_missing_active_mode_fails_closed !== true ||
   contract.activation?.observer_startup_failure_is_non_fatal !== true ||
@@ -300,7 +300,7 @@ for (const marker of [
   '"iggy.dlq_duplicate.alert_server_observer_configuration_invalid"',
   '"iggy.dlq_duplicate.alert_server_observer_runtime_unavailable"',
   "pub enum EventDlqDuplicateAlertObserverMode",
-  "NotApplicableOutboxLocal",
+  "NotApplicableOutbox",
   "IggyBundled",
   "IggyExternal",
   "EventDlqDuplicateAlertScanConfig::GlobalBudget",
@@ -327,7 +327,7 @@ for (const marker of [
 }
 
 const nonApplicableIndex = serverSource.indexOf(
-  "EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal",
+  "EventDlqDuplicateAlertObserverMode::NotApplicableOutbox",
 );
 const sharedTransportIndex = serverSource.indexOf("ctx.shared_get::<Arc<IggyTransport>>()");
 if (
@@ -497,5 +497,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit OutboxLocal not-applicable handling, non-fatal Unavailable startup, compatibility global and fixed fair scans, explicit moving-window configuration with independent process-local cursors and atomic rolling cycles, identifier-free summary publication, moving-state preservation after failed cycles, and no event-delivery/readiness/Profile mutation are locked; external runtime execution remains pending.",
+  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Outbox not-applicable handling, non-fatal Unavailable startup, compatibility global and fixed fair scans, explicit moving-window configuration with independent process-local cursors and atomic rolling cycles, identifier-free summary publication, moving-state preservation after failed cycles, and no event-delivery/readiness/Profile mutation are locked; external runtime execution remains pending.",
 );

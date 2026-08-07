@@ -44,6 +44,7 @@ pubgrub = "0.4"
 jsonschema = { version = "=0.46.10", default-features = false }
 toml.workspace = true
 url.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

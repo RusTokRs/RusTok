@@ -42,6 +42,10 @@
 - Works with `rustok-core`, which keeps compatibility re-exports during the transition.
 - Used by transport-oriented crates such as `rustok-outbox` and `rustok-iggy` through shared event contracts rather than transport-owned schemas.
 
+Root envelopes use the nil tenant UUID only for explicitly platform-capable
+`DomainEvent` variants. All other root and typed contract envelopes reject the
+sentinel before persistence or relay.
+
 ## Docs
 
 - [Module docs](./docs/README.md)

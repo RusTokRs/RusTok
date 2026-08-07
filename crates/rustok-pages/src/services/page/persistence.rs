@@ -11,7 +11,7 @@ use crate::entities::{
 };
 use crate::error::{PagesError, PagesResult};
 
-use super::helpers::{normalize_locale, normalize_slug};
+use super::helpers::{next_page_translation_revision, normalize_locale, normalize_slug};
 use super::route::ensure_route_alias_claim_available_in_tx;
 use super::{PageService, PreparedPageBody};
 
@@ -90,11 +90,17 @@ impl PageService {
                 .await?;
             match existing {
                 Some(existing) => {
+                    let revision = next_page_translation_revision(
+                        page_id,
+                        &locale,
+                        existing.revision,
+                    )?;
                     let mut active: page_translation::ActiveModel = existing.into();
                     active.title = Set(translation.title.clone());
                     active.slug = Set(slug);
                     active.meta_title = Set(translation.meta_title.clone());
                     active.meta_description = Set(translation.meta_description.clone());
+                    active.revision = Set(revision);
                     active.update(txn).await?;
                 }
                 None => {
@@ -105,9 +111,10 @@ impl PageService {
                         locale: Set(locale),
                         title: Set(translation.title.clone()),
                         slug: Set(slug),
-                        meta_title: Set(translation.meta_title.clone()),
-                        meta_description: Set(translation.meta_description.clone()),
-                    }
+                    meta_title: Set(translation.meta_title.clone()),
+                    meta_description: Set(translation.meta_description.clone()),
+                    revision: Set(1),
+                }
                     .insert(txn)
                     .await?;
                 }

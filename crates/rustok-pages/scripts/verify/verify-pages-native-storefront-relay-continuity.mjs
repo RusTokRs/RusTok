@@ -190,7 +190,7 @@ forbid(
 );
 
 for (const marker of [
-  "EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy",
+  "EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy",
   "TenantGenerationDeliveryGate::new",
   "OutboxRelay::new(ctx.db_clone(), relay_target)"
 ]) need(serverFactory, marker, "production server transport topology");

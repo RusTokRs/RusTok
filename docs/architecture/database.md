@@ -45,6 +45,10 @@ The current target platform pattern:
   `VARCHAR(32)`
 - widening locale columns to `VARCHAR(32)` is considered a safe forward migration:
   rollback must not narrow such columns back and risk losing valid BCP47-like tags
+- Pages keeps localized title, slug, and SEO metadata in `page_translations`;
+  `page_translations.revision` and the content-free
+  `pages_translation_changes` journal support owner-safe Translation metadata
+  apply without moving page copy into the Translation control plane
 
 If an old module uses a mixed storage pattern, this is considered a
 migration target, not a desired baseline.

@@ -82,7 +82,7 @@ settings:
     events:
       # Durable transactional persistence with single-process local delivery.
       # Select `outbox_iggy` only after provisioning Iggy in this deployment.
-      delivery_profile: outbox_local
+      delivery_profile: outbox
       relay_interval_ms: 1000
       channel_capacity: 512
       backpressure:

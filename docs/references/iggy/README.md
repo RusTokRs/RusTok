@@ -14,7 +14,7 @@ Last updated: **2026-07-23**.
 > This package captures the working Iggy integration layer in RusToK (`rustok-iggy`, `rustok-iggy-connector`, `rustok-outbox`) and protects against incorrect migrations from Kafka/NATS.
 
 Iggy is selected only by the global `outbox_iggy` event-delivery profile. The
-single-node `outbox_local` profile does not start, require, or fall back to
+single-node `outbox` profile does not start, require, or fall back to
 Iggy. Operators select the profile in the global admin control plane; Iggy
 endpoints and credentials remain deployment configuration.
 

@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use rustok_order::OrderResponse;
 use rustok_payment::{
-    CheckoutPaymentExecutionPort as CanonicalCheckoutPaymentExecutionPort,
-    PaymentProviderRegistry,
+    CheckoutPaymentExecutionPort as CanonicalCheckoutPaymentExecutionPort, PaymentProviderRegistry,
 };
 use uuid::Uuid;
 
@@ -201,10 +200,8 @@ mod payment_execution_boundary {
 }
 
 mod rustok_api_shim {
-    pub use ::rustok_api::{
-        PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind,
-    };
     pub(crate) use super::payment_execution_boundary::BoundaryPortError as PortError;
+    pub use ::rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
 }
 
 mod rustok_payment_shim {
@@ -337,7 +334,9 @@ mod rustok_payment_shim {
             context: PortContext,
             request: PrepareCheckoutPaymentCollectionRequest,
         ) -> Result<PaymentCollectionResponse, BoundaryPortError> {
-            self.inner.prepare_checkout_collection(context, request).await
+            self.inner
+                .prepare_checkout_collection(context, request)
+                .await
         }
 
         async fn authorize_checkout_collection(
@@ -391,14 +390,14 @@ mod tracing_shim {
         }};
     }
 
-    macro_rules! warn {
+    macro_rules! warn_event {
         ($($tokens:tt)*) => {{
             let _ = stringify!($($tokens)*);
         }};
     }
 
     pub(crate) use error;
-    pub(crate) use warn;
+    pub(crate) use warn_event;
 }
 
 mod legacy {
@@ -428,9 +427,7 @@ impl CheckoutPaymentStageExecutor {
         mut self,
         payment_provider_registry: PaymentProviderRegistry,
     ) -> Self {
-        self.inner = self
-            .inner
-            .with_provider_registry(payment_provider_registry);
+        self.inner = self.inner.with_provider_registry(payment_provider_registry);
         self
     }
 

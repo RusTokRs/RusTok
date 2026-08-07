@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
-use rustok_modules::SeaOrmModulePolicyRevisionConsumer;
+use rustok_modules::ModuleControlPlane;
 use rustok_notifications::{
     DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE, NotificationCandidatePolicyDeferral,
     NotificationCandidateWorkItem, NotificationCandidateWorker, NotificationError,
@@ -60,7 +60,8 @@ impl NotificationTenantCapabilityCommitGuard for ServerNotificationTenantCapabil
         // the observation avoids opening another pool connection while the final
         // transaction is active. Manifest mutation is intentionally outside the
         // lifecycle cursor guarantee and remains a separate rollout gate.
-        let policy = SeaOrmModulePolicyRevisionConsumer::new(self.db.clone())
+        let policy = ModuleControlPlane::new(self.db.clone())
+            .policy_revision_consumer()
             .lock_and_resolve_static_policy_in_transaction(
                 transaction,
                 request.tenant_id,

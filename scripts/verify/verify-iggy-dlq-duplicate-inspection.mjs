@@ -243,7 +243,7 @@ if (
   observer.iggy_source !== observerIggySourcePath ||
   observer.server_source !== observerServerSourcePath ||
   observer.memory !== "not_applicable" ||
-  observer.outbox_local !== "not_applicable" ||
+  observer.outbox !== "not_applicable" ||
   !same(observer.outbox_iggy_modes, ["bundled", "external"]) ||
   observer.startup_failure_non_fatal !== true ||
   !same(observer.scan_modes, ["global_budget", "fair_window", "moving_window"]) ||

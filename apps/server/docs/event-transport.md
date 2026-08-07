@@ -14,10 +14,10 @@ the event transport while an outbox relay is processing records.
 
 | Profile | Delivery path | Intended use |
 | --- | --- | --- |
-| `outbox_local` | transactional database outbox → process-local listeners | lightweight single-node production deployments, including stores |
+| `outbox` | transactional database outbox → process-local listeners | lightweight single-node production deployments, including stores |
 | `outbox_iggy` | transactional database outbox → Iggy → local listeners | high-throughput or multi-process production deployments |
 
-`outbox_local` is fully independent of Iggy. It is the production default for
+`outbox` is fully independent of Iggy. It is the production default for
 a single server process and retains retries, backoff, DLQ handling, and
 transactional event persistence.
 
@@ -28,7 +28,7 @@ delivering events locally.
 ## Operator workflow
 
 1. Open the global Events and Outbox operator screen.
-2. Select `outbox_local` or `outbox_iggy`.
+2. Select `outbox` or `outbox_iggy`.
 3. If `outbox_iggy` is selected, the server validates its deployment Iggy
    configuration. When it is absent or invalid, the UI shows a configuration
    dialog and the API rejects the change.
@@ -49,7 +49,7 @@ Bootstrap defaults and Iggy deployment details are under
 settings:
   rustok:
     events:
-      delivery_profile: outbox_local
+      delivery_profile: outbox
       relay_interval_ms: 1000
       iggy:
         mode: external # bundled or external
@@ -61,7 +61,7 @@ settings:
 ```
 
 `RUSTOK_EVENT_DELIVERY_PROFILE` may provide the bootstrap profile using one of
-`outbox_local` or `outbox_iggy`. The persisted global setting has
+`outbox` or `outbox_iggy`. The persisted global setting has
 priority when the server starts.
 
 For `outbox_iggy`, `external` requires a TCP endpoint, a username, and a

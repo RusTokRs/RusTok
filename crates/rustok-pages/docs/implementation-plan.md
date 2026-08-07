@@ -37,6 +37,26 @@ Fly remains the only visual document and command authority. Pages owns page iden
 - Rollback selects a prior immutable manifest without compiling the current draft.
 - Database, GraphQL, REST, publish, rollback and event schemas are unchanged by the inline-authoring slices.
 
+### Exact Translation metadata target
+
+`pages/page_metadata` is an owner-registered Translation pilot for exact
+`title`, review-only `slug`, optional `meta_title`, and optional
+`meta_description`. It does not include Fly/GrapesJS body content.
+
+`page_translations.revision` provides target/source locale CAS while
+`pages.version` provides the resource CAS. `PageService` applies a merged
+exact-locale patch atomically, validates the localized slug against Pages
+routing ownership, advances both revisions, emits the existing `NodeUpdated`
+outbox event, records a content-free `pages_translation_changes` cursor entry,
+and completes the shared owner-operation receipt in that transaction. Normal
+metadata, lifecycle, reviewed-publish, rollback, and delete writes emit the
+same cursor evidence. Archived Pages are readable as archived evidence but are
+not listed for active translation work and reject apply.
+
+Translation has no direct Pages table access and no runtime-locale fallback in
+this target. Production enablement still requires retained PostgreSQL
+migration, concurrent CAS, and change-cursor recovery evidence.
+
 ### Public locale, route and cache authority
 
 - Public detail/list use requested locale → tenant default → platform fallback.

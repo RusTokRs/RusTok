@@ -34,7 +34,7 @@
       "disabled",
       "unavailable",
       "memory",
-      "outbox_local",
+      "outbox",
       "iggy_bundled",
       "iggy_external"
     ],

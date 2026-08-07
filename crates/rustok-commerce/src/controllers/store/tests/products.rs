@@ -233,10 +233,7 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
 
     assert_eq!(error.status, StatusCode::NOT_FOUND);
     assert_eq!(error.code, "pricing.price_not_found");
-    assert_eq!(
-        error.message,
-        format!("price for variant {} was not found", variant.id)
-    );
+    assert_eq!(error.message, "price was not found");
 }
 
 #[tokio::test]

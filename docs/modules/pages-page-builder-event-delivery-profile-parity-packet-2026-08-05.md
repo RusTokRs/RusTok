@@ -5,14 +5,14 @@ Status: source-ready / execution-pending
 
 ## Purpose
 
-Retain one server integration source that constructs the real event runtime through `build_event_runtime` for `outbox_local` and proves that the production Pages generation gate preserves its durable delivery boundary. The packet also records the `outbox_iggy` factory boundary without requiring external Iggy infrastructure.
+Retain one server integration source that constructs the real event runtime through `build_event_runtime` for `outbox` and proves that the production Pages generation gate preserves its durable delivery boundary. The packet also records the `outbox_iggy` factory boundary without requiring external Iggy infrastructure.
 
 Earlier packets exercised the gate through manually assembled relay targets. This packet covers the factory-selected topology itself.
 
-## OutboxLocal profile
+## Outbox profile
 
 ```text
-RustokSettings.events.delivery_profile = OutboxLocal
+RustokSettings.events.delivery_profile = Outbox
   → build_event_runtime
 application publish
   → OutboxTransport

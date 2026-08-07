@@ -91,8 +91,8 @@ surfaces.
 - `npm run verify:outbox:fba`
 - `cargo xtask module validate outbox`
 - `cargo xtask module test outbox`
-- Targeted transactional publish, relay, retry, DLQ, tenant-isolation, and
-  consumer-recovery runtime tests.
+- Targeted transactional publish, relay, retry, and DLQ runtime tests cover
+  tenant isolation and consumer recovery.
 
 ## Change rules
 
