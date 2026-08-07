@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 pub const MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES: usize = 131_072;
 
+const RELATION_LOCK_DOMAIN: &str = "product-sales-channel-index-relation";
 const FRESHNESS_LOCK_DOMAIN: &str = "product-sales-channel-index-relation-freshness";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,14 +76,14 @@ pub enum ProductSalesChannelIndexRelationFreshnessError {
     ProductNotFound,
     #[error("Product-SalesChannel freshness relation epoch is invalid")]
     InvalidRelationEpoch,
+    #[error("Product-SalesChannel freshness relation epoch is no longer current")]
+    RelationNotCurrent,
     #[error("Product-SalesChannel freshness Product source version is invalid")]
     InvalidProductSourceVersion,
     #[error("Product-SalesChannel freshness visibility key is invalid")]
     InvalidVisibilityKey,
     #[error("Product-SalesChannel freshness Channel identity generation is invalid")]
     InvalidChannelIdentityGeneration,
-    #[error("Product-SalesChannel freshness relation snapshot does not exist")]
-    RelationNotFound,
     #[error("Product-SalesChannel freshness watermark regressed")]
     WatermarkRegressed,
     #[error("Product-SalesChannel freshness storage returned invalid state")]
@@ -91,12 +92,13 @@ pub enum ProductSalesChannelIndexRelationFreshnessError {
     Unavailable,
 }
 
-/// Product-owned append-only witness that one retained relation epoch was resolved from exact
-/// Product visibility and a durable Channel identity generation.
+/// Product-owned append-only witness that one current relation epoch was resolved from exact Product
+/// visibility and a durable Channel identity generation.
 ///
-/// The store accepts only opaque visibility evidence and numeric owner watermarks. It never reads
-/// Channel tables or imports Channel types. Freshness can advance without changing relation_epoch;
-/// that is intentional when owner state changed but the resolved UUID membership stayed identical.
+/// Lock order is Product row -> relation advisory lock -> freshness advisory lock. This matches the
+/// relation owner and prevents a witness from being committed for an epoch concurrently superseded by
+/// another relation writer. The store accepts opaque visibility evidence and never reads Channel
+/// tables or imports Channel types.
 #[derive(Clone)]
 pub struct ProductSalesChannelIndexRelationFreshnessStore {
     db: DatabaseConnection,
@@ -188,8 +190,21 @@ impl ProductSalesChannelIndexRelationFreshnessStore {
         ProductSalesChannelIndexRelationFreshnessError,
     > {
         require_live_product(transaction, tenant_id, product_id).await?;
-        lock_freshness(transaction, tenant_id, product_id).await?;
-        require_relation_epoch(transaction, tenant_id, product_id, relation_epoch).await?;
+        lock_domain(
+            transaction,
+            tenant_id,
+            product_id,
+            RELATION_LOCK_DOMAIN,
+        )
+        .await?;
+        lock_domain(
+            transaction,
+            tenant_id,
+            product_id,
+            FRESHNESS_LOCK_DOMAIN,
+        )
+        .await?;
+        require_current_relation_epoch(transaction, tenant_id, product_id, relation_epoch).await?;
         let previous = load_latest(transaction, tenant_id, product_id).await?;
 
         if let Some(previous) = previous.as_ref() {
@@ -287,7 +302,7 @@ async fn require_live_product(
     Ok(())
 }
 
-async fn require_relation_epoch(
+async fn require_current_relation_epoch(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     product_id: Uuid,
@@ -297,28 +312,34 @@ async fn require_relation_epoch(
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
-            SELECT 1 AS present
+            SELECT relation_epoch
             FROM product_sales_channel_index_relation_snapshots
             WHERE tenant_id = $1
               AND product_id = $2
-              AND relation_epoch = $3
+            ORDER BY relation_epoch DESC
+            LIMIT 1
             "#,
-            vec![tenant_id.into(), product_id.into(), relation_epoch.into()],
+            vec![tenant_id.into(), product_id.into()],
         ))
         .await
-        .map_err(|_| ProductSalesChannelIndexRelationFreshnessError::Unavailable)?;
-    if row.is_none() {
-        return Err(ProductSalesChannelIndexRelationFreshnessError::RelationNotFound);
+        .map_err(|_| ProductSalesChannelIndexRelationFreshnessError::Unavailable)?
+        .ok_or(ProductSalesChannelIndexRelationFreshnessError::RelationNotCurrent)?;
+    let current_epoch: i64 = row
+        .try_get("", "relation_epoch")
+        .map_err(|_| ProductSalesChannelIndexRelationFreshnessError::InvalidStoredState)?;
+    if current_epoch <= 0 || current_epoch != relation_epoch {
+        return Err(ProductSalesChannelIndexRelationFreshnessError::RelationNotCurrent);
     }
     Ok(())
 }
 
-async fn lock_freshness(
+async fn lock_domain(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     product_id: Uuid,
+    domain: &str,
 ) -> Result<(), ProductSalesChannelIndexRelationFreshnessError> {
-    let lock_key = format!("{tenant_id}\u{1f}{product_id}\u{1f}{FRESHNESS_LOCK_DOMAIN}");
+    let lock_key = format!("{tenant_id}\u{1f}{product_id}\u{1f}{domain}");
     transaction
         .execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -469,6 +490,15 @@ mod tests {
             "x".repeat(MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES + 1)
                 .len()
                 > MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES
+        );
+    }
+
+    #[test]
+    fn freshness_uses_membership_lock_before_witness_lock() {
+        assert_eq!(RELATION_LOCK_DOMAIN, "product-sales-channel-index-relation");
+        assert_eq!(
+            FRESHNESS_LOCK_DOMAIN,
+            "product-sales-channel-index-relation-freshness"
         );
     }
 }
