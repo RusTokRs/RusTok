@@ -5,9 +5,10 @@ use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PreviewPageBuilderInput,
     PublishPageBuilderInput,
 };
+use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use rustok_page_builder_admin::{
     AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
-    PageBuilderAdminFacadeFuture,
+    PageBuilderAdminFacadeFuture, PageBuilderAdminProviderStatus,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -25,8 +26,6 @@ use rustok_page_builder::preview_port::PageBuilderPreviewRenderingPort;
 #[cfg(feature = "ssr")]
 use rustok_page_builder::render::PageBuilderRenderer;
 #[cfg(feature = "ssr")]
-use rustok_page_builder::rollout::BuilderCapabilityFlags;
-#[cfg(feature = "ssr")]
 use rustok_page_builder::service::{
     PageBuilderProjectSaveResult, PageBuilderProjectStore, PageBuilderRequestAuth,
     PageBuilderServiceError, PageBuilderServiceResult,
@@ -38,6 +37,10 @@ const PAGE_PUBLISHED_DOCUMENT_IMMUTABLE: &str = "PAGE_PUBLISHED_DOCUMENT_IMMUTAB
 const REVISION_CONFLICT: &str = "REVISION_CONFLICT";
 #[cfg(feature = "ssr")]
 const PAGE_BUILDER_PORT_DEADLINE: Duration = Duration::from_secs(15);
+
+fn pages_builder_capability_flags() -> BuilderCapabilityFlags {
+    BuilderCapabilityFlags::default()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PagesBuilderSaveSnapshot {
@@ -83,6 +86,12 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
                 request => Err(unsupported_request_error(&request)),
             }
         })
+    }
+
+    fn provider_status(&self) -> Option<PageBuilderAdminProviderStatus> {
+        Some(PageBuilderAdminProviderStatus::unobserved(
+            pages_builder_capability_flags(),
+        ))
     }
 }
 
@@ -277,9 +286,8 @@ async fn dispatch_pages_page_builder_capability(
         on_saved,
     };
     let expected_capability = request.capability();
-    let handlers =
-        compose_fly_page_builder_handlers(store, renderer, BuilderCapabilityFlags::default())
-            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    let handlers = compose_fly_page_builder_handlers(store, renderer, pages_builder_capability_flags())
+        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
     let response = handlers
         .handle(&context, &auth, request)
         .await
