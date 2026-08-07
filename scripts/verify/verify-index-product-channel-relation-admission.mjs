@@ -64,6 +64,8 @@ const product = requireMarkers(productPath, [
   'target_schema: sales_channel_schema_ref()?',
   'projection.channel_ids AS sales_channel_ids',
   'product_index_graph_projection_snapshots',
+  'product_sales_channel_index_relation_freshness_snapshots',
+  'channel_index_identity_generations',
   'assert_eq!(schema.fields.len(), 10);',
   'assert_eq!(schema.links.len(), 2);',
 ]);
@@ -77,14 +79,15 @@ forbidMarkers(productPath, product, [
 
 const documentPath = 'crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md';
 const document = requireMarkers(documentPath, [
-  'Status: `canonical_source_complete_freshness_and_runtime_evidence_pending`',
-  'current Product Index graph already contains the Product-to-SalesChannel link',
+  'Status: `canonical_source_and_freshness_watermark_complete_runtime_evidence_pending`',
+  'current Product Index graph contains the Product-to-SalesChannel link',
   '`product_sales_channel_index_relation_snapshots`',
-  '`product_index_graph_projection_snapshots`',
-  '`projection_epoch`',
+  '`product_sales_channel_index_relation_freshness_snapshots`',
+  '`channel_index_identity_generations`',
+  '`product_index_graph_projection_snapshots.projection_epoch`',
   '`sales_channel_ids`',
   '`sales_channels` `IndexLink`',
-  'Durable Product/Channel convergence triggering',
+  'Canonical Product replay/absence freshness gate: source complete',
 ]);
 forbidMarkers(documentPath, document, [
   'Product v1',
@@ -96,6 +99,7 @@ forbidMarkers(documentPath, document, [
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-channel-relation-admission.mjs'",
+  "'verify-index-product-channel-relation-freshness.mjs'",
 ]);
 
-console.log('[verify-index-product-channel-relation-admission] canonical relation admission verified');
+console.log('[verify-index-product-channel-relation-admission] relation and freshness admission verified');

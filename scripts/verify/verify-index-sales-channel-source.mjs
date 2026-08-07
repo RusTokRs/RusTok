@@ -102,11 +102,36 @@ forbidMarkers(tombstoneMigrationPath, tombstoneMigration, [
   'index_jobs',
   'index_checkpoints',
 ]);
+
+const identityMigrationPath =
+  'crates/rustok-channel/src/migrations/m20260807_000012_add_channel_index_identity_generation.rs';
+const identityMigration = requireMarkers(identityMigrationPath, [
+  'CREATE TABLE channel_index_identity_generations',
+  'tenant_id UUID PRIMARY KEY',
+  'generation BIGINT NOT NULL',
+  'rustok_channel_bump_index_identity_generation',
+  'channel-index-identity-generation',
+  'rustok_channel_track_index_identity_generation',
+  'AFTER INSERT OR DELETE OR UPDATE OF id, tenant_id, slug ON channels',
+  'lower(btrim(OLD.slug)) IS NOT DISTINCT FROM lower(btrim(NEW.slug))',
+  'generation = previous_generation + 1',
+]);
+forbidMarkers(identityMigrationPath, identityMigration, [
+  'is_active',
+  'channel_targets',
+  'channel_oauth_apps',
+  'channel_resolution_policy',
+  'index_entities',
+  'index_links',
+]);
+
 requireMarkers('crates/rustok-channel/src/migrations/mod.rs', [
   'mod m20260730_000010_add_channel_index_revision;',
   'Box::new(m20260730_000010_add_channel_index_revision::Migration)',
   'mod m20260731_000011_add_channel_index_tombstones;',
   'Box::new(m20260731_000011_add_channel_index_tombstones::Migration)',
+  'mod m20260807_000012_add_channel_index_identity_generation;',
+  'Box::new(m20260807_000012_add_channel_index_identity_generation::Migration)',
 ]);
 requireMarkers('crates/rustok-channel/src/migrations/m20260325_000001_create_channels.rs', [
   '.name("idx_channels_tenant_slug")',
@@ -206,10 +231,12 @@ requireMarkers('crates/rustok-distribution/tests/channel_index.rs', [
 requireMarkers('crates/rustok-channel/README.md', [
   '`channels.index_revision`',
   '`channel_index_tombstones`',
+  '`channel_index_identity_generations`',
   '`ChannelRuntimeSelected`',
   '`rustok-channel::sales_channel@1`',
   'stable `channel_id` ordering',
   'retained hard-delete mutations',
+  'tenant identity generation',
   'does not depend on `rustok-index`',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-sales-channel-source.md', [
@@ -228,6 +255,7 @@ requireMarkers('crates/rustok-index/docs/m7-sales-channel-source.md', [
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-sales-channel-source.mjs'",
+  "'verify-index-product-channel-relation-freshness.mjs'",
 ]);
 
 console.log('[verify-index-sales-channel-source] OK');

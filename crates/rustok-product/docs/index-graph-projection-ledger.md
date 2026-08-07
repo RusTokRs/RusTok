@@ -1,75 +1,73 @@
 # Product Index graph projection ledger
 
-Status: `canonical_source_complete_runtime_evidence_pending`.
+Status: `canonical_source_and_freshness_gate_complete_runtime_evidence_pending`.
 
 ## Purpose
 
-The current Product Index record is one complete localized graph projection. It contains Product
-scalar state, ProductVariant membership, and resolved SalesChannel UUID membership. Product state and
-resolved channel membership advance independently, so neither `products.index_revision` nor
-`product_sales_channel_index_relation_snapshots.relation_epoch` can safely be used as the complete
-record clock.
+The current Product Index record is one complete localized graph projection containing Product scalar
+state, ProductVariant membership, and resolved SalesChannel UUID membership. Product state and relation
+membership advance independently, so neither `products.index_revision` nor `relation_epoch` is a safe
+complete record clock.
 
-`product_index_graph_projection_snapshots` owns the one monotonic `projection_epoch` used by the
-canonical Product Index source as its full-record `source_version`.
+`product_index_graph_projection_snapshots` owns the monotonic `projection_epoch` used by the canonical
+Product Index source as its full-record `source_version`.
 
-There are no parallel Product Index schema implementations. The numeric `SchemaVersion` field remains
-part of the generic Index storage key, but the selected distribution registers exactly one current
-Product contract and one current ProductVariant contract.
+There are no parallel Product Index compatibility implementations. The numeric `SchemaVersion` remains
+a generic Index storage key only.
 
 ## Storage contract
 
-Each immutable row contains:
+Each append-only row contains:
 
 - positive tenant-local `sequence_no`;
-- exact non-nil `tenant_id` and `product_id`;
-- positive contiguous `projection_epoch`, beginning at `1`;
+- exact non-nil tenant/Product identity;
+- positive contiguous `projection_epoch` beginning at `1`;
 - positive retained Product `product_source_version` watermark;
 - positive Product-to-SalesChannel `relation_epoch` watermark.
 
-For one tenant/Product identity, projection epochs are contiguous, component watermarks cannot regress,
-an unchanged component pair does not append, and retained rows cannot be updated or deleted.
-
-The `product-index-graph-projection` PostgreSQL advisory lock serializes this exact owner projection
-identity.
+Projection epochs are contiguous, component watermarks cannot regress, an unchanged component pair does
+not append, and retained rows cannot be updated or deleted. The
+`product-index-graph-projection` advisory lock serializes one exact Product projection identity.
 
 ## Reconciliation
 
-`rustok_product_reconcile_index_graph_projection(tenant_id, product_id)` observes:
+`rustok_product_reconcile_index_graph_projection(tenant_id, product_id)` observes the live Product
+`index_revision` (or maximum retained Product tombstone source version after deletion) and the latest
+Product-owned relation epoch.
 
-1. live Product `index_revision`, or the maximum retained Product tombstone version after deletion;
-2. the latest Product-owned SalesChannel relation epoch.
-
-If either input is absent, no projection is invented. Otherwise reconciliation advances
-`projection_epoch` exactly once when at least one retained component watermark advances.
-`GREATEST` is used only to merge already retained component watermarks; it is not the Index
-source-version encoding.
+If either input is absent, no projection is invented. Otherwise `projection_epoch` advances exactly
+once when at least one retained component watermark advances. `GREATEST` only merges already retained
+component watermarks; it is not the Index source-version encoding.
 
 Reconciliation runs after Product insert, Product `index_revision` changes, Product hard delete, and
-relation snapshot inserts. On hard delete, the projection trigger sorts after the retained-empty
-relation trigger, so final projection state observes the final empty SalesChannel membership.
+relation snapshot inserts. Hard-delete ordering ensures final projection state observes the retained
+empty SalesChannel membership.
 
-## Canonical source contract
+## Canonical source
 
-`rustok-distribution::product_index::product` reads this projection ledger and emits one current
-Product Index contract with:
+`rustok-distribution::product_index::product` uses the projection ledger to emit one current Product
+contract containing Product scalars, the `variants` link, and the `sales_channels` link. Live Product
+rows require the projection Product watermark to equal current `products.index_revision`.
 
-- Product identity and scalar fields;
-- `variant_ids` plus a many `variants` link;
-- `sales_channel_ids` plus a many `sales_channels` link;
-- `projection_epoch` as the complete mutation `source_version`.
+The projection ledger intentionally does not encode relation freshness. That is now enforced by the
+separate Product-owned
+`product_sales_channel_index_relation_freshness_snapshots` witness and the Channel-owned tenant
+`channel_index_identity_generations` watermark.
 
-The Product owner crate still does not import `rustok-index` or `rustok-channel`. Cross-owner Channel
-resolution remains in `rustok-distribution` and writes only resolved UUID membership through the
-Product-owned relation store.
+For live replay, the canonical source requires a witness for the projection's exact `relation_epoch`
+whose canonical visibility key and Channel identity generation match current owner facts. Product
+locale absence uses the same gate. Product hard-delete replay does not require a live witness because
+it removes the graph.
 
-## Freshness boundary
+Detailed freshness contract:
+`crates/rustok-product/docs/index-sales-channel-relation-freshness.md`.
 
-Projection ordering and relation freshness are separate properties. A Product visibility change can
-advance Product state before the bounded cross-owner resolver has recomputed SalesChannel membership.
-Therefore the canonical source remains non-authoritative until durable Product/Channel convergence
-triggering or an admitted freshness watermark and retained PostgreSQL evidence prove the relation is
-current.
+## Remaining admission
+
+The source-level freshness watermark gap is closed. Still open are retained PostgreSQL
+freshness/concurrency/restart/delete-recreate evidence, automatic reconciliation scheduling if required
+by the production freshness SLO, typed Product event admission/routes, and Storefront/query-equivalence
+cutover evidence.
 
 ## Maintainer verification
 
@@ -77,9 +75,8 @@ Suggested commands, intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-index-product-graph-projection-ledger.mjs
+node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-source.mjs
-node scripts/verify/verify-index-product-channel-relation-ledger.mjs
-node scripts/verify/verify-index-product-channel-relation-resolver.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-product --all-targets
 cargo check -p rustok-distribution --all-targets

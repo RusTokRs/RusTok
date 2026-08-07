@@ -17,10 +17,23 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::channel_visibility::decode_product_visibility;
+
 pub(crate) const PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary";
 const PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay";
+const PRODUCT_RELATION_FRESHNESS_PENDING_CODE: &str = "product_index_relation_freshness_pending";
 
 const PRODUCT_ROWS_CTE: &str = r#"
+channel_identity_generation AS (
+    SELECT COALESCE(
+        (
+            SELECT generation
+            FROM channel_index_identity_generations
+            WHERE tenant_id = $1
+        ),
+        0
+    )::bigint AS generation
+),
 product_graph_projection AS (
     SELECT DISTINCT ON (projection.tenant_id, projection.product_id)
         projection.tenant_id,
@@ -28,12 +41,29 @@ product_graph_projection AS (
         projection.projection_epoch,
         projection.product_source_version,
         projection.relation_epoch,
-        relation.channel_ids
+        relation.channel_ids,
+        freshness.product_source_version AS freshness_product_source_version,
+        freshness.visibility_key AS freshness_visibility_key,
+        freshness.channel_identity_generation AS freshness_channel_identity_generation,
+        channel_generation.generation AS current_channel_identity_generation
     FROM product_index_graph_projection_snapshots projection
     JOIN product_sales_channel_index_relation_snapshots relation
       ON relation.tenant_id = projection.tenant_id
      AND relation.product_id = projection.product_id
      AND relation.relation_epoch = projection.relation_epoch
+    LEFT JOIN LATERAL (
+        SELECT
+            witness.product_source_version,
+            witness.visibility_key,
+            witness.channel_identity_generation
+        FROM product_sales_channel_index_relation_freshness_snapshots witness
+        WHERE witness.tenant_id = projection.tenant_id
+          AND witness.product_id = projection.product_id
+          AND witness.relation_epoch = projection.relation_epoch
+        ORDER BY witness.sequence_no DESC
+        LIMIT 1
+    ) freshness ON TRUE
+    CROSS JOIN channel_identity_generation channel_generation
     WHERE projection.tenant_id = $1
     ORDER BY projection.tenant_id, projection.product_id, projection.projection_epoch DESC
 ),
@@ -46,6 +76,11 @@ product_index_union AS (
         p.index_revision AS observed_product_source_version,
         projection.product_source_version AS projected_product_source_version,
         projection.relation_epoch,
+        projection.freshness_product_source_version,
+        projection.freshness_visibility_key,
+        projection.freshness_channel_identity_generation,
+        projection.current_channel_identity_generation,
+        p.metadata,
         p.status::text AS status,
         p.vendor,
         p.product_type,
@@ -83,6 +118,11 @@ product_index_union AS (
         tombstone.source_version AS observed_product_source_version,
         projection.product_source_version AS projected_product_source_version,
         projection.relation_epoch,
+        projection.freshness_product_source_version,
+        projection.freshness_visibility_key,
+        projection.freshness_channel_identity_generation,
+        projection.current_channel_identity_generation,
+        NULL::jsonb AS metadata,
         NULL::text AS status,
         NULL::text AS vendor,
         NULL::text AS product_type,
@@ -119,6 +159,11 @@ SELECT
     row.observed_product_source_version,
     row.projected_product_source_version,
     row.relation_epoch,
+    row.freshness_product_source_version,
+    row.freshness_visibility_key,
+    row.freshness_channel_identity_generation,
+    row.current_channel_identity_generation,
+    row.metadata,
     row.status,
     row.vendor,
     row.product_type,
@@ -140,6 +185,8 @@ enum ProductIndexBridgeError {
     InvalidCursor,
     #[error("Product Index source row is invalid")]
     InvalidRow,
+    #[error("Product Index relation freshness is pending")]
+    FreshnessPending,
 }
 
 pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
@@ -224,7 +271,6 @@ fn product_schema_ref() -> Result<SchemaRef, ProductIndexBridgeError> {
             .map_err(ProductIndexBridgeError::InvalidContract)?,
         entity: EntityName::new("product")
             .map_err(ProductIndexBridgeError::InvalidContract)?,
-        // Index core requires one positive schema key. Only this current contract is registered.
         version: SchemaVersion::new(3),
     })
 }
@@ -235,7 +281,6 @@ fn product_variant_schema_ref() -> Result<SchemaRef, ProductIndexBridgeError> {
             .map_err(ProductIndexBridgeError::InvalidContract)?,
         entity: EntityName::new("product_variant")
             .map_err(ProductIndexBridgeError::InvalidContract)?,
-        // ProductVariant likewise has one current runtime contract.
         version: SchemaVersion::new(2),
     })
 }
@@ -405,7 +450,7 @@ impl IndexSource for ProductPostgresIndexSource {
         let mut next_cursor = None;
         for row in rows.into_iter().take(request.limit()) {
             let decoded = ProductRow::decode(row, request.tenant_id())
-                .map_err(|_| permanent("product_index_record_invalid"))?;
+                .map_err(map_product_decode_error)?;
             if has_more {
                 next_cursor = Some(
                     decoded
@@ -435,12 +480,24 @@ impl IndexSource for ProductPostgresIndexSource {
             .into_iter()
             .map(|row| {
                 ProductRow::decode(row, request.tenant_id())
-                    .and_then(ProductRow::into_mutation)
-                    .map_err(|_| permanent("product_index_record_invalid"))
+                    .map_err(map_product_decode_error)
+                    .and_then(|row| {
+                        row.into_mutation()
+                            .map_err(|_| permanent("product_index_record_invalid"))
+                    })
             })
             .collect::<Result<Vec<_>, _>>()?;
         IndexSourceLoadBatch::new(&request, mutations)
             .map_err(|_| permanent("product_index_batch_invalid"))
+    }
+}
+
+fn map_product_decode_error(error: ProductIndexBridgeError) -> IndexSourceFailure {
+    match error {
+        ProductIndexBridgeError::FreshnessPending => retryable(PRODUCT_RELATION_FRESHNESS_PENDING_CODE),
+        ProductIndexBridgeError::InvalidContract(_)
+        | ProductIndexBridgeError::InvalidCursor
+        | ProductIndexBridgeError::InvalidRow => permanent("product_index_record_invalid"),
     }
 }
 
@@ -535,8 +592,8 @@ impl ProductRow {
             return Err(ProductIndexBridgeError::InvalidRow);
         }
 
-        // Projection is mandatory even for delete. Decode relation membership before branching so
-        // missing/corrupt graph state cannot silently become a delete mutation.
+        // Projection and retained relation membership remain mandatory for delete replay. A deleted
+        // Product does not require a live freshness witness because its graph is being removed.
         let sales_channel_ids = decode_uuid_json_list(&row, "sales_channel_ids")?;
 
         if is_deleted {
@@ -555,6 +612,44 @@ impl ProductRow {
         if projected_product_source_version != observed_product_source_version {
             return Err(ProductIndexBridgeError::InvalidRow);
         }
+
+        let metadata = row
+            .try_get::<JsonValue>("", "metadata")
+            .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
+        let current_visibility_key = decode_product_visibility(&metadata)
+            .map_err(|_| ProductIndexBridgeError::InvalidRow)?
+            .freshness_key();
+        let freshness_product_source_version = optional_positive_u64(
+            &row,
+            "freshness_product_source_version",
+        )?
+        .ok_or(ProductIndexBridgeError::FreshnessPending)?;
+        let freshness_visibility_key = row
+            .try_get::<Option<String>>("", "freshness_visibility_key")
+            .map_err(|_| ProductIndexBridgeError::InvalidRow)?
+            .filter(|value| !value.is_empty())
+            .ok_or(ProductIndexBridgeError::FreshnessPending)?;
+        let freshness_channel_identity_generation = optional_non_negative_u64(
+            &row,
+            "freshness_channel_identity_generation",
+        )?
+        .ok_or(ProductIndexBridgeError::FreshnessPending)?;
+        let current_channel_identity_generation = non_negative_u64(
+            &row,
+            "current_channel_identity_generation",
+        )?;
+
+        if freshness_product_source_version > observed_product_source_version
+            || freshness_channel_identity_generation > current_channel_identity_generation
+        {
+            return Err(ProductIndexBridgeError::InvalidRow);
+        }
+        if freshness_visibility_key != current_visibility_key
+            || freshness_channel_identity_generation < current_channel_identity_generation
+        {
+            return Err(ProductIndexBridgeError::FreshnessPending);
+        }
+
         let primary_category_id = row
             .try_get::<Option<Uuid>>("", "primary_category_id")
             .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
@@ -724,6 +819,46 @@ fn positive_u64(row: &QueryResult, column: &str) -> Result<u64, ProductIndexBrid
     u64::try_from(value).map_err(|_| ProductIndexBridgeError::InvalidRow)
 }
 
+fn optional_positive_u64(
+    row: &QueryResult,
+    column: &str,
+) -> Result<Option<u64>, ProductIndexBridgeError> {
+    row.try_get::<Option<i64>>("", column)
+        .map_err(|_| ProductIndexBridgeError::InvalidRow)?
+        .map(|value| {
+            if value <= 0 {
+                return Err(ProductIndexBridgeError::InvalidRow);
+            }
+            u64::try_from(value).map_err(|_| ProductIndexBridgeError::InvalidRow)
+        })
+        .transpose()
+}
+
+fn non_negative_u64(row: &QueryResult, column: &str) -> Result<u64, ProductIndexBridgeError> {
+    let value = row
+        .try_get::<i64>("", column)
+        .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
+    if value < 0 {
+        return Err(ProductIndexBridgeError::InvalidRow);
+    }
+    u64::try_from(value).map_err(|_| ProductIndexBridgeError::InvalidRow)
+}
+
+fn optional_non_negative_u64(
+    row: &QueryResult,
+    column: &str,
+) -> Result<Option<u64>, ProductIndexBridgeError> {
+    row.try_get::<Option<i64>>("", column)
+        .map_err(|_| ProductIndexBridgeError::InvalidRow)?
+        .map(|value| {
+            if value < 0 {
+                return Err(ProductIndexBridgeError::InvalidRow);
+            }
+            u64::try_from(value).map_err(|_| ProductIndexBridgeError::InvalidRow)
+        })
+        .transpose()
+}
+
 fn require_postgres(db: &DatabaseConnection) -> Result<(), IndexSourceFailure> {
     if db.get_database_backend() == DbBackend::Postgres {
         Ok(())
@@ -836,13 +971,25 @@ mod tests {
     }
 
     #[test]
-    fn canonical_product_projection_sql_requires_owner_projection_and_relation_membership() {
+    fn canonical_product_projection_sql_requires_owner_projection_relation_and_freshness() {
         assert!(PRODUCT_ROWS_CTE.contains("product_index_graph_projection_snapshots"));
         assert!(PRODUCT_ROWS_CTE.contains("product_sales_channel_index_relation_snapshots"));
+        assert!(
+            PRODUCT_ROWS_CTE.contains("product_sales_channel_index_relation_freshness_snapshots")
+        );
+        assert!(PRODUCT_ROWS_CTE.contains("channel_index_identity_generations"));
         assert!(PRODUCT_ROWS_CTE.contains("projection.projection_epoch AS source_version"));
         assert!(PRODUCT_ROWS_CTE.contains("projection.channel_ids AS sales_channel_ids"));
+        assert!(PRODUCT_ROWS_CTE.contains("freshness.visibility_key"));
         assert!(PRODUCT_ROWS_CTE.contains("COUNT(*) OVER"));
         assert!(PRODUCT_ROWS_CTE.contains("product_index_tombstones"));
+    }
+
+    #[test]
+    fn relation_freshness_pending_is_retryable() {
+        let failure = map_product_decode_error(ProductIndexBridgeError::FreshnessPending);
+        assert!(failure.is_retryable());
+        assert_eq!(failure.code(), PRODUCT_RELATION_FRESHNESS_PENDING_CODE);
     }
 
     #[test]

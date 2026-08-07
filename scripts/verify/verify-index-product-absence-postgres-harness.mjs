@@ -10,6 +10,8 @@ const files = {
     "crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs",
   canonicalProjectionMigration:
     "crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs",
+  freshnessMigration:
+    "crates/rustok-product/src/migrations/m20260807_000011_add_product_sales_channel_relation_freshness.rs",
   doc: "crates/rustok-index/docs/m6-product-locale-absence-postgres-harness.md",
   plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
@@ -36,6 +38,7 @@ requireMarkers("test", [
   "for migration in IndexModule.migrations()",
   "create_product_migration_prerequisites",
   "flex::cache_generation::create_field_definition_cache_generation_table",
+  "CREATE TABLE channel_index_identity_generations",
   "rustok_distribution::build_runtime_extensions(&registry)",
   "materialize_postgres_index_sources",
   "materialize_index_source_registry",
@@ -50,6 +53,9 @@ requireMarkers("test", [
   "insert_de_translation",
   "INSERT INTO product_translations",
   "INSERT INTO product_sales_channel_index_relation_snapshots",
+  "INSERT INTO product_sales_channel_index_relation_freshness_snapshots",
+  "product.index_revision",
+  "'all'",
   "'[]'::jsonb",
   "SchemaVersion::new(3)",
   "translation insertion between observations must reject the snapshot pair",
@@ -76,7 +82,12 @@ requireMarkers("provider", [
   "CAST(projection.projection_epoch AS TEXT) AS source_version_text",
   "FROM product_index_graph_projection_snapshots projection",
   "projection.product_source_version = product.index_revision",
-  "FROM product_sales_channel_index_relation_snapshots relation",
+  "JOIN product_sales_channel_index_relation_snapshots relation",
+  "product_sales_channel_index_relation_freshness_snapshots",
+  "channel_index_identity_generations",
+  "decode_product_visibility(&metadata)",
+  "freshness_visibility_key != current_visibility_key",
+  "freshness_channel_identity_generation != current_channel_identity_generation",
   "FROM product_translations translation",
   "FROM product_index_tombstones tombstone",
 ]);
@@ -95,6 +106,11 @@ requireMarkers("canonicalProjectionMigration", [
   "product_index_graph_projection_snapshots",
   "rustok_product_reconcile_index_graph_projection",
   "trg_product_channel_relation_index_graph_projection_insert",
+]);
+requireMarkers("freshnessMigration", [
+  "product_sales_channel_index_relation_freshness_snapshots",
+  "visibility_key TEXT NOT NULL",
+  "channel_identity_generation BIGINT NOT NULL",
 ]);
 requireMarkers("doc", [
   "Status: `source_ready_owner_execution_pending`.",

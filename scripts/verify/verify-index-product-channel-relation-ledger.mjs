@@ -42,9 +42,11 @@ for (const forbidden of [
   'JOIN channels',
   'index_entities',
   'index_links',
+  'visibility_key',
+  'channel_identity_generation',
 ]) {
   if (migration.includes(forbidden)) {
-    fail(`${migrationPath} contains forbidden cross-owner or Index storage coupling: ${forbidden}`);
+    fail(`${migrationPath} must remain membership-only and owner-local: ${forbidden}`);
   }
 }
 
@@ -76,11 +78,13 @@ for (const forbidden of [
   'IndexMutation',
   'FROM channels',
   'JOIN channels',
+  'visibility_key',
+  'channel_identity_generation',
   'tokio::spawn',
   'loop {',
 ]) {
   if (service.includes(forbidden)) {
-    fail(`${servicePath} contains forbidden resolver, Index, or runtime coupling: ${forbidden}`);
+    fail(`${servicePath} must remain membership-only: ${forbidden}`);
   }
 }
 
@@ -94,27 +98,32 @@ for (const forbidden of ['rustok-channel', 'rustok-index']) {
 requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
   'mod m20260807_000008_add_product_sales_channel_index_relation_snapshots;',
   'Box::new(m20260807_000008_add_product_sales_channel_index_relation_snapshots::Migration)',
+  'mod m20260807_000011_add_product_sales_channel_relation_freshness;',
 ]);
 requireMarkers('crates/rustok-product/src/services/mod.rs', [
   'mod index_channel_relation;',
+  'mod index_channel_relation_freshness;',
   'ProductSalesChannelIndexRelationStore',
-  'ProductSalesChannelIndexRelationWriteOutcome',
+  'ProductSalesChannelIndexRelationFreshnessStore',
 ]);
 requireMarkers('crates/rustok-product/src/lib.rs', [
   'ProductSalesChannelIndexRelationRecord',
   'ProductSalesChannelIndexRelationStore',
+  'ProductSalesChannelIndexRelationFreshnessStore',
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS',
 ]);
 
 const ledgerDoc = requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-ledger.md', [
-  'Status: `canonical_graph_source_complete_freshness_and_runtime_evidence_pending`',
+  'Status: `canonical_graph_and_freshness_source_complete_runtime_evidence_pending`',
   '`product_sales_channel_index_relation_snapshots`',
   '`ProductSalesChannelIndexRelationStore::replace`',
   '`FOR KEY SHARE`',
+  'Freshness is separate',
+  '`product_sales_channel_index_relation_freshness_snapshots`',
   '`product_index_graph_projection_snapshots.projection_epoch`',
   '`sales_channel_ids`',
   '`sales_channels` link',
-  'no `rustok-index` or `rustok-channel` dependency',
+  'has no `rustok-channel` or `rustok-index`',
   'No tests, Node verifiers, Cargo checks',
 ]);
 for (const legacy of ['Product v1', 'Product v2', 'Product v3', 'new Product schema version']) {
@@ -122,13 +131,14 @@ for (const legacy of ['Product v1', 'Product v2', 'Product v3', 'new Product sch
 }
 
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
-  'current Product Index graph already contains the Product-to-SalesChannel link',
-  '`product_index_graph_projection_snapshots`',
-  'Durable Product/Channel convergence triggering',
+  'current Product Index graph contains the Product-to-SalesChannel link',
+  '`product_index_graph_projection_snapshots.projection_epoch`',
+  'Product-owned freshness witness',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'Product-owned Product-to-SalesChannel relation snapshots',
   'one canonical Product Index source',
+  'Product-SalesChannel freshness witness',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
@@ -136,4 +146,4 @@ if (!aggregate.includes("'verify-index-product-channel-relation-ledger.mjs'")) {
   fail('Index aggregate verifier does not include the Product-SalesChannel relation ledger guard');
 }
 
-console.log('[verify-index-product-channel-relation-ledger] canonical Product-SalesChannel owner ledger verified');
+console.log('[verify-index-product-channel-relation-ledger] membership-only relation ledger verified');

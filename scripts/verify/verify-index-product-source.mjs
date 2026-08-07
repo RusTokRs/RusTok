@@ -29,6 +29,7 @@ forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, ['rustok-index',
 
 const modulePath = 'crates/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
+  'mod channel_visibility;',
   'mod product;',
   'mod variant;',
   'product::register(extensions)?;',
@@ -57,13 +58,6 @@ const source = requireMarkers(sourcePath, [
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
   'fn product_schema()',
   'locale_mode: LocaleMode::Required',
-  'scalar_field("id", IndexValueType::Uuid, false, true, true)?',
-  'scalar_field("status", IndexValueType::String, false, true, true)?',
-  'scalar_field("title", IndexValueType::String, false, true, true)?',
-  'scalar_field("handle", IndexValueType::String, false, true, true)?',
-  'scalar_field("description", IndexValueType::String, true, false, false)?',
-  'scalar_field("vendor", IndexValueType::String, true, true, true)?',
-  'scalar_field("product_type", IndexValueType::String, true, true, true)?',
   'many_field("variant_ids", IndexValueType::Uuid, true)?',
   'many_field("sales_channel_ids", IndexValueType::Uuid, true)?',
   'name: link_name("variants")?',
@@ -74,9 +68,18 @@ const source = requireMarkers(sourcePath, [
   'assert_eq!(schema.links.len(), 2);',
   'product_index_graph_projection_snapshots',
   'product_sales_channel_index_relation_snapshots',
+  'product_sales_channel_index_relation_freshness_snapshots',
+  'channel_index_identity_generations',
   'projection.projection_epoch AS source_version',
   'projection.channel_ids AS sales_channel_ids',
+  'freshness.visibility_key AS freshness_visibility_key',
+  'freshness.channel_identity_generation AS freshness_channel_identity_generation',
+  'decode_product_visibility(&metadata)',
+  'freshness_visibility_key != current_visibility_key',
+  'freshness_channel_identity_generation != current_channel_identity_generation',
+  'freshness_product_source_version > observed_product_source_version',
   'projected_product_source_version != observed_product_source_version',
+  'does not require a live freshness witness',
   'FROM products p',
   'JOIN product_translations t',
   'FROM product_index_tombstones tombstone',
@@ -88,6 +91,7 @@ const source = requireMarkers(sourcePath, [
   'IndexMutation::Upsert {',
   'canonical_product_schema_contains_only_current_fields_and_links',
   'canonical_product_registration_publishes_one_schema_and_one_source_factory',
+  'canonical_product_projection_sql_requires_owner_projection_relation_and_freshness',
 ]);
 forbidMarkers(sourcePath, source, [
   'ProductSchemaVersion',
@@ -114,6 +118,11 @@ const absence = requireMarkers(absencePath, [
   'product_index_graph_projection_snapshots',
   'projection.product_source_version = product.index_revision',
   'product_sales_channel_index_relation_snapshots',
+  'product_sales_channel_index_relation_freshness_snapshots',
+  'channel_index_identity_generations',
+  'decode_product_visibility(&metadata)',
+  'freshness_visibility_key != current_visibility_key',
+  'freshness_channel_identity_generation != current_channel_identity_generation',
   'FROM product_translations translation',
   'FROM product_index_tombstones tombstone',
   'IndexSourceAbsenceWatermark::new(key, source_version)',
@@ -150,6 +159,7 @@ forbidMarkers(
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-source.mjs'",
+  "'verify-index-product-channel-relation-freshness.mjs'",
 ]);
 
-console.log('[verify-index-product-source] canonical Product source contract verified');
+console.log('[verify-index-product-source] canonical Product source and freshness gate verified');
