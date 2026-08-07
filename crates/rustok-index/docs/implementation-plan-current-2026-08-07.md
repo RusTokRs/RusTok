@@ -100,18 +100,25 @@ Product now owns two additional durable surfaces:
 
 The selected distribution registers `product_sales_channel_relation_convergence` through the existing
 generic `ModuleWorkScheduler` only when Product and Channel are both selected. One work item processes
-either one exact Product request or one existing 64-Product resolver page. Product-owned `FOR UPDATE`
-claim state makes duplicate due discovery across hosts harmless. Lease expiry preserves request/sweep
-progress across restart.
+either one exact Product request or one bounded 64-Product convergence page, calling the existing exact
+resolver for each Product. Product-owned `FOR UPDATE` claim state makes duplicate due discovery across
+hosts harmless. Lease expiry preserves request/sweep progress across restart.
 
 Channel identity changes during a sweep cannot be skipped: the pass checkpoints only the generation it
 started with, so a newer current Channel generation remains due for another pass. Product visibility
 requests remain tenant ordered and exact; deleted Products advance their obsolete request cursor without
 requiring a live witness.
 
+Rejected Product owner data is isolated from tenant progress. Invalid visibility, oversized allowlists,
+or too many resolved Channel targets leave that Product individually source-stale without blocking
+later Products in the same tenant. Correcting Product visibility creates a new exact request; a
+Channel-side correction advances Channel generation and schedules another tenant pass. Retryable
+concurrency/storage/relation/freshness failures still preserve the current page for retry.
+
 The Product DDL state machine prevents direct SQL from skipping visibility requests, changing an
-in-progress sweep generation, forging a completed Channel checkpoint, or deleting convergence state.
-Product still does not read Channel storage or depend on `rustok-channel`/`rustok-index`.
+in-progress sweep generation, resetting a partial Product cursor, forging a completed Channel
+checkpoint, or deleting convergence state. Product still does not read Channel storage or depend on
+`rustok-channel`/`rustok-index`.
 
 This closes the previous manual scheduling gap. It does **not** close the materialized/query freshness
 window: source read and Index mutation application are separate transactions. A Channel identity change
@@ -168,11 +175,11 @@ Required sequence remains:
 - [x] Canonical Product replay/absence fail-closed source freshness gate.
 - [x] Product visibility convergence request ledger and tenant lease/checkpoint state.
 - [x] Automatic bounded Product visibility / Channel identity relation convergence through generic
-      ModuleWork composition.
+      ModuleWork composition, including rejected-Product poison isolation.
 - [x] Remove parallel Product/ProductVariant compatibility implementations.
 - [ ] Execute PostgreSQL evidence for schema readiness, relation/freshness/convergence storage,
-      multi-host lease expiry/restart, resolver convergence, projection concurrency/delete ordering,
-      and canonical replay.
+      rejected-Product isolation, multi-host lease expiry/restart, resolver convergence, projection
+      concurrency/delete ordering, and canonical replay.
 - [ ] Implement/admit a materialized/query freshness fence for the source-read -> mutation-apply
       in-flight window.
 - [ ] Admit canonical Product typed wire events/routes/consumers after digest verification.
