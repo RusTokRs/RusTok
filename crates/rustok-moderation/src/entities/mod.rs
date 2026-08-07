@@ -1,3 +1,4 @@
+pub mod moderation_application_operation;
 pub mod moderation_case;
 pub mod moderation_case_report;
 pub mod moderation_decision;
