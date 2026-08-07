@@ -15,6 +15,12 @@ mod variant;
 #[cfg(test)]
 pub(crate) use variant::PRODUCT_VARIANT_INDEX_SOURCE;
 
+/// Internal persisted routing key for the one Product schema published by current runtime code.
+///
+/// Lower keys are historical storage identities only. They are never selected as compatibility
+/// implementations by this module.
+pub(crate) const PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4;
+
 pub(crate) fn register(
     extensions: &mut rustok_core::ModuleRuntimeExtensions,
 ) -> rustok_core::Result<()> {
