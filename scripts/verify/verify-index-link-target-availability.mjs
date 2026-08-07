@@ -123,17 +123,20 @@ forbidMarkers(compilerPath, compiler, [
 const freshnessDoc = requireMarkers(
   'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
   [
-    'Status: `source_complete_link_target_availability_execution_pending`',
+    'Status: `source_complete_link_target_availability_equivalence_execution_pending`',
     'Query-path-scoped linked-target availability',
     'scalar-only Product queries do not become dependent',
     'source identity **and source_version**',
     'current link row + missing/stale/deleted target = query fails closed',
+    'Filter/order/count/runtime equivalence packet',
+    'product_linked_target_availability_equivalence_postgres.rs',
     'Remaining M7 evidence',
   ],
 );
 forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
   'next unblocked M7 source-design gap',
   'define and retain fail-closed linked-target availability semantics',
+  'retain PostgreSQL cases for linked filtering and many aggregate ordering',
 ]);
 
 console.log('[verify-index-link-target-availability] query-scoped fail-closed availability source contract verified');
