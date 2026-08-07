@@ -56,7 +56,8 @@
   "supported_effects": [
     "NoDomainMutation for forum_topic and forum_post",
     "permanent Lock for forum_topic using TopicService::set_locked_in_tx",
-    "SetVisibility Hidden for forum_post using exact Forum ReplyStatus::Hidden lifecycle semantics"
+    "SetVisibility Hidden for forum_post using exact Forum ReplyStatus::Hidden lifecycle semantics",
+    "SetVisibility Removed for forum_post using the complete Forum ReplyService::remove_in_tx soft-delete owner path"
   ],
   "reply_hidden_semantics": {
     "target": "ReplyStatus::Hidden",
@@ -71,10 +72,25 @@
     "search_projection": "ForumReplyStatusChanged is a canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
     "atomicity": "status, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
   },
+  "reply_removed_semantics": {
+    "target": "ReplyStatus::Deleted plus deleted_at soft-delete tombstone",
+    "owner_helper": "ReplyService::remove_in_tx",
+    "owner_mutations": [
+      "validate the existing Forum transition to ReplyStatus::Deleted",
+      "remove accepted-solution relation when this reply owns it",
+      "capture delete revisions through the established Forum soft-delete guards",
+      "set status deleted and deleted_at atomically",
+      "decrement topic/category/author public reply accounting when the reply was approved",
+      "decrement author solution statistics when the removed reply was the accepted solution"
+    ],
+    "root_event": "ForumReplyStatusChanged with new_status deleted",
+    "search_projection": "ForumReplyStatusChanged remains the canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "idempotency": "completed Moderation receipt replays before subject reads; an already soft-deleted subject is unavailable rather than re-deleted",
+    "atomicity": "soft delete/tombstone, solution cleanup, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
   "deferred_effects": [
     "temporary topic Lock until Forum owns expiry-safe enforcement state",
     "SetVisibility Unpublished until an exact Forum lifecycle mapping is established",
-    "SetVisibility Removed until the complete Forum soft-delete/tombstone/solution/counter owner path is reused",
     "topic visibility removal/unpublish effects",
     "RequireEdit",
     "RestrictInteraction",
@@ -99,7 +115,7 @@
     "reusing Reactions or content revision as the Moderation subject clock",
     "temporary lock without expiry-safe owner state",
     "approximating Unpublished as Rejected without an explicit owner contract",
-    "approximating Removed as Deleted without the full Forum delete owner semantics",
+    "bypassing ReplyService::remove_in_tx for Moderation Removed reply application",
     "reaction state catalog aggregate or presentation ownership changes"
   ],
   "not_claimed": [
@@ -109,7 +125,6 @@
     "PostgreSQL concurrency evidence",
     "SQLite evidence",
     "SetVisibility Unpublished support",
-    "SetVisibility Removed support",
     "complete FORUM-19 effect coverage",
     "release readiness"
   ]
