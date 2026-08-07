@@ -116,6 +116,7 @@ The recovery owner requires all of the following:
 - activation body, locale, historical source artifact id, replacement artifact id and replacement hashes exactly match that prior rebuild/provenance pair;
 - the chain tracks the **latest repair state per locale** rather than assuming each locale appears once;
 - when a locale appears again, its previously activated rebuilt artifact must already be physically absent before the later activation receipt may supersede it in the lineage;
+- for repeated recovery, the prior rebuilt instance is physically absent before a later receipt can supersede it;
 - at the current version, the locale being recovered must have no binding and its latest prior rebuilt instance, if it appeared in the chain, must be physically absent;
 - every other locale's latest repaired binding must remain active and must point to its latest rebuild receipt;
 - every other latest rebuilt artifact must still have the receipt-bound instance key, artifact hash and materialization hash.
