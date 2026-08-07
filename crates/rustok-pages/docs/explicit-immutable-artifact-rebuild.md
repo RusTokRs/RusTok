@@ -1,7 +1,7 @@
 # Explicit Immutable Artifact Rebuild
 
 Date: 2026-08-07  
-Status: `source-ready / maintainer-validation-pending`
+Status: `source-ready / postgres-harness-source-ready / maintainer-validation-pending`
 
 ## Purpose
 
@@ -68,6 +68,29 @@ The forward-only migration replaces the old five-column unique key with the same
 
 An exact replay returns the stored result. Reusing the idempotency key for another source, provenance or reviewed runtime is rejected.
 
+## PostgreSQL source packet
+
+Marker:
+
+```text
+explicit-artifact-repair-postgres-harness-source-ready
+```
+
+`crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs` now applies the real Outbox and Pages migrations in an isolated PostgreSQL schema and exercises this owner command after a real reviewed publication.
+
+When executed, the packet requires:
+
+- mutable current-body drift not to become rebuild authority;
+- a corrupted active artifact to remain retained;
+- one distinct operation-bound rebuilt artifact to be appended;
+- the public binding and page version to remain unchanged after rebuild;
+- exact replay to reuse one rebuild receipt/artifact;
+- request-identity conflict on the same idempotency key to add no receipt/artifact;
+- the migration-owned rebuild idempotency constraint to reject a duplicate receipt inside a PostgreSQL transaction;
+- a preceding page-version marker in that failed transaction to disappear after rollback.
+
+The harness is source-ready only. No PostgreSQL result is claimed until maintainer execution.
+
 ## Preserved boundaries
 
 This command does not:
@@ -90,10 +113,13 @@ Suggested commands, intentionally not run in this slice:
 
 ```bash
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
 cargo test -p rustok-pages --test explicit_artifact_rebuild_sqlite -- --nocapture
+RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
+  cargo test -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture
 cargo check -p rustok-pages --all-targets
 ```
 
-SQLite/PostgreSQL migration, Manage present/absent authorization, exact replay, source corruption, runtime mismatch, append-only insertion and unchanged-binding evidence remain pending.
+SQLite execution plus PostgreSQL execution, Manage present/absent authorization, provenance-corruption and runtime-mismatch evidence remain pending. The PostgreSQL replay/conflict/append-only/unchanged-binding/receipt-rollback packet is source-ready but unvalidated.
