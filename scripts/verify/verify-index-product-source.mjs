@@ -34,8 +34,12 @@ const moduleSource = requireMarkers(modulePath, [
   'mod variant;',
   'product::register(extensions)?;',
   'variant::register(extensions)?;',
-  'absence::register(extensions)',
-  'selected_product_bridge_registers_two_current_schemas_and_three_factories',
+  'absence::register(extensions)?;',
+  'query_admission::register(extensions)?;',
+  'selected_product_bridge_registers_two_current_schemas_three_factories_and_entity_admissions',
+  'selected_product_and_channel_bridge_registers_channel_admission_and_convergence_work',
+  'assert_eq!(admissions.len(), 2)',
+  'assert_eq!(admissions.len(), 3)',
 ]);
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
@@ -160,6 +164,7 @@ forbidMarkers(
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-source.mjs'",
   "'verify-index-product-channel-relation-freshness.mjs'",
+  "'verify-index-linked-target-query-freshness.mjs'",
 ]);
 
-console.log('[verify-index-product-source] canonical Product source and freshness gate verified');
+console.log('[verify-index-product-source] canonical Product source and graph entity admission verified');
