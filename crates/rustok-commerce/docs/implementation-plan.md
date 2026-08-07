@@ -206,12 +206,17 @@ These are source-contract defects, not verification-only tasks.
 - [x] Cut mounted admin REST Product detail over to the host-selected
   `ProductCatalogReadPort`, preserving `PRODUCTS_READ`, tenant/actor/channel context,
   requested locale plus tenant fallback locale, a bounded deadline, and stable public errors.
-- [ ] Cut remaining mounted Product list/catalog reads, REST delete/publish/unpublish
+- [x] Publish an optional fail-closed admin-list capability on `ProductCatalogReadPort`
+  without changing the existing `AdminProductListQuery` public shape, and cut mounted
+  admin REST Product list to the host-selected owner port while preserving exact legacy
+  status/vendor/product-type/search filtering, created-at-desc ordering, pagination,
+  locale fallback, empty missing-title projection, normalized/default shipping-profile
+  slug, tags, request context, deadline, and public error envelope.
+- [ ] Cut remaining mounted Product catalog reads, REST delete/publish/unpublish
   lifecycle commands, and GraphQL product lifecycle/schema operations over to
   host-composed Product owner ports. Direct Product entities, `CatalogService`, and
   `ProductCatalogSchemaService` remain explicit source debt; repeatable lifecycle
-  commands need an explicit caller idempotency contract before cutover, while admin list
-  needs an owner query contract that preserves vendor/product-type filtering.
+  commands need an explicit caller idempotency contract before cutover.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -226,7 +231,7 @@ These are source-contract defects, not verification-only tasks.
 - [x] Cut storefront return and order-change list reads to the same host-selected
   runtime while preserving filters, ordering, complete DTOs, totals, and envelopes.
 - [x] Cut GraphQL return/order-change detail and list reads to the scoped host-selected
-  runtime with validated actor, resolved channel/effective locale context, typed
+  runtime with validated actor, resolved channel/effective-locale context, typed
   not-found compatibility errors, and no concrete owner service storage.
 - [x] Cut mounted admin return/order-change detail and list reads to the host-selected
   runtime while preserving `ORDERS_READ`, filters, clamped pagination, totals, public
@@ -610,6 +615,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-commerce-marketplace-financial-capability.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-command-port.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-detail-read.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-admin-list-read.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -642,8 +648,8 @@ Source inspection is not execution evidence.
   mutation, payment, or fulfillment ownership; unmounted admin compatibility GET
   handlers remain explicit source debt.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, order-read,
-  marketplace-financial topology, Product command-port, and Product admin-detail read
-  static guards against a repository checkout and retain their output.
+  marketplace-financial topology, Product command-port, Product admin-detail read, and
+  Product admin-list read static guards against a repository checkout and retain their output.
 
 ### Compile/tests
 
@@ -819,6 +825,10 @@ Source inspection is not execution evidence.
 - [x] Cut mounted admin REST Product detail over to the host-selected Product read port
   while preserving locale fallback, request context, permissions, and public envelope;
   admin list and GraphQL Product reads remain separate source debt.
+- [x] Cut mounted admin REST Product list over to the optional host-selected Product
+  read-port capability while preserving legacy filters, ordering, pagination, locale
+  fallback, empty-title/default-shipping envelope, and source compatibility for existing
+  Product read-port adapters; GraphQL catalog and lifecycle cutover remain open.
 
 ## Change rules
 
