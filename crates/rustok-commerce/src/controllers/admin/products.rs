@@ -374,10 +374,9 @@ pub async fn delete_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     path: Path<Uuid>,
 ) -> HttpResult<StatusCode> {
-    super::super::products::delete_product(state, tenant, auth, request_context, path).await
+    super::super::products::delete_product(state, tenant, auth, path).await
 }
 
 /// Publish admin ecommerce product
@@ -395,10 +394,9 @@ pub async fn publish_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::publish_product(state, tenant, auth, request_context, path).await
+    super::super::products::publish_product(state, tenant, auth, path).await
 }
 
 /// Unpublish admin ecommerce product
@@ -416,8 +414,7 @@ pub async fn unpublish_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::unpublish_product(state, tenant, auth, request_context, path).await
+    super::super::products::unpublish_product(state, tenant, auth, path).await
 }
