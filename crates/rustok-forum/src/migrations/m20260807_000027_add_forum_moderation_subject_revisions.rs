@@ -112,7 +112,11 @@ BEGIN
        SET revision = revision + 1
      WHERE tenant_id = target_tenant
        AND topic_id = target_topic;
-    RETURN COALESCE(NEW, OLD);
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -134,7 +138,11 @@ BEGIN
        SET revision = revision + 1
      WHERE tenant_id = target_tenant
        AND reply_id = target_reply;
-    RETURN COALESCE(NEW, OLD);
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
