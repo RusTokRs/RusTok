@@ -111,19 +111,21 @@ BEGIN
 END;
 $$;
 
--- Install the identity trigger before seeding the baseline. This closes the migration window: a
--- concurrent Channel identity write is either captured by the trigger or already represented by the
--- post-trigger backfill. The tenant advisory lock serializes trigger-created rows with the seed.
+-- Install the trigger before seeding the baseline. Both trigger writes and the seed call the exact
+-- same advisory-locked bump function, so no first-row race can lose an identity mutation. A tenant
+-- touched concurrently may receive an extra initial generation; generations are monotonic freshness
+-- fences, not business counters, so preserving every ordering fence is the stronger invariant.
 CREATE TRIGGER trg_channels_track_index_identity_generation
 AFTER INSERT OR DELETE OR UPDATE OF id, tenant_id, slug ON channels
 FOR EACH ROW
 EXECUTE FUNCTION rustok_channel_track_index_identity_generation();
 
-INSERT INTO channel_index_identity_generations (tenant_id, generation, updated_at)
-SELECT tenant_id, 1, CURRENT_TIMESTAMP
-FROM channels
-GROUP BY tenant_id
-ON CONFLICT (tenant_id) DO NOTHING;
+SELECT rustok_channel_bump_index_identity_generation(seed.tenant_id)
+FROM (
+    SELECT DISTINCT tenant_id
+    FROM channels
+) seed
+ORDER BY seed.tenant_id;
 "#,
             )
             .await?;
