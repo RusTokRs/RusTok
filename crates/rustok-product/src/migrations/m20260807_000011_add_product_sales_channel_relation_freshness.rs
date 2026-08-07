@@ -17,149 +17,130 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared(
                 r#"
-ALTER TABLE product_sales_channel_index_relation_snapshots
-    ADD COLUMN visibility_key TEXT,
-    ADD COLUMN channel_identity_generation BIGINT;
-
--- Existing relation snapshots predate freshness evidence. Keep them as replay history but mark them
--- explicitly stale so no canonical live Product record can treat them as a current witness.
-UPDATE product_sales_channel_index_relation_snapshots
-   SET visibility_key = 'legacy-stale',
-       channel_identity_generation = 0
- WHERE visibility_key IS NULL
-    OR channel_identity_generation IS NULL;
-
-ALTER TABLE product_sales_channel_index_relation_snapshots
-    ALTER COLUMN visibility_key SET NOT NULL,
-    ALTER COLUMN channel_identity_generation SET NOT NULL,
-    ADD CONSTRAINT chk_product_sales_channel_index_relation_visibility_key
+CREATE TABLE product_sales_channel_index_relation_freshness_snapshots (
+    sequence_no BIGSERIAL NOT NULL,
+    tenant_id UUID NOT NULL,
+    product_id UUID NOT NULL,
+    relation_epoch BIGINT NOT NULL,
+    product_source_version BIGINT NOT NULL,
+    visibility_key TEXT NOT NULL,
+    channel_identity_generation BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_product_sales_channel_index_relation_freshness_snapshots
+        PRIMARY KEY (tenant_id, product_id, sequence_no),
+    CONSTRAINT uq_product_sales_channel_index_relation_freshness_tenant_sequence
+        UNIQUE (tenant_id, sequence_no),
+    CONSTRAINT fk_product_sales_channel_index_relation_freshness_relation
+        FOREIGN KEY (tenant_id, product_id, relation_epoch)
+        REFERENCES product_sales_channel_index_relation_snapshots (
+            tenant_id,
+            product_id,
+            relation_epoch
+        ),
+    CONSTRAINT chk_product_sales_channel_index_relation_freshness_sequence_positive
+        CHECK (sequence_no > 0),
+    CONSTRAINT chk_product_sales_channel_index_relation_freshness_tenant_non_nil
+        CHECK (tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CONSTRAINT chk_product_sales_channel_index_relation_freshness_product_non_nil
+        CHECK (product_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CONSTRAINT chk_product_sales_channel_index_relation_freshness_relation_epoch_positive
+        CHECK (relation_epoch > 0),
+    CONSTRAINT chk_product_sales_channel_index_relation_freshness_product_source_positive
+        CHECK (product_source_version > 0),
+    CONSTRAINT chk_product_sales_channel_index_relation_freshness_visibility_key
         CHECK (char_length(visibility_key) BETWEEN 1 AND 131072),
-    ADD CONSTRAINT chk_product_sales_channel_index_relation_channel_generation
-        CHECK (channel_identity_generation >= 0);
+    CONSTRAINT chk_product_sales_channel_index_relation_freshness_channel_generation
+        CHECK (channel_identity_generation >= 0)
+);
 
-CREATE OR REPLACE FUNCTION rustok_product_guard_channel_relation_snapshot()
+CREATE INDEX idx_product_sales_channel_index_relation_freshness_current
+    ON product_sales_channel_index_relation_freshness_snapshots (
+        tenant_id,
+        product_id,
+        sequence_no DESC
+    );
+
+CREATE OR REPLACE FUNCTION rustok_product_guard_channel_relation_freshness_snapshot()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    previous_epoch BIGINT;
-    previous_channel_ids JSONB;
+    previous_relation_epoch BIGINT;
+    previous_product_source_version BIGINT;
     previous_visibility_key TEXT;
     previous_channel_identity_generation BIGINT;
     lock_key TEXT;
 BEGIN
     lock_key := NEW.tenant_id::text
         || E'\x1f' || NEW.product_id::text
-        || E'\x1fproduct-sales-channel-index-relation';
+        || E'\x1fproduct-sales-channel-index-relation-freshness';
     PERFORM pg_advisory_xact_lock(hashtextextended(lock_key, 0));
 
     SELECT
         relation_epoch,
-        channel_ids,
+        product_source_version,
         visibility_key,
         channel_identity_generation
       INTO
-        previous_epoch,
-        previous_channel_ids,
+        previous_relation_epoch,
+        previous_product_source_version,
         previous_visibility_key,
         previous_channel_identity_generation
-      FROM product_sales_channel_index_relation_snapshots
+      FROM product_sales_channel_index_relation_freshness_snapshots
      WHERE tenant_id = NEW.tenant_id
        AND product_id = NEW.product_id
-     ORDER BY relation_epoch DESC
+     ORDER BY sequence_no DESC
      LIMIT 1;
 
-    IF previous_epoch IS NULL THEN
-        IF NEW.relation_epoch <> 1 THEN
-            RAISE EXCEPTION 'first Product-SalesChannel relation epoch must equal 1';
-        END IF;
-        IF NEW.visibility_key = 'legacy-stale' THEN
-            RAISE EXCEPTION 'new Product-SalesChannel relation snapshots require observed freshness';
-        END IF;
+    IF previous_relation_epoch IS NULL THEN
         RETURN NEW;
     END IF;
 
-    IF previous_epoch = 9223372036854775807 THEN
-        RAISE EXCEPTION 'Product-SalesChannel relation epoch is exhausted';
+    IF NEW.relation_epoch < previous_relation_epoch THEN
+        RAISE EXCEPTION 'Product-SalesChannel freshness relation epoch regressed';
     END IF;
-    IF NEW.relation_epoch <> previous_epoch + 1 THEN
-        RAISE EXCEPTION 'Product-SalesChannel relation epoch must advance exactly once';
+    IF NEW.product_source_version < previous_product_source_version THEN
+        RAISE EXCEPTION 'Product-SalesChannel freshness Product watermark regressed';
     END IF;
-    IF NEW.visibility_key = 'legacy-stale'
-       AND NOT (
-           NEW.channel_ids = '[]'::jsonb
-           AND previous_visibility_key = 'legacy-stale'
-       )
-    THEN
-        RAISE EXCEPTION 'new Product-SalesChannel relation snapshots require observed freshness';
+    IF NEW.channel_identity_generation < previous_channel_identity_generation THEN
+        RAISE EXCEPTION 'Product-SalesChannel freshness Channel watermark regressed';
     END IF;
-    IF NEW.channel_ids = previous_channel_ids
+    IF NEW.relation_epoch = previous_relation_epoch
+       AND NEW.product_source_version = previous_product_source_version
        AND NEW.visibility_key = previous_visibility_key
        AND NEW.channel_identity_generation = previous_channel_identity_generation
     THEN
-        RAISE EXCEPTION 'unchanged Product-SalesChannel relation witness must not append a new epoch';
+        RAISE EXCEPTION 'unchanged Product-SalesChannel freshness witness must not append';
     END IF;
 
     RETURN NEW;
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION rustok_product_retain_empty_channel_relation_on_delete()
+CREATE TRIGGER trg_product_channel_relation_freshness_snapshot_insert
+BEFORE INSERT ON product_sales_channel_index_relation_freshness_snapshots
+FOR EACH ROW
+EXECUTE FUNCTION rustok_product_guard_channel_relation_freshness_snapshot();
+
+CREATE OR REPLACE FUNCTION rustok_product_reject_channel_relation_freshness_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    previous_epoch BIGINT;
-    previous_channel_ids JSONB;
-    previous_visibility_key TEXT;
-    previous_channel_identity_generation BIGINT;
-    lock_key TEXT;
 BEGIN
-    lock_key := OLD.tenant_id::text
-        || E'\x1f' || OLD.id::text
-        || E'\x1fproduct-sales-channel-index-relation';
-    PERFORM pg_advisory_xact_lock(hashtextextended(lock_key, 0));
-
-    SELECT
-        relation_epoch,
-        channel_ids,
-        visibility_key,
-        channel_identity_generation
-      INTO
-        previous_epoch,
-        previous_channel_ids,
-        previous_visibility_key,
-        previous_channel_identity_generation
-      FROM product_sales_channel_index_relation_snapshots
-     WHERE tenant_id = OLD.tenant_id
-       AND product_id = OLD.id
-     ORDER BY relation_epoch DESC
-     LIMIT 1;
-
-    IF previous_epoch IS NOT NULL AND previous_channel_ids <> '[]'::jsonb THEN
-        IF previous_epoch = 9223372036854775807 THEN
-            RAISE EXCEPTION 'Product-SalesChannel relation epoch is exhausted';
-        END IF;
-        INSERT INTO product_sales_channel_index_relation_snapshots (
-            tenant_id,
-            product_id,
-            relation_epoch,
-            channel_ids,
-            visibility_key,
-            channel_identity_generation
-        ) VALUES (
-            OLD.tenant_id,
-            OLD.id,
-            previous_epoch + 1,
-            '[]'::jsonb,
-            previous_visibility_key,
-            previous_channel_identity_generation
-        );
-    END IF;
-
-    RETURN OLD;
+    RAISE EXCEPTION 'Product-SalesChannel relation freshness snapshots are append-only';
+    RETURN NULL;
 END;
 $$;
+
+CREATE TRIGGER trg_product_channel_relation_freshness_snapshot_update
+BEFORE UPDATE ON product_sales_channel_index_relation_freshness_snapshots
+FOR EACH ROW
+EXECUTE FUNCTION rustok_product_reject_channel_relation_freshness_mutation();
+
+CREATE TRIGGER trg_product_channel_relation_freshness_snapshot_delete
+BEFORE DELETE ON product_sales_channel_index_relation_freshness_snapshots
+FOR EACH ROW
+EXECUTE FUNCTION rustok_product_reject_channel_relation_freshness_mutation();
 "#,
             )
             .await?;
@@ -167,10 +148,29 @@ $$;
         Ok(())
     }
 
-    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
-        Err(DbErr::Custom(
-            "Product-SalesChannel relation freshness evidence migration is intentionally irreversible"
-                .to_owned(),
-        ))
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_database_backend() != DatabaseBackend::Postgres {
+            return Err(DbErr::Custom(
+                "rustok-product migrations require PostgreSQL".to_owned(),
+            ));
+        }
+
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+DROP TRIGGER IF EXISTS trg_product_channel_relation_freshness_snapshot_delete
+    ON product_sales_channel_index_relation_freshness_snapshots;
+DROP TRIGGER IF EXISTS trg_product_channel_relation_freshness_snapshot_update
+    ON product_sales_channel_index_relation_freshness_snapshots;
+DROP TRIGGER IF EXISTS trg_product_channel_relation_freshness_snapshot_insert
+    ON product_sales_channel_index_relation_freshness_snapshots;
+DROP TABLE IF EXISTS product_sales_channel_index_relation_freshness_snapshots;
+DROP FUNCTION IF EXISTS rustok_product_reject_channel_relation_freshness_mutation();
+DROP FUNCTION IF EXISTS rustok_product_guard_channel_relation_freshness_snapshot();
+"#,
+            )
+            .await?;
+        Ok(())
     }
 }
