@@ -1,5 +1,6 @@
 mod absence;
 pub(crate) mod channel_relation_resolver;
+mod channel_visibility;
 #[cfg(test)]
 pub(crate) use absence::PRODUCT_ABSENCE_WATERMARK_FACTORY;
 mod product;
