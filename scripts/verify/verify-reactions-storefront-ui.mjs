@@ -21,6 +21,7 @@ function requireAbsent(text, needle, message) {
 const cargo = read("crates/rustok-reactions-storefront/Cargo.toml");
 const model = read("crates/rustok-reactions-storefront/src/model.rs");
 const transport = read("crates/rustok-reactions-storefront/src/transport.rs");
+const transportRuntime = transport.split("#[cfg(test)]", 1)[0];
 const ui = read("crates/rustok-reactions-storefront/src/ui/leptos.rs");
 
 for (const forbidden of ["rustok-forum", "rustok-blog", "rustok-reactions ="]) {
@@ -36,29 +37,39 @@ for (const field of ["source", "kind", "subject_id", "subject_revision"]) {
 }
 requireContains(
   model,
-  "revision == 0",
-  "ReactionSubjectUiRef must reject non-positive revisions",
+  "valid_segment",
+  "ReactionSubjectUiRef must enforce the neutral source/kind segment contract",
+);
+requireContains(
+  model,
+  "subject_id.is_nil()",
+  "ReactionSubjectUiRef must reject nil subject UUIDs",
+);
+requireContains(
+  model,
+  "revision.to_string() != subject_revision",
+  "ReactionSubjectUiRef must require a canonical positive revision string",
 );
 
 for (const operation of ["reactionSnapshot", "applyReaction"]) {
-  requireContains(transport, operation, `Missing neutral GraphQL operation ${operation}`);
+  requireContains(transportRuntime, operation, `Missing neutral GraphQL operation ${operation}`);
 }
 for (const forbidden of ["tenantId", "actorId"]) {
   requireAbsent(
-    transport,
+    transportRuntime,
     forbidden,
     `Storefront GraphQL input must not accept ${forbidden}`,
   );
 }
 requireContains(
-  transport,
+  transportRuntime,
   "command_id: Uuid::new_v4()",
   "Each UI write must create a fresh owner command identity",
 );
 requireContains(
   ui,
   "set_refresh_nonce.update",
-  "Successful writes must reload canonical owner state",
+  "Every UI write attempt must reload canonical owner state",
 );
 requireAbsent(
   ui,
