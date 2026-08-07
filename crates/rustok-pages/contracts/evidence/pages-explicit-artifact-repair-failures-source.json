@@ -1,0 +1,83 @@
+{
+  "format": "pages_explicit_artifact_repair_failures_source_v1",
+  "status": "pages_explicit_artifact_repair_failures_source_unvalidated",
+  "generated_at": "2026-08-07",
+  "scope": "Source-only negative regression harness for explicit immutable artifact rebuild and rebuilt-artifact activation rejection paths",
+  "source_contract": {
+    "harness": "crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs",
+    "sqlite_isolated_database_per_test": true,
+    "real_outbox_sys_events_migration_used": true,
+    "real_channel_module_migrations_used": true,
+    "real_pages_module_migrations_used": true,
+    "canonical_reviewed_publish_body_revision_used": true,
+    "corrupt_provenance_rejected": true,
+    "corrupt_provenance_error_code_bound": true,
+    "corrupt_provenance_adds_no_rebuild_receipt": true,
+    "corrupt_provenance_adds_no_artifact": true,
+    "corrupt_provenance_preserves_binding_version_status_events": true,
+    "reviewed_runtime_mismatch_rejected": true,
+    "reviewed_runtime_mismatch_adds_no_rebuild_receipt": true,
+    "reviewed_runtime_mismatch_adds_no_artifact": true,
+    "reviewed_runtime_mismatch_preserves_binding_version_status_events": true,
+    "activation_stale_version_rejected": true,
+    "activation_stale_version_adds_no_receipt": true,
+    "activation_stale_version_preserves_binding_version_status_events": true,
+    "activation_invalid_replacement_rejected": true,
+    "activation_invalid_replacement_error_code_bound": true,
+    "activation_invalid_replacement_adds_no_receipt": true,
+    "activation_invalid_replacement_preserves_binding_version_status_events": true,
+    "activation_unpublished_page_rejected": true,
+    "activation_unpublished_error_code_bound": true,
+    "activation_unpublished_adds_no_receipt": true,
+    "activation_unpublished_preserves_binding_version_status_events": true,
+    "activation_failure_fixture_rebuild_emits_no_events": true,
+    "automatic_audit_to_rebuild": false,
+    "automatic_rebuild_to_activation": false,
+    "production_code_changed": false,
+    "database_schema_changed": false,
+    "public_transport_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false,
+    "tests_run": false,
+    "source_verifier_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "sqlite_run": false,
+    "workflows_or_ci_run": false
+  },
+  "linked_sources": {
+    "rebuild_owner": "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
+    "activation_owner": "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+    "reviewed_publish_owner": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+    "rebuild_sqlite_regression": "crates/rustok-pages/tests/explicit_artifact_rebuild_sqlite.rs",
+    "activation_sqlite_regression": "crates/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs",
+    "postgres_atomicity_regression": "crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs"
+  },
+  "harness": {
+    "path": "crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs",
+    "tests": [
+      "rebuild_rejects_corrupt_provenance_atomically",
+      "rebuild_rejects_reviewed_runtime_mismatch_atomically",
+      "activation_rejects_stale_version_atomically",
+      "activation_rejects_invalid_replacement_atomically",
+      "activation_rejects_unpublished_page_atomically"
+    ]
+  },
+  "suggested_execution": [
+    "node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs",
+    "cargo test -p rustok-pages --test explicit_artifact_repair_failures_sqlite -- --nocapture",
+    "cargo check -p rustok-pages --all-targets"
+  ],
+  "execution": [],
+  "validation": {
+    "source_guard": false,
+    "sqlite_harness": false,
+    "corrupt_provenance": false,
+    "reviewed_runtime_mismatch": false,
+    "stale_version": false,
+    "invalid_replacement": false,
+    "unpublished_page": false,
+    "zero_side_effect_snapshots": false,
+    "rebuild_no_event_boundary": false
+  }
+}
