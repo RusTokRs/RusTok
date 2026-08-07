@@ -234,8 +234,14 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
 
     assert_product_root_visible(&runtime.query, false).await?;
     run_scheduler_until_idle(&runtime.scheduler, 20).await?;
-    assert_eq!(latest_relation_epoch(&database.writer).await?, relation_before_channel_recreate);
-    assert_eq!(latest_projection_epoch(&database.writer).await?, projection_before_channel_recreate);
+    assert_eq!(
+        latest_relation_epoch(&database.writer).await?,
+        relation_before_channel_recreate
+    );
+    assert_eq!(
+        latest_projection_epoch(&database.writer).await?,
+        projection_before_channel_recreate
+    );
     assert_eq!(
         materialized_product_version(&database.mutation).await?,
         product_materialized_before_channel_recreate
@@ -441,8 +447,8 @@ async fn assert_product_root_visible(
     expected: bool,
 ) -> TestResult<()> {
     let page = query.execute_query(product_graph_query()?).await?;
-    let expected_rows = usize::from(expected);
-    let expected_count = u64::from(expected);
+    let expected_rows = if expected { 1 } else { 0 };
+    let expected_count = if expected { 1 } else { 0 };
     assert_eq!(page.items.len(), expected_rows);
     assert_eq!(page.exact_count, Some(expected_count));
     Ok(())
@@ -459,8 +465,16 @@ async fn assert_graph_payloads(
     let item = &page.items[0];
     let variant_values = nested_strings(item, "variants", "sku")?;
     let channel_values = nested_strings(item, "sales_channels", "name")?;
-    assert_eq!(variant_values, expected_variant_skus);
-    assert_eq!(channel_values, expected_channel_names);
+    let expected_variant_values = expected_variant_skus
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<Vec<_>>();
+    let expected_channel_values = expected_channel_names
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(variant_values, expected_variant_values);
+    assert_eq!(channel_values, expected_channel_values);
     Ok(())
 }
 
@@ -476,7 +490,7 @@ fn nested_strings(
         .iter()
         .find(|projection| projection.path == vec![link_name.clone()])
         .ok_or_else(|| std::io::Error::other(format!("missing nested projection {link}")))?;
-    projection
+    let values = projection
         .items
         .iter()
         .map(|nested| {
@@ -484,7 +498,9 @@ fn nested_strings(
                 .fields
                 .iter()
                 .find(|projected| projected.path == field_path)
-                .ok_or_else(|| std::io::Error::other(format!("missing nested field {link}.{field}")))?;
+                .ok_or_else(|| {
+                    std::io::Error::other(format!("missing nested field {link}.{field}"))
+                })?;
             match &projected.value {
                 IndexValue::String(value) => Ok(value.clone()),
                 other => Err(std::io::Error::other(format!(
@@ -492,8 +508,8 @@ fn nested_strings(
                 ))),
             }
         })
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(Into::into)
+        .collect::<Result<Vec<_>, std::io::Error>>()?;
+    Ok(values)
 }
 
 async fn delete_variant(db: &DatabaseConnection) -> TestResult<()> {
@@ -550,9 +566,10 @@ async fn recreate_channel(db: &DatabaseConnection) -> TestResult<()> {
 }
 
 async fn live_variant_revision(db: &DatabaseConnection) -> TestResult<u64> {
-    scalar_revision(
+    required_revision(
         db,
         "SELECT index_revision FROM product_variants WHERE tenant_id = $1 AND id = $2",
+        "index_revision",
         VARIANT_ID,
         "live ProductVariant revision",
     )
@@ -560,9 +577,10 @@ async fn live_variant_revision(db: &DatabaseConnection) -> TestResult<u64> {
 }
 
 async fn live_channel_revision(db: &DatabaseConnection) -> TestResult<u64> {
-    scalar_revision(
+    required_revision(
         db,
         "SELECT index_revision FROM channels WHERE tenant_id = $1 AND id = $2",
+        "index_revision",
         CHANNEL_ID,
         "live SalesChannel revision",
     )
@@ -570,37 +588,41 @@ async fn live_channel_revision(db: &DatabaseConnection) -> TestResult<u64> {
 }
 
 async fn variant_tombstone_version(db: &DatabaseConnection) -> TestResult<Option<u64>> {
-    optional_scalar_revision(
+    optional_revision(
         db,
         "SELECT source_version FROM product_variant_index_tombstones WHERE tenant_id = $1 AND variant_id = $2",
+        "source_version",
         VARIANT_ID,
     )
     .await
 }
 
 async fn channel_tombstone_version(db: &DatabaseConnection) -> TestResult<Option<u64>> {
-    optional_scalar_revision(
+    optional_revision(
         db,
         "SELECT source_version FROM channel_index_tombstones WHERE tenant_id = $1 AND channel_id = $2",
+        "source_version",
         CHANNEL_ID,
     )
     .await
 }
 
-async fn scalar_revision(
+async fn required_revision(
     db: &DatabaseConnection,
     sql: &str,
+    column: &str,
     entity_id: Uuid,
     label: &str,
 ) -> TestResult<u64> {
-    optional_scalar_revision(db, sql, entity_id)
+    optional_revision(db, sql, column, entity_id)
         .await?
         .ok_or_else(|| std::io::Error::other(format!("{label} is missing")).into())
 }
 
-async fn optional_scalar_revision(
+async fn optional_revision(
     db: &DatabaseConnection,
     sql: &str,
+    column: &str,
     entity_id: Uuid,
 ) -> TestResult<Option<u64>> {
     let row = db
@@ -610,11 +632,11 @@ async fn optional_scalar_revision(
             vec![TENANT_ID.into(), entity_id.into()],
         ))
         .await?;
-    row.map(|row| {
-        let value: i64 = row.try_get("", if sql.contains("source_version") { "source_version" } else { "index_revision" })?;
-        Ok(u64::try_from(value)?)
-    })
-    .transpose()
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let value: i64 = row.try_get("", column)?;
+    Ok(Some(u64::try_from(value)?))
 }
 
 async fn channel_generation(db: &DatabaseConnection) -> TestResult<u64> {
@@ -631,7 +653,7 @@ async fn channel_generation(db: &DatabaseConnection) -> TestResult<u64> {
 }
 
 async fn latest_relation_epoch(db: &DatabaseConnection) -> TestResult<u64> {
-    scalar_product_epoch(
+    product_epoch(
         db,
         "SELECT relation_epoch FROM product_sales_channel_index_relation_snapshots WHERE tenant_id = $1 AND product_id = $2 ORDER BY relation_epoch DESC LIMIT 1",
         "relation_epoch",
@@ -640,7 +662,7 @@ async fn latest_relation_epoch(db: &DatabaseConnection) -> TestResult<u64> {
 }
 
 async fn latest_projection_epoch(db: &DatabaseConnection) -> TestResult<u64> {
-    scalar_product_epoch(
+    product_epoch(
         db,
         "SELECT projection_epoch FROM product_index_graph_projection_snapshots WHERE tenant_id = $1 AND product_id = $2 ORDER BY projection_epoch DESC LIMIT 1",
         "projection_epoch",
@@ -649,7 +671,7 @@ async fn latest_projection_epoch(db: &DatabaseConnection) -> TestResult<u64> {
 }
 
 async fn latest_freshness_generation(db: &DatabaseConnection) -> TestResult<u64> {
-    scalar_product_epoch(
+    product_epoch(
         db,
         "SELECT channel_identity_generation FROM product_sales_channel_index_relation_freshness_snapshots WHERE tenant_id = $1 AND product_id = $2 ORDER BY sequence_no DESC LIMIT 1",
         "channel_identity_generation",
@@ -657,11 +679,7 @@ async fn latest_freshness_generation(db: &DatabaseConnection) -> TestResult<u64>
     .await
 }
 
-async fn scalar_product_epoch(
-    db: &DatabaseConnection,
-    sql: &str,
-    column: &str,
-) -> TestResult<u64> {
+async fn product_epoch(db: &DatabaseConnection, sql: &str, column: &str) -> TestResult<u64> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -682,7 +700,7 @@ async fn assert_materialized_target_version(
     db: &DatabaseConnection,
     module_name: &str,
     entity_name: &str,
-    schema_version: i32,
+    schema_version: i64,
     entity_id: Uuid,
     expected_source_version: u64,
 ) -> TestResult<()> {
@@ -697,7 +715,7 @@ async fn materialized_target_version(
     db: &DatabaseConnection,
     module_name: &str,
     entity_name: &str,
-    schema_version: i32,
+    schema_version: i64,
     entity_id: Uuid,
 ) -> TestResult<u64> {
     let row = db
@@ -722,7 +740,11 @@ WHERE tenant_id = $1
             ],
         ))
         .await?
-        .ok_or_else(|| std::io::Error::other(format!("materialized {module_name}/{entity_name} row is missing")))?;
+        .ok_or_else(|| {
+            std::io::Error::other(format!(
+                "materialized {module_name}/{entity_name} row is missing"
+            ))
+        })?;
     let value: String = row.try_get("", "source_version_text")?;
     Ok(value.parse()?)
 }
