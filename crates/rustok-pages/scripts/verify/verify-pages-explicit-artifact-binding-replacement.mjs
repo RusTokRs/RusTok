@@ -221,13 +221,13 @@ need(sources.rollback, 'const PAGE_ROLLBACK_OPERATION_FORMAT: &str = "page_rollb
 need(sources.artifactService, "pub(crate) async fn bind_existing_body_in_tx", "binding owner");
 
 for (const marker of [
-  "binding_replacement_updates_exact_locale_and_is_idempotent_on_sqlite",
-  "replacement_idempotency_key",
+  "explicit_binding_replacement_switches_exact_rebuild_and_replays",
+  "assert!(replay.replayed)",
 ]) {
   need(sources.sqliteTest, marker, "SQLite source packet");
 }
 for (const marker of [
-  "missing_binding_activation_recovers_after_source_artifact_loss_on_postgres",
+  "missing_binding_activation_recovers_after_physical_source_artifact_loss_on_postgres",
   "RUSTOK_PAGES_TEST_DATABASE_URL",
 ]) {
   need(sources.singleLossTest, marker, "single-loss PostgreSQL packet");
