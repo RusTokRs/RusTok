@@ -1,6 +1,6 @@
 # Pages Immutable Artifact Integrity Audit
 
-Date: 2026-08-06  
+Date: 2026-08-07  
 Status: `source-ready / maintainer-validation-pending`
 
 ## Purpose
@@ -23,7 +23,7 @@ The command requires tenant-wide:
 pages:manage
 ```
 
-Only `PermissionScope::All` is accepted. An owner-scoped `pages:manage` permission does not authorize reading retained page-wide artifacts.
+Only `PermissionScope::All` is accepted by the owner service. Under the current access-token permission bridge, effective `pages:manage` resolves to `PermissionScope::All` when present and `PermissionScope::None` when absent; there is no current `PermissionScope::Own` outcome for Pages Manage. The explicit owner `All` check remains defense in depth for direct/internal callers and future authorization-model changes.
 
 The requested tenant and page identifiers must be non-nil. The page must exist inside the exact tenant before artifact rows are read.
 
@@ -115,7 +115,7 @@ This source slice does not:
 - change anonymous storefront reads;
 - promote FFA or FBA.
 
-Repair/rebuild remains a separate open source cursor. Public transport and executed database evidence also remain open.
+Repair/rebuild remains a separate source cursor. Public transport and executed database evidence also remain open.
 
 ## Maintainer validation
 
@@ -129,8 +129,8 @@ cargo check -p rustok-pages
 
 A retained execution packet should cover at least:
 
-- exact tenant-wide `pages:manage` admission;
-- owner-scoped and missing-permission denial;
+- exact current-tenant effective `pages:manage` admission and `PermissionScope::All` owner check;
+- missing-permission denial and the current `All`/`None` scope semantics;
 - an empty artifact set;
 - valid legacy all-`NULL` materialization evidence;
 - valid current materialization evidence;
