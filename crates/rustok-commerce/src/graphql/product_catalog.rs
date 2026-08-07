@@ -4,7 +4,7 @@ use rustok_api::{
     graphql::require_module_enabled,
 };
 use rustok_outbox::TransactionalEventBus;
-use rustok_product::{AdminProductListQuery, CatalogService, StorefrontProductListQuery};
+use rustok_product::{AdminProductListQuery, StorefrontProductListQuery};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -14,9 +14,10 @@ use super::{
     require_storefront_channel_enabled,
 };
 
-fn admin_product_catalog_port_error(
+fn product_catalog_port_error(
     context: &PortContext,
     error: PortError,
+    operation: &'static str,
 ) -> async_graphql::Error {
     let (code, message, retryable, error_kind) = match &error.kind {
         PortErrorKind::Validation => (
@@ -60,14 +61,14 @@ fn admin_product_catalog_port_error(
     tracing::error!(
         correlation_id = %context.correlation_id,
         tenant_id = %context.tenant_id,
-        operation = "admin_product_catalog",
+        operation,
         owner_code = %error.code,
         owner_kind = error_kind,
         owner_retryable = error.retryable,
         public_code = code,
         retryable,
         boundary = "commerce_graphql_product",
-        "commerce GraphQL Product admin catalog owner port failed"
+        "commerce GraphQL Product catalog owner port failed"
     );
 
     async_graphql::Error::new(message).extend_with(|_, extensions| {
@@ -165,16 +166,38 @@ impl ProductCatalogQuery {
         )
         .map_err(|error| map_product_service_error(error, "storefront_product_catalog_input"))?
         .with_pagination(page, per_page);
-        let products = CatalogService::new(db.clone(), event_bus.clone())
-            .list_published_products_with_query(
-                tenant.id,
-                requested_locale.as_str(),
-                Some(tenant.default_locale.as_str()),
-                public_channel_slug.as_deref(),
-                list_query,
+
+        let port_context = PortContext::new(
+            tenant.id.to_string(),
+            PortActor::service("commerce-storefront-graphql"),
+            requested_locale.as_str(),
+            format!("commerce-graphql-product:storefront-catalog:{page}:{per_page}"),
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+        let port_context = match public_channel_slug.as_deref() {
+            Some(channel) => port_context.with_channel(channel),
+            None => port_context,
+        };
+        let product_read_runtime =
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            );
+        let products = product_read_runtime
+            .read_port()
+            .list_filtered_published_products(
+                port_context.clone(),
+                rustok_product::FilteredPublishedProductsRequest {
+                    locale: Some(requested_locale),
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                    public_channel_slug,
+                    query: list_query,
+                },
             )
             .await
-            .map_err(|error| map_product_service_error(error, "storefront_product_catalog"))?;
+            .map_err(|error| {
+                product_catalog_port_error(&port_context, error, "storefront_product_catalog")
+            })?;
 
         Ok(GqlProductList {
             total: products.total,
@@ -279,7 +302,9 @@ impl ProductCatalogQuery {
                 },
             )
             .await
-            .map_err(|error| admin_product_catalog_port_error(&port_context, error))?;
+            .map_err(|error| {
+                product_catalog_port_error(&port_context, error, "admin_product_catalog")
+            })?;
 
         Ok(AdminProductCatalogList {
             total: products.total,
