@@ -107,16 +107,18 @@ Generic Index persistence now has an explicit replacement primitive documented i
 
 `PostgresSchemaRegistrationStore::register_current`.
 
-It atomically registers/resolves one monotonically higher current routing key for an exact
-tenant/module/entity identity and marks every lower active persisted key `retired` in the same
-transaction. Ordinary `register` does not gain this behavior.
+Ordinary `register` can first stage one monotonically higher immutable routing key while lower persisted
+keys remain active for the rebuild window. After that staged key is completely rebuilt and verified,
+`register_current` resolves the exact same staged contract and atomically marks every lower active key
+`retired` in the final authority-transition transaction.
 
 Retirement does not rewrite or delete historical entity/link/inbox/replay rows. Their immutable schema
 rows remain for foreign-key integrity, while exact persisted readiness and query execution reject a
 retired schema as non-authoritative.
 
 This solves the persistence-side **single-current** replacement mechanism without adding a parallel
-runtime compatibility branch. It does not by itself expand Product or make a new Product key ready.
+runtime compatibility branch. It does not by itself expand Product or make a replacement Product key
+ready.
 
 ## Cutover admission rule
 
@@ -127,11 +129,12 @@ following:
    that is claimed by the cutover;
 2. typed Product attribute predicates have an admitted Index representation and exact owner parity, or
    the Storefront contract explicitly stops claiming those filters before cutover;
-3. the new immutable Product contract is installed through explicit single-current supersession and a
-   complete new-key rebuild/replay, not same-key fingerprint replacement;
-4. every lower persisted Product key is retired and no old Product schema is runtime-selected in
-   parallel;
-5. exact tenant schema readiness succeeds for the new current key after rebuild;
+3. the replacement immutable Product contract is staged through ordinary registration and complete
+   new-key rebuild/replay, then made authoritative through explicit single-current supersession — never
+   through same-key fingerprint replacement;
+4. every lower persisted Product key is retired at final supersession and no old Product schema is
+   runtime-selected in parallel by the replacement code;
+5. exact tenant schema readiness succeeds for the replacement key before final consumer cutover;
 6. retained PostgreSQL equivalence compares owner-native and Index results for locale fallback,
    visibility, search, category, typed attributes, both sort keys/directions, pagination, exact count,
    and linked-target lag;
@@ -152,6 +155,7 @@ The guard verifies that:
 - owner query/DTO source still exposes the required controls/result fields listed above;
 - the current Product Index schema still lacks the known missing Storefront fields;
 - same-key schema fingerprint reuse remains rejected by generic Index registration;
+- staged single-current supersession remains available for a future replacement;
 - the current Index implementation plan keeps Storefront traffic cutover evidence-gated.
 
 ## Deliberate limits
@@ -161,8 +165,8 @@ Index state, invent a second Storefront Product entity, duplicate EAV data, weak
 fingerprint/readiness checks, or switch traffic.
 
 The next Product schema replacement must use one higher internal routing key as a storage identity while
-publishing only that one current Product contract in runtime code. The old key is historical storage, not
-a compatibility implementation.
+publishing only that one replacement Product contract in new runtime code. The old key is historical
+storage, not a compatibility implementation.
 
 ## Maintainer verification
 
