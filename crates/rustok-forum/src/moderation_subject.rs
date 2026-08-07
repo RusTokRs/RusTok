@@ -257,34 +257,75 @@ async fn lock_subject_row(
     kind: ModerationSubjectKind,
     subject_id: Uuid,
 ) -> Result<(), PortError> {
-    let rows_affected = match kind {
-        ModerationSubjectKind::ForumTopic => forum_topic::Entity::update_many()
-            .col_expr(
-                forum_topic::Column::UpdatedAt,
-                Expr::col(forum_topic::Column::UpdatedAt),
-            )
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic::Column::Id.eq(subject_id))
-            .filter(forum_topic::Column::DeletedAt.is_null())
-            .exec(transaction)
-            .await
-            .map_err(database_error)?
-            .rows_affected,
-        ModerationSubjectKind::ForumPost => forum_reply::Entity::update_many()
-            .col_expr(
-                forum_reply::Column::UpdatedAt,
-                Expr::col(forum_reply::Column::UpdatedAt),
-            )
-            .filter(forum_reply::Column::TenantId.eq(tenant_id))
-            .filter(forum_reply::Column::Id.eq(subject_id))
-            .filter(forum_reply::Column::DeletedAt.is_null())
-            .exec(transaction)
-            .await
-            .map_err(database_error)?
-            .rows_affected,
+    let exists = match kind {
+        ModerationSubjectKind::ForumTopic => {
+            if transaction.get_database_backend() == DatabaseBackend::Sqlite {
+                // SQLite has no SELECT FOR UPDATE. Follow the established owner
+                // lock protocol: reserve the writer with a no-op assignment and
+                // verify existence separately because rows_affected may be zero.
+                forum_topic::Entity::update_many()
+                    .col_expr(
+                        forum_topic::Column::UpdatedAt,
+                        Expr::col(forum_topic::Column::UpdatedAt),
+                    )
+                    .filter(forum_topic::Column::TenantId.eq(tenant_id))
+                    .filter(forum_topic::Column::Id.eq(subject_id))
+                    .filter(forum_topic::Column::DeletedAt.is_null())
+                    .exec(transaction)
+                    .await
+                    .map_err(database_error)?;
+                forum_topic::Entity::find_by_id(subject_id)
+                    .filter(forum_topic::Column::TenantId.eq(tenant_id))
+                    .filter(forum_topic::Column::DeletedAt.is_null())
+                    .one(transaction)
+                    .await
+                    .map_err(database_error)?
+                    .is_some()
+            } else {
+                forum_topic::Entity::find_by_id(subject_id)
+                    .filter(forum_topic::Column::TenantId.eq(tenant_id))
+                    .filter(forum_topic::Column::DeletedAt.is_null())
+                    .lock_exclusive()
+                    .one(transaction)
+                    .await
+                    .map_err(database_error)?
+                    .is_some()
+            }
+        }
+        ModerationSubjectKind::ForumPost => {
+            if transaction.get_database_backend() == DatabaseBackend::Sqlite {
+                forum_reply::Entity::update_many()
+                    .col_expr(
+                        forum_reply::Column::UpdatedAt,
+                        Expr::col(forum_reply::Column::UpdatedAt),
+                    )
+                    .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                    .filter(forum_reply::Column::Id.eq(subject_id))
+                    .filter(forum_reply::Column::DeletedAt.is_null())
+                    .exec(transaction)
+                    .await
+                    .map_err(database_error)?;
+                forum_reply::Entity::find_by_id(subject_id)
+                    .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                    .filter(forum_reply::Column::DeletedAt.is_null())
+                    .one(transaction)
+                    .await
+                    .map_err(database_error)?
+                    .is_some()
+            } else {
+                forum_reply::Entity::find_by_id(subject_id)
+                    .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                    .filter(forum_reply::Column::DeletedAt.is_null())
+                    .lock_exclusive()
+                    .one(transaction)
+                    .await
+                    .map_err(database_error)?
+                    .is_some()
+            }
+        }
         _ => return Err(subject_mismatch()),
     };
-    if rows_affected != 1 {
+    if !exists {
         return Err(subject_unavailable());
     }
     Ok(())
