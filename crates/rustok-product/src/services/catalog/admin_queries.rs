@@ -22,6 +22,7 @@ impl CatalogService {
             None,
             None,
             false,
+            false,
         )
         .await
     }
@@ -38,6 +39,7 @@ impl CatalogService {
         vendor: Option<&str>,
         product_type: Option<&str>,
         empty_missing_title: bool,
+        legacy_shipping_profile_fallback: bool,
     ) -> CommerceResult<AdminProductList> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         if page == 0 || per_page == 0 || per_page > 100 {
@@ -132,10 +134,18 @@ impl CatalogService {
                 let translation = translations_by_product.get(&product.id).and_then(|items| {
                     pick_product_translation(items.as_slice(), locale, fallback_locale)
                 });
-                let shipping_profile_slug = product
-                    .shipping_profile_slug
-                    .clone()
-                    .or_else(|| extract_shipping_profile_slug(&product.metadata));
+                let shipping_profile_slug = if legacy_shipping_profile_fallback {
+                    product
+                        .shipping_profile_slug
+                        .as_deref()
+                        .and_then(normalize_shipping_profile_slug)
+                        .or_else(|| extract_shipping_profile_slug(&product.metadata))
+                } else {
+                    product
+                        .shipping_profile_slug
+                        .clone()
+                        .or_else(|| extract_shipping_profile_slug(&product.metadata))
+                };
                 AdminProductListItem {
                     id: product.id,
                     status: product.status,
