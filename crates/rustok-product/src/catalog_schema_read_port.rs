@@ -68,11 +68,18 @@ pub trait ProductCatalogSchemaReadPort: Send + Sync {
         context: PortContext,
     ) -> Result<Vec<ProductAttributeSchemaListRecord>, PortError>;
 
+    /// Optional effective-form projection. Existing schema-directory adapters remain
+    /// source-compatible until they explicitly support this aggregate projection.
     async fn read_effective_form(
         &self,
-        context: PortContext,
-        request: ProductEffectiveFormRequest,
-    ) -> Result<Option<ProductEffectiveFormProjection>, PortError>;
+        _context: PortContext,
+        _request: ProductEffectiveFormRequest,
+    ) -> Result<Option<ProductEffectiveFormProjection>, PortError> {
+        Err(PortError::unavailable(
+            "product.effective_form_unavailable",
+            "product effective form is unavailable",
+        ))
+    }
 }
 
 #[async_trait]
