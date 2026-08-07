@@ -18,6 +18,8 @@ use crate::{
     domain::{IndexQuery, SchemaRef},
 };
 
+use super::PostgresIndexQueryAdmissionCatalog;
+
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
 const READ_ONLY_SNAPSHOT_SQL: &str =
     "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY";
@@ -33,18 +35,32 @@ struct RequiredSchemaContract {
 
 /// PostgreSQL execution adapter for the transport-neutral [`IndexQueryPort`].
 ///
-/// The adapter compiles through the owned immutable registry, verifies every schema
-/// touched by the plan against tenant-scoped persisted registration, and executes the
-/// page plus optional exact count inside one read-only repeatable-read snapshot.
+/// The adapter compiles through the owned immutable registry, applies any trusted root-row
+/// admission rule before filter/order/pagination/count execution, verifies every schema touched by
+/// the plan against tenant-scoped persisted registration, and executes the page plus optional exact
+/// count inside one read-only repeatable-read snapshot.
 #[derive(Clone)]
 pub struct PostgresIndexQueryPort {
     db: DatabaseConnection,
     registry: Arc<SchemaRegistry>,
+    admissions: PostgresIndexQueryAdmissionCatalog,
 }
 
 impl PostgresIndexQueryPort {
     pub fn new(db: DatabaseConnection, registry: Arc<SchemaRegistry>) -> Self {
-        Self { db, registry }
+        Self::with_admissions(db, registry, PostgresIndexQueryAdmissionCatalog::new())
+    }
+
+    pub fn with_admissions(
+        db: DatabaseConnection,
+        registry: Arc<SchemaRegistry>,
+        admissions: PostgresIndexQueryAdmissionCatalog,
+    ) -> Self {
+        Self {
+            db,
+            registry,
+            admissions,
+        }
     }
 
     pub fn connection(&self) -> &DatabaseConnection {
@@ -55,11 +71,33 @@ impl PostgresIndexQueryPort {
         &self.registry
     }
 
+    pub fn admissions(&self) -> &PostgresIndexQueryAdmissionCatalog {
+        &self.admissions
+    }
+
+    fn admitted_compiled_query(
+        &self,
+        query: &IndexQuery,
+        page_query: &CompiledPostgresPageQuery,
+    ) -> Result<CompiledPostgresQuery, IndexQueryExecutionError> {
+        let mut compiled = page_query.compiled().clone();
+        if let Some(descriptor) = self.admissions.get(&query.schema) {
+            descriptor
+                .admission()
+                .apply(&mut compiled)
+                .map_err(|error| {
+                    IndexQueryExecutionError::contract_preparation(query.schema.clone(), error)
+                })?;
+        }
+        Ok(compiled)
+    }
+
     async fn execute_in_transaction(
         &self,
         transaction: &DatabaseTransaction,
         query: &IndexQuery,
         page_query: &CompiledPostgresPageQuery,
+        compiled: &CompiledPostgresQuery,
         required_schemas: &[RequiredSchemaContract],
     ) -> Result<IndexQueryPage, IndexQueryExecutionError> {
         transaction
@@ -71,7 +109,6 @@ impl PostgresIndexQueryPort {
 
         verify_persisted_schemas(transaction, query, required_schemas).await?;
 
-        let compiled = page_query.compiled();
         let page_rows = transaction
             .query_all(compiled_statement(compiled))
             .await
@@ -103,13 +140,20 @@ impl IndexQueryPort for PostgresIndexQueryPort {
 
         let required_schemas = required_schema_contracts(&self.registry, &query)?;
         let page_query = self.registry.compile_postgres_page_query(&query)?;
+        let compiled = self.admitted_compiled_query(&query, &page_query)?;
         let transaction = self
             .db
             .begin()
             .await
             .map_err(|error| IndexQueryExecutionError::storage("begin query snapshot", error))?;
         let result = self
-            .execute_in_transaction(&transaction, &query, &page_query, &required_schemas)
+            .execute_in_transaction(
+                &transaction,
+                &query,
+                &page_query,
+                &compiled,
+                &required_schemas,
+            )
             .await;
 
         match result {
