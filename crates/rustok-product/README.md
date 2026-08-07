@@ -47,6 +47,11 @@
   removed locale, and ProductVariant deletion retains its non-localized key.
   Recreated identities must receive an `index_revision` strictly above the
   retained delete before the tombstone is cleared.
+- Own append-only `product_sales_channel_index_relation_snapshots` with a
+  dedicated monotonic relation epoch, bounded current/change readers,
+  idempotent complete-membership replacement, live-Product delete fencing, and
+  retained empty membership after Product hard delete. Product still does not
+  resolve Channel slugs or depend on `rustok-channel`/`rustok-index`.
 - Publish only a neutral `ProductRuntimeSelected` marker for selected
   cross-module composition. The Product crate does not depend on `rustok-index`
   and does not construct generic Index mutations.
@@ -59,6 +64,12 @@
   identity-ready schemas. Product v2 exposes normalized channel visibility
   scalars and a many-cardinality Product-to-ProductVariant link; ProductVariant
   v2 adds its stable UUID identity field.
+- The selected distribution composition now also resolves Product channel
+  visibility to current tenant Channel UUID membership and writes only through
+  the Product-owned relation store. Unrestricted Product visibility resolves
+  against the current tenant Channel identity universe; Channel runtime active
+  state remains Channel-owned. This resolver is bounded and convergent, not an
+  atomic cross-owner snapshot or continuous event consumer.
 - The selected bridge emits `IndexMutation::Upsert` for live owner rows and
   `IndexMutation::Delete` for retained hard-delete identities without changing
   schema fingerprints, source names, cursor shapes, or replay event domains.
@@ -68,8 +79,9 @@
   does not establish a repeatable-read owner snapshot or close the final-pass
   concurrent-write window.
   Incremental event ingestion, snapshot/watermark admission, tombstone
-  retention/purge admission, durable Product/ProductVariant-to-SalesChannel
-  relations, and authoritative Index consumer cutover remain later slices.
+  retention/purge admission, durable relation convergence triggering, Product
+  v3 Product-to-SalesChannel materialization, and authoritative Index consumer
+  cutover remain later slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
@@ -144,7 +156,8 @@
   module-owned.
 - Depends on `rustok-outbox` and `rustok-events` for transactional event publishing.
 - Is consumed by the selected distribution bridge for generic Index schema/source
-  composition; Index core and server replay composition remain Product-agnostic.
+  composition and Product-to-Channel relation resolution; Index core and server
+  replay composition remain Product-agnostic.
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
 - Consumed by `apps/admin` through manifest-driven module UI composition.
 - Consumed by `apps/storefront` through manifest-driven module UI composition.
@@ -161,6 +174,7 @@
 - `ProductRuntimeSelected`
 - `CatalogService`
 - `ProductCatalogReadPort`
+- `ProductSalesChannelIndexRelationStore`
 - `services::catalog_schema::resolve_effective_product_form`
 - `ProductCatalogSchemaService`
 - `admin::ProductAdmin`
@@ -170,5 +184,6 @@ See also `docs/README.md`, the Index
 [M7 Product source contract](../rustok-index/docs/m7-product-source.md),
 [M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md),
 [M7 versioned Product graph contract](../rustok-index/docs/m7-product-graph-source.md),
+[M7 Product-SalesChannel resolver contract](../rustok-index/docs/m7-product-sales-channel-resolver.md),
 [M7 Product tombstone replay contract](../rustok-index/docs/m7-product-tombstone-source.md), and
 [M7 bounded Product reconciliation contract](../rustok-index/docs/m7-product-reconciliation.md).

@@ -1,13 +1,12 @@
 # Product-SalesChannel Index relation owner ledger
 
-Status: `owner_storage_source_complete_cross_owner_resolution_and_index_wiring_pending`.
+Status: `owner_storage_source_complete_resolver_composed_index_wiring_pending`.
 
 ## Purpose
 
-The existing M7 admission contract requires a relation version that advances independently from both
-`products.index_revision` and `channels.index_revision`. Product metadata still expresses desired
-visibility with canonical Channel slugs, while the future Index relation must target stable Channel
-UUIDs.
+The M7 admission contract requires a relation version that advances independently from both
+`products.index_revision` and `channels.index_revision`. Product metadata expresses desired visibility
+with canonical Channel slugs, while the future Index relation targets stable Channel UUIDs.
 
 `product_sales_channel_index_relation_snapshots` is the Product-owned durable boundary for that
 resolved UUID membership. It deliberately does not resolve slugs, read Channel tables, construct an
@@ -27,10 +26,9 @@ string, strictly sorted and unique. An empty array is valid and means that the r
 no Channel targets.
 
 An empty resolved UUID membership is not the same thing as an empty Product
-`allowed_channel_slugs` list. The existing Product visibility contract treats an empty slug allowlist
-as unrestricted visibility. A future cross-owner resolver must explicitly translate that visibility
-semantics into the current resolved Channel UUID set rather than copying an empty slug list into an
-empty relation snapshot.
+`allowed_channel_slugs` list. The Product visibility contract treats an empty slug allowlist as
+unrestricted visibility. The distribution-owned resolver now preserves that distinction explicitly by
+resolving unrestricted Products against the current tenant Channel identity universe.
 
 The first persisted epoch is exactly `1`. A later snapshot must be exactly the previous epoch plus
 one and must change membership. Equal membership is an idempotent retry and is not appended.
@@ -64,8 +62,8 @@ The same owner boundary exposes:
 - `scan_current` — current state for at most 256 Products in stable Product UUID order;
 - `load_current` — exact current state for at most 64 Product UUIDs.
 
-These readers expose Product-owned relation facts only. A future distribution adapter remains
-responsible for locale fan-out and conversion to the admitted generic Index relation contract.
+These readers expose Product-owned relation facts only. The distribution layer remains responsible
+for cross-owner resolution, locale fan-out, and eventual conversion to the Index relation contract.
 
 ## Retained empty membership
 
@@ -80,6 +78,19 @@ non-empty relation snapshot.
 The snapshot table has no foreign key to Product or Channel rows. This is intentional: Product and
 Channel physical deletion must not erase the relation evidence needed for replay and reconciliation.
 
+## Cross-owner composition
+
+`rustok-distribution::product_index::channel_relation_resolver` now reads Product visibility plus
+current tenant Channel identities and submits only the complete resolved UUID set to this owner API.
+The Product crate remains unaware of Channel tables and Channel types.
+
+The resolver uses bounded observe/write/re-observe stabilization. That composition does not change the
+owner transaction contract and does not turn Product storage into an atomic cross-owner snapshot.
+Durable event triggers, watermarks/checkpoints, and runtime evidence remain separate admission work.
+
+Detailed resolver contract:
+`crates/rustok-index/docs/m7-product-sales-channel-resolver.md`.
+
 ## Module boundary
 
 `rustok-product` still has no dependency on `rustok-index` or `rustok-channel`. The owner store accepts
@@ -91,12 +102,9 @@ place that owns monotonic relation epochs.
 
 ## Still open
 
-This slice does not yet:
+This owner slice plus resolver composition still do not:
 
-- resolve `metadata.channel_visibility.allowed_channel_slugs` to Channel UUIDs;
-- define the reviewed unrestricted-visibility-to-current-Channel resolution policy;
-- react to Channel create/delete/slug movement or Product visibility changes;
-- initialize relation state for existing Products;
+- register durable Product/Channel relation triggers or checkpoints;
 - register a relation replay source or mutation-event route;
 - add the Product-to-SalesChannel `IndexLink` (that requires a new Product schema version; v2 cannot
   be mutated in place);
@@ -105,18 +113,19 @@ This slice does not yet:
   evidence;
 - authorize Storefront or production Index cutover.
 
-The next source slice should compose a cross-owner resolver in a layer that already sees both selected
-Product and Channel modules. That resolver must re-read current Product visibility plus Channel
-identity, preserve the existing unrestricted visibility semantics explicitly, then call this
-Product-owned store; it must not move Channel SQL into `rustok-product`.
+The next unblocked source slice is a new Product Index schema version plus relation replay adapter in
+the distribution/Index integration boundary. It must consume this owner epoch rather than deriving a
+relation version from Product or Channel revisions.
 
 ## Maintainer verification
 
 ```bash
 cargo test -p rustok-product index_channel_relation --lib -- --nocapture
+cargo test -p rustok-distribution product_sales_channel -- --nocapture
+node scripts/verify/verify-index-product-channel-relation-resolver.mjs
 node scripts/verify/verify-index-product-channel-relation-ledger.mjs
-node scripts/verify/verify-index-product-channel-relation-admission.mjs
 cargo check -p rustok-product --all-targets
+cargo check -p rustok-distribution --all-targets
 git diff --check
 ```
 

@@ -1,8 +1,9 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked against `main@eb75872bc37adba361c7a1eff1533b71f2a00a3f` and continued on
-`agent/index-m7-product-channel-relation-ledger-20260807`. Intervening #3127 Reactions, #3128 Pages,
-and #3129 Commerce changes do not overlap the Index/Product relation slice.
+Status overlay rechecked against branch base `main@375f7cdb80244570bb5e93405b771e0e8516b1f4` and continued on
+`agent/index-m7-product-channel-resolver-20260807`. Main advanced substantially after #3130 in Events,
+Pages, Reactions, Commerce, module-control-plane, and adjacent surfaces; those changes do not replace
+the Product-to-SalesChannel relation resolver work described here.
 
 This file supersedes the dated 2026-08-03 status overlay. `implementation-plan.md` remains the
 historical milestone/architecture plan, but several of its M5/M6/M7 checklist entries are stale
@@ -34,37 +35,49 @@ Independent source work may continue while that owner-execution gate is pending.
 - ProductVariant parent-aware tombstones plus append-only refresh ledger/source;
 - Product-owned exact refresh canonical writer;
 - durable Product locale/ProductVariant relay cursor and one-step canonical outbox publication;
-- bounded fail-closed per-tenant persisted schema readiness gate.
+- bounded fail-closed per-tenant persisted schema readiness gate;
+- Product-owned append-only Product-to-SalesChannel relation snapshot ledger with independent
+  monotonic epoch, bounded owner reads, live-Product fencing, and retained empty membership;
+- bounded cross-owner Product visibility to Channel UUID resolver in `rustok-distribution` with
+  explicit unrestricted semantics and observe/write/re-observe stabilization.
 
 ### Owner-execution gates that remain open
 
 - concrete repair PostgreSQL retained packet;
 - persisted tenant schema readiness evidence;
 - Product-locale absence/live drift evidence;
+- Product-to-SalesChannel owner/resolver PostgreSQL concurrency and restart evidence;
 - live PostgreSQL/reference query equivalence;
 - retained real PostgreSQL partition packet;
 - multi-host/restart/graceful-shutdown evidence;
 - freshness/outage/backlog/delete-recreate and tombstone-retention evidence.
 
-## Event-contract blocker
+## Event-contract admission status
 
-The Product Index typed refresh family is intentionally blocked.
+The Product Index typed refresh family remains intentionally blocked, but the reason must now be
+stated more precisely than in the previous overlay.
 
-`crates/rustok-events/contracts/event-contract-digests.json` is stale relative to the already merged
-Reactions family. PR #3122 added a maintainer-dispatched canonical digest admission workflow, but it
-did not regenerate or admit the artifact. Product Index events must not be layered on top of stale
-release digests.
+The current digest artifact changed after #3130. Therefore the older source statement that the exact
+committed digest file was definitely still the pre-Reactions stale artifact is no longer current.
+However `crates/rustok-events/docs/event-contract-digest-admission.md` still marks canonical
+maintainer execution pending, and this implementation pass did not run the generator or inspect a
+retained `verify` admission packet. Source inspection alone cannot prove that the current digest hashes
+are canonical and admitted.
 
-Required order:
+Required gate before Product Index typed events:
 
-1. maintainer runs **Event contract digest admission** in `generate_patch` mode;
-2. canonical generated digest changes are reviewed and committed in a separate PR;
-3. `verify` mode is retained against the admitted commit;
-4. only then add the Product Index typed family and regenerate the digests in that wire-contract PR;
-5. register Product/ProductVariant production routes and concrete consumers after the wire contract
-   is admitted.
+1. maintainer establishes the canonical digest status for the current reviewed `main` using the
+   existing Event contract digest admission workflow or the exact locked generator;
+2. if drift exists, review and commit only canonical generator output through the normal event-contract
+   review path;
+3. retain a successful `verify` packet on the admitted commit;
+4. then add the Product Index typed family and regenerate/admit the digest artifact in that reviewed
+   wire-contract change;
+5. only after the wire contract is admitted, register Product/ProductVariant/relation routes and
+   concrete consumers.
 
-The existing owner ledgers, canonical writer, and durable relay step do not bypass this gate.
+The Product owner ledgers, canonical writer, durable relay, relation owner storage, and cross-owner
+resolver do not bypass this gate.
 
 ## M5 incremental ingestion
 
@@ -77,9 +90,9 @@ The existing owner ledgers, canonical writer, and durable relay step do not bypa
 - [x] ProductVariant parent-aware refresh ledger/source.
 - [x] Product exact canonical refresh writer.
 - [x] Durable Product locale/ProductVariant relay cursor and bounded one-step relay.
-- [ ] Admit the canonical event-contract digest baseline.
+- [ ] Retain canonical event-contract digest admission/verify for current main.
 - [ ] Add reviewed Product Index typed event family.
-- [ ] Register Product/ProductVariant routes and concrete consumers.
+- [ ] Register Product/ProductVariant/relation routes and concrete consumers.
 - [ ] Retain crash-between-commit-and-ack/redelivery evidence for the Product route.
 
 ## M6 replay, reconciliation, diagnosis, and repair
@@ -111,67 +124,70 @@ The existing owner ledgers, canonical writer, and durable relay step do not bypa
 - [x] Product-owned append-only Product-to-SalesChannel relation snapshot ledger with a dedicated
       monotonic epoch, live-Product delete fencing, bounded owner readers, idempotent replacement, and
       retained empty membership on Product hard delete.
-- [ ] Run owner verification/evidence for persisted M7 tenant schema readiness and relation storage.
-- [ ] Compose the cross-owner Product visibility to Channel UUID resolver without adding a Channel
-      dependency or Channel SQL to `rustok-product`; explicitly preserve unrestricted Product
-      visibility rather than interpreting an empty slug allowlist as an empty UUID membership.
-- [ ] Add a new Product schema version plus relation replay source and Product-to-SalesChannel
-      `IndexLink`; do not mutate Product v2 in place.
-- [ ] Admit the Product Index typed wire family, routes, and concrete consumers after digest repair.
-- [ ] Retain Channel create/delete/slug-change, Product visibility change, retry, restart,
+- [x] Bounded cross-owner Product visibility to Channel UUID resolver with explicit unrestricted
+      mapping, current Channel identity resolution, 64-Product pages, and three-attempt stabilization.
+- [ ] Run owner verification/evidence for persisted M7 tenant schema readiness, relation storage, and
+      resolver concurrency/restart behavior.
+- [ ] Add Product v3 plus relation replay source and Product-to-SalesChannel `IndexLink`; do not
+      mutate Product v2 in place.
+- [ ] Add durable Product-visibility and Channel-identity convergence triggering or an admitted
+      relation watermark/checkpoint; the source resolver alone is not a continuous consumer.
+- [ ] Admit the Product Index typed wire family, routes, and concrete consumers after digest
+      verification/admission.
+- [ ] Retain Channel create/delete/slug/identity-change, Product visibility change, retry, restart,
       delete/recreate, out-of-order, and locale fan-out evidence for the relation.
 - [ ] Prove complete Product/Variant/Channel query parity and no source-module filtering fan-out.
 - [ ] Move one Storefront query to Index only after all readiness/equivalence/freshness gates pass.
 - [ ] Keep authoritative consumer and production partition cutover forbidden until admission.
 
-## New source slice — Product-owned SalesChannel relation ledger
+## New source slice — cross-owner Product/SalesChannel resolver
 
-The existing database-neutral relation admission contract already proved why Product and Channel
-owner revisions cannot be combined into a safe relation source version. This slice gives that
-relation its first durable owner state without violating module boundaries.
+`rustok-distribution::product_index::channel_relation_resolver` now composes the two owner views without
+moving Channel knowledge into Product.
 
-`product_sales_channel_index_relation_snapshots` stores one immutable complete resolved Channel UUID
-set per relation epoch. For one exact tenant/Product identity:
+For one exact Product it:
 
-- the first epoch is exactly `1`;
-- later membership changes advance exactly by one under an advisory transaction lock;
-- identical membership is an idempotent retry and does not append another epoch;
-- membership is canonical, strictly sorted, unique, non-nil, and bounded to 1024 Channel UUIDs;
-- writes first require the live Product row under `FOR KEY SHARE`, preventing stale post-delete
-  resolver writes;
-- retained snapshots cannot be updated or deleted;
-- Product hard delete appends an empty epoch when the current membership is non-empty;
-- `list_changes` exposes bounded tenant-scoped sequence pages;
-- `scan_current` exposes bounded current Product-order pages;
-- `load_current` exposes bounded exact Product loads.
+- reads `products.metadata.channel_visibility.allowed_channel_slugs` under one PostgreSQL
+  `REPEATABLE READ`, `READ ONLY` observation;
+- treats missing visibility or an empty allowlist as unrestricted;
+- resolves unrestricted visibility to all current tenant Channel identities;
+- resolves restricted visibility by canonical `lower(btrim(channels.slug))` membership;
+- does not filter `channels.is_active`, because runtime availability remains Channel-authority state
+  rather than Product-to-Channel identity membership;
+- bounds visibility input and resolved UUID membership at 1024 entries;
+- calls the Product-owned relation writer with only the complete UUID set;
+- re-observes the cross-owner inputs and succeeds only if the resolved membership is stable;
+- retries at most three times before returning `ConcurrentChange`.
 
-The owner store intentionally knows no Channel schema, Channel table, Index mutation, broker, or
-runtime worker. It receives only an already resolved UUID membership. This keeps `rustok-product`
-installable without `rustok-channel` and makes cross-owner resolution a separate integration concern.
+For initial backfill and Channel-side changes, `reconcile_tenant_page` enumerates at most 64 Product
+UUIDs with keyset ordering and reconciles each independently. A partial page can be retried from the
+same input cursor because owner replacement is idempotent. The page does not claim a global snapshot;
+Products created behind an already consumed cursor still require Product events or a later sweep.
 
-The resolver has one semantic trap that must remain explicit: Product currently treats an empty
-`allowed_channel_slugs` list as unrestricted visibility, whereas an empty resolved UUID membership
-means no relation targets. The next slice must define the reviewed unrestricted resolution policy and
-must not copy the Product slug list mechanically.
+This source slice deliberately does not register a host loop, event route, broker consumer, relation
+watermark, or Index schema. It is a bounded convergence primitive whose durable triggering remains
+open.
+
+Detailed contract: `m7-product-sales-channel-resolver.md`.
 
 ## Next implementation step
 
 Primary owner step: execute and admit the locked concrete-repair PostgreSQL packet.
 
-Next unblocked source step after this ledger slice: compose a bounded cross-owner resolver in
-`rustok-distribution` (or an equivalent selected-module integration layer). It should read current
-Product visibility and current tenant Channel identities, preserve the unrestricted visibility
-semantics, submit the complete resolved UUID set to the Product-owned relation store, and react to
-both Product visibility and Channel identity changes.
+Next unblocked source step after this resolver slice: add Product v3 and a relation replay adapter that
+uses `ProductSalesChannelIndexRelationStore` epochs as the relation source version, fans each current
+relation snapshot out to exact current Product locales, and materializes the SalesChannel UUID link.
+Product v2 must remain immutable.
 
-After that resolver is source complete, add a new Product Index schema version and relation replay
-adapter; Product v2 must remain immutable.
+In parallel, the maintainer must establish current event-contract digest admission before any new
+Product typed event family or durable incremental route is claimed.
 
 ## Maintainer verification for this slice
 
 ```bash
 cargo test -p rustok-product index_channel_relation --lib -- --nocapture
-cargo test -p rustok-distribution product_sales_channel_relation -- --nocapture
+cargo test -p rustok-distribution product_sales_channel -- --nocapture
+node scripts/verify/verify-index-product-channel-relation-resolver.mjs
 node scripts/verify/verify-index-product-channel-relation-ledger.mjs
 node scripts/verify/verify-index-product-channel-relation-admission.mjs
 node scripts/verify/verify-index-schema-readiness.mjs
