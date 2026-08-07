@@ -162,17 +162,20 @@ Moderation-only profile materializes an empty registry; Forum+Moderation
 materializes exactly the topic/reply adapters; Forum without Moderation remains
 valid. The Moderation owner has source-ready durable application operations,
 one-attempt dispatch, shared module-work scheduling and atomic application/case
-audit lifecycle: typed-effect-only migration/backfill, atomic pending intent,
-bounded due/lease CAS, exact immutable command reconstruction, exact adapter
-selection, decision-UUID domain idempotency, bounded retry/review/rejection
-classification, applied-evidence validation, one earliest-due candidate per
-shared scheduler pass, first-claim `decided -> applying_decision`, applied
-`-> closed`, and rejected/operator-review `-> escalated` with matching existing
-Moderation owner audit events. The generic scheduler envelope never replaces the
-authoritative Moderation CAS/lease or domain idempotency key. Stale
-reviewed-revision conflicts and mismatched successful evidence stop in operator
-review. Bounded operator recovery and retained scheduler/runtime/concurrency
-evidence remain pending.
+audit lifecycle for newly executed claims/finalizers: typed-effect-only
+migration/backfill, atomic pending intent, bounded due/lease CAS, exact immutable
+command reconstruction, exact adapter selection, decision-UUID domain
+idempotency, bounded retry/review/rejection classification, applied-evidence
+validation, one earliest-due candidate per shared scheduler pass, first-claim
+`decided -> applying_decision`, applied `-> closed`, and
+rejected/operator-review `-> escalated` with matching existing Moderation owner
+audit events. The generic scheduler envelope never replaces the authoritative
+Moderation CAS/lease or domain idempotency key. Stale reviewed-revision conflicts
+and mismatched successful evidence stop in operator review. Pre-audit terminal
+operation rows remain an explicit Moderation reconciliation concern; no historical
+case/audit facts are fabricated by this slice. Bounded operator recovery,
+legacy-terminal reconciliation and retained scheduler/runtime/concurrency evidence
+remain pending.
 
 ## Program ledger
 
@@ -197,7 +200,7 @@ evidence remain pending.
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
-| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, trusted application callers, permanent topic lock, exact reply Hidden/Removed/RejectPublication, optional host materialization, Moderation-owned durable application operations, bounded one-attempt exact adapter dispatch, shared `ModuleWorkScheduler` registration and atomic application/case audit lifecycle are source-ready. First claim advances `decided -> applying_decision`; retry/reclaim stays applying; applied closes and releases the active case key; rejected/operator-review escalates with matching owner audit events. Retain host/scheduler/lifecycle plus PostgreSQL/SQLite migration/lease/dispatch/lost-response/concurrency and Forum accounting/event/tombstone/solution evidence; keep `Unpublished` distinct/fail-closed. Remaining code work is bounded operator retry/requeue/re-review recovery. Moderation keeps cases, decisions, appeals and audit. |
+| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, trusted application callers, permanent topic lock, exact reply Hidden/Removed/RejectPublication, optional host materialization, Moderation-owned durable application operations, bounded one-attempt exact adapter dispatch, shared `ModuleWorkScheduler` registration and atomic application/case audit lifecycle for new/active transitions are source-ready. First claim advances `decided -> applying_decision`; retry/reclaim stays applying; applied closes and releases the active case key; rejected/operator-review escalates with matching owner audit events. Pre-audit terminal rows remain pending explicit Moderation reconciliation. Retain host/scheduler/lifecycle plus PostgreSQL/SQLite migration/lease/dispatch/lost-response/concurrency and Forum accounting/event/tombstone/solution evidence; keep `Unpublished` distinct/fail-closed. Remaining code work is bounded operator retry/requeue/re-review plus legacy-terminal reconciliation. Moderation keeps cases, decisions, appeals and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
@@ -412,18 +415,19 @@ because `moderation_application_operations` remains the sole durable outcome
 source.
 
 Moderation operation state, case lifecycle and the existing `moderation_events`
-owner audit ledger now advance atomically below the dispatcher. The first winning
-claim moves a `decided` case to `applying_decision` and increments its revision;
-retries/reclaims while already applying do not bump the case revision again.
-Retryable outcomes keep the case applying. Accepted matching application evidence
-moves the operation to `applied` and the case to `closed`, sets `closed_at`,
-releases the active deduplication key and writes `application_applied` plus
-`case_closed` in the same owner transaction. Rejected and operator-review remain
-distinct application outcomes but both fail closed at case level by moving to
-`escalated` with the matching application audit event plus `case_escalated`.
-Escalated cases retain their active identity for future operator recovery/report
-attachment; only closed cases release it. These are internal Moderation owner
-audit events, not a newly frozen typed cross-domain event family.
+owner audit ledger advance atomically below the dispatcher for claims/finalizers
+executed after this source is active. The first winning claim moves a `decided`
+case to `applying_decision` and increments its revision; retries/reclaims while
+already applying do not bump the case revision again. Retryable outcomes keep the
+case applying. Accepted matching application evidence moves the operation to
+`applied` and the case to `closed`, sets `closed_at`, releases the active
+deduplication key and writes `application_applied` plus `case_closed` in the same
+owner transaction. Rejected and operator-review remain distinct application
+outcomes but both fail closed at case level by moving to `escalated` with the
+matching application audit event plus `case_escalated`. Escalated cases retain
+their active identity for future operator recovery/report attachment; only closed
+cases release it. These are internal Moderation owner audit events, not a newly
+frozen typed cross-domain event family.
 
 If the operation CAS, case revision CAS or audit insert fails, the Moderation
 transaction rolls back instead of partially advancing operation/case state. A
@@ -431,6 +435,14 @@ crash after a committed claim leaves the case applying until the existing lease
 is reclaimed. Lost-response retries still call Forum with the immutable decision
 UUID idempotency key, so an already committed Forum mutation replays its shared
 receipt before Moderation records application success and closes the case.
+
+Pre-audit terminal application rows are an explicit upgrade boundary. Rows that
+were already `applied`, `rejected` or `operator_review` before this source became
+active are non-due and cannot pass through the new finalizer solely to manufacture
+case/audit history. Their legacy case state may therefore remain pre-audit until
+a bounded Moderation reconciliation command is introduced. That follow-up must
+preserve terminal operation truth, avoid a second Forum/domain mutation and avoid
+fabricating historical lifecycle events or timestamps.
 
 The existing Reactions/current-revision clock is intentionally not reused for
 Moderation because it does not advance on every lifecycle/enforcement mutation.
@@ -496,8 +508,9 @@ is unavailable rather than re-applied.
 Temporary locks fail closed because Forum does not yet own expiry-safe moderation
 enforcement state. The remaining Moderation effect catalog stays pending. The
 remaining orchestration source gap is bounded operator retry/requeue/re-review
-recovery over escalated application/case state; it must not rewrite immutable
-decisions or bypass the existing shared-scheduler + one-attempt dispatch path.
+plus truthful legacy-terminal reconciliation over Moderation-owned state; it must
+not rewrite immutable decisions, re-run Forum mutation just to manufacture audit
+history or bypass the existing shared-scheduler + one-attempt dispatch path.
 
 ### `FORUM-30`/`FORUM-31`: UI composition
 
@@ -517,7 +530,7 @@ Hosts register/mount packages and do not absorb policy.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
 7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply neutral host composition and Rust Playwright browser-evidence harness are source-ready. Execute and retain the browser/runtime evidence without adding Reactions functionality to Forum.
 8. Introduce Reputation/Achievements only after at least two producers agree.
-9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock, exact reply Hidden/Removed/RejectPublication application, optional server host registry materialization, Moderation-owned durable application operations, bounded one-attempt exact adapter dispatch, shared `ModuleWorkScheduler` registration and atomic application/case audit lifecycle are source-ready. Retain selected-owner/missing-owner, scheduler/stop/multi-host convergence, first-claim/retry/terminal lifecycle atomicity, operation migration/lease/dispatch/lost-response and Forum mutation/replay/concurrency evidence. Keep Unpublished distinct; the next code milestone is bounded operator recovery, never Forum case queues/audit.
+9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock, exact reply Hidden/Removed/RejectPublication application, optional server host registry materialization, Moderation-owned durable application operations, bounded one-attempt exact adapter dispatch, shared `ModuleWorkScheduler` registration and atomic application/case audit lifecycle for new/active transitions are source-ready. Retain selected-owner/missing-owner, scheduler/stop/multi-host convergence, first-claim/retry/terminal lifecycle atomicity, operation migration/lease/dispatch/lost-response, explicit legacy-terminal reconciliation and Forum mutation/replay/concurrency evidence. Keep Unpublished distinct; the next code milestone is bounded operator recovery/reconciliation, never Forum case queues/audit.
 
 ### Track 2 — close existing Forum work
 
@@ -564,8 +577,12 @@ Hosts register/mount packages and do not absorb policy.
   not-applied and escalate the Moderation case; they must not be reported as
   Forum mutation success.
 - Moderation operation/case transitions and internal `moderation_events` audit
-  facts must commit atomically. Forum must not mirror those events into a second
-  moderation audit log or treat the internal audit ledger as a public event bus.
+  facts must commit atomically for transitions executed by the new lifecycle
+  source. Forum must not mirror those events into a second moderation audit log
+  or treat the internal audit ledger as a public event bus.
+- Pre-audit terminal Moderation operations must be reconciled by Moderation owner
+  recovery, not by replaying a Forum mutation or inventing historical case/audit
+  facts. Forum must not participate in or store that reconciliation state.
 - Moderation one-attempt dispatch must keep the immutable decision UUID as the
   domain idempotency key across lease attempts. The lease token is attempt/
   correlation identity only; it must never create a second Forum receipt key.
@@ -745,12 +762,15 @@ concurrent claim, lease expiry/reclaim, stale-token rejection, exact immutable
 command reconstruction, exact adapter selection, missing-adapter retry,
 retryable/non-retryable classification, stale-conflict operator-review,
 invalid-success-evidence operator-review, decision-UUID lost-response replay,
-exactly-one case close and applied-evidence validation. Also retain the Forum
-moderation subject revision migration/trigger, shared-receipt
-replay/request-conflict, stale revision, trusted caller and concurrent
-content/lifecycle evidence plus hide/reject/removal
+exactly-one case close and applied-evidence validation. Explicitly retain a
+bounded Moderation-owner legacy-terminal reconciliation path/evidence once that
+next slice exists; it must not re-apply Forum mutation merely to construct audit
+history. Also retain the Forum moderation subject revision migration/trigger,
+shared-receipt replay/request-conflict, stale revision, trusted caller and
+concurrent content/lifecycle evidence plus hide/reject/removal
 accounting/event/tombstone/solution semantics. `SetVisibility(Unpublished)` stays
 blocked until Forum owns a distinct exact lifecycle, and temporary effects still
 require expiry-safe Forum state. The next FORUM-19 code milestone is bounded
-operator retry/requeue/re-review recovery over escalated Moderation state. Do not
-add Forum-owned case queues, audit, scheduler state or a duplicate worker loop.
+operator retry/requeue/re-review plus legacy-terminal reconciliation over
+Moderation-owned state. Do not add Forum-owned case queues, audit, scheduler state
+or a duplicate worker loop.
