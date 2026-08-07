@@ -30,10 +30,13 @@ const admission = requireMarkers(admissionPath, [
   'BindPlaceholderForbidden',
   'RootAnchorMismatch',
   'pub fn apply(',
-  'compiled.columns.first()',
+  '.columns',
+  '.iter()',
+  '.find_map(',
   'CompiledQueryColumn::EntityId',
   'compiled.exact_count.as_mut()',
   'root_baseline(root_alias)',
+  '.locale_key = $5',
   'sql.match_indices(&anchor).count() != 1',
   '*sql = sql.replacen(&anchor, &replacement, 1)',
 ]);
@@ -141,10 +144,15 @@ requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness
 
 const compilerPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
 requireMarkers(compilerPath, [
-  'columns.push(CompiledQueryColumn::EntityId',
-  'root_baseline_predicates(',
-  'predicates.extend(compile_filter_predicates(',
-  'let exact_count = compile_exact_count(',
+  'push_identity_column(',
+  '&plan.root_alias,',
+  'let mut predicates = base.predicates;',
+  'predicates.push(compile_filter(plan, filter, &mut bindings)?);',
+  'predicates.push(compile_keyset(plan, cursor, &mut bindings)?);',
+  'let pagination = compile_pagination(&plan.pagination, &mut bindings)?;',
+  'let exact_count = plan',
+  '.then(|| compile_exact_count(plan))',
+  'AND {root_alias}.locale_key = {locale} AND {root_alias}.is_deleted = FALSE',
 ]);
 
 console.log('[verify-index-product-materialized-query-freshness] Product root query freshness fence verified');
