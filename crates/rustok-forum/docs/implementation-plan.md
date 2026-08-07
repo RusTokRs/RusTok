@@ -160,14 +160,17 @@ The optional server host source-materializes the neutral Moderation adapter
 registry when `mod-moderation` and `ModerationModule` are both selected. A
 Moderation-only profile materializes an empty registry; Forum+Moderation
 materializes exactly the topic/reply adapters; Forum without Moderation remains
-valid. The Moderation owner has source-ready durable application operations and
-one-attempt dispatch: typed-effect-only migration/backfill, atomic pending intent,
-bounded due/lease CAS, exact immutable command reconstruction, exact adapter
-selection, decision-UUID domain idempotency, bounded retry/review/rejection
-classification and applied-evidence validation. Stale reviewed-revision conflicts
-and mismatched successful evidence stop in operator review. Background
-scheduling, case/application audit lifecycle, operator recovery and retained
-runtime/concurrency evidence remain pending.
+valid. The Moderation owner has source-ready durable application operations,
+one-attempt dispatch and shared module-work scheduling: typed-effect-only
+migration/backfill, atomic pending intent, bounded due/lease CAS, exact immutable
+command reconstruction, exact adapter selection, decision-UUID domain
+idempotency, bounded retry/review/rejection classification, applied-evidence
+validation and one earliest-due candidate per shared scheduler pass. The generic
+scheduler envelope never replaces the authoritative Moderation CAS/lease or
+domain idempotency key. Stale reviewed-revision conflicts and mismatched
+successful evidence stop in operator review. Case/application audit lifecycle,
+operator recovery and retained scheduler/runtime/concurrency evidence remain
+pending.
 
 ## Program ledger
 
@@ -192,7 +195,7 @@ runtime/concurrency evidence remain pending.
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
-| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, trusted application callers, permanent topic lock, exact reply Hidden/Removed/RejectPublication, optional host materialization, Moderation-owned durable application operations and bounded one-attempt exact adapter dispatch are source-ready. Retain host plus PostgreSQL/SQLite migration/lease/dispatch/lost-response/concurrency and Forum accounting/event/tombstone/solution evidence; keep `Unpublished` distinct/fail-closed. Stale revision conflicts and invalid successful evidence stop for operator review. Remaining code work is background scheduling, case/application audit lifecycle/events and operator recovery. Moderation keeps cases, decisions, appeals and audit. |
+| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, trusted application callers, permanent topic lock, exact reply Hidden/Removed/RejectPublication, optional host materialization, Moderation-owned durable application operations, bounded one-attempt exact adapter dispatch and shared `ModuleWorkScheduler` registration are source-ready. Retain host plus scheduler, PostgreSQL/SQLite migration/lease/dispatch/lost-response/concurrency and Forum accounting/event/tombstone/solution evidence; keep `Unpublished` distinct/fail-closed. Stale revision conflicts and invalid successful evidence stop for operator review. Remaining code work is case/application audit lifecycle/events and operator recovery. Moderation keeps cases, decisions, appeals and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
@@ -360,8 +363,16 @@ exists and after Forum host facts are composed. Moderation without Forum produce
 a valid empty registry; Forum+Moderation materializes `forum/forum_topic` and
 `forum/forum_post`; Forum without Moderation remains available with
 unmaterialized neutral factories. Missing owner, factory build, duplicate-key and
-factory-key mismatch failures remain startup errors. Host composition itself does
-not schedule or dispatch decisions.
+factory-key mismatch failures remain startup errors.
+
+The server's existing generic module-work bootstrap owns background task
+lifecycle. `ModerationModule` now contributes one
+`rustok_runtime::ModuleWorkRegistration` for worker slug
+`moderation_decision_application`; no Forum-specific switch and no bespoke
+Moderation `tokio::spawn`/polling interval are introduced. The bootstrap starts
+registered module work only in runtime modes that run background workers and
+uses the deployment `StopHandle` to stop future claims while allowing already
+claimed work to finish.
 
 The Moderation owner persists one durable `moderation_application_operations`
 row per typed immutable decision. New decision + typed effect + pending operation
@@ -386,8 +397,17 @@ bounded retry. Non-retryable `Conflict` (including stale reviewed revision) and
 `InvariantViolation`, corrupt immutable command state and mismatched successful
 application evidence require operator review. Other non-retryable neutral port
 errors are rejected. A successful result becomes applied only after exact
-evidence and live-lease validation. Background scheduling, case/application audit
-lifecycle/events and operator recovery remain owner work.
+evidence and live-lease validation.
+
+The shared scheduler source discovers at most one earliest-due Moderation
+candidate per pass and does not create the durable lease. Its generic
+`ModuleWorkItem.lease_token` is envelope identity only. The handler delegates to
+`dispatch_application_operation_once`, which repeats the canonical due predicate
+and performs the sole authoritative Moderation CAS before any domain adapter is
+called. Two hosts may discover the same candidate, but only one can win that CAS;
+the loser performs no domain mutation. Generic module-work completion is a no-op
+because `moderation_application_operations` remains the sole durable outcome
+source.
 
 The existing Reactions/current-revision clock is intentionally not reused for
 Moderation because it does not advance on every lifecycle/enforcement mutation.
@@ -452,9 +472,9 @@ is unavailable rather than re-applied.
 
 Temporary locks fail closed because Forum does not yet own expiry-safe moderation
 enforcement state. The remaining Moderation effect catalog stays pending. The
-remaining orchestration source gap is background scheduling plus
-case/application audit lifecycle/events and operator recovery over the bounded
-one-attempt dispatcher.
+remaining orchestration source gap is case/application audit lifecycle/events and
+operator recovery over the durable operation + shared-scheduler + one-attempt
+dispatch path.
 
 ### `FORUM-30`/`FORUM-31`: UI composition
 
@@ -474,7 +494,7 @@ Hosts register/mount packages and do not absorb policy.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
 7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply neutral host composition and Rust Playwright browser-evidence harness are source-ready. Execute and retain the browser/runtime evidence without adding Reactions functionality to Forum.
 8. Introduce Reputation/Achievements only after at least two producers agree.
-9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock, exact reply Hidden/Removed/RejectPublication application, optional server host registry materialization, Moderation-owned durable application operations and bounded one-attempt exact adapter dispatch are source-ready. Retain selected-owner/missing-owner, operation migration/lease/dispatch/lost-response and Forum mutation/replay/concurrency evidence. Keep Unpublished distinct; the next code milestone is background scheduling plus case/application audit lifecycle and operator recovery, never Forum case queues.
+9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock, exact reply Hidden/Removed/RejectPublication application, optional server host registry materialization, Moderation-owned durable application operations, bounded one-attempt exact adapter dispatch and shared `ModuleWorkScheduler` registration are source-ready. Retain selected-owner/missing-owner, shared scheduler/stop/multi-host convergence, operation migration/lease/dispatch/lost-response and Forum mutation/replay/concurrency evidence. Keep Unpublished distinct; the next code milestone is case/application audit lifecycle/events and operator recovery, never Forum case queues.
 
 ### Track 2 — close existing Forum work
 
@@ -504,10 +524,14 @@ Hosts register/mount packages and do not absorb policy.
 - `mod-moderation` remains optional and is not implied by `mod-forum`. Selecting
   the owner feature without `ModerationModule` is a startup configuration error;
   Forum without the owner remains valid with unmaterialized neutral factories.
-- Moderation application-operation persistence and dispatch belong only to
-  `rustok-moderation`. Forum must not copy pending/applying/retry/lease/applied
-  orchestration state, reconstruct Moderation decisions or invoke the owner
-  dispatcher directly.
+- Moderation application-operation persistence, one-attempt dispatch and shared
+  scheduler registration belong only to `rustok-moderation`. Forum must not copy
+  pending/applying/retry/lease/applied orchestration state, reconstruct Moderation
+  decisions, publish its own worker, or invoke the owner dispatcher directly.
+- Shared module-work discovery is only a scheduling hint. The existing Moderation
+  operation CAS must remain the sole durable claim before a Forum adapter call;
+  generic scheduler envelope tokens must never become Forum receipt keys,
+  Moderation operation lease tokens or domain idempotency keys.
 - Moderation one-attempt dispatch must keep the immutable decision UUID as the
   domain idempotency key across lease attempts. The lease token is attempt/
   correlation identity only; it must never create a second Forum receipt key.
@@ -585,6 +609,7 @@ node scripts/verify/verify-forum-moderation-subject-adapter.mjs
 node scripts/verify/verify-moderation-host-composition.mjs
 node scripts/verify/verify-moderation-application-operation.mjs
 node scripts/verify/verify-moderation-application-dispatch-once.mjs
+node scripts/verify/verify-moderation-application-work-scheduler.mjs
 node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
 node scripts/verify/verify-forum-reaction-subject-provider.mjs
@@ -630,8 +655,8 @@ git diff --check
 
 Tests, lockfile/event-digest generation and runtime evidence are maintainer-run.
 Source contracts, Moderation adapter/migration/materialization/application-operation/
-one-attempt-dispatch source and browser harness source do not promote runtime
-status.
+one-attempt-dispatch/shared-scheduler source and browser harness source do not
+promote runtime status.
 
 ## Release gates
 
@@ -670,19 +695,23 @@ to Forum.
 For FORUM-19, retain server composition evidence for selected `mod-moderation`
 with a registered owner, selected-feature/missing-owner failure,
 Moderation-only empty materialization and Forum+Moderation topic/reply adapter
-materialization. Retain clean/upgraded PostgreSQL/SQLite evidence for
-`moderation_application_operations`, typed-effect-only backfill, atomic
-decision/effect/pending-operation/event/receipt commit, bounded due ordering,
-concurrent claim, lease expiry/reclaim, stale-token rejection, exact immutable
-command reconstruction, exact adapter selection, missing-adapter retry,
-retryable/non-retryable classification, stale-conflict operator-review,
-invalid-success-evidence operator-review, decision-UUID lost-response replay and
-applied-evidence validation. Also retain the Forum moderation subject revision
-migration/trigger, shared-receipt replay/request-conflict, stale revision, trusted
-caller and concurrent content/lifecycle evidence plus hide/reject/removal
+materialization. Retain shared module-work evidence for Moderation registration,
+background-worker-disabled no-dispatch, earliest-due selection, two-host
+same-candidate CAS convergence, deployment stop/no-new-claim with in-flight
+completion and missing-registry registration failure. Retain clean/upgraded
+PostgreSQL/SQLite evidence for `moderation_application_operations`,
+typed-effect-only backfill, atomic decision/effect/pending-operation/event/receipt
+commit, bounded due ordering, concurrent claim, lease expiry/reclaim, stale-token
+rejection, exact immutable command reconstruction, exact adapter selection,
+missing-adapter retry, retryable/non-retryable classification, stale-conflict
+operator-review, invalid-success-evidence operator-review, decision-UUID
+lost-response replay and applied-evidence validation. Also retain the Forum
+moderation subject revision migration/trigger, shared-receipt
+replay/request-conflict, stale revision, trusted caller and concurrent
+content/lifecycle evidence plus hide/reject/removal
 accounting/event/tombstone/solution semantics. `SetVisibility(Unpublished)` stays
 blocked until Forum owns a distinct exact lifecycle, and temporary effects still
-require expiry-safe Forum state. The next FORUM-19 code milestone is background
-Moderation scheduling/runner composition plus case/application audit lifecycle
-and operator recovery over the bounded one-attempt dispatcher. Do not add
-Forum-owned case queues or audit.
+require expiry-safe Forum state. The next FORUM-19 code milestone is
+case/application audit lifecycle/events and bounded operator recovery over the
+existing shared-scheduler + one-attempt dispatcher path. Do not add Forum-owned
+case queues, audit, scheduler state or a duplicate worker loop.

@@ -158,7 +158,7 @@ For Forum's bounded adapter source:
 Direct domain actions and moderation-driven actions converge on the same domain invariants
 and owner primitives. Whether a direct action also opens a case is host/product policy.
 
-## Host composition
+## Host composition and shared work scheduling
 
 The server host has source-ready optional materialization of the neutral subject-adapter
 registry:
@@ -172,10 +172,20 @@ registry:
 - Forum without Moderation remains valid and does not materialize the owner registry;
 - factory build, duplicate-key and factory-key mismatch errors remain startup failures.
 
-Host composition itself does not schedule work or add domain logic. Durable application
-intent/lease state and the bounded one-attempt dispatcher live in the Moderation owner. A
-future host/runtime scheduler may call that owner primitive with the already-materialized
-registry; it must not bypass owner due/lease semantics.
+Moderation now reuses the platform's existing `rustok_runtime::ModuleWorkScheduler` instead
+of creating a capability-specific polling loop. `ModerationModule::register_runtime_extensions`
+publishes one `ModuleWorkRegistration` for `moderation_decision_application`. The existing
+server module-work bootstrap registers it only in deployment modes that run background work,
+uses the already-composed `HostRuntimeContext` and materialized adapter registry, polls through
+the shared bounded scheduler, and honors the deployment-owned `StopHandle`.
+
+The Moderation source returns at most one read-only earliest-due candidate per scheduler pass.
+This source lookup is not the durable claim: `dispatch_application_operation_once` repeats
+the owner due predicate and acquires the authoritative Moderation UUID lease through the
+existing CAS before any adapter call. The generic `ModuleWorkItem.lease_token` is only
+scheduler-envelope identity and never substitutes the Moderation lease or immutable decision
+UUID domain idempotency key. Generic scheduler completion is a no-op because
+`moderation_application_operations` remains the sole durable outcome source.
 
 ## Application lifecycle
 
@@ -244,6 +254,13 @@ recording success are returned to the caller instead of being rewritten as opera
 outcomes. Moderation storage failure after claim likewise leaves the lease to expire/reclaim
 rather than forging a domain result.
 
+The shared module-work adapter adds scheduling only. It discovers one candidate and delegates
+immediately to the one-attempt dispatcher. If two hosts discover the same row, only one can
+win the authoritative CAS; the loser performs no domain call. A process failure after the CAS
+leaves the operation `applying` until the existing lease expires and becomes discoverable
+again. Shutdown stops future shared-scheduler claims while an already claimed operation may
+finish its canonical dispatcher path.
+
 The Forum source slice demonstrates the matching receipt-first domain side using the shared
 Outbox owner-operation ledger. `PortContext.idempotency_key` equals the decision UUID; receipt
 admission binds the full immutable command before subject reads. Application then fences the
@@ -253,10 +270,10 @@ Forum moderation subject revision. Reply `Hidden` and `RejectPublication` share 
 bounded non-public lifecycle transaction; reply `Removed` uses the complete Forum removal
 owner path.
 
-The remaining orchestration gap is the scheduler and audit lifecycle: enumerate bounded due
-work in the selected runtime, call one-attempt dispatch, recover process crashes through
-lease reclaim, and advance case/application lifecycle events/operator recovery without
-weakening owner/domain idempotency. No background polling is claimed by this slice.
+The remaining orchestration code gap is now case/application audit lifecycle and operator
+recovery: advance case/application lifecycle events around durable outcomes without weakening
+owner/domain idempotency, and provide bounded retry/requeue/re-review commands. Shared
+scheduler/runtime behavior still requires retained execution evidence before promotion.
 
 ## Source completed
 
@@ -290,16 +307,21 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - bounded one-attempt application dispatcher: immutable command reconstruction, exact adapter
   selection, decision-UUID domain idempotency, bounded deadline/backoff, retry/review/rejected
   classification and applied-evidence handoff, guarded by
-  `scripts/verify/verify-moderation-application-dispatch-once.mjs`.
+  `scripts/verify/verify-moderation-application-dispatch-once.mjs`;
+- shared runtime application scheduling: one Moderation `ModuleWorkRegistration`, read-only
+  earliest-due candidate discovery, canonical one-attempt CAS delegation, no-op generic
+  completion and shared host stop/background-worker lifecycle, guarded by
+  `scripts/verify/verify-moderation-application-work-scheduler.mjs`.
 
 ## Next priorities
 
-1. Add the runtime scheduler/runner over the bounded one-attempt dispatcher: bounded due
-   enumeration, process-crash recovery through lease reclaim, lifecycle ownership and safe
-   shutdown/startup behavior without duplicating adapter invocation logic.
-2. Define and persist case/application audit lifecycle around dispatch outcomes, including
+1. Define and persist case/application audit lifecycle around dispatch outcomes, including
    `decided -> applying_decision -> closed/escalated` semantics and transactional application
    lifecycle events; add bounded operator retry/requeue/re-review recovery.
+2. Retain shared scheduler evidence: Moderation registration, background-worker-disabled
+   no-dispatch, earliest-due selection, two-host same-candidate CAS convergence, graceful
+   stop/no-new-claim with in-flight completion, missing-registry startup failure and crash
+   recovery through the existing operation lease.
 3. Retain clean/upgraded PostgreSQL/SQLite application-operation migration/backfill evidence,
    atomic decision enqueue, due bounds/order, concurrent claim, lease expiry/reclaim,
    stale-token rejection, command reconstruction, exact adapter selection, retry/error
@@ -333,6 +355,12 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - every new typed decision commits one durable pending application operation atomically;
 - historical decisions without typed effects remain non-dispatchable and are not backfilled;
 - only a live UUID lease token may finish an applying operation; expired leases are reclaimable;
+- the shared scheduler may discover a candidate but the existing Moderation CAS remains the
+  sole durable operation claim before any domain adapter call;
+- the generic module-work envelope token never substitutes the Moderation operation lease or
+  immutable decision UUID domain idempotency key;
+- generic module-work completion never writes a second Moderation applied/retry/rejected state;
+- Moderation must not add a bespoke polling loop outside the shared `ModuleWorkScheduler`;
 - the dispatcher selects exactly the stored subject module/kind adapter and never falls back;
 - every domain application attempt uses the immutable decision UUID as its idempotency key;
 - retryable neutral errors and missing adapters never become applied or terminal rejection;
@@ -357,6 +385,12 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 
 - moderation unavailable: existing domain enforcement remains authoritative; no new
   sanction is inferred;
+- background workers disabled: durable application intent remains pending/retryable and no
+  application is guessed or silently marked applied;
+- duplicate scheduler candidate discovery across hosts: the existing Moderation CAS chooses
+  at most one live attempt; losing hosts perform no domain mutation;
+- shared runtime stop: no new module-work claims begin after stop while already claimed work
+  may finish its canonical owner path;
 - adapter missing/unavailable: one-attempt dispatch records retryable state and never marks
   applied;
 - domain owner unavailable/timeout: retryable neutral errors schedule bounded backoff;
@@ -385,10 +419,13 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - `node scripts/verify/verify-moderation-host-composition.mjs`;
 - `node scripts/verify/verify-moderation-application-operation.mjs`;
 - `node scripts/verify/verify-moderation-application-dispatch-once.mjs`;
+- `node scripts/verify/verify-moderation-application-work-scheduler.mjs`;
 - `cargo check -p rustok-server --no-default-features --features mod-moderation`;
 - `cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"`;
 - `cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles`;
 - `cargo test -p rustok-server --no-default-features --features "mod-forum mod-moderation" --test moderation_composition_profiles`;
+- shared scheduler registration/background-worker-disabled/stop behavior, earliest-due
+  selection and multi-host same-candidate CAS convergence evidence;
 - clean/upgraded PostgreSQL and SQLite decision-effect and application-operation migration
   evidence, including typed-effect-only backfill and legacy effectless exclusion;
 - atomic decision/effect/pending-operation/event/receipt commit and replay evidence;
@@ -405,7 +442,8 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
   evidence;
 - historical decision `effect: None` read and non-dispatch evidence;
 - PostgreSQL duplicate-report, active-case, and case-revision contention tests;
-- scheduler/process crash/retry recovery and future case/application audit lifecycle evidence;
+- application scheduler/process crash/retry recovery and future case/application audit
+  lifecycle evidence;
 - Forum shared-receipt replay/request conflict, trusted caller, stale revision, permanent-lock,
   reply-hide, reply-reject and reply-remove versus concurrent content/lifecycle edit evidence;
 - approved-to-hidden and approved-to-rejected topic/category/author counter adjustment,
@@ -420,5 +458,5 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback
   evidence.
 
-No new execution evidence is claimed by the bounded one-attempt application-dispatch source
-slice. Maintainer-run verification remains required before promotion.
+No new execution evidence is claimed by the shared application-work scheduling source slice.
+Maintainer-run verification remains required before promotion.

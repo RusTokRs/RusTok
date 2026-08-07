@@ -11,7 +11,7 @@ Forum registers two `ModerationSubjectAdapterFactory` instances:
 - `forum/forum_topic` for Forum topics;
 - `forum/forum_post` for Forum replies.
 
-The factories remain producer-owned neutral runtime extensions. The selected server host materializes the shared Moderation subject-adapter registry only when the optional `mod-moderation` owner feature is selected. The Moderation owner now has durable application-operation persistence/leases and a bounded one-attempt dispatcher. Background scheduling, case/application audit lifecycle and operator recovery remain pending owner/host work.
+The factories remain producer-owned neutral runtime extensions. The selected server host materializes the shared Moderation subject-adapter registry only when the optional `mod-moderation` owner feature is selected. The Moderation owner has durable application-operation persistence/leases, a bounded one-attempt dispatcher and a source-ready registration into the existing shared `rustok_runtime::ModuleWorkScheduler`. Case/application audit lifecycle, operator recovery and retained runtime evidence remain pending owner/host work.
 
 ## Host materialization boundary
 
@@ -26,7 +26,7 @@ The source contract is explicit:
 - Forum without Moderation remains valid and its neutral adapter factories stay unmaterialized;
 - factory build, duplicate-key or key-mismatch failures remain startup errors and never fall back to another adapter.
 
-The host uses `HostRuntimeContext` for factory materialization. It does not copy Forum subject logic into `rustok-moderation`, and it does not create a second adapter implementation in the server. The future scheduler may pass this already-materialized registry to the Moderation one-attempt dispatcher; host composition must not bypass Moderation due/lease ownership.
+The host uses `HostRuntimeContext` for factory materialization. It does not copy Forum subject logic into `rustok-moderation`, and it does not create a second adapter implementation in the server. The existing generic module-work bootstrap later passes the already-composed host context to Moderation's work registration; no Forum-specific scheduler wiring is added to the server.
 
 ## Moderation-owned durable application operation and one-attempt dispatch
 
@@ -36,7 +36,7 @@ A new decision, typed effect, pending application operation, `case_decided` even
 
 The operation snapshots the immutable decision hash and exact reviewed subject module/kind/UUID/revision. Its bounded lifecycle is `pending -> applying -> retryable|applied|rejected|operator_review`. Claiming uses a fresh UUID lease token, bounded expiry and attempt counter; an expired applying lease is reclaimable. Finishing an attempt requires the exact live lease token.
 
-`ModerationService::dispatch_application_operation_once` now handles one exact due tenant/decision operation per call. It reconstructs `ApplyModerationDecisionCommand` from the immutable Moderation decision/effect/case plus operation subject/hash, looks up only the exact materialized `(subject_module, subject_kind)` adapter and invokes it with trusted service actor `rustok-moderation`.
+`ModerationService::dispatch_application_operation_once` handles one exact due tenant/decision operation per call. It reconstructs `ApplyModerationDecisionCommand` from the immutable Moderation decision/effect/case plus operation subject/hash, looks up only the exact materialized `(subject_module, subject_kind)` adapter and invokes it with trusted service actor `rustok-moderation`.
 
 The domain call keeps **decision UUID** as `PortContext.idempotency_key`. The lease token appears only in the per-attempt correlation ID. This is required for lost-response safety: when Forum already committed a local effect and its shared receipt but the Moderation worker lost the response, a later retry uses the same decision UUID and Forum replays that receipt before subject reads instead of mutating again.
 
@@ -45,6 +45,20 @@ The dispatcher carries a 30-second port deadline budget and uses the existing de
 `mark_application_applied` still accepts only `ModerationDecisionApplication` evidence matching the stored decision and exact reviewed Forum subject identity, with `applied_revision >= reviewed_revision`. If an adapter returns `Ok(...)` with mismatched application evidence, the live attempt moves to `operator_review` under `moderation.application_evidence_invalid`. Database/lease errors while recording success remain owner errors/reclaim paths rather than being rewritten as operator or domain outcomes. If Moderation storage fails after claim, the dispatcher returns the owner error and the lease is allowed to expire/reclaim; it does not manufacture a Forum/domain result.
 
 This orchestration state does not replace Forum's domain receipt and does not move any Forum lifecycle logic into Moderation.
+
+## Shared application work scheduler
+
+`ModerationModule::register_runtime_extensions` now publishes one `rustok_runtime::ModuleWorkRegistration` for worker slug `moderation_decision_application`. This reuses the platform's existing module-work lifecycle and does not add a Moderation-owned `tokio::spawn`, interval loop or server-side Forum switch.
+
+The Moderation work source performs one read-only earliest-due candidate lookup across `moderation_application_operations` per scheduler pass. It mirrors pending/retryable due time and expired-applying lease discovery only to avoid needless scheduler calls. Candidate discovery is **not** the durable claim.
+
+The handler immediately delegates to `dispatch_application_operation_once`, which repeats the canonical due predicate and creates the real Moderation UUID lease through the existing CAS before any adapter call. The generic `ModuleWorkItem.lease_token` is scheduler-envelope identity only; it is never reused as the Moderation lease or the domain idempotency key.
+
+This gives safe multi-host behavior without a second worker protocol. Two hosts may read the same due candidate; only one can win the existing Moderation CAS. The loser receives `None` and performs no domain mutation. If a worker fails after the Moderation claim, the durable operation remains `applying` until the existing lease expiry/reclaim path makes it eligible again.
+
+Generic `ModuleWorkSource::complete` is intentionally a no-op for Moderation. Applied/retryable/rejected/operator-review state is already persisted by the owner dispatcher and remains the sole completion truth.
+
+The server already registers all `ModuleWorkRegistrations` into one shared scheduler only in runtime modes that run background workers. Its deployment `StopHandle` stops future claims while already claimed work may finish. A missing host-materialized Moderation adapter registry fails work registration rather than silently running an unusable worker.
 
 ## Trusted application boundary
 
@@ -164,6 +178,7 @@ node scripts/verify/verify-forum-moderation-subject-adapter.mjs
 node scripts/verify/verify-moderation-host-composition.mjs
 node scripts/verify/verify-moderation-application-operation.mjs
 node scripts/verify/verify-moderation-application-dispatch-once.mjs
+node scripts/verify/verify-moderation-application-work-scheduler.mjs
 cargo test -p rustok-forum moderation_subject -- --nocapture
 cargo check -p rustok-forum --all-targets
 cargo test -p rustok-moderation
@@ -177,8 +192,8 @@ cargo xtask module validate moderation
 git diff --check
 ```
 
-Future retained evidence should cover selected-owner/missing-owner startup behavior, Moderation-only empty materialization and Forum+Moderation topic/reply materialization; clean/upgraded application-operation migration on PostgreSQL/SQLite; typed-effect-only backfill; decision/effect/pending-operation/receipt atomicity; due ordering/bounds; concurrent lease claim; lease expiry/reclaim; stale-token rejection; exact command reconstruction and registry selection; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable validation/not-found/forbidden rejection; stale-conflict/invariant operator-review; invalid-success-evidence operator-review; decision-UUID lost-response replay and applied-evidence mismatch. Forum evidence still includes moderation-revision migration/backfill/trigger advancement, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply rejection/reply removal, trusted-caller enforcement and PostgreSQL serialization/reclaim. Retain approved-to-hidden and approved-to-rejected topic/category/author accounting plus status-event/projection atomicity, already-hidden/already-rejected no-op/replay behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `SetVisibility(Unpublished)` remains a distinct unsupported-effect evidence case.
+Future retained evidence should cover selected-owner/missing-owner startup behavior, Moderation-only empty materialization and Forum+Moderation topic/reply materialization; Moderation module-work registration, background-worker-disabled no-dispatch, earliest-due candidate selection, two-host same-candidate CAS convergence, shared-stop no-new-claim/in-flight-finish behavior and missing-registry startup failure; clean/upgraded application-operation migration on PostgreSQL/SQLite; typed-effect-only backfill; decision/effect/pending-operation/receipt atomicity; due ordering/bounds; concurrent lease claim; lease expiry/reclaim; stale-token rejection; exact command reconstruction and registry selection; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable validation/not-found/forbidden rejection; stale-conflict/invariant operator-review; invalid-success-evidence operator-review; decision-UUID lost-response replay and applied-evidence mismatch. Forum evidence still includes moderation-revision migration/backfill/trigger advancement, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply rejection/reply removal, trusted-caller enforcement and PostgreSQL serialization/reclaim. Retain approved-to-hidden and approved-to-rejected topic/category/author accounting plus status-event/projection atomicity, already-hidden/already-rejected no-op/replay behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `SetVisibility(Unpublished)` remains a distinct unsupported-effect evidence case.
 
-Background Moderation scheduling/polling, case lifecycle closure, application lifecycle outbox events and operator recovery remain pending owner work.
+Case lifecycle closure, application lifecycle outbox events, operator recovery and retained scheduler/runtime execution remain pending owner work. A bespoke Moderation polling loop outside the shared `ModuleWorkScheduler` remains forbidden.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.

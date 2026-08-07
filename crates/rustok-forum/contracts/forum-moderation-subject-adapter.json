@@ -98,6 +98,18 @@
       "invalid_success_evidence": "operator_review while the live lease is still held",
       "other_non_retryable_port_error": "rejected",
       "owner_storage_failure_after_claim": "return owner error and rely on lease expiry/reclaim; never forge a domain result"
+    },
+    "shared_scheduler": {
+      "runtime_owner": "rustok-runtime ModuleWorkScheduler",
+      "registration": "ModerationModule publishes one ModuleWorkRegistration",
+      "worker_slug": "moderation_decision_application",
+      "candidate_discovery": "read-only earliest due Moderation application row across tenants; at most one candidate per scheduler pass per host",
+      "durable_claim": "dispatch_application_operation_once remains the sole authoritative Moderation operation CAS before domain dispatch",
+      "generic_envelope_token": "scheduler-only token; never used as Moderation operation lease or domain idempotency key",
+      "multi_host": "duplicate candidate discovery converges on the existing Moderation CAS; losing hosts perform no domain mutation",
+      "completion": "generic ModuleWorkSource completion is a no-op because moderation_application_operations is the durable outcome source",
+      "shutdown": "shared deployment StopHandle prevents new claims while already claimed module work is allowed to finish",
+      "bespoke_loop": "forbidden; Moderation does not add its own tokio spawn or polling interval"
     }
   },
   "supported_effects": [
@@ -182,13 +194,13 @@
     "reaction state catalog aggregate or presentation ownership changes"
   ],
   "not_claimed": [
-    "background Moderation application scheduler or polling loop",
-    "cross-tenant worker enumeration",
+    "Moderation-owned bespoke polling loop outside the shared ModuleWorkScheduler",
     "case lifecycle closure from application outcomes",
     "application lifecycle outbox events",
     "operator recovery surface",
     "retained host composition execution evidence",
     "retained runtime decision application execution",
+    "retained multi-host scheduler race and graceful shutdown evidence",
     "PostgreSQL concurrency evidence",
     "SQLite evidence",
     "SetVisibility Unpublished support",

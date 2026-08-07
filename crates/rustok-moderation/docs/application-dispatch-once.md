@@ -10,6 +10,8 @@ This slice adds the first executable owner-side dispatch primitive over the dura
 
 The caller supplies the host-materialized `ModerationSubjectAdapterRegistry`. The Moderation owner remains responsible for orchestration state; the selected domain adapter remains responsible for the domain mutation and its own receipt/audit transaction.
 
+The follow-up scheduler composition now reuses this primitive through the shared `rustok_runtime::ModuleWorkScheduler`. That registration does not change any dispatcher ownership described below: candidate discovery is read-only and this one-attempt CAS remains the sole durable claim before a domain adapter call.
+
 ## Attempt lifecycle
 
 The dispatcher first calls the existing CAS `claim_application_operation` with the default 60-second owner lease. A non-due/already-owned/terminal operation returns `None` and no adapter is called.
@@ -77,7 +79,7 @@ Retry delay uses a deterministic bounded exponential schedule based on the **pos
 5s, 10s, 20s, 40s, 80s, 160s, then capped at 300s
 ```
 
-No jitter or host clock policy is hidden in the domain adapter. A future scheduler may decide when to invoke one-attempt dispatch, but it must not bypass `next_attempt_at` / CAS claim semantics.
+No jitter or host clock policy is hidden in the domain adapter. The shared module-work scheduler decides only when to ask for the next candidate; it must not bypass `next_attempt_at` / CAS claim semantics or reproduce this classification.
 
 ## Success and applied evidence
 
@@ -92,19 +94,24 @@ Only then does Moderation record `applied_revision` and `applied_at`. If the ada
 
 Database failures, operation disappearance and lease conflicts while recording success are not rewritten as operator outcomes. They are returned to the caller so database recovery or lease reclaim can resolve them without fabricating a domain result.
 
+## Scheduler follow-up boundary
+
+`ModerationModule` now publishes one shared module-work registration. Its source returns one read-only earliest-due candidate and its handler calls this dispatcher. The generic `ModuleWorkItem.lease_token` is scheduler-envelope identity only; this dispatcher still creates the authoritative Moderation UUID lease and still uses decision UUID as domain idempotency.
+
+Multi-host duplicate discovery therefore converges on this existing CAS. A host that loses the claim sees `None` and never reaches a domain adapter. Generic module-work completion is a no-op because this dispatcher already owns durable operation outcomes.
+
+No capability-specific polling loop was added. Host startup, polling cadence and graceful stop remain the existing shared `ModuleWorkScheduler` / deployment `StopHandle` lifecycle.
+
 ## Explicitly not claimed
 
-This slice does not add:
+The combined one-attempt + shared-scheduler source does not add:
 
-- a polling/background scheduler loop;
-- cross-tenant enumeration;
-- automatic process startup wiring;
 - case transition from `decided` to `applying_decision`/`closed`/`escalated`;
 - application lifecycle outbox/audit events;
 - operator retry/requeue/re-review commands or UI;
-- retained runtime, crash, timeout, PostgreSQL or SQLite execution evidence.
+- retained runtime, crash, timeout, multi-host, graceful-stop, PostgreSQL or SQLite execution evidence.
 
-Those remain follow-up Moderation-owner work. The next bounded source slice should compose a scheduler/runner over due operations and define case/application audit lifecycle without weakening this one-attempt CAS/idempotency boundary.
+Those remain follow-up Moderation-owner work. The next bounded code slice should define case/application audit lifecycle and operator recovery without weakening this one-attempt CAS/idempotency boundary.
 
 ## Ownership and Reactions boundary
 
@@ -114,17 +121,18 @@ This slice is unrelated to Reactions. `rustok-reactions` remains the sole reacti
 
 ## Maintainer verification handoff
 
-Suggested checks, intentionally not run while preparing this slice:
+Suggested checks, intentionally not run while preparing this source:
 
 ```bash
 node scripts/verify/verify-moderation-application-operation.mjs
 node scripts/verify/verify-moderation-application-dispatch-once.mjs
+node scripts/verify/verify-moderation-application-work-scheduler.mjs
 cargo check -p rustok-moderation --all-targets
 cargo test -p rustok-moderation
 cargo xtask module validate moderation
 git diff --check
 ```
 
-Retained evidence should cover: not-due no claim/no adapter call; exact command reconstruction; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable validation/not-found/forbidden rejection; conflict/invariant operator-review; stale-revision re-review classification; successful applied evidence; mismatched successful evidence -> operator-review; lost-response replay with the same decision UUID idempotency key; adapter runtime exceeding lease; stale-token finish rejection after reclaim; owner DB failure after claim followed by lease reclaim; and both PostgreSQL/SQLite operation semantics.
+Retained evidence should cover: not-due no claim/no adapter call; exact command reconstruction; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable validation/not-found/forbidden rejection; conflict/invariant operator-review; stale-revision re-review classification; successful applied evidence; mismatched successful evidence -> operator-review; lost-response replay with the same decision UUID idempotency key; adapter runtime exceeding lease; stale-token finish rejection after reclaim; owner DB failure after claim followed by lease reclaim; shared scheduler candidate selection/multi-host convergence/stop behavior; and both PostgreSQL/SQLite operation semantics.
 
-No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
+No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this source.
