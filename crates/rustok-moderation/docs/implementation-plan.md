@@ -105,8 +105,8 @@ For Forum compatibility now present in source:
   `updated_at` timestamp, or the global Forum event sequence;
 - a stale revision conflicts and is never retargeted to current content/state.
 
-A stale revision returns a stable conflict. Moderation may require re-review; it never
-silently retargets a decision to the latest subject revision.
+A stale revision returns a stable conflict. Moderation requires explicit re-review/new
+decision rather than silently retargeting the decision to the latest subject revision.
 
 ## Domain enforcement ownership
 
@@ -173,8 +173,8 @@ registry:
 - factory build, duplicate-key and factory-key mismatch errors remain startup failures.
 
 Host composition itself does not schedule work or add domain logic. Durable application
-intent/lease state and the bounded one-attempt dispatcher now live in the Moderation owner.
-A future host/runtime scheduler may call that owner primitive with the already-materialized
+intent/lease state and the bounded one-attempt dispatcher live in the Moderation owner. A
+future host/runtime scheduler may call that owner primitive with the already-materialized
 registry; it must not bypass owner due/lease semantics.
 
 ## Application lifecycle
@@ -192,6 +192,7 @@ Required semantics:
   `ModerationDecisionApplication`;
 - timeout, missing provider, and owner outage remain retryable;
 - validation, unsupported effect, and stale revision never become success;
+- stale reviewed revision conflicts require explicit operator re-review/new decision;
 - crash recovery cannot double-apply a decision.
 
 The Moderation owner persists `moderation_application_operations` as one current operation
@@ -214,25 +215,34 @@ requires `applied_revision >= reviewed_revision` before storing applied revision
 persistence layer also rejects applying rows without a complete lease tuple and applied
 revisions older than the reviewed revision.
 
-`dispatch_application_operation_once` is now source-ready as the bounded dispatcher. It
-claims at most one exact due operation, reconstructs `ApplyModerationDecisionCommand` from
-immutable decision/effect/case facts, verifies decision hash and exact reviewed subject,
-looks up only the exact materialized `(subject_module, subject_kind)` adapter and invokes it
-with a trusted service `PortContext`.
+`dispatch_application_operation_once` is source-ready as the bounded dispatcher. It claims
+at most one exact due operation, reconstructs `ApplyModerationDecisionCommand` from immutable
+decision/effect/case facts, verifies decision hash and exact reviewed subject, looks up only
+the exact materialized `(subject_module, subject_kind)` adapter and invokes it with a trusted
+service `PortContext`.
 
 The domain call uses the immutable decision UUID as `PortContext.idempotency_key`; the current
 lease token appears only in the attempt correlation ID. This is the lost-response boundary:
 a retry after a successful domain mutation reaches the same domain receipt and replays before
-subject reads instead of applying the mutation again. Adapter deadline is 30 seconds while
-the dispatcher uses the existing default 60-second owner lease. If an adapter overruns the
-lease, stale-token CAS prevents the old attempt from recording an outcome after reclaim.
+subject reads instead of applying the mutation again. The port deadline budget is 30 seconds
+while the dispatcher uses the existing default 60-second owner lease. If an adapter overruns
+that budget and the lease expires, stale-token CAS prevents the old attempt from recording an
+outcome after reclaim.
 
 Missing exact adapters and retryable `PortError`s move to `retryable` with deterministic
 bounded exponential backoff (5, 10, 20, 40, 80, 160 seconds, then capped at 300 seconds).
-Non-retryable `InvariantViolation` and deterministic corruption discovered while rebuilding
-the immutable command move to `operator_review`; other non-retryable neutral port errors move
-to `rejected`. Moderation storage failure after claim is returned to the caller and leaves the
-lease to expire/reclaim rather than forging a domain result.
+Non-retryable `Conflict` or `InvariantViolation` errors move to `operator_review`, including
+Forum stale-reviewed-revision conflicts. Deterministic corruption discovered while rebuilding
+the immutable command also moves to `operator_review`. Other non-retryable neutral port
+errors move to `rejected`.
+
+A successful adapter response is not itself proof of application. If the returned
+`ModerationDecisionApplication` mismatches the immutable decision/reviewed subject, the live
+attempt moves to `operator_review` under the bounded evidence-invalid outcome rather than
+expiring and replaying deterministic bad evidence forever. Database or lease failures while
+recording success are returned to the caller instead of being rewritten as operator/domain
+outcomes. Moderation storage failure after claim likewise leaves the lease to expire/reclaim
+rather than forging a domain result.
 
 The Forum source slice demonstrates the matching receipt-first domain side using the shared
 Outbox owner-operation ledger. `PortContext.idempotency_key` equals the decision UUID; receipt
@@ -278,7 +288,7 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
   applied-evidence validation, guarded by
   `scripts/verify/verify-moderation-application-operation.mjs`;
 - bounded one-attempt application dispatcher: immutable command reconstruction, exact adapter
-  selection, decision-UUID domain idempotency, bounded deadline/backoff, retry/terminal error
+  selection, decision-UUID domain idempotency, bounded deadline/backoff, retry/review/rejected
   classification and applied-evidence handoff, guarded by
   `scripts/verify/verify-moderation-application-dispatch-once.mjs`.
 
@@ -293,7 +303,8 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 3. Retain clean/upgraded PostgreSQL/SQLite application-operation migration/backfill evidence,
    atomic decision enqueue, due bounds/order, concurrent claim, lease expiry/reclaim,
    stale-token rejection, command reconstruction, exact adapter selection, retry/error
-   classification, lost-response replay and applied-evidence validation.
+   classification, stale-conflict review, invalid-success-evidence review, lost-response
+   replay and applied-evidence validation.
 4. Retain executable host-composition evidence for selected-owner/missing-owner,
    Moderation-only empty materialization and Forum+Moderation topic/reply materialization;
    prove factory build failures remain fail-closed.
@@ -325,6 +336,10 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - the dispatcher selects exactly the stored subject module/kind adapter and never falls back;
 - every domain application attempt uses the immutable decision UUID as its idempotency key;
 - retryable neutral errors and missing adapters never become applied or terminal rejection;
+- non-retryable conflicts and invariant failures stop in operator review rather than being
+  silently retried or collapsed into ordinary rejection;
+- mismatched successful application evidence stops in operator review and never becomes
+  `applied`;
 - applied evidence must match the immutable decision and exact reviewed subject before the
   Moderation owner records `applied`;
 - moderation never writes domain-owned tables;
@@ -351,9 +366,12 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
   cannot complete the reclaimed operation;
 - moderation disabled: authorized domain-local enforcement may continue when product policy
   permits it, while report/case/appeal features are unavailable;
-- stale revision/unsupported deterministic domain effect: terminal non-success classification,
+- stale reviewed revision/conflict: operator review and explicit re-review/new decision,
   never retargeted or guessed applied;
-- missing/corrupt owner command identity: operator review, never adapter dispatch;
+- unsupported deterministic validation/not-found/forbidden outcome: rejected application,
+  never guessed success;
+- missing/corrupt owner command identity or mismatched successful evidence: operator review,
+  never automatic replay to success;
 - unknown effect version or legacy `effect: None`: no domain mutation.
 
 ## Verification required before promotion
@@ -375,8 +393,8 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
   evidence, including typed-effect-only backfill and legacy effectless exclusion;
 - atomic decision/effect/pending-operation/event/receipt commit and replay evidence;
 - due ordering/bounds, concurrent claim, lease expiry/reclaim, stale-token rejection,
-  command reconstruction, exact registry selection, retry scheduling/classification and
-  applied-evidence mismatch evidence;
+  command reconstruction, exact registry selection, retry scheduling/classification,
+  stale-conflict operator-review and applied-evidence mismatch operator-review evidence;
 - lost-response evidence proving repeated domain calls keep the decision UUID idempotency key
   and replay the domain receipt rather than reapply;
 - owner-storage failure after claim followed by lease-expiry reclaim evidence;
