@@ -77,6 +77,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M7 Product-SalesChannel Relation Admission](./m7-product-sales-channel-relation-admission.md)
 - [M7 Product-SalesChannel Owner Ledger](../../rustok-product/docs/index-sales-channel-relation-ledger.md)
 - [M7 Product-SalesChannel Cross-owner Resolver](./m7-product-sales-channel-resolver.md)
+- [M7 Product v3 Projection Epoch Ledger](../../rustok-product/docs/index-graph-v3-projection-ledger.md)
 - [M4 Source-owned Schema Registry](./m4-source-schema-registry.md)
 - [M4 Query Runtime Composition](./m4-query-runtime-composition.md)
 - [M4 PostgreSQL Query Port Contract](./m4-postgres-query-port.md)

@@ -1,0 +1,29 @@
+{
+  "id": "forum-storefront-reply-current-revision",
+  "status": "source_ready_maintainer_execution_pending",
+  "owner": "rustok-forum",
+  "surface": "graphql_storefront_owner_fact",
+  "field": "forumStorefrontReplyCurrentRevision",
+  "value": "positive decimal Forum owner revision",
+  "authorization": [
+    "same module-enabled and public-channel gate as storefront reply reads",
+    "authenticated exact read uses selected-reply caller context and parent-topic audience visibility",
+    "anonymous exact read uses public parent-topic audience visibility",
+    "only approved storefront replies expose a revision",
+    "tenant mismatch fails before revision access",
+    "missing and denied replies expose no revision"
+  ],
+  "ownership": [
+    "revision is derived only from Forum-owned captured reply revision history",
+    "Forum exposes no reaction subject DTO from this surface",
+    "Forum storefront has no dependency on rustok-reactions or rustok-reactions-storefront",
+    "optional consumers may combine reply identity plus this owner revision outside Forum"
+  ],
+  "not_claimed": [
+    "reaction catalog ownership",
+    "reaction actor state",
+    "reaction commands",
+    "ReactionBar embedding",
+    "runtime or browser evidence"
+  ]
+}
