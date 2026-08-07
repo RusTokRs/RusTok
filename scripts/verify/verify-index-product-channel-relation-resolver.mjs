@@ -86,10 +86,11 @@ requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod channel_relation_resolver;',
   'mod channel_relation_convergence;',
   'mod channel_visibility;',
+  'mod query_admission;',
 ]);
 
 const resolverDoc = requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
-  'Status: `automatic_convergence_source_complete_runtime_evidence_pending`',
+  'Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`',
   '`REPEATABLE READ`, `READ ONLY`',
   '1024 visibility slugs',
   '64 Products per',
@@ -99,6 +100,8 @@ const resolverDoc = requireMarkers('crates/rustok-index/docs/m7-product-sales-ch
   'Automatic convergence composition',
   'Product-to-SalesChannel automatic convergence',
   'Automatic convergence now re-establishes stale/missing relation freshness',
+  'materialized/query freshness fence separately closes',
+  'first retained PostgreSQL packet',
   'No tests, Node verifiers, Cargo checks',
 ]);
 for (const legacy of ['Product v1', 'Product v2', 'Product v3', 'new Product Index schema version']) {
@@ -110,12 +113,14 @@ requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admis
   'Product-owned freshness witness',
   'Channel identity generation',
   'Automatic convergence',
+  'Materialized/query freshness admission',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'bounded cross-owner Product visibility to SalesChannel UUID resolver',
   'one canonical Product Index source',
   'Freshness watermark source complete',
   'Automatic owner-change relation convergence source complete',
+  'Materialized/query freshness fence source complete',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
@@ -123,4 +128,4 @@ if (!aggregate.includes("'verify-index-product-channel-relation-resolver.mjs'"))
   fail('Index aggregate verifier does not include the Product-SalesChannel resolver guard');
 }
 
-console.log('[verify-index-product-channel-relation-resolver] resolver, freshness, and convergence composition verified');
+console.log('[verify-index-product-channel-relation-resolver] resolver, freshness, convergence, and query fence composition verified');
