@@ -193,7 +193,9 @@
           "repair_current_cursor_fallback": "retained_publish_provenance_plus_exact_rebuild_and_activation_receipts",
           "repair_current_cursor_source": "crates/rustok-pages/src/services/page/artifact_set.rs",
           "repair_current_cursor_strict_manifest_first": true,
-          "repair_current_cursor_database_errors_masked": false
+          "repair_current_cursor_database_errors_masked": false,
+          "repair_activation_request_hash_recomputed": true,
+          "repair_physical_loss_activation_prefix": "minimal_contiguous_same_publish_prefix_until_all_missing_manifest_locales_proven"
         },
         "target_manifest_required": true,
         "historical_target_provenance_fallback": false,
@@ -227,7 +229,7 @@
         "activation_service": "PageService::replace_rebuilt_artifact_binding",
         "activation_receipt_entity": "page_artifact_binding_replacement_operation",
         "physical_loss_recovery": {
-          "state": "single_and_multilocale_source_ready_execution_pending",
+          "state": "single_and_multilocale_direct_publish_source_ready_rollback_activated_source_open",
           "missing_binding_allowed": true,
           "source_artifact_must_be_absent": true,
           "retained_body_identity_required": true,
@@ -242,6 +244,10 @@
           "later_locale_chain_max_steps": 256,
           "unexplained_version_drift": "rejected",
           "source_artifact_recreation": false,
+          "rollback_activated_current_set_recovery": {
+            "state": "pending_source_slice",
+            "gap": "current rollback result_version is not yet admitted as the exact repair activation anchor for its resolved source publish"
+          },
           "single_locale_test": "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs",
           "multilocale_test": "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
           "multilocale_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs",
@@ -259,6 +265,23 @@
           "missing_manifest_row_requires_absent_source_artifact": true,
           "exact_rebuild_receipt_required_for_changed_artifact_id": true,
           "exact_activation_receipt_required_for_changed_artifact_id": true,
+          "activation_request_hash_recomputed": true,
+          "physical_loss_activation_prefix": {
+            "state": "source_ready_execution_pending",
+            "max_receipts": 256,
+            "starts_at_source_publish_result_version": true,
+            "contiguous_expected_result_versions": true,
+            "unique_locales_until_required_physical_loss_locales_proven": true,
+            "exact_same_publish_sources": true,
+            "rebuild_receipts_and_provenance_revalidated": true,
+            "rebuilt_artifact_instance_and_hashes_revalidated": true,
+            "stops_after_required_lost_manifest_locales_proven": true,
+            "later_page_version_changes_outside_prefix": true,
+            "test": "crates/rustok-pages/tests/artifact_multilocale_repair_rollback_evidence_postgres.rs",
+            "verifier": "crates/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs",
+            "evidence": "crates/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json",
+            "executed_evidence": "pending"
+          },
           "historical_target_original_manifest_required": true,
           "source": "crates/rustok-pages/src/services/page/artifact_set.rs",
           "test": "crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs",
@@ -348,6 +371,7 @@
     "pages_rollback_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
     "pages_repair_rollback_continuity_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs",
     "pages_multilocale_activation_recovery_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs",
+    "pages_multilocale_repair_rollback_evidence_verifier": "crates/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs",
     "runtime_order_smoke": "crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs"
   }
