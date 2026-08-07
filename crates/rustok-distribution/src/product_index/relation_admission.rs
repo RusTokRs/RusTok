@@ -1,16 +1,15 @@
-//! Admission contract for a future Product -> SalesChannel Index relation.
+//! Database-neutral admission contract for Product -> SalesChannel relation snapshots.
 //!
-//! Production persistence and source wiring are intentionally pending. Keeping this contract
-//! compiled before wiring prevents Product or Channel owner revisions from being combined through
-//! lossy `max`, hash, or pair encodings that can fail to advance after a relation-only change.
+//! The Product owner persists resolved UUID membership under a dedicated monotonic relation epoch.
+//! This contract validates locale fan-out identity and rejects epoch reuse for different membership.
 #![allow(dead_code)]
 
 use rustok_index::{IndexSourceEventIdError, LocaleKey, derive_index_source_event_id};
 use thiserror::Error;
 use uuid::Uuid;
 
-const PRODUCT_SALES_CHANNEL_RELATION_EVENT_DOMAIN_V1: &str =
-    "rustok-distribution.product-sales-channel-relation-v1";
+const PRODUCT_SALES_CHANNEL_RELATION_EVENT_DOMAIN: &str =
+    "rustok-distribution.product-sales-channel-relation";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ProductSalesChannelRelationEpoch(u64);
@@ -70,7 +69,7 @@ impl ProductSalesChannelRelationSnapshot {
         }
 
         let event_id = derive_index_source_event_id(
-            PRODUCT_SALES_CHANNEL_RELATION_EVENT_DOMAIN_V1,
+            PRODUCT_SALES_CHANNEL_RELATION_EVENT_DOMAIN,
             tenant_id,
             product_id,
             Some(&locale),

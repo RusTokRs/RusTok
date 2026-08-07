@@ -83,17 +83,20 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
   'MAX_INDEX_SCHEMA_READINESS_SCHEMAS',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m7-schema-readiness.md', [
+const doc = requireMarkers('crates/rustok-index/docs/m7-schema-readiness.md', [
   'Status: `source_complete_owner_execution_pending`',
   '`index_schemas`',
   '`schema_fingerprint`',
   '`schema_json`',
-  '`rustok-product::product@2`',
-  '`rustok-product::product_variant@2`',
-  '`rustok-channel::sales_channel@1`',
-  'does not:',
+  'one current Product contract',
+  'one current ProductVariant',
+  'one current SalesChannel',
+  'positive numeric schema key',
   'No tests, Node verifiers, Cargo checks',
 ]);
+for (const legacy of ['product@1', 'product@2', 'product_variant@1', 'product_variant@2']) {
+  if (doc.includes(legacy)) fail(`schema readiness doc retains legacy Product contract ${legacy}`);
+}
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
 if (!aggregate.includes("'verify-index-schema-readiness.mjs'")) {

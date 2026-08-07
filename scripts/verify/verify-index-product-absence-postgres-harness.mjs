@@ -8,6 +8,8 @@ const files = {
   reader: "crates/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
   productMigration:
     "crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs",
+  canonicalProjectionMigration:
+    "crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs",
   doc: "crates/rustok-index/docs/m6-product-locale-absence-postgres-harness.md",
   plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
@@ -47,6 +49,9 @@ requireMarkers("test", [
   "query LIKE '%FROM index_entities WHERE tenant_id%'",
   "insert_de_translation",
   "INSERT INTO product_translations",
+  "INSERT INTO product_sales_channel_index_relation_snapshots",
+  "'[]'::jsonb",
+  "SchemaVersion::new(3)",
   "translation insertion between observations must reject the snapshot pair",
   "IndexDriftDependencyFailureKind::Retryable",
   '"index_drift_source_changed_during_capture"',
@@ -54,6 +59,7 @@ requireMarkers("test", [
 ]);
 
 for (const forbidden of [
+  "SchemaVersion::INITIAL",
   "SequencedSource",
   "FixedProvider",
   "register_index_source_absence_provider",
@@ -61,13 +67,16 @@ for (const forbidden of [
   "tokio::time::timeout(Duration::from_secs(0)",
 ]) {
   if (content.test.includes(forbidden)) {
-    throw new Error(`Product absence PostgreSQL harness contains forbidden shortcut: ${forbidden}`);
+    throw new Error(`Product absence PostgreSQL harness contains forbidden shortcut or legacy key: ${forbidden}`);
   }
 }
 
 requireMarkers("provider", [
   "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
-  "CAST(product.index_revision AS TEXT) AS source_version_text",
+  "CAST(projection.projection_epoch AS TEXT) AS source_version_text",
+  "FROM product_index_graph_projection_snapshots projection",
+  "projection.product_source_version = product.index_revision",
+  "FROM product_sales_channel_index_relation_snapshots relation",
   "FROM product_translations translation",
   "FROM product_index_tombstones tombstone",
 ]);
@@ -81,6 +90,11 @@ requireMarkers("productMigration", [
   "AFTER INSERT OR UPDATE OR DELETE ON product_translations",
   "rustok_product_store_index_tombstone",
   "rustok_product_clear_superseded_index_tombstone",
+]);
+requireMarkers("canonicalProjectionMigration", [
+  "product_index_graph_projection_snapshots",
+  "rustok_product_reconcile_index_graph_projection",
+  "trg_product_channel_relation_index_graph_projection_insert",
 ]);
 requireMarkers("doc", [
   "Status: `source_ready_owner_execution_pending`.",

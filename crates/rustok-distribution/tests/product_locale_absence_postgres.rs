@@ -246,6 +246,20 @@ VALUES (
     'Product locale absence fixture',
     'product-locale-absence-fixture'
 );
+
+-- The canonical Product absence provider is projection-aware. Seed one resolved relation snapshot
+-- after the initial translation so its relation trigger creates the exact current graph projection.
+INSERT INTO product_sales_channel_index_relation_snapshots (
+    tenant_id,
+    product_id,
+    relation_epoch,
+    channel_ids
+) VALUES (
+    '{TENANT_ID}',
+    '{PRODUCT_ID}',
+    1,
+    '[]'::jsonb
+);
 "#
     ))
     .await?;
@@ -310,7 +324,9 @@ fn product_key(locale: &str) -> TestResult<EntityKey> {
         schema: SchemaRef {
             module: ModuleName::new("rustok-product")?,
             entity: EntityName::new("product")?,
-            version: SchemaVersion::INITIAL,
+            // Index core requires a numeric schema key; only this current Product contract is
+            // registered by rustok-distribution.
+            version: SchemaVersion::new(3),
         },
         entity_id: PRODUCT_ID,
         locale: Some(LocaleKey::new(locale)?),

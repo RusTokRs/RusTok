@@ -122,13 +122,19 @@ transport over the neutral Reactions ports and the separate module-owned
 generic visibility-gated `forumStorefrontTopicCurrentRevision` and
 `forumStorefrontReplyCurrentRevision` owner facts and carries them through a
 dual-path storefront transport facade: native server functions for SSR/hydrate
-and GraphQL for headless/CSR. The Forum storefront now publicly exposes those
+and GraphQL for headless/CSR. The Forum storefront publicly exposes those
 generic facade functions as neutral host-extension facts. The storefront host
-uses the selected canonical topic identity plus the Forum topic revision fact to
-construct `ReactionSubjectUiRef` and mount the separate `ReactionBar` only when
-the Reactions module is enabled. Forum owner/storefront packages still do not
-depend on the Reactions owner or presentation package. Reply-level host
-composition, maintainer lockfile/event-digest generation and retained
+now composes one exact Forum reaction target at a time: the selected canonical
+topic by default, or the one valid explicitly selected reply when the canonical
+topic route carries `?reply={reply_id}`. In both cases the host combines only the
+Forum identity/current-revision fact with `ReactionSubjectUiRef` and mounts the
+separate module-owned `ReactionBar` when Reactions is enabled. It never fans out
+revision requests across the visible reply list. Forum owner/storefront packages
+still do not depend on the Reactions owner or presentation package. Rust
+Playwright source now covers the observable selected-topic and selected-reply
+composition markers against maintainer-supplied real storefront URLs; browser
+execution is still pending. The current lockfile contains the
+`rustok-reactions-storefront` package entry; event-digest generation and retained
 owner/provider/schema/runtime/UI evidence remain pending.
 
 ## Program ledger
@@ -153,7 +159,7 @@ owner/provider/schema/runtime/UI evidence remain pending.
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`. Finish member-card composition, privacy/block behavior, Forum-stat enrichment and no-N+1 evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
-| `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport and selected-topic host UI composition are source-ready. Regenerate `Cargo.lock`/event digests, retain owner/event/repair/Forum+Blog/GraphQL/UI/runtime transport evidence, then add bounded reply-level host composition without moving reaction ownership into Forum; Forum votes remain separate. |
+| `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
 | `FORUM-19` | `planned` | Integrate `rustok-moderation-api` subject/effect adapters and Forum-local restrictions. Moderation owns cases and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
@@ -269,15 +275,30 @@ GraphQL owner fields for headless/CSR, preserving FFA transport parity while
 returning only positive decimal revisions derived from Forum revision history.
 Those generic facade functions are publicly exported for neutral host
 extensions; neither adapter creates reaction subjects, catalogs, actor state or
-commands. `apps/storefront` now supplies the first bounded host composition: it
-routes Forum rendering through `ForumStorefrontComposition`, checks the tenant's
-`reactions` module enablement, takes the exact selected topic id from the
-canonical Forum route context, consumes `fetch_storefront_topic_current_revision`,
-constructs the neutral `ReactionSubjectUiRef` in the host, and mounts the
-separate `ReactionBar`. If Reactions is disabled, no topic is selected, the
-producer fact is unavailable, or the optional UI request fails, Forum continues
-to render without moving reaction state or policy into Forum. Reply-level host
-composition remains a later bounded slice.
+commands. `apps/storefront` owns the bounded cross-module presentation: it routes
+Forum rendering through `ForumStorefrontComposition`, checks the tenant's
+`reactions` module enablement and consumes only the generic Forum revision
+facades. An explicit valid reply selection on a Forum topic route takes
+precedence over the topic target, so the host requests at most one current
+revision and mounts at most one separate `ReactionBar`. With no valid selected
+reply it composes the selected topic through
+`fetch_storefront_topic_current_revision`; with a valid selected reply it uses
+`fetch_storefront_reply_current_revision` and constructs
+`ReactionSubjectUiRef("forum", "reply", ...)` only in the host. The Forum reply
+list and `ReplyCard` stay reaction-agnostic and no revision request is fanned out
+across visible replies. Disabled Reactions, unavailable producer revision or
+invalid subject construction leaves Forum rendering intact without host-owned
+Reactions error presentation.
+
+The Rust E2E crate now includes
+`tests/e2e-rust/tests/leptos_storefront_forum_reactions.rs`. Maintainer execution
+supplies one canonical visible topic URL and the same topic route with one valid
+`?reply=<uuid>` selection. The browser harness requires the topic document to
+render only `data-storefront-composition="forum-topic-reactions"` and the reply
+selection to render only `data-storefront-composition="forum-reply-reactions"`.
+It observes the mounted host output only; it does not call Reactions transport or
+Forum revision fields directly, seed fixtures or bypass producer authorization.
+Source presence does not count as retained browser execution evidence.
 
 Reputation and achievements remain separate shared capabilities consuming
 semantic facts. Forum trust remains Forum-owned because it controls Forum
@@ -306,7 +327,7 @@ Hosts register/mount packages and do not absorb policy.
 4. Optional distribution/server selection and host materialization after Forum facts: source-ready, maintainer verification pending.
 5. Executable composition profiles, sealed semantic reaction events and bounded aggregate reconciliation: source-ready; retain execution, rollback, replay and repair evidence.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
-7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport and selected-topic neutral host composition are source-ready. Add bounded reply-level host composition without adding Reactions functionality to Forum, then retain runtime/browser evidence.
+7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply neutral host composition and Rust Playwright browser-evidence harness are source-ready. Execute and retain the browser/runtime evidence without adding Reactions functionality to Forum.
 8. Introduce Reputation/Achievements only after at least two producers agree.
 9. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
 
@@ -354,6 +375,10 @@ Hosts register/mount packages and do not absorb policy.
 - Cross-module Reactions presentation composition belongs to the storefront
   host. The host may import both producer and Reactions UI packages, but Forum
   owner/storefront packages must remain free of the Reactions owner/UI dependency.
+- Selected-reply Reactions composition is bounded to one explicit Forum reply
+  query target and must never fan out current-revision lookups across the visible
+  reply list; a valid selected reply replaces the topic ReactionBar rather than
+  mounting a second ambiguous control.
 - Reactions semantic event envelope identity is the admitted owner-operation
   UUID; it is not a Forum route/revision/vote identity.
 - Reactions bounded reconciliation repairs aggregate projection only and cannot
@@ -375,6 +400,8 @@ node scripts/verify/verify-forum-storefront-topic-current-revision.mjs
 node scripts/verify/verify-forum-storefront-reply-current-revision.mjs
 node scripts/verify/verify-forum-storefront-current-revision-transport-parity.mjs
 node scripts/verify/verify-forum-topic-reactions-storefront-composition.mjs
+node scripts/verify/verify-forum-reply-reactions-storefront-composition.mjs
+node scripts/verify/verify-forum-reactions-storefront-browser-evidence.mjs
 cargo test -p rustok-events reactions
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
@@ -382,6 +409,7 @@ cargo test -p rustok-reactions --features graphql graphql
 cargo test -p rustok-reactions-storefront
 cargo test -p rustok-forum reaction_subject
 cargo test -p rustok-blog reaction_subject
+cargo test -p rustok-e2e-rust --test leptos_storefront_forum_reactions -- --nocapture
 cargo check -p rustok-reactions --features graphql --all-targets
 cargo check -p rustok-reactions-storefront --all-targets
 cargo check -p rustok-distribution --features "mod-forum mod-reactions"
@@ -396,7 +424,7 @@ git diff --check
 ```
 
 Tests, lockfile/event-digest generation and runtime evidence are maintainer-run.
-Source contracts do not promote runtime status.
+Source contracts and browser harness source do not promote runtime status.
 
 ## Release gates
 
@@ -417,15 +445,17 @@ runtime claims without retained executable evidence.
 
 ## Immediate next action
 
-Regenerate the event-contract digests and `Cargo.lock`, then retain SQLite and
-PostgreSQL evidence for changed/no-op/replayed reaction event cardinality,
-rollback on event failure, concurrent actor writes, clean/blocked/drift bounded
-aggregate reconciliation and repair receipt replay. Retain Blog provider and
-Blog+Reactions composition evidence plus manifest-composed Reactions GraphQL
-schema/runtime evidence for anonymous/authenticated reads, human-user writes,
-tenant mismatch, idempotent replay and stale/denied subjects. Retain the separate
-Reactions storefront source/runtime evidence plus Forum topic/reply current-
-revision GraphQL/native transport parity evidence and selected-topic host
-composition evidence. Then add bounded reply-level host composition from the
-generic Forum reply revision facade without adding reaction catalogs, state,
-commands or presentation ownership to Forum.
+Regenerate the event-contract digests and retain release verification for the
+current `Cargo.lock`, then retain SQLite and PostgreSQL evidence for changed/
+no-op/replayed reaction event cardinality, rollback on event failure, concurrent
+actor writes, clean/blocked/drift bounded aggregate reconciliation and repair
+receipt replay. Retain Blog provider and Blog+Reactions composition evidence plus
+manifest-composed Reactions GraphQL schema/runtime evidence for anonymous/
+authenticated reads, human-user writes, tenant mismatch, idempotent replay and
+stale/denied subjects. Retain the separate Reactions storefront source/runtime
+evidence plus Forum topic/reply current-revision GraphQL/native transport parity,
+then execute and retain the bounded selected-topic/selected-reply Playwright
+browser harness from
+`tests/e2e-rust/tests/leptos_storefront_forum_reactions.rs`. Do not add reaction
+catalogs, state, commands, aggregate ownership or copied Reactions presentation
+to Forum.

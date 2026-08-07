@@ -1,0 +1,71 @@
+{
+  "format": "pages_immutable_artifact_integrity_audit_sqlite_source_v1",
+  "status": "pages_immutable_artifact_integrity_audit_sqlite_source_unvalidated",
+  "generated_at": "2026-08-07",
+  "scope": "SQLite source harness for Pages immutable artifact integrity audit authorization, valid canonical/rebuilt records, corruption, partial materialization evidence and bounded truncation",
+  "source_contract": {
+    "sqlite_isolated_database_per_test": true,
+    "real_outbox_sys_events_migration_used": true,
+    "real_channel_module_migrations_used": true,
+    "real_pages_module_migrations_used": true,
+    "real_reviewed_publish_used": true,
+    "real_explicit_rebuild_used": true,
+    "real_audit_owner_used": true,
+    "pages_manage_present_resolves_all": true,
+    "pages_manage_absent_resolves_none": true,
+    "manage_absent_rejected_before_audit_reads": true,
+    "canonical_artifact_audits_valid": true,
+    "rebuilt_artifact_audits_valid": true,
+    "requested_record_limit_sets_truncated": true,
+    "corrupt_payload_reports_hashed_invalid_finding": true,
+    "partial_materialization_reports_hashed_invalid_finding": true,
+    "finding_code_is_static": true,
+    "finding_locale_is_hashed": true,
+    "finding_record_identity_is_hashed": true,
+    "finding_diagnostic_is_hashed": true,
+    "audit_identity_is_hashed": true,
+    "production_code_changed": false,
+    "database_schema_changed": false,
+    "public_transport_changed": false,
+    "automatic_repair_added": false,
+    "ffa_promoted": false,
+    "fba_promoted": false,
+    "tests_run": false,
+    "source_verifier_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "sqlite_run": false,
+    "workflows_or_ci_run": false
+  },
+  "linked_sources": {
+    "audit_owner": "crates/rustok-pages/src/services/page/artifact_integrity_audit.rs",
+    "reviewed_publish_owner": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+    "rebuild_owner": "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
+    "artifact_entity": "crates/rustok-pages/src/entities/page_static_landing_artifact.rs"
+  },
+  "harness": {
+    "path": "crates/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs",
+    "tests": [
+      "audit_manage_scope_is_all_or_none_and_public_read_is_denied",
+      "audit_accepts_canonical_and_rebuilt_records_and_truncates_at_requested_limit",
+      "audit_reports_corrupted_immutable_payload_with_hashed_finding",
+      "audit_reports_partial_materialization_evidence_without_exposing_payloads"
+    ]
+  },
+  "suggested_execution": [
+    "node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs",
+    "cargo test -p rustok-pages --test immutable_artifact_integrity_audit_sqlite -- --nocapture",
+    "cargo check -p rustok-pages --all-targets"
+  ],
+  "execution": [],
+  "validation": {
+    "source_guard": false,
+    "sqlite_harness": false,
+    "authorization_all_none": false,
+    "valid_canonical_and_rebuilt": false,
+    "bounded_truncation": false,
+    "corrupt_payload": false,
+    "partial_materialization": false,
+    "hashed_findings": false
+  }
+}

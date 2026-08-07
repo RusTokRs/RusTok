@@ -19,7 +19,7 @@ last_reviewed: 2026-08-07
 | `REACTIONS-02` | `in_progress` | Actor state, aggregate deltas, typed semantic events and completed shared Outbox receipts now share one transaction. Bounded inspect/repair reconciliation is source-ready; retain rollback, replay, concurrency and repair evidence. |
 | `REACTIONS-03` | `in_progress` | Forum topic/reply provider, optional host materialization and executable composition profile tests are source-ready. Reactions stays outside defaults; retained execution evidence remains pending. |
 | `REACTIONS-04` | `in_progress` | Blog `post` producer and Blog+Reactions composition profile are source-ready over Blog-owned publication, channel visibility and owner version. The neutral-contract review now covers Forum and Blog producers; retain Blog provider/host runtime evidence before freezing shared transport or presentation contracts. |
-| `REACTIONS-05` | `in_progress` | Manifest-composed bounded GraphQL read/write transport plus a producer-neutral module-owned Leptos reaction-bar foundation are source-ready. Retain schema/runtime execution evidence and compose exact producer revisions into Forum/Blog UI before freezing the presentation contract; no HTTP transport is frozen by this slice. |
+| `REACTIONS-05` | `in_progress` | Manifest-composed bounded GraphQL read/write transport, producer-neutral module-owned Leptos reaction-bar foundation, bounded Forum selected-topic/selected-reply host composition and Rust Playwright browser-evidence source are ready. Retain schema/runtime/UI/browser execution evidence and add thin Blog storefront composition before freezing the presentation contract; no HTTP transport is frozen by this slice. |
 | `REACTIONS-06` | `planned` | Runtime evidence, FBA contracts, import/reconciliation and release profiles. |
 
 ## Ownership
@@ -223,10 +223,28 @@ then reloads `reactionSnapshot` after success instead of maintaining a shadow
 aggregate or actor-state projection.
 
 The package intentionally has no dependency on `rustok-reactions`,
-`rustok-forum` or `rustok-blog`. Producer UI composition remains pending until a
-public Forum/Blog boundary can supply the exact current revision without exposing
-private persistence or inventing a parallel revision model. The source guard is
-`scripts/verify/verify-reactions-storefront-ui.mjs`.
+`rustok-forum` or `rustok-blog`. `apps/storefront` now owns the Forum cross-module
+composition and imports both the neutral Forum storefront facts and the separate
+Reactions presentation package. The Forum host path composes the selected topic
+or, when a valid explicit `reply` query is present on that topic route, the one
+selected reply. It calls only Forum's generic dual-path current-revision facade,
+constructs `ReactionSubjectUiRef` in the host and mounts at most one
+`ReactionBar`; it never asks for every visible reply revision and never moves
+catalog, actor state, aggregate or command behavior into Forum. Blog storefront
+composition remains pending. The source guards are
+`scripts/verify/verify-reactions-storefront-ui.mjs`,
+`scripts/verify/verify-forum-topic-reactions-storefront-composition.mjs` and
+`scripts/verify/verify-forum-reply-reactions-storefront-composition.mjs`.
+
+The Forum host composition now also has browser-evidence source in
+`tests/e2e-rust/tests/leptos_storefront_forum_reactions.rs`, backed by
+`crates/rustok-forum/contracts/forum-reactions-storefront-browser-evidence.json`
+and `scripts/verify/verify-forum-reactions-storefront-browser-evidence.mjs`.
+Maintainer-supplied canonical topic and selected-reply URLs are observed through
+the existing Rust `playwright-rs` E2E crate. The topic document must mount only
+the topic host-composition marker and the explicit reply selection must mount
+only the reply marker. The harness does not seed producer state, call Reactions
+transport directly or claim execution merely because the source exists.
 
 ## Executable composition evidence
 
@@ -245,8 +263,8 @@ the Blog+Reactions host profile and Blog authorization behavior remains part of
 
 The contract remains `source_ready_maintainer_execution_pending`: retained
 execution evidence remains pending until a maintainer runs and stores the
-profiles. Source presence alone does not promote `REACTIONS-03`,
-`REACTIONS-04` or `REACTIONS-05` to done.
+profiles and browser harness. Source presence alone does not promote
+`REACTIONS-03`, `REACTIONS-04` or `REACTIONS-05` to done.
 
 ## Immediate next action
 
@@ -256,10 +274,11 @@ rollback on event failure, concurrent actor updates, clean/blocked/drift
 reconciliation and receipt replay. Retain Blog provider authorization and
 Blog+Reactions host composition evidence. Retain manifest-composed GraphQL schema
 and runtime evidence for anonymous/authenticated reads, human-user writes,
-tenant mismatch, idempotent replay and stale/denied subjects. Retain the new
-storefront package source/runtime evidence, then add thin Forum/Blog composition
-that supplies the exact authorized producer revision without moving producer
-storage or presentation ownership into Reactions.
+tenant mismatch, idempotent replay and stale/denied subjects. Retain the Reactions
+storefront package and bounded Forum selected-topic/selected-reply host runtime
+evidence, execute and retain the Rust Playwright browser harness, then add thin
+Blog storefront composition that supplies its exact authorized producer version
+without moving Blog storage or presentation ownership into Reactions.
 
 Before release, execute SQLite and PostgreSQL migrations, retain replay,
 concurrency and rollback evidence, and retain bounded repair evidence for catalog
@@ -275,6 +294,7 @@ cargo test -p rustok-reactions --features graphql graphql
 cargo test -p rustok-reactions-storefront
 cargo test -p rustok-forum reaction_subject
 cargo test -p rustok-blog reaction_subject
+cargo test -p rustok-e2e-rust --test leptos_storefront_forum_reactions -- --nocapture
 cargo check -p rustok-reactions-api --all-targets
 cargo check -p rustok-reactions --all-targets
 cargo check -p rustok-reactions --features graphql --all-targets
@@ -298,7 +318,10 @@ node scripts/verify/verify-reactions-host-composition.mjs
 node scripts/verify/verify-reactions-composition-profiles.mjs
 node scripts/verify/verify-reactions-events-reconciliation.mjs
 node scripts/verify/verify-reactions-storefront-ui.mjs
+node scripts/verify/verify-forum-topic-reactions-storefront-composition.mjs
+node scripts/verify/verify-forum-reply-reactions-storefront-composition.mjs
+node scripts/verify/verify-forum-reactions-storefront-browser-evidence.mjs
 git diff --check
 ```
 
-Tests, checks, lockfile/digest generation and retained runtime evidence are maintainer-run.
+Tests, checks, lockfile/digest generation and retained runtime/browser evidence are maintainer-run.

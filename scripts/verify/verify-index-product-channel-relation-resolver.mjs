@@ -65,25 +65,31 @@ for (const forbidden of ['rustok_channel', 'rustok_index', 'FROM channels', 'JOI
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod channel_relation_resolver;',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
-  'Status: `source_complete_event_wiring_and_atomic_snapshot_evidence_pending`',
+
+const resolverDoc = requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
+  'Status: `source_complete_durable_triggering_and_runtime_evidence_pending`',
   '`REPEATABLE READ`, `READ ONLY`',
   'at most 64 Products',
   'at most three exact Product stabilization attempts',
   'does **not** filter `channels.is_active`',
   'not an atomic cross-owner snapshot',
-  'new Product Index schema version',
+  'canonical Product Index source already consumes the resulting relation',
+  '`sales_channels` link',
   'No tests, Node verifiers, Cargo checks',
 ]);
+for (const legacy of ['Product v1', 'Product v2', 'Product v3', 'new Product Index schema version']) {
+  if (resolverDoc.includes(legacy)) fail(`resolver doc retains legacy compatibility text: ${legacy}`);
+}
+
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
-  'cross-owner resolver source is complete',
-  'bounded optimistic stabilization',
-  'runtime availability remains Channel-owned',
+  'current Product Index graph already contains the Product-to-SalesChannel link',
+  'bounded resolved membership discovery',
+  'Durable Product/Channel convergence triggering',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
-  'bounded cross-owner Product visibility to Channel UUID resolver',
-  'Product v3',
-  'current digest artifact changed after #3130',
+  'bounded cross-owner Product visibility to SalesChannel UUID resolver',
+  'one canonical Product Index source',
+  'durable relation convergence/freshness triggering',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
@@ -91,4 +97,4 @@ if (!aggregate.includes("'verify-index-product-channel-relation-resolver.mjs'"))
   fail('Index aggregate verifier does not include the Product-SalesChannel resolver guard');
 }
 
-console.log('[verify-index-product-channel-relation-resolver] Product-SalesChannel resolver contract verified');
+console.log('[verify-index-product-channel-relation-resolver] canonical resolver contract verified');

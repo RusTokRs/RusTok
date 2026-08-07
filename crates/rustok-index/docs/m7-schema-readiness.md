@@ -4,74 +4,53 @@ Status: `source_complete_owner_execution_pending`.
 
 ## Purpose
 
-The selected Product vertical already publishes immutable runtime schemas and persists exact
-source-owned contracts in tenant-scoped `index_schemas`. Query execution and replay validate the
-individual schema they touch, but runtime capability presence alone does not prove that the complete
-Product/ProductVariant/SalesChannel set is ready for one tenant.
+The selected Product vertical publishes one current Product contract, one current ProductVariant
+contract, and one current SalesChannel contract. Persisted tenant `index_schemas` state must match that
+exact runtime-selected set before authoritative graph use.
 
-`PostgresIndexSchemaReadinessStore` adds one bounded fail-closed gate for that cutover boundary. It
-does not create or mutate schema registrations; `PostgresSchemaRegistrationStore` remains the only
-Index-owned registration API.
+`PostgresIndexSchemaReadinessStore` is a bounded fail-closed observation gate. It does not register or
+mutate schemas; `PostgresSchemaRegistrationStore` remains the Index-owned registration API.
 
 ## Request contract
 
-`IndexSchemaReadinessRequest` requires:
-
-- one non-nil tenant UUID;
-- one non-empty explicit schema set;
-- at most 64 exact `SchemaRef` values;
-- no duplicate references.
-
-The request sorts references deterministically. Every requested reference must exist in the immutable
-runtime `SchemaRegistry` before storage is touched.
+`IndexSchemaReadinessRequest` requires a non-nil tenant UUID, a non-empty explicit schema set of at
+most 64 exact `SchemaRef` values, and no duplicates. References are sorted deterministically and must
+exist in the immutable runtime `SchemaRegistry` before storage is touched.
 
 ## Persisted readiness contract
 
-The store reads the entire requested set with one tenant-scoped storage statement. For every exact
-reference, readiness requires all of the following:
+For every requested current reference, readiness requires:
 
-1. one persisted `index_schemas` row exists for the tenant;
-2. `status` is exactly `active`;
-3. `schema_fingerprint` equals the immutable runtime registry fingerprint;
-4. `schema_json` equals the immutable runtime registry contract.
+1. one persisted tenant `index_schemas` row;
+2. `status = active`;
+3. exact runtime `schema_fingerprint`;
+4. exact runtime `schema_json`.
 
-Any missing, inactive, fingerprint-mismatched, or contract-mismatched schema rejects the complete
-request. The gate returns no partial-success receipt.
+Any missing, inactive, fingerprint-mismatched, or contract-mismatched row rejects the whole request.
+There is no partial-success receipt.
 
-A successful `IndexSchemaReadinessReceipt` contains only the tenant identity and deterministic exact
-schema/fingerprint pairs that were checked. It is an observation of persisted readiness, not a new
-durable authorization token and not a substitute for source registration or schema-application
-leases.
+The generic `SchemaRef` contains a positive numeric schema key because Index storage uses it in entity,
+link, inbox, and checkpoint identities. The Product distribution no longer publishes multiple Product
+or ProductVariant compatibility contracts behind that key.
 
 ## M7 use
 
-Before an authoritative Product graph consumer or Storefront cutover is admitted for a tenant, the
-caller can require the exact selected schema set, including the currently selected contracts:
+Before authoritative Product graph use, the caller requires the exact three runtime-selected schema
+references for:
 
-- `rustok-product::product@2`;
-- `rustok-product::product_variant@2`;
-- `rustok-channel::sales_channel@1`.
+- Product;
+- ProductVariant;
+- SalesChannel.
 
-The gate is generic and accepts no Product-domain types. Future selected modules can use the same
-contract without Index-core changes.
+The gate itself remains domain-neutral and accepts no Product or Channel types.
 
 ## Deliberate limits
 
-This slice does not:
+This gate does not register missing schemas, apply secondary indexes, persist a separate readiness
+boolean, start workers, bypass event-contract admission, prove relation freshness, or authorize
+Storefront cutover by itself.
 
-- register missing schemas automatically;
-- apply secondary indexes or schema-application jobs;
-- persist a separate readiness flag that could become stale;
-- start a task, scheduler, retry loop, or broker consumer;
-- add Product Index typed wire events;
-- bypass the event-contract digest admission gate;
-- admit Product-to-SalesChannel relation semantics;
-- claim live PostgreSQL/reference equivalence, freshness, restart, or partition evidence;
-- authorize Storefront or production partition cutover by itself.
-
-The Product typed refresh family remains blocked by the stale canonical event-contract digest artifact.
-Concrete repair PostgreSQL evidence and the remaining live M7 evidence are still maintainer-owned
-execution steps.
+Concrete PostgreSQL readiness/equivalence/freshness evidence remains maintainer-executed.
 
 ## Maintainer verification
 
