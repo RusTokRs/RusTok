@@ -77,9 +77,9 @@ pub use drift_finding_lifecycle::{
     IndexDriftFindingLifecycleFailure, IndexDriftFindingLifecycleFailureError,
     IndexDriftFindingLifecycleFailureKind, IndexDriftFindingLifecycleNotAppliedReason,
     IndexDriftFindingLifecycleOutcome, IndexDriftFindingLifecycleReceipt,
-    IndexDriftFindingLifecycleService, IndexDriftFindingLifecycleState,
-    IndexDriftFindingLifecycleStore, IndexDriftFindingLifecycleStoreOutcome,
-    IndexDriftFindingLifecycleValidationError, IndexDriftFindingState,
+    IndexDriftFindingLifecycleService, IndexDriftFindingLifecycleStore,
+    IndexDriftFindingLifecycleStoreOutcome, IndexDriftFindingLifecycleValidationError,
+    IndexDriftFindingState,
 };
 pub use drift_repair::{
     IndexDriftAuthorizedRepairCommand, IndexDriftRepairAuthorization,
