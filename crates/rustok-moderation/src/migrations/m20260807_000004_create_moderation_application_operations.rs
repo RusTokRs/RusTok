@@ -109,6 +109,12 @@ impl MigrationTrait for Migration {
                     .check(Expr::cust(
                         "status IN ('pending','applying','retryable','applied','rejected','operator_review')",
                     ))
+                    .check(Expr::cust(
+                        "status <> 'applying' OR (lease_token IS NOT NULL AND lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
+                    ))
+                    .check(Expr::cust(
+                        "applied_revision IS NULL OR applied_revision >= subject_revision",
+                    ))
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_moderation_application_operations_tenant_decision")
