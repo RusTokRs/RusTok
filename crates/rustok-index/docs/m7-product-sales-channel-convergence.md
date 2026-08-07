@@ -95,13 +95,36 @@ in Index storage without becoming query-authoritative.
 Source completeness still does not authorize Storefront cutover. PostgreSQL execution evidence for the
 in-flight stale-mutation window and for this convergence state machine remains pending.
 
+## Retained PostgreSQL convergence packet
+
+`crates/rustok-distribution/tests/product_channel_convergence_postgres.rs` is now a source-ready,
+execution-pending packet for this state machine. It uses two independent generic `ModuleWorkScheduler`
+hosts and the production Product/Channel/Index storage/runtime path.
+
+The packet retains assertions for:
+
+- live-lease exclusion and reclaim after lease expiry;
+- restart continuation without resetting the Product visibility cursor;
+- malformed Product isolation while later valid Products still receive current freshness;
+- Product visibility `alpha -> beta` after source read, including physical stale Index materialization,
+  relation/projection advancement, query exclusion, and corrective current mutation;
+- Channel generation change with unchanged unrestricted UUID membership, where only freshness advances
+  and the same materialized Product becomes admissible again;
+- Channel generation change with changed restricted membership, where relation/projection advance and
+  the old Index row stays inadmissible until the current Product mutation is applied.
+
+Detailed packet contract:
+[M7 Product visibility / Channel identity convergence PostgreSQL harness](./m7-product-channel-convergence-postgres-harness.md).
+
+This is retained source only. It has not been executed or admitted.
+
 ## Remaining M7 admission
 
 - execute/admit the source-ready Product delayed-mutation/locale-deletion PostgreSQL query-freshness
   packet;
-- add and execute PostgreSQL Product visibility + Channel-generation convergence evidence;
-- retain multi-host lease competition, lease expiry/restart, and rejected-Product isolation evidence;
-- retain Channel create/delete/slug/tenant, Product visibility, retry/restart/delete-recreate evidence;
+- execute/admit the source-ready Product visibility + Channel-generation convergence packet;
+- retain any still-missing Channel create/delete/tenant-move and delete-recreate evidence not covered by
+  the slug-generation packet;
 - admit canonical Product typed events/routes only after event-contract digest verification;
 - prove complete Product/Variant/Channel query parity, including linked-target availability;
 - move Storefront traffic only after readiness, equivalence, convergence, and materialized-freshness
@@ -111,7 +134,9 @@ in-flight stale-mutation window and for this convergence state machine remains p
 
 ```bash
 cargo test -p rustok-distribution --features mod-product --test product_materialized_query_freshness_postgres -- --nocapture
+cargo test -p rustok-distribution --features mod-product --test product_channel_convergence_postgres -- --nocapture
 node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
+node scripts/verify/verify-index-product-channel-convergence-postgres-harness.mjs
 node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
@@ -122,5 +147,5 @@ cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 
-No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, or CI
-were executed by the implementation agent.
+No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
+`git diff --check` were executed by the implementation agent.
