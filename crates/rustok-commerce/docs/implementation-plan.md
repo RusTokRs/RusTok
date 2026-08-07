@@ -217,11 +217,17 @@ These are source-contract defects, not verification-only tasks.
   admission, typed catalog filters, pagination validation, requested/default locale,
   request channel, authenticated actor, bounded deadline, response projection, and
   correlation-aware stable public owner errors.
-- [ ] Cut remaining mounted Product storefront catalog reads, REST delete/publish/unpublish
-  lifecycle commands, and GraphQL product lifecycle/schema operations over to
-  host-composed Product owner ports. Direct Product entities, `CatalogService`, and
-  `ProductCatalogSchemaService` remain explicit source debt; repeatable lifecycle
-  commands need an explicit caller idempotency contract before cutover.
+- [x] Publish an optional filtered storefront-list capability without changing
+  `PublishedProductsRequest`, and cut mounted storefront GraphQL Product catalog reads
+  to the host-selected `ProductCatalogReadRuntime` / `ProductCatalogReadPort` while
+  preserving search/category/sort/attribute filters, pagination validation, channel
+  visibility, requested/default locale, service actor/deadline context, response
+  projection, and correlation-aware stable public owner errors.
+- [ ] Cut remaining mounted Product REST delete/publish/unpublish lifecycle commands and
+  GraphQL product lifecycle/schema operations over to host-composed Product owner ports.
+  Direct Product entities, `CatalogService`, and `ProductCatalogSchemaService` remain
+  explicit source debt; repeatable lifecycle commands need an explicit caller
+  idempotency contract before cutover.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -622,6 +628,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-commerce-product-admin-detail-read.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-list-read.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-graphql-read.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-storefront-graphql-read.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -655,8 +662,8 @@ Source inspection is not execution evidence.
   handlers remain explicit source debt.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, order-read,
   marketplace-financial topology, Product command-port, Product admin-detail read,
-  Product admin-list read, and Product admin-GraphQL read static guards against a
-  repository checkout and retain their output.
+  Product admin-list read, Product admin-GraphQL read, and Product storefront-GraphQL
+  read static guards against a repository checkout and retain their output.
 
 ### Compile/tests
 
@@ -840,6 +847,10 @@ Source inspection is not execution evidence.
   runtime/port with authenticated actor, request channel/locale context, bounded deadline,
   existing filter/pagination semantics, unchanged response projection, and safe stable
   public owner errors; storefront catalog and lifecycle/schema cutover remain open.
+- [x] Publish the optional filtered storefront Product read capability and cut mounted
+  storefront GraphQL catalog reads to the host-selected Product runtime/port without
+  changing the existing published-list request, filter/pagination/channel semantics, or
+  GraphQL projection; Product lifecycle/schema cutover remains open.
 
 ## Change rules
 
