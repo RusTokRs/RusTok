@@ -64,6 +64,7 @@ const scripts = [
   'verify-index-product-variant-refresh-ledger.mjs',
   'verify-index-product-refresh-canonical-writer.mjs',
   'verify-index-product-refresh-relay-step.mjs',
+  'verify-index-product-channel-relation-admission.mjs',
   'verify-index-product-channel-relation-ledger.mjs',
   'verify-index-product-channel-relation-resolver.mjs',
   'verify-index-product-channel-relation-freshness.mjs',
