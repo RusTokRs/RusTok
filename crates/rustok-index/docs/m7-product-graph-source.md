@@ -77,7 +77,7 @@ The original blocker was that Product metadata owned Channel slugs while Channel
 could alter resolved UUID targets without advancing `products.index_revision`. Resolving `channels.id`
 inside the Product v2 source would therefore violate monotonic mutation ordering.
 
-That owner-version gap is now source-complete outside Product v2:
+That relation-owner gap is now source-complete outside Product v2:
 
 - `rustok-product` owns an append-only Product-to-SalesChannel relation ledger with a dedicated
   monotonic `relation_epoch` independent from Product and Channel revisions;
@@ -85,24 +85,39 @@ That owner-version gap is now source-complete outside Product v2:
   visibility, resolves current Channel UUID membership, writes through the Product owner, and
   re-observes membership with bounded stabilization.
 
+A second versioning gap was found when Product v3 was rechecked against the actual Index mutation
+store. Product v3 will be one **full** record combining Product scalar/Variant state and relation
+membership. Index stale-ignores a full mutation whose `source_version` is not greater than the current
+materialized version, so neither `products.index_revision` nor `relation_epoch` can safely serve as the
+full Product v3 source version on its own.
+
+`rustok-product` therefore now owns a separate append-only
+`product_index_graph_v3_projection_snapshots` ledger. Its `projection_epoch` advances whenever either
+the retained Product source-version watermark or relation epoch advances. The two component counters
+remain explicit evidence; they are not collapsed into `max`, a hash, timestamp, or pairing-derived
+Index version.
+
 Those additions do **not** permit Product v2 to be mutated in place. Its published schema fingerprint
 and replay source contract remain immutable. A real Product-to-SalesChannel `IndexLink` must therefore
-be introduced in Product v3 (or the next reviewed Product schema version) with a relation replay
-adapter that uses the owner `relation_epoch` as the relation source version.
+be introduced in Product v3 (or the next reviewed Product schema version) on the same stable
+`product-postgres-primary` source identity, using the dedicated `projection_epoch` as the full-record
+source version and the relation ledger only as resolved membership input.
 
 The Product v1/v2 source continues to avoid `channels` SQL and has no `rustok-channel` dependency.
 
-Detailed relation contracts:
+Detailed relation/projection contracts:
 
 - [Product-to-SalesChannel relation admission](m7-product-sales-channel-relation-admission.md)
 - [Cross-owner resolver](m7-product-sales-channel-resolver.md)
-- [Product owner ledger](../../rustok-product/docs/index-sales-channel-relation-ledger.md)
+- [Product owner relation ledger](../../rustok-product/docs/index-sales-channel-relation-ledger.md)
+- [Product v3 projection epoch ledger](../../rustok-product/docs/index-graph-v3-projection-ledger.md)
 
 ## Ownership
 
 `rustok-product` owns Product/Variant storage, normalized metadata, monotonic revisions,
-Variant-membership revision, retained hard-delete identities, and the durable relation epoch/storage.
-It still has no dependency on `rustok-index` or `rustok-channel`.
+Variant-membership revision, retained hard-delete identities, durable relation epoch/storage, and the
+future Product v3 graph projection epoch. It still has no dependency on `rustok-index` or
+`rustok-channel`.
 
 `rustok-distribution` owns selected cross-module composition: Product/Variant conversion and the
 Product-visibility-to-Channel-identity resolver. Index core and server remain Product-agnostic.
@@ -111,10 +126,12 @@ Product-visibility-to-Channel-identity resolver. Index core and server remain Pr
 
 - incremental Product/relation event ingestion and broker acknowledgement;
 - tombstone retention/purge admission after consumer checkpoints are proven newer;
-- Product v3 plus Product-to-SalesChannel relation replay/materialization;
-- durable Product/Channel convergence triggering or an admitted relation watermark/checkpoint;
+- Product v3 plus Product-to-SalesChannel replay/materialization using `projection_epoch`;
+- Product v3 projection-aware absence semantics;
+- durable Product/Channel convergence triggering or an admitted relation freshness
+  watermark/checkpoint;
 - persisted per-tenant schema application/readiness evidence;
-- retained cross-owner resolver concurrency/restart/delete-recreate evidence;
+- retained cross-owner resolver/projection concurrency/restart/delete-recreate evidence;
 - authoritative Storefront query cutover;
 - retained PostgreSQL replay, freshness, drift, and equivalence evidence;
 - retry/backoff/dead-letter scheduling and graceful host task ownership.
