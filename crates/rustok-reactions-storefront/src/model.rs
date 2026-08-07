@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+const MAX_REACTION_SOURCE_SLUG_BYTES: usize = 64;
+const MAX_REACTION_SUBJECT_KIND_BYTES: usize = 64;
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ReactionSubjectUiRef {
     pub source: String,
@@ -19,15 +22,27 @@ impl ReactionSubjectUiRef {
         let source = source.into();
         let kind = kind.into();
         let subject_revision = subject_revision.into();
-        if source.trim().is_empty() || kind.trim().is_empty() {
-            return Err("reaction subject source and kind are required".to_string());
+        if !valid_segment(
+            source.as_str(),
+            MAX_REACTION_SOURCE_SLUG_BYTES,
+            true,
+            true,
+        ) || !valid_segment(
+            kind.as_str(),
+            MAX_REACTION_SUBJECT_KIND_BYTES,
+            false,
+            true,
+        ) {
+            return Err("reaction subject source or kind is invalid".to_string());
+        }
+        if subject_id.is_nil() {
+            return Err("reaction subject id must be non-nil".to_string());
         }
         let revision = subject_revision
-            .trim()
             .parse::<u64>()
-            .map_err(|_| "reaction subject revision must be a positive u64 string".to_string())?;
-        if revision == 0 {
-            return Err("reaction subject revision must be a positive u64 string".to_string());
+            .map_err(|_| "reaction subject revision must be a positive canonical u64 string".to_string())?;
+        if revision == 0 || revision.to_string() != subject_revision {
+            return Err("reaction subject revision must be a positive canonical u64 string".to_string());
         }
         Ok(Self {
             source,
@@ -36,6 +51,31 @@ impl ReactionSubjectUiRef {
             subject_revision,
         })
     }
+}
+
+fn valid_segment(
+    value: &str,
+    maximum_bytes: usize,
+    allow_hyphen: bool,
+    allow_underscore: bool,
+) -> bool {
+    if value.is_empty()
+        || value.trim() != value
+        || value.len() > maximum_bytes
+        || value.starts_with('-')
+        || value.starts_with('_')
+        || value.ends_with('-')
+        || value.ends_with('_')
+    {
+        return false;
+    }
+
+    value.bytes().all(|byte| {
+        byte.is_ascii_lowercase()
+            || byte.is_ascii_digit()
+            || (allow_hyphen && byte == b'-')
+            || (allow_underscore && byte == b'_')
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -114,10 +154,17 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn subject_ref_requires_positive_revision() {
+    fn subject_ref_requires_exact_neutral_identity_and_revision() {
         assert!(ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), "1").is_ok());
-        assert!(ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), "0").is_err());
-        assert!(ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), "-1").is_err());
+        for revision in ["0", "-1", "01", " 1 ", "+1"] {
+            assert!(
+                ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), revision).is_err(),
+                "revision {revision:?} must be rejected",
+            );
+        }
+        assert!(ReactionSubjectUiRef::new("Forum", "topic", Uuid::new_v4(), "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum", "topic-kind", Uuid::new_v4(), "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum", "topic", Uuid::nil(), "1").is_err());
     }
 
     #[test]

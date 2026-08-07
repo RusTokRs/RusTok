@@ -54,10 +54,16 @@ pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
         set_mutation_busy.set(true);
         set_mutation_error.set(false);
         spawn_local(async move {
-            match transport::apply_reaction(context, subject, reaction, action).await {
-                Ok(_) => set_refresh_nonce.update(|value| *value += 1),
-                Err(_) => set_mutation_error.set(true),
+            if transport::apply_reaction(context, subject, reaction, action)
+                .await
+                .is_err()
+            {
+                set_mutation_error.set(true);
             }
+            // A failed write may be a stale-revision/conflict response. Always
+            // re-read the producer-authorized canonical owner state instead of
+            // leaving the pre-command snapshot on screen.
+            set_refresh_nonce.update(|value| *value += 1);
             set_mutation_busy.set(false);
         });
     });
