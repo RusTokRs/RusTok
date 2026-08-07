@@ -211,6 +211,9 @@ impl StorefrontProductListQuery {
 pub struct AdminProductListQuery {
     pub search: Option<String>,
     pub status: Option<entities::product::ProductStatus>,
+    /// Compatibility-only raw status equality filter for legacy surfaces that historically
+    /// returned an empty list for unknown status text instead of validating it.
+    pub raw_status: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub category_id: Option<Uuid>,
@@ -220,6 +223,11 @@ pub struct AdminProductListQuery {
 }
 
 impl AdminProductListQuery {
+    pub fn with_raw_status(mut self, status: Option<String>) -> Self {
+        self.raw_status = normalize_optional_text(status);
+        self
+    }
+
     pub fn with_vendor(mut self, vendor: Option<String>) -> Self {
         self.vendor = normalize_optional_text(vendor);
         self
@@ -268,6 +276,7 @@ impl AdminProductListQuery {
         Ok(Self {
             search: normalize_optional_text(search),
             status,
+            raw_status: None,
             vendor: None,
             product_type: None,
             category_id: parse_optional_uuid(category_id, "category_id")?,
@@ -416,11 +425,24 @@ mod tests {
         .with_product_type(Some("  Camera  ".to_string()));
         assert_eq!(query.search.as_deref(), Some("camera"));
         assert_eq!(query.status, Some(entities::product::ProductStatus::Active));
+        assert_eq!(query.raw_status, None);
         assert_eq!(query.vendor.as_deref(), Some("Acme"));
         assert_eq!(query.product_type.as_deref(), Some("Camera"));
         assert_eq!(query.sort_by, StorefrontProductSortBy::CreatedAt);
         assert_eq!(query.sort_direction, StorefrontProductSortDirection::Asc);
         assert_eq!(query.attribute_filters.len(), 1);
+
+        let legacy = AdminProductListQuery::try_from_transport(
+            None,
+            None,
+            None,
+            Some("created_at".to_string()),
+            Some("desc".to_string()),
+        )
+        .expect("legacy-compatible base query")
+        .with_raw_status(Some("deleted".to_string()));
+        assert_eq!(legacy.status, None);
+        assert_eq!(legacy.raw_status.as_deref(), Some("deleted"));
 
         assert!(
             AdminProductListQuery::try_from_transport(
