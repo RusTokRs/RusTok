@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked from `main@be388f9795581b15e88b718e82952a7a0c107dc4` and continued on
-`agent/index-link-target-availability-equivalence-20260807`.
+Status overlay rechecked from `main@283522e39d51b92e4fd3abef64f057edc375d546` and continued on
+`agent/index-linked-target-replay-redelivery-evidence-20260807`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution
 cursor.
@@ -34,11 +34,13 @@ inspection. Independent M7 source work continues while that owner-execution gate
 - Product, ProductVariant, and SalesChannel owner freshness rules;
 - recreate-safe ProductVariant and SalesChannel `index_revision` through retained tombstone seed/clear;
 - generic query-path-scoped linked-target availability admission for Product graph queries;
-- source-ready linked-target filter/order/exact-count/runtime-recomposition PostgreSQL equivalence.
+- source-ready linked-target filter/order/exact-count/runtime-recomposition PostgreSQL equivalence;
+- source-ready canonical ProductVariant replay checkpoint-failure / duplicate / late-stale composition
+  evidence through real PostgreSQL mutation storage and Product graph queries.
 
 No parallel Product/ProductVariant compatibility source is selected. Generic numeric `SchemaVersion`
 values remain Index storage/routing keys only; do not introduce a new Product schema/version to solve
-freshness, availability, or ordering.
+freshness, availability, replay, or ordering.
 
 ## Clock and ownership boundaries
 
@@ -54,10 +56,13 @@ The Product graph keeps separate durable facts:
 6. SalesChannel `index_revision` — SalesChannel entity mutation source version;
 7. entity query admission — owner freshness of a physically materialized entity row;
 8. link-target availability admission — authority of a current link when a query actually traverses
-   that link.
+   that link;
+9. replay checkpoint — source progress only; it never replaces entity source-version authority.
 
 A freshness-only Channel transition must not fabricate Product relation/projection epochs. Target entity
 updates/recreates must not advance Product membership clocks merely to make target payload current.
+Replay checkpoint loss after a durable mutation must not make the durable target non-authoritative or
+allow an older target mutation to regress it.
 
 ## Product/Channel convergence source complete
 
@@ -168,9 +173,40 @@ For SalesChannel:
 
 This packet is source-ready and execution-pending. It does not claim runtime test success.
 
+## Linked-target replay/redelivery composition source complete
+
+`product_linked_target_replay_redelivery_postgres.rs` reuses the canonical ProductVariant source and
+generic `IndexReplayWorker` with real PostgreSQL `PostgresMutationStore`.
+
+The packet starts with Variant v1 materialized, captures canonical Variant v2 without delivering it, then
+advances owner state to v3. Product membership/projection stays current while the linked graph fails
+closed because Variant materialization is still v1.
+
+A bounded fail-once checkpoint adapter injects the exact generic crash boundary after v3 mutation
+durability but before checkpoint durability:
+
+- first replay applies canonical v3 into real PostgreSQL storage;
+- checkpoint commit fails and remains absent;
+- original and freshly composed query runtimes already expose v3 because target authority is durable and
+  independent of replay cursor state;
+- a newly created replay worker retries from the absent checkpoint, scans the same current owner state,
+  derives the same stable event UUID and records `Duplicate` rather than rewriting the entity;
+- retry commits a complete checkpoint at v3;
+- the never-before-delivered canonical v2 mutation is then delivered late through the same replay sink
+  and records `StaleIgnored`;
+- a final exact v3 redelivery remains `Duplicate`;
+- durable ProductVariant source version/payload and linked Product graph remain v3 throughout the late
+  deliveries.
+
+The injected checkpoint adapter is only a deterministic failure boundary. Durable PostgreSQL
+checkpoint/job lease ownership remains the existing generic M6 contract; no Product-specific checkpoint
+state is added.
+
+This packet is source-ready and execution-pending.
+
 ## Retained M7 PostgreSQL packets
 
-Five packets are source-ready and execution/admission pending:
+Six packets are source-ready and execution/admission pending:
 
 1. `product_materialized_query_freshness_postgres.rs`
    - delayed Product scalar mutation and locale deletion;
@@ -198,6 +234,12 @@ Five packets are source-ready and execution/admission pending:
    - exact-count parity;
    - fresh query-runtime recomposition while target is stale;
    - target-only mutation recovery for both ProductVariant and SalesChannel.
+6. `product_linked_target_replay_redelivery_postgres.rs`
+   - canonical ProductVariant source replay;
+   - crash after PostgreSQL mutation durability/before checkpoint;
+   - replay-worker restart and exact stable-event duplicate;
+   - late never-delivered lower source version -> `StaleIgnored`;
+   - query-runtime recomposition and graph authority preserved throughout.
 
 None has been executed or admitted by the implementation agent.
 
@@ -210,7 +252,7 @@ None has been executed or admitted by the implementation agent.
 - [x] Product locale/ProductVariant refresh ledgers and durable relay step.
 - [ ] Retain canonical event-contract digest admission for current `main`.
 - [ ] Add the one canonical Product Index typed event family and concrete routes/consumers.
-- [ ] Retain crash-between-commit-and-ack/redelivery evidence.
+- [ ] Retain crash-between-commit-and-ack/redelivery evidence for the typed incremental event route.
 
 ## M6 replay, reconciliation, diagnosis, and repair
 
@@ -242,17 +284,18 @@ None has been executed or admitted by the implementation agent.
 - [x] Source-ready nested projection/exact-count target recreate packet.
 - [x] Source-ready linked filter/many aggregate order/exact-count/runtime-recomposition equivalence
       packet for ProductVariant and SalesChannel target lag.
+- [x] Source-ready replay-worker checkpoint-failure / duplicate / late-stale linked-target composition
+      packet using canonical ProductVariant replay and real PostgreSQL mutation storage.
 - [x] Source-ready Product delayed-mutation/locale-deletion PostgreSQL packet.
 - [x] Source-ready Product visibility/Channel convergence multi-host PostgreSQL packet.
 - [x] Source-ready Channel create/delete/tenant-move/delete-recreate PostgreSQL packet.
 - [x] Remove parallel Product/ProductVariant compatibility implementations.
-- [ ] Execute/admit the five retained Product M7 PostgreSQL packets.
-- [ ] Retain explicit replay-worker / crash-redelivery ordering evidence for linked target recovery if
-      not already satisfied by M5 replay evidence.
+- [ ] Execute/admit the six retained Product M7 PostgreSQL packets.
 - [ ] Execute any remaining schema-readiness/relation/freshness/projection concurrency evidence not
       already covered by those packets.
 - [ ] Admit canonical Product typed wire events/routes/consumers after digest verification.
-- [ ] Retain remaining out-of-order and locale fan-out evidence.
+- [ ] Retain typed incremental-route crash-between-commit-and-ack/redelivery evidence.
+- [ ] Retain remaining locale fan-out evidence.
 - [ ] Prove complete Storefront Product/ProductVariant/SalesChannel query parity.
 - [ ] Move Storefront traffic only after readiness/equivalence/freshness/availability evidence passes.
 
@@ -260,12 +303,14 @@ None has been executed or admitted by the implementation agent.
 
 Primary owner step remains: **execute and admit the locked M6 repair PostgreSQL packet**.
 
-The next unblocked M7 source step is now **replay/redelivery ordering evidence for linked target
-recovery**, not another query policy, schema, relation copy, or clock. Reuse the existing replay/mutation
-contracts and prove that duplicate/out-of-order target delivery cannot make a linked Product query
-authoritative before the current target source version is materialized, including after runtime restart.
+The replay/redelivery ordering source gap for linked target recovery is now covered without adding a new
+clock or Product-specific replay mechanism. The next unblocked M7/M5 source step is **canonical event-
+contract digest admission for current `main`**. Recheck the actual event contract/evidence first; then
+admit exactly one current Product Index typed event family and routes/consumers only if that digest gate
+is source-complete. Do not introduce v2/v3 event branches or compatibility routes.
 
-Typed Product event work remains separately blocked until event-contract digest admission.
+After typed route admission, retain its separate crash-between-commit-and-ack/redelivery and locale
+fan-out evidence. Storefront cutover remains evidence-gated.
 
 ## Maintainer verification for current M7 source
 
@@ -275,11 +320,14 @@ cargo test -p rustok-distribution --features mod-product --test product_channel_
 cargo test -p rustok-distribution --features mod-product --test product_channel_identity_transitions_postgres -- --nocapture
 cargo test -p rustok-distribution --features mod-product --test product_linked_target_recreate_postgres -- --nocapture
 cargo test -p rustok-distribution --features mod-product --test product_linked_target_availability_equivalence_postgres -- --nocapture
+cargo test -p rustok-distribution --features mod-product --test product_linked_target_replay_redelivery_postgres -- --nocapture
 node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
 node scripts/verify/verify-index-product-channel-convergence-postgres-harness.mjs
 node scripts/verify/verify-index-product-channel-identity-transitions-postgres-harness.mjs
 node scripts/verify/verify-index-linked-target-recreate-postgres-harness.mjs
 node scripts/verify/verify-index-linked-target-availability-equivalence-postgres-harness.mjs
+node scripts/verify/verify-index-linked-target-replay-redelivery-postgres-harness.mjs
+node scripts/verify/verify-index-source-replay-contract.mjs
 node scripts/verify/verify-index-link-target-availability.mjs
 node scripts/verify/verify-index-linked-target-query-freshness.mjs
 node scripts/verify/verify-index-product-materialized-query-freshness.mjs
