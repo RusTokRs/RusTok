@@ -94,7 +94,7 @@
       "retry_backoff_seconds": [5, 10, 20, 40, 80, 160, 300],
       "missing_adapter": "retryable",
       "retryable_port_error": "retryable",
-      "non_retryable_invariant": "operator_review",
+      "non_retryable_conflict_or_invariant": "operator_review, including stale reviewed revision conflicts",
       "invalid_success_evidence": "operator_review while the live lease is still held",
       "other_non_retryable_port_error": "rejected",
       "owner_storage_failure_after_claim": "return owner error and rely on lease expiry/reclaim; never forge a domain result"
