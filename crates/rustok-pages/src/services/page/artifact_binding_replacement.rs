@@ -14,7 +14,7 @@ use crate::dto::{ReplacePageArtifactBindingInput, ReplacePageArtifactBindingResu
 use crate::entities::{
     page, page_artifact_binding_replacement_operation, page_artifact_rebuild_operation, page_body,
     page_publish_operation, page_publish_rebuild_source, page_published_landing_artifact,
-    page_static_landing_artifact,
+    page_rollback_operation, page_static_landing_artifact,
 };
 use crate::error::{PagesError, PagesResult};
 use crate::services::page_builder_artifact::PageBuilderArtifactService;
@@ -33,6 +33,7 @@ pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID: &str =
     "PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID";
 pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY: &str =
     "PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY";
+const PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT: &str = "page_rollback_operation_v1";
 const MAX_REPLACEMENT_IDEMPOTENCY_KEY_BYTES: usize = 191;
 const MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS: usize = 256;
 
@@ -44,11 +45,13 @@ impl PageService {
     /// artifact. The ordinary path requires the current locale binding to still point at the source
     /// artifact. A deliberately narrow recovery path also admits a physically lost source artifact
     /// only when the locale binding is absent, the retained source body is still current for the
-    /// locale, and the current page version is either the retained publish result version or is
-    /// explained completely by a bounded contiguous chain of earlier activations from that exact
-    /// publish for other locales. Both paths update one localized binding, advance the page version,
-    /// emit lifecycle events and store one replayable activation receipt atomically. The command
-    /// never compiles, sanitizes, rebuilds or reads the mutable body as repair authority.
+    /// locale, and the current page version is anchored either by the retained publish itself or by
+    /// an exact later rollback receipt that reactivated that same publish set. Any version gap after
+    /// that anchor must be explained completely by a bounded contiguous chain of earlier activations
+    /// from the exact same publish for other locales. Both paths update one localized binding,
+    /// advance the page version, emit lifecycle events and store one replayable activation receipt
+    /// atomically. The command never compiles, sanitizes, rebuilds or reads the mutable body as repair
+    /// authority.
     pub async fn replace_rebuilt_artifact_binding(
         &self,
         tenant_id: Uuid,
@@ -395,11 +398,30 @@ async fn ensure_missing_binding_recovery_in_tx(
             publish.result_version,
         )));
     }
-    if publish.result_version < expected_version {
+
+    let anchor_version = if publish.result_version == expected_version {
+        publish.result_version
+    } else {
+        resolve_missing_binding_recovery_anchor_in_tx(
+            txn,
+            tenant_id,
+            page_id,
+            expected_version,
+            &publish,
+        )
+        .await?
+    };
+    if anchor_version > expected_version {
+        return Err(replacement_current_conflict(
+            "missing-binding recovery activation anchor is newer than the current page version",
+        ));
+    }
+    if anchor_version < expected_version {
         ensure_sequential_missing_binding_recovery_version_chain_in_tx(
             txn,
             tenant_id,
             page_id,
+            anchor_version,
             expected_version,
             &publish,
             rebuild.locale.as_str(),
@@ -409,31 +431,94 @@ async fn ensure_missing_binding_recovery_in_tx(
     Ok(())
 }
 
-async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
+async fn resolve_missing_binding_recovery_anchor_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     page_id: Uuid,
     expected_version: i32,
     publish: &page_publish_operation::Model,
+) -> PagesResult<i32> {
+    let query = || {
+        page_rollback_operation::Entity::find()
+            .filter(page_rollback_operation::Column::TenantId.eq(tenant_id))
+            .filter(page_rollback_operation::Column::PageId.eq(page_id))
+            .filter(page_rollback_operation::Column::TargetPublishOperationId.eq(publish.id))
+            .filter(
+                page_rollback_operation::Column::TargetArtifactSetHash
+                    .eq(publish.artifact_set_hash.as_str()),
+            )
+            .filter(page_rollback_operation::Column::ResultVersion.lte(expected_version))
+            .order_by_desc(page_rollback_operation::Column::ResultVersion)
+            .order_by_desc(page_rollback_operation::Column::Id)
+    };
+    let rollback = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    };
+    let Some(rollback) = rollback else {
+        return Ok(publish.result_version);
+    };
+
+    if rollback.id.is_nil()
+        || rollback.tenant_id != tenant_id
+        || rollback.page_id != page_id
+        || rollback.target_publish_operation_id != publish.id
+        || rollback.idempotency_key.trim().is_empty()
+        || rollback.result_version <= publish.result_version
+        || rollback.result_version > expected_version
+        || !is_sha256(&rollback.request_hash)
+        || !is_sha256(&rollback.source_artifact_set_hash)
+        || !is_sha256(&rollback.target_artifact_set_hash)
+        || rollback.source_artifact_set_hash == rollback.target_artifact_set_hash
+        || rollback.target_artifact_set_hash != publish.artifact_set_hash
+    {
+        return Err(replacement_current_conflict(
+            "rollback activation anchor failed identity or hash validation",
+        ));
+    }
+    let rollback_expected_version = rollback.result_version.checked_sub(1).filter(|v| *v > 0).ok_or_else(|| {
+        replacement_current_conflict("rollback activation anchor has an invalid result version")
+    })?;
+    let expected_request_hash = stable_replacement_hash(&(
+        PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT,
+        tenant_id,
+        page_id,
+        rollback_expected_version,
+        publish.id,
+    ))?;
+    if rollback.request_hash != expected_request_hash {
+        return Err(replacement_current_conflict(
+            "rollback activation anchor request hash failed validation",
+        ));
+    }
+    Ok(rollback.result_version)
+}
+
+async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    anchor_version: i32,
+    expected_version: i32,
+    publish: &page_publish_operation::Model,
     target_locale: &str,
 ) -> PagesResult<()> {
     let version_gap = expected_version
-        .checked_sub(publish.result_version)
+        .checked_sub(anchor_version)
         .filter(|gap| *gap > 0)
         .ok_or_else(|| {
             replacement_current_conflict(format!(
-                "retained source publish version is stale: expected current version `{expected_version}`, found `{}`",
-                publish.result_version,
+                "recovery activation anchor version is stale: expected current version `{expected_version}`, found `{anchor_version}`",
             ))
         })?;
     let version_gap = usize::try_from(version_gap).map_err(|_| {
         replacement_current_conflict(
-            "retained source publish version is stale: sequential recovery version gap is invalid",
+            "recovery activation anchor version is stale: sequential recovery version gap is invalid",
         )
     })?;
     if version_gap > MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS {
         return Err(replacement_current_conflict(format!(
-            "retained source publish version is stale: sequential recovery gap `{version_gap}` exceeds the bounded activation limit `{MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS}`",
+            "recovery activation anchor version is stale: sequential recovery gap `{version_gap}` exceeds the bounded activation limit `{MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS}`",
         )));
     }
 
@@ -445,7 +530,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(page_id))
             .filter(
                 page_artifact_binding_replacement_operation::Column::ResultVersion
-                    .gt(publish.result_version),
+                    .gt(anchor_version),
             )
             .filter(
                 page_artifact_binding_replacement_operation::Column::ResultVersion
@@ -453,34 +538,35 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
             )
             .order_by_asc(page_artifact_binding_replacement_operation::Column::ResultVersion)
             .order_by_asc(page_artifact_binding_replacement_operation::Column::Id)
+            .limit((MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS + 1) as u64)
     };
     let operations = match txn.get_database_backend() {
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
     };
     if operations.len() != version_gap {
-        return Err(replacement_current_conflict(format!(
-            "retained source publish version is stale: current version gap is not fully explained by prior artifact activations from the selected publish",
-        )));
+        return Err(replacement_current_conflict(
+            "recovery activation anchor version is stale: current version gap is not fully explained by prior artifact activations from the selected publish",
+        ));
     }
 
-    let mut cursor = publish.result_version;
+    let mut cursor = anchor_version;
     let mut prior_locales = std::collections::BTreeSet::new();
     for operation in operations {
         verify_replacement_operation(&operation)?;
         if operation.expected_version != cursor || operation.result_version != cursor + 1 {
             return Err(replacement_current_conflict(
-                "retained source publish version is stale: prior artifact activations are not a contiguous version chain",
+                "recovery activation anchor version is stale: prior artifact activations are not a contiguous version chain",
             ));
         }
         if operation.locale == target_locale {
             return Err(replacement_current_conflict(
-                "retained source publish version is stale: the target locale already appears in the prior recovery activation chain",
+                "recovery activation anchor version is stale: the target locale already appears in the prior recovery activation chain",
             ));
         }
         if !prior_locales.insert(operation.locale.clone()) {
             return Err(replacement_current_conflict(
-                "retained source publish version is stale: a locale is repeated in the prior recovery activation chain",
+                "recovery activation anchor version is stale: a locale is repeated in the prior recovery activation chain",
             ));
         }
 
@@ -521,7 +607,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
                 != prior_rebuild.rebuilt_materialization_hash
         {
             return Err(replacement_current_conflict(
-                "retained source publish version is stale: a prior activation does not belong to the exact selected publish repair chain",
+                "recovery activation anchor version is stale: a prior activation does not belong to the exact selected publish repair chain",
             ));
         }
 
@@ -534,14 +620,14 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
         .await?
         .ok_or_else(|| {
             replacement_current_conflict(
-                "retained source publish version is stale: a prior repaired locale binding is no longer active",
+                "recovery activation anchor version is stale: a prior repaired locale binding is no longer active",
             )
         })?;
         if prior_binding.page_body_id != prior_source.page_body_id
             || prior_binding.artifact_id != prior_rebuild.rebuilt_artifact_id
         {
             return Err(replacement_current_conflict(
-                "retained source publish version is stale: a prior repaired locale binding changed after activation",
+                "recovery activation anchor version is stale: a prior repaired locale binding changed after activation",
             ));
         }
 
@@ -561,7 +647,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
         }
         .ok_or_else(|| {
             replacement_current_conflict(
-                "retained source publish version is stale: a prior repaired immutable artifact is unavailable",
+                "recovery activation anchor version is stale: a prior repaired immutable artifact is unavailable",
             )
         })?;
         if prior_artifact.instance_key != prior_rebuild.artifact_instance_key
@@ -570,7 +656,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
                 != Some(prior_rebuild.rebuilt_materialization_hash.as_str())
         {
             return Err(replacement_current_conflict(
-                "retained source publish version is stale: a prior repaired immutable artifact drifted from its rebuild receipt",
+                "recovery activation anchor version is stale: a prior repaired immutable artifact drifted from its rebuild receipt",
             ));
         }
 
@@ -578,7 +664,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
     }
     if cursor != expected_version {
         return Err(replacement_current_conflict(format!(
-            "retained source publish version is stale: activation chain ends at version `{cursor}` instead of current version `{expected_version}`",
+            "recovery activation chain ends at version `{cursor}` instead of current version `{expected_version}`",
         )));
     }
     Ok(())
