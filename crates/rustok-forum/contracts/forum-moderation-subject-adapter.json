@@ -110,6 +110,20 @@
       "completion": "generic ModuleWorkSource completion is a no-op because moderation_application_operations is the durable outcome source",
       "shutdown": "shared deployment StopHandle prevents new claims while already claimed module work is allowed to finish",
       "bespoke_loop": "forbidden; Moderation does not add its own tokio spawn or polling interval"
+    },
+    "audit_lifecycle": {
+      "audit_owner": "existing moderation_events table",
+      "schema_change": "none",
+      "scope": "atomic lifecycle applies to claims/finalizers executed after this source is active",
+      "claim": "winning operation CAS and first case decided -> applying_decision transition share one owner transaction; reclaim while already applying_decision does not bump the case revision",
+      "retryable": "operation retry scheduling and application_retry_scheduled audit share one owner transaction while the case remains applying_decision",
+      "applied": "operation applied evidence, case applying_decision -> closed, closed_at, active deduplication key release, application_applied and case_closed share one owner transaction",
+      "rejected": "operation rejected, case applying_decision -> escalated, application_rejected and case_escalated share one owner transaction",
+      "operator_review": "operation operator_review, case applying_decision -> escalated, application_operator_review and case_escalated share one owner transaction",
+      "active_case_identity": "released only on closed; preserved on escalated for operator work and report attachment",
+      "legacy_terminal_rows": "pre-audit applied/rejected/operator_review rows are already non-due and are not automatically rewritten or given fabricated historical audit events by this slice; explicit bounded owner reconciliation is pending",
+      "public_event_contract": "not frozen; moderation_events remains an internal owner audit ledger rather than a typed cross-domain rustok-events family",
+      "operator_recovery": "pending follow-up; must include truthful legacy-terminal reconciliation and must not mutate immutable decisions or invent automatic re-review"
     }
   },
   "supported_effects": [
@@ -195,9 +209,10 @@
   ],
   "not_claimed": [
     "Moderation-owned bespoke polling loop outside the shared ModuleWorkScheduler",
-    "case lifecycle closure from application outcomes",
-    "application lifecycle outbox events",
+    "typed cross-domain application lifecycle outbox event family",
     "operator recovery surface",
+    "reconciliation of pre-audit terminal application rows and their legacy case lifecycle/audit state",
+    "automatic replacement decision or silent re-review after escalation",
     "retained host composition execution evidence",
     "retained runtime decision application execution",
     "retained multi-host scheduler race and graceful shutdown evidence",
