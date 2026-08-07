@@ -211,14 +211,6 @@ impl StorefrontProductListQuery {
 pub struct AdminProductListQuery {
     pub search: Option<String>,
     pub status: Option<entities::product::ProductStatus>,
-    /// Compatibility-only raw status equality filter for legacy surfaces that historically
-    /// returned an empty list for unknown status text instead of validating it.
-    pub raw_status: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    /// Compatibility projection control for legacy surfaces that used an empty title when no
-    /// translation was available. Owner-native consumers keep the existing `Untitled product`.
-    pub empty_missing_title: bool,
     pub category_id: Option<Uuid>,
     pub sort_by: StorefrontProductSortBy,
     pub sort_direction: StorefrontProductSortDirection,
@@ -226,26 +218,6 @@ pub struct AdminProductListQuery {
 }
 
 impl AdminProductListQuery {
-    pub fn with_raw_status(mut self, status: Option<String>) -> Self {
-        self.raw_status = normalize_optional_text(status);
-        self
-    }
-
-    pub fn with_vendor(mut self, vendor: Option<String>) -> Self {
-        self.vendor = normalize_optional_text(vendor);
-        self
-    }
-
-    pub fn with_product_type(mut self, product_type: Option<String>) -> Self {
-        self.product_type = normalize_optional_text(product_type);
-        self
-    }
-
-    pub fn with_empty_missing_title(mut self, enabled: bool) -> Self {
-        self.empty_missing_title = enabled;
-        self
-    }
-
     pub fn try_from_transport(
         search: Option<String>,
         status: Option<String>,
@@ -284,10 +256,6 @@ impl AdminProductListQuery {
         Ok(Self {
             search: normalize_optional_text(search),
             status,
-            raw_status: None,
-            vendor: None,
-            product_type: None,
-            empty_missing_title: false,
             category_id: parse_optional_uuid(category_id, "category_id")?,
             sort_by: StorefrontProductSortBy::parse(sort_by)?,
             sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
@@ -429,32 +397,12 @@ mod tests {
             Some("asc".to_string()),
             vec!["color=red".to_string()],
         )
-        .expect("valid admin list query")
-        .with_vendor(Some("  Acme  ".to_string()))
-        .with_product_type(Some("  Camera  ".to_string()));
+        .expect("valid admin list query");
         assert_eq!(query.search.as_deref(), Some("camera"));
         assert_eq!(query.status, Some(entities::product::ProductStatus::Active));
-        assert_eq!(query.raw_status, None);
-        assert_eq!(query.vendor.as_deref(), Some("Acme"));
-        assert_eq!(query.product_type.as_deref(), Some("Camera"));
         assert_eq!(query.sort_by, StorefrontProductSortBy::CreatedAt);
         assert_eq!(query.sort_direction, StorefrontProductSortDirection::Asc);
         assert_eq!(query.attribute_filters.len(), 1);
-        assert!(!query.empty_missing_title);
-
-        let legacy = AdminProductListQuery::try_from_transport(
-            None,
-            None,
-            None,
-            Some("created_at".to_string()),
-            Some("desc".to_string()),
-        )
-        .expect("legacy-compatible base query")
-        .with_raw_status(Some("deleted".to_string()))
-        .with_empty_missing_title(true);
-        assert_eq!(legacy.status, None);
-        assert_eq!(legacy.raw_status.as_deref(), Some("deleted"));
-        assert!(legacy.empty_missing_title);
 
         assert!(
             AdminProductListQuery::try_from_transport(
