@@ -1,17 +1,56 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::services::{
-    CatalogCategoryListRecord, ProductAttributeListRecord, ProductAttributeSchemaListRecord,
+    AttributeValueType, CatalogCategoryListRecord, EffectiveAttributeSource,
+    ProductAttributeListRecord, ProductAttributeOptionListRecord, ProductAttributeSchemaListRecord,
     ProductCatalogSchemaService,
 };
 
 const LIST_ATTRIBUTES_OPERATION: &str = "list_catalog_attributes";
 const LIST_CATEGORIES_OPERATION: &str = "list_catalog_categories";
 const LIST_SCHEMAS_OPERATION: &str = "list_attribute_schemas";
+const READ_EFFECTIVE_FORM_OPERATION: &str = "read_effective_product_form";
 
-/// Optional Product-owned read boundary for catalog schema directory projections.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProductEffectiveFormSubject {
+    Product { product_id: Uuid },
+    Category { category_id: Uuid },
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ProductEffectiveFormRequest {
+    pub subject: ProductEffectiveFormSubject,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProductEffectiveFormProjection {
+    pub category_id: Uuid,
+    pub attributes: Vec<ProductEffectiveFormAttributeProjection>,
+    pub detached_attribute_ids: Vec<Uuid>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProductEffectiveFormAttributeProjection {
+    pub attribute_id: Uuid,
+    pub code: String,
+    pub label: String,
+    pub value_type: AttributeValueType,
+    pub is_localized: bool,
+    pub options: Vec<ProductAttributeOptionListRecord>,
+    pub group_code: Option<String>,
+    pub group_label: Option<String>,
+    pub is_required: bool,
+    pub is_disabled: bool,
+    pub position: i32,
+    pub source: EffectiveAttributeSource,
+}
+
+/// Optional Product-owned read boundary for catalog schema directory and effective-form projections.
 #[async_trait]
 pub trait ProductCatalogSchemaReadPort: Send + Sync {
     async fn list_attributes(
@@ -28,6 +67,19 @@ pub trait ProductCatalogSchemaReadPort: Send + Sync {
         &self,
         context: PortContext,
     ) -> Result<Vec<ProductAttributeSchemaListRecord>, PortError>;
+
+    /// Optional effective-form projection. Existing schema-directory adapters remain
+    /// source-compatible until they explicitly support this aggregate projection.
+    async fn read_effective_form(
+        &self,
+        _context: PortContext,
+        _request: ProductEffectiveFormRequest,
+    ) -> Result<Option<ProductEffectiveFormProjection>, PortError> {
+        Err(PortError::unavailable(
+            "product.effective_form_unavailable",
+            "product effective form is unavailable",
+        ))
+    }
 }
 
 #[async_trait]
@@ -66,6 +118,122 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
         ProductCatalogSchemaService::list_schemas(self, tenant_id, context.locale.as_str())
             .await
             .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))
+    }
+
+    async fn read_effective_form(
+        &self,
+        context: PortContext,
+        request: ProductEffectiveFormRequest,
+    ) -> Result<Option<ProductEffectiveFormProjection>, PortError> {
+        let owner_operation = READ_EFFECTIVE_FORM_OPERATION;
+        require_schema_read_context(&context, owner_operation)?;
+        let tenant_id = parse_tenant_id(&context, owner_operation)?;
+        let form = match request.subject {
+            ProductEffectiveFormSubject::Product { product_id } => {
+                ProductCatalogSchemaService::load_effective_form_for_product(
+                    self, tenant_id, product_id,
+                )
+                .await
+                .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))?
+            }
+            ProductEffectiveFormSubject::Category { category_id } => Some(
+                ProductCatalogSchemaService::load_effective_form_for_category(
+                    self,
+                    tenant_id,
+                    category_id,
+                    &[],
+                )
+                .await
+                .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))?,
+            ),
+        };
+        let Some(form) = form else {
+            return Ok(None);
+        };
+
+        let group_labels = ProductCatalogSchemaService::load_effective_form_group_labels(
+            self,
+            tenant_id,
+            form.category_id,
+            context.locale.as_str(),
+        )
+        .await
+        .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))?;
+        let definitions = ProductCatalogSchemaService::list_attributes(
+            self,
+            tenant_id,
+            context.locale.as_str(),
+        )
+        .await
+        .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))?
+        .into_iter()
+        .map(|attribute| (attribute.id, attribute))
+        .collect::<HashMap<_, _>>();
+        let effective_attribute_ids = form
+            .attributes
+            .iter()
+            .map(|binding| binding.attribute_id)
+            .collect::<Vec<_>>();
+        let mut options_by_attribute = ProductCatalogSchemaService::list_attribute_options(
+            self,
+            tenant_id,
+            &effective_attribute_ids,
+            context.locale.as_str(),
+        )
+        .await
+        .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))?
+        .into_iter()
+        .fold(
+            HashMap::<Uuid, Vec<ProductAttributeOptionListRecord>>::new(),
+            |mut map, option| {
+                map.entry(option.attribute_id).or_default().push(option);
+                map
+            },
+        );
+
+        let mut attributes = Vec::with_capacity(form.attributes.len());
+        for binding in form.attributes {
+            let Some(definition) = definitions.get(&binding.attribute_id) else {
+                tracing::error!(
+                    internal_attribute_id = %binding.attribute_id,
+                    correlation_id = %context.correlation_id,
+                    tenant_id = %context.tenant_id,
+                    operation = owner_operation,
+                    code = "product.attribute_definition_missing",
+                    "effective Product form references a missing attribute definition"
+                );
+                return Err(PortError::invariant_violation(
+                    "product.attribute_definition_missing",
+                    "product operation could not be completed safely",
+                ));
+            };
+            let group_label = binding
+                .group_code
+                .as_ref()
+                .and_then(|code| group_labels.get(code).cloned());
+            attributes.push(ProductEffectiveFormAttributeProjection {
+                attribute_id: binding.attribute_id,
+                code: definition.code.clone(),
+                label: definition.label.clone(),
+                value_type: definition.value_type,
+                is_localized: definition.is_localized,
+                options: options_by_attribute
+                    .remove(&binding.attribute_id)
+                    .unwrap_or_default(),
+                group_code: binding.group_code,
+                group_label,
+                is_required: binding.is_required,
+                is_disabled: binding.is_disabled,
+                position: binding.position,
+                source: binding.source,
+            });
+        }
+
+        Ok(Some(ProductEffectiveFormProjection {
+            category_id: form.category_id,
+            attributes,
+            detached_attribute_ids: form.detached_attribute_ids,
+        }))
     }
 }
 

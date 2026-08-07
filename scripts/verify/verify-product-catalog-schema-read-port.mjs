@@ -40,10 +40,22 @@ for (const required of [
   "async fn list_attributes(",
   "async fn list_categories(",
   "async fn list_schemas(",
+  "async fn read_effective_form(",
+  "pub enum ProductEffectiveFormSubject",
+  "pub struct ProductEffectiveFormRequest",
+  "pub struct ProductEffectiveFormProjection",
+  "pub struct ProductEffectiveFormAttributeProjection",
+  '"product.effective_form_unavailable"',
+  "product effective form is unavailable",
   "require_policy(PortCallPolicy::read())",
   "ProductCatalogSchemaService::list_attributes(",
   "ProductCatalogSchemaService::list_categories(",
   "ProductCatalogSchemaService::list_schemas(",
+  "ProductCatalogSchemaService::load_effective_form_for_product(",
+  "ProductCatalogSchemaService::load_effective_form_for_category(",
+  "ProductCatalogSchemaService::load_effective_form_group_labels(",
+  "ProductCatalogSchemaService::list_attribute_options(",
+  '"product.attribute_definition_missing"',
   "correlation_id = %context.correlation_id",
   '"product.database_unavailable"',
   '"product.validation"',
@@ -65,7 +77,12 @@ for (const required of [
 const lib = read("crates/rustok-product/src/lib.rs");
 for (const required of [
   "mod catalog_schema_read_port;",
-  "pub use catalog_schema_read_port::ProductCatalogSchemaReadPort;",
+  "pub use catalog_schema_read_port::{",
+  "ProductCatalogSchemaReadPort",
+  "ProductEffectiveFormAttributeProjection",
+  "ProductEffectiveFormProjection",
+  "ProductEffectiveFormRequest",
+  "ProductEffectiveFormSubject",
 ]) {
   requireText(lib, required, `Product root must contain ${required}`);
 }
@@ -122,7 +139,12 @@ const effectiveForm = resolverSlice(
 requireText(
   effectiveForm,
   "ProductCatalogSchemaService::new",
-  "productEffectiveForm must remain explicit follow-up debt in this bounded slice",
+  "productEffectiveForm consumer cutover must remain explicit follow-up debt in this capability slice",
+);
+forbidText(
+  effectiveForm,
+  ".read_effective_form(",
+  "productEffectiveForm must not be marked cut over by the capability-only source guard",
 );
 
 if (!process.exitCode) {
