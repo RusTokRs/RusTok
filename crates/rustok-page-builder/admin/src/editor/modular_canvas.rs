@@ -10,7 +10,10 @@ use crate::editor::{
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
-use crate::{AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade};
+use crate::{
+    AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
+    PageBuilderAdminProviderStatus,
+};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
@@ -57,6 +60,9 @@ pub fn AdminCanvas(
     let evaluated_capabilities = editor_capability_evaluation
         .as_ref()
         .map(|evaluation| evaluation.effective);
+    let provider_status: Option<PageBuilderAdminProviderStatus> = facade
+        .as_ref()
+        .and_then(|facade| facade.provider_status());
     let consumer_properties = facade
         .as_ref()
         .and_then(|facade| facade.consumer_properties())
@@ -89,7 +95,18 @@ pub fn AdminCanvas(
         Some(policy) => runtime.with_runtime_publish_gate_policy(policy),
         None => runtime,
     };
-    if let Some(capabilities) = editor_capabilities.or(evaluated_capabilities) {
+
+    let host_capabilities = editor_capabilities.or(evaluated_capabilities);
+    if host_capabilities.is_some() || provider_status.is_some() {
+        let capabilities = host_capabilities.unwrap_or_else(|| {
+            runtime
+                .controller
+                .with(|controller| controller.ui().state.capabilities)
+        });
+        let capabilities = provider_status
+            .as_ref()
+            .map(|status| status.limit_capabilities(capabilities))
+            .unwrap_or(capabilities);
         runtime.dispatch(UiIntent::SetEditableCapabilities(capabilities));
     }
 
@@ -116,10 +133,12 @@ pub fn AdminCanvas(
     let root_csrf_token = browser_csrf_token.clone();
     let toolbar_runtime = runtime.clone();
     let server_preview_runtime = runtime.clone();
+    let server_preview_provider_status = provider_status.clone();
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
     let capability_runtime = runtime.clone();
+    let capability_provider_status = provider_status;
     let audit_runtime = runtime.clone();
     let gate_runtime = runtime.clone();
     let scenario_runtime = runtime.clone();
@@ -162,7 +181,10 @@ pub fn AdminCanvas(
                 csrf_token=browser_csrf_token
             />
             <AuthoringToolbar runtime=toolbar_runtime />
-            <ServerPreviewPanel runtime=server_preview_runtime />
+            <ServerPreviewPanel
+                runtime=server_preview_runtime
+                provider_status=server_preview_provider_status
+            />
             <div class="grid min-h-[680px] grid-cols-[minmax(240px,300px)_minmax(420px,1fr)_minmax(280px,360px)] gap-3">
                 <div class="space-y-3 overflow-auto">
                     <PageManagerPanel runtime=page_runtime />
@@ -173,7 +195,10 @@ pub fn AdminCanvas(
                 </div>
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
-                    <CapabilityPolicyPanel runtime=capability_runtime />
+                    <CapabilityPolicyPanel
+                        runtime=capability_runtime
+                        provider_status=capability_provider_status
+                    />
                     <ConsumerPropertiesPanel
                         runtime=consumer_properties
                         contribution_assembly=consumer_property_assembly
