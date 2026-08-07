@@ -30,6 +30,7 @@ mod m20260806_000005_add_product_index_locale_refresh_ledger;
 mod m20260806_000006_add_product_variant_index_refresh_ledger;
 mod m20260806_000007_add_product_index_refresh_relay_cursors;
 mod m20260807_000008_add_product_sales_channel_index_relation_snapshots;
+mod m20260807_000009_add_product_index_graph_v3_projection_snapshots;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -66,6 +67,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260806_000006_add_product_variant_index_refresh_ledger::Migration),
         Box::new(m20260806_000007_add_product_index_refresh_relay_cursors::Migration),
         Box::new(m20260807_000008_add_product_sales_channel_index_relation_snapshots::Migration),
+        Box::new(m20260807_000009_add_product_index_graph_v3_projection_snapshots::Migration),
     ]
 }
 
