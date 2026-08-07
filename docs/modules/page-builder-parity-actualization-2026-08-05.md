@@ -1,7 +1,7 @@
 # Page Builder / Pages Parity Actualization
 
 Date: 2026-08-07
-Status: current-source-overlay / rebuild-provenance-source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / explicit-artifact-repair-transport-source-ready / repair-request-contract-harness-source-ready / execution-and-rollout-open
+Status: current-source-overlay / rebuild-provenance-source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / explicit-artifact-repair-transport-source-ready / repair-request-contract-harness-source-ready / repair-postgres-harness-source-ready / repair-failure-harness-source-ready / execution-and-rollout-open
 
 This overlay reconciles the Page Builder programme with current `main`. It supersedes stale open-checkbox wording in older broad plans where that wording conflicts with merged source. It does not convert source-ready work into executed evidence.
 
@@ -127,6 +127,8 @@ The broad Phase 6 wording should now be read as follows:
 - explicit binding replacement service command: source-ready;
 - bounded tenant-admin repair transports: source-ready;
 - generated transport and request-contract harnesses: source-ready;
+- PostgreSQL repair atomicity harness: source-ready;
+- negative repair failure harness: source-ready;
 - accepted database and transport evidence: pending.
 
 ### Reviewed publish rebuild provenance
@@ -198,6 +200,8 @@ Markers:
 explicit-artifact-repair-transport-source-ready
 explicit-artifact-repair-pages-manage-all-none-actualized
 explicit-artifact-repair-request-contract-harness-source-ready
+explicit-artifact-repair-postgres-harness-source-ready
+explicit-artifact-repair-failure-harness-source-ready
 ```
 
 Pages exposes the two existing repair owner commands through separate bounded adapters.
@@ -228,6 +232,10 @@ Both result shapes omit provenance source id, source publish operation id, stora
 
 A generated contract harness builds the real Pages GraphQL schema and serializes the real Pages OpenAPI document. A separate request-level harness is source-ready to dispatch real GraphQL and Axum requests for both rebuild and activation, covering current-tenant mismatch, missing Manage, Manage-present owner validation and the static public error bodies. Neither harness is counted as execution evidence until the maintainer runs it.
 
+The PostgreSQL repair packet uses isolated schemas and the real Outbox/Pages migrations to retain rebuild/activation receipt constraints, append-only rebuild storage, durable activation lifecycle envelopes and rollback of page/outbox writes when a receipt constraint rejects the transaction.
+
+The negative SQLite repair packet separately retains five owner rejection branches with complete before/after durable state snapshots: corrupt provenance, reviewed-runtime mismatch, stale activation version, invalid replacement artifact and unpublished activation. It does not replace PostgreSQL execution evidence and does not claim any harness has run.
+
 Current repair/rebuild matrix:
 
 | Capability | Source state | Execution state |
@@ -236,7 +244,10 @@ Current repair/rebuild matrix:
 | Explicit append-only repair/rebuild command | Source-ready | SQLite/PostgreSQL and authorization evidence pending |
 | Rebuild idempotent receipt | Source-ready | Replay/conflict evidence pending |
 | Canonical/rebuild storage instance identity | Source-ready | Migration and duplicate-identity evidence pending |
+| PostgreSQL repair receipt/transaction harness | Source-ready | Maintainer PostgreSQL execution pending |
+| Rebuild provenance/runtime negative harness | Source-ready | Maintainer SQLite execution pending |
 | Explicit binding replacement | Source-ready | SQLite/PostgreSQL, fences, lifecycle and cache evidence pending |
+| Activation stale-version/invalid-target/unpublished harness | Source-ready | Maintainer SQLite execution pending |
 | Bounded tenant-admin repair transports | Source-ready | GraphQL/HTTP/OpenAPI execution pending |
 | Generated GraphQL/OpenAPI transport contract harness | Source-ready | Maintainer execution pending |
 | Request-level tenant/Manage/static-error harness | Source-ready | Maintainer execution pending |
@@ -249,18 +260,18 @@ Current repair/rebuild matrix:
 Source parity has advanced, but execution and rollout remain open.
 
 - No new test, source verifier, Cargo, formatting, migration, database, GraphQL, HTTP, OpenAPI, browser, workflow or CI execution is claimed here.
-- No audit, provenance, rebuild, binding replacement, repair transport, request-contract, lifecycle/cache observation or tenant rollout scenario was executed.
+- No audit, provenance, rebuild, binding replacement, repair transport, request-contract, repair-failure, lifecycle/cache observation or tenant rollout scenario was executed.
 - No FFA/FBA promotion is made.
 
 ## Current next cursor
 
-1. Run the generated repair transport and request-contract harnesses plus the immutable artifact audit, provenance, explicit-rebuild, binding-replacement and repair transport/request source guards.
-2. Retain SQLite/PostgreSQL audit evidence for valid canonical/rebuilt records, corruption, partial evidence, Manage present/absent authorization and truncation.
-3. Retain provenance migration/publish evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
-4. Retain explicit rebuild evidence for Manage present/absent with `All`/`None` semantics, exact replay, idempotency conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction.
-5. Prove rebuild appends a distinct artifact row while the active binding, page version, lifecycle events and cache generations remain unchanged.
-6. Retain explicit binding replacement evidence for stale page version, stale current artifact, invalid replacement, one-locale mutation, exact replay, one activation per rebuild and unchanged source row.
-7. Observe committed `NodeUpdated`/`NodePublished` processing and route/page/artifact generation changes only after activation commit.
-8. Retain repair transport execution evidence for generated GraphQL/OpenAPI contracts, current-tenant fences, Manage absent/present behavior, static errors and bounded result fields.
-9. Run the static publish resource-limit source guard and accepted real-project policy evidence.
-10. Execute existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
+1. Run the generated repair transport/request-contract harnesses, the PostgreSQL repair atomicity harness and the negative SQLite repair harness; retain accepted execution evidence.
+2. Run their source guards plus the immutable artifact audit, provenance, explicit-rebuild and binding-replacement guards.
+3. Retain SQLite/PostgreSQL audit evidence for valid canonical/rebuilt records, corruption, partial evidence, Manage present/absent authorization and truncation.
+4. Retain provenance migration/publish evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
+5. Retain successful explicit rebuild evidence for Manage present/absent with `All`/`None` semantics, exact replay, idempotency conflict and byte-for-byte reproduction; negative provenance/runtime failures are now harness-ready.
+6. Prove rebuild appends a distinct artifact row while the active binding, page version, lifecycle events and cache generations remain unchanged.
+7. Retain successful binding-replacement evidence for stale current artifact, one-locale mutation, exact replay, one activation per rebuild and unchanged source row; stale-version/invalid-target/unpublished failures are now harness-ready.
+8. Observe committed `NodeUpdated`/`NodePublished` processing and route/page/artifact generation changes only after activation commit.
+9. Retain repair transport execution evidence for generated GraphQL/OpenAPI contracts, current-tenant fences, Manage absent/present behavior, static errors and bounded result fields.
+10. Run the static publish resource-limit source guard and accepted real-project policy evidence, then execute existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
