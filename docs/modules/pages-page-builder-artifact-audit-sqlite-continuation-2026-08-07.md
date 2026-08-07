@@ -1,0 +1,153 @@
+# Pages / Page Builder Immutable Artifact Audit SQLite Continuation
+
+Date: 2026-08-07  
+Status: source-ready / immutable-artifact-audit-sqlite-harness-source-ready / execution-pending  
+Scope: owner-level SQLite evidence for bounded immutable artifact integrity audit behavior
+
+## Rechecked state
+
+The immutable artifact audit owner and bounded GraphQL/HTTP transports are already merged. The repair programme now also has source-ready request, PostgreSQL atomicity, negative repair and after-commit cache packets. What was still missing from the broader parity cursor was a runnable database harness for the audit owner itself.
+
+This continuation adds that missing SQLite source packet without changing production behavior.
+
+Source marker:
+
+```text
+immutable-artifact-audit-sqlite-harness-source-ready
+```
+
+Harness:
+
+```text
+crates/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs
+```
+
+Machine evidence:
+
+```text
+crates/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-sqlite-source.json
+```
+
+Fail-closed source guard:
+
+```text
+crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs
+```
+
+## Covered owner scenarios
+
+The harness uses isolated in-memory SQLite databases plus the real Outbox system-event migration, Channel migrations and Pages migrations. It reviewed-publishes a real GrapesJS page through `PageService` and uses the same retained provenance/rebuild owner path already used by the explicit repair packets.
+
+### Authorization
+
+The current Pages Manage model is retained explicitly:
+
+```text
+pages:manage present  -> PermissionScope::All
+pages:manage absent   -> PermissionScope::None
+```
+
+`SecurityContext::system()` is asserted as `All`; `SecurityContext::public_read()` is asserted as `None`. The no-Manage request is rejected by `audit_immutable_artifact_integrity` before page/artifact reads.
+
+### Valid canonical and rebuilt artifacts
+
+The harness reviewed-publishes one canonical artifact and then appends one explicit rebuilt artifact from retained provenance. A bounded owner audit with `max_records=2` must report:
+
+```text
+scanned = 2
+valid   = 2
+invalid = 0
+truncated = false
+```
+
+This binds both accepted instance identities to the actual owner audit:
+
+```text
+canonical
+rebuild:<operation-id>
+```
+
+### Bounded truncation
+
+The same two-artifact dataset is audited with `max_records=1`. Because the owner fetches at most `max_records + 1`, this small fixture is sufficient to prove the bounded truncation branch:
+
+```text
+scanned = 1
+truncated = true
+```
+
+No artificial hundreds-of-row fixture is needed to retain this contract.
+
+### Corruption
+
+The canonical artifact `document_html` is deliberately changed without updating its immutable integrity identities. The audit must keep the command successful but classify the record invalid and expose only the bounded finding contract:
+
+- artifact UUID;
+- fixed `PAGE_ARTIFACT_INTEGRITY_INVALID` code;
+- SHA-256 locale hash;
+- SHA-256 record-identity hash;
+- SHA-256 diagnostic hash.
+
+The raw locale, HTML, CSS, stored hashes, runtime snapshots and internal error text are not asserted as public output.
+
+### Partial materialization
+
+A current materialized artifact initially has all three materialization fields populated. The harness removes only `runtime_snapshots`, retaining a partial tuple. The audit must classify the record invalid through the existing `Stored landing materialization evidence is partial` owner branch and return the same hashed finding shape.
+
+## Preserved boundaries
+
+- No production service/entity/cache/adapter source is changed.
+- No migration or database schema is changed.
+- No GraphQL/HTTP/OpenAPI surface is changed.
+- Audit remains read-only; it does not repair, rebuild, activate, publish, rollback or invalidate caches.
+- No automatic audit-to-rebuild or rebuild-to-activation behavior is introduced.
+- No FFA/FBA promotion is made.
+
+## Evidence state
+
+Status remains:
+
+```text
+pages_immutable_artifact_integrity_audit_sqlite_source_unvalidated
+```
+
+`execution` is empty and every validation flag is false. The source guard and SQLite harness are intentionally not run in this slice.
+
+## Updated broader cursor
+
+| Capability | Source state | Execution state |
+| --- | --- | --- |
+| Immutable artifact audit owner | Source-ready | Runtime evidence pending |
+| Immutable artifact audit GraphQL/HTTP transports | Source-ready | Transport execution pending |
+| Audit Manage `All`/`None` owner authorization | Harness-ready | SQLite execution pending |
+| Audit valid canonical/rebuilt records | Harness-ready | SQLite execution pending |
+| Audit bounded record truncation (`max_records=1`) | Harness-ready | SQLite execution pending |
+| Audit corrupted immutable payload finding | Harness-ready | SQLite execution pending |
+| Audit partial materialization finding | Harness-ready | SQLite execution pending |
+| Audit PostgreSQL locking/scan evidence | Not yet packeted | PostgreSQL source packet still open |
+| Provenance migration/publish rollback/loss evidence | Source owner exists | Dedicated execution packet still open |
+| Explicit repair owner/transport/cache packets | Source-ready | Maintainer execution pending |
+| Automatic repair | Deliberately absent | Not allowed |
+| FFA/FBA promotion | Open | Not promoted |
+
+## Next cursor
+
+1. Execute the new audit SQLite harness and source guard together with the existing audit owner/transport guards; retain accepted evidence.
+2. Add the separate PostgreSQL audit packet for lock-backed scanning and the same valid/corrupt/partial bounded semantics if PostgreSQL-specific evidence is still required after SQLite acceptance.
+3. Retain provenance migration/publish execution evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
+4. Execute the repair transport/request/PostgreSQL/failure/cache packets already source-ready.
+5. Execute artifact/HTTP/browser and tenant Wave packets before FFA/FBA promotion.
+6. Keep automatic audit-to-rebuild and rebuild-to-activation chaining absent until accepted execution evidence supports any policy change.
+
+## Maintainer validation
+
+Suggested commands, intentionally not run here:
+
+```bash
+node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
+cargo test -p rustok-pages --test immutable_artifact_integrity_audit_sqlite -- --nocapture
+cargo check -p rustok-pages --all-targets
+```
+
+Tests, source verifiers, Cargo commands, formatting, SQLite/PostgreSQL scenarios, GraphQL/HTTP requests, workflows and CI were intentionally not run.
