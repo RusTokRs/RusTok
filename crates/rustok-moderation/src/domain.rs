@@ -270,6 +270,7 @@ pub struct ModerationReportRecord {
     pub reporter_id: Option<Uuid>,
     pub reason_code: ModerationReasonCode,
     pub description_reference: Option<String>,
+    pub status: ModerationReportStatus,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
