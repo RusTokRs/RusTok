@@ -9,6 +9,7 @@ mod drift_repair_recovery;
 mod mutation_event;
 mod planner;
 mod postgres_compiler;
+mod postgres_query_admission;
 mod postgres_query_result;
 mod postgres_query_sql;
 mod query_port;
@@ -116,6 +117,10 @@ pub use planner::{
 pub use postgres_compiler::{
     CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
     CompiledQueryColumn, PostgresBindValue, PostgresQueryBuildError, PostgresQueryCompileError,
+};
+pub use postgres_query_admission::{
+    PostgresQueryRootAdmission, PostgresQueryRootAdmissionApplyError,
+    PostgresQueryRootAdmissionError,
 };
 pub use postgres_query_result::{
     CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow,

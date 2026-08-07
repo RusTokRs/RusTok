@@ -43,15 +43,25 @@ const materializerPath = 'crates/rustok-index/src/infrastructure/postgres/query_
 const materializer = requireMarkers(materializerPath, [
   'pub enum IndexQueryRuntimeCompositionError',
   'AlreadyMaterialized',
+  'AdmissionSchemaMissing',
   'pub fn materialize_postgres_index_query_runtime(',
   'extensions.contains::<SharedIndexQueryRuntime>()',
   'extensions.get::<SharedIndexSchemaRegistry>().cloned()',
-  'PostgresIndexQueryPort::new(',
+  '.get::<PostgresIndexQueryAdmissionCatalog>()',
+  '.cloned()',
+  '.unwrap_or_default()',
+  'for descriptor in admissions.iter()',
+  'registry.registry().get(descriptor.schema()).is_none()',
+  'descriptor.owner_module().to_owned()',
+  'PostgresIndexQueryPort::with_admissions(',
   'registry.shared()',
+  'admissions,',
   'extensions.insert(runtime.clone())',
   'return Ok(None);',
   'missing_source_registry_does_not_publish_false_runtime',
   'complete_source_registry_materializes_one_shared_runtime',
+  'query_admission_catalog_is_snapshotted_into_runtime_composition',
+  'dangling_query_admission_schema_fails_composition',
   'duplicate_query_runtime_materialization_fails_closed',
 ]);
 for (const forbidden of [
@@ -95,8 +105,10 @@ const server = requireMarkers(serverPath, [
   'extensions.contains::<SharedIndexQueryRuntime>()',
   'host.shared_get::<SharedIndexQueryRuntime>().is_some()',
 ]);
-if (server.includes('PostgresIndexQueryPort::new')) {
-  fail(`${serverPath} must call the Index-owned materializer instead of constructing the port`);
+for (const forbidden of ['PostgresIndexQueryPort::new', 'PostgresIndexQueryPort::with_admissions']) {
+  if (server.includes(forbidden)) {
+    fail(`${serverPath} must call the Index-owned materializer instead of constructing the port`);
+  }
 }
 
 for (const relative of [
@@ -107,8 +119,10 @@ for (const relative of [
   'crates/rustok-social-graph/src/index_privacy_shadow.rs',
 ]) {
   const source = read(relative);
-  if (source.includes('PostgresIndexQueryPort::new')) {
-    fail(`${relative} must not construct the Index query port directly`);
+  for (const forbidden of ['PostgresIndexQueryPort::new', 'PostgresIndexQueryPort::with_admissions']) {
+    if (source.includes(forbidden)) {
+      fail(`${relative} must not construct the Index query port directly`);
+    }
   }
 }
 
