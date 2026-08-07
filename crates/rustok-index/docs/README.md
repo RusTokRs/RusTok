@@ -77,6 +77,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M7 Tenant Schema Readiness Gate](./m7-schema-readiness.md)
 - [M7 Product-SalesChannel Relation Admission](./m7-product-sales-channel-relation-admission.md)
 - [M7 Product-SalesChannel Owner Ledger](../../rustok-product/docs/index-sales-channel-relation-ledger.md)
+- [M7 Product-SalesChannel Freshness Witness](../../rustok-product/docs/index-sales-channel-relation-freshness.md)
 - [M7 Product-SalesChannel Cross-owner Resolver](./m7-product-sales-channel-resolver.md)
 - [M7 Product Graph Projection Ledger](../../rustok-product/docs/index-graph-projection-ledger.md)
 - [M4 Source-owned Schema Registry](./m4-source-schema-registry.md)
