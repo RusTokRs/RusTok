@@ -20,7 +20,7 @@ use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistrations, ModuleWorkSche
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
-use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
@@ -39,24 +39,6 @@ const VALID_AFTER_MALFORMED_TRANSLATION_ID: Uuid = Uuid::from_u128(303);
 const RESTRICTED_TRANSLATION_ID: Uuid = Uuid::from_u128(304);
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
-
-struct ProductMigrator;
-
-#[async_trait::async_trait]
-impl MigratorTrait for ProductMigrator {
-    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        rustok_product::migrations::migrations()
-    }
-}
-
-struct ChannelMigrator;
-
-#[async_trait::async_trait]
-impl MigratorTrait for ChannelMigrator {
-    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        rustok_channel::migrations::migrations()
-    }
-}
 
 struct TestDatabase {
     control: DatabaseConnection,
@@ -91,9 +73,13 @@ impl TestDatabase {
         )
         .await?;
         create_migration_prerequisites(&migration).await?;
-        ChannelMigrator::up(&migration, None).await?;
-        ProductMigrator::up(&migration, None).await?;
         let manager = SchemaManager::new(&migration);
+        for migration_step in rustok_channel::migrations::migrations() {
+            migration_step.up(&manager).await?;
+        }
+        for migration_step in rustok_product::migrations::migrations() {
+            migration_step.up(&manager).await?;
+        }
         for migration_step in IndexModule.migrations() {
             migration_step.up(&manager).await?;
         }
@@ -365,10 +351,7 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     assert_product_visible(&runtime.query, RESTRICTED_PRODUCT_ID, false).await?;
 
     let current_after_beta = load_product_mutation(&runtime.sources, RESTRICTED_PRODUCT_ID).await?;
-    assert_eq!(
-        current_after_beta.source_version(),
-        restricted_projection_after_beta
-    );
+    assert_eq!(current_after_beta.source_version(), restricted_projection_after_beta);
     apply_product_mutation(&runtime, current_after_beta).await?;
     assert_product_visible(&runtime.query, RESTRICTED_PRODUCT_ID, true).await?;
     assert_state_checkpoint(&database.writer, generation_after_beta_rename).await?;
@@ -474,8 +457,10 @@ async fn assert_product_visible(
     expected: bool,
 ) -> TestResult<()> {
     let page = query.execute_query(product_identity_query(product_id)?).await?;
-    assert_eq!(page.items.len(), usize::from(expected));
-    assert_eq!(page.exact_count, Some(u64::from(expected)));
+    let expected_rows = if expected { 1 } else { 0 };
+    let expected_count = if expected { 1_u64 } else { 0_u64 };
+    assert_eq!(page.items.len(), expected_rows);
+    assert_eq!(page.exact_count, Some(expected_count));
     if expected {
         assert_eq!(page.items[0].entity_id, product_id);
     }
