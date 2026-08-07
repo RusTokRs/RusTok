@@ -82,7 +82,22 @@
     ],
     "lease": "bounded CAS claim with attempt counter, expiry and fresh UUID lease token; expired applying leases are reclaimable",
     "applied_evidence": "ModerationDecisionApplication must match decision and exact reviewed subject identity before applied revision/time are stored",
-    "dispatch": "not yet implemented; future owner worker must invoke the host-materialized adapter and classify retry/terminal outcomes"
+    "dispatch": {
+      "primitive": "ModerationService::dispatch_application_operation_once",
+      "scope": "one exact due tenant/decision operation per call; no polling loop",
+      "command": "reconstruct from immutable Moderation decision/effect/case and exact operation subject/hash",
+      "adapter_lookup": "exact materialized registry key subject_module + subject_kind; no fallback",
+      "actor": "trusted service rustok-moderation",
+      "domain_idempotency": "immutable decision UUID; lease token is attempt/correlation identity only",
+      "deadline_seconds": 30,
+      "operation_lease_seconds": 60,
+      "retry_backoff_seconds": [5, 10, 20, 40, 80, 160, 300],
+      "missing_adapter": "retryable",
+      "retryable_port_error": "retryable",
+      "non_retryable_invariant": "operator_review",
+      "other_non_retryable_port_error": "rejected",
+      "owner_storage_failure_after_claim": "return owner error and rely on lease expiry/reclaim; never forge a domain result"
+    }
   },
   "supported_effects": [
     "NoDomainMutation for forum_topic and forum_post",
@@ -166,13 +181,13 @@
     "reaction state catalog aggregate or presentation ownership changes"
   ],
   "not_claimed": [
-    "durable Moderation application worker or retry scheduler",
-    "automatic adapter dispatch and PortError classification",
+    "background Moderation application scheduler or polling loop",
+    "cross-tenant worker enumeration",
     "case lifecycle closure from application outcomes",
     "application lifecycle outbox events",
     "operator recovery surface",
     "retained host composition execution evidence",
-    "runtime decision application execution",
+    "retained runtime decision application execution",
     "PostgreSQL concurrency evidence",
     "SQLite evidence",
     "SetVisibility Unpublished support",
