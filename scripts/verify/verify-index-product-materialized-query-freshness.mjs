@@ -55,13 +55,15 @@ const catalogPath = 'crates/rustok-index/src/infrastructure/postgres/query_admis
 const catalog = requireMarkers(catalogPath, [
   'pub struct PostgresIndexQueryAdmissionCatalog',
   'rule: Option<PostgresQueryEntityAdmission>',
+  'required_link_targets: BTreeMap<SchemaRef, String>',
   'pub fn register_postgres_index_query_admission(',
+  'pub fn register_postgres_index_query_link_target_availability(',
   'pub(crate) fn ensure_runtime_schema(',
-  'rule: None',
-  'fn rebuild_composite(',
-  'schema_guard(schema)',
-  'guards.join(" OR ")',
-  'allowed.join(" OR ")',
+  'pub(crate) fn apply_link_target_availability(',
+  'fn rebuild_owner_composite(',
+  'query.referenced_paths()',
+  'availability_link.source_version = {root}.source_version',
+  'availability_target.is_deleted = FALSE',
 ]);
 forbidMarkers(catalogPath, catalog, [
   'PostgresQueryRootAdmission',
@@ -69,6 +71,7 @@ forbidMarkers(catalogPath, catalog, [
   'DatabaseConnection',
   'Statement::',
   'tokio::spawn',
+  'rustok-product',
 ]);
 
 const portPath = 'crates/rustok-index/src/infrastructure/postgres/query_port.rs';
@@ -76,20 +79,27 @@ const port = requireMarkers(portPath, [
   'admissions: PostgresIndexQueryAdmissionCatalog',
   'pub fn with_admissions(',
   'let mut compiled = page_query.compiled().clone()',
+  '.apply_link_target_availability(query, &mut compiled)',
   'self.admissions.get(&query.schema)',
   '.admission()',
   '.apply(&mut compiled)',
   'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY',
   'verify_persisted_schemas(transaction, query, required_schemas).await?',
-  'compiled_statement(compiled)',
   'compiled.exact_count.as_ref()',
 ]);
+const availabilityOffset = port.indexOf('.apply_link_target_availability(query, &mut compiled)');
+const ownerOffset = port.indexOf('if let Some(descriptor) = self.admissions.get(&query.schema)');
+if (availabilityOffset < 0 || ownerOffset < 0 || availabilityOffset >= ownerOffset) {
+  fail(`${portPath} must apply link availability before owner entity admission`);
+}
 forbidMarkers(portPath, port, ['tokio::spawn', 'IndexMutation::']);
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
   'let mut admissions = extensions',
   '.get::<PostgresIndexQueryAdmissionCatalog>()',
   'AdmissionSchemaMissing',
+  'LinkAvailabilitySchemaMissing',
+  'for (schema, owner_module) in admissions.link_availability_iter()',
   'if !admissions.is_empty()',
   'for registered in registry.registry().iter()',
   'admissions.ensure_runtime_schema(registered.schema.reference.clone())?',
@@ -110,6 +120,7 @@ const productAdmission = requireMarkers(productAdmissionPath, [
   'owner_variant.index_revision = {{entity}}.source_version',
   'FROM channels owner_channel',
   'owner_channel.index_revision = {{entity}}.source_version',
+  'register_postgres_index_query_link_target_availability',
   'PostgresQueryEntityAdmission::new(template)',
   'product_variant_schema_ref()',
   'sales_channel_schema_ref()',
@@ -133,32 +144,38 @@ requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'query_admission::register(extensions)?;',
   'assert_eq!(admissions.len(), 2)',
   'assert_eq!(admissions.len(), 3)',
+  'assert_eq!(admissions.link_availability_len(), 1)',
 ]);
 requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'PostgresQueryEntityAdmission',
   'PostgresQueryEntityAdmissionApplyError',
   'PostgresQueryEntityAdmissionError',
 ]);
+
 const freshnessDoc = requireMarkers(
   'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
   [
-    'Status: `source_complete_linked_target_recreate_packet_execution_pending`',
+    'Status: `source_complete_link_target_availability_execution_pending`',
     '`PostgresQueryEntityAdmission`',
     '`mpN_tN`',
     '`mx_tN`',
     '`mo_tN`',
     'ProductVariant',
     'SalesChannel',
-    'Recreate monotonicity is already source complete',
+    'Query-path-scoped linked-target availability',
+    'current link row + missing/stale/deleted target = query fails closed',
+    'Recreate monotonicity remains source complete',
     'm20260731_000004_add_product_index_tombstones',
     'm20260731_000011_add_channel_index_tombstones',
-    'Remaining linked-target availability boundary',
+    'Remaining M7 evidence',
     'product_linked_target_recreate_postgres.rs',
   ],
 );
 forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
+  'Remaining linked-target availability boundary',
   'does **not** claim delete+recreate identity safety',
   'next source slice must make those two owner source clocks monotonic',
+  'define and retain fail-closed linked-target availability semantics',
 ]);
 
-console.log('[verify-index-product-materialized-query-freshness] Product graph entity freshness and recreate boundary verified');
+console.log('[verify-index-product-materialized-query-freshness] Product graph freshness and fail-closed linked target availability verified');
