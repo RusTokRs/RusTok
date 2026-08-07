@@ -13,7 +13,8 @@ use super::super::{
     common::{PaginatedResponse, ensure_permissions},
     products::{
         AdminProductErrorContext, ListProductsParams, ProductListItem,
-        admin_product_command_context, map_admin_product_port_error,
+        admin_product_command_context, admin_product_command_idempotency_key,
+        map_admin_product_port_error,
     },
 };
 use crate::{
@@ -251,8 +252,15 @@ pub async fn create_product(
     )
     .await?;
 
+    let idempotency_key = admin_product_command_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        None,
+        "create_product",
+        &input,
+    )?;
     let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, None, "create_product");
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
     let product = runtime
         .product_catalog_command_port()
         .create_product(port_context.clone(), input)
@@ -327,13 +335,15 @@ pub async fn update_product(
     )
     .await?;
 
-    let port_context = admin_product_command_context(
+    let idempotency_key = admin_product_command_idempotency_key(
         tenant.id,
-        &auth,
-        &request_context,
+        auth.user_id,
         Some(id),
         "update_product",
-    );
+        &input,
+    )?;
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
     let product = runtime
         .product_catalog_command_port()
         .update_product(port_context.clone(), id, input)
