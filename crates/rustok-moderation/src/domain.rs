@@ -236,6 +236,30 @@ pub struct DecideModerationCaseCommand {
     pub policy_snapshot: Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequeueModerationApplicationCommand {
+    pub decision_id: Uuid,
+    pub expected_case_revision: i64,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReconcileLegacyModerationApplicationCommand {
+    pub decision_id: Uuid,
+    pub expected_case_revision: i64,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModerationApplicationRecoveryRecord {
+    pub decision_id: Uuid,
+    pub case_id: Uuid,
+    pub operation_status: ModerationApplicationOperationStatus,
+    pub case_status: ModerationCaseStatus,
+    pub case_revision: i64,
+    pub changed: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModerationReportRecord {
     pub id: Uuid,
@@ -246,7 +270,6 @@ pub struct ModerationReportRecord {
     pub reporter_id: Option<Uuid>,
     pub reason_code: ModerationReasonCode,
     pub description_reference: Option<String>,
-    pub status: ModerationReportStatus,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
