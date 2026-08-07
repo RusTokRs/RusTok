@@ -1,22 +1,18 @@
 # M7 Product Storefront Index parity gate
 
-Status: `source_complete_cutover_blocked_by_contract_gap`.
+Status: `source_complete_query_adapter_and_evidence_pending`.
 
 ## Purpose
 
-The Product Storefront catalog remains owner-native. This gate prevents an Index traffic cutover from
-being described as ready merely because the canonical Product graph can answer basic Product, Variant,
-and SalesChannel queries.
+The Product Storefront catalog remains owner-native until a retained owner-vs-Index equivalence packet
+is executed and admitted. The single current Product Index source now materializes the Storefront fields
+and typed EAV query state that were previously missing, but source coverage alone does not authorize a
+traffic cutover.
 
-The current Storefront list contract and the current immutable Product Index schema do **not** have full
-query/result parity. Until that gap is closed through one deliberately admitted current contract, the
-Storefront must continue to execute `CatalogService::list_published_products_with_query` and must not
-silently switch to `SharedIndexQueryRuntime`.
+Storefront must continue to execute `CatalogService::list_published_products_with_query` until the
+remaining adapter, tag hydration, staged rebuild/readiness, and equivalence gates are complete.
 
-This slice changes no traffic, Product schema, schema key, migration, query semantics, owner clock, or
-compatibility route.
-
-## Current owner Storefront contract
+## Owner Storefront contract
 
 `StorefrontProductListQuery` accepts:
 
@@ -27,154 +23,107 @@ compatibility route.
 - up to eight typed `code=value` Product attribute predicates;
 - page/per-page pagination.
 
-`CatalogService::list_published_products_with_query` additionally enforces:
+Owner execution additionally enforces tenant scope, Active status, non-null `published_at`, public
+SalesChannel visibility, category/title filtering, typed EAV predicates, stable timestamp+ID ordering,
+exact count, Product translation fallback, and localized tag projection.
 
-- tenant scope;
-- `ProductStatus::Active`;
-- non-null `published_at`;
-- public SalesChannel visibility from Product owner metadata;
-- category filtering;
-- title search over Product translations;
-- typed EAV attribute filtering through active Product-scoped filterable definitions;
-- stable `published_at/created_at/id` ordering;
-- exact total before page slicing;
-- locale/fallback translation selection;
-- owner tag projection.
+The result payload returns `id`, `status`, `title`, `handle`, `seller_id`, `vendor`, `product_type`,
+localized tag names, `created_at`, and `published_at`.
 
-The public `StorefrontProductListItem` returns:
+## Single current Product Index coverage
 
-- `id`;
-- `status`;
-- `title`;
-- `handle`;
-- `seller_id`;
-- `vendor`;
-- `product_type`;
-- `tags`;
-- `created_at`;
-- `published_at`.
+Current Product runtime code publishes one Product schema with 15 fields and two links:
 
-## Current canonical Product Index coverage
-
-The selected Product Index contract currently has exactly one runtime Product schema and exposes:
-
-- `id`;
-- `status`;
-- `title`;
-- `handle`;
-- `description`;
-- `vendor`;
-- `product_type`;
-- `primary_category_id`;
-- `variant_ids`;
-- `sales_channel_ids`;
+- existing graph/content fields: `id`, `status`, `title`, `handle`, `description`, `vendor`,
+  `product_type`, `primary_category_id`, `variant_ids`, `sales_channel_ids`;
+- Storefront scalar fields: `seller_id`, `created_at`, `published_at`;
+- stable Taxonomy tag identities: `tag_ids`;
+- typed EAV query machinery: `attribute_terms`;
 - links `variants` and `sales_channels`.
 
-That contract already covers tenant/locale scoping, current Product authority, title/category filtering,
-Product-to-SalesChannel visibility membership, exact count, linked target freshness/availability, and
-keyset/offset query execution.
+`created_at` and `published_at` are sortable. `published_at` is nullable/filterable so published-only
+admission can be represented explicitly. `attribute_terms` is a non-selectable filterable
+`Many<String>` field using the canonical Product attribute-term grammar.
 
-It does **not** currently materialize these Storefront list requirements:
+The Product source still uses `projection_epoch` as its complete mutation clock and retains existing
+Product/SalesChannel freshness plus linked-target availability rules.
 
-- `seller_id` result payload;
-- Product `tags` result/filter semantics;
-- `created_at` result + sort key;
-- `published_at` result + non-null published-only admission + sort key;
-- dynamic typed EAV `attribute_filters`.
+## Tags remain Taxonomy-owned
 
-Therefore current Index rows cannot reproduce the owner Storefront list contract exactly.
+Index stores stable `product_tags.term_id` UUIDs, not localized Taxonomy names. Copying Taxonomy
+translations into Product Index would create a second freshness clock that Product does not own.
 
-## Why the missing fields cannot be appended silently
+A Storefront Index adapter must therefore hydrate localized tag names from Taxonomy after Product page
+selection, preserving the same requested/fallback locale behavior as the owner path. That hydration must
+be bounded/batched and included in parity evidence before cutover.
 
-`PostgresSchemaRegistrationStore` treats one `(tenant, module, entity, schema_version)` contract as
-immutable. Re-registering the same `SchemaRef` with a different fingerprint or JSON contract returns
-`VersionConflict`; inserting a non-increasing schema version returns `NonMonotonicVersion`.
+## Typed EAV representation
 
-The current Product routing key is already persisted and intentionally represents the one selected
-canonical Product contract. Appending Storefront-only fields under that same key would create
-fingerprint drift and fail schema readiness. It would not be a safe "current code only" change.
+Dynamic EAV attributes do not create dynamic Index fields. Public Product attribute/option codes are
+resolved through Product owner metadata to stable attribute/option UUIDs; the adapter then builds
+`Contains(attribute_terms, term)` expressions.
 
-Conversely, adding a `Product v4` compatibility branch only to make Storefront work would violate the
-single-current-contract direction. This gate therefore rejects both shortcuts:
+Localized text uses the exact owner predicate:
 
-- no silent same-key fingerprint replacement;
-- no parallel v4/v5 compatibility source/route.
+`requested-value OR (NOT requested-present AND fallback-value)`
 
-## Single-current replacement persistence is source complete
+See `m7-product-attribute-term-contract.md` for the current grammar and normalization.
 
-Generic Index persistence now has an explicit replacement primitive documented in
-`m4-single-current-schema-supersession.md`:
+## Immutable replacement boundary
 
-`PostgresSchemaRegistrationStore::register_current`.
+The old Product fingerprint was not modified in place. Current runtime code uses one monotonically
+higher internal Product routing key, derives replay IDs with `derive_index_schema_source_event_id`, and
+publishes no lower Product compatibility implementation.
 
-Ordinary `register` can first stage one monotonically higher immutable routing key while lower persisted
-keys remain active for the rebuild window. After that staged key is completely rebuilt and verified,
-`register_current` resolves the exact same staged contract and atomically marks every lower active key
-`retired` in the final authority-transition transaction.
+Lower persisted Product keys are historical storage identities only. Promotion remains an operator and
+evidence action:
 
-Retirement does not rewrite or delete historical entity/link/inbox/replay rows. Their immutable schema
-rows remain for foreign-key integrity, while exact persisted readiness and query execution reject a
-retired schema as non-authoritative.
+1. ordinary-register the current key;
+2. rebuild/replay the current key completely;
+3. prove exact schema readiness, parity, freshness, restart, and inbox isolation;
+4. call `PostgresSchemaRegistrationStore::register_current` to retire lower active persisted keys;
+5. only then allow authoritative Storefront selection.
 
-This solves the persistence-side **single-current** replacement mechanism without adding a parallel
-runtime compatibility branch. It does not by itself expand Product or make a replacement Product key
-ready.
+There is no same-key fingerprint replacement and no parallel Product v4/v5 route.
 
-## Cutover admission rule
+## Remaining source/evidence work before cutover
 
-Product Storefront Index cutover remains **false** until one future Product replacement proves all of the
-following:
+The schema/source gap is closed, but Storefront traffic stays blocked until all of these are complete:
 
-1. one current Product Index contract covers every Storefront result field and ordering/filter input
-   that is claimed by the cutover;
-2. typed Product attribute predicates have an admitted Index representation and exact owner parity, or
-   the Storefront contract explicitly stops claiming those filters before cutover;
-3. the replacement immutable Product contract is staged through ordinary registration and complete
-   new-key rebuild/replay, then made authoritative through explicit single-current supersession — never
-   through same-key fingerprint replacement;
-4. every lower persisted Product key is retired at final supersession and no old Product schema is
-   runtime-selected in parallel by the replacement code;
-5. exact tenant schema readiness succeeds for the replacement key before final consumer cutover;
-6. retained PostgreSQL equivalence compares owner-native and Index results for locale fallback,
-   visibility, search, category, typed attributes, both sort keys/directions, pagination, exact count,
-   and linked-target lag;
-7. only after those checks may the Storefront transport select Index as an authoritative provider.
-
-Until then, owner-native PostgreSQL remains authoritative for the catalog list.
+1. translate `StorefrontProductListQuery` to the current `IndexQuery` contract;
+2. resolve Product attribute and option codes to canonical term predicates;
+3. preserve Active + published-only admission, title/category filters, both sort keys/directions, stable
+   ID tie-break, pagination, and exact count;
+4. decode the current Product projection into the public Storefront result;
+5. batch-hydrate localized tag names through Taxonomy with requested/fallback parity;
+6. retain and execute PostgreSQL owner-vs-Index equivalence for the full matrix, including locale,
+   visibility, typed EAV, ordering, pagination, exact count, stale linked targets, and restart;
+7. stage/rebuild/promote the current Product key for the tenant before traffic selection.
 
 ## Source guard
 
-`scripts/verify/verify-index-product-storefront-parity-gate.mjs` intentionally checks the current gap as
-well as the current traffic boundary. If Product Index coverage changes, the same PR must update this
-parity document/guard instead of silently making the guard pass by removing requirements.
+`scripts/verify/verify-index-product-storefront-parity-gate.mjs` checks that:
 
-The guard verifies that:
-
-- Storefront native transport still invokes the Product owner service and does not import Index runtime
-  query types;
-- owner query/DTO source still exposes the required controls/result fields listed above;
-- the current Product Index schema still lacks the known missing Storefront fields;
-- same-key schema fingerprint reuse remains rejected by generic Index registration;
-- staged single-current supersession remains available for a future replacement;
-- the current Index implementation plan keeps Storefront traffic cutover evidence-gated.
+- native Storefront traffic has not silently switched to Index;
+- the owner query/DTO contract remains explicit;
+- the single current Product schema contains the required Storefront fields and canonical EAV terms;
+- Product replay identity is schema-scoped;
+- old Product runtime compatibility branches are absent;
+- same-key schema replacement remains rejected and staged supersession remains available;
+- cutover remains query-adapter/evidence gated.
 
 ## Deliberate limits
 
-This slice does not change the Product routing key or Product fields. It does not purge persisted Product
-Index state, invent a second Storefront Product entity, duplicate EAV data, weaken schema
-fingerprint/readiness checks, or switch traffic.
-
-The next Product schema replacement must use one higher internal routing key as a storage identity while
-publishing only that one replacement Product contract in new runtime code. The old key is historical
-storage, not a compatibility implementation.
+This source slice does not execute tenant rebuild/supersession, implement the Storefront Index adapter,
+hydrate Taxonomy tags through Index traffic, add public typed Product event contracts, or switch traffic.
 
 ## Maintainer verification
 
-Suggested commands, intentionally not run by the implementation agent:
-
 ```bash
-node scripts/verify/verify-index-schema-supersession.mjs
+node scripts/verify/verify-index-product-source.mjs
+node scripts/verify/verify-index-product-attribute-term-contract.mjs
 node scripts/verify/verify-index-product-storefront-parity-gate.mjs
+node scripts/verify/verify-index-schema-supersession.mjs
 node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-product-storefront-boundary.mjs
 cargo check -p rustok-index --all-targets

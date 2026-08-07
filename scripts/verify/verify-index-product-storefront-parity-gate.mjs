@@ -90,9 +90,14 @@ for (const marker of [
   'scalar_field("title"',
   'scalar_field("handle"',
   'scalar_field("description"',
+  'scalar_field("seller_id"',
   'scalar_field("vendor"',
   'scalar_field("product_type"',
   '"primary_category_id"',
+  'many_field("tag_ids"',
+  'scalar_field("created_at"',
+  'scalar_field("published_at"',
+  'many_field("attribute_terms"',
   'many_field("variant_ids"',
   'many_field("sales_channel_ids"',
   'name: link_name("variants")?',
@@ -100,32 +105,32 @@ for (const marker of [
 ]) {
   if (!productSchema.includes(marker)) fail(`${productIndexPath} schema is missing ${marker}`);
 }
-for (const missingStorefrontField of [
-  'scalar_field("seller_id"',
-  'many_field("tags"',
-  'scalar_field("created_at"',
-  'scalar_field("published_at"',
-]) {
-  if (productSchema.includes(missingStorefrontField)) {
-    fail(`${productIndexPath} changed Storefront parity coverage without updating this gate: ${missingStorefrontField}`);
-  }
+if (!productIndex.includes('assert_eq!(schema.fields.len(), 15);')) {
+  fail(`${productIndexPath} current single Product field-count assertion is not 15`);
 }
-if (!productIndex.includes('assert_eq!(schema.fields.len(), 10);')) {
-  fail(`${productIndexPath} current canonical Product field-count assertion changed without parity-gate review`);
-}
+forbidMarkers(productIndexPath, productIndex, [
+  'SchemaVersion::new(3)',
+  'derive_index_source_event_id(',
+  'ProductSchemaVersion',
+  'product_v1_schema',
+  'product_v2_schema',
+]);
+requireMarkers(productIndexPath, [
+  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
+  'derive_index_schema_source_event_id(',
+  "COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids",
+  "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
+]);
 
 const schemaStorePath = 'crates/rustok-index/src/infrastructure/postgres/schema_registration.rs';
 requireMarkers(schemaStorePath, [
   'VersionConflict { reference: SchemaRef }',
   'NonMonotonicVersion {',
   'schema {reference} is already registered with another contract',
-  'schema version must increase for {identity}',
   'existing.fingerprint != fingerprint.to_string() || existing.schema_json != *schema_json',
-  'Err(SchemaRegistrationError::VersionConflict {',
   'pub async fn register_current(',
   'retire_lower_active_schemas(',
   "status = 'retired'",
-  "schema_version < $4 AND status = 'active'",
 ]);
 forbidMarkers(schemaStorePath, read(schemaStorePath), [
   'DELETE FROM index_schemas',
@@ -133,33 +138,29 @@ forbidMarkers(schemaStorePath, read(schemaStorePath), [
   'DELETE FROM index_links',
 ]);
 
-const parityDocPath = 'crates/rustok-index/docs/m7-product-storefront-parity-gate.md';
-requireMarkers(parityDocPath, [
-  'Status: `source_complete_cutover_blocked_by_contract_gap`',
-  'seller_id',
-  'Product `tags`',
-  '`created_at` result + sort key',
-  '`published_at` result + non-null published-only admission + sort key',
-  'dynamic typed EAV `attribute_filters`',
-  'no silent same-key fingerprint replacement',
-  'no parallel v4/v5 compatibility source/route',
-  'Single-current replacement persistence is source complete',
+requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
+  'Status: `source_complete_query_adapter_and_evidence_pending`',
+  'Current Product runtime code publishes one Product schema with 15 fields and two links',
+  '`seller_id`, `created_at`, `published_at`',
+  '`tag_ids`',
+  '`attribute_terms`',
+  'Tags remain Taxonomy-owned',
+  'query-adapter/evidence gated',
+  'ordinary-register the current key',
   '`PostgresSchemaRegistrationStore::register_current`',
-  'every lower persisted Product key is retired',
+  'There is no same-key fingerprint replacement and no parallel Product v4/v5 route.',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
+]);
+
+requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
+  'Status: `source_complete_materialized_rebuild_pending`',
+  '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.md', [
   'Status: `source_complete_execution_pending`',
   'single-current',
-  'This slice does not change the Product routing key or Product schema yet.',
+  '`derive_index_schema_source_event_id`',
 ]);
 
-const currentPlanPath = 'crates/rustok-index/docs/implementation-plan-current-2026-08-07.md';
-requireMarkers(currentPlanPath, [
-  'Prove complete Storefront Product/ProductVariant/SalesChannel query parity.',
-  'Move Storefront traffic only after readiness/equivalence/freshness/availability evidence passes.',
-  'do not introduce a new Product schema/version to solve',
-]);
-
-console.log('[verify-index-product-storefront-parity-gate] Storefront cutover remains fail-closed on one immutable current Product Index contract');
+console.log('[verify-index-product-storefront-parity-gate] Product source coverage is complete; Storefront cutover remains fail-closed on adapter, rebuild and retained parity evidence');

@@ -27,6 +27,7 @@ requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod relation_admission;',
   'mod channel_relation_convergence;',
   'mod query_admission;',
+  'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
 
 const admissionPath = 'crates/rustok-distribution/src/product_index/relation_admission.rs';
@@ -61,17 +62,20 @@ forbidMarkers(admissionPath, admission, [
 
 const productPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const product = requireMarkers(productPath, [
-  'many_field("sales_channel_ids", IndexValueType::Uuid, true)?',
+  'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)?',
   'name: link_name("sales_channels")?',
   'target_schema: sales_channel_schema_ref()?',
   'projection.channel_ids AS sales_channel_ids',
   'product_index_graph_projection_snapshots',
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',
-  'assert_eq!(schema.fields.len(), 10);',
+  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
+  'derive_index_schema_source_event_id(',
+  'assert_eq!(schema.fields.len(), 15);',
   'assert_eq!(schema.links.len(), 2);',
 ]);
 forbidMarkers(productPath, product, [
+  'SchemaVersion::new(3)',
   'ProductSchemaVersion',
   'product_v1_schema',
   'product_v2_schema',
@@ -109,4 +113,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-materialized-query-freshness.mjs'",
 ]);
 
-console.log('[verify-index-product-channel-relation-admission] relation, freshness, convergence, and query fence admission verified');
+console.log('[verify-index-product-channel-relation-admission] current relation, freshness, convergence, and query fence admission verified');

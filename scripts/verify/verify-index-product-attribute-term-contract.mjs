@@ -55,6 +55,7 @@ if (source.includes('pa.code ||') || source.includes('pa.code::text ||')) {
 
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'mod attribute_terms;',
+  'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
 requireMarkers('crates/rustok-distribution/Cargo.toml', [
   'mod-product = ["dep:rustok-product", "mod-taxonomy", "dep:chrono", "dep:hex", "dep:rust_decimal"]',
@@ -86,22 +87,24 @@ requireMarkers('crates/rustok-product/src/services/write_transaction.rs', [
   'UPDATE products SET index_revision = index_revision',
 ]);
 
-const productSourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
-const productSource = read(productSourcePath);
-if (productSource.includes('many_field("attribute_terms"')) {
-  fail(`${productSourcePath} already materializes attribute_terms; update this source-complete/materialization-pending gate in the same replacement PR`);
-}
+requireMarkers('crates/rustok-distribution/src/product_index/product.rs', [
+  'many_field("attribute_terms", IndexValueType::String, false, true)?',
+  'PRODUCT_ATTRIBUTE_TERMS_CTE',
+  "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
+  'decode_string_json_list(&row, "attribute_terms")?',
+  'field_name("attribute_terms")?',
+  'derive_index_schema_source_event_id(',
+]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
-  'Status: `source_complete_materialization_pending`',
+  'Status: `source_complete_materialized_rebuild_pending`',
   '`attribute_terms: Many<String>`',
   '`<attribute_uuid>|<kind>|<locale_hex>|<value_hex>`',
   'There is deliberately no format-version prefix.',
   '`localized_present`',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
   '`derive_index_schema_source_event_id`',
-  'use one monotonically higher internal Product routing key',
   'numeric key is an internal storage/replay identity',
 ]);
 
-console.log('[verify-index-product-attribute-term-contract] canonical Product typed EAV term contract is source complete and materialization pending');
+console.log('[verify-index-product-attribute-term-contract] canonical Product typed EAV terms are materialized by the single current source; rebuild remains pending');
