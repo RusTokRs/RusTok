@@ -30,7 +30,6 @@ use sea_orm::{
 };
 use sea_orm_migration::SchemaManager;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const DATABASE_ENV: &str = "RUSTOK_PAGES_TEST_DATABASE_URL";
@@ -222,19 +221,12 @@ async fn rebuilt_bytes_and_activation_cache_rotate_only_after_committed_events_o
             },
         )
         .await?;
-    let body = draft
+    let revision = draft
         .body
         .as_ref()
-        .ok_or_else(|| std::io::Error::other("draft body is missing"))?;
-    let digest = Sha256::digest(format!("{}\0{}", body.format, body.content).as_bytes());
-    let revision = format!(
-        "{}:{}",
-        body.updated_at,
-        digest
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    );
+        .ok_or_else(|| std::io::Error::other("draft body is missing"))?
+        .updated_at
+        .clone();
     service
         .publish_reviewed(
             tenant_id,
