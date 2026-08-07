@@ -7,11 +7,16 @@ mod checkout_fulfillment_stages;
 mod checkout_inventory_order_adoption;
 mod checkout_inventory_reservation_executor;
 mod checkout_inventory_reservation_journal;
+#[cfg(feature = "marketplace-financial")]
 mod checkout_marketplace_allocation;
+#[cfg(feature = "marketplace-financial")]
 mod checkout_marketplace_commission;
+#[cfg(feature = "marketplace-financial")]
 mod checkout_marketplace_economics;
+#[cfg(feature = "marketplace-financial")]
 #[path = "checkout_marketplace_financial_hardened.rs"]
 mod checkout_marketplace_financial;
+#[cfg(feature = "marketplace-financial")]
 #[path = "checkout_marketplace_financial.rs"]
 mod checkout_marketplace_financial_legacy;
 mod checkout_operation;
@@ -32,15 +37,25 @@ mod journaled_checkout;
 mod journaled_create_label_provider;
 mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_financial_operator;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_financial_runtime;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_paid_event_inbox;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_paid_order_financial;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_provider_paid_event_adapter;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_provider_reversal_backfill;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_provider_reversal_event_adapter;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_reversal_adaptation_failure;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_reversal_event_inbox;
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_reversal_operator;
 mod order_change_orchestration;
 mod paid_order_create_label;
@@ -86,24 +101,29 @@ pub use checkout_inventory_reservation_journal::{
     CheckoutInventoryReservationResult, CheckoutInventoryReservationStatus,
     PlanCheckoutInventoryReservation,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use checkout_marketplace_allocation::{
     CheckoutMarketplaceAllocationError, CheckoutMarketplaceAllocationResult,
     CheckoutMarketplaceAllocationStage, order_contains_marketplace_lines,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use checkout_marketplace_commission::{
     CheckoutMarketplaceCommissionError, CheckoutMarketplaceCommissionResult,
     CheckoutMarketplaceCommissionStage,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use checkout_marketplace_economics::{
     CheckoutMarketplaceEconomicsCheckpointError, CheckoutMarketplaceEconomicsCheckpointJournal,
     CheckoutMarketplaceEconomicsCheckpointResult, CheckoutMarketplaceEconomicsEvidence,
     RecordCheckoutMarketplaceEconomicsCheckpoint, build_marketplace_economics_evidence,
     validate_marketplace_economics_checkpoint,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use checkout_marketplace_financial::{
     CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialResult,
     CheckoutMarketplaceFinancialStage,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use checkout_marketplace_financial_legacy::{
     BeginMarketplaceFinancialOperation, MarketplaceFinancialOperationError,
     MarketplaceFinancialOperationJournal, MarketplaceFinancialOperationResult,
@@ -146,41 +166,51 @@ pub use fulfillment_reconciliation::FulfillmentReconciliationService;
 pub use journaled_checkout::{
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_financial_operator::{
     MarketplaceFinancialOperationOperatorView, MarketplaceFinancialOperatorError,
     MarketplaceFinancialOperatorResult, MarketplaceFinancialOperatorService,
     MarketplacePaidEventOperatorView,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_financial_runtime::MarketplaceFinancialRuntime;
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_paid_event_inbox::{
     IngestMarketplacePaidEvent, MarketplacePaidEventInboxError, MarketplacePaidEventInboxJournal,
     MarketplacePaidEventInboxResult, MarketplacePaidEventInboxService, MarketplacePaidEventStatus,
     MarketplacePaidEventSweepFailure, MarketplacePaidEventSweepReport,
 };
+#[cfg(feature = "marketplace-financial")]
 pub(crate) use marketplace_paid_order_financial::MarketplacePaidOrderFinancialHandler;
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_provider_paid_event_adapter::{
     MarketplaceProviderPaidEventAdapter, MarketplaceProviderPaidEventAdapterError,
     MarketplaceProviderPaidEventAdapterResult,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_provider_reversal_backfill::{
     MarketplaceProviderReversalBackfillError, MarketplaceProviderReversalBackfillResult,
     MarketplaceProviderReversalBackfillService,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_provider_reversal_event_adapter::{
     MarketplaceProviderReversalAdaptFailure, MarketplaceProviderReversalAdaptReport,
     MarketplaceProviderReversalEventAdapter, MarketplaceProviderReversalEventAdapterError,
     MarketplaceProviderReversalEventAdapterResult,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_reversal_adaptation_failure::{
     MarketplaceReversalAdaptationFailureError, MarketplaceReversalAdaptationFailureJournal,
     MarketplaceReversalAdaptationFailureResult, MarketplaceReversalAdaptationFailureStatus,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_reversal_event_inbox::{
     IngestMarketplaceReversalEvent, MarketplaceReversalEventInboxError,
     MarketplaceReversalEventInboxJournal, MarketplaceReversalEventInboxResult,
     MarketplaceReversalEventInboxService, MarketplaceReversalEventStatus,
     MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
 };
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_reversal_operator::{
     MarketplaceReversalAdaptationFailureOperatorView, MarketplaceReversalEventOperatorView,
     MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
