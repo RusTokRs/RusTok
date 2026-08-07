@@ -73,7 +73,6 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
 - [M6 Reconciliation Dead-letter Inspection](./m6-reconciliation-dead-letter-inspection.md)
 - [M6 Reconciliation Dead-letter Requeue](./m6-reconciliation-dead-letter-requeue.md)
-- [M6 Replay Dry-run](./m6-bounded-replay-dry-run.md)
 - [M7 Canonical Product Graph Source](./m7-product-graph-source.md)
 - [M7 Tenant Schema Readiness Gate](./m7-schema-readiness.md)
 - [M7 Product-SalesChannel Relation Admission](./m7-product-sales-channel-relation-admission.md)
