@@ -6,6 +6,15 @@ license.workspace = true
 description.workspace = true
 autotests = false
 
+[features]
+default = []
+marketplace-financial = [
+    "dep:rustok-marketplace",
+    "dep:rustok-marketplace-allocation",
+    "dep:rustok-marketplace-commission",
+    "dep:rustok-marketplace-ledger",
+]
+
 [dependencies]
 anyhow.workspace = true
 async-graphql = { workspace = true, features = ["decimal"] }
@@ -23,10 +32,10 @@ rustok-order.workspace = true
 rustok-payment.workspace = true
 rustok-fulfillment.workspace = true
 rustok-tenant.workspace = true
-rustok-marketplace = { path = "../rustok-marketplace" }
-rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation" }
-rustok-marketplace-commission = { path = "../rustok-marketplace-commission" }
-rustok-marketplace-ledger = { path = "../rustok-marketplace-ledger" }
+rustok-marketplace = { path = "../rustok-marketplace", optional = true }
+rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation", optional = true }
+rustok-marketplace-commission = { path = "../rustok-marketplace-commission", optional = true }
+rustok-marketplace-ledger = { path = "../rustok-marketplace-ledger", optional = true }
 flex.workspace = true
 async-trait.workspace = true
 axum.workspace = true
@@ -75,6 +84,7 @@ path = "tests/checkout_fulfillment_label_boundary_test.rs"
 [[test]]
 name = "checkout_marketplace_economics_checkpoint"
 path = "tests/checkout_marketplace_economics_checkpoint.rs"
+required-features = ["marketplace-financial"]
 
 [[test]]
 name = "checkout_service_test"
@@ -111,6 +121,7 @@ path = "tests/inventory_service_test.rs"
 [[test]]
 name = "marketplace_reversal_recovery_source"
 path = "tests/marketplace_reversal_recovery_source.rs"
+required-features = ["marketplace-financial"]
 
 [[test]]
 name = "module"
