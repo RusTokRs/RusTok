@@ -41,11 +41,18 @@ pub trait ProductCatalogReadPort: Send + Sync {
         request: PublishedProductsRequest,
     ) -> Result<StorefrontProductList, PortError>;
 
+    /// Optional admin-list capability. Existing remote/test adapters remain source-compatible
+    /// until they explicitly support this projection; mounted consumers fail closed otherwise.
     async fn list_admin_products(
         &self,
-        context: PortContext,
-        request: AdminProductsRequest,
-    ) -> Result<AdminProductList, PortError>;
+        _context: PortContext,
+        _request: AdminProductsRequest,
+    ) -> Result<AdminProductList, PortError> {
+        Err(PortError::unavailable(
+            "product.admin_list_unavailable",
+            "product admin listing is unavailable",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
