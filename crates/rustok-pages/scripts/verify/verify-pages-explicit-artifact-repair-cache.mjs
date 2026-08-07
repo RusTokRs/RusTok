@@ -17,6 +17,9 @@ const evidence = JSON.parse(
 const harness = read(
   "crates/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs",
 );
+const reviewedPublish = read(
+  "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+);
 const rebuildOwner = read(
   "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
 );
@@ -81,7 +84,7 @@ for (const [key, expected] of Object.entries({
   real_outbox_module_migrations_used: true,
   real_pages_module_migrations_used: true,
   real_page_service_publish_rebuild_activation_used: true,
-  canonical_reviewed_publish_body_revision_used: true,
+  reviewed_publish_revision_matches_owner_updated_at_snapshot: true,
   canonical_artifact_snapshot_retained_before_damage: true,
   canonical_artifact_payload_damaged_before_rebuild: true,
   rebuild_uses_retained_provenance_not_damaged_artifact_payload: true,
@@ -140,8 +143,6 @@ for (const marker of [
   "PagesModule",
   "OutboxTransport::new(db.clone())",
   "PageService::new(db.clone(), event_bus)",
-  "Sha256::digest",
-  'format!("{}\\0{}", body.format, body.content)',
   "struct RecordingCachePort",
   "impl PageCacheInvalidationPort for RecordingCachePort",
   "PageCacheInvalidationEventHandler::new",
@@ -149,6 +150,35 @@ for (const marker of [
 ]) {
   requireText(harness, marker, "repair cache harness foundation");
 }
+requireOrder(
+  harness,
+  [
+    "let revision = draft",
+    ".body",
+    ".as_ref()",
+    ".updated_at",
+    ".clone();",
+    ".publish_reviewed(",
+    "revision,",
+  ],
+  "repair cache reviewed publish revision fixture",
+);
+for (const forbidden of [
+  "Sha256::digest",
+  'format!("{}\\0{}", body.format, body.content)',
+  "use sha2::{Digest, Sha256};",
+]) {
+  forbidText(harness, forbidden, "repair cache reviewed publish revision fixture");
+}
+requireOrder(
+  reviewedPublish,
+  [
+    "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
+    ".map(|body| (body.locale.clone(), body.updated_at.to_string()))",
+    "revisions.sort();",
+  ],
+  "reviewed publish owner revision snapshot",
+);
 
 requireOrder(
   harness,
