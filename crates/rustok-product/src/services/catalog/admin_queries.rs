@@ -11,6 +11,36 @@ impl CatalogService {
         page: u64,
         per_page: u64,
     ) -> CommerceResult<AdminProductList> {
+        self.list_admin_products_with_compatibility_query(
+            tenant_id,
+            locale,
+            fallback_locale,
+            list_query,
+            page,
+            per_page,
+            None,
+            None,
+            None,
+            false,
+            false,
+        )
+        .await
+    }
+
+    pub(crate) async fn list_admin_products_with_compatibility_query(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        list_query: AdminProductListQuery,
+        page: u64,
+        per_page: u64,
+        raw_status: Option<&str>,
+        vendor: Option<&str>,
+        product_type: Option<&str>,
+        empty_missing_title: bool,
+        legacy_shipping_profile_fallback: bool,
+    ) -> CommerceResult<AdminProductList> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         if page == 0 || per_page == 0 || per_page > 100 {
             return Err(CommerceError::Validation(
@@ -21,8 +51,16 @@ impl CatalogService {
 
         let mut query = entities::product::Entity::find()
             .filter(entities::product::Column::TenantId.eq(tenant_id));
-        if let Some(status) = list_query.status {
+        if let Some(raw_status) = raw_status {
+            query = query.filter(entities::product::Column::Status.eq(raw_status));
+        } else if let Some(status) = list_query.status {
             query = query.filter(entities::product::Column::Status.eq(status));
+        }
+        if let Some(vendor) = vendor {
+            query = query.filter(entities::product::Column::Vendor.eq(vendor));
+        }
+        if let Some(product_type) = product_type {
+            query = query.filter(entities::product::Column::ProductType.eq(product_type));
         }
         if let Some(category_id) = list_query.category_id {
             query = query.filter(entities::product::Column::PrimaryCategoryId.eq(category_id));
@@ -96,16 +134,30 @@ impl CatalogService {
                 let translation = translations_by_product.get(&product.id).and_then(|items| {
                     pick_product_translation(items.as_slice(), locale, fallback_locale)
                 });
-                let shipping_profile_slug = product
-                    .shipping_profile_slug
-                    .clone()
-                    .or_else(|| extract_shipping_profile_slug(&product.metadata));
+                let shipping_profile_slug = if legacy_shipping_profile_fallback {
+                    product
+                        .shipping_profile_slug
+                        .as_deref()
+                        .and_then(normalize_shipping_profile_slug)
+                        .or_else(|| extract_shipping_profile_slug(&product.metadata))
+                } else {
+                    product
+                        .shipping_profile_slug
+                        .clone()
+                        .or_else(|| extract_shipping_profile_slug(&product.metadata))
+                };
                 AdminProductListItem {
                     id: product.id,
                     status: product.status,
                     title: translation
                         .map(|value| value.title.clone())
-                        .unwrap_or_else(|| "Untitled product".to_string()),
+                        .unwrap_or_else(|| {
+                            if empty_missing_title {
+                                String::new()
+                            } else {
+                                "Untitled product".to_string()
+                            }
+                        }),
                     handle: translation
                         .map(|value| value.handle.clone())
                         .unwrap_or_default(),
