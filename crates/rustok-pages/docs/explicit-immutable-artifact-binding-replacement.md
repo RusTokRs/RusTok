@@ -1,7 +1,7 @@
 # Explicit Immutable Artifact Binding Replacement
 
 Date: 2026-08-07  
-Status: `source-ready / maintainer-validation-pending`
+Status: `source-ready / postgres-harness-source-ready / maintainer-validation-pending`
 
 ## Purpose
 
@@ -71,6 +71,30 @@ Cache generations are not mutated inline. Existing Pages lifecycle handling obse
 
 An exact replay returns the stored result without changing the binding, version or events again. Reusing the idempotency key for another request is rejected. A rebuild operation may receive only one activation receipt, preventing a later unrelated lifecycle state from silently reusing the same repair decision.
 
+## PostgreSQL source packet
+
+Marker:
+
+```text
+explicit-artifact-repair-postgres-harness-source-ready
+```
+
+`crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs` applies the real Outbox and Pages migrations in an isolated PostgreSQL schema and executes activation through this owner command after a reviewed publish and append-only rebuild.
+
+When executed, the packet requires:
+
+- stale expected-current-artifact rejection to leave the binding unchanged and create no activation receipt;
+- successful activation to switch exactly the retained locale binding to the selected rebuilt artifact;
+- exactly one page-version increment while retaining `published` state;
+- both damaged source and rebuilt artifact rows to remain present;
+- one durable `NodeUpdated` and one durable `NodePublished` envelope for the activated page;
+- exact replay to return the same operation/version without another receipt or page-version increment;
+- another idempotency key targeting an already-consumed rebuild receipt to be rejected;
+- the migration-owned unique `(tenant, page, rebuild_operation_id)` constraint to reject a second activation receipt;
+- a preceding page-version marker and outbox event in that failed PostgreSQL transaction to disappear after rollback.
+
+Cache handler execution remains a separate cursor: this packet retains durable lifecycle envelopes but does not claim generation rotation until those committed envelopes are processed by the existing Pages lifecycle handler.
+
 ## Preserved boundaries
 
 This command does not:
@@ -93,10 +117,13 @@ Suggested commands, intentionally not run in this slice:
 
 ```bash
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
 cargo test -p rustok-pages --test explicit_artifact_binding_replacement_sqlite -- --nocapture
+RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
+  cargo test -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture
 cargo check -p rustok-pages --all-targets
 ```
 
-SQLite/PostgreSQL migration, Manage present/absent authorization, stale version/current-binding rejection, provenance mismatch rejection, replacement corruption rejection, lifecycle/cache observation and exact replay evidence remain pending.
+SQLite execution plus PostgreSQL execution, Manage present/absent authorization, stale-version, provenance-mismatch, invalid replacement, unpublished-page and cache-generation evidence remain pending. The PostgreSQL stale-current/success/replay/reuse/lifecycle/receipt-rollback packet is source-ready but unvalidated.
