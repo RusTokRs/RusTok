@@ -199,7 +199,7 @@ pub(crate) fn map_admin_product_port_error(
     port_context: &PortContext,
     error: PortError,
 ) -> HttpError {
-    let (status, code, message, error_kind) = match error.kind {
+    let (status, code, message, error_kind) = match &error.kind {
         PortErrorKind::Validation => (
             StatusCode::BAD_REQUEST,
             "commerce_admin_product_invalid",
