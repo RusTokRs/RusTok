@@ -13,6 +13,8 @@ pub enum ModerationError {
     ApplicationOperationNotFound(Uuid),
     #[error("moderation application lease conflict for decision {0}")]
     ApplicationLeaseConflict(Uuid),
+    #[error("moderation application recovery conflict for decision {0}")]
+    ApplicationRecoveryConflict(Uuid),
     #[error("moderation application evidence does not match decision {0}")]
     ApplicationEvidenceMismatch(Uuid),
     #[error("moderation command validation failed: {0}")]
