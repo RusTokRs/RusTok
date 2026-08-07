@@ -9,7 +9,7 @@ const failures = [];
 const files = {
   test: "crates/rustok-pages/tests/explicit_artifact_repair_transport_contract.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-transport-contract-source.json",
-  continuation: "docs/modules/pages-page-builder-rebuild-provenance-continuation-2026-08-06.md",
+  continuation: "docs/modules/pages-page-builder-repair-transport-contract-continuation-2026-08-07.md",
 };
 const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), "utf8");
 const need = (source, marker, label) => {
