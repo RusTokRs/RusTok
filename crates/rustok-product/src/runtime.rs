@@ -59,7 +59,10 @@ impl ProductCatalogReadRuntime {
         Self::new(read_port, ProductCatalogReadProfile::External)
     }
 
-    pub fn with_schema_read_port(mut self, schema_read_port: Arc<dyn ProductCatalogSchemaReadPort>) -> Self {
+    pub fn with_schema_read_port(
+        mut self,
+        schema_read_port: Arc<dyn ProductCatalogSchemaReadPort>,
+    ) -> Self {
         self.schema_read_port = Some(schema_read_port);
         self
     }
