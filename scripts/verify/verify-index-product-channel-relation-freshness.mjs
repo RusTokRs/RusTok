@@ -186,9 +186,14 @@ requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-freshnes
   'stale source admission, not the remaining materialized convergence problem',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
-  'Status: `freshness_watermark_source_complete_runtime_evidence_pending`',
+  'Status: `automatic_convergence_source_complete_runtime_evidence_pending`',
   'ProductSalesChannelIndexRelationFreshnessStore::record',
-  'source-level freshness watermark',
+  'Automatic convergence composition',
+  'Automatic convergence now re-establishes stale/missing relation freshness',
+]);
+requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-convergence.md', [
+  'Automatic relation convergence is now source complete',
+  'materialized/query freshness window',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-graph-source.md', [
   'canonical_source_and_freshness_gate_complete_runtime_evidence_pending',
@@ -198,12 +203,18 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.
   'Product-SalesChannel freshness witness',
   'Channel identity generation',
   'Freshness watermark source complete',
-  'source-read -> mutation-apply in-flight window',
+  'Automatic owner-change relation convergence source complete',
+  'source-read -> mutation-apply',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
-if (!aggregate.includes("'verify-index-product-channel-relation-freshness.mjs'")) {
-  fail('Index aggregate verifier does not include Product-SalesChannel freshness guard');
+for (const expected of [
+  "'verify-index-product-channel-relation-freshness.mjs'",
+  "'verify-index-product-channel-relation-convergence.mjs'",
+]) {
+  if (!aggregate.includes(expected)) {
+    fail(`Index aggregate verifier is missing ${expected}`);
+  }
 }
 
-console.log('[verify-index-product-channel-relation-freshness] source admission freshness contract verified');
+console.log('[verify-index-product-channel-relation-freshness] source admission freshness and convergence boundary verified');
