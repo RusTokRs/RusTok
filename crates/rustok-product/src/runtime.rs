@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
-use crate::{CatalogService, ProductCatalogReadPort};
+use crate::{CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort};
 
 /// Host-selected execution profile for the Product catalog read boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -55,6 +55,60 @@ impl ProductCatalogReadRuntime {
     }
 
     pub const fn profile(&self) -> ProductCatalogReadProfile {
+        self.profile
+    }
+}
+
+/// Host-selected execution profile for the Product catalog command boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProductCatalogCommandProfile {
+    EmbeddedNative,
+    External,
+}
+
+impl ProductCatalogCommandProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::EmbeddedNative => "embedded_native",
+            Self::External => "external",
+        }
+    }
+}
+
+/// Canonical host-composed Product catalog lifecycle command capability.
+#[derive(Clone)]
+pub struct ProductCatalogCommandRuntime {
+    command_port: Arc<dyn ProductCatalogCommandPort>,
+    profile: ProductCatalogCommandProfile,
+}
+
+impl ProductCatalogCommandRuntime {
+    pub fn new(
+        command_port: Arc<dyn ProductCatalogCommandPort>,
+        profile: ProductCatalogCommandProfile,
+    ) -> Self {
+        Self {
+            command_port,
+            profile,
+        }
+    }
+
+    pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self::new(
+            Arc::new(CatalogService::new(db, event_bus)),
+            ProductCatalogCommandProfile::EmbeddedNative,
+        )
+    }
+
+    pub fn external(command_port: Arc<dyn ProductCatalogCommandPort>) -> Self {
+        Self::new(command_port, ProductCatalogCommandProfile::External)
+    }
+
+    pub fn command_port(&self) -> Arc<dyn ProductCatalogCommandPort> {
+        self.command_port.clone()
+    }
+
+    pub const fn profile(&self) -> ProductCatalogCommandProfile {
         self.profile
     }
 }
