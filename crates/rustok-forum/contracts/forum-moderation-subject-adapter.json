@@ -57,7 +57,8 @@
     "NoDomainMutation for forum_topic and forum_post",
     "permanent Lock for forum_topic using TopicService::set_locked_in_tx",
     "SetVisibility Hidden for forum_post using exact Forum ReplyStatus::Hidden lifecycle semantics",
-    "SetVisibility Removed for forum_post using the complete Forum ReplyService::remove_in_tx soft-delete owner path"
+    "SetVisibility Removed for forum_post using the complete Forum ReplyService::remove_in_tx soft-delete owner path",
+    "RejectPublication for forum_post using exact Forum ReplyStatus::Rejected moderator publication semantics"
   ],
   "reply_hidden_semantics": {
     "target": "ReplyStatus::Hidden",
@@ -70,6 +71,22 @@
     "other_valid_to_hidden_transitions": "status change only; public counters remain unchanged",
     "root_event": "ForumReplyStatusChanged",
     "search_projection": "ForumReplyStatusChanged is a canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "atomicity": "status, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
+  "reply_rejected_semantics": {
+    "neutral_effect": "RejectPublication",
+    "target": "ReplyStatus::Rejected",
+    "owner_contract": "the established Forum moderator reject_reply action uses ReplyStatus::Rejected and the same validated reply lifecycle",
+    "already_rejected": "no-op without duplicate counters or ForumReplyStatusChanged event",
+    "approved_to_rejected": [
+      "decrement topic public reply count",
+      "decrement category public reply count",
+      "decrement author Forum reply statistics"
+    ],
+    "other_valid_to_rejected_transitions": "status change only; public counters remain unchanged",
+    "root_event": "ForumReplyStatusChanged with new_status rejected",
+    "search_projection": "ForumReplyStatusChanged is the canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "unpublished_distinction": "SetVisibility Unpublished is a separate neutral effect and remains unsupported; it is not mapped to ReplyStatus::Rejected",
     "atomicity": "status, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
   },
   "reply_removed_semantics": {
@@ -94,7 +111,6 @@
     "topic visibility removal/unpublish effects",
     "RequireEdit",
     "RestrictInteraction",
-    "RejectPublication",
     "SuspendSubject",
     "Escalate",
     "AccountSanctionRecommended"
@@ -114,7 +130,7 @@
     "retargeting a stale decision to a newer Forum revision",
     "reusing Reactions or content revision as the Moderation subject clock",
     "temporary lock without expiry-safe owner state",
-    "approximating Unpublished as Rejected without an explicit owner contract",
+    "mapping SetVisibility Unpublished to ReplyStatus::Rejected",
     "bypassing ReplyService::remove_in_tx for Moderation Removed reply application",
     "reaction state catalog aggregate or presentation ownership changes"
   ],
