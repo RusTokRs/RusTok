@@ -359,7 +359,7 @@ mod tests {
     fn option_and_datetime_terms_use_stable_storage_identities() {
         let attribute_id = Uuid::from_u128(1);
         let option_id = Uuid::from_u128(2);
-        let timestamp = DateTime::from_timestamp_micros(1_725_000_123_456_789).unwrap();
+        let timestamp = DateTime::<Utc>::from_timestamp_micros(1_725_000_123_456_789).unwrap();
         assert!(
             option_term(attribute_id, option_id)
                 .unwrap()
