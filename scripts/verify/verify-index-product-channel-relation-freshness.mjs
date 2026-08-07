@@ -60,6 +60,7 @@ const freshnessMigration = requireMarkers(freshnessMigrationPath, [
   'channel_identity_generation BIGINT NOT NULL',
   'FOREIGN KEY (tenant_id, product_id, relation_epoch)',
   'REFERENCES product_sales_channel_index_relation_snapshots',
+  'octet_length(visibility_key) BETWEEN 1 AND 131072',
   'rustok_product_guard_channel_relation_freshness_snapshot',
   'product-sales-channel-index-relation-freshness',
   'freshness relation epoch regressed',
@@ -166,11 +167,12 @@ const absence = requireMarkers(absencePath, [
 forbidMarkers(absencePath, absence, ['INSERT ', 'UPDATE ', 'DELETE FROM']);
 
 requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-freshness.md', [
-  'Status: `source_complete_runtime_evidence_pending`',
+  'Status: `source_complete_materialized_convergence_and_runtime_evidence_pending`',
   'freshness-only change does not pretend that the graph membership changed',
   '`channel_index_identity_generations`',
-  'canonical Product source compares the retained witness with current owner facts',
-  'source-level freshness watermark gap',
+  'fails closed at source observation',
+  'does **not** make source observation and Index mutation application one cross-owner atomic',
+  'stale source admission, not the remaining materialized convergence problem',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
   'Status: `freshness_watermark_source_complete_runtime_evidence_pending`',
@@ -192,4 +194,4 @@ if (!aggregate.includes("'verify-index-product-channel-relation-freshness.mjs'")
   fail('Index aggregate verifier does not include Product-SalesChannel freshness guard');
 }
 
-console.log('[verify-index-product-channel-relation-freshness] source contract verified');
+console.log('[verify-index-product-channel-relation-freshness] source admission freshness contract verified');
