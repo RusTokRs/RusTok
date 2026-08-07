@@ -10,10 +10,10 @@
 
 use async_trait::async_trait;
 use rustok_core::{
-    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
-    ModuleRuntimeExtensions, RusToKModule,
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, RusToKModule,
 };
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
+#[cfg(feature = "marketplace-financial")]
 use rustok_outbox::TransactionalEventBus;
 use sea_orm_migration::MigrationTrait;
 
@@ -54,11 +54,9 @@ pub use services::{
     CheckoutInventoryOrderAdoptionResult, CheckoutInventoryOrderAdoptionService,
     CheckoutInventoryReservationError, CheckoutInventoryReservationExecutor,
     CheckoutInventoryReservationJournal, CheckoutInventoryReservationResult,
-    CheckoutInventoryReservationStatus, CheckoutMarketplaceFinancialError,
-    CheckoutMarketplaceFinancialResult, CheckoutMarketplaceFinancialStage,
-    CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationResult, CheckoutOperationStage, CheckoutOperationStatus,
-    CheckoutOrderConfirmationError, CheckoutOrderConfirmationExecutor,
+    CheckoutInventoryReservationStatus, CheckoutOperationCheckpoint, CheckoutOperationError,
+    CheckoutOperationJournal, CheckoutOperationResult, CheckoutOperationStage,
+    CheckoutOperationStatus, CheckoutOrderConfirmationError, CheckoutOrderConfirmationExecutor,
     CheckoutOrderConfirmationResult, CheckoutOrderCreationError, CheckoutOrderCreationExecutor,
     CheckoutOrderCreationResult, CheckoutOrderPlanError, CheckoutOrderPlanJournal,
     CheckoutOrderPlanPayload, CheckoutOrderPlanRecord, CheckoutOrderPlanResult,
@@ -70,9 +68,25 @@ pub use services::{
     CompleteReturnRefundInput, CompleteReturnResolutionInput, CreateReturnDecisionInput,
     DEFAULT_CHECKOUT_LEASE_SECONDS, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
     ExchangeDifferenceRefundInput, FulfillmentCreateLabelRecoveryService,
-    FulfillmentReconciliationService, IngestMarketplacePaidEvent, IngestMarketplaceReversalEvent,
-    JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
-    MAX_CHECKOUT_LEASE_SECONDS, MAX_RETURN_COMPLETION_LEASE_SECONDS,
+    FulfillmentReconciliationService, JournaledCheckoutError, JournaledCheckoutResult,
+    JournaledCheckoutService, MAX_CHECKOUT_LEASE_SECONDS, MAX_RETURN_COMPLETION_LEASE_SECONDS,
+    OrderChangeOrchestrationService, PaidOrderCreateLabelSweepReport,
+    PaidOrderCreateLabelSweepService, PaymentOrchestrationError, PaymentOrchestrationResult,
+    PaymentOrchestrationService, PlanCheckoutInventoryReservation, PostOrderOrchestrationError,
+    PostOrderOrchestrationService, RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult,
+    RecoveringStagedCheckoutService, RefundReconciliationService, ReturnClaimDecisionInput,
+    ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
+    ReturnCompletionOperationJournal, ReturnCompletionOperationResult,
+    ReturnCompletionOperationStage, ReturnCompletionOperationStatus,
+    ReturnCompletionOrchestrationService, ReturnDecisionInput, ReturnDecisionResponse,
+    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
+    StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService, StoreContextError,
+    StoreContextResult, StoreContextService,
+};
+#[cfg(feature = "marketplace-financial")]
+pub use services::{
+    CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialResult,
+    CheckoutMarketplaceFinancialStage, IngestMarketplacePaidEvent, IngestMarketplaceReversalEvent,
     MarketplaceFinancialOperationError, MarketplaceFinancialOperationJournal,
     MarketplaceFinancialOperationOperatorView, MarketplaceFinancialOperationResult,
     MarketplaceFinancialOperationStatus, MarketplaceFinancialOperatorError,
@@ -93,18 +107,7 @@ pub use services::{
     MarketplaceReversalEventOperatorView, MarketplaceReversalEventStatus,
     MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
     MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
-    MarketplaceReversalOperatorService, OrderChangeOrchestrationService,
-    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService, PaymentOrchestrationError,
-    PaymentOrchestrationResult, PaymentOrchestrationService, PlanCheckoutInventoryReservation,
-    PostOrderOrchestrationError, PostOrderOrchestrationService, RecoveringStagedCheckoutError,
-    RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService, RefundReconciliationService,
-    ReturnClaimDecisionInput, ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
-    ReturnCompletionOperationJournal, ReturnCompletionOperationResult,
-    ReturnCompletionOperationStage, ReturnCompletionOperationStatus,
-    ReturnCompletionOrchestrationService, ReturnDecisionInput, ReturnDecisionResponse,
-    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
-    StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService, StoreContextError,
-    StoreContextResult, StoreContextService,
+    MarketplaceReversalOperatorService,
 };
 pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
 pub(crate) use storefront_checkout_pricing::StorefrontCheckoutPricingResolver;
@@ -161,40 +164,28 @@ impl RusToKModule for CommerceModule {
             fulfillment_registry,
         ));
 
-        let financial_runtime = ctx
-            .extensions
-            .get::<MarketplaceFinancialRuntime>()
-            .cloned()
-            .expect(
-                "commerce module requires MarketplaceFinancialRuntime in ModuleRuntimeExtensions",
-            );
-        let event_bus = ctx
-            .extensions
-            .get::<TransactionalEventBus>()
-            .cloned()
-            .expect("commerce module requires TransactionalEventBus in ModuleRuntimeExtensions");
-        registry.register(services::MarketplacePaidOrderFinancialHandler::new(
-            ctx.db.clone(),
-            event_bus,
-            financial_runtime.ledger_port(),
-        ));
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        let marketplace_financial_runtime = extensions
-            .get::<MarketplaceFinancialRuntime>()
-            .cloned()
-            .ok_or_else(|| {
-                rustok_core::Error::Validation(
-                    "commerce module requires MarketplaceFinancialRuntime in runtime extensions"
-                        .to_string(),
-                )
-            })?;
-        extensions.insert(marketplace_financial_runtime);
-        Ok(())
+        #[cfg(feature = "marketplace-financial")]
+        {
+            let financial_runtime = ctx
+                .extensions
+                .get::<MarketplaceFinancialRuntime>()
+                .cloned()
+                .expect(
+                    "commerce marketplace-financial capability requires MarketplaceFinancialRuntime in ModuleRuntimeExtensions",
+                );
+            let event_bus = ctx
+                .extensions
+                .get::<TransactionalEventBus>()
+                .cloned()
+                .expect(
+                    "commerce marketplace-financial capability requires TransactionalEventBus in ModuleRuntimeExtensions",
+                );
+            registry.register(services::MarketplacePaidOrderFinancialHandler::new(
+                ctx.db.clone(),
+                event_bus,
+                financial_runtime.ledger_port(),
+            ));
+        }
     }
 }
 
