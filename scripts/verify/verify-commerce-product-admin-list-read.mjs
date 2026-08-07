@@ -46,6 +46,7 @@ for (const required of [
   "product admin listing is unavailable",
   "list_admin_products_with_compatibility_query(",
   "require_policy(PortCallPolicy::read())",
+  "let page = page.max(1);",
 ]) {
   requireText(ports, required, `Product admin list port contract must contain ${required}`);
 }
