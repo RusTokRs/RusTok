@@ -1,6 +1,6 @@
 # Product to SalesChannel relation admission
 
-Status: `canonical_source_and_freshness_watermark_complete_runtime_evidence_pending`.
+Status: `canonical_source_freshness_and_convergence_complete_runtime_evidence_pending`.
 
 The current Product Index graph contains the Product-to-SalesChannel link. There is one canonical
 Product contract; no compatibility schema is waiting to add relation support.
@@ -55,6 +55,31 @@ equal retained membership, and records the second observation as the freshness w
 Resolver bounds remain 1024 visibility slugs, 1024 resolved Channel UUIDs, 64 Products per tenant page,
 and three stabilization attempts. `channels.is_active` is not relation identity membership.
 
+## Automatic convergence
+
+Product owns append-only visibility-change requests and one tenant-scoped durable convergence state.
+The state retains:
+
+- exact visibility-request cursor;
+- completed opaque Channel identity generation;
+- in-progress Channel sweep generation and Product keyset cursor;
+- lease token/expiry, retry availability, attempt count, and bounded error marker.
+
+The selected distribution registers one generic
+`product_sales_channel_relation_convergence` ModuleWork worker only when Product and Channel are both
+selected. It discovers one due tenant, claims through Product-owned `FOR UPDATE` state, and performs
+one exact Product reconciliation or one 64-Product tenant page. It owns no worker-local loop or event
+family.
+
+Channel changes during a sweep are not lost: the pass checkpoints only the generation it started with,
+so a newer current Channel generation remains due and starts another pass. Product visibility requests
+are retained and consumed in tenant sequence order. Lease expiry preserves all request/sweep progress.
+
+Detailed contracts:
+
+- [Product owner convergence state](../../rustok-product/docs/index-sales-channel-relation-convergence.md)
+- [M7 automatic convergence composition](./m7-product-sales-channel-convergence.md)
+
 ## Complete Product graph clock
 
 `product_index_graph_projection_snapshots.projection_epoch` remains the only full Product mutation
@@ -79,14 +104,22 @@ Hard-delete replay does not require a live freshness witness because it removes 
 4. Tenant-scoped Channel identity generation: source complete.
 5. Canonical Product replay/absence freshness gate: source complete.
 6. Complete Product graph projection clock and SalesChannel link: source complete.
-7. PostgreSQL concurrency/restart/delete-recreate/freshness evidence: pending.
-8. Automatic owner-change scheduling/triggering policy, if required for convergence latency: pending.
-9. Product typed event route/consumer after event-contract digest admission: pending.
-10. Storefront/production cutover and query equivalence: pending.
+7. Durable Product visibility requests and tenant convergence checkpoint/lease: source complete.
+8. Automatic Product visibility / Channel identity relation convergence through generic ModuleWork:
+   source complete.
+9. PostgreSQL concurrency/restart/delete-recreate/freshness/convergence evidence: pending.
+10. Materialized/query freshness admission for the source-read -> mutation-apply window: pending.
+11. Product typed event route/consumer after event-contract digest admission: pending.
+12. Storefront/production cutover and query equivalence: pending.
+
+Automatic convergence does not authorize cutover by itself. A previously valid source page can still be
+in flight when owner facts change; that already-produced mutation needs a materialized/query freshness
+fence or equivalent retained admission evidence.
 
 ## Maintainer validation
 
 ```bash
+node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-source.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs
@@ -95,7 +128,7 @@ node scripts/verify/verify-index-product-graph-projection-ledger.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-channel --all-targets
 cargo check -p rustok-product --all-targets
-cargo check -p rustok-distribution --all-targets
+cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 

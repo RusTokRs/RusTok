@@ -1,8 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked against `main@183c78d8c76ffb14ba9e37179e5a13fa693e11de` and continued on
-`agent/index-product-relation-freshness-20260807`. The intervening Forum/Reactions/Pages work is
-disjoint from this Product/Channel freshness slice.
+Status overlay rechecked against `main@14063a98cbdb6d3e0f5cc93b3b46b9ab01a9ca68` and continued on
+`agent/index-product-relation-convergence-20260807`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution
 cursor.
@@ -30,6 +29,8 @@ inspection. Independent M7 source work can continue while that owner-execution g
 - Product-SalesChannel freshness witness ledger;
 - tenant-scoped Channel identity generation;
 - live Product replay/absence source-admission freshness gate;
+- Product-owned visibility convergence requests and tenant lease/checkpoint state;
+- bounded generic ModuleWork Product-SalesChannel automatic convergence;
 - persisted tenant schema readiness gate.
 
 ## Canonical Product policy
@@ -44,15 +45,18 @@ it is not a Product compatibility matrix. The current Product graph contains Pro
 `variant_ids`/`variants`, and `sales_channel_ids`/`sales_channels`. Product visibility slugs stay
 owner-side resolver input rather than transitional Index fields.
 
-## Membership, ordering, and freshness are separate
+## Membership, ordering, freshness, and convergence are separate
 
 1. `relation_epoch` changes only when resolved Product-to-SalesChannel UUID membership changes.
 2. `projection_epoch` advances when complete Product record inputs move and is the only Product Index
    mutation `source_version`.
 3. `product_sales_channel_index_relation_freshness_snapshots` records that one retained relation epoch
    was verified against current Product visibility and a Channel identity generation.
+4. `product_sales_channel_index_relation_convergence_requests` plus tenant convergence state ensure
+   owner changes are durably driven back through the bounded resolver.
 
-A freshness-only change never fabricates a relation membership change.
+A freshness-only change never fabricates a relation membership change. A convergence checkpoint is not
+an Index mutation clock.
 
 ## Channel identity generation
 
@@ -65,7 +69,7 @@ mutation, the positive generation is retained even if the tenant later has zero 
 
 ## Freshness watermark source complete
 
-For an exact Product, the distribution resolver now:
+For an exact Product, the distribution resolver:
 
 1. observes Product visibility, Product `index_revision`, tenant Channel identity generation, and
    resolved UUID membership under `REPEATABLE READ`, `READ ONLY`;
@@ -85,11 +89,43 @@ when current visibility still matches; unrelated Product updates therefore do no
 relation. Product hard-delete replay does not require a live freshness witness because it removes the
 graph.
 
-This completes **source admission** freshness fencing, not materialized-view convergence. Source read
-and Index mutation application are not one cross-owner transaction: a Channel identity change can
-commit after a Product source page was read but before its already-produced mutation is applied. The
-next source read will reject the old witness, but authoritative query freshness still depends on
-bounded automatic convergence or an equivalent materialized/query fence plus retained evidence.
+## Automatic owner-change relation convergence source complete
+
+Product now owns two additional durable surfaces:
+
+- append-only exact Product requests for INSERT/canonical `channel_visibility` changes;
+- one tenant convergence state with exact request cursor, completed opaque Channel generation,
+  in-progress Channel sweep generation/Product cursor, bounded lease, retry availability, attempt
+  count, and error marker.
+
+The selected distribution registers `product_sales_channel_relation_convergence` through the existing
+generic `ModuleWorkScheduler` only when Product and Channel are both selected. One work item processes
+either one exact Product request or one bounded 64-Product convergence page, calling the existing exact
+resolver for each Product. Product-owned `FOR UPDATE` claim state makes duplicate due discovery across
+hosts harmless. Lease expiry preserves request/sweep progress across restart.
+
+Channel identity changes during a sweep cannot be skipped: the pass checkpoints only the generation it
+started with, so a newer current Channel generation remains due for another pass. Product visibility
+requests remain tenant ordered and exact; deleted Products advance their obsolete request cursor without
+requiring a live witness.
+
+Rejected Product owner data is isolated from tenant progress. Invalid visibility, oversized allowlists,
+or too many resolved Channel targets leave that Product individually source-stale without blocking
+later Products in the same tenant. Correcting Product visibility creates a new exact request; a
+Channel-side correction advances Channel generation and schedules another tenant pass. Retryable
+concurrency/storage/relation/freshness failures still preserve the current page for retry.
+
+The Product DDL state machine prevents direct SQL from skipping visibility requests, changing an
+in-progress sweep generation, resetting a partial Product cursor, forging a completed Channel
+checkpoint, or deleting convergence state. Product still does not read Channel storage or depend on
+`rustok-channel`/`rustok-index`.
+
+This closes the previous manual scheduling gap. It does **not** close the materialized/query freshness
+window: source read and Index mutation application are separate transactions. A Channel identity change
+can commit after a valid Product source page was read but before its already-produced mutation is
+applied. The next source read fails closed and automatic convergence repairs owner relation state, but
+a previously produced/applied Index record still requires a materialized/query freshness fence or
+equivalent retained admission evidence before authoritative cutover.
 
 ## Event-contract admission status
 
@@ -137,11 +173,15 @@ Required sequence remains:
 - [x] Product-SalesChannel freshness witness.
 - [x] Channel identity generation.
 - [x] Canonical Product replay/absence fail-closed source freshness gate.
+- [x] Product visibility convergence request ledger and tenant lease/checkpoint state.
+- [x] Automatic bounded Product visibility / Channel identity relation convergence through generic
+      ModuleWork composition, including rejected-Product poison isolation.
 - [x] Remove parallel Product/ProductVariant compatibility implementations.
-- [ ] Execute PostgreSQL evidence for schema readiness, relation/freshness storage, resolver
-      convergence, projection concurrency/delete ordering, and canonical replay.
-- [ ] Implement bounded automatic owner-change convergence or an equivalent materialized/query
-      freshness fence; specifically cover the source-read -> mutation-apply in-flight window.
+- [ ] Execute PostgreSQL evidence for schema readiness, relation/freshness/convergence storage,
+      rejected-Product isolation, multi-host lease expiry/restart, resolver convergence, projection
+      concurrency/delete ordering, and canonical replay.
+- [ ] Implement/admit a materialized/query freshness fence for the source-read -> mutation-apply
+      in-flight window.
 - [ ] Admit canonical Product typed wire events/routes/consumers after digest verification.
 - [ ] Retain Channel create/delete/slug/identity, Product visibility, retry/restart/delete-recreate,
       out-of-order, locale fan-out, in-flight mutation, and freshness evidence.
@@ -152,16 +192,16 @@ Required sequence remains:
 
 Primary owner step remains: execute and admit the locked M6 repair PostgreSQL packet.
 
-Next unblocked M7 source step: compose **automatic freshness convergence** from existing owner changes
-without weakening the fail-closed source watermark. Prefer a bounded durable queue/checkpoint or an
-equivalent materialized freshness fence over a blind background sweep. Keep typed Product event work
-separately blocked until digest admission.
+Next unblocked M7 source step: design the **materialized/query freshness fence** for the remaining
+source-read -> mutation-apply window. Prefer an explicit persisted watermark/admission comparison at
+query/materialization boundary over adding another Product schema or duplicating relation membership.
+Keep typed Product event work separately blocked until digest admission.
 
 ## Maintainer verification for this slice
 
 ```bash
+node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
-node scripts/verify/verify-index-product-source.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs
 node scripts/verify/verify-index-product-channel-relation-ledger.mjs
 node scripts/verify/verify-index-product-graph-projection-ledger.mjs
@@ -169,7 +209,7 @@ node scripts/verify/verify-index-product-absence-postgres-harness.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-channel --all-targets
 cargo check -p rustok-product --all-targets
-cargo check -p rustok-distribution --all-targets
+cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 
