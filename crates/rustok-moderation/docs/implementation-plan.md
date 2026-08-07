@@ -90,12 +90,20 @@ For Groups compatibility:
 
 For Forum compatibility now present in source:
 
-- topic subject: `module="forum"`, kind `ForumTopic`, ID `forum_topics.id`;
-- reply subject: `module="forum"`, kind `ForumPost`, ID `forum_replies.id`;
-- both use the established Forum content revision rule `latest captured owner revision id + 1`;
-- the Forum adapter locks the exact non-deleted subject and compares the reviewed revision
-  before applying any local effect;
-- a stale revision conflicts and is never retargeted to current content.
+- topic subject: `module="forum"`, kind `ForumTopic`, ID `forum_topics.id`, revision from
+  `forum_topic_moderation_subject_revisions.revision`;
+- reply subject: `module="forum"`, kind `ForumPost`, ID `forum_replies.id`, revision from
+  `forum_reply_moderation_subject_revisions.revision`;
+- the two revision tables are Forum-owned current-state clocks only; they are not Moderation
+  cases, decisions, audit history, queues, application-attempt state, or Reactions state;
+- migration `m20260807_000027_add_forum_moderation_subject_revisions` backfills existing
+  subjects and maintains future revisions with PostgreSQL/SQLite triggers over core
+  subject/content/lifecycle/enforcement changes;
+- the Forum adapter fences the exact non-deleted subject and its dedicated revision row before
+  comparing the reviewed revision or applying a local effect;
+- the Moderation revision is deliberately not the Reactions/content-revision row ID, an
+  `updated_at` timestamp, or the global Forum event sequence;
+- a stale revision conflicts and is never retargeted to current content/state.
 
 A stale revision returns a stable conflict. Moderation may require re-review; it never
 silently retargets a decision to the latest subject revision.
@@ -120,11 +128,14 @@ For Forum's first bounded adapter slice:
 
 - Forum registers `forum_topic` and `forum_post` factories through the neutral API and has no
   dependency on the Moderation owner crate;
+- Forum owns only its monotonic moderation subject revision clocks, existing topic/reply
+  lifecycle/enforcement state, and Search projection invalidation;
 - Forum reuses `rustok-outbox::idempotency` / `owner_operation_receipts` for bounded application
-  provenance instead of creating a Forum case, decision, audit, or receipt subsystem;
+  provenance instead of creating a Forum case, decision, audit, or application-receipt
+  subsystem;
 - `NoDomainMutation` is accepted for both subject kinds;
 - permanent topic lock maps to the existing Forum owner lock mutation plus Forum Search
-  projection invalidation;
+  projection invalidation and advances the dedicated moderation subject revision;
 - temporary lock and all remaining visibility/restriction effects fail closed until an exact
   owner semantic and, where required, expiry-safe Forum state exists.
 
@@ -150,12 +161,13 @@ Required semantics:
 
 The Forum source slice demonstrates receipt-first domain application using the shared
 Outbox owner-operation ledger. `PortContext.idempotency_key` must equal the decision UUID;
-receipt admission binds the full immutable command before subject reads. Success completes
-the shared receipt in the same Forum transaction as the local effect. Non-retryable domain
-failures may become terminal receipt errors, while retryable storage/serialization failures
-leave the processing lease reclaimable. This is producer-side source only; the Moderation
-owner still needs its durable application attempt state, scheduler/backoff and host runtime
-materialization.
+receipt admission binds the full immutable command before subject reads. Application then
+fences the active Forum subject and dedicated moderation revision row. Success completes the
+shared receipt in the same Forum transaction as the local effect and returns the
+post-application Forum moderation subject revision. Non-retryable domain failures may become
+terminal receipt errors, while retryable storage/serialization failures leave the processing
+lease reclaimable. This is producer-side source only; the Moderation owner still needs its
+durable application attempt state, scheduler/backoff and host runtime materialization.
 
 ## Source completed
 
@@ -172,8 +184,9 @@ materialization.
 - truthful legacy decision reads using `effect: None`;
 - source guard `scripts/verify/verify-moderation-api-boundary.mjs`;
 - Forum as the first real domain adapter producer in source: `forum_topic`/`forum_post`
-  factories, shared receipt/revision fencing, trusted caller gate, no-op decisions and
-  permanent topic lock, guarded by `scripts/verify/verify-forum-moderation-subject-adapter.mjs`.
+  factories, dedicated owner moderation-revision clocks, shared receipt/revision fencing,
+  trusted caller gate, no-op decisions and permanent topic lock, guarded by
+  `scripts/verify/verify-forum-moderation-subject-adapter.mjs`.
 
 ## Next priorities
 
@@ -184,16 +197,17 @@ materialization.
 3. Extend Forum only with exact owner effect mappings: reply visibility/lifecycle is the next
    candidate if counters/events/projections remain atomic; add explicit expiry-safe state
    before temporary restrictions.
-4. Add PostgreSQL concurrent Forum application and Moderation active-case/decision-effect/
-   revision-CAS evidence.
-5. Add moderation-specific RBAC resources and tenant permission registration.
-6. Publish transactional outbox contracts for report, case, decision, application, and
+4. Retain PostgreSQL/SQLite migration/backfill/trigger evidence for Forum moderation revision
+   clocks plus concurrent content/lifecycle edit versus permanent-lock application evidence.
+5. Add PostgreSQL Moderation active-case/decision-effect/revision-CAS evidence.
+6. Add moderation-specific RBAC resources and tenant permission registration.
+7. Publish transactional outbox contracts for report, case, decision, application, and
    appeal lifecycle events.
-7. Integrate Groups as the membership-scoped expiry reference adapter, then Blog, Comments,
+8. Integrate Groups as the membership-scoped expiry reference adapter, then Blog, Comments,
    Pages, Reviews, Marketplace, Media, Messaging, and Profiles.
-8. Add versioned policies, premoderation, automated assessment providers, appeals, and
+9. Add versioned policies, premoderation, automated assessment providers, appeals, and
    capability-scoped account sanctions.
-9. Publish admin queue/case/application surfaces only after owner runtime composition.
+10. Publish admin queue/case/application surfaces only after owner runtime composition.
 
 ## Invariants
 
@@ -202,6 +216,8 @@ materialization.
 - decision effect is immutable, typed, versioned, and part of decision hash identity;
 - moderation never writes domain-owned tables;
 - domain modules never import moderation entities or services;
+- domain-specific subject revision clocks remain domain-owned and are not copied into
+  Moderation persistence as a second mutable source of truth;
 - receipts replay before provider or subject reads;
 - idempotency keys and actor identity come only from `PortContext`;
 - immutable decisions are not rewritten after application;
@@ -219,6 +235,7 @@ materialization.
 - moderation disabled: authorized domain-local enforcement may continue when product policy
   permits it, while report/case/appeal features are unavailable;
 - stale revision: conflict and explicit re-review/new decision;
+- missing/corrupt domain subject revision state: invariant failure, never guessed success;
 - unknown effect version, legacy `effect: None`, or unsupported effect: reject without
   domain mutation.
 
@@ -231,6 +248,8 @@ materialization.
 - `node scripts/verify/verify-moderation-api-boundary.mjs`;
 - `node scripts/verify/verify-forum-moderation-subject-adapter.mjs`;
 - clean/upgraded PostgreSQL and SQLite decision-effect migration evidence;
+- Forum moderation subject revision migration/backfill and topic/reply content/lifecycle
+  trigger-advance evidence on PostgreSQL and SQLite;
 - duplicate/missing/mismatched adapter registry behavior;
 - typed-effect serialization, bounds, version, compatibility, request-hash, and decision-hash
   evidence;
@@ -238,7 +257,7 @@ materialization.
 - PostgreSQL duplicate-report, active-case, and case-revision contention tests;
 - decision application crash/retry/lost-response recovery;
 - Forum shared-receipt replay/request conflict, trusted caller, stale revision and
-  permanent-lock versus concurrent-edit evidence;
+  permanent-lock versus concurrent content/lifecycle edit evidence;
 - replay and changed-hash conflict across moderation and domain receipts;
 - stale revision, unsupported effect, tenant/scope isolation, and owner adapter tests;
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback
