@@ -288,13 +288,49 @@ pub async fn create_product(
     )
 )]
 pub async fn show_product(
-    state: State<CommerceHttpRuntime>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
-    path: Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::show_product(state, tenant, auth, request_context, path).await
+    ensure_permissions(
+        &auth,
+        &[Permission::PRODUCTS_READ],
+        "Permission denied: products:read required",
+    )?;
+
+    let port_context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        rustok_api::PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-product:show:{id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let port_context = match request_context.channel_slug.as_deref() {
+        Some(channel) => port_context.with_channel(channel),
+        None => port_context,
+    };
+    let product = runtime
+        .product_catalog_read_port()
+        .read_product_projection(
+            port_context.clone(),
+            rustok_product::ProductProjectionRequest {
+                product_id: id,
+                locale: Some(request_context.locale.clone()),
+                fallback_locale: Some(tenant.default_locale.clone()),
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_admin_product_port_error(
+                AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "show_product"),
+                &port_context,
+                error,
+            )
+        })?;
+
+    Ok(Json(product))
 }
 
 /// Update admin ecommerce product
