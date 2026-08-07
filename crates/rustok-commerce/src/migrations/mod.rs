@@ -23,11 +23,17 @@ mod m20260716_000003_add_order_field_cache_generation_trigger;
 mod m20260716_000004_create_return_completion_operations;
 mod m20260716_000005_enforce_return_completion_resolution_identity;
 mod m20260716_000006_create_return_completion_commands;
+#[cfg(feature = "marketplace-financial")]
 mod m20260721_000001_create_checkout_marketplace_economics_checkpoints;
+#[cfg(feature = "marketplace-financial")]
 mod m20260721_000002_create_marketplace_financial_operations;
+#[cfg(feature = "marketplace-financial")]
 mod m20260721_000003_create_marketplace_paid_event_inbox;
+#[cfg(feature = "marketplace-financial")]
 mod m20260721_000004_create_marketplace_reversal_event_inbox;
+#[cfg(feature = "marketplace-financial")]
 mod m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity;
+#[cfg(feature = "marketplace-financial")]
 mod m20260721_000006_create_marketplace_reversal_adaptation_failures;
 mod m20260721_000007_align_language_agnostic_locale_contract;
 
@@ -35,7 +41,7 @@ use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![
+    let mut migrations: Vec<Box<dyn MigrationTrait>> = vec![
         Box::new(m20250130_000017_create_commerce_collections::Migration),
         Box::new(m20250130_000018_create_commerce_categories::Migration),
         Box::new(m20260316_000005_create_order_field_definitions::Migration),
@@ -59,18 +65,27 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000004_create_return_completion_operations::Migration),
         Box::new(m20260716_000005_enforce_return_completion_resolution_identity::Migration),
         Box::new(m20260716_000006_create_return_completion_commands::Migration),
-        Box::new(m20260721_000001_create_checkout_marketplace_economics_checkpoints::Migration),
+    ];
+
+    #[cfg(feature = "marketplace-financial")]
+    migrations.extend(vec![
+        Box::new(m20260721_000001_create_checkout_marketplace_economics_checkpoints::Migration)
+            as Box<dyn MigrationTrait>,
         Box::new(m20260721_000002_create_marketplace_financial_operations::Migration),
         Box::new(m20260721_000003_create_marketplace_paid_event_inbox::Migration),
         Box::new(m20260721_000004_create_marketplace_reversal_event_inbox::Migration),
         Box::new(m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity::Migration),
         Box::new(m20260721_000006_create_marketplace_reversal_adaptation_failures::Migration),
-        Box::new(m20260721_000007_align_language_agnostic_locale_contract::Migration),
-    ]
+    ]);
+
+    migrations.push(Box::new(
+        m20260721_000007_align_language_agnostic_locale_contract::Migration,
+    ));
+    migrations
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
-    vec![
+    let mut dependencies = vec![
         MigrationDependencyDescriptor::new(
             "m20250130_000017_create_commerce_collections",
             vec!["m20250130_000012_create_commerce_products"],
@@ -177,6 +192,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20260716_000006_create_return_completion_commands",
             vec!["m20260716_000005_enforce_return_completion_resolution_identity"],
         ),
+    ];
+
+    #[cfg(feature = "marketplace-financial")]
+    dependencies.extend(vec![
         MigrationDependencyDescriptor::new(
             "m20260721_000001_create_checkout_marketplace_economics_checkpoints",
             vec![
@@ -219,12 +238,14 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20260714_000117_lock_provider_event_normalized_facts",
             ],
         ),
-        MigrationDependencyDescriptor::new(
-            "m20260721_000007_align_language_agnostic_locale_contract",
-            vec![
-                "m20250130_000017_create_commerce_collections",
-                "m20250130_000018_create_commerce_categories",
-            ],
-        ),
-    ]
+    ]);
+
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20260721_000007_align_language_agnostic_locale_contract",
+        vec![
+            "m20250130_000017_create_commerce_collections",
+            "m20250130_000018_create_commerce_categories",
+        ],
+    ));
+    dependencies
 }
