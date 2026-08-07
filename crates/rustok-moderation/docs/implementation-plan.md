@@ -3,7 +3,7 @@ id: doc://crates/rustok-moderation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-07-23
+last_reviewed: 2026-08-07
 ---
 
 # Moderation implementation plan
@@ -88,6 +88,15 @@ For Groups compatibility:
 - the Groups adapter verifies tenant, scope, subject ID/revision, decision hash, effect
   compatibility, and local invariants inside the owner transaction.
 
+For Forum compatibility now present in source:
+
+- topic subject: `module="forum"`, kind `ForumTopic`, ID `forum_topics.id`;
+- reply subject: `module="forum"`, kind `ForumPost`, ID `forum_replies.id`;
+- both use the established Forum content revision rule `latest captured owner revision id + 1`;
+- the Forum adapter locks the exact non-deleted subject and compares the reviewed revision
+  before applying any local effect;
+- a stale revision conflicts and is never retargeted to current content.
+
 A stale revision returns a stable conflict. Moderation may require re-review; it never
 silently retargets a decision to the latest subject revision.
 
@@ -106,6 +115,18 @@ For Groups:
 - Groups never copies reports, case notes, policy snapshots, appeal state, or queue data;
 - moderation admin FFA owns queue/case/decision/application surfaces; Groups FFA owns current
   local enforcement state and authorized direct domain actions.
+
+For Forum's first bounded adapter slice:
+
+- Forum registers `forum_topic` and `forum_post` factories through the neutral API and has no
+  dependency on the Moderation owner crate;
+- Forum reuses `rustok-outbox::idempotency` / `owner_operation_receipts` for bounded application
+  provenance instead of creating a Forum case, decision, audit, or receipt subsystem;
+- `NoDomainMutation` is accepted for both subject kinds;
+- permanent topic lock maps to the existing Forum owner lock mutation plus Forum Search
+  projection invalidation;
+- temporary lock and all remaining visibility/restriction effects fail closed until an exact
+  owner semantic and, where required, expiry-safe Forum state exists.
 
 Direct domain actions and moderation-driven actions converge on the same domain owner
 mutation path. Whether a direct action also opens a case is host/product policy.
@@ -127,6 +148,15 @@ Required semantics:
 - validation, unsupported effect, and stale revision never become success;
 - crash recovery cannot double-apply a decision.
 
+The Forum source slice demonstrates receipt-first domain application using the shared
+Outbox owner-operation ledger. `PortContext.idempotency_key` must equal the decision UUID;
+receipt admission binds the full immutable command before subject reads. Success completes
+the shared receipt in the same Forum transaction as the local effect. Non-retryable domain
+failures may become terminal receipt errors, while retryable storage/serialization failures
+leave the processing lease reclaimable. This is producer-side source only; the Moderation
+owner still needs its durable application attempt state, scheduler/backoff and host runtime
+materialization.
+
 ## Source completed
 
 - owner crate, module metadata, schema, migrations, report/case/decision services, receipts,
@@ -140,22 +170,30 @@ Required semantics:
 - `moderation_decision_effects` tenant-scoped persistence and migration dependency;
 - new decision request/hash/event/record binding to the typed effect;
 - truthful legacy decision reads using `effect: None`;
-- source guard `scripts/verify/verify-moderation-api-boundary.mjs`.
+- source guard `scripts/verify/verify-moderation-api-boundary.mjs`;
+- Forum as the first real domain adapter producer in source: `forum_topic`/`forum_post`
+  factories, shared receipt/revision fencing, trusted caller gate, no-op decisions and
+  permanent topic lock, guarded by `scripts/verify/verify-forum-moderation-subject-adapter.mjs`.
 
 ## Next priorities
 
-1. Add durable decision-application operations, receipt replay, leases, retry/backoff,
-   crash/lost-response recovery, and applied-evidence validation.
-2. Materialize the adapter registry in host runtime and expose bounded operator recovery.
-3. Add PostgreSQL concurrent active-case, decision-effect, and revision-CAS evidence.
-4. Add moderation-specific RBAC resources and tenant permission registration.
-5. Publish transactional outbox contracts for report, case, decision, application, and
+1. Add durable Moderation-owner decision-application operations, attempt state, leases,
+   retry/backoff, crash/lost-response recovery, and applied-evidence validation.
+2. Materialize the registered adapter factories in host runtime and expose bounded operator
+   recovery; prove missing/unavailable adapters stay retryable.
+3. Extend Forum only with exact owner effect mappings: reply visibility/lifecycle is the next
+   candidate if counters/events/projections remain atomic; add explicit expiry-safe state
+   before temporary restrictions.
+4. Add PostgreSQL concurrent Forum application and Moderation active-case/decision-effect/
+   revision-CAS evidence.
+5. Add moderation-specific RBAC resources and tenant permission registration.
+6. Publish transactional outbox contracts for report, case, decision, application, and
    appeal lifecycle events.
-6. Integrate Groups as the reference membership-scoped adapter, then Forum, Blog, Comments,
+7. Integrate Groups as the membership-scoped expiry reference adapter, then Blog, Comments,
    Pages, Reviews, Marketplace, Media, Messaging, and Profiles.
-7. Add versioned policies, premoderation, automated assessment providers, appeals, and
+8. Add versioned policies, premoderation, automated assessment providers, appeals, and
    capability-scoped account sanctions.
-8. Publish admin queue/case/application surfaces only after owner runtime composition.
+9. Publish admin queue/case/application surfaces only after owner runtime composition.
 
 ## Invariants
 
@@ -188,7 +226,10 @@ Required semantics:
 
 - `cargo check -p rustok-moderation-api` and `cargo check -p rustok-moderation`;
 - `cargo test -p rustok-moderation-api` and `cargo test -p rustok-moderation`;
+- `cargo check -p rustok-forum --all-targets` and
+  `cargo test -p rustok-forum moderation_subject -- --nocapture`;
 - `node scripts/verify/verify-moderation-api-boundary.mjs`;
+- `node scripts/verify/verify-forum-moderation-subject-adapter.mjs`;
 - clean/upgraded PostgreSQL and SQLite decision-effect migration evidence;
 - duplicate/missing/mismatched adapter registry behavior;
 - typed-effect serialization, bounds, version, compatibility, request-hash, and decision-hash
@@ -196,7 +237,12 @@ Required semantics:
 - historical decision `effect: None` read and non-dispatch evidence;
 - PostgreSQL duplicate-report, active-case, and case-revision contention tests;
 - decision application crash/retry/lost-response recovery;
+- Forum shared-receipt replay/request conflict, trusted caller, stale revision and
+  permanent-lock versus concurrent-edit evidence;
 - replay and changed-hash conflict across moderation and domain receipts;
 - stale revision, unsupported effect, tenant/scope isolation, and owner adapter tests;
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback
   evidence.
+
+No new execution evidence is claimed by the Forum adapter source slice. Maintainer-run
+verification remains required before promotion.
