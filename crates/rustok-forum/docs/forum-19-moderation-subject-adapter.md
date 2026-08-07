@@ -17,23 +17,48 @@ The factories are module runtime extensions only. Materialization of the adapter
 
 `apply_moderation_decision` accepts only `PortActorKind::Service` or `PortActorKind::System` callers and requires full write semantics. A direct user caller is rejected before owner storage is read.
 
-The `PortContext.idempotency_key` must equal the immutable Moderation `decision_id`. Forum reuses `rustok-outbox::idempotency` and the shared `owner_operation_receipts` ledger under `owner_slug = forum`; no Forum-specific receipt table is added.
+The `PortContext.idempotency_key` must equal the immutable Moderation `decision_id`. Forum reuses `rustok-outbox::idempotency` and the shared `owner_operation_receipts` ledger under `owner_slug = forum`; no Forum-specific application receipt table is added.
 
 Receipt admission happens before Forum subject reads. The full `ApplyModerationDecisionCommand`, including the Moderation-owned `decision_hash`, is immutably bound by the shared receipt request digest. Successful replay therefore returns the stored `ModerationDecisionApplication` without re-reading a now-changed subject.
 
 Non-retryable application errors may be retained as terminal shared receipt failures. Retryable database/serialization errors keep the processing lease reclaimable instead of freezing a temporary failure into the decision replay forever.
 
-## Exact revision boundary
+## Forum-owned moderation subject revision
 
-The adapter never retargets a decision. After receipt admission it locks the exact non-deleted Forum subject in the owner transaction and derives the current content revision with the same established Forum rule used by other neutral integrations:
+The existing Forum content revision used by Reactions/current-revision transport is deliberately **not** reused for Moderation. It captures content/metadata/delete history but is not a complete clock for lifecycle or enforcement changes such as `is_locked`.
+
+FORUM-19 therefore introduces two small Forum-owned current-state clocks:
 
 ```text
-latest captured Forum topic/reply revision id + 1
+forum_topic_moderation_subject_revisions
+forum_reply_moderation_subject_revisions
 ```
 
-If that value differs from `ModerationSubjectRef.revision`, the application fails with a revision conflict before any Forum effect is applied.
+These tables are not Moderation cases, decisions, audit history or application queues. They contain only tenant-scoped Forum subject identity plus one positive monotonic revision.
 
-PostgreSQL uses a serializable read-write owner transaction. The selected subject row is taken into the transaction write set before the revision lookup; concurrent owner edits remain a retry/concurrency evidence gate rather than being claimed from source review alone.
+Existing subjects are backfilled with a positive opaque revision. Database triggers initialize future subjects and advance the clock when the reviewed Forum subject changes:
+
+- topic core/lifecycle/enforcement state including category, author, status, metadata, pin, lock and soft-delete state;
+- topic translation insert/update/delete;
+- reply core/lifecycle/structural state including parent topic/reply, author, status, position and soft-delete state;
+- reply body insert/update/delete.
+
+The moderation subject clock is intentionally distinct from:
+
+- Reactions subject revision;
+- `forum_topic_revisions` / `forum_reply_revisions` row IDs;
+- `updated_at` timestamps;
+- the global `forum_domain_events.sequence_no`.
+
+This gives `ModerationSubjectRef.revision` one subject-local monotonic owner identity that covers the state this first adapter is allowed to review and mutate, without coupling Moderation to Reactions or to a global event offset.
+
+## Exact revision and concurrency boundary
+
+After shared receipt admission, the adapter transaction fences both the exact active Forum subject and its moderation revision row. PostgreSQL uses `SERIALIZABLE` plus row locks. SQLite obtains its writer reservation through the dedicated revision row, avoiding a no-op update on the Forum subject and therefore avoiding unrelated topic/reply update triggers.
+
+A decision applies only when the reviewed moderation subject revision exactly matches the current Forum clock. A stale decision fails before mutation and is never retargeted.
+
+The permanent topic lock goes through `TopicService::set_locked_in_tx`. The database trigger must advance the moderation revision in the same transaction; the adapter returns that post-application revision as `ModerationDecisionApplication.applied_revision`. A true no-op keeps the reviewed revision unchanged. An unexpected missing/non-advancing clock is an invariant failure, not a guessed success.
 
 ## Effects in this bounded slice
 
@@ -52,11 +77,11 @@ Unsupported effects fail closed. They are not approximated by unrelated existing
 
 ## Ownership preserved
 
-Moderation remains authoritative for report intake, cases, queues, immutable decisions, appeals, retry/application orchestration and cross-domain audit. Forum retains only topic/reply lifecycle, exact current revision, local enforcement state and its own projection invalidation.
+Moderation remains authoritative for report intake, cases, queues, immutable decisions, appeals, retry/application orchestration and cross-domain audit. Forum retains only topic/reply lifecycle, the Forum-owned moderation subject revision, local enforcement state and its own projection invalidation.
 
 `rustok-forum` depends on `rustok-moderation-api`; it does not depend on the `rustok-moderation` owner crate and does not read Moderation persistence.
 
-This change is unrelated to Reactions ownership. It adds no reaction catalog, state, command, aggregate, transport or presentation code to Forum.
+This change is unrelated to Reactions ownership. It adds no reaction catalog, state, command, aggregate, transport or presentation code to Forum, and the new moderation revision clock is not a second Reactions revision system.
 
 ## Maintainer verification handoff
 
@@ -70,6 +95,6 @@ cargo xtask module validate forum
 git diff --check
 ```
 
-Future runtime evidence should additionally cover shared receipt replay/request conflict, stale reviewed revision, concurrent edit versus permanent lock, trusted-caller enforcement, PostgreSQL serialization/reclaim, and disabled/unmaterialized Moderation profiles.
+Future runtime evidence should additionally cover migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body edit versus permanent lock, trusted-caller enforcement, PostgreSQL serialization/reclaim, and disabled/unmaterialized Moderation profiles.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
