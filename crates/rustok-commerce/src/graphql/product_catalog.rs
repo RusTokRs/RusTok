@@ -14,7 +14,7 @@ use super::{
     require_storefront_channel_enabled,
 };
 
-fn product_catalog_port_error(
+pub(crate) fn product_catalog_port_error(
     context: &PortContext,
     error: PortError,
     operation: &'static str,
