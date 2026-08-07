@@ -223,3 +223,38 @@ pub fn application_retry_delay_seconds(attempt_count: i32) -> i64 {
         .saturating_mul(1_i64 << exponent)
         .min(APPLICATION_RETRY_MAX_SECONDS)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActorKind;
+
+    #[test]
+    fn retry_delay_is_bounded_exponential() {
+        assert_eq!(application_retry_delay_seconds(1), 5);
+        assert_eq!(application_retry_delay_seconds(2), 10);
+        assert_eq!(application_retry_delay_seconds(3), 20);
+        assert_eq!(application_retry_delay_seconds(6), 160);
+        assert_eq!(application_retry_delay_seconds(7), 300);
+        assert_eq!(application_retry_delay_seconds(100), 300);
+    }
+
+    #[test]
+    fn domain_context_keeps_decision_idempotency_across_attempts() {
+        let tenant_id = Uuid::new_v4();
+        let decision_id = Uuid::new_v4();
+        let first = application_port_context(tenant_id, decision_id, Uuid::new_v4());
+        let second = application_port_context(tenant_id, decision_id, Uuid::new_v4());
+
+        assert_eq!(first.tenant_id, tenant_id.to_string());
+        assert_eq!(first.actor.kind, PortActorKind::Service);
+        assert_eq!(first.actor.id, APPLICATION_DISPATCH_ACTOR);
+        assert_eq!(first.idempotency_key.as_deref(), Some(decision_id.to_string().as_str()));
+        assert_eq!(second.idempotency_key, first.idempotency_key);
+        assert_ne!(second.correlation_id, first.correlation_id);
+        assert_eq!(
+            first.deadline_ms,
+            Some(APPLICATION_ADAPTER_DEADLINE_SECONDS * 1_000),
+        );
+    }
+}
