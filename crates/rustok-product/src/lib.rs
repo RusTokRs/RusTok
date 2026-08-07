@@ -14,6 +14,7 @@ use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
+mod catalog_command_port;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -24,10 +25,14 @@ mod runtime;
 mod seo_targets;
 pub mod services;
 
+pub use catalog_command_port::ProductCatalogCommandPort;
 pub use error::{CommerceError, CommerceResult};
 pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};
-pub use runtime::{ProductCatalogReadProfile, ProductCatalogReadRuntime};
+pub use runtime::{
+    ProductCatalogCommandProfile, ProductCatalogCommandRuntime, ProductCatalogReadProfile,
+    ProductCatalogReadRuntime,
+};
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
     MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE,

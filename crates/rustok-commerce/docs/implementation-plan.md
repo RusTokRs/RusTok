@@ -199,6 +199,15 @@ These are source-contract defects, not verification-only tasks.
   the new topology guard, then retain evidence when validation policy allows it.
 - [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,
   Payment, and Fulfillment concrete services behind host-composed owner ports.
+- [x] Publish Product-owned `ProductCatalogCommandPort` / `ProductCatalogCommandRuntime`,
+  host-compose embedded or external command providers, and cut mounted admin REST
+  product create/update over to the owner port with deadline, payload-bound deterministic
+  write identity, channel, actor, locale, and stable public errors.
+- [ ] Cut remaining mounted Product list/detail/catalog reads, REST
+  delete/publish/unpublish lifecycle commands, and GraphQL product lifecycle/schema
+  operations over to host-composed Product owner ports. Direct Product entities,
+  `CatalogService`, and `ProductCatalogSchemaService` remain explicit source debt;
+  repeatable lifecycle commands need an explicit caller idempotency contract before cutover.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -595,6 +604,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs`
 - [ ] `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - [ ] `node scripts/verify/verify-commerce-marketplace-financial-capability.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-command-port.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -627,8 +637,8 @@ Source inspection is not execution evidence.
   mutation, payment, or fulfillment ownership; unmounted admin compatibility GET
   handlers remain explicit source debt.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, order-read,
-  and marketplace-financial topology static guards against a repository checkout and
-  retain their output.
+  marketplace-financial topology, and Product command-port static guards against a
+  repository checkout and retain their output.
 
 ### Compile/tests
 
@@ -798,6 +808,9 @@ Source inspection is not execution evidence.
   keep base Commerce marketplace-free, gate financial migrations/transports/listeners/
   workers, compose owner modules only through explicit capability features, and fail
   closed before capture when marketplace lines reach a base-only checkout.
+- [x] Publish and host-compose Product catalog command ports, then cut mounted admin
+  REST product create/update away from `CatalogService` with payload-bound write
+  identity and stable public error mapping; lifecycle/read/GraphQL cutover remains open.
 
 ## Change rules
 
