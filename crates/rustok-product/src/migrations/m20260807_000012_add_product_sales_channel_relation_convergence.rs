@@ -118,23 +118,45 @@ CREATE OR REPLACE FUNCTION rustok_product_guard_channel_relation_convergence_sta
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    next_visibility_sequence BIGINT;
 BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.visibility_cursor <> 0
+           OR NEW.channel_identity_generation IS NOT NULL
+           OR NEW.sweep_generation IS NOT NULL
+           OR NEW.sweep_after_product_id IS NOT NULL
+           OR NEW.lease_token IS NOT NULL
+           OR NEW.lease_expires_at IS NOT NULL
+           OR NEW.attempt_count <> 0
+           OR NEW.last_error IS NOT NULL
+        THEN
+            RAISE EXCEPTION 'Product-SalesChannel convergence state must start from the canonical empty checkpoint';
+        END IF;
+        RETURN NEW;
+    END IF;
+
     IF NEW.tenant_id <> OLD.tenant_id THEN
         RAISE EXCEPTION 'Product-SalesChannel convergence tenant identity is immutable';
     END IF;
     IF NEW.visibility_cursor < OLD.visibility_cursor THEN
         RAISE EXCEPTION 'Product-SalesChannel convergence visibility cursor cannot regress';
     END IF;
-    IF NEW.visibility_cursor > OLD.visibility_cursor
-       AND NOT EXISTS (
-           SELECT 1
-           FROM product_sales_channel_index_relation_convergence_requests request
-           WHERE request.tenant_id = NEW.tenant_id
-             AND request.sequence_no = NEW.visibility_cursor
-       )
-    THEN
-        RAISE EXCEPTION 'Product-SalesChannel convergence visibility cursor must reference a retained request';
+    IF NEW.visibility_cursor > OLD.visibility_cursor THEN
+        SELECT MIN(request.sequence_no)
+          INTO next_visibility_sequence
+          FROM product_sales_channel_index_relation_convergence_requests request
+         WHERE request.tenant_id = NEW.tenant_id
+           AND request.sequence_no > OLD.visibility_cursor;
+        IF next_visibility_sequence IS NULL
+           OR NEW.visibility_cursor <> next_visibility_sequence
+           OR OLD.lease_token IS NULL
+           OR NEW.lease_token IS NOT NULL
+        THEN
+            RAISE EXCEPTION 'Product-SalesChannel convergence visibility cursor must advance exactly one leased request';
+        END IF;
     END IF;
+
     IF OLD.channel_identity_generation IS NOT NULL
        AND NEW.channel_identity_generation IS NULL
     THEN
@@ -145,9 +167,70 @@ BEGIN
     THEN
         RAISE EXCEPTION 'Product-SalesChannel convergence Channel generation cannot regress';
     END IF;
+    IF NEW.channel_identity_generation IS DISTINCT FROM OLD.channel_identity_generation THEN
+        IF OLD.sweep_generation IS NULL
+           OR NEW.channel_identity_generation IS DISTINCT FROM OLD.sweep_generation
+           OR NEW.sweep_generation IS NOT NULL
+           OR NEW.sweep_after_product_id IS NOT NULL
+           OR OLD.lease_token IS NULL
+           OR NEW.lease_token IS NOT NULL
+        THEN
+            RAISE EXCEPTION 'Product-SalesChannel convergence Channel generation may advance only by completing the leased sweep';
+        END IF;
+    END IF;
+
+    IF OLD.sweep_generation IS NOT NULL
+       AND NEW.sweep_generation IS NOT NULL
+       AND NEW.sweep_generation <> OLD.sweep_generation
+    THEN
+        RAISE EXCEPTION 'Product-SalesChannel convergence in-progress sweep generation is immutable';
+    END IF;
+    IF OLD.sweep_generation IS NULL AND NEW.sweep_generation IS NOT NULL THEN
+        IF NEW.sweep_after_product_id IS NOT NULL
+           OR NEW.lease_token IS NULL
+           OR NEW.attempt_count <> OLD.attempt_count + 1
+           OR (
+               OLD.channel_identity_generation IS NOT NULL
+               AND NEW.sweep_generation < OLD.channel_identity_generation
+           )
+        THEN
+            RAISE EXCEPTION 'Product-SalesChannel convergence sweep must start from a new leased generation';
+        END IF;
+    END IF;
+    IF NEW.sweep_after_product_id IS DISTINCT FROM OLD.sweep_after_product_id THEN
+        IF OLD.sweep_generation IS NULL
+           OR NEW.sweep_generation IS DISTINCT FROM OLD.sweep_generation
+           OR OLD.lease_token IS NULL
+           OR NEW.lease_token IS NOT NULL
+        THEN
+            RAISE EXCEPTION 'Product-SalesChannel convergence sweep cursor may advance only by completing a leased page';
+        END IF;
+    END IF;
+    IF OLD.sweep_generation IS NOT NULL AND NEW.sweep_generation IS NULL THEN
+        IF NEW.channel_identity_generation IS DISTINCT FROM OLD.sweep_generation
+           OR NEW.sweep_after_product_id IS NOT NULL
+           OR OLD.lease_token IS NULL
+           OR NEW.lease_token IS NOT NULL
+        THEN
+            RAISE EXCEPTION 'Product-SalesChannel convergence sweep may clear only after checkpointing its generation';
+        END IF;
+    END IF;
+
+    IF NEW.lease_token IS DISTINCT FROM OLD.lease_token THEN
+        IF NEW.lease_token IS NOT NULL THEN
+            IF NEW.attempt_count <> OLD.attempt_count + 1 THEN
+                RAISE EXCEPTION 'Product-SalesChannel convergence lease acquisition must advance attempt count exactly once';
+            END IF;
+        ELSIF OLD.lease_token IS NULL THEN
+            RAISE EXCEPTION 'Product-SalesChannel convergence lease clear requires an existing lease';
+        END IF;
+    ELSIF NEW.attempt_count <> OLD.attempt_count THEN
+        RAISE EXCEPTION 'Product-SalesChannel convergence attempt count may change only with lease acquisition';
+    END IF;
     IF NEW.attempt_count < OLD.attempt_count THEN
         RAISE EXCEPTION 'Product-SalesChannel convergence attempt count cannot regress';
     END IF;
+
     RETURN NEW;
 END;
 $$;
@@ -162,8 +245,8 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER trg_product_channel_relation_convergence_state_update
-BEFORE UPDATE ON product_sales_channel_index_relation_convergence_state
+CREATE TRIGGER trg_product_channel_relation_convergence_state_insert_update
+BEFORE INSERT OR UPDATE ON product_sales_channel_index_relation_convergence_state
 FOR EACH ROW
 EXECUTE FUNCTION rustok_product_guard_channel_relation_convergence_state();
 
@@ -240,7 +323,7 @@ DROP TRIGGER IF EXISTS trg_products_enqueue_channel_relation_convergence_update 
 DROP TRIGGER IF EXISTS trg_products_enqueue_channel_relation_convergence_insert ON products;
 DROP TRIGGER IF EXISTS trg_product_channel_relation_convergence_state_delete
     ON product_sales_channel_index_relation_convergence_state;
-DROP TRIGGER IF EXISTS trg_product_channel_relation_convergence_state_update
+DROP TRIGGER IF EXISTS trg_product_channel_relation_convergence_state_insert_update
     ON product_sales_channel_index_relation_convergence_state;
 DROP TRIGGER IF EXISTS trg_product_channel_relation_convergence_request_delete
     ON product_sales_channel_index_relation_convergence_requests;
