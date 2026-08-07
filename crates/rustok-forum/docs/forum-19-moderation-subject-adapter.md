@@ -11,7 +11,22 @@ Forum registers two `ModerationSubjectAdapterFactory` instances:
 - `forum/forum_topic` for Forum topics;
 - `forum/forum_post` for Forum replies.
 
-The factories are module runtime extensions only. Materialization of the adapter registry and durable decision-application orchestration remain responsibilities of the Moderation owner/host and are not claimed by this slice.
+The factories remain producer-owned neutral runtime extensions. The selected server host now materializes the shared Moderation subject-adapter registry only when the optional `mod-moderation` owner feature is selected. Durable decision-application orchestration, retry state and operator recovery remain responsibilities of the Moderation owner/host and are not claimed by this slice.
+
+## Host materialization boundary
+
+`rustok-server::build_shared_runtime_extensions_with_host_providers` now materializes the neutral Moderation adapter registry after module runtime extensions and Forum host facts are composed.
+
+The source contract is explicit:
+
+- `mod-moderation` remains an optional server/distribution owner feature and is not implied by `mod-forum`;
+- when `mod-moderation` is selected, `ModerationModule` must be present in the supplied `ModuleRegistry`; a selected feature with a missing owner fails host composition;
+- Moderation without Forum materializes a valid empty subject registry;
+- Forum with Moderation materializes exactly the registered `forum/forum_topic` and `forum/forum_post` adapters;
+- Forum without Moderation remains valid and its neutral adapter factories stay unmaterialized;
+- factory build, duplicate-key or key-mismatch failures remain startup errors and never fall back to another adapter.
+
+The host uses `HostRuntimeContext` for factory materialization. It does not copy Forum subject logic into `rustok-moderation`, and it does not create a second adapter implementation in the server.
 
 ## Trusted application boundary
 
@@ -118,7 +133,7 @@ Unsupported effects fail closed. `Unpublished` is not silently mapped to `Reject
 
 Moderation remains authoritative for report intake, cases, queues, immutable decisions, appeals, retry/application orchestration and cross-domain audit. Forum retains only topic/reply lifecycle, the Forum-owned moderation subject revision, local enforcement state and its own events/projection invalidation.
 
-`rustok-forum` depends on `rustok-moderation-api`; it does not depend on the `rustok-moderation` owner crate and does not read Moderation persistence.
+`rustok-forum` depends on `rustok-moderation-api`; it does not depend on the `rustok-moderation` owner crate and does not read Moderation persistence. `rustok-server` may compose both selected modules and materialize the neutral registry; that host composition does not change producer ownership.
 
 This change is unrelated to Reactions ownership. It adds no reaction catalog, state, command, aggregate, transport or presentation code to Forum, and the moderation revision clock is not a second Reactions revision system.
 
@@ -128,12 +143,19 @@ Suggested checks, intentionally not run while preparing this slice:
 
 ```bash
 node scripts/verify/verify-forum-moderation-subject-adapter.mjs
+node scripts/verify/verify-moderation-host-composition.mjs
 cargo test -p rustok-forum moderation_subject -- --nocapture
 cargo check -p rustok-forum --all-targets
+cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles
+cargo test -p rustok-server --no-default-features --features "mod-forum mod-moderation" --test moderation_composition_profiles
+cargo check -p rustok-server --no-default-features --features mod-moderation
+cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"
 cargo xtask module validate forum
 git diff --check
 ```
 
-Future runtime evidence should additionally cover migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply rejection/reply removal, trusted-caller enforcement and PostgreSQL serialization/reclaim. Retain approved-to-hidden and approved-to-rejected topic/category/author accounting plus status-event/projection atomicity, already-hidden/already-rejected no-op/replay behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `SetVisibility(Unpublished)` remains a distinct unsupported-effect evidence case.
+Future retained evidence should cover selected-owner/missing-owner startup behavior, Moderation-only empty materialization and Forum+Moderation topic/reply materialization in addition to migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply rejection/reply removal, trusted-caller enforcement and PostgreSQL serialization/reclaim. Retain approved-to-hidden and approved-to-rejected topic/category/author accounting plus status-event/projection atomicity, already-hidden/already-rejected no-op/replay behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `SetVisibility(Unpublished)` remains a distinct unsupported-effect evidence case.
+
+Durable Moderation application-attempt persistence, leases/backoff, crash/lost-response recovery and operator recovery remain pending owner work.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.

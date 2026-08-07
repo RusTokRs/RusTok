@@ -158,6 +158,23 @@ For Forum's bounded adapter source:
 Direct domain actions and moderation-driven actions converge on the same domain invariants
 and owner primitives. Whether a direct action also opens a case is host/product policy.
 
+## Host composition
+
+The server host now has source-ready optional materialization of the neutral subject-adapter
+registry:
+
+- `mod-moderation` selects the `rustok-moderation` owner independently from Forum;
+- selecting that feature without `ModerationModule` in `ModuleRegistry` fails composition;
+- factories materialize only after `HostRuntimeContext` exists and producer host facts are
+  composed;
+- Moderation without Forum materializes a valid empty registry;
+- Forum with Moderation materializes `forum/forum_topic` and `forum/forum_post`;
+- Forum without Moderation remains valid and does not materialize the owner registry;
+- factory build, duplicate-key and factory-key mismatch errors remain startup failures.
+
+This wiring is composition only. It does not dispatch decisions, persist application attempts,
+mark a Moderation decision applied, or add domain logic to the host.
+
 ## Application lifecycle
 
 Durable decision application must use receipt-first replay and explicit states such as
@@ -191,9 +208,9 @@ required, moderation revision advancement and the completed receipt commit or ro
 together. Completed receipt replay occurs before subject reads; a new attempt against an
 already soft-deleted reply is unavailable rather than re-applied. Non-retryable domain
 failures may become terminal receipt errors, while retryable storage/serialization failures
-leave the processing lease reclaimable. This is producer-side source only; the Moderation
-owner still needs its durable application attempt state, scheduler/backoff and host runtime
-materialization.
+leave the processing lease reclaimable. The host can now materialize these adapters in
+source, but the Moderation owner still needs durable application attempt state,
+scheduler/backoff, dispatch/recovery and applied-evidence recording.
 
 ## Source completed
 
@@ -214,15 +231,20 @@ materialization.
   trusted caller gate, no-op decisions, permanent topic lock, exact reply `Hidden`, exact
   reply `RejectPublication -> ReplyStatus::Rejected`, and exact reply `Removed` through the
   complete Forum removal owner path, guarded by
-  `scripts/verify/verify-forum-moderation-subject-adapter.mjs`.
+  `scripts/verify/verify-forum-moderation-subject-adapter.mjs`;
+- server host source materialization of the neutral adapter registry under explicit
+  `mod-moderation` selection, with source profiles for Forum-disabled, Moderation-only,
+  Forum+Moderation and selected-feature/missing-owner behavior, guarded by
+  `scripts/verify/verify-moderation-host-composition.mjs`.
 
 ## Next priorities
 
 1. Add durable Moderation-owner decision-application operations, attempt state, leases,
-   retry/backoff, crash/lost-response recovery, and applied-evidence validation.
-2. Materialize the registered adapter factories in host runtime and expose bounded operator
-   recovery; prove missing/unavailable adapters stay retryable. This is the next source
-   composition milestone after the bounded Forum effect mappings.
+   retry/backoff, crash/lost-response recovery, adapter dispatch and applied-evidence
+   validation.
+2. Retain executable host-composition evidence for selected-owner/missing-owner,
+   Moderation-only empty materialization and Forum+Moderation topic/reply materialization;
+   prove factory build failures remain fail-closed.
 3. Keep Forum `SetVisibility(Unpublished)` blocked until Forum owns an explicit lifecycle
    meaning distinct from `RejectPublication`; add explicit expiry-safe state before temporary
    restrictions and admit no lossy approximation.
@@ -279,6 +301,11 @@ materialization.
   `cargo test -p rustok-forum moderation_subject -- --nocapture`;
 - `node scripts/verify/verify-moderation-api-boundary.mjs`;
 - `node scripts/verify/verify-forum-moderation-subject-adapter.mjs`;
+- `node scripts/verify/verify-moderation-host-composition.mjs`;
+- `cargo check -p rustok-server --no-default-features --features mod-moderation`;
+- `cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"`;
+- `cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles`;
+- `cargo test -p rustok-server --no-default-features --features "mod-forum mod-moderation" --test moderation_composition_profiles`;
 - clean/upgraded PostgreSQL and SQLite decision-effect migration evidence;
 - Forum moderation subject revision migration/backfill and topic/reply content/lifecycle
   trigger-advance evidence on PostgreSQL and SQLite;
@@ -302,5 +329,5 @@ materialization.
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback
   evidence.
 
-No new execution evidence is claimed by the Forum adapter source slice. Maintainer-run
+No new execution evidence is claimed by the host materialization source slice. Maintainer-run
 verification remains required before promotion.

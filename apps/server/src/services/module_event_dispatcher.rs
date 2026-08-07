@@ -419,6 +419,24 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             })?;
     }
 
+    #[cfg(feature = "mod-moderation")]
+    {
+        if !registry.contains("moderation") {
+            return Err(Error::Message(
+                "Moderation feature is selected but ModerationModule is missing from ModuleRegistry"
+                    .to_string(),
+            ));
+        }
+        let host =
+            extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
+        rustok_moderation::materialize_moderation_subject_adapter_registry(&mut extensions, &host)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "moderation subject adapter materialization failed: {error}"
+                ))
+            })?;
+    }
+
     #[cfg(feature = "mod-notifications")]
     {
         let host =
@@ -497,6 +515,8 @@ mod tests {
         let registry = ModuleRegistry::new();
         #[cfg(feature = "mod-reactions")]
         let registry = registry.register(rustok_reactions::ReactionsModule);
+        #[cfg(feature = "mod-moderation")]
+        let registry = registry.register(rustok_moderation::ModerationModule);
         let settings = RustokSettings::default();
         let db = Database::connect("sqlite::memory:")
             .await
@@ -584,6 +604,13 @@ mod tests {
         assert!(
             rustok_reactions::api::reaction_subject_registry_from_extensions(extensions.as_ref())
                 .is_some()
+        );
+        #[cfg(feature = "mod-moderation")]
+        assert!(
+            rustok_moderation::moderation_subject_adapter_registry_from_extensions(
+                extensions.as_ref()
+            )
+            .is_some()
         );
         #[cfg(feature = "mod-notifications")]
         assert!(
