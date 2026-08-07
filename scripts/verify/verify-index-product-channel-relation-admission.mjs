@@ -25,6 +25,7 @@ const forbidMarkers = (relative, source, markers) => {
 
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod relation_admission;',
+  'mod channel_relation_convergence;',
 ]);
 
 const admissionPath = 'crates/rustok-distribution/src/product_index/relation_admission.rs';
@@ -79,7 +80,7 @@ forbidMarkers(productPath, product, [
 
 const documentPath = 'crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md';
 const document = requireMarkers(documentPath, [
-  'Status: `canonical_source_and_freshness_watermark_complete_runtime_evidence_pending`',
+  'Status: `canonical_source_freshness_and_convergence_complete_runtime_evidence_pending`',
   'current Product Index graph contains the Product-to-SalesChannel link',
   '`product_sales_channel_index_relation_snapshots`',
   '`product_sales_channel_index_relation_freshness_snapshots`',
@@ -88,6 +89,8 @@ const document = requireMarkers(documentPath, [
   '`sales_channel_ids`',
   '`sales_channels` `IndexLink`',
   'Canonical Product replay/absence freshness gate: source complete',
+  'Automatic Product visibility / Channel identity relation convergence through generic ModuleWork',
+  'Materialized/query freshness admission for the source-read -> mutation-apply window: pending',
 ]);
 forbidMarkers(documentPath, document, [
   'Product v1',
@@ -100,6 +103,7 @@ forbidMarkers(documentPath, document, [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-channel-relation-admission.mjs'",
   "'verify-index-product-channel-relation-freshness.mjs'",
+  "'verify-index-product-channel-relation-convergence.mjs'",
 ]);
 
-console.log('[verify-index-product-channel-relation-admission] relation and freshness admission verified');
+console.log('[verify-index-product-channel-relation-admission] relation, freshness, and convergence admission verified');
