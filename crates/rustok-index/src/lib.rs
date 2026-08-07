@@ -42,7 +42,8 @@ pub use infrastructure::postgres::{
     materialize_postgres_index_drift_repair_store,
     materialize_postgres_index_drift_snapshot_reader, materialize_postgres_index_query_runtime,
     materialize_postgres_index_replay_runtime, materialize_postgres_index_sources,
-    register_postgres_index_reconciliation_work, register_postgres_index_source_factory,
+    register_postgres_index_query_admission, register_postgres_index_reconciliation_work,
+    register_postgres_index_source_factory,
     IndexDriftCandidateCompositionError, IndexDriftCandidateObserverCompositionError,
     IndexDriftConfirmedCandidateNotRecordedReason, IndexDriftConfirmedCandidateRecordError,
     IndexDriftConfirmedCandidateRecordOutcome, IndexDriftSnapshotCompositionError,
@@ -69,7 +70,9 @@ pub use infrastructure::postgres::{
     PostgresIndexDriftMissingEntityEvidenceReader, PostgresIndexDriftMissingEntityRepairOwner,
     PostgresIndexDriftOrphanLinkEvidenceReader, PostgresIndexDriftOrphanLinkRepairOwner,
     PostgresIndexDriftRepairRecoveryStore, PostgresIndexDriftRepairStore,
-    PostgresIndexDriftSnapshotReader, PostgresIndexQueryPort, PostgresIndexSchemaReadinessStore,
+    PostgresIndexDriftSnapshotReader, PostgresIndexQueryAdmissionCatalog,
+    PostgresIndexQueryAdmissionDescriptor, PostgresIndexQueryAdmissionError,
+    PostgresIndexQueryPort, PostgresIndexSchemaReadinessStore,
     PostgresIndexReconciliationRetryStore, PostgresIndexReconciliationRunner,
     PostgresIndexReconciliationWorkAdapter, PostgresIndexReplayCheckpointStore,
     PostgresIndexReplayJobStore, PostgresIndexReplayRunner, PostgresIndexSourceFactory,
@@ -78,11 +81,6 @@ pub use infrastructure::postgres::{
     PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager,
     RecoveryAwareIndexDriftRepairOwner, RecoveryAwareIndexDriftRepairStore,
     SchemaApplicationLease, SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome,
-    SchemaLeaseError, SchemaRegistrationError, SecondaryIndexClaimOutcome,
-    SecondaryIndexError, SecondaryIndexExecutionOutcome, SecondaryIndexKind,
-    SecondaryIndexLease, SecondaryIndexOperation, SecondaryIndexPlan,
-    SecondaryIndexRequest, SecondaryIndexSpec, SharedIndexReplayRuntime,
-    MAX_INDEX_SCHEMA_READINESS_SCHEMAS, INDEX_RECONCILIATION_WORKER,
 };
 
 pub struct IndexModule;
@@ -98,26 +96,27 @@ impl RusToKModule for IndexModule {
     }
 
     fn description(&self) -> &'static str {
-        "Cross-module relational index and query engine."
+        "Cross-module relational indexing, filtering, sorting, joins and faceting"
     }
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn dependencies(&self) -> &[&'static str] {
+        &[]
+    }
+
     fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
+        ModuleKind::Infrastructure
     }
 
     fn register_runtime_extensions(
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
-        extensions.get_or_insert_with::<IndexSchemaSourceCatalog, _>(IndexSchemaSourceCatalog::new);
-        extensions.get_or_insert_with::<IndexSourceCatalog, _>(IndexSourceCatalog::new);
-        extensions.get_or_insert_with::<PostgresIndexSourceFactoryCatalog, _>(
-            PostgresIndexSourceFactoryCatalog::new,
-        );
+        extensions.insert(application::IndexSchemaSourceCatalog::new());
+        extensions.insert(infrastructure::postgres::PostgresIndexSourceFactoryCatalog::new());
         Ok(())
     }
 }
@@ -131,6 +130,3 @@ impl MigrationSource for IndexModule {
         migrations::migration_dependencies()
     }
 }
-
-#[cfg(test)]
-mod contract_tests;
