@@ -18,8 +18,8 @@ Run the Forum/Reactions storefront evidence against a prepared tenant where the
 Forum and Reactions modules are enabled and the supplied topic/reply are visible:
 
 ```powershell
-$env:RUSTOK_FORUM_TOPIC_REACTIONS_E2E_URL = "http://127.0.0.1:3000/en/forum/t/<short-id>/<slug>"
-$env:RUSTOK_FORUM_REPLY_REACTIONS_E2E_URL = "http://127.0.0.1:3000/en/forum/t/<short-id>/<slug>?reply=<reply-uuid>"
+$env:RUSTOK_FORUM_TOPIC_REACTIONS_E2E_URL = "<full canonical Forum topic URL>"
+$env:RUSTOK_FORUM_REPLY_REACTIONS_E2E_URL = "<same canonical topic URL>?reply=<reply-uuid>"
 cargo test -p rustok-e2e-rust --test leptos_storefront_forum_reactions -- --nocapture
 ```
 
