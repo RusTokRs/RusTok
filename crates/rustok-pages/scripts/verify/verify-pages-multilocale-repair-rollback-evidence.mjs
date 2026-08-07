@@ -14,6 +14,7 @@ const files = {
   evidence: "crates/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json",
   priorOverlay: "docs/modules/pages-page-builder-multilocale-activation-recovery-actualization-2026-08-07.md",
   currentOverlay: "docs/modules/pages-page-builder-multilocale-rollback-evidence-actualization-2026-08-07.md",
+  latestOverlay: "docs/modules/pages-page-builder-rollback-activated-repair-rollback-continuity-actualization-2026-08-07.md",
   fba: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
 };
 
@@ -58,10 +59,10 @@ const sources = Object.fromEntries(
 );
 const evidence = JSON.parse(sources.evidence);
 
-if (evidence.format !== "pages_multilocale_repair_rollback_evidence_source_v1") {
+if (evidence.format !== "pages_multilocale_repair_rollback_evidence_source_v2") {
   failures.push("evidence format drifted");
 }
-if (evidence.status !== "pages_multilocale_repair_rollback_evidence_source_unvalidated") {
+if (evidence.status !== "pages_multilocale_repair_rollback_anchor_evidence_source_unvalidated") {
   failures.push("evidence status drifted");
 }
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
@@ -83,8 +84,13 @@ for (const key of [
   "current_repaired_artifact_requires_exact_activation_receipt",
   "activation_request_hash_is_recomputed_canonically",
   "physical_loss_required_locales_are_derived_from_missing_manifest_rows",
-  "physical_loss_activation_prefix_starts_at_source_publish_result_version",
+  "physical_loss_activation_prefix_uses_publish_or_exact_rollback_activation_anchor",
+  "physical_loss_activation_prefix_direct_publish_fallback_uses_publish_result_version",
+  "physical_loss_activation_prefix_rollback_anchor_requires_exact_publish_and_artifact_set",
+  "physical_loss_activation_prefix_rollback_anchor_request_hash_is_recomputed",
+  "physical_loss_activation_prefix_rollback_anchor_expected_version_is_result_version_minus_one",
   "physical_loss_activation_prefix_is_bounded_to_256_receipts",
+  "physical_loss_activation_prefix_query_is_bounded_to_257_rows",
   "physical_loss_activation_prefix_requires_contiguous_expected_and_result_versions",
   "physical_loss_activation_prefix_requires_unique_locales_until_recovery_complete",
   "physical_loss_activation_prefix_requires_exact_same_publish_sources",
@@ -93,9 +99,10 @@ for (const key of [
   "physical_loss_activation_prefix_stops_after_all_lost_manifest_locales_are_proven",
   "later_valid_activation_or_page_version_changes_after_recovery_are_not_part_of_prefix",
   "historical_rollback_targets_still_require_original_manifest_and_live_artifacts",
-  "postgres_multilocale_rollback_success_source_ready",
+  "postgres_multilocale_direct_publish_rollback_success_source_ready",
   "postgres_noncanonical_activation_request_hash_rejection_source_ready",
   "postgres_noncontiguous_activation_prefix_rejection_source_ready",
+  "postgres_rollback_activated_repair_rollback_packet_is_separate",
   "schema_migration_dto_transport_cache_or_ui_changes_are_not_added",
   "automatic_repair_or_rollback_chaining_is_not_added",
 ]) {
@@ -119,9 +126,21 @@ for (const key of [
 
 for (const marker of [
   "PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT",
+  "PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT",
   "MAX_RECOVERED_ACTIVATION_PREFIX",
   "physically_lost_manifest_locales",
   "verify_physical_loss_activation_prefix_in_tx",
+  "resolve_repair_activation_anchor_in_tx",
+  "TargetPublishOperationId.eq(operation.id)",
+  "TargetArtifactSetHash",
+  "let rollback_expected_version = rollback",
+  ".checked_sub(1)",
+  "rollback.request_hash != expected_request_hash",
+  "return Ok(operation.result_version)",
+  "let anchor_version = resolve_repair_activation_anchor_in_tx",
+  ".gt(anchor_version)",
+  "let mut cursor = anchor_version",
+  ".limit((MAX_RECOVERED_ACTIVATION_PREFIX + 1) as u64)",
   "required_locales.is_subset(&prefix_locales)",
   "activation.expected_version != cursor",
   "activation.result_version != cursor + 1",
@@ -180,6 +199,7 @@ requireOrdered(
 
 for (const marker of [
   "MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS",
+  "resolve_missing_binding_recovery_anchor_in_tx",
   "ensure_sequential_missing_binding_recovery_version_chain_in_tx",
   "prior artifact activations are not a contiguous version chain",
   "prior_locales.insert(operation.locale.clone())",
@@ -200,7 +220,7 @@ for (const marker of [
   "assert_rollback_rejected_without_binding_change",
   "RUSTOK_PAGES_TEST_DATABASE_URL",
 ]) {
-  need(sources.test, marker, "PostgreSQL source packet");
+  need(sources.test, marker, "direct-publish PostgreSQL source packet");
 }
 
 for (const marker of [
@@ -219,14 +239,24 @@ for (const marker of [
   "current rollback receipt resolving to that exact publish",
   "execution remains pending",
 ]) {
-  need(sources.currentOverlay, marker, "current parity overlay");
+  need(sources.currentOverlay, marker, "historical current parity overlay");
+}
+for (const marker of [
+  "Rollback-Activated Repair-to-Rollback Continuity Actualization",
+  "publish-or-rollback activation anchor",
+  "three-publish",
+  "execution remains pending",
+]) {
+  need(sources.latestOverlay, marker, "latest parity overlay");
 }
 for (const marker of [
   "activation_request_hash_recomputed",
   "physical_loss_activation_prefix",
+  "physical_loss_activation_prefix_anchor",
   "rollback_activated_current_set_recovery",
-  "pending_source_slice",
+  "rollback_activated_repair_to_rollback",
   "pages_multilocale_repair_rollback_evidence_verifier",
+  "pages_rollback_activated_repair_rollback_continuity_verifier",
 ]) {
   need(sources.fba, marker, "Page Builder FBA registry");
 }

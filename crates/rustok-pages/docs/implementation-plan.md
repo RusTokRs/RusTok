@@ -1,7 +1,7 @@
 # Implementation Plan for `rustok-pages`
 
 Date: 2026-08-07  
-Status: `in_progress / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / execution-rollout-pending`
+Status: `in_progress / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / execution-rollout-pending`
 
 ## Policy: current code only
 
@@ -62,7 +62,7 @@ bounded integrity audit
 -> publish-or-exact-rollback activation anchor
 -> bounded missing-binding physical-loss recovery
 -> sequential same-publish recovery for additional lost locales
--> repair-aware current rollback cursor with durable activation-prefix revalidation
+-> repair-aware current rollback cursor with durable publish-or-rollback activation-prefix revalidation
 ```
 
 Important boundaries:
@@ -83,6 +83,8 @@ Important boundaries:
 - cache effects remain event-driven after commit;
 - rollback tries the original publish manifest first; repair fallback is current-cursor-only and requires exact retained provenance plus rebuild/activation receipts;
 - rollback reconstruction recomputes canonical activation request hashes and proves the minimal contiguous physical-loss activation prefix needed to explain missing current manifest locales;
+- rollback reconstruction resolves that physical-loss prefix from the same publish-or-exact-rollback activation model as activation admission: direct current publish falls back to `publish.result_version`, while a later exact rollback-to-that-publish receipt must revalidate tenant/page, target publish id, target artifact-set hash, result-version bounds and canonical request hash before its `result_version` can become the prefix cursor;
+- a missing or corrupted rollback anchor therefore falls back to the old publish cursor and fails closed when the durable repair activation actually began after rollback;
 - surviving current manifest rows must still match retained provenance;
 - a repaired current locale may lack its manifest row only when its historical source artifact is also absent;
 - historical rollback targets still require their original manifest and live immutable artifact records;
@@ -95,18 +97,21 @@ Source packets:
 - `contracts/evidence/pages-explicit-artifact-binding-replacement-source.json`;
 - `contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json`;
 - `contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json`;
+- `contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json`;
 - `docs/explicit-immutable-artifact-loss-activation-recovery.md`;
 - `tests/artifact_loss_activation_recovery_postgres.rs`;
 - `tests/artifact_loss_multilocale_activation_recovery_postgres.rs`;
 - `tests/artifact_repair_rollback_continuity_postgres.rs`;
 - `tests/artifact_multilocale_repair_rollback_evidence_postgres.rs`;
 - `tests/artifact_loss_after_rollback_activation_recovery_postgres.rs`;
+- `tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs`;
 - `scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs`;
 - `scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs`;
 - `scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs`;
 - `scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs`;
 - `scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs`;
-- `scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs`.
+- `scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs`;
+- `scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs`.
 
 Execution remains unvalidated. The source packets do not claim that PostgreSQL, SQLite, request, cache or browser scenarios passed.
 
@@ -286,6 +291,7 @@ Dependency graph and built-artifact execution evidence remain pending.
 - `contracts/evidence/pages-explicit-artifact-binding-replacement-source.json`
 - `contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json`
 - `contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json`
+- `contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json`
 
 ## Historical source markers
 
@@ -313,6 +319,8 @@ These exact phrases remain only for retained static guard compatibility and desc
 - [ ] Retain the rollback-anchor request-hash and unexplained post-rollback version-drift negatives.
 - [ ] Run the repair-to-rollback continuity PostgreSQL packet after a repaired current set.
 - [ ] Run the multi-locale repair-to-rollback durable-evidence packet.
+- [ ] Run the rollback-activated repair-to-rollback continuity source guard and three-publish PostgreSQL packet.
+- [ ] Retain corrupted rollback-anchor rejection during repaired-current rollback reconstruction.
 - [ ] Retain historical-target missing-manifest, current-manifest corruption/source-present, noncanonical activation request-hash and noncontiguous-prefix negatives.
 - [ ] Run prior provenance, audit, rebuild, repair atomicity/failure/cache and transport packets.
 
@@ -363,11 +371,13 @@ node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-a
 node crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_loss_activation_recovery_postgres -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_loss_multilocale_activation_recovery_postgres -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_repair_rollback_continuity_postgres -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_multilocale_repair_rollback_evidence_postgres -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_loss_after_rollback_activation_recovery_postgres -- --nocapture
+RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_rollback_activated_repair_rollback_continuity_postgres -- --nocapture
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
