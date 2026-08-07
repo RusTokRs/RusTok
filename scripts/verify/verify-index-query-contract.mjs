@@ -71,6 +71,7 @@ const scripts = [
   'verify-index-product-channel-relation-convergence.mjs',
   'verify-index-product-materialized-query-freshness.mjs',
   'verify-index-product-materialized-query-freshness-postgres-harness.mjs',
+  'verify-index-product-channel-convergence-postgres-harness.mjs',
   'verify-index-product-graph-projection-ledger.mjs',
   'verify-index-product-variant-source.mjs',
   'verify-index-product-tombstone-source.mjs',
