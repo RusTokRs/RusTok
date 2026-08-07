@@ -43,7 +43,7 @@ for (const marker of [
   "mark_application_rejected",
   "mark_application_operator_review",
   "error.retryable",
-  "PortErrorKind::InvariantViolation",
+  "PortErrorKind::Conflict | PortErrorKind::InvariantViolation",
   "application_retry_delay_seconds",
 ]) {
   requireText(dispatch, marker, `one-attempt dispatcher is missing ${marker}`);
