@@ -38,9 +38,17 @@ const moduleSource = requireMarkers(modulePath, [
 ]);
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
-const removedGraph = resolve('crates/rustok-distribution/src/product_index/graph.rs');
-if (fs.existsSync(removedGraph)) {
-  fail('removed versioned Product graph.rs compatibility implementation still exists');
+for (const removed of [
+  'crates/rustok-distribution/src/product_index/graph.rs',
+  'crates/rustok-index/docs/m7-product-source.md',
+  'crates/rustok-index/docs/m7-product-variant-source.md',
+  'crates/rustok-product/docs/index-graph-v3-projection-ledger.md',
+  'scripts/verify/verify-index-product-graph-source.mjs',
+  'scripts/verify/verify-index-product-v3-projection-ledger.mjs',
+]) {
+  if (fs.existsSync(resolve(removed))) {
+    fail(`removed Product compatibility artifact still exists: ${removed}`);
+  }
 }
 
 const sourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
