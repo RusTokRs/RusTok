@@ -81,6 +81,11 @@ pub use infrastructure::postgres::{
     PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager,
     RecoveryAwareIndexDriftRepairOwner, RecoveryAwareIndexDriftRepairStore,
     SchemaApplicationLease, SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome,
+    SchemaLeaseError, SchemaRegistrationError, SecondaryIndexClaimOutcome,
+    SecondaryIndexError, SecondaryIndexExecutionOutcome, SecondaryIndexKind,
+    SecondaryIndexLease, SecondaryIndexOperation, SecondaryIndexPlan,
+    SecondaryIndexRequest, SecondaryIndexSpec, SharedIndexReplayRuntime,
+    MAX_INDEX_SCHEMA_READINESS_SCHEMAS, INDEX_RECONCILIATION_WORKER,
 };
 
 pub struct IndexModule;
@@ -96,27 +101,26 @@ impl RusToKModule for IndexModule {
     }
 
     fn description(&self) -> &'static str {
-        "Cross-module relational indexing, filtering, sorting, joins and faceting"
+        "Cross-module relational index and query engine."
     }
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
 
-    fn dependencies(&self) -> &[&'static str] {
-        &[]
-    }
-
     fn kind(&self) -> ModuleKind {
-        ModuleKind::Infrastructure
+        ModuleKind::Core
     }
 
     fn register_runtime_extensions(
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
-        extensions.insert(application::IndexSchemaSourceCatalog::new());
-        extensions.insert(infrastructure::postgres::PostgresIndexSourceFactoryCatalog::new());
+        extensions.get_or_insert_with::<IndexSchemaSourceCatalog, _>(IndexSchemaSourceCatalog::new);
+        extensions.get_or_insert_with::<IndexSourceCatalog, _>(IndexSourceCatalog::new);
+        extensions.get_or_insert_with::<PostgresIndexSourceFactoryCatalog, _>(
+            PostgresIndexSourceFactoryCatalog::new,
+        );
         Ok(())
     }
 }
@@ -130,3 +134,6 @@ impl MigrationSource for IndexModule {
         migrations::migration_dependencies()
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
