@@ -1,0 +1,73 @@
+{
+  "id": "forum-moderation-subject-adapter",
+  "status": "source_ready_maintainer_execution_pending",
+  "producer": "rustok-forum",
+  "capability_owner": "rustok-moderation",
+  "neutral_api": "rustok-moderation-api",
+  "module": "forum",
+  "subjects": [
+    {
+      "kind": "forum_topic",
+      "source": "forum topic owner",
+      "revision": "latest captured Forum topic revision id + 1"
+    },
+    {
+      "kind": "forum_post",
+      "source": "Forum reply owner",
+      "revision": "latest captured Forum reply revision id + 1"
+    }
+  ],
+  "application": {
+    "trusted_callers": ["service", "system"],
+    "direct_user_callers": "forbidden",
+    "idempotency": "PortContext idempotency key equals decision UUID",
+    "receipt_owner": "rustok-outbox owner_operation_receipts",
+    "receipt_namespace": "forum",
+    "request_binding": "full ApplyModerationDecisionCommand including immutable decision_hash",
+    "revision_rule": "exact reviewed revision must equal current Forum owner revision before mutation",
+    "postgres_isolation": "serializable read-write owner transaction",
+    "retryable_failure": "leave processing receipt reclaimable",
+    "terminal_failure": "persist shared typed failed receipt",
+    "success": "Forum mutation and shared completed receipt commit in one transaction"
+  },
+  "supported_effects": [
+    "NoDomainMutation for forum_topic and forum_post",
+    "permanent Lock for forum_topic using TopicService::set_locked_in_tx"
+  ],
+  "deferred_effects": [
+    "temporary topic Lock until Forum owns expiry-safe enforcement state",
+    "reply visibility effects",
+    "topic visibility removal/unpublish effects",
+    "RequireEdit",
+    "RestrictInteraction",
+    "RejectPublication",
+    "SuspendSubject",
+    "Escalate",
+    "AccountSanctionRecommended"
+  ],
+  "ownership": [
+    "Moderation owns reports cases queues decisions appeals application orchestration and cross-domain audit",
+    "Forum owns topic/reply lifecycle state current revision local enforcement and Search projection invalidation",
+    "Forum depends on rustok-moderation-api only and does not depend on rustok-moderation",
+    "Forum registers subject adapter factories but does not materialize the Moderation owner runtime"
+  ],
+  "forbidden": [
+    "Forum moderation case table",
+    "Forum report queue",
+    "Forum appeal queue",
+    "Forum copy of Moderation decisions or audit log",
+    "direct rustok-moderation owner dependency",
+    "retargeting a stale decision to a newer Forum revision",
+    "temporary lock without expiry-safe owner state",
+    "reaction state catalog aggregate or presentation ownership changes"
+  ],
+  "not_claimed": [
+    "adapter registry materialization in rustok-moderation",
+    "durable Moderation application worker or retry scheduler",
+    "runtime execution",
+    "PostgreSQL concurrency evidence",
+    "SQLite evidence",
+    "complete FORUM-19 effect coverage",
+    "release readiness"
+  ]
+}
