@@ -12,13 +12,11 @@ use rustok_moderation_api::{
 };
 use rustok_outbox::idempotency;
 use sea_orm::{
-    AccessMode, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, QuerySelect,
-    TransactionTrait, sea_query::Expr,
+    AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    IsolationLevel, Statement, TransactionTrait,
 };
 use uuid::Uuid;
 
-use crate::entities::{forum_reply, forum_reply_revision, forum_topic, forum_topic_revision};
 use crate::error::ForumError;
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::TopicService;
@@ -86,6 +84,7 @@ impl ModerationSubjectCommandPort for ForumModerationSubjectAdapter {
     ) -> Result<ModerationDecisionApplication, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         validate_trusted_caller(&context)?;
+        validate_command_for_adapter(&self.key, &command)?;
         let tenant_id = parse_tenant_id(&context)?;
 
         let expected_idempotency_key = command.decision_id.to_string();
@@ -137,8 +136,6 @@ impl ForumModerationSubjectAdapter {
         lease: idempotency::Lease,
         command: &ApplyModerationDecisionCommand,
     ) -> Result<ModerationDecisionApplication, PortError> {
-        validate_command_for_adapter(&self.key, command)?;
-
         let transaction = begin_application_transaction(&self.db).await?;
         let result = apply_inside_transaction(&transaction, tenant_id, &self.key, command).await;
         match result {
@@ -161,23 +158,23 @@ async fn apply_inside_transaction(
     key: &ModerationSubjectAdapterKey,
     command: &ApplyModerationDecisionCommand,
 ) -> Result<ModerationDecisionApplication, PortError> {
-    lock_subject_row(transaction, tenant_id, key.kind(), command.subject.id).await?;
-    let current_revision = current_subject_revision(
+    lock_active_subject_row(transaction, tenant_id, key.kind(), command.subject.id).await?;
+    let reviewed_revision = current_subject_revision(
         transaction,
         tenant_id,
         key.kind(),
         command.subject.id,
     )
     .await?;
-    if current_revision != command.subject.revision {
+    if reviewed_revision != command.subject.revision {
         return Err(PortError::conflict(
             "forum.moderation_subject_revision_conflict",
             "Forum subject changed after the moderation decision was reviewed",
         ));
     }
 
-    match (key.kind(), &command.effect.action) {
-        (_, ModerationDecisionEffectAction::NoDomainMutation) => {}
+    let changed = match (key.kind(), &command.effect.action) {
+        (_, ModerationDecisionEffectAction::NoDomainMutation) => false,
         (
             ModerationSubjectKind::ForumTopic,
             ModerationDecisionEffectAction::Lock {
@@ -187,10 +184,9 @@ async fn apply_inside_transaction(
             let topic = TopicService::find_topic_in_tx(transaction, tenant_id, command.subject.id)
                 .await
                 .map_err(forum_error)?;
-            if topic.deleted_at.is_some() {
-                return Err(subject_unavailable());
-            }
-            if !topic.is_locked {
+            if topic.is_locked {
+                false
+            } else {
                 TopicService::set_locked_in_tx(
                     transaction,
                     tenant_id,
@@ -207,6 +203,7 @@ async fn apply_inside_transaction(
                 )
                 .await
                 .map_err(forum_error)?;
+                true
             }
         }
         (
@@ -226,12 +223,32 @@ async fn apply_inside_transaction(
                 "the requested moderation effect is not supported by this Forum subject adapter",
             ));
         }
+    };
+
+    let applied_revision = current_subject_revision(
+        transaction,
+        tenant_id,
+        key.kind(),
+        command.subject.id,
+    )
+    .await?;
+    if changed && applied_revision <= reviewed_revision {
+        return Err(PortError::invariant_violation(
+            "forum.moderation_subject_revision_not_advanced",
+            "Forum mutation did not advance the moderation subject revision",
+        ));
+    }
+    if !changed && applied_revision != reviewed_revision {
+        return Err(PortError::conflict(
+            "forum.moderation_subject_revision_changed_during_application",
+            "Forum subject revision changed during moderation application",
+        ));
     }
 
     Ok(ModerationDecisionApplication {
         decision_id: command.decision_id,
         subject: command.subject.clone(),
-        applied_revision: current_revision,
+        applied_revision,
         applied_at: Utc::now(),
     })
 }
@@ -251,81 +268,61 @@ async fn begin_application_transaction(
     }
 }
 
-async fn lock_subject_row(
+async fn lock_active_subject_row(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     kind: ModerationSubjectKind,
     subject_id: Uuid,
 ) -> Result<(), PortError> {
-    let exists = match kind {
-        ModerationSubjectKind::ForumTopic => {
-            if transaction.get_database_backend() == DatabaseBackend::Sqlite {
-                // SQLite has no SELECT FOR UPDATE. Follow the established owner
-                // lock protocol: reserve the writer with a no-op assignment and
-                // verify existence separately because rows_affected may be zero.
-                forum_topic::Entity::update_many()
-                    .col_expr(
-                        forum_topic::Column::UpdatedAt,
-                        Expr::col(forum_topic::Column::UpdatedAt),
-                    )
-                    .filter(forum_topic::Column::TenantId.eq(tenant_id))
-                    .filter(forum_topic::Column::Id.eq(subject_id))
-                    .filter(forum_topic::Column::DeletedAt.is_null())
-                    .exec(transaction)
-                    .await
-                    .map_err(database_error)?;
-                forum_topic::Entity::find_by_id(subject_id)
-                    .filter(forum_topic::Column::TenantId.eq(tenant_id))
-                    .filter(forum_topic::Column::DeletedAt.is_null())
-                    .one(transaction)
-                    .await
-                    .map_err(database_error)?
-                    .is_some()
-            } else {
-                forum_topic::Entity::find_by_id(subject_id)
-                    .filter(forum_topic::Column::TenantId.eq(tenant_id))
-                    .filter(forum_topic::Column::DeletedAt.is_null())
-                    .lock_exclusive()
-                    .one(transaction)
-                    .await
-                    .map_err(database_error)?
-                    .is_some()
-            }
+    let backend = transaction.get_database_backend();
+    let table = subject_table(kind)?;
+    let row = match backend {
+        DatabaseBackend::Postgres => {
+            let sql = format!(
+                "SELECT id FROM {table} WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE"
+            );
+            transaction
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    sql,
+                    vec![tenant_id.into(), subject_id.into()],
+                ))
+                .await
+                .map_err(database_error)?
         }
-        ModerationSubjectKind::ForumPost => {
-            if transaction.get_database_backend() == DatabaseBackend::Sqlite {
-                forum_reply::Entity::update_many()
-                    .col_expr(
-                        forum_reply::Column::UpdatedAt,
-                        Expr::col(forum_reply::Column::UpdatedAt),
-                    )
-                    .filter(forum_reply::Column::TenantId.eq(tenant_id))
-                    .filter(forum_reply::Column::Id.eq(subject_id))
-                    .filter(forum_reply::Column::DeletedAt.is_null())
-                    .exec(transaction)
-                    .await
-                    .map_err(database_error)?;
-                forum_reply::Entity::find_by_id(subject_id)
-                    .filter(forum_reply::Column::TenantId.eq(tenant_id))
-                    .filter(forum_reply::Column::DeletedAt.is_null())
-                    .one(transaction)
-                    .await
-                    .map_err(database_error)?
-                    .is_some()
-            } else {
-                forum_reply::Entity::find_by_id(subject_id)
-                    .filter(forum_reply::Column::TenantId.eq(tenant_id))
-                    .filter(forum_reply::Column::DeletedAt.is_null())
-                    .lock_exclusive()
-                    .one(transaction)
-                    .await
-                    .map_err(database_error)?
-                    .is_some()
-            }
+        DatabaseBackend::Sqlite => {
+            let reserve = format!(
+                "UPDATE {table} SET updated_at = updated_at WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
+            );
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    reserve,
+                    vec![tenant_id.into(), subject_id.into()],
+                ))
+                .await
+                .map_err(database_error)?;
+            let sql = format!(
+                "SELECT id FROM {table} WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
+            );
+            transaction
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    sql,
+                    vec![tenant_id.into(), subject_id.into()],
+                ))
+                .await
+                .map_err(database_error)?
         }
-        _ => return Err(subject_mismatch()),
+        _ => {
+            return Err(PortError::unavailable(
+                "forum.moderation_database_backend_unsupported",
+                "Forum moderation application database backend is unsupported",
+            ));
+        }
     };
-    if !exists {
+
+    if row.is_none() {
         return Err(subject_unavailable());
     }
     Ok(())
@@ -337,39 +334,67 @@ async fn current_subject_revision(
     kind: ModerationSubjectKind,
     subject_id: Uuid,
 ) -> Result<i64, PortError> {
-    let latest = match kind {
-        ModerationSubjectKind::ForumTopic => forum_topic_revision::Entity::find()
-            .select_only()
-            .column(forum_topic_revision::Column::Id)
-            .filter(forum_topic_revision::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic_revision::Column::TopicId.eq(subject_id))
-            .order_by_desc(forum_topic_revision::Column::Id)
-            .into_tuple::<i64>()
-            .one(transaction)
-            .await
-            .map_err(database_error)?,
-        ModerationSubjectKind::ForumPost => forum_reply_revision::Entity::find()
-            .select_only()
-            .column(forum_reply_revision::Column::Id)
-            .filter(forum_reply_revision::Column::TenantId.eq(tenant_id))
-            .filter(forum_reply_revision::Column::ReplyId.eq(subject_id))
-            .order_by_desc(forum_reply_revision::Column::Id)
-            .into_tuple::<i64>()
-            .one(transaction)
-            .await
-            .map_err(database_error)?,
-        _ => return Err(subject_mismatch()),
+    let backend = transaction.get_database_backend();
+    let (table, id_column) = revision_table(kind)?;
+    let sql = match backend {
+        DatabaseBackend::Postgres => format!(
+            "SELECT revision FROM {table} WHERE tenant_id = $1 AND {id_column} = $2"
+        ),
+        DatabaseBackend::Sqlite => format!(
+            "SELECT revision FROM {table} WHERE tenant_id = ? AND {id_column} = ?"
+        ),
+        _ => {
+            return Err(PortError::unavailable(
+                "forum.moderation_database_backend_unsupported",
+                "Forum moderation application database backend is unsupported",
+            ));
+        }
     };
-    latest
-        .unwrap_or(0)
-        .checked_add(1)
-        .filter(|revision| *revision > 0)
+
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![tenant_id.into(), subject_id.into()],
+        ))
+        .await
+        .map_err(database_error)?
         .ok_or_else(|| {
             PortError::invariant_violation(
-                "forum.moderation_subject_revision_invalid",
-                "Forum subject revision is unavailable",
+                "forum.moderation_subject_revision_missing",
+                "Forum moderation subject revision state is missing",
             )
-        })
+        })?;
+    let revision: i64 = row.try_get("", "revision").map_err(database_error)?;
+    if revision <= 0 {
+        return Err(PortError::invariant_violation(
+            "forum.moderation_subject_revision_invalid",
+            "Forum moderation subject revision must be positive",
+        ));
+    }
+    Ok(revision)
+}
+
+fn subject_table(kind: ModerationSubjectKind) -> Result<&'static str, PortError> {
+    match kind {
+        ModerationSubjectKind::ForumTopic => Ok("forum_topics"),
+        ModerationSubjectKind::ForumPost => Ok("forum_replies"),
+        _ => Err(subject_mismatch()),
+    }
+}
+
+fn revision_table(
+    kind: ModerationSubjectKind,
+) -> Result<(&'static str, &'static str), PortError> {
+    match kind {
+        ModerationSubjectKind::ForumTopic => {
+            Ok(("forum_topic_moderation_subject_revisions", "topic_id"))
+        }
+        ModerationSubjectKind::ForumPost => {
+            Ok(("forum_reply_moderation_subject_revisions", "reply_id"))
+        }
+        _ => Err(subject_mismatch()),
+    }
 }
 
 fn validate_command_for_adapter(
