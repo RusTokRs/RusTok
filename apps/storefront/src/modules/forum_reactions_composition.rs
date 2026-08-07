@@ -16,7 +16,7 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
     let locale = route.locale.clone();
 
     let subject_resource = Resource::new_blocking(
-        move || (reactions_enabled.get(), topic_id, locale.clone()),
+        move || (reactions_enabled.get(), topic_id.clone(), locale.clone()),
         |(enabled, topic_id, locale)| async move {
             if !enabled {
                 return Ok(None);
