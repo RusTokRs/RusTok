@@ -166,6 +166,30 @@ async fn ordinary_registration_does_not_implicitly_retire_older_contracts() {
 }
 
 #[tokio::test]
+async fn staged_latest_contract_can_be_promoted_without_reinsertion() {
+    let (db, store) = fixture().await;
+    store.register(tenant(TENANT_A), &schema(1)).await.unwrap();
+    assert!(matches!(
+        store.register(tenant(TENANT_A), &schema(2)).await.unwrap(),
+        PersistedSchemaRegistrationOutcome::Inserted { .. }
+    ));
+    assert_eq!(schema_status(&db, TENANT_A, 1).await, "active");
+    assert_eq!(schema_status(&db, TENANT_A, 2).await, "active");
+
+    let promoted = store
+        .register_current(tenant(TENANT_A), &schema(2))
+        .await
+        .unwrap();
+    assert!(matches!(
+        promoted.registration(),
+        PersistedSchemaRegistrationOutcome::Unchanged { .. }
+    ));
+    assert_eq!(promoted.retired_schema_count(), 1);
+    assert_eq!(schema_status(&db, TENANT_A, 1).await, "retired");
+    assert_eq!(schema_status(&db, TENANT_A, 2).await, "active");
+}
+
+#[tokio::test]
 async fn explicit_current_supersession_retires_all_lower_active_contracts() {
     let (db, store) = fixture().await;
     store.register(tenant(TENANT_A), &schema(1)).await.unwrap();
