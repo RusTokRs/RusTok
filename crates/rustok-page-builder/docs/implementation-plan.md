@@ -37,6 +37,13 @@ metadata URLs. Fly's built-in `link` component remains valid because it renders 
 `PageBuilderSanitizedStaticLandingProject` v2 envelope binds `policy_format + policy_hash + exact
 sanitized project` through SHA-256; integrity verification re-decodes and revalidates the project.
 
+The reviewed path also owns `PageBuilderStaticPublishResourceLimits`. It rejects projects above
+16 MiB serialized bytes, 128 pages, 50,000 current component nodes, depth 128, 4,096 assets or
+20,000 style rules. The project-byte counter is bounded and component count/depth are observed by an
+iterative current-tree scan before recursive policy work. These limits are rechecked during
+sanitization integrity and exact materialized compilation. This source is ready; accepted real-project
+and runtime execution evidence remains open.
+
 `compile_materialized_static_landing` provides deterministic runtime-bound compilation. It captures
 one Fly `RuntimeScenarioRenderSnapshot` per page, materializes through
 `materialize_project_with_runtime_context`, compiles the exact resulting document and rechecks the
@@ -65,6 +72,18 @@ or an owner composition root may provide it through Leptos context. The exported
 ownership. The same contract is intended for a future Dioxus adapter without changing consumer
 persistence.
 
+Marker: `admin-provider-status-source-ready`.
+
+The admin FFA now has a typed provider-status seam. `PageBuilderAdminProviderStatus` carries the
+exact `BuilderCapabilityFlags` used by a consumer composition plus an optional
+`ProviderHealthSnapshot`. Missing health is represented as `unobserved`, never as healthy. Provider
+status can only narrow the host's already evaluated tenant/RBAC capabilities: invalid flags,
+`builder_off` or observed unavailable health force read-only; degraded health or `publish_off`
+disable publish; `properties_off` disables properties; and `preview_off` disables the server-preview
+control and its click path. The capability panel shows provider control state, observed health, host
+provider policy, rollout flags and observed degradation reasons separately. No fallback editor is
+mounted.
+
 `rustok-pages` is the first production contextual consumer. Preview projects the active Fly page,
 passes selected runtime context/scenario and rejects late responses when project hash, active page,
 context or scenario changed. Pages registers `rustok.pages.metadata` with six typed fields and
@@ -73,6 +92,11 @@ to `pages:{page_id}:metadata:v{version}`, rejects stale versions and never write
 The canonical panel is mounted in the Fly properties column for draft workspaces and in the
 Pages-owned standalone published surface without mounting an editable Fly canvas. The bespoke
 `PageMetadataEditor` and its direct workspace persistence path are removed.
+
+Pages now exposes the same `pages_builder_capability_flags()` through `PagesBuilderFacade::provider_status`
+and through `compose_fly_page_builder_handlers`. The current Pages composition has no live SLO
+snapshot source, so observed provider health remains explicitly `unobserved`; role and contribution
+assembly policy remains independently evaluated and provider status only narrows that result.
 
 The metadata owner port also exposes a private source-test transport seam. Production still delegates
 to the same Pages fetch and patch transports. Focused regressions require the current metadata version
@@ -131,10 +155,11 @@ published page, verifies the active artifact set, resolves the latest activation
 version and follows rollback receipts to their referenced publish operation. It then selects only an
 older distinct publish receipt, verifies its immutable manifest, replaces every locale binding,
 advances the page version, emits `NodeUpdated` and `NodePublished`, and stores a separate idempotent
-rollback receipt in one transaction. A matching artifact hash without a publish/rollback activation
-receipt is rejected. Rollback reuses immutable artifacts only: it does not call the Page Builder
-sanitizer, runtime materializer or compiler. GraphQL, HTTP, OpenAPI, browser retry identity and the
-Pages admin prepare/confirm control are connected.
+rollback receipt in one transaction. Repair-aware current cursor reconstruction and explicit repeated
+physical-loss recovery are source-ready; historical rollback targets still require original manifests
+and live immutable artifacts. Rollback reuses immutable artifacts only: it does not call the Page
+Builder sanitizer, runtime materializer or compiler. GraphQL, HTTP, OpenAPI, browser retry identity and
+the Pages admin prepare/confirm control are connected.
 
 The mixed legacy lifecycle has been removed. Non-builder pages use explicitly named
 `publish_non_builder` / `publish_non_builder_if_current`; both check before and inside the transaction
@@ -148,8 +173,13 @@ Pages owns the post-commit cache boundary. `PageCacheInvalidationEventHandler` c
 acknowledging success. `PagesCacheReadRuntime` supplies generation-aware bounded JSON reads. The
 composite storefront response binds all three generations; artifact HTTP delivery binds the artifact
 generation. Module/channel authorization precedes lookup, and cache fill follows owner source and
-artifact-integrity checks. Publish and rollback reuse the same post-commit `NodePublished` generation
-rotation. Cache failures fail open to source reads. Accepted execution evidence remains open.
+artifact-integrity checks. Publish, rollback and explicit repaired-binding activation reuse the same
+post-commit `NodePublished` generation rotation. Cache failures fail open to source reads. Accepted
+execution evidence remains open.
+
+Authenticated real-DOM authoring, dedicated authoring JS/WASM delivery, same-origin Pages admin launch,
+deterministic release composition and anonymous-authoring exclusion are source-ready. They remain
+execution/rollout work rather than open source architecture gaps.
 
 ## Machine-readable contracts
 
@@ -159,11 +189,15 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
   the source-ready metadata revision/isolation evidence registration.
 - `contracts/page-builder-fba-registry.json` records provider/consumer versions, executable consumer
   properties, policy-bound sanitization/materialization persistence, exact publish manifests,
-  immutable rollback and the Pages cache consumer boundary.
+  immutable rollback, repair continuity and the Pages cache consumer boundary.
 - `contracts/page-builder-publish-runtime-review.json` records reviewed runtime, the static publish
   policy and sanitizer v2 evidence, Pages atomic publish/rollback services, body revision identity,
   receipt schemas, replay semantics, public transport cutover, explicit ephemeral scenario selection,
   isolated non-builder lifecycle and cache invalidation/read state.
+- `contracts/evidence/page-builder-admin-provider-status-source.json` records the admin provider-status
+  and degraded-control source boundary without claiming observed health or execution.
+- `scripts/verify/verify-page-builder-admin-provider-status.mjs` source-locks the provider status seam,
+  fail-closed capability narrowing, server-preview control and Pages server/UI rollout-flag identity.
 - `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks reviewed runtime,
   policy-bound sanitization, exact materialized rechecks and core atomic invariants.
 - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs` forbids public legacy/default
@@ -185,23 +219,31 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
 ## FFA/FBA status
 
 - **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection,
-  typed rollback control, generation-aware Pages storefront/artifact readers and registered draft and
-  published Pages metadata properties are connected. Executed metadata conflict/isolation evidence,
-  inline edit mode and anonymous bundle evidence remain open.
+  typed rollback control, generation-aware Pages storefront/artifact readers, registered draft and
+  published Pages metadata properties, and the typed admin provider-status/degraded-control seam are
+  source-connected. Executed metadata conflict/isolation, observed provider-health, inline edit and
+  anonymous bundle evidence remain open.
 - **FBA:** `boundary_ready` for preview, consumer-property contracts and policy-bound
   sanitization/materialization, and `service_and_public_transport_integrated` for Pages reviewed
-  publication and immutable rollback. The default-runtime lifecycle is removed and source-level cache
-  invalidation/read boundaries are connected; executed metadata/sanitizer/rollback/cache proof,
-  verification and observed rollout evidence remain open.
+  publication and immutable rollback/repair continuity. The default-runtime lifecycle is removed and
+  source-level cache invalidation/read boundaries are connected; executed metadata/sanitizer/rollback/
+  repair/cache proof, observed provider health and rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability,
   properties and publish contracts.
 - **Evidence:**
+  - `admin/src/provider_status.rs`;
+  - `admin/src/transport/mod.rs`;
+  - `admin/src/editor/capability_controls.rs`;
+  - `admin/src/editor/server_preview.rs`;
+  - `admin/src/editor/modular_canvas.rs`;
+  - `contracts/evidence/page-builder-admin-provider-status-source.json`;
+  - `scripts/verify/verify-page-builder-admin-provider-status.mjs`;
   - `admin/src/consumer_properties.rs`;
   - `admin/src/editor/consumer_properties.rs`;
-  - `admin/src/editor/modular_canvas.rs`;
   - `contracts/page-builder-consumer-properties.json`;
   - `src/publish_runtime.rs`;
   - `src/static_publish_policy.rs`;
+  - `src/static_publish_resource_limits.rs`;
   - `src/publish_sanitization.rs`;
   - `src/static_landing.rs`;
   - `src/static_landing_materialization.rs`;
@@ -209,6 +251,7 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
   - `contracts/page-builder-fba-registry.json`;
   - `admin/src/publish_scenario_selection.rs`;
   - `admin/src/editor/publish_scenario_selector.rs`;
+  - `crates/rustok-pages/admin/src/builder.rs`;
   - `crates/rustok-pages/admin/src/contributions.rs`;
   - `crates/rustok-pages/admin/src/metadata_properties.rs`;
   - `crates/rustok-pages/admin/src/standalone_metadata.rs`;
@@ -244,21 +287,27 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
 1. Run and retain the focused stale metadata revision and dirty Fly isolation packets.
 2. Retain a published metadata browser packet proving the registered save advances only metadata
    version while the editable Fly canvas remains unmounted.
-3. Retain an accepted sanitizer packet covering unsafe authoring input and runtime-injected URL/CSS
-   rejection with policy hash, reviewed publish receipt and zero persisted artifact/event side effects.
-4. Retain accepted publish and rollback cache packets correlating receipt, `NodePublished`, handler
-   receipt, generation rotation and storefront/artifact cache miss/refill.
-5. Connect the next production consumer's concrete tenant-scoped store and contextual preview
+3. Retain an accepted sanitizer/resource-limit packet covering unsafe authoring input, global budgets
+   and runtime-injected URL/CSS rejection with policy hash, reviewed publish receipt and zero persisted
+   artifact/event side effects.
+4. Retain accepted publish, rollback and repair cache packets correlating receipt, `NodePublished`,
+   handler receipt, generation rotation and storefront/artifact cache miss/refill.
+5. Supply and retain observed provider-health evidence from a real composition/runtime source, then
+   exercise degraded publish-off, preview-off and unavailable/read-only behavior. The admin seam is
+   source-ready; live SLO observation is not fabricated by Pages.
+6. Connect the next production consumer's concrete tenant-scoped store and contextual preview
    renderer to the canonical composition root without consumer-local authorization or save-result
    side channels.
-6. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
+7. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
    `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
-7. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
-   sanitizer identity, materialization, Pages publish/rollback receipts, cache generation and
-   storefront read.
+8. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
+   sanitizer identity, materialization, Pages publish/rollback/repair receipts, cache generation,
+   provider status and storefront read.
 
 ## Verification
 
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
@@ -274,14 +323,16 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
 - `cargo test -p rustok-pages --lib`;
 - `cargo xtask module validate page_builder`.
 
+These are execution cursors only. They were not run by this source-authoring slice.
+
 ## Boundaries
 
 - Fly owns the project domain, runtime materialization and validation/rendering semantics.
-- Page Builder owns capability delivery, framework-neutral consumer-property contracts and adapters,
-  preview/review/sanitization/materialization contracts, authorization, transport envelopes, feature
-  profiles and server composition order.
+- Page Builder owns capability delivery, framework-neutral consumer-property and admin-provider-status
+  contracts and adapters, preview/review/sanitization/materialization contracts, authorization,
+  transport envelopes, feature profiles and server composition order.
 - Consumer modules own property values, optimistic revisions, persistence, publication lifecycle,
-  exact artifact manifests, rollback, receipts, cache scope/key policy and concrete tenant-scoped
-  ports.
+  exact artifact manifests, rollback/repair, receipts, cache scope/key policy, concrete tenant-scoped
+  ports and the live provider-health source when one exists for that composition.
 - Cache/server infrastructure owns shared connection, byte storage and generation primitives only.
 - Host frameworks render or bind module surfaces and do not define provider-local contracts.
