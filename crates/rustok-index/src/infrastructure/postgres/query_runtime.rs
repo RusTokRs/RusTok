@@ -5,6 +5,7 @@ use sea_orm::DatabaseConnection;
 use thiserror::Error;
 
 use crate::application::{SharedIndexQueryRuntime, SharedIndexSchemaRegistry};
+use crate::domain::SchemaRef;
 
 use super::{PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryPort};
 
@@ -12,15 +13,21 @@ use super::{PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryPort};
 pub enum IndexQueryRuntimeCompositionError {
     #[error("shared Index query runtime is already materialized")]
     AlreadyMaterialized,
+    #[error("PostgreSQL Index query admission owner {owner_module} targets unregistered schema {schema}")]
+    AdmissionSchemaMissing {
+        owner_module: String,
+        schema: SchemaRef,
+    },
 }
 
 /// Materializes the canonical PostgreSQL-backed query runtime from the complete source registry.
 ///
 /// Absence of a source registry is represented as `Ok(None)` and never produces an empty or
 /// partially useful runtime. Trusted schema-scoped root admission rules are snapshotted into the
-/// immutable runtime at materialization time. The function performs no database I/O and makes no
-/// tenant schema-readiness or owner-freshness claim; those checks remain inside the query port when a
-/// request executes.
+/// immutable runtime at materialization time. Every rule must target a schema present in the same
+/// complete immutable registry; dangling rules fail composition rather than silently never applying.
+/// The function performs no database I/O and makes no tenant schema-readiness or owner-freshness
+/// claim; those checks remain inside the query port when a request executes.
 pub fn materialize_postgres_index_query_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -36,6 +43,14 @@ pub fn materialize_postgres_index_query_runtime(
         .get::<PostgresIndexQueryAdmissionCatalog>()
         .cloned()
         .unwrap_or_default();
+    for descriptor in admissions.iter() {
+        if registry.registry().get(descriptor.schema()).is_none() {
+            return Err(IndexQueryRuntimeCompositionError::AdmissionSchemaMissing {
+                owner_module: descriptor.owner_module().to_owned(),
+                schema: descriptor.schema().clone(),
+            });
+        }
+    }
 
     let runtime = SharedIndexQueryRuntime::new(Arc::new(PostgresIndexQueryPort::with_admissions(
         db,
@@ -151,6 +166,40 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn dangling_query_admission_schema_fails_composition() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        let selected = schema();
+        register_index_schema_source(&mut extensions, "runtime_owner", selected).unwrap();
+        let missing = SchemaRef {
+            module: ModuleName::new("runtime-owner").unwrap(),
+            entity: EntityName::new("missing").unwrap(),
+            version: SchemaVersion::INITIAL,
+        };
+        register_postgres_index_query_admission(
+            &mut extensions,
+            "runtime_owner",
+            missing.clone(),
+            PostgresQueryRootAdmission::new("{{root}}.source_version > 0").unwrap(),
+        )
+        .unwrap();
+        let registry = materialize_index_schema_registry(&extensions)
+            .unwrap()
+            .expect("registry");
+        extensions.insert(registry);
+
+        let error = materialize_postgres_index_query_runtime(&mut extensions, connection().await)
+            .expect_err("dangling admission must fail composition");
+        assert_eq!(
+            error,
+            IndexQueryRuntimeCompositionError::AdmissionSchemaMissing {
+                owner_module: "runtime_owner".to_owned(),
+                schema: missing,
+            }
+        );
+        assert!(!extensions.contains::<SharedIndexQueryRuntime>());
     }
 
     #[tokio::test]
