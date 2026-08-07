@@ -1,4 +1,5 @@
 mod commands;
+pub mod application;
 pub mod domain;
 pub mod entities;
 pub mod error;
@@ -11,6 +12,10 @@ use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub use application::{
+    DEFAULT_APPLICATION_LEASE_SECONDS, MAX_APPLICATION_LEASE_SECONDS,
+    MAX_APPLICATION_RETRY_SECONDS, MAX_DUE_APPLICATION_OPERATIONS,
+};
 pub use domain::*;
 pub use error::{ModerationError, ModerationResult};
 pub use ports::*;
@@ -66,8 +71,8 @@ mod tests {
         let module = ModerationModule;
         assert_eq!(module.slug(), "moderation");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 3);
-        assert_eq!(module.migration_dependencies().len(), 3);
+        assert_eq!(module.migrations().len(), 4);
+        assert_eq!(module.migration_dependencies().len(), 4);
         assert!(module.permissions().is_empty());
     }
 }
