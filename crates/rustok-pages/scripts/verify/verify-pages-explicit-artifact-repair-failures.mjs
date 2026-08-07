@@ -160,7 +160,6 @@ for (const marker of [
   "SysEventsMigration.up(&manager).await?",
   "for migration in ChannelModule.migrations()",
   "for migration in PagesModule.migrations()",
-  "body.updated_at",
   "struct RepairState",
   "rebuild_receipts: u64",
   "activation_receipts: u64",
