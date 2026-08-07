@@ -95,9 +95,12 @@ requireMarkers(replaySinkPath, [
 ]);
 const mutationStorePath = 'crates/rustok-index/src/infrastructure/postgres/mutation_store.rs';
 requireMarkers(mutationStorePath, [
-  'MutationApplyOutcome::Duplicate { source_version: stored_source_version }',
+  '"applied" => Ok(MutationApplyOutcome::Duplicate {',
+  'source_version: stored_source_version,',
   'if source_version <= current_source_version',
-  'MutationApplyOutcome::StaleIgnored',
+  'MutationApplyOutcome::StaleIgnored {',
+  'incoming_source_version: source_version,',
+  'current_source_version,',
   'self.lock_entity_key(transaction, mutation, backend).await?',
   'self.delete_existing_links(transaction, mutation, backend)',
 ]);
