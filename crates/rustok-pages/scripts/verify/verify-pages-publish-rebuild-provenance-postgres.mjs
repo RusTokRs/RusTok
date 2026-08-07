@@ -12,6 +12,7 @@ const evidence = JSON.parse(read(
   "crates/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json",
 ));
 const harness = read("crates/rustok-pages/tests/publish_rebuild_provenance_postgres.rs");
+const documentOwner = read("crates/rustok-pages/src/services/page/document.rs");
 const reviewedPublish = read("crates/rustok-pages/src/services/page/reviewed_publish.rs");
 const publishManifest = read("crates/rustok-pages/src/services/page/publish_manifest.rs");
 const publishOperation = read("crates/rustok-pages/src/entities/page_publish_operation.rs");
@@ -69,6 +70,7 @@ for (const [key, expected] of Object.entries({
   real_pages_module_migrations_used: true,
   real_page_service_create_used: true,
   real_page_service_save_document_used: true,
+  save_document_initial_revision_matches_owner: true,
   real_page_service_publish_reviewed_used: true,
   reviewed_publish_revision_matches_owner_updated_at_snapshot: true,
   two_locale_reviewed_publish_source_present: true,
@@ -121,6 +123,16 @@ for (const marker of [
   'locale: "fr".to_string()',
   'expected_revision: format!("page:{}:initial", draft.id)',
 ]) requireText(harness, marker, "provenance PostgreSQL harness foundation");
+requireOrder(documentOwner, [
+  "pub(crate) fn page_document_revision(page_id: Uuid, body: Option<&page_body::Model>) -> String",
+  "body.map(|body| body.updated_at.to_string())",
+  'unwrap_or_else(|| format!("page:{page_id}:initial"))',
+], "save-document owner revision fence");
+requireOrder(documentOwner, [
+  "let actual_revision = page_document_revision(page_id, existing.as_ref());",
+  "if input.expected_revision != actual_revision",
+  "document_revision_conflict(",
+], "save-document revision comparison");
 
 requireOrder(harness, [
   "let en_revision = draft",
