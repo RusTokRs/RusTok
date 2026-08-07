@@ -24,6 +24,12 @@ impl CatalogService {
         if let Some(status) = list_query.status {
             query = query.filter(entities::product::Column::Status.eq(status));
         }
+        if let Some(vendor) = list_query.vendor.as_deref() {
+            query = query.filter(entities::product::Column::Vendor.eq(vendor));
+        }
+        if let Some(product_type) = list_query.product_type.as_deref() {
+            query = query.filter(entities::product::Column::ProductType.eq(product_type));
+        }
         if let Some(category_id) = list_query.category_id {
             query = query.filter(entities::product::Column::PrimaryCategoryId.eq(category_id));
         }
