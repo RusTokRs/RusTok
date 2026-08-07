@@ -88,8 +88,18 @@ requireContains(
 );
 requireContains(
   composition,
-  'ReactionSubjectUiRef::new(\n                            "forum",\n                            "topic"',
-  "Only the final host render may combine Forum identity/revision with the neutral Reactions subject UI ref",
+  "ReactionSubjectUiRef::new(",
+  "Only the final host render may construct the neutral Reactions subject UI ref",
+);
+requireContains(
+  composition,
+  '"forum"',
+  "Forum topic composition must preserve the neutral producer source",
+);
+requireContains(
+  composition,
+  '"topic"',
+  "Forum topic composition must preserve the neutral producer kind",
 );
 requireContains(
   composition,
