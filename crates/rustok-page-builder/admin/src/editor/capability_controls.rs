@@ -1,5 +1,6 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
+use crate::{PageBuilderAdminProviderState, PageBuilderAdminProviderStatus};
 use fly_ui::{EditorCapability, EditorProviderState};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -26,7 +27,10 @@ pub(crate) fn CapabilityFieldset(
 }
 
 #[component]
-pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
+pub(crate) fn CapabilityPolicyPanel(
+    runtime: AdminEditorRuntime,
+    provider_status: Option<PageBuilderAdminProviderStatus>,
+) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
     let title = t(
@@ -39,10 +43,30 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
         "page_builder.capabilityPolicy.summary",
         "No detailed host policy was supplied. The effective profile still remains enforced by the state machine.",
     );
-    let provider_label = t(
+    let provider_control_label = t(
         locale.as_deref(),
-        "page_builder.capabilityPolicy.provider",
-        "Provider state",
+        "page_builder.capabilityPolicy.providerControl",
+        "Provider control state",
+    );
+    let observed_health_label = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.observedHealth",
+        "Observed health",
+    );
+    let host_policy_label = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.hostProviderPolicy",
+        "Host provider policy",
+    );
+    let rollout_label = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.rollout",
+        "Rollout flags",
+    );
+    let degradation_label = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.degradationReasons",
+        "Degradation reasons",
     );
     let capability_label = t(
         locale.as_deref(),
@@ -85,28 +109,90 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
         "yes",
     );
     let no_label = t(locale.as_deref(), "page_builder.capabilityPolicy.no", "no");
+    let unobserved_label = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.unobserved",
+        "unobserved",
+    );
+    let none_label = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.none",
+        "none",
+    );
+
     let evaluation = runtime.editor_capability_evaluation.clone();
-    let provider = evaluation
+    let host_provider = evaluation.as_ref().map(|evaluation| evaluation.provider_state);
+    let provider_control_state = provider_status
         .as_ref()
-        .map(|evaluation| evaluation.provider_state)
-        .unwrap_or(EditorProviderState::Healthy);
-    let provider_class = match provider {
-        EditorProviderState::Healthy => "rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-900",
-        EditorProviderState::Degraded => "rounded bg-amber-100 px-2 py-1 text-xs text-amber-900",
-        EditorProviderState::Unavailable => {
+        .map(PageBuilderAdminProviderStatus::state)
+        .unwrap_or(PageBuilderAdminProviderState::Unobserved);
+    let provider_class = match provider_control_state {
+        PageBuilderAdminProviderState::Ready => {
+            "rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-900"
+        }
+        PageBuilderAdminProviderState::Degraded => {
+            "rounded bg-amber-100 px-2 py-1 text-xs text-amber-900"
+        }
+        PageBuilderAdminProviderState::Unavailable => {
             "rounded bg-destructive/10 px-2 py-1 text-xs text-destructive"
         }
+        PageBuilderAdminProviderState::Unobserved => {
+            "rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
+        }
     };
+    let observed_health_state = provider_status
+        .as_ref()
+        .and_then(|status| status.health.as_ref())
+        .map(|health| health.state.as_str())
+        .unwrap_or("unobserved");
+    let observed_health_display = if observed_health_state == "unobserved" {
+        unobserved_label.clone()
+    } else {
+        observed_health_state.to_string()
+    };
+    let host_provider_display = host_provider
+        .map(EditorProviderState::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| unobserved_label.clone());
+    let rollout = provider_status.as_ref().map(|status| {
+        format!(
+            "builder={} preview={} properties={} publish={}",
+            status.flags.builder_enabled,
+            status.flags.preview_enabled,
+            status.flags.properties_enabled,
+            status.flags.publish_enabled,
+        )
+    });
+    let degradation_reasons = provider_status
+        .as_ref()
+        .and_then(|status| status.health.as_ref())
+        .map(|health| {
+            health
+                .degradation_reasons
+                .iter()
+                .map(|reason| reason.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .filter(|reasons| !reasons.is_empty())
+        .unwrap_or_else(|| none_label.clone());
 
     view! {
         <section
             class="space-y-3 rounded-xl border border-border bg-card p-3"
             data-fly-capability-policy="true"
-            data-fly-provider-state=provider.as_str()
+            data-fly-provider-control-state=provider_control_state.as_str()
+            data-fly-provider-health=observed_health_state
         >
             <div class="flex items-center justify-between gap-2">
                 <h2 class="font-semibold">{title}</h2>
-                <span class=provider_class>{format!("{provider_label}: {}", provider.as_str())}</span>
+                <span class=provider_class>{format!("{provider_control_label}: {}", provider_control_state.as_str())}</span>
+            </div>
+            <div class="grid gap-1 rounded bg-muted/40 px-2 py-2 text-xs text-muted-foreground">
+                <p>{format!("{observed_health_label}: {observed_health_display}")}</p>
+                <p>{format!("{host_policy_label}: {host_provider_display}")}</p>
+                <p>{format!("{rollout_label}: {}", rollout.unwrap_or_else(|| unobserved_label.clone()))}</p>
+                <p>{format!("{degradation_label}: {degradation_reasons}")}</p>
             </div>
             {evaluation.is_none().then(|| view! {
                 <p class="rounded bg-muted/50 px-2 py-1 text-xs text-muted-foreground" role="status">
