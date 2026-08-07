@@ -160,7 +160,7 @@ and owner primitives. Whether a direct action also opens a case is host/product 
 
 ## Host composition
 
-The server host now has source-ready optional materialization of the neutral subject-adapter
+The server host has source-ready optional materialization of the neutral subject-adapter
 registry:
 
 - `mod-moderation` selects the `rustok-moderation` owner independently from Forum;
@@ -172,9 +172,10 @@ registry:
 - Forum without Moderation remains valid and does not materialize the owner registry;
 - factory build, duplicate-key and factory-key mismatch errors remain startup failures.
 
-This wiring remains composition only. It does not itself dispatch decisions or add domain
-logic to the host. Durable application intent and lease state now live in the Moderation
-owner and are consumed by the future dispatcher rather than by the host composition layer.
+Host composition itself does not schedule work or add domain logic. Durable application
+intent/lease state and the bounded one-attempt dispatcher now live in the Moderation owner.
+A future host/runtime scheduler may call that owner primitive with the already-materialized
+registry; it must not bypass owner due/lease semantics.
 
 ## Application lifecycle
 
@@ -193,12 +194,12 @@ Required semantics:
 - validation, unsupported effect, and stale revision never become success;
 - crash recovery cannot double-apply a decision.
 
-The Moderation owner now persists `moderation_application_operations` as one current
-operation per immutable decision. `decide_case_replay_safe` creates the decision, typed
-effect, pending operation, `case_decided` event and command receipt in one owner transaction.
-Migration `m20260807_000004_create_moderation_application_operations` backfills only existing
-decisions with a typed `moderation_decision_effects` row; historical `effect: None` decisions
-remain non-dispatchable.
+The Moderation owner persists `moderation_application_operations` as one current operation
+per immutable decision. `decide_case_replay_safe` creates the decision, typed effect, pending
+operation, `case_decided` event and command receipt in one owner transaction. Migration
+`m20260807_000004_create_moderation_application_operations` backfills only existing decisions
+with a typed `moderation_decision_effects` row; historical `effect: None` decisions remain
+non-dispatchable.
 
 The operation snapshots the decision hash and exact reviewed subject. Bounded due reads and
 CAS claim move due pending/retryable rows, or applying rows with expired leases, into
@@ -213,21 +214,39 @@ requires `applied_revision >= reviewed_revision` before storing applied revision
 persistence layer also rejects applying rows without a complete lease tuple and applied
 revisions older than the reviewed revision.
 
-The Forum source slice demonstrates receipt-first domain application using the shared Outbox
-owner-operation ledger. `PortContext.idempotency_key` must equal the decision UUID; receipt
+`dispatch_application_operation_once` is now source-ready as the bounded dispatcher. It
+claims at most one exact due operation, reconstructs `ApplyModerationDecisionCommand` from
+immutable decision/effect/case facts, verifies decision hash and exact reviewed subject,
+looks up only the exact materialized `(subject_module, subject_kind)` adapter and invokes it
+with a trusted service `PortContext`.
+
+The domain call uses the immutable decision UUID as `PortContext.idempotency_key`; the current
+lease token appears only in the attempt correlation ID. This is the lost-response boundary:
+a retry after a successful domain mutation reaches the same domain receipt and replays before
+subject reads instead of applying the mutation again. Adapter deadline is 30 seconds while
+the dispatcher uses the existing default 60-second owner lease. If an adapter overruns the
+lease, stale-token CAS prevents the old attempt from recording an outcome after reclaim.
+
+Missing exact adapters and retryable `PortError`s move to `retryable` with deterministic
+bounded exponential backoff (5, 10, 20, 40, 80, 160 seconds, then capped at 300 seconds).
+Non-retryable `InvariantViolation` and deterministic corruption discovered while rebuilding
+the immutable command move to `operator_review`; other non-retryable neutral port errors move
+to `rejected`. Moderation storage failure after claim is returned to the caller and leaves the
+lease to expire/reclaim rather than forging a domain result.
+
+The Forum source slice demonstrates the matching receipt-first domain side using the shared
+Outbox owner-operation ledger. `PortContext.idempotency_key` equals the decision UUID; receipt
 admission binds the full immutable command before subject reads. Application then fences the
 active Forum subject and dedicated moderation revision row. Success completes the shared
 receipt in the same Forum transaction as the local effect and returns the post-application
 Forum moderation subject revision. Reply `Hidden` and `RejectPublication` share the same
 bounded non-public lifecycle transaction; reply `Removed` uses the complete Forum removal
-owner path. Completed Forum receipt replay occurs before subject reads, which is the domain
-primitive the future Moderation worker must rely on for lost-response recovery.
+owner path.
 
-The remaining orchestration gap is the worker/dispatcher: reconstruct the immutable
-`ApplyModerationDecisionCommand`, look up the exact host-materialized adapter, classify
-`PortError`, choose bounded retry/backoff, recover lost responses through operation/domain
-receipt state, and advance case/application audit lifecycle. No background dispatch is
-claimed by this operation-foundation slice.
+The remaining orchestration gap is the scheduler and audit lifecycle: enumerate bounded due
+work in the selected runtime, call one-attempt dispatch, recover process crashes through
+lease reclaim, and advance case/application lifecycle events/operator recovery without
+weakening owner/domain idempotency. No background polling is claimed by this slice.
 
 ## Source completed
 
@@ -257,34 +276,40 @@ claimed by this operation-foundation slice.
   decision/effect/pending-operation enqueue, bounded due reads, UUID lease-token CAS claim,
   expired-lease reclaim, retryable/rejected/operator-review/applied transitions and exact
   applied-evidence validation, guarded by
-  `scripts/verify/verify-moderation-application-operation.mjs`.
+  `scripts/verify/verify-moderation-application-operation.mjs`;
+- bounded one-attempt application dispatcher: immutable command reconstruction, exact adapter
+  selection, decision-UUID domain idempotency, bounded deadline/backoff, retry/terminal error
+  classification and applied-evidence handoff, guarded by
+  `scripts/verify/verify-moderation-application-dispatch-once.mjs`.
 
 ## Next priorities
 
-1. Add the Moderation owner worker/dispatcher over the durable application operations:
-   reconstruct immutable commands, select the exact materialized adapter, classify adapter
-   failures, apply bounded retry/backoff, recover crashes/lost responses and advance
-   case/application audit lifecycle without double application.
-2. Retain clean/upgraded PostgreSQL/SQLite application-operation migration/backfill evidence,
+1. Add the runtime scheduler/runner over the bounded one-attempt dispatcher: bounded due
+   enumeration, process-crash recovery through lease reclaim, lifecycle ownership and safe
+   shutdown/startup behavior without duplicating adapter invocation logic.
+2. Define and persist case/application audit lifecycle around dispatch outcomes, including
+   `decided -> applying_decision -> closed/escalated` semantics and transactional application
+   lifecycle events; add bounded operator retry/requeue/re-review recovery.
+3. Retain clean/upgraded PostgreSQL/SQLite application-operation migration/backfill evidence,
    atomic decision enqueue, due bounds/order, concurrent claim, lease expiry/reclaim,
-   stale-token rejection, retry scheduling and applied-evidence validation.
-3. Retain executable host-composition evidence for selected-owner/missing-owner,
+   stale-token rejection, command reconstruction, exact adapter selection, retry/error
+   classification, lost-response replay and applied-evidence validation.
+4. Retain executable host-composition evidence for selected-owner/missing-owner,
    Moderation-only empty materialization and Forum+Moderation topic/reply materialization;
    prove factory build failures remain fail-closed.
-4. Keep Forum `SetVisibility(Unpublished)` blocked until Forum owns an explicit lifecycle
+5. Keep Forum `SetVisibility(Unpublished)` blocked until Forum owns an explicit lifecycle
    meaning distinct from `RejectPublication`; add explicit expiry-safe state before temporary
    restrictions and admit no lossy approximation.
-5. Retain PostgreSQL/SQLite migration/backfill/trigger evidence for Forum moderation revision
+6. Retain PostgreSQL/SQLite migration/backfill/trigger evidence for Forum moderation revision
    clocks plus concurrent content/lifecycle edit versus permanent-lock/reply-hide/
    reply-reject/reply-remove application evidence, approved-to-hidden/approved-to-rejected
    accounting/event atomicity and removed-reply tombstone/accepted-solution/accounting/event
    atomicity.
-6. Add PostgreSQL Moderation active-case/decision-effect/revision-CAS evidence.
-7. Add moderation-specific RBAC resources and tenant permission registration.
-8. Publish transactional outbox contracts for report, case, decision, application, and
-   appeal lifecycle events.
-9. Integrate Groups as the membership-scoped expiry reference adapter, then Blog, Comments,
-   Pages, Reviews, Marketplace, Media, Messaging, and Profiles.
+7. Add PostgreSQL Moderation active-case/decision-effect/revision-CAS evidence.
+8. Add moderation-specific RBAC resources and tenant permission registration.
+9. Publish remaining transactional outbox contracts and integrate Groups as the
+   membership-scoped expiry reference adapter, then Blog, Comments, Pages, Reviews,
+   Marketplace, Media, Messaging, and Profiles.
 10. Add versioned policies, premoderation, automated assessment providers, appeals, and
    capability-scoped account sanctions; publish admin queue/case/application surfaces only
    after owner runtime composition.
@@ -297,6 +322,9 @@ claimed by this operation-foundation slice.
 - every new typed decision commits one durable pending application operation atomically;
 - historical decisions without typed effects remain non-dispatchable and are not backfilled;
 - only a live UUID lease token may finish an applying operation; expired leases are reclaimable;
+- the dispatcher selects exactly the stored subject module/kind adapter and never falls back;
+- every domain application attempt uses the immutable decision UUID as its idempotency key;
+- retryable neutral errors and missing adapters never become applied or terminal rejection;
 - applied evidence must match the immutable decision and exact reviewed subject before the
   Moderation owner records `applied`;
 - moderation never writes domain-owned tables;
@@ -304,7 +332,6 @@ claimed by this operation-foundation slice.
 - domain-specific subject revision clocks remain domain-owned and are not copied into
   Moderation persistence as a second mutable source of truth;
 - receipts replay before provider or subject reads;
-- idempotency keys and actor identity come only from `PortContext`;
 - immutable decisions are not rewritten after application;
 - domain owners validate subject, scope, revision, hash, and effect applicability;
 - automated providers return assessments, never destructive actions;
@@ -315,17 +342,19 @@ claimed by this operation-foundation slice.
 
 - moderation unavailable: existing domain enforcement remains authoritative; no new
   sanction is inferred;
-- adapter missing/unavailable: durable application remains pending/retryable and is never
-  marked applied;
-- domain owner unavailable: moderation retains durable intent and does not mark applied;
+- adapter missing/unavailable: one-attempt dispatch records retryable state and never marks
+  applied;
+- domain owner unavailable/timeout: retryable neutral errors schedule bounded backoff;
+- owner storage failure after claim: the attempt remains applying until lease expiry and is
+  then reclaimable; no domain outcome is fabricated;
 - worker crash while applying: the expired lease becomes reclaimable; stale lease tokens
   cannot complete the reclaimed operation;
 - moderation disabled: authorized domain-local enforcement may continue when product policy
   permits it, while report/case/appeal features are unavailable;
-- stale revision: conflict and explicit re-review/new decision;
-- missing/corrupt domain subject revision state: invariant failure, never guessed success;
-- unknown effect version, legacy `effect: None`, or unsupported effect: reject without
-  domain mutation.
+- stale revision/unsupported deterministic domain effect: terminal non-success classification,
+  never retargeted or guessed applied;
+- missing/corrupt owner command identity: operator review, never adapter dispatch;
+- unknown effect version or legacy `effect: None`: no domain mutation.
 
 ## Verification required before promotion
 
@@ -337,6 +366,7 @@ claimed by this operation-foundation slice.
 - `node scripts/verify/verify-forum-moderation-subject-adapter.mjs`;
 - `node scripts/verify/verify-moderation-host-composition.mjs`;
 - `node scripts/verify/verify-moderation-application-operation.mjs`;
+- `node scripts/verify/verify-moderation-application-dispatch-once.mjs`;
 - `cargo check -p rustok-server --no-default-features --features mod-moderation`;
 - `cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"`;
 - `cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles`;
@@ -345,7 +375,11 @@ claimed by this operation-foundation slice.
   evidence, including typed-effect-only backfill and legacy effectless exclusion;
 - atomic decision/effect/pending-operation/event/receipt commit and replay evidence;
 - due ordering/bounds, concurrent claim, lease expiry/reclaim, stale-token rejection,
-  retry scheduling, terminal transition and applied-evidence mismatch evidence;
+  command reconstruction, exact registry selection, retry scheduling/classification and
+  applied-evidence mismatch evidence;
+- lost-response evidence proving repeated domain calls keep the decision UUID idempotency key
+  and replay the domain receipt rather than reapply;
+- owner-storage failure after claim followed by lease-expiry reclaim evidence;
 - Forum moderation subject revision migration/backfill and topic/reply content/lifecycle
   trigger-advance evidence on PostgreSQL and SQLite;
 - duplicate/missing/mismatched adapter registry behavior;
@@ -353,7 +387,7 @@ claimed by this operation-foundation slice.
   evidence;
 - historical decision `effect: None` read and non-dispatch evidence;
 - PostgreSQL duplicate-report, active-case, and case-revision contention tests;
-- decision application worker crash/retry/lost-response recovery;
+- scheduler/process crash/retry recovery and future case/application audit lifecycle evidence;
 - Forum shared-receipt replay/request conflict, trusted caller, stale revision, permanent-lock,
   reply-hide, reply-reject and reply-remove versus concurrent content/lifecycle edit evidence;
 - approved-to-hidden and approved-to-rejected topic/category/author counter adjustment,
@@ -368,5 +402,5 @@ claimed by this operation-foundation slice.
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback
   evidence.
 
-No new execution evidence is claimed by the durable application-operation source slice.
-Maintainer-run verification remains required before promotion.
+No new execution evidence is claimed by the bounded one-attempt application-dispatch source
+slice. Maintainer-run verification remains required before promotion.
