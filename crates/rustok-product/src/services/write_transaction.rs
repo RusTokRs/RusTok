@@ -1,10 +1,10 @@
 use std::ops::Deref;
 
 use crate::{
-    error::CommerceResult,
+    error::{CommerceError, CommerceResult},
     services::index_refresh::{
-        product_locale_refresh_target, record_product_locale_refreshes_in_tx,
-        record_product_variant_refreshes_in_tx,
+        product_locale_refresh_target, product_variant_refresh_target,
+        record_product_locale_refreshes_in_tx, record_product_variant_refreshes_in_tx,
     },
 };
 use rustok_events::DomainEvent;
@@ -42,16 +42,21 @@ impl ProductWriteTransaction {
         actor_id: Option<Uuid>,
         event: DomainEvent,
     ) -> CommerceResult<()> {
-        let product_id = product_locale_refresh_target(&event);
+        if let Some(product_id) = product_index_revision_touch_target(&event) {
+            self.bump_product_index_revision(tenant_id, product_id)
+                .await?;
+        }
+
+        let product_locale_id = product_locale_refresh_target(&event);
+        let product_variant_id = product_variant_refresh_target(&event);
         let root_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
             .await?;
 
-        if let Some(product_id) = product_id {
-            // Capture the exact post-command Product and ProductVariant source state.
-            // Any source/ledger failure rolls back both the owner mutation and its event publication.
-            // The same atomic boundary includes both refresh ledgers.
+        if let Some(product_id) = product_locale_id {
+            // Capture the exact post-command Product source state. Any source/ledger failure rolls
+            // back both the owner mutation and its event publication.
             record_product_locale_refreshes_in_tx(
                 &self.transaction,
                 tenant_id,
@@ -59,6 +64,11 @@ impl ProductWriteTransaction {
                 root_event_id,
             )
             .await?;
+        }
+
+        if let Some(product_id) = product_variant_id {
+            // ProductVariant fan-out is limited to lifecycle/Product commands that can affect the
+            // variant graph. Product-only EAV changes must not re-emit every unchanged variant.
             record_product_variant_refreshes_in_tx(
                 &self.transaction,
                 tenant_id,
@@ -71,9 +81,45 @@ impl ProductWriteTransaction {
         Ok(())
     }
 
+    async fn bump_product_index_revision(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
+    ) -> CommerceResult<()> {
+        if self.transaction.get_database_backend() != DbBackend::Postgres {
+            return Ok(());
+        }
+
+        // `trg_products_bump_index_revision` owns the actual +1 operation. Updating only the clock
+        // column avoids fabricating Product-SalesChannel convergence work because that trigger listens
+        // only to metadata/tenant/id changes. The update is in the same transaction as EAV writes,
+        // outbox publication, graph projection and refresh-ledger capture.
+        let result = self
+            .transaction
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "UPDATE products SET index_revision = index_revision WHERE tenant_id = $1 AND id = $2",
+                vec![tenant_id.into(), product_id.into()],
+            ))
+            .await?;
+        if result.rows_affected() != 1 {
+            return Err(CommerceError::Validation(
+                "Product attribute Index revision target is missing".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) async fn commit(self) -> CommerceResult<()> {
         self.transaction.commit().await?;
         Ok(())
+    }
+}
+
+fn product_index_revision_touch_target(event: &DomainEvent) -> Option<Uuid> {
+    match event {
+        DomainEvent::ProductAttributeValuesChanged { product_id } => Some(*product_id),
+        _ => None,
     }
 }
 
