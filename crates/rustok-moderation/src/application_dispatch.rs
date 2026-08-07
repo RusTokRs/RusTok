@@ -2,7 +2,7 @@ use std::time::Duration as StdDuration;
 
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_moderation_api::{
-    ApplyModerationDecisionCommand, ModerationSubjectAdapterRegistry,
+    ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectAdapterRegistry,
 };
 use uuid::Uuid;
 
@@ -18,6 +18,7 @@ const APPLICATION_DISPATCH_ACTOR: &str = "rustok-moderation";
 const APPLICATION_DISPATCH_LOCALE: &str = "und";
 const ADAPTER_MISSING_CODE: &str = "moderation.application_adapter_missing";
 const COMMAND_INVALID_CODE: &str = "moderation.application_command_invalid";
+const EVIDENCE_INVALID_CODE: &str = "moderation.application_evidence_invalid";
 
 impl ModerationService {
     /// Claims and dispatches at most one due application operation.
@@ -92,7 +93,7 @@ impl ModerationService {
         let context = application_port_context(tenant_id, decision_id, lease_token);
         match adapter.apply_moderation_decision(context, command).await {
             Ok(application) => self
-                .mark_application_applied(tenant_id, decision_id, lease_token, application)
+                .finish_adapter_success(tenant_id, decision_id, lease_token, application)
                 .await
                 .map(Some),
             Err(error) => {
@@ -155,6 +156,32 @@ impl ModerationService {
             effect,
             decision_hash: decision.decision_hash,
         })
+    }
+
+    async fn finish_adapter_success(
+        &self,
+        tenant_id: Uuid,
+        decision_id: Uuid,
+        lease_token: Uuid,
+        application: ModerationDecisionApplication,
+    ) -> ModerationResult<ModerationApplicationOperationRecord> {
+        match self
+            .mark_application_applied(tenant_id, decision_id, lease_token, application)
+            .await
+        {
+            Ok(operation) => Ok(operation),
+            Err(error @ ModerationError::ApplicationEvidenceMismatch(_)) => {
+                self.mark_application_operator_review(
+                    tenant_id,
+                    decision_id,
+                    lease_token,
+                    EVIDENCE_INVALID_CODE,
+                    error.to_string(),
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        }
     }
 
     async fn finish_adapter_error(
