@@ -212,7 +212,12 @@ These are source-contract defects, not verification-only tasks.
   status/vendor/product-type/search filtering, created-at-desc ordering, pagination,
   locale fallback, empty missing-title projection, normalized/default shipping-profile
   slug, tags, request context, deadline, and public error envelope.
-- [ ] Cut remaining mounted Product catalog reads, REST delete/publish/unpublish
+- [x] Cut mounted admin GraphQL Product catalog reads to the host-selected
+  `ProductCatalogReadRuntime` / `ProductCatalogReadPort`, preserving tenant/permission
+  admission, typed catalog filters, pagination validation, requested/default locale,
+  request channel, authenticated actor, bounded deadline, response projection, and
+  correlation-aware stable public owner errors.
+- [ ] Cut remaining mounted Product storefront catalog reads, REST delete/publish/unpublish
   lifecycle commands, and GraphQL product lifecycle/schema operations over to
   host-composed Product owner ports. Direct Product entities, `CatalogService`, and
   `ProductCatalogSchemaService` remain explicit source debt; repeatable lifecycle
@@ -616,6 +621,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-commerce-product-command-port.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-detail-read.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-list-read.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-admin-graphql-read.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -648,8 +654,9 @@ Source inspection is not execution evidence.
   mutation, payment, or fulfillment ownership; unmounted admin compatibility GET
   handlers remain explicit source debt.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, order-read,
-  marketplace-financial topology, Product command-port, Product admin-detail read, and
-  Product admin-list read static guards against a repository checkout and retain their output.
+  marketplace-financial topology, Product command-port, Product admin-detail read,
+  Product admin-list read, and Product admin-GraphQL read static guards against a
+  repository checkout and retain their output.
 
 ### Compile/tests
 
@@ -829,6 +836,10 @@ Source inspection is not execution evidence.
   read-port capability while preserving legacy filters, ordering, pagination, locale
   fallback, empty-title/default-shipping envelope, and source compatibility for existing
   Product read-port adapters; GraphQL catalog and lifecycle cutover remain open.
+- [x] Cut mounted admin GraphQL Product catalog reads to the host-selected Product read
+  runtime/port with authenticated actor, request channel/locale context, bounded deadline,
+  existing filter/pagination semantics, unchanged response projection, and safe stable
+  public owner errors; storefront catalog and lifecycle/schema cutover remain open.
 
 ## Change rules
 
