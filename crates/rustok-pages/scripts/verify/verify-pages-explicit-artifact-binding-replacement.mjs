@@ -14,6 +14,7 @@ const files = {
   dto: "crates/rustok-pages/src/dto/artifact_binding_replacement.rs",
   dtoMod: "crates/rustok-pages/src/dto/mod.rs",
   service: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  rollback: "crates/rustok-pages/src/services/page/rollback.rs",
   artifactService: "crates/rustok-pages/src/services/page_builder_artifact.rs",
   pageServices: "crates/rustok-pages/src/services/page/mod.rs",
   services: "crates/rustok-pages/src/services/mod.rs",
@@ -21,11 +22,13 @@ const files = {
   test: "crates/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs",
   singleLossTest: "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs",
   multiLossTest: "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
+  rollbackLossTest: "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json",
   packet: "crates/rustok-pages/docs/explicit-immutable-artifact-binding-replacement.md",
   recoveryPacket: "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md",
   actualization: "docs/modules/pages-page-builder-activation-recovery-implementation-actualization-2026-08-07.md",
   multiActualization: "docs/modules/pages-page-builder-multilocale-activation-recovery-actualization-2026-08-07.md",
+  rollbackActualization: "docs/modules/pages-page-builder-rollback-activated-recovery-actualization-2026-08-07.md",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
@@ -69,10 +72,10 @@ const sources = Object.fromEntries(
 );
 const evidence = JSON.parse(sources.evidence);
 
-if (evidence.format !== "pages_explicit_artifact_binding_replacement_source_v3") {
+if (evidence.format !== "pages_explicit_artifact_binding_replacement_source_v4") {
   failures.push("evidence format drifted");
 }
-if (evidence.status !== "pages_explicit_artifact_binding_replacement_multilocale_recovery_source_unvalidated") {
+if (evidence.status !== "pages_explicit_artifact_binding_replacement_rollback_anchor_recovery_source_unvalidated") {
   failures.push("evidence status drifted");
 }
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
@@ -95,7 +98,14 @@ for (const key of [
   "missing_binding_recovery_requires_source_artifact_absent",
   "missing_binding_recovery_requires_retained_source_body_identity",
   "missing_binding_recovery_requires_exact_source_publish_operation",
-  "missing_binding_first_recovery_accepts_publish_result_version_equal_current_expected",
+  "missing_binding_direct_publish_anchor_accepts_publish_result_version_equal_current_expected",
+  "missing_binding_rollback_activation_anchor_is_supported",
+  "missing_binding_rollback_anchor_requires_exact_target_publish_operation",
+  "missing_binding_rollback_anchor_requires_exact_target_artifact_set_hash",
+  "missing_binding_rollback_anchor_recomputes_canonical_request_hash",
+  "missing_binding_rollback_anchor_derives_expected_version_from_result_version_minus_one",
+  "missing_binding_latest_matching_rollback_anchor_is_selected",
+  "missing_binding_without_matching_rollback_anchor_falls_back_to_publish_anchor",
   "missing_binding_sequential_recovery_requires_contiguous_activation_version_chain",
   "missing_binding_sequential_recovery_requires_same_source_publish",
   "missing_binding_sequential_recovery_requires_other_unique_locales",
@@ -106,8 +116,10 @@ for (const key of [
   "missing_binding_sequential_recovery_rejects_unexplained_version_gap",
   "missing_binding_sequential_recovery_rejects_prior_activation_for_target_locale",
   "missing_binding_sequential_recovery_is_bounded",
+  "missing_binding_sequential_recovery_query_is_physically_bounded",
   "missing_binding_recovery_reuses_bind_existing_body",
   "missing_binding_recovery_does_not_recreate_source_artifact",
+  "rollback_receipt_is_not_repair_source_authority",
   "replacement_artifact_owner_locale_instance_and_hashes_are_verified",
   "replacement_artifact_full_integrity_is_verified_before_binding_update",
   "only_one_locale_binding_is_updated_per_command",
@@ -120,6 +132,17 @@ for (const key of [
   "cache_invalidation_is_event_driven_after_commit",
   "replacement_receipt_is_idempotent",
   "one_activation_receipt_is_allowed_per_rebuild",
+  "postgres_recovery_harness_source_ready",
+  "postgres_success_recovery_case_source_ready",
+  "postgres_source_artifact_present_rejection_source_ready",
+  "postgres_stale_publish_version_rejection_source_ready",
+  "postgres_multilocale_recovery_harness_source_ready",
+  "postgres_multilocale_success_source_ready",
+  "postgres_unexplained_version_drift_rejection_source_ready",
+  "postgres_rollback_activated_recovery_harness_source_ready",
+  "postgres_rollback_activated_multilocale_success_source_ready",
+  "postgres_noncanonical_rollback_anchor_hash_rejection_source_ready",
+  "postgres_unexplained_post_rollback_version_drift_rejection_source_ready",
   "graphql_http_openapi_admin_ui_and_workers_are_not_added",
   "automatic_audit_to_repair_is_not_added",
   "automatic_rebuild_to_activation_is_not_added",
@@ -214,9 +237,22 @@ for (const marker of [
   "page_publish_operation::Entity::find_by_id(source.operation_id)",
   "publish.id != rebuild.source_publish_operation_id",
   "publish.result_version > expected_version",
-  "publish.result_version < expected_version",
+  "let anchor_version = if publish.result_version == expected_version",
+  "resolve_missing_binding_recovery_anchor_in_tx",
+  "page_rollback_operation::Entity::find()",
+  "TargetPublishOperationId.eq(publish.id)",
+  "TargetArtifactSetHash",
+  "ResultVersion.lte(expected_version)",
+  "order_by_desc(page_rollback_operation::Column::ResultVersion)",
+  "rollback.result_version.checked_sub(1)",
+  "PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT",
+  "rollback.request_hash != expected_request_hash",
+  "if anchor_version < expected_version",
   "ensure_sequential_missing_binding_recovery_version_chain_in_tx",
   "MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS",
+  "checked_sub(anchor_version)",
+  ".gt(anchor_version)",
+  ".limit((MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS + 1) as u64)",
   "operations.len() != version_gap",
   "operation.expected_version != cursor",
   "operation.result_version != cursor + 1",
@@ -279,11 +315,15 @@ requireOrdered(
   sources.service,
   [
     "publish.result_version > expected_version",
-    "publish.result_version < expected_version",
+    "let anchor_version = if publish.result_version == expected_version",
+    "resolve_missing_binding_recovery_anchor_in_tx",
+    "if anchor_version < expected_version",
     "ensure_sequential_missing_binding_recovery_version_chain_in_tx",
   ],
-  "missing-binding version admission",
+  "missing-binding publish-or-rollback version admission",
 );
+need(sources.rollback, 'const PAGE_ROLLBACK_OPERATION_FORMAT: &str = "page_rollback_operation_v1"', "rollback request format owner");
+need(sources.service, 'PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT: &str = "page_rollback_operation_v1"', "rollback anchor format lock");
 
 for (const marker of [
   "pub(crate) async fn bind_existing_body_in_tx",
@@ -315,7 +355,8 @@ for (const marker of [
   "missing_binding_activation_recovers_after_physical_source_artifact_loss_on_postgres",
   "missing_binding_activation_rejects_when_source_artifact_still_exists_on_postgres",
   "missing_binding_activation_rejects_stale_source_publish_version_on_postgres",
-  "source publish version is stale",
+  "source artifact still exists",
+  "not fully explained",
 ]) {
   need(sources.singleLossTest, marker, "single-locale PostgreSQL recovery source");
 }
@@ -326,6 +367,15 @@ for (const marker of [
   "not fully explained",
 ]) {
   need(sources.multiLossTest, marker, "multi-locale PostgreSQL recovery source");
+}
+for (const marker of [
+  "rollback_activated_publish_recovers_two_lost_locales_sequentially_on_postgres",
+  "rollback_activated_recovery_rejects_noncanonical_rollback_anchor_hash_on_postgres",
+  "rollback_activated_recovery_rejects_unexplained_version_drift_on_postgres",
+  "expected_version: fixture.rollback_version",
+  "expected_version: en_activation.version",
+]) {
+  need(sources.rollbackLossTest, marker, "rollback-activated PostgreSQL recovery source");
 }
 
 for (const marker of [
@@ -343,11 +393,13 @@ for (const marker of [
   "Explicit Immutable Artifact-Loss Activation Recovery",
   "Existing-binding path remains strict",
   "Missing-binding recovery admission",
-  "publish_operation.result_version == expected_version",
+  "Direct publish anchor",
+  "Exact rollback activation anchor",
   "Sequential multi-locale version chain",
+  "physically capped at 257 rows",
   "unexplained lifecycle/version increment",
   "does not recreate the missing canonical source artifact",
-  "automatic audit-to-rebuild",
+  "No automatic audit-to-rebuild",
 ]) {
   need(sources.recoveryPacket, marker, "recovery packet");
 }
@@ -368,6 +420,14 @@ for (const marker of [
   "Unexplained version drift remains fail-closed",
 ]) {
   need(sources.multiActualization, marker, "multi-locale parity actualization");
+}
+for (const marker of [
+  "Rollback-Activated Artifact-Loss Recovery Actualization",
+  "Exact rollback activation anchor",
+  "Multi-locale physical-loss recovery after rollback activation",
+  "Unexplained post-rollback version drift remains rejected",
+]) {
+  need(sources.rollbackActualization, marker, "rollback-activated parity actualization");
 }
 
 if (failures.length > 0) {
