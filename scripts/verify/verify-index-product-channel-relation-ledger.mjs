@@ -118,12 +118,12 @@ const ledgerDoc = requireMarkers('crates/rustok-product/docs/index-sales-channel
   '`product_sales_channel_index_relation_snapshots`',
   '`ProductSalesChannelIndexRelationStore::replace`',
   '`FOR KEY SHARE`',
-  'freshness is separate',
+  'Freshness is separate',
   '`product_sales_channel_index_relation_freshness_snapshots`',
   '`product_index_graph_projection_snapshots.projection_epoch`',
   '`sales_channel_ids`',
   '`sales_channels` link',
-  'no `rustok-channel` or `rustok-index` dependency',
+  'has no `rustok-channel` or `rustok-index`',
   'No tests, Node verifiers, Cargo checks',
 ]);
 for (const legacy of ['Product v1', 'Product v2', 'Product v3', 'new Product schema version']) {
