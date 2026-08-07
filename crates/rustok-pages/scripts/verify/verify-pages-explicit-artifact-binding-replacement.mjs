@@ -240,7 +240,7 @@ for (const marker of [
 }
 for (const marker of [
   "rollback_activated_publish_recovers_two_lost_locales_sequentially_on_postgres",
-  "rollback_activated_recovery_rejects_noncanonical_rollback_request_hash_on_postgres",
+  "rollback_activated_recovery_rejects_noncanonical_rollback_anchor_hash_on_postgres",
 ]) {
   need(sources.rollbackLossTest, marker, "rollback-activated PostgreSQL packet");
 }
