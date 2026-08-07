@@ -35,7 +35,10 @@ for (const marker of [
   "validate_for_decision_kind",
   "registry.get(&operation.subject.module, operation.subject.kind)",
   "apply_moderation_decision(context, command)",
+  "finish_adapter_success",
   "mark_application_applied",
+  "ModerationError::ApplicationEvidenceMismatch",
+  "EVIDENCE_INVALID_CODE",
   "mark_application_retryable",
   "mark_application_rejected",
   "mark_application_operator_review",
@@ -54,6 +57,7 @@ for (const marker of [
   'APPLICATION_RETRY_BASE_SECONDS: i64 = 5',
   'APPLICATION_RETRY_MAX_SECONDS: i64 = 300',
   'ADAPTER_MISSING_CODE: &str = "moderation.application_adapter_missing"',
+  'EVIDENCE_INVALID_CODE: &str = "moderation.application_evidence_invalid"',
 ]) {
   requireText(dispatch, marker, `dispatch context/retry contract is missing ${marker}`);
 }
