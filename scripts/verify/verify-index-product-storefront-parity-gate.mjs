@@ -142,7 +142,7 @@ const currentPlanPath = 'crates/rustok-index/docs/implementation-plan-current-20
 requireMarkers(currentPlanPath, [
   'Prove complete Storefront Product/ProductVariant/SalesChannel query parity.',
   'Move Storefront traffic only after readiness/equivalence/freshness/availability evidence passes.',
-  'Do not introduce a new Product schema/version to solve',
+  'do not introduce a new Product schema/version to solve',
 ]);
 
 console.log('[verify-index-product-storefront-parity-gate] Storefront cutover remains fail-closed on the current immutable Product Index contract');
