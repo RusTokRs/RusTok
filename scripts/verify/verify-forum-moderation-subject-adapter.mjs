@@ -95,6 +95,10 @@ for (const marker of [
   "apply_reply_hidden_effect_in_tx",
   "ModerationVisibilityState::Removed",
   "apply_reply_removed_effect_in_tx",
+  "ModerationDecisionEffectAction::RejectPublication",
+  "apply_reply_rejected_effect_in_tx",
+  "apply_reply_non_public_status_effect_in_tx",
+  "ReplyStatus::Rejected",
   "ReplyService::remove_in_tx",
   "ReplyService::set_status_in_tx",
   "TopicService::adjust_reply_count_in_tx",
@@ -122,12 +126,13 @@ for (const marker of [
   requireText(replyOwner, marker, `Forum reply removal owner path is missing ${marker}`);
 }
 
-// Unpublished remains intentionally unsupported until Forum defines one exact
-// lifecycle meaning. Removed is allowed only through ReplyService::remove_in_tx.
+// Unpublished remains intentionally unsupported and distinct from the exact
+// RejectPublication -> ReplyStatus::Rejected owner contract. Removed is allowed
+// only through ReplyService::remove_in_tx.
 forbidText(
   adapter,
   "ModerationVisibilityState::Unpublished",
-  "Forum must not approximate neutral Unpublished before an exact Forum lifecycle mapping exists",
+  "Forum must not approximate neutral Unpublished as the rejected publication lifecycle",
 );
 forbidText(
   adapter,
@@ -167,6 +172,15 @@ if (!contract.supported_effects.some((effect) => effect.includes("SetVisibility 
 if (!contract.supported_effects.some((effect) => effect.includes("SetVisibility Removed"))) {
   throw new Error("contract must record the exact removed reply visibility effect");
 }
+if (!contract.supported_effects.some((effect) => effect.includes("RejectPublication"))) {
+  throw new Error("contract must record the exact reply reject-publication effect");
+}
+if (contract.reply_rejected_semantics?.target !== "ReplyStatus::Rejected") {
+  throw new Error("RejectPublication must bind to Forum ReplyStatus::Rejected");
+}
+if (!contract.reply_rejected_semantics?.unpublished_distinction?.includes("remains unsupported")) {
+  throw new Error("RejectPublication contract must keep neutral Unpublished distinct");
+}
 if (contract.reply_removed_semantics?.owner_helper !== "ReplyService::remove_in_tx") {
   throw new Error("Removed must bind to the complete Forum reply removal owner helper");
 }
@@ -175,6 +189,12 @@ if (!contract.deferred_effects.some((effect) => effect.includes("SetVisibility U
 }
 if (contract.deferred_effects.some((effect) => effect.includes("SetVisibility Removed"))) {
   throw new Error("contract must not keep Removed deferred after exact owner-path reuse");
+}
+if (contract.deferred_effects.some((effect) => effect.includes("RejectPublication"))) {
+  throw new Error("contract must not keep RejectPublication deferred after exact owner mapping");
+}
+if (!contract.forbidden.includes("mapping SetVisibility Unpublished to ReplyStatus::Rejected")) {
+  throw new Error("contract must forbid collapsing Unpublished into RejectPublication state");
 }
 if (!contract.forbidden.includes("direct rustok-moderation owner dependency")) {
   throw new Error("contract must forbid a direct Moderation owner dependency");
