@@ -3,13 +3,18 @@ use std::collections::BTreeMap;
 use rustok_core::ModuleRuntimeExtensions;
 use thiserror::Error;
 
-use crate::{PostgresQueryRootAdmission, PostgresQueryRootAdmissionError, SchemaRef};
+use crate::{PostgresQueryEntityAdmission, PostgresQueryEntityAdmissionError, SchemaRef};
+
+const ENTITY_ALIAS_TOKEN: &str = "{{entity}}";
+const RUNTIME_PASSTHROUGH_OWNER: &str = "index";
+const RUNTIME_PASSTHROUGH_RULE: &str = "{{entity}}.entity_id IS NOT NULL";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PostgresIndexQueryAdmissionDescriptor {
     owner_module: String,
     schema: SchemaRef,
-    admission: PostgresQueryRootAdmission,
+    rule: Option<PostgresQueryEntityAdmission>,
+    admission: PostgresQueryEntityAdmission,
 }
 
 impl PostgresIndexQueryAdmissionDescriptor {
@@ -21,8 +26,12 @@ impl PostgresIndexQueryAdmissionDescriptor {
         &self.schema
     }
 
-    pub fn admission(&self) -> &PostgresQueryRootAdmission {
+    pub fn admission(&self) -> &PostgresQueryEntityAdmission {
         &self.admission
+    }
+
+    pub fn is_governed(&self) -> bool {
+        self.rule.is_some()
     }
 }
 
@@ -56,7 +65,7 @@ impl PostgresIndexQueryAdmissionCatalog {
         &mut self,
         owner_module: impl Into<String>,
         schema: SchemaRef,
-        admission: PostgresQueryRootAdmission,
+        admission: PostgresQueryEntityAdmission,
     ) -> Result<(), PostgresIndexQueryAdmissionError> {
         let owner_module = owner_module.into();
         validate_owner_module(&owner_module)?;
@@ -72,9 +81,68 @@ impl PostgresIndexQueryAdmissionCatalog {
             PostgresIndexQueryAdmissionDescriptor {
                 owner_module,
                 schema,
+                rule: Some(admission.clone()),
                 admission,
             },
         );
+        self.rebuild_composite()
+    }
+
+    /// Adds a runtime-local pass-through root descriptor for an otherwise ungoverned registered
+    /// schema. Pass-through descriptors are never published as owner rules; they exist only in the
+    /// immutable query runtime so a query rooted at any registered schema still applies the same
+    /// composite owner admission to governed linked targets.
+    pub(crate) fn ensure_runtime_schema(
+        &mut self,
+        schema: SchemaRef,
+    ) -> Result<(), PostgresIndexQueryAdmissionError> {
+        if self.entries.contains_key(&schema) {
+            return Ok(());
+        }
+        let admission = PostgresQueryEntityAdmission::new(RUNTIME_PASSTHROUGH_RULE)?;
+        self.entries.insert(
+            schema.clone(),
+            PostgresIndexQueryAdmissionDescriptor {
+                owner_module: RUNTIME_PASSTHROUGH_OWNER.to_owned(),
+                schema,
+                rule: None,
+                admission,
+            },
+        );
+        self.rebuild_composite()
+    }
+
+    fn rebuild_composite(&mut self) -> Result<(), PostgresIndexQueryAdmissionError> {
+        let governed = self
+            .entries
+            .values()
+            .filter_map(|descriptor| {
+                descriptor
+                    .rule
+                    .as_ref()
+                    .map(|rule| (descriptor.schema.clone(), rule.template().to_owned()))
+            })
+            .collect::<Vec<_>>();
+        if governed.is_empty() {
+            return Ok(());
+        }
+
+        let guards = governed
+            .iter()
+            .map(|(schema, _)| schema_guard(schema))
+            .collect::<Vec<_>>();
+        let allowed = governed
+            .iter()
+            .map(|(schema, rule)| format!("({} AND ({rule}))", schema_guard(schema)))
+            .collect::<Vec<_>>();
+        let composite = PostgresQueryEntityAdmission::new(format!(
+            "(NOT ({}) OR {})",
+            guards.join(" OR "),
+            allowed.join(" OR ")
+        ))?;
+        for descriptor in self.entries.values_mut() {
+            descriptor.admission = composite.clone();
+        }
         Ok(())
     }
 }
@@ -92,20 +160,33 @@ pub enum PostgresIndexQueryAdmissionError {
         incoming_owner: String,
     },
     #[error(transparent)]
-    InvalidAdmission(#[from] PostgresQueryRootAdmissionError),
+    InvalidAdmission(#[from] PostgresQueryEntityAdmissionError),
 }
 
 pub fn register_postgres_index_query_admission(
     extensions: &mut ModuleRuntimeExtensions,
     owner_module: impl Into<String>,
     schema: SchemaRef,
-    admission: PostgresQueryRootAdmission,
+    admission: PostgresQueryEntityAdmission,
 ) -> Result<(), PostgresIndexQueryAdmissionError> {
     extensions
         .get_or_insert_with::<PostgresIndexQueryAdmissionCatalog, _>(
             PostgresIndexQueryAdmissionCatalog::new,
         )
         .register(owner_module, schema, admission)
+}
+
+fn schema_guard(schema: &SchemaRef) -> String {
+    format!(
+        "({ENTITY_ALIAS_TOKEN}.module_name = '{}' AND {ENTITY_ALIAS_TOKEN}.entity_name = '{}' AND {ENTITY_ALIAS_TOKEN}.schema_version = {})",
+        sql_literal(schema.module.as_str()),
+        sql_literal(schema.entity.as_str()),
+        schema.version.get(),
+    )
+}
+
+fn sql_literal(value: &str) -> String {
+    value.replace('\'', "''")
 }
 
 fn validate_owner_module(value: &str) -> Result<(), PostgresIndexQueryAdmissionError> {
@@ -130,26 +211,66 @@ mod tests {
     use super::*;
     use crate::{EntityName, ModuleName, SchemaVersion};
 
-    fn schema() -> SchemaRef {
+    fn schema(entity: &str) -> SchemaRef {
         SchemaRef {
             module: ModuleName::new("rustok-product").unwrap(),
-            entity: EntityName::new("product").unwrap(),
-            version: SchemaVersion::new(3),
+            entity: EntityName::new(entity).unwrap(),
+            version: SchemaVersion::INITIAL,
         }
     }
 
     #[test]
     fn exact_schema_has_one_query_admission_owner() {
-        let admission = PostgresQueryRootAdmission::new("{{root}}.source_version > 0").unwrap();
+        let admission = PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap();
         let mut catalog = PostgresIndexQueryAdmissionCatalog::new();
         catalog
-            .register("product", schema(), admission.clone())
+            .register("product", schema("product"), admission.clone())
             .unwrap();
         assert_eq!(catalog.len(), 1);
-        assert_eq!(catalog.get(&schema()).unwrap().owner_module(), "product");
+        assert_eq!(
+            catalog.get(&schema("product")).unwrap().owner_module(),
+            "product"
+        );
         assert!(matches!(
-            catalog.register("other", schema(), admission),
+            catalog.register("other", schema("product"), admission),
             Err(PostgresIndexQueryAdmissionError::DuplicateSchema { .. })
         ));
+    }
+
+    #[test]
+    fn every_runtime_root_receives_the_same_governed_entity_dispatch() {
+        let mut catalog = PostgresIndexQueryAdmissionCatalog::new();
+        catalog
+            .register(
+                "product",
+                schema("product"),
+                PostgresQueryEntityAdmission::new("{{entity}}.source_version > 10").unwrap(),
+            )
+            .unwrap();
+        catalog
+            .register(
+                "product",
+                schema("product_variant"),
+                PostgresQueryEntityAdmission::new("{{entity}}.source_version > 20").unwrap(),
+            )
+            .unwrap();
+        let unrelated = SchemaRef {
+            module: ModuleName::new("other").unwrap(),
+            entity: EntityName::new("item").unwrap(),
+            version: SchemaVersion::INITIAL,
+        };
+        catalog.ensure_runtime_schema(unrelated.clone()).unwrap();
+
+        let product = catalog.get(&schema("product")).unwrap();
+        let passthrough = catalog.get(&unrelated).unwrap();
+        assert!(product.is_governed());
+        assert!(!passthrough.is_governed());
+        assert_eq!(product.admission(), passthrough.admission());
+        let template = product.admission().template();
+        assert!(template.contains("entity_name = 'product'"));
+        assert!(template.contains("entity_name = 'product_variant'"));
+        assert!(template.contains("source_version > 10"));
+        assert!(template.contains("source_version > 20"));
+        assert!(!template.contains("entity_name = 'item'"));
     }
 }
