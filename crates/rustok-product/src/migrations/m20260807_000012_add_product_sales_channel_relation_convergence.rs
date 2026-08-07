@@ -205,6 +205,7 @@ BEGIN
         ELSE
             IF OLD.sweep_generation IS NULL
                OR NEW.sweep_generation <> OLD.sweep_generation
+               OR NEW.sweep_after_product_id IS NULL
                OR OLD.lease_token IS NULL
                OR NEW.lease_token IS NOT NULL
                OR (
