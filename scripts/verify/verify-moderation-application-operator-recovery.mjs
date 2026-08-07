@@ -6,6 +6,7 @@ const recovery = fs.readFileSync(
 );
 const domain = fs.readFileSync("crates/rustok-moderation/src/domain.rs", "utf8");
 const moderationLib = fs.readFileSync("crates/rustok-moderation/src/lib.rs", "utf8");
+const ports = fs.readFileSync("crates/rustok-moderation/src/ports.rs", "utf8");
 const dispatcher = fs.readFileSync(
   "crates/rustok-moderation/src/application_dispatch.rs",
   "utf8",
@@ -70,6 +71,15 @@ for (const forbidden of [
     forbidden,
     `Operator recovery must not dispatch domains or absorb unrelated ownership: ${forbidden}`,
   );
+}
+
+for (const marker of [
+  "ModerationError::ApplicationOperationNotFound",
+  "ModerationError::ApplicationLeaseConflict",
+  "ModerationError::ApplicationRecoveryConflict",
+  "ModerationError::ApplicationEvidenceMismatch",
+]) {
+  requireText(ports, marker, `Moderation owner error mapping is missing ${marker}`);
 }
 
 requireText(
