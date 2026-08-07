@@ -19,6 +19,7 @@ mod-order = ["dep:rustok-order"]
 mod-payment = ["dep:rustok-payment"]
 mod-fulfillment = ["dep:rustok-fulfillment"]
 mod-commerce = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment"]
+commerce-marketplace-financial = ["mod-commerce", "mod-marketplace_allocation", "mod-marketplace_commission", "mod-marketplace_ledger", "rustok-commerce/marketplace-financial"]
 mod-marketplace_seller = ["dep:rustok-marketplace-seller"]
 mod-marketplace_listing = ["dep:rustok-marketplace-listing", "mod-marketplace_seller", "mod-product"]
 mod-marketplace_allocation = ["dep:rustok-marketplace-allocation", "mod-order", "mod-marketplace_seller", "mod-marketplace_listing"]
@@ -75,7 +76,7 @@ rustok-inventory = { workspace = true, optional = true }
 rustok-order = { workspace = true, optional = true }
 rustok-payment = { workspace = true, optional = true }
 rustok-fulfillment = { workspace = true, optional = true }
-rustok-commerce = { workspace = true, optional = true }
+rustok-commerce = { workspace = true, optional = true, default-features = false }
 rustok-marketplace-seller = { workspace = true, optional = true }
 rustok-marketplace-listing = { workspace = true, optional = true }
 rustok-marketplace-allocation = { workspace = true, optional = true }
