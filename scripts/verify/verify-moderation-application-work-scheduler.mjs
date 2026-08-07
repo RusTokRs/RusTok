@@ -58,7 +58,7 @@ for (const marker of [
 
 for (const marker of [
   "ModuleWorkScheduler::new()",
-  "registrations.register_all(&host, &scheduler)",
+  ".register_all(&host, &scheduler)",
   "run_until_stopped",
   "StopHandle",
   "runs_background_workers()",
