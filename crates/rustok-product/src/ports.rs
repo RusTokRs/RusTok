@@ -195,6 +195,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
             per_page,
         } = request;
         let locale = locale.as_deref().unwrap_or(context.locale.as_str());
+        let page = page.max(1);
         self.list_admin_products_with_compatibility_query(
             tenant_id,
             locale,
@@ -257,21 +258,6 @@ fn validate_admin_products_request(
     owner_operation: &'static str,
     request: &AdminProductsRequest,
 ) -> Result<(), PortError> {
-    if request.page == 0 {
-        tracing::warn!(
-            page = request.page,
-            per_page = request.per_page,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "product.page_invalid",
-            "admin product page validation failed"
-        );
-        return Err(PortError::validation(
-            "product.page_invalid",
-            "admin products page is invalid",
-        ));
-    }
     if !(1..=MAX_ADMIN_PRODUCTS_PER_PAGE).contains(&request.per_page) {
         tracing::warn!(
             page = request.page,
