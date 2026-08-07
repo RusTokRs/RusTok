@@ -139,12 +139,16 @@ owner/provider/schema/runtime/UI evidence remain pending.
 
 Forum now also publishes source-ready `rustok-moderation-api` subject adapter
 factories for `forum_topic` and `forum_post` without depending on the Moderation
-owner crate. The first bounded application slice reuses the shared Outbox owner
-operation receipt ledger, requires exact reviewed Forum revision, accepts only
-trusted service/system application callers and supports `NoDomainMutation` for
-both subject kinds plus permanent topic lock through the existing Forum owner
+owner crate. FORUM-19 adds dedicated tenant-scoped Forum moderation subject
+revision clocks for topic/reply core, content, lifecycle and local enforcement
+state instead of reusing the narrower Reactions/content revision. The first
+bounded application slice reuses the shared Outbox owner-operation receipt
+ledger, fences the active subject plus that revision clock, accepts only trusted
+service/system application callers and supports `NoDomainMutation` for both
+subject kinds plus permanent topic lock through the existing Forum owner
 mutation. Moderation registry materialization, durable application orchestration,
-additional effects and retained runtime/concurrency evidence remain pending.
+additional effects and retained migration/runtime/concurrency evidence remain
+pending.
 
 ## Program ledger
 
@@ -169,7 +173,7 @@ additional effects and retained runtime/concurrency evidence remain pending.
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
-| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, shared receipt binding, exact reviewed-revision fencing, trusted application callers, `NoDomainMutation` and permanent topic lock are source-ready. Add remaining Forum-local effects/expiry-safe restrictions, Moderation registry materialization/orchestration and retained SQLite/PostgreSQL replay/concurrency/runtime evidence; Moderation keeps cases, decisions, appeals and audit. |
+| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt binding, exact reviewed-revision fencing, trusted application callers, `NoDomainMutation` and permanent topic lock are source-ready. Retain PostgreSQL/SQLite migration/trigger/replay/concurrency evidence, add remaining Forum-local effects/expiry-safe restrictions and Moderation registry materialization/orchestration; Moderation keeps cases, decisions, appeals and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
@@ -318,35 +322,50 @@ posting policy.
 Moderation owns reports, cases, queues, immutable decisions/effects, appeals,
 application orchestration/retries and cross-domain audit. Forum publishes
 subject adapters and applies validated effects through
-`ModerationSubjectCommandPort`, retaining only Forum enforcement state and
-bounded decision provenance.
+`ModerationSubjectCommandPort`, retaining only Forum subject revision/local
+enforcement state and bounded shared-receipt provenance.
 
 Forum now registers neutral factories for `forum_topic` and `forum_post` while
 depending only on `rustok-moderation-api`. The first bounded adapter slice reuses
-`rustok-outbox::idempotency` rather than creating a Forum receipt table. The
-Moderation decision UUID must equal the trusted write `PortContext` idempotency
-key; shared receipt admission binds the full command and happens before subject
-reads so replay does not re-evaluate a changed Forum subject. Direct user callers
-are rejected; only service/system orchestration callers may enter the application
-port.
+`rustok-outbox::idempotency` rather than creating a Forum application receipt
+table. The Moderation decision UUID must equal the trusted write `PortContext`
+idempotency key; shared receipt admission binds the full command and happens
+before subject reads so replay does not re-evaluate a changed Forum subject.
+Direct user callers are rejected; only service/system orchestration callers may
+enter the application port.
 
-The adapter locks the exact non-deleted Forum subject and compares the reviewed
-revision with the same `latest captured revision id + 1` content revision used by
-Forum's neutral subject integrations. PostgreSQL application uses a serializable
-owner transaction. A stale decision fails without mutation; a successful domain
-mutation and completed shared receipt commit atomically. Non-retryable failures
-may be stored as terminal shared receipts, while retryable storage/serialization
-failures leave the processing lease reclaimable rather than freezing transient
-failure into replay.
+The existing Reactions/current-revision clock is intentionally not reused for
+Moderation because it does not advance on every lifecycle/enforcement mutation.
+Migration `m20260807_000027_add_forum_moderation_subject_revisions` introduces
+`forum_topic_moderation_subject_revisions` and
+`forum_reply_moderation_subject_revisions`: tenant-scoped Forum-owned current
+revision rows, backfilled for existing subjects and maintained by PostgreSQL and
+SQLite triggers over topic/reply core, content, lifecycle and local enforcement
+changes. They are not case/decision/audit/application-attempt storage and are not
+Reactions state.
+
+The adapter fences both the exact active Forum subject and its dedicated
+moderation revision row before comparing `ModerationSubjectRef.revision`.
+PostgreSQL uses a serializable owner transaction plus row locks; SQLite reserves
+the writer through the dedicated revision row without issuing a no-op update on
+the subject. A stale decision fails without mutation and is never retargeted.
+Successful domain mutation and completed shared receipt commit atomically.
+Non-retryable failures may be stored as terminal shared receipts, while retryable
+storage/serialization failures leave the processing lease reclaimable rather
+than freezing transient failure into replay.
 
 This slice supports `NoDomainMutation` for topic/reply and permanent topic lock
 through `TopicService::set_locked_in_tx` plus canonical Forum Search projection
-invalidation. Temporary locks fail closed because Forum does not yet own
-expiry-safe moderation enforcement state. Reply visibility effects and the
-remaining Moderation effect catalog stay pending; they must map to exact Forum
-owner semantics rather than being approximated through unrelated statuses.
-Moderation registry materialization and durable application workers remain owner/
-host work outside Forum.
+invalidation. A real lock mutation must advance the dedicated moderation subject
+revision in the same transaction and the adapter returns that post-application
+value as `ModerationDecisionApplication.applied_revision`; a true no-op retains
+the reviewed revision. Missing or non-advancing revision state fails as an
+invariant rather than guessed success. Temporary locks fail closed because Forum
+does not yet own expiry-safe moderation enforcement state. Reply visibility
+effects and the remaining Moderation effect catalog stay pending; they must map
+to exact Forum owner semantics rather than being approximated through unrelated
+statuses. Moderation registry materialization and durable application workers
+remain owner/host work outside Forum.
 
 ### `FORUM-30`/`FORUM-31`: UI composition
 
@@ -366,7 +385,7 @@ Hosts register/mount packages and do not absorb policy.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
 7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply neutral host composition and Rust Playwright browser-evidence harness are source-ready. Execute and retain the browser/runtime evidence without adding Reactions functionality to Forum.
 8. Introduce Reputation/Achievements only after at least two producers agree.
-9. Forum `rustok-moderation-api` topic/reply factories, shared receipt/revision fencing and permanent topic-lock application are source-ready. Add exact remaining Forum effects, then materialize/orchestrate them in the Moderation owner/host; never add Forum case queues.
+9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing and permanent topic-lock application are source-ready. Retain migration/replay/concurrency evidence, add exact remaining Forum effects, then materialize/orchestrate them in the Moderation owner/host; never add Forum case queues.
 
 ### Track 2 — close existing Forum work
 
@@ -393,6 +412,12 @@ Hosts register/mount packages and do not absorb policy.
 - Forum depends only on `rustok-moderation-api`, not the Moderation owner crate;
   reports, cases, queues, decisions, appeals and cross-domain audit remain outside
   Forum persistence.
+- FORUM-19 owns only subject-local moderation revision clocks and local enforcement
+  state. Those revision rows must not contain reports, decisions, audit payloads,
+  application-attempt state or copied Reactions state.
+- The moderation subject revision is distinct from the Reactions/content revision,
+  timestamps and global Forum event offsets; no integration may silently substitute
+  one of those narrower/unrelated clocks.
 - Moderation decision application uses the shared Outbox owner-operation receipt
   ledger. Forum must not create a second application receipt table or retarget a
   reviewed decision to a newer subject revision.
@@ -473,8 +498,8 @@ git diff --check
 ```
 
 Tests, lockfile/event-digest generation and runtime evidence are maintainer-run.
-Source contracts, Moderation adapter source and browser harness source do not
-promote runtime status.
+Source contracts, Moderation adapter/migration source and browser harness source
+do not promote runtime status.
 
 ## Release gates
 
@@ -510,11 +535,14 @@ browser harness from
 catalogs, state, commands, aggregate ownership or copied Reactions presentation
 to Forum.
 
-For FORUM-19, add the next exact Forum-owned effect mapping without inventing a
-parallel moderation owner: reply visibility/lifecycle application is the next
-candidate only if it can preserve existing Forum counters/events/projections and
-exact reviewed-revision fencing. Add expiry-safe local state before accepting any
-temporary restriction. In parallel, the Moderation owner/host must materialize
-the registered adapter factories and provide durable application retry/runtime
-evidence. Retain shared-receipt replay/request-conflict, stale revision, trusted
-caller and PostgreSQL concurrent-edit evidence before promoting FORUM-19.
+For FORUM-19, first retain PostgreSQL/SQLite migration/backfill and trigger
+advancement evidence for the dedicated Forum moderation subject revision clocks,
+then retain shared-receipt replay/request-conflict, stale revision, trusted caller
+and concurrent content/lifecycle edit versus permanent-lock evidence. Add the next
+exact Forum-owned effect mapping without inventing a parallel moderation owner:
+reply visibility/lifecycle application is the next candidate only if it can
+preserve existing Forum counters/events/projections and exact revision fencing.
+Add expiry-safe local state before accepting any temporary restriction. In
+parallel, the Moderation owner/host must materialize the registered adapter
+factories and provide durable application retry/runtime evidence before FORUM-19
+can be promoted.
