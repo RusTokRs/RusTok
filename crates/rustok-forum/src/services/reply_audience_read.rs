@@ -117,6 +117,49 @@ impl ForumReplyAudienceReadService {
         }
     }
 
+    /// Exact authenticated storefront read for one reply. Route channel and
+    /// locale come only from the validated caller context. Missing, denied and
+    /// status-ineligible replies are intentionally indistinguishable.
+    pub async fn get_authenticated_storefront_visible_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        reply_id: Uuid,
+        fallback_locale: Option<&str>,
+        statuses: Option<&[ReplyStatus]>,
+    ) -> ForumResult<Option<ReplyResponse>> {
+        enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
+        let locale = required_context_locale(&context)?;
+        let reply = match self.reply_service.find_reply(tenant_id, reply_id).await {
+            Ok(reply) => reply,
+            Err(ForumError::ReplyNotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        if statuses.is_some_and(|allowed| !allowed.contains(&reply.status)) {
+            return Ok(None);
+        }
+        let channel_slug = context.channel.clone();
+        let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
+        if !self
+            .visibility
+            .is_topic_visible(tenant_id, reply.topic_id, channel_slug.as_deref(), &viewer)
+            .await?
+        {
+            return Ok(None);
+        }
+
+        match self
+            .reply_service
+            .get_with_locale_fallback(tenant_id, security, reply_id, &locale, fallback_locale)
+            .await
+        {
+            Ok(reply) => Ok(Some(reply)),
+            Err(ForumError::ReplyNotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Exact authenticated REST-style reply list through parent-topic owner
     /// visibility. Denied and missing parent topics both resolve as absent.
     pub async fn list_authenticated_owner_visible_with_audience_context(
