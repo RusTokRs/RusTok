@@ -254,6 +254,19 @@ async fn apply_inside_transaction(
         )
         .await
         .map_err(forum_error)?,
+        (
+            ModerationSubjectKind::ForumPost,
+            ModerationDecisionEffectAction::SetVisibility {
+                state: ModerationVisibilityState::Removed,
+            },
+        ) => apply_reply_removed_effect_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            command.subject.id,
+        )
+        .await
+        .map_err(forum_error)?,
         _ => {
             return Err(PortError::validation(
                 "forum.moderation_effect_unsupported",
@@ -349,6 +362,41 @@ async fn apply_reply_hidden_effect_in_tx(
             tenant_id,
             actor_id,
             category_id,
+        )
+        .await?;
+    }
+
+    Ok(true)
+}
+
+async fn apply_reply_removed_effect_in_tx(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    reply_id: Uuid,
+) -> ForumResult<bool> {
+    let outcome = ReplyService::remove_in_tx(transaction, tenant_id, reply_id).await?;
+
+    TransactionalEventBus::publish_root_in_tx(
+        transaction,
+        tenant_id,
+        actor_id,
+        DomainEvent::ForumReplyStatusChanged {
+            reply_id,
+            topic_id: outcome.topic_id,
+            old_status: outcome.old_status.to_string(),
+            new_status: ReplyStatus::Deleted.to_string(),
+            moderator_id: actor_id,
+        },
+    )
+    .await?;
+
+    if outcome.was_public {
+        publish_forum_category_projection_direct_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            outcome.category_id,
         )
         .await?;
     }
