@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::entities::{forum_reply, forum_reply_revision, forum_topic, forum_topic_revision};
 use crate::error::ForumError;
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
-use crate::services::{ReplyService, TopicService};
+use crate::services::TopicService;
 
 pub const FORUM_MODERATION_MODULE: &str = "forum";
 const FORUM_OWNER_SLUG: &str = "forum";
@@ -113,12 +113,17 @@ impl ModerationSubjectCommandPort for ForumModerationSubjectAdapter {
 
         let result = self.execute_apply(tenant_id, lease, &command).await;
         if let Err(error) = &result {
-            if let Err(receipt_error) = idempotency::fail(&self.db, lease, error).await {
-                tracing::error!(
-                    operation_id = %lease.operation_id,
-                    error = %receipt_error.message,
-                    "failed to persist Forum moderation application failure receipt"
-                );
+            // Retryable storage/serialization failures leave the processing lease
+            // reclaimable instead of freezing a transient failure into the
+            // decision's immutable replay result.
+            if !error.retryable {
+                if let Err(receipt_error) = idempotency::fail(&self.db, lease, error).await {
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        error = %receipt_error.message,
+                        "failed to persist Forum moderation application failure receipt"
+                    );
+                }
             }
         }
         result
@@ -363,7 +368,7 @@ fn validate_command_for_adapter(
 }
 
 fn validate_trusted_caller(context: &PortContext) -> Result<(), PortError> {
-    match context.actor.kind {
+    match &context.actor.kind {
         PortActorKind::Service | PortActorKind::System => Ok(()),
         PortActorKind::User => Err(PortError::forbidden(
             "forum.moderation_application_caller_forbidden",
@@ -399,15 +404,16 @@ fn decode_replay(value: serde_json::Value) -> Result<ModerationDecisionApplicati
 
 fn forum_error(error: ForumError) -> PortError {
     match error {
-        ForumError::TopicNotFound(_) | ForumError::ReplyNotFound(_) | ForumError::TopicDeleted | ForumError::ReplyDeleted => {
-            subject_unavailable()
-        }
-        ForumError::Validation(_) | ForumError::InvalidTopicTransition(_) | ForumError::InvalidReplyTransition(_) => {
-            PortError::conflict(
-                "forum.moderation_domain_state_conflict",
-                "Forum subject state conflicts with the moderation decision",
-            )
-        }
+        ForumError::TopicNotFound(_)
+        | ForumError::ReplyNotFound(_)
+        | ForumError::TopicDeleted
+        | ForumError::ReplyDeleted => subject_unavailable(),
+        ForumError::Validation(_)
+        | ForumError::InvalidTopicTransition(_)
+        | ForumError::InvalidReplyTransition(_) => PortError::conflict(
+            "forum.moderation_domain_state_conflict",
+            "Forum subject state conflicts with the moderation decision",
+        ),
         ForumError::Forbidden(_) => PortError::forbidden(
             "forum.moderation_domain_forbidden",
             "Forum subject moderation operation is not permitted",
