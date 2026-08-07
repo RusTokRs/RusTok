@@ -6,6 +6,9 @@ use rustok_index::{
     register_index_source_absence_provider, register_postgres_index_source_factory,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use serde_json::Value as JsonValue;
+
+use super::channel_visibility::decode_product_visibility;
 
 pub(crate) const PRODUCT_ABSENCE_WATERMARK_FACTORY: &str =
     "product-locale-absence-watermark";
@@ -68,15 +71,28 @@ impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider {
             .as_ref()
             .ok_or_else(|| permanent("product_index_absence_locale_required"))?;
 
-        // The canonical Product record uses projection_epoch as its only materialized source
-        // version. Absence uses the same clock and fails closed until projection catches up to the
-        // exact live Product revision and references one retained relation epoch.
+        // Absence is authoritative only when the same projection epoch is backed by a current
+        // Product-SalesChannel freshness witness. Missing or stale freshness returns no watermark.
         let row = self
             .db
             .query_one(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
-SELECT CAST(projection.projection_epoch AS TEXT) AS source_version_text
+SELECT
+    CAST(projection.projection_epoch AS TEXT) AS source_version_text,
+    product.index_revision AS observed_product_source_version,
+    product.metadata,
+    freshness.product_source_version AS freshness_product_source_version,
+    freshness.visibility_key AS freshness_visibility_key,
+    freshness.channel_identity_generation AS freshness_channel_identity_generation,
+    COALESCE(
+        (
+            SELECT generation
+            FROM channel_index_identity_generations
+            WHERE tenant_id = product.tenant_id
+        ),
+        0
+    )::bigint AS current_channel_identity_generation
 FROM products product
 JOIN LATERAL (
     SELECT
@@ -90,15 +106,24 @@ JOIN LATERAL (
     LIMIT 1
 ) projection
   ON projection.product_source_version = product.index_revision
+JOIN product_sales_channel_index_relation_snapshots relation
+  ON relation.tenant_id = product.tenant_id
+ AND relation.product_id = product.id
+ AND relation.relation_epoch = projection.relation_epoch
+JOIN LATERAL (
+    SELECT
+        witness.product_source_version,
+        witness.visibility_key,
+        witness.channel_identity_generation
+    FROM product_sales_channel_index_relation_freshness_snapshots witness
+    WHERE witness.tenant_id = product.tenant_id
+      AND witness.product_id = product.id
+      AND witness.relation_epoch = projection.relation_epoch
+    ORDER BY witness.sequence_no DESC
+    LIMIT 1
+) freshness ON TRUE
 WHERE product.tenant_id = $1
   AND product.id = $2
-  AND EXISTS (
-      SELECT 1
-      FROM product_sales_channel_index_relation_snapshots relation
-      WHERE relation.tenant_id = product.tenant_id
-        AND relation.product_id = product.id
-        AND relation.relation_epoch = projection.relation_epoch
-  )
   AND NOT EXISTS (
       SELECT 1
       FROM product_translations translation
@@ -133,6 +158,41 @@ LIMIT 1
             .and_then(|value| value.parse::<u64>().ok())
             .filter(|value| *value > 0)
             .ok_or_else(|| permanent("product_index_absence_version_invalid"))?;
+        let observed_product_source_version = positive_u64(
+            row.try_get::<i64>("", "observed_product_source_version")
+                .map_err(|_| permanent("product_index_absence_freshness_invalid"))?,
+        )?;
+        let freshness_product_source_version = positive_u64(
+            row.try_get::<i64>("", "freshness_product_source_version")
+                .map_err(|_| permanent("product_index_absence_freshness_invalid"))?,
+        )?;
+        if freshness_product_source_version > observed_product_source_version {
+            return Err(permanent("product_index_absence_freshness_invalid"));
+        }
+        let metadata = row
+            .try_get::<JsonValue>("", "metadata")
+            .map_err(|_| permanent("product_index_absence_visibility_invalid"))?;
+        let current_visibility_key = decode_product_visibility(&metadata)
+            .map_err(|_| permanent("product_index_absence_visibility_invalid"))?
+            .freshness_key();
+        let freshness_visibility_key = row
+            .try_get::<String>("", "freshness_visibility_key")
+            .map_err(|_| permanent("product_index_absence_freshness_invalid"))?;
+        let freshness_channel_identity_generation = non_negative_u64(
+            row.try_get::<i64>("", "freshness_channel_identity_generation")
+                .map_err(|_| permanent("product_index_absence_freshness_invalid"))?,
+        )?;
+        let current_channel_identity_generation = non_negative_u64(
+            row.try_get::<i64>("", "current_channel_identity_generation")
+                .map_err(|_| permanent("product_index_absence_freshness_invalid"))?,
+        )?;
+
+        if freshness_visibility_key != current_visibility_key
+            || freshness_channel_identity_generation != current_channel_identity_generation
+        {
+            return Ok(None);
+        }
+
         IndexSourceAbsenceWatermark::new(key, source_version)
             .map(Some)
             .map_err(|_| permanent("product_index_absence_contract_invalid"))
@@ -164,6 +224,20 @@ fn product_schema_ref() -> Result<SchemaRef, String> {
         // registered; this number is not a compatibility branch.
         version: SchemaVersion::new(3),
     })
+}
+
+fn positive_u64(value: i64) -> Result<u64, IndexSourceFailure> {
+    if value <= 0 {
+        return Err(permanent("product_index_absence_freshness_invalid"));
+    }
+    u64::try_from(value).map_err(|_| permanent("product_index_absence_freshness_invalid"))
+}
+
+fn non_negative_u64(value: i64) -> Result<u64, IndexSourceFailure> {
+    if value < 0 {
+        return Err(permanent("product_index_absence_freshness_invalid"));
+    }
+    u64::try_from(value).map_err(|_| permanent("product_index_absence_freshness_invalid"))
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
