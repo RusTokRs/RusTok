@@ -201,11 +201,13 @@ These are source-contract defects, not verification-only tasks.
   Payment, and Fulfillment concrete services behind host-composed owner ports.
 - [x] Publish Product-owned `ProductCatalogCommandPort` / `ProductCatalogCommandRuntime`,
   host-compose embedded or external command providers, and cut mounted admin REST
-  create/update/delete/publish/unpublish over to the owner port with deadline,
-  deterministic write identity, channel, actor, locale, and stable public errors.
-- [ ] Cut remaining mounted Product list/detail/catalog reads and GraphQL product
-  lifecycle/schema operations over to host-composed Product owner ports; direct Product
-  entities, `CatalogService`, and `ProductCatalogSchemaService` remain explicit source debt.
+  product create/update over to the owner port with deadline, payload-bound deterministic
+  write identity, channel, actor, locale, and stable public errors.
+- [ ] Cut remaining mounted Product list/detail/catalog reads, REST
+  delete/publish/unpublish lifecycle commands, and GraphQL product lifecycle/schema
+  operations over to host-composed Product owner ports. Direct Product entities,
+  `CatalogService`, and `ProductCatalogSchemaService` remain explicit source debt;
+  repeatable lifecycle commands need an explicit caller idempotency contract before cutover.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -806,9 +808,9 @@ Source inspection is not execution evidence.
   keep base Commerce marketplace-free, gate financial migrations/transports/listeners/
   workers, compose owner modules only through explicit capability features, and fail
   closed before capture when marketplace lines reach a base-only checkout.
-- [x] Publish and host-compose Product catalog lifecycle command ports, then cut mounted
-  admin REST product create/update/delete/publish/unpublish away from `CatalogService`
-  with deterministic write identity and stable public error mapping.
+- [x] Publish and host-compose Product catalog command ports, then cut mounted admin
+  REST product create/update away from `CatalogService` with payload-bound write
+  identity and stable public error mapping; lifecycle/read/GraphQL cutover remains open.
 
 ## Change rules
 
