@@ -34,7 +34,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(ModerationApplicationOperations::SubjectModule)
-                            .string_len(80)
+                            .string_len(100)
                             .not_null(),
                     )
                     .col(
