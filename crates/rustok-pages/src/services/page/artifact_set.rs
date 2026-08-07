@@ -15,7 +15,10 @@ use crate::entities::{
 use crate::error::{PagesError, PagesResult};
 use crate::services::PageBuilderArtifactService;
 
+use super::artifact_binding_replacement::PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT;
 use super::publish_manifest::{is_sha256, rebuild_source_provenance_hash};
+
+const MAX_RECOVERED_ACTIVATION_PREFIX: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ArtifactSetMember {
@@ -218,6 +221,7 @@ async fn load_recovered_current_publish_set_in_tx(
     }
 
     let mut repaired_locales = 0usize;
+    let mut physically_lost_manifest_locales = std::collections::BTreeSet::new();
     for source in &sources {
         let current = current_members
             .iter()
@@ -288,14 +292,154 @@ async fn load_recovered_current_publish_set_in_tx(
                 "current repaired artifact does not match its exact activation receipt",
             ));
         }
+        if !manifest_row_survives {
+            physically_lost_manifest_locales.insert(source.locale.clone());
+        }
     }
     if repaired_locales == 0 {
         return Err(PagesError::rollback_target_unavailable(
             "publish manifest recovery requires at least one explicitly rebuilt and activated locale",
         ));
     }
+    if physically_lost_manifest_locales.is_empty() {
+        return Err(PagesError::rollback_target_unavailable(
+            "publish manifest recovery requires at least one repaired locale whose source artifact and manifest were physically lost",
+        ));
+    }
+    verify_physical_loss_activation_prefix_in_tx(
+        txn,
+        operation,
+        &sources,
+        &physically_lost_manifest_locales,
+        current_page.version,
+    )
+    .await?;
 
     Ok(current_members)
+}
+
+async fn verify_physical_loss_activation_prefix_in_tx(
+    txn: &DatabaseTransaction,
+    operation: &page_publish_operation::Model,
+    sources: &[page_publish_rebuild_source::Model],
+    required_locales: &std::collections::BTreeSet<String>,
+    current_page_version: i32,
+) -> PagesResult<()> {
+    if required_locales.is_empty() || required_locales.len() > MAX_RECOVERED_ACTIVATION_PREFIX {
+        return Err(PagesError::rollback_target_unavailable(
+            "physical-loss activation prefix has an invalid required locale count",
+        ));
+    }
+
+    let query = || {
+        page_artifact_binding_replacement_operation::Entity::find()
+            .filter(
+                page_artifact_binding_replacement_operation::Column::TenantId.eq(operation.tenant_id),
+            )
+            .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(operation.page_id))
+            .filter(
+                page_artifact_binding_replacement_operation::Column::ResultVersion
+                    .gt(operation.result_version),
+            )
+            .filter(
+                page_artifact_binding_replacement_operation::Column::ResultVersion
+                    .lte(current_page_version),
+            )
+            .order_by_asc(page_artifact_binding_replacement_operation::Column::ResultVersion)
+            .order_by_asc(page_artifact_binding_replacement_operation::Column::Id)
+            .limit((MAX_RECOVERED_ACTIVATION_PREFIX + 1) as u64)
+    };
+    let activations = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().all(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
+    };
+
+    let mut cursor = operation.result_version;
+    let mut prefix_locales = std::collections::BTreeSet::new();
+    for (index, activation) in activations.into_iter().enumerate() {
+        if index >= MAX_RECOVERED_ACTIVATION_PREFIX {
+            return Err(PagesError::rollback_target_unavailable(
+                "physical-loss activation prefix exceeds the bounded activation limit",
+            ));
+        }
+        if activation.expected_version != cursor || activation.result_version != cursor + 1 {
+            return Err(PagesError::rollback_target_unavailable(
+                "physical-loss activation prefix is not a contiguous page-version chain",
+            ));
+        }
+        verify_activation_receipt_for_rollback(&activation)?;
+        if !prefix_locales.insert(activation.locale.clone()) {
+            return Err(PagesError::rollback_target_unavailable(
+                "physical-loss activation prefix repeats a locale before recovery is complete",
+            ));
+        }
+        let source = sources
+            .iter()
+            .find(|source| source.locale == activation.locale)
+            .ok_or_else(|| {
+                PagesError::rollback_target_unavailable(format!(
+                    "physical-loss activation prefix locale `{}` has no retained source for the selected publish",
+                    activation.locale
+                ))
+            })?;
+        let rebuild = load_rebuild_for_current_artifact_in_tx(
+            txn,
+            operation,
+            source,
+            activation.replacement_artifact_id,
+        )
+        .await?;
+        verify_rebuild_receipt_for_rollback(&rebuild)?;
+        ensure_rebuild_matches_source_for_rollback(&rebuild, source)?;
+        if activation.rebuild_operation_id != rebuild.id
+            || activation.page_body_id != source.page_body_id
+            || activation.locale != source.locale
+            || activation.expected_current_artifact_id != source.artifact_id
+            || activation.replacement_artifact_id != rebuild.rebuilt_artifact_id
+            || activation.replacement_artifact_hash != rebuild.rebuilt_artifact_hash
+            || activation.replacement_materialization_hash != rebuild.rebuilt_materialization_hash
+        {
+            return Err(PagesError::rollback_target_unavailable(
+                "physical-loss activation prefix receipt does not match its exact publish repair source",
+            ));
+        }
+
+        let artifact_query = || {
+            page_static_landing_artifact::Entity::find_by_id(rebuild.rebuilt_artifact_id)
+                .filter(page_static_landing_artifact::Column::TenantId.eq(operation.tenant_id))
+                .filter(page_static_landing_artifact::Column::PageId.eq(operation.page_id))
+                .filter(page_static_landing_artifact::Column::Locale.eq(source.locale.as_str()))
+        };
+        let artifact = match txn.get_database_backend() {
+            DbBackend::Sqlite => artifact_query().one(txn).await?,
+            DbBackend::Postgres | DbBackend::MySql => {
+                artifact_query().lock_shared().one(txn).await?
+            }
+        }
+        .ok_or_else(|| {
+            PagesError::rollback_target_unavailable(
+                "physical-loss activation prefix rebuilt artifact is unavailable",
+            )
+        })?;
+        if artifact.instance_key != rebuild.artifact_instance_key
+            || artifact.artifact_hash != rebuild.rebuilt_artifact_hash
+            || artifact.materialization_hash.as_deref()
+                != Some(rebuild.rebuilt_materialization_hash.as_str())
+        {
+            return Err(PagesError::rollback_target_unavailable(
+                "physical-loss activation prefix rebuilt artifact drifted from its receipt",
+            ));
+        }
+
+        cursor = activation.result_version;
+        if required_locales.is_subset(&prefix_locales) {
+            return Ok(());
+        }
+    }
+
+    Err(PagesError::rollback_target_unavailable(
+        "physical-loss activation prefix does not contain every repaired locale whose manifest was lost",
+    ))
 }
 
 async fn source_artifact_exists_in_tx(
@@ -509,6 +653,19 @@ fn verify_activation_receipt_for_rollback(
             "current repaired artifact activation receipt failed integrity validation",
         ));
     }
+    let expected_request_hash = stable_hash(&(
+        PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT,
+        activation.tenant_id,
+        activation.page_id,
+        activation.rebuild_operation_id,
+        activation.expected_version,
+        activation.expected_current_artifact_id,
+    ))?;
+    if activation.request_hash != expected_request_hash {
+        return Err(PagesError::rollback_target_unavailable(
+            "current repaired artifact activation receipt request hash failed validation",
+        ));
+    }
     Ok(())
 }
 
@@ -673,7 +830,7 @@ fn validate_member_identity(members: &[ArtifactSetMember]) -> PagesResult<()> {
 fn stable_hash(value: &impl Serialize) -> PagesResult<String> {
     let bytes = serde_json::to_vec(value).map_err(|error| {
         PagesError::rollback_operation_integrity(format!(
-            "unable to encode page artifact set identity: {error}"
+            "unable to encode page artifact identity: {error}"
         ))
     })?;
     Ok(Sha256::digest(bytes)
