@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked against `main@844067c689aed6f810f23bcb3e908d2e579c0b62` and continued on
-`agent/index-product-materialized-freshness-postgres-evidence-20260807`.
+Status overlay rechecked against `main@0746ffa4aa4eea4383732bd4f4679c3d800cbf1d` and continued on
+`agent/index-product-channel-convergence-postgres-evidence-20260807`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution
 cursor.
@@ -35,8 +35,13 @@ inspection. Independent M7 source work can continue while that owner-execution g
 - canonical Product materialized/query freshness fence for the source-read -> mutation-apply window;
 - persisted tenant schema readiness gate.
 
-The first retained PostgreSQL Product materialized-freshness race packet is now source-ready, but it has
-not been executed or admitted.
+Two retained M7 PostgreSQL packets are now source-ready and execution/admission pending:
+
+1. delayed Product scalar mutation + locale deletion materialized/query freshness;
+2. Product visibility + Channel identity convergence with multi-host lease/restart and rejected-Product
+   isolation.
+
+Neither packet has been executed by the implementation agent.
 
 ## Canonical Product policy
 
@@ -167,15 +172,32 @@ exact count zero.
 
 This is retained source, not admitted evidence. No PostgreSQL execution result is claimed.
 
-The next M7 evidence packet should cover Product visibility + Channel identity races together with
-multi-host/restart/rejected-Product convergence behavior:
+## Product visibility / Channel convergence PostgreSQL packet 2
 
-- visibility change after source read;
-- Channel generation change with unchanged resolved UUID membership;
-- Channel identity change with changed membership/projection epoch;
-- concurrent host lease competition;
-- lease expiry/restart continuation;
-- rejected Product isolation while valid Products continue converging.
+`crates/rustok-distribution/tests/product_channel_convergence_postgres.rs` is source-ready and
+execution-pending. It uses real Channel/Product/Index migrations, two independent generic
+`ModuleWorkScheduler` hosts, Product-owned convergence state, the real Product replay source, generic
+Index mutation storage, persisted schema readiness, and the canonical Product query fence.
+
+The retained scenarios cover:
+
+- a one-second Product-owned lease claimed by host A, active-lease exclusion on host B, expiry, and
+  reclaim/completion by host B without resetting visibility progress;
+- malformed Product visibility remaining without relation/freshness while a later valid Product still
+  converges and the tenant Channel-generation sweep completes;
+- Product visibility `alpha -> beta` after source read, physical old Index materialization, query
+  exclusion, relation/projection advancement, and corrective current Product mutation;
+- Channel slug identity change with unchanged unrestricted UUID membership, where query admission fails
+  until freshness reaches the new generation but relation/projection remain unchanged and the same Index
+  row becomes admissible again;
+- a later Channel slug identity change that removes restricted membership, advances relation/projection,
+  leaves the old restricted Index row inadmissible, and requires the current Product mutation before
+  query authority returns.
+
+Detailed contract:
+`m7-product-channel-convergence-postgres-harness.md`.
+
+This packet is retained source only. No PostgreSQL execution result is claimed.
 
 ## Event-contract admission status
 
@@ -230,15 +252,16 @@ Required sequence remains:
       in-flight window at source level.
 - [x] Add source-ready PostgreSQL packet for delayed Product scalar mutation and locale deletion query
       admission across filter/order/cursor/limit/exact-count.
+- [x] Add source-ready PostgreSQL Product visibility + Channel-generation convergence packet with
+      multi-host lease expiry/restart, unchanged/changed membership, and rejected-Product evidence.
 - [x] Remove parallel Product/ProductVariant compatibility implementations.
 - [ ] Execute/admit the Product materialized freshness PostgreSQL packet.
-- [ ] Add/execute PostgreSQL visibility + Channel-generation convergence packet with multi-host lease
-      expiry/restart and rejected-Product evidence.
-- [ ] Execute PostgreSQL evidence for schema readiness, relation/freshness storage, resolver
-      convergence, projection concurrency/delete ordering, and canonical replay.
+- [ ] Execute/admit the Product visibility + Channel-generation convergence PostgreSQL packet.
+- [ ] Retain any remaining Channel create/delete/tenant-move/delete-recreate identity evidence.
+- [ ] Execute PostgreSQL evidence for schema readiness, relation/freshness storage, projection
+      concurrency/delete ordering, and canonical replay not already covered by the two Product packets.
 - [ ] Admit canonical Product typed wire events/routes/consumers after digest verification.
-- [ ] Retain Channel create/delete/slug/identity, Product visibility, retry/restart/delete-recreate,
-      out-of-order, locale fan-out, in-flight mutation, and freshness evidence.
+- [ ] Retain remaining out-of-order, locale fan-out, and linked-target availability evidence.
 - [ ] Prove complete Product/Variant/Channel query parity, including linked-target availability.
 - [ ] Move Storefront traffic only after readiness/equivalence/materialized-freshness evidence passes.
 
@@ -246,17 +269,20 @@ Required sequence remains:
 
 Primary owner step remains: execute and admit the locked M6 repair PostgreSQL packet.
 
-Next unblocked M7 source step: add the retained Product visibility/Channel identity convergence
-PostgreSQL evidence packet. It should exercise the automatic convergence state machine and Product
-query-admission interaction across unchanged membership, changed membership, multi-host lease
-competition, restart/lease expiry, and rejected Product isolation. Do not add another Product schema or
-freshness clock. Keep typed Product event work separately blocked until digest admission.
+The two largest Product freshness/convergence M7 runtime packets are now source-ready. The next
+unblocked M7 source step is to retain the remaining Channel identity transition evidence that is not
+covered by slug changes: Channel create/delete, tenant move, and delete-recreate behavior, including
+Product query admission and relation/projection consequences. After that, continue complete
+Product/Variant/Channel linked-target query parity. Do not add another Product schema or freshness
+clock. Keep typed Product event work separately blocked until digest admission.
 
 ## Maintainer verification for this slice
 
 ```bash
 cargo test -p rustok-distribution --features mod-product --test product_materialized_query_freshness_postgres -- --nocapture
+cargo test -p rustok-distribution --features mod-product --test product_channel_convergence_postgres -- --nocapture
 node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
+node scripts/verify/verify-index-product-channel-convergence-postgres-harness.mjs
 node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
@@ -271,5 +297,5 @@ cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 
-No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, or CI
-were executed by the implementation agent.
+No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
+`git diff --check` were executed by the implementation agent.
