@@ -65,6 +65,16 @@ requireContains(
 );
 requireContains(
   composition,
+  'route_segment.as_deref() != Some(FORUM_ROUTE_SEGMENT)',
+  "Topic reaction composition must run only on the Forum module route, never the shared home slot",
+);
+requireContains(
+  composition,
+  'query_value("topic")',
+  "Topic reaction composition must consume the shared route-query helper for an explicit topic",
+);
+requireContains(
+  composition,
   "fetch_storefront_topic_current_revision",
   "Host composition must consume the generic Forum storefront revision facade",
 );
@@ -78,17 +88,24 @@ requireContains(
   "<ReactionBar subject />",
   "Host composition must render the separate module-owned Reactions control",
 );
+requireContains(
+  composition,
+  "Ok(None) | Err(_) => ().into_any()",
+  "Optional Reactions composition failures must degrade without replacing Forum-owned UI",
+);
 
 for (const forbidden of [
   "forumStorefrontTopicCurrentRevision",
   "GraphqlRequest",
   "reactionSnapshot",
   "applyReaction",
+  "forum-topic-reactions-unavailable",
+  "Reactions are temporarily unavailable for this topic.",
 ]) {
   requireAbsent(
     composition,
     forbidden,
-    `Host composition must use owner facades instead of duplicating transport/owner logic: ${forbidden}`,
+    `Host composition must use owner facades and must not duplicate Reactions transport/presentation: ${forbidden}`,
   );
 }
 for (const cargo of [forumCargo, forumStorefrontCargo]) {
