@@ -73,9 +73,18 @@ DECLARE
     relation_lock_key TEXT;
     freshness_lock_key TEXT;
 BEGIN
-    -- Relation ownership always locks Product row -> relation advisory lock. Freshness service follows
-    -- the same order and then takes its narrower witness lock, so direct inserts cannot witness a
-    -- relation epoch that is concurrently being superseded.
+    -- Match the owner service lock order exactly: live Product row -> relation advisory lock ->
+    -- freshness advisory lock. This fences deletion and prevents a witness from being committed for
+    -- an epoch concurrently superseded by another relation writer.
+    PERFORM 1
+      FROM products
+     WHERE tenant_id = NEW.tenant_id
+       AND id = NEW.product_id
+     FOR KEY SHARE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Product-SalesChannel freshness witness requires a live Product';
+    END IF;
+
     relation_lock_key := NEW.tenant_id::text
         || E'\x1f' || NEW.product_id::text
         || E'\x1fproduct-sales-channel-index-relation';
