@@ -57,9 +57,10 @@ requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'mod attribute_terms;',
 ]);
 requireMarkers('crates/rustok-distribution/Cargo.toml', [
-  'chrono.workspace = true',
-  'hex.workspace = true',
-  'rust_decimal.workspace = true',
+  'mod-product = ["dep:rustok-product", "mod-taxonomy", "dep:chrono", "dep:hex", "dep:rust_decimal"]',
+  'chrono = { workspace = true, optional = true }',
+  'hex = { workspace = true, optional = true }',
+  'rust_decimal = { workspace = true, optional = true }',
 ]);
 
 requireMarkers('crates/rustok-product/src/services/catalog/attribute_filters.rs', [
