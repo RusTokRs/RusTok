@@ -4,7 +4,7 @@ Status: **bounded source-ready slice / maintainer execution pending**
 
 ## Scope
 
-This slice gives the Moderation owner one durable current operation per immutable typed decision. It establishes crash-safe intent, bounded due discovery, lease/CAS ownership and terminal evidence recording. The follow-up one-attempt dispatcher is now source-ready in `application_dispatch.rs`; background scheduling and case/application audit lifecycle remain separate owner work.
+This slice gives the Moderation owner one durable current operation per immutable typed decision. It establishes crash-safe intent, bounded due discovery, lease/CAS ownership and terminal evidence recording. Follow-up source now adds the bounded one-attempt dispatcher, shared runtime scheduling and atomic case/application audit lifecycle over the same owner primitives. Bounded operator recovery remains separate owner work.
 
 It does **not** move domain enforcement into Moderation. Domain modules still apply their own state through `rustok-moderation-api` adapters, and the host-composed adapter registry remains the only cross-domain dispatch boundary.
 
@@ -26,6 +26,8 @@ If any insert/event/receipt step fails, the transaction rolls back and no durabl
 Migration `m20260807_000004_create_moderation_application_operations` creates the operation table after decision effects.
 
 Upgrade backfill selects only decisions that already have a `moderation_decision_effects` row. Those typed decisions become `pending`, preserving their existing decision hash and reviewed subject identity. Historical decisions with `effect: None` are intentionally not backfilled and remain non-dispatchable until truthful re-review or migration supplies an explicit typed effect.
+
+The later application-audit lifecycle requires no additional schema migration: it reuses existing `moderation_cases` lifecycle fields and the existing `moderation_events` owner audit ledger.
 
 ## Operation identity
 
@@ -51,6 +53,14 @@ Source states are:
 
 Terminal state is never inferred from a timeout, missing adapter or lease loss.
 
+Operation state is coupled to Moderation case/audit state in the same owner transaction:
+
+- first successful claim: case `decided -> applying_decision` plus start/attempt audit facts;
+- retry/reclaim: case remains `applying_decision` without another case revision;
+- retryable: case remains `applying_decision` plus retry audit;
+- applied: case `applying_decision -> closed`, `closed_at`, active-key release and applied/closed audits;
+- rejected/operator-review: case `applying_decision -> escalated` with matching application/escalated audits and active identity retained.
+
 ## Lease and retry boundary
 
 `ModerationService` exposes bounded owner primitives:
@@ -66,9 +76,11 @@ Terminal state is never inferred from a timeout, missing adapter or lease loss.
 
 A claim uses a CAS update and creates a fresh UUID `lease_token`. It increments `attempt_count` and sets a bounded lease expiry. Due discovery and claim share the same predicate: pending/retryable rows whose `next_attempt_at` is due, plus applying rows whose lease expired. An expired lease is therefore reclaimable after worker crash.
 
-Every completion/error transition requires the exact unexpired lease token. A stale worker cannot complete an operation after another worker has reclaimed it, even if both use the same human-readable lease owner name.
+The claim CAS now runs in the same owner transaction as the case/audit start boundary. An unrelated case lifecycle state causes the claim transaction to fail closed rather than leaving an operation lease detached from case state.
 
-The one-attempt dispatcher now supplies deterministic bounded retry backoff after classifying the neutral adapter error: 5, 10, 20, 40, 80, 160 seconds and then a 300-second cap. A background scheduler is still intentionally absent.
+Every completion/error transition requires the exact unexpired lease token. A stale worker cannot complete an operation after another worker has reclaimed it, even if both use the same human-readable lease owner name. Operation, case and audit finalization then commit or roll back together.
+
+The one-attempt dispatcher supplies deterministic bounded retry backoff after classifying the neutral adapter error: 5, 10, 20, 40, 80, 160 seconds and then a 300-second cap. Shared background scheduling is source-ready through the existing `rustok_runtime::ModuleWorkScheduler`; no Moderation-specific polling loop was added.
 
 ## One-attempt dispatch
 
@@ -76,7 +88,7 @@ The one-attempt dispatcher now supplies deterministic bounded retry backoff afte
 
 The domain call uses service actor `rustok-moderation`, a 30-second deadline and the **decision UUID as the idempotency key**. Attempt identity lives only in the correlation ID/lease token. This preserves lost-response replay: a retry reaches the same domain owner receipt instead of creating a second domain mutation.
 
-A missing exact adapter is retryable. A retryable `PortError` is scheduled using bounded backoff. A non-retryable `InvariantViolation` becomes `operator_review`; other non-retryable neutral port errors become `rejected`. Deterministic corruption while rebuilding the immutable command also becomes `operator_review`. Owner database failure after claim is returned to the caller and leaves the lease to expire/reclaim instead of forging a domain outcome.
+A missing exact adapter is retryable. A retryable `PortError` is scheduled using bounded backoff. A non-retryable `Conflict` or `InvariantViolation` becomes `operator_review`; other non-retryable neutral port errors become `rejected`. Deterministic corruption while rebuilding the immutable command also becomes `operator_review`. Owner database/audit failure after claim is returned to the caller and leaves the durable lease/reclaim path in control instead of forging a domain outcome.
 
 See `docs/application-dispatch-once.md` for the exact source contract.
 
@@ -89,25 +101,28 @@ See `docs/application-dispatch-once.md` for the exact source contract.
 - `application.subject.revision` equals the exact reviewed revision;
 - `applied_revision` is not older than the reviewed revision.
 
-Only after that validation and a matching live lease does the operation move to `applied` and persist `applied_revision` / `applied_at`.
+Only after that validation and a matching live lease does the owner transaction move the operation to `applied`, persist `applied_revision` / `applied_at`, close the case, release the completed active-case identity and append matching owner audit facts.
+
+## Internal owner audit boundary
+
+The lifecycle follow-up reuses the existing `moderation_events` table; no new event/audit schema is added. Source-ready internal event types are `case_application_started`, `application_attempt_claimed`, `application_retry_scheduled`, `application_applied`, `application_rejected`, `application_operator_review`, `case_closed` and `case_escalated`.
+
+These rows are Moderation internal audit facts. They are not silently promoted into a typed `rustok-events` cross-domain contract. Any future public semantic event family must be separately versioned and admitted.
 
 ## Explicitly not claimed
 
-The combined foundation + one-attempt dispatcher still does not provide:
+The combined foundation + dispatcher + shared scheduler + audit lifecycle still does not provide:
 
-- a background application scheduler/polling loop;
-- cross-tenant worker enumeration;
-- automatic process startup wiring;
-- case lifecycle transitions from `decided` through applying/closed/escalated;
-- application lifecycle outbox/audit events beyond the existing `case_decided` pending-intent marker;
-- operator recovery commands/UI;
-- retained SQLite/PostgreSQL migration, lease race, crash/lost-response or runtime evidence.
+- operator retry/requeue/re-review commands/UI;
+- automatic replacement or rewriting of immutable decisions after escalation;
+- a typed public/cross-domain Moderation application event family;
+- retained SQLite/PostgreSQL migration, lease race, lifecycle atomicity, crash/lost-response, scheduler or runtime evidence.
 
 Missing/unavailable adapters remain retryable and never imply applied. Validation/stale/unsupported outcomes never become success.
 
 ## Ownership and Reactions boundary
 
-`rustok-moderation` owns this application operation because it is cross-domain decision orchestration state. Domain owners do not copy it. Forum continues to own only its topic/reply lifecycle, dedicated moderation subject revision and domain receipt/effects.
+`rustok-moderation` owns this application operation, case lifecycle and internal audit because they are cross-domain decision orchestration state. Domain owners do not copy them. Forum continues to own only its topic/reply lifecycle, dedicated moderation subject revision and domain receipt/effects.
 
 This work is unrelated to Reactions. It adds no reaction catalog, actor state, aggregates, commands, transport or presentation code, and it does not alter the existing `rustok-reactions` / `rustok-reactions-storefront` ownership boundary.
 
@@ -118,12 +133,14 @@ Suggested checks, intentionally not run while preparing these source slices:
 ```bash
 node scripts/verify/verify-moderation-application-operation.mjs
 node scripts/verify/verify-moderation-application-dispatch-once.mjs
+node scripts/verify/verify-moderation-application-work-scheduler.mjs
+node scripts/verify/verify-moderation-application-audit-lifecycle.mjs
 cargo check -p rustok-moderation --all-targets
 cargo test -p rustok-moderation
 cargo xtask module validate moderation
 git diff --check
 ```
 
-Retain clean/upgraded PostgreSQL and SQLite migration evidence, typed-effect-only backfill evidence, decision+effect+operation+receipt atomicity, duplicate command replay, due ordering/bounds, concurrent claim CAS, lease expiry/reclaim, stale-token rejection, retry scheduling, command reconstruction, exact registry selection, retry/error classification, lost-response replay and applied-evidence mismatch behavior before promotion.
+Retain clean/upgraded PostgreSQL and SQLite migration evidence, typed-effect-only backfill evidence, decision+effect+operation+receipt atomicity, duplicate command replay, due ordering/bounds, concurrent claim CAS, first-claim case start, retry/reclaim without duplicate case revision, lease expiry/reclaim, stale-token rejection, retry scheduling/audit atomicity, terminal operation/case/audit atomicity, case revision contention, command reconstruction, exact registry selection, retry/error classification, lost-response replay followed by exactly one case close and applied-evidence mismatch behavior before promotion.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing these source slices.
