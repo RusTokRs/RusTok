@@ -17,6 +17,9 @@ const evidence = JSON.parse(
 const harness = read(
   "crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs",
 );
+const reviewedPublish = read(
+  "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+);
 const rebuildOwner = read(
   "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
 );
@@ -93,7 +96,7 @@ for (const [key, expected] of Object.entries({
   real_outbox_sys_events_migration_used: true,
   real_channel_module_migrations_used: true,
   real_pages_module_migrations_used: true,
-  canonical_reviewed_publish_body_revision_used: true,
+  reviewed_publish_revision_matches_owner_updated_at_snapshot: true,
   corrupt_provenance_rejected: true,
   corrupt_provenance_error_code_bound: true,
   corrupt_provenance_adds_no_rebuild_receipt: true,
@@ -157,7 +160,6 @@ for (const marker of [
   "SysEventsMigration.up(&manager).await?",
   "for migration in ChannelModule.migrations()",
   "for migration in PagesModule.migrations()",
-  "Sha256::digest",
   "body.updated_at",
   "struct RepairState",
   "rebuild_receipts: u64",
@@ -170,6 +172,35 @@ for (const marker of [
 ]) {
   requireText(harness, marker, "failure harness foundation");
 }
+requireOrder(
+  harness,
+  [
+    "let revision = draft",
+    ".body",
+    ".as_ref()",
+    ".updated_at",
+    ".clone();",
+    ".publish_reviewed(",
+    "revision,",
+  ],
+  "failure harness reviewed publish revision fixture",
+);
+for (const forbidden of [
+  "Sha256::digest",
+  'format!("{}\\0{}", body.format, body.content)',
+  "use sha2::{Digest, Sha256};",
+]) {
+  forbidText(harness, forbidden, "failure harness reviewed publish revision fixture");
+}
+requireOrder(
+  reviewedPublish,
+  [
+    "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
+    ".map(|body| (body.locale.clone(), body.updated_at.to_string()))",
+    "revisions.sort();",
+  ],
+  "reviewed publish owner revision snapshot",
+);
 if (countText(harness, "assert_eq!(after, before);") !== 5) {
   failures.push("each of the five rejected commands must preserve the complete RepairState snapshot");
 }
