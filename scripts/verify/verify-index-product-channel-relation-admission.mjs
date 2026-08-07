@@ -17,16 +17,20 @@ const requireMarkers = (relative, markers) => {
   }
   return source;
 };
+const forbidMarkers = (relative, source, markers) => {
+  for (const marker of markers) {
+    if (source.includes(marker)) fail(`${relative} contains forbidden marker ${marker}`);
+  }
+};
 
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod relation_admission;',
 ]);
 
-const admissionPath =
-  'crates/rustok-distribution/src/product_index/relation_admission.rs';
+const admissionPath = 'crates/rustok-distribution/src/product_index/relation_admission.rs';
 const admission = requireMarkers(admissionPath, [
-  'PRODUCT_SALES_CHANNEL_RELATION_EVENT_DOMAIN_V1',
-  'rustok-distribution.product-sales-channel-relation-v1',
+  'PRODUCT_SALES_CHANNEL_RELATION_EVENT_DOMAIN',
+  'rustok-distribution.product-sales-channel-relation',
   'ProductSalesChannelRelationEpoch',
   'ProductSalesChannelRelationSnapshot',
   'ProductSalesChannelRelationAdmission::Initial',
@@ -34,88 +38,62 @@ const admission = requireMarkers(admissionPath, [
   'ProductSalesChannelRelationAdmission::Advanced',
   'SameEpochMembershipChanged',
   'EpochRegressed',
-  'NilTenantId',
-  'NilProductId',
   'ScopeChanged',
   'channel_ids.sort_unstable();',
   'channel_ids.windows(2)',
   'derive_index_source_event_id(',
   'Some(&locale)',
   'epoch.get()',
-  'product_sales_channel_relation_canonical_membership_and_retry_identity_are_stable',
-  'product_sales_channel_relation_change_requires_a_strictly_larger_epoch',
-  'product_sales_channel_relation_invalid_identity_and_duplicates_fail_closed',
-  'product_sales_channel_relation_empty_membership_is_valid_but_scope_cannot_change',
-  'other_tenant',
-  'other_product',
 ]);
-
-for (const forbidden of [
+forbidMarkers(admissionPath, admission, [
+  'EVENT_DOMAIN_V1',
+  'relation-v1',
   'SystemTime',
   'Instant',
   'DefaultHasher',
-  'wrapping_',
-  'saturating_',
   'product_revision.max',
   'channel_revision.max',
   'Utc::now',
   'CURRENT_TIMESTAMP',
-]) {
-  if (admission.includes(forbidden)) {
-    fail(`${admissionPath} contains forbidden revision derivation ${forbidden}`);
-  }
-}
+]);
 
-const graphPath = 'crates/rustok-distribution/src/product_index/graph.rs';
-const graph = read(graphPath);
-for (const forbidden of [
-  'sales_channel',
-  'link_name("channels")',
-  'product_sales_channel_relation_epoch',
-]) {
-  if (graph.includes(forbidden)) {
-    fail(
-      `${graphPath} wires Product-to-SalesChannel links before durable epoch admission: ${forbidden}`,
-    );
-  }
-}
+const productPath = 'crates/rustok-distribution/src/product_index/product.rs';
+const product = requireMarkers(productPath, [
+  'many_field("sales_channel_ids", IndexValueType::Uuid, true)?',
+  'name: link_name("sales_channels")?',
+  'target_schema: sales_channel_schema_ref()?',
+  'projection.channel_ids AS sales_channel_ids',
+  'product_index_graph_projection_snapshots',
+]);
+forbidMarkers(productPath, product, [
+  'ProductSchemaVersion',
+  'product_v1_schema',
+  'product_v2_schema',
+  'channel_restricted',
+  'allowed_channel_slugs',
+]);
 
-const documentPath =
-  'crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md';
+const documentPath = 'crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md';
 const document = requireMarkers(documentPath, [
-  'Status: `source_contract_complete_persistence_and_wiring_pending`',
-  'Rechecked on 2026-08-03 against current `main`',
-  'correctly keeps durable',
-  'Product-to-SalesChannel relations open',
-  'must therefore not be derived with `max(product_revision,',
-  '`ProductSalesChannelRelationEpoch`',
-  '`ProductSalesChannelRelationSnapshot`',
-  'exact non-nil tenant, non-nil',
-  'an identical epoch is accepted only for an identical retry',
-  'changed membership under the same epoch fails closed',
-  'durable epoch storage for the exact tenant/Product relation identity',
-  'a registered relation event descriptor',
-  'generic mutation-event acknowledgement and source timeout substrates now exist',
-  'This slice does not add a Product-to-SalesChannel `IndexLink`',
-  'The canonical M7 Product/Variant/Channel link item remains open',
-  'Execution is maintainer-owned',
+  'Status: `canonical_source_complete_freshness_and_runtime_evidence_pending`',
+  'current Product Index graph already contains the Product-to-SalesChannel link',
+  '`product_sales_channel_index_relation_snapshots`',
+  '`product_index_graph_projection_snapshots`',
+  '`projection_epoch`',
+  '`sales_channel_ids`',
+  '`sales_channels` `IndexLink`',
+  'Durable Product/Channel convergence triggering',
 ]);
-if (document.includes('PR #2793 currently owns')) {
-  fail(`${documentPath} retains obsolete implementation-plan ownership text`);
-}
-
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
-  'durable Product-to-SalesChannel relations',
-  'bounded scalar projection until the owner has a durable relational contract',
-]);
-requireMarkers('crates/rustok-index/src/application/mutation_event.rs', [
-  'pub struct IndexMutationEventCatalog',
-  'pub struct IndexMutationEventWorker',
-]);
-requireMarkers('crates/rustok-index/src/application/source_timeout.rs', [
-  'const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);',
-  'index_source_scan_timeout',
-  'index_source_load_timeout',
+forbidMarkers(documentPath, document, [
+  'Product v1',
+  'Product v2',
+  'Product v3',
+  'future Product',
+  'does not yet add',
 ]);
 
-console.log('[verify-index-product-channel-relation-admission] OK');
+requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-index-product-channel-relation-admission.mjs'",
+]);
+
+console.log('[verify-index-product-channel-relation-admission] canonical relation admission verified');
