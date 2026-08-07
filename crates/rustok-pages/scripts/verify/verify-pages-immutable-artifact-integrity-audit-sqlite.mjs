@@ -152,6 +152,13 @@ for (const marker of [
   "artifact_record_identity_hash(&record)?",
   "hex_sha256(error.to_string().as_bytes())",
 ]) requireText(owner, marker, "audit owner contract");
+requireOrder(owner, [
+  "enforce_tenant_wide_manage(&security)?;",
+  "if tenant_id.is_nil()",
+  "if page_id.is_nil()",
+  "let max_records = normalize_max_records(input.max_records)?;",
+  "let txn = self.db.begin().await?;",
+], "audit owner authorization before database reads");
 
 for (const marker of [
   "immutable-artifact-audit-sqlite-harness-source-ready",
