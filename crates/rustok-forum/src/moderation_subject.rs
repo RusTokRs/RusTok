@@ -158,7 +158,13 @@ async fn apply_inside_transaction(
     key: &ModerationSubjectAdapterKey,
     command: &ApplyModerationDecisionCommand,
 ) -> Result<ModerationDecisionApplication, PortError> {
-    lock_active_subject_row(transaction, tenant_id, key.kind(), command.subject.id).await?;
+    lock_active_subject_and_revision(
+        transaction,
+        tenant_id,
+        key.kind(),
+        command.subject.id,
+    )
+    .await?;
     let reviewed_revision = current_subject_revision(
         transaction,
         tenant_id,
@@ -268,51 +274,93 @@ async fn begin_application_transaction(
     }
 }
 
-async fn lock_active_subject_row(
+async fn lock_active_subject_and_revision(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     kind: ModerationSubjectKind,
     subject_id: Uuid,
 ) -> Result<(), PortError> {
     let backend = transaction.get_database_backend();
-    let table = subject_table(kind)?;
-    let row = match backend {
+    let subject_table = subject_table(kind)?;
+    let (revision_table, revision_id_column) = revision_table(kind)?;
+
+    match backend {
         DatabaseBackend::Postgres => {
-            let sql = format!(
-                "SELECT id FROM {table} WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE"
+            let subject_sql = format!(
+                "SELECT id FROM {subject_table} WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE"
             );
-            transaction
+            let subject = transaction
                 .query_one(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    sql,
-                    vec![tenant_id.into(), subject_id.into()],
-                ))
-                .await
-                .map_err(database_error)?
-        }
-        DatabaseBackend::Sqlite => {
-            let reserve = format!(
-                "UPDATE {table} SET updated_at = updated_at WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
-            );
-            transaction
-                .execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    reserve,
+                    subject_sql,
                     vec![tenant_id.into(), subject_id.into()],
                 ))
                 .await
                 .map_err(database_error)?;
-            let sql = format!(
-                "SELECT id FROM {table} WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
+            if subject.is_none() {
+                return Err(subject_unavailable());
+            }
+
+            let revision_sql = format!(
+                "SELECT revision FROM {revision_table} WHERE tenant_id = $1 AND {revision_id_column} = $2 FOR UPDATE"
             );
-            transaction
+            let revision = transaction
                 .query_one(Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    sql,
+                    DatabaseBackend::Postgres,
+                    revision_sql,
                     vec![tenant_id.into(), subject_id.into()],
                 ))
                 .await
-                .map_err(database_error)?
+                .map_err(database_error)?;
+            if revision.is_none() {
+                return Err(missing_revision_state());
+            }
+        }
+        DatabaseBackend::Sqlite => {
+            // SQLite has no SELECT FOR UPDATE. Reserve the database writer through
+            // the dedicated revision row instead of touching the subject row and
+            // invoking unrelated Forum UPDATE triggers.
+            let reserve_sql = format!(
+                "UPDATE {revision_table} SET revision = revision WHERE tenant_id = ? AND {revision_id_column} = ?"
+            );
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    reserve_sql,
+                    vec![tenant_id.into(), subject_id.into()],
+                ))
+                .await
+                .map_err(database_error)?;
+
+            let revision_sql = format!(
+                "SELECT revision FROM {revision_table} WHERE tenant_id = ? AND {revision_id_column} = ?"
+            );
+            let revision = transaction
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    revision_sql,
+                    vec![tenant_id.into(), subject_id.into()],
+                ))
+                .await
+                .map_err(database_error)?;
+            if revision.is_none() {
+                return Err(missing_revision_state());
+            }
+
+            let subject_sql = format!(
+                "SELECT id FROM {subject_table} WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
+            );
+            let subject = transaction
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    subject_sql,
+                    vec![tenant_id.into(), subject_id.into()],
+                ))
+                .await
+                .map_err(database_error)?;
+            if subject.is_none() {
+                return Err(subject_unavailable());
+            }
         }
         _ => {
             return Err(PortError::unavailable(
@@ -320,11 +368,8 @@ async fn lock_active_subject_row(
                 "Forum moderation application database backend is unsupported",
             ));
         }
-    };
-
-    if row.is_none() {
-        return Err(subject_unavailable());
     }
+
     Ok(())
 }
 
@@ -359,12 +404,7 @@ async fn current_subject_revision(
         ))
         .await
         .map_err(database_error)?
-        .ok_or_else(|| {
-            PortError::invariant_violation(
-                "forum.moderation_subject_revision_missing",
-                "Forum moderation subject revision state is missing",
-            )
-        })?;
+        .ok_or_else(missing_revision_state)?;
     let revision: i64 = row.try_get("", "revision").map_err(database_error)?;
     if revision <= 0 {
         return Err(PortError::invariant_violation(
@@ -506,6 +546,13 @@ fn subject_unavailable() -> PortError {
     PortError::not_found(
         "forum.moderation_subject_unavailable",
         "Forum moderation subject is unavailable",
+    )
+}
+
+fn missing_revision_state() -> PortError {
+    PortError::invariant_violation(
+        "forum.moderation_subject_revision_missing",
+        "Forum moderation subject revision state is missing",
     )
 }
 
