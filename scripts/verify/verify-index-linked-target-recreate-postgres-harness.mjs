@@ -107,7 +107,7 @@ requireMarkers('crates/rustok-index/docs/m7-linked-target-recreate-postgres-harn
   'It adds no owner clock, no Index schema, and no compatibility version.',
   'ProductVariant scenario',
   'SalesChannel scenario',
-  'link exists while its target',
+  'link that exists while its target',
   'does not claim execution success',
 ]);
 
