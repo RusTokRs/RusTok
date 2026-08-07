@@ -298,6 +298,8 @@ fn render_storefront_codegen(entries: &[StorefrontUiEntry]) -> String {
         let fn_name = storefront_render_fn_name(&entry.slug);
         let component_path = if entry.slug == "search" {
             "crate::modules::SearchStorefrontComposition".to_string()
+        } else if entry.slug == "forum" {
+            "crate::modules::ForumStorefrontComposition".to_string()
         } else {
             format!("{}::{}", entry.crate_ident, entry.component_name)
         };
