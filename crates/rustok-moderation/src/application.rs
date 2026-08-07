@@ -374,12 +374,18 @@ impl ModerationService {
             .await?
             .ok_or(ModerationError::ApplicationOperationNotFound(decision_id))?;
         let case = find_case(&transaction, tenant_id, operation.case_id).await?;
+        let case_target = terminal_case_status(ModerationApplicationOperationStatus::Applied)
+            .ok_or_else(|| {
+                ModerationError::Invariant(
+                    "applied moderation operation has no terminal case state".to_string(),
+                )
+            })?;
         let case_revision = transition_case_status_in_transaction(
             &transaction,
             tenant_id,
             &case,
             ModerationCaseStatus::ApplyingDecision,
-            ModerationCaseStatus::Closed,
+            case_target,
             now,
         )
         .await?;
@@ -522,19 +528,24 @@ impl ModerationService {
                         "case_id": operation.case_id,
                         "attempt_count": operation.attempt_count,
                         "error_code": error_code,
-                        "next_attempt_at": operation.next_attempt_at,
+                        "next_attempt_at": operation.next_attempt_at.clone(),
                     }),
                 )
                 .await?;
             }
             ModerationApplicationOperationStatus::Rejected
             | ModerationApplicationOperationStatus::OperatorReview => {
+                let case_target = terminal_case_status(next_status).ok_or_else(|| {
+                    ModerationError::Invariant(
+                        "terminal moderation application has no terminal case state".to_string(),
+                    )
+                })?;
                 let case_revision = transition_case_status_in_transaction(
                     &transaction,
                     tenant_id,
                     &case,
                     ModerationCaseStatus::ApplyingDecision,
-                    ModerationCaseStatus::Escalated,
+                    case_target,
                     now,
                 )
                 .await?;
@@ -777,6 +788,21 @@ fn normalize_text(value: String, field: &str, max_bytes: usize) -> ModerationRes
     Ok(value)
 }
 
+fn terminal_case_status(
+    status: ModerationApplicationOperationStatus,
+) -> Option<ModerationCaseStatus> {
+    match status {
+        ModerationApplicationOperationStatus::Applied => Some(ModerationCaseStatus::Closed),
+        ModerationApplicationOperationStatus::Rejected
+        | ModerationApplicationOperationStatus::OperatorReview => {
+            Some(ModerationCaseStatus::Escalated)
+        }
+        ModerationApplicationOperationStatus::Pending
+        | ModerationApplicationOperationStatus::Applying
+        | ModerationApplicationOperationStatus::Retryable => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -799,20 +825,5 @@ mod tests {
             terminal_case_status(ModerationApplicationOperationStatus::Retryable),
             None
         );
-    }
-}
-
-fn terminal_case_status(
-    status: ModerationApplicationOperationStatus,
-) -> Option<ModerationCaseStatus> {
-    match status {
-        ModerationApplicationOperationStatus::Applied => Some(ModerationCaseStatus::Closed),
-        ModerationApplicationOperationStatus::Rejected
-        | ModerationApplicationOperationStatus::OperatorReview => {
-            Some(ModerationCaseStatus::Escalated)
-        }
-        ModerationApplicationOperationStatus::Pending
-        | ModerationApplicationOperationStatus::Applying
-        | ModerationApplicationOperationStatus::Retryable => None,
     }
 }
