@@ -4,11 +4,11 @@ Status: **bounded source-ready slice / maintainer execution pending**
 
 ## Scope
 
-This slice makes the existing Moderation application operation, case lifecycle and owner audit ledger advance atomically around the already source-ready one-attempt dispatcher.
+This slice makes the existing Moderation application operation, case lifecycle and owner audit ledger advance atomically around the already source-ready one-attempt dispatcher for every transition performed after this source is active.
 
 It does not add a second queue, scheduler, audit table, domain adapter path or cross-domain event family. `moderation_application_operations` remains the durable application state, `moderation_cases` remains the case state machine, and the existing `moderation_events` table remains the Moderation-owned audit ledger.
 
-Operator retry/requeue/re-review commands are deliberately left for the next bounded owner slice.
+Operator retry/requeue/re-review commands are deliberately left for the next bounded owner slice. That follow-up must also reconcile pre-audit terminal operation rows truthfully rather than inventing historical lifecycle events.
 
 ## Claim and case start
 
@@ -43,7 +43,7 @@ A matching `ModerationDecisionApplication` and live lease atomically:
 5. append `application_applied` on the application aggregate;
 6. append `case_closed` on the case aggregate.
 
-If the operation CAS, case CAS or either owner audit insert fails, the owner transaction rolls back. Moderation never records a closed case without the matching durable application state and audit facts.
+If the operation CAS, case CAS or either owner audit insert fails, the owner transaction rolls back. Moderation never records a newly finalized closed case without the matching durable application state and audit facts.
 
 ## Rejected and operator-review outcomes
 
@@ -60,6 +60,24 @@ Both also write `case_escalated` with the exact application status and bounded e
 
 This distinction remains important: a deterministic domain/contract rejection is not silently rewritten as applied, and a stale revision/invariant/evidence mismatch remains an explicit operator-review condition.
 
+## Upgrade compatibility for pre-audit terminal rows
+
+This source slice intentionally adds no migration and does not fabricate audit history for application operations that were already terminal before the atomic lifecycle source existed.
+
+A legacy row already in `applied`, `rejected` or `operator_review` is no longer due and therefore cannot pass through the new claim/finalizer path. Its associated case may consequently still reflect the pre-audit lifecycle state (for example `decided`) and there may be no truthful `case_application_started` / terminal lifecycle audit pair to backfill.
+
+Those rows are a bounded reconciliation concern, not evidence that the historical events occurred. The next operator-recovery slice must define an explicit owner reconciliation path that:
+
+- inspects exact immutable decision, operation and case identity;
+- distinguishes legacy terminal-state reconciliation from a new domain application attempt;
+- never re-invokes a domain adapter merely to manufacture lifecycle history;
+- never invents historical event timestamps or claims that an unobserved lifecycle transition happened;
+- preserves an already accepted `applied` operation as applied while bringing case state forward through an explicit reconciliation fact;
+- keeps rejected/operator-review recovery fail-closed and operator-visible;
+- remains bounded and tenant/decision scoped.
+
+Until that follow-up exists and is evidenced, upgraded legacy terminal rows are explicitly **not** claimed reconciled by this slice.
+
 ## Crash and lost-response behavior
 
 The existing crash/lost-response contract is preserved.
@@ -74,7 +92,7 @@ If Moderation storage or an owner audit insert fails while finalizing a domain r
 
 This slice uses only the existing internal `moderation_events` audit ledger. It does not claim a new typed `rustok-events` cross-domain contract.
 
-Source-ready event types are:
+Source-ready event types for transitions executed by this source are:
 
 - `case_application_started`;
 - `application_attempt_claimed`;
@@ -94,6 +112,7 @@ Future public/transactional outbox contracts, if needed by another module, must 
 This slice does not add:
 
 - operator retry/requeue/re-review commands;
+- reconciliation of pre-audit terminal application rows and their legacy case state;
 - a UI or admin recovery surface;
 - automatic creation of a replacement decision after escalation;
 - report dismissal/closure policy beyond the existing report state model;
@@ -123,6 +142,6 @@ cargo xtask module validate moderation
 git diff --check
 ```
 
-Retained evidence should cover: first claim `decided -> applying_decision`; retry/reclaim without another case revision; claim/event rollback on audit failure; retryable operation + retry event atomicity; applied operation + `closed` case + cleared active key + both audit events atomicity; rejected/operator-review operation + `escalated` case + both audit events atomicity; stale-token finalizer rollback; case revision CAS contention; domain lost-response receipt replay followed by exactly one case close; owner storage failure followed by lease reclaim; and PostgreSQL/SQLite parity.
+Retained evidence should cover: first claim `decided -> applying_decision`; retry/reclaim without another case revision; claim/event rollback on audit failure; retryable operation + retry event atomicity; applied operation + `closed` case + cleared active key + both audit events atomicity; rejected/operator-review operation + `escalated` case + both audit events atomicity; stale-token finalizer rollback; case revision CAS contention; domain lost-response receipt replay followed by exactly one case close; owner storage failure followed by lease reclaim; PostgreSQL/SQLite parity; and explicit evidence for legacy-terminal reconciliation once the follow-up recovery path exists.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
