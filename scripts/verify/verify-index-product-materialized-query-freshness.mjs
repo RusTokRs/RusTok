@@ -61,9 +61,10 @@ const catalog = requireMarkers(catalogPath, [
   'pub(crate) fn ensure_runtime_schema(',
   'pub(crate) fn apply_link_target_availability(',
   'fn rebuild_owner_composite(',
+  'fn referenced_first_hop_links(query: &IndexQuery)',
   'query.referenced_paths()',
-  'availability_link.source_version = {root}.source_version',
-  'availability_target.is_deleted = FALSE',
+  '{link}.source_version = {root}.source_version',
+  '{target}.is_deleted = FALSE',
 ]);
 forbidMarkers(catalogPath, catalog, [
   'PostgresQueryRootAdmission',
@@ -155,7 +156,7 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
 const freshnessDoc = requireMarkers(
   'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
   [
-    'Status: `source_complete_link_target_availability_execution_pending`',
+    'Status: `source_complete_link_target_availability_equivalence_execution_pending`',
     '`PostgresQueryEntityAdmission`',
     '`mpN_tN`',
     '`mx_tN`',
@@ -167,8 +168,10 @@ const freshnessDoc = requireMarkers(
     'Recreate monotonicity remains source complete',
     'm20260731_000004_add_product_index_tombstones',
     'm20260731_000011_add_channel_index_tombstones',
-    'Remaining M7 evidence',
+    'Filter/order/count/runtime equivalence packet',
     'product_linked_target_recreate_postgres.rs',
+    'product_linked_target_availability_equivalence_postgres.rs',
+    'Remaining M7 evidence',
   ],
 );
 forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
@@ -176,6 +179,7 @@ forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.
   'does **not** claim delete+recreate identity safety',
   'next source slice must make those two owner source clocks monotonic',
   'define and retain fail-closed linked-target availability semantics',
+  'retain PostgreSQL cases for linked filtering and many aggregate ordering',
 ]);
 
-console.log('[verify-index-product-materialized-query-freshness] Product graph freshness and fail-closed linked target availability verified');
+console.log('[verify-index-product-materialized-query-freshness] Product graph freshness, availability and equivalence source contracts verified');
