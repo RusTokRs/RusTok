@@ -64,13 +64,15 @@ const product = requireMarkers(productPath, [
   'target_schema: sales_channel_schema_ref()?',
   'projection.channel_ids AS sales_channel_ids',
   'product_index_graph_projection_snapshots',
+  'assert_eq!(schema.fields.len(), 10);',
+  'assert_eq!(schema.links.len(), 2);',
 ]);
 forbidMarkers(productPath, product, [
   'ProductSchemaVersion',
   'product_v1_schema',
   'product_v2_schema',
-  'channel_restricted',
-  'allowed_channel_slugs',
+  'PRODUCT_EVENT_DOMAIN_V1',
+  'PRODUCT_EVENT_DOMAIN_V2',
 ]);
 
 const documentPath = 'crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md';
