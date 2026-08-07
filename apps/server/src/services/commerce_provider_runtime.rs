@@ -92,7 +92,7 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
-    #[cfg(feature = "mod-commerce")]
+    #[cfg(feature = "commerce-marketplace-financial")]
     let host = {
         let runtime = server
             .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
@@ -188,7 +188,10 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
-    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    #[cfg(all(
+        feature = "commerce-marketplace-financial",
+        feature = "mod-payment"
+    ))]
     let host = {
         let observers = server
             .shared_get::<rustok_payment::PaymentProviderEventObservers>()
