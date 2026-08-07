@@ -28,6 +28,19 @@ use super::reply;
 use super::topic_owner::TopicService;
 use super::user_stats::UserStatsService;
 
+/// Exact Forum-owned facts produced by the transactional reply removal path.
+///
+/// The state/counter/solution mutation stays inside `ReplyService`; callers may
+/// use these facts only to publish the established owner event/projection in the
+/// same transaction.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ReplyRemovalOutcome {
+    pub(crate) topic_id: Uuid,
+    pub(crate) category_id: Uuid,
+    pub(crate) old_status: ReplyStatus,
+    pub(crate) was_public: bool,
+}
+
 /// Public owner service for reply commands.
 ///
 /// Root-service lifecycle decisions live here so database triggers are
@@ -90,39 +103,7 @@ impl ReplyService {
         )?;
 
         let txn = self.db.begin().await?;
-        claim_reply_delete_in_tx(&txn, tenant_id, reply_id).await?;
-        let reply = reply::ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
-        if reply.status == ReplyStatus::Deleted {
-            return Err(ForumError::ReplyDeleted);
-        }
-        reply.status.validate_transition(&ReplyStatus::Deleted)?;
-
-        let topic = TopicService::find_topic_in_tx(&txn, tenant_id, reply.topic_id).await?;
-        let solution_removed = forum_solution::Entity::find()
-            .filter(forum_solution::Column::TenantId.eq(tenant_id))
-            .filter(forum_solution::Column::TopicId.eq(reply.topic_id))
-            .one(&txn)
-            .await?
-            .is_some_and(|solution| solution.reply_id == reply_id);
-
-        forum_solution::Entity::delete_many()
-            .filter(forum_solution::Column::TenantId.eq(tenant_id))
-            .filter(forum_solution::Column::ReplyId.eq(reply_id))
-            .exec(&txn)
-            .await?;
-        mark_reply_deleted_in_tx(&txn, tenant_id, reply_id).await?;
-
-        if reply.status == ReplyStatus::Approved {
-            TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, -1).await?;
-            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, -1)
-                .await?;
-            UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, reply.author_id, -1)
-                .await?;
-        }
-        if solution_removed {
-            UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, reply.author_id, -1)
-                .await?;
-        }
+        let outcome = Self::remove_in_tx(&txn, tenant_id, reply_id).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -131,26 +112,82 @@ impl ReplyService {
                 security.user_id,
                 DomainEvent::ForumReplyStatusChanged {
                     reply_id,
-                    topic_id: reply.topic_id,
-                    old_status: reply.status.to_string(),
+                    topic_id: outcome.topic_id,
+                    old_status: outcome.old_status.to_string(),
                     new_status: ReplyStatus::Deleted.to_string(),
                     moderator_id: security.user_id,
                 },
             )
             .await?;
-        if reply.status == ReplyStatus::Approved {
+        if outcome.was_public {
             publish_forum_category_projection_in_tx(
                 &self.event_bus,
                 &txn,
                 tenant_id,
                 security.user_id,
-                topic.category_id,
+                outcome.category_id,
             )
             .await?;
         }
 
         txn.commit().await?;
         Ok(())
+    }
+
+    /// Applies the complete Forum-owned reply removal mutation inside an
+    /// existing owner transaction.
+    ///
+    /// This is the single state path for soft-delete/tombstone capture,
+    /// accepted-solution cleanup and public/author/solution accounting. It does
+    /// not perform authorization or publish events; the caller must publish the
+    /// established `ForumReplyStatusChanged` and category projection in this
+    /// same transaction using the returned facts.
+    pub(crate) async fn remove_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<ReplyRemovalOutcome> {
+        claim_reply_delete_in_tx(txn, tenant_id, reply_id).await?;
+        let reply = reply::ReplyService::find_reply_in_tx(txn, tenant_id, reply_id).await?;
+        if reply.status == ReplyStatus::Deleted {
+            return Err(ForumError::ReplyDeleted);
+        }
+        reply.status.validate_transition(&ReplyStatus::Deleted)?;
+
+        let topic = TopicService::find_topic_in_tx(txn, tenant_id, reply.topic_id).await?;
+        let solution_removed = forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(reply.topic_id))
+            .one(txn)
+            .await?
+            .is_some_and(|solution| solution.reply_id == reply_id);
+
+        forum_solution::Entity::delete_many()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::ReplyId.eq(reply_id))
+            .exec(txn)
+            .await?;
+        mark_reply_deleted_in_tx(txn, tenant_id, reply_id).await?;
+
+        let was_public = reply.status == ReplyStatus::Approved;
+        if was_public {
+            TopicService::adjust_reply_count_in_tx(txn, tenant_id, reply.topic_id, -1).await?;
+            CategoryService::adjust_counters_in_tx(txn, tenant_id, topic.category_id, 0, -1)
+                .await?;
+            UserStatsService::adjust_reply_count_in_tx(txn, tenant_id, reply.author_id, -1)
+                .await?;
+        }
+        if solution_removed {
+            UserStatsService::adjust_solution_count_in_tx(txn, tenant_id, reply.author_id, -1)
+                .await?;
+        }
+
+        Ok(ReplyRemovalOutcome {
+            topic_id: reply.topic_id,
+            category_id: topic.category_id,
+            old_status: reply.status,
+            was_public,
+        })
     }
 
     pub(crate) async fn find_reply(
@@ -239,9 +276,7 @@ async fn claim_reply_delete_in_tx(
         tenant_id,
         reply_id,
     )?;
-    let result = txn
-        .execute(statement)
-        .await?;
+    let result = txn.execute(statement).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::ReplyDeleted);
     }
@@ -264,9 +299,7 @@ async fn mark_reply_deleted_in_tx(
         tenant_id,
         reply_id,
     )?;
-    let result = txn
-        .execute(statement)
-        .await?;
+    let result = txn.execute(statement).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::ReplyDeleted);
     }
