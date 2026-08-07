@@ -204,7 +204,10 @@ impl ModerationService {
                 )
                 .await;
         }
-        if error.kind == PortErrorKind::InvariantViolation {
+        if matches!(
+            &error.kind,
+            PortErrorKind::Conflict | PortErrorKind::InvariantViolation
+        ) {
             return self
                 .mark_application_operator_review(
                     tenant_id,
