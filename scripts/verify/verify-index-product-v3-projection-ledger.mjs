@@ -60,11 +60,31 @@ forbidMarkers(migrationPath, migration, [
   'index_links',
   'IndexMutation',
   'tokio::spawn',
+  'projection_epoch := GREATEST',
 ]);
+
+const relationMigration = requireMarkers(
+  'crates/rustok-product/src/migrations/m20260807_000008_add_product_sales_channel_index_relation_snapshots.rs',
+  [
+    'CREATE TRIGGER trg_products_retain_empty_channel_relation',
+    'AFTER DELETE ON products',
+    'CREATE TRIGGER trg_product_channel_relation_snapshot_insert',
+  ],
+);
+if (!(migration.includes('trg_products_zz_index_graph_v3_projection_delete') &&
+      relationMigration.includes('trg_products_retain_empty_channel_relation'))) {
+  fail('Product hard-delete projection ordering markers are incomplete');
+}
 
 requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
   'mod m20260807_000009_add_product_index_graph_v3_projection_snapshots;',
   'Box::new(m20260807_000009_add_product_index_graph_v3_projection_snapshots::Migration)',
+]);
+
+const productCargo = read('crates/rustok-product/Cargo.toml');
+forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, [
+  'rustok-index',
+  'rustok-channel',
 ]);
 
 requireMarkers('crates/rustok-product/docs/index-graph-v3-projection-ledger.md', [
@@ -79,6 +99,11 @@ requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admis
   'Product v3 projection epoch',
   'full Product v3 record cannot safely use either',
   'The separate `projection_epoch` is the future Product v3 full-record source version',
+]);
+requireMarkers('crates/rustok-index/docs/m7-product-graph-source.md', [
+  'A second versioning gap was found',
+  '`product_index_graph_v3_projection_snapshots` ledger',
+  'using the dedicated `projection_epoch` as the full-record source version',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'Product-owned graph-v3 projection epoch ledger',
