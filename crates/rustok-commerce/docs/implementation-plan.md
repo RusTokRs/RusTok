@@ -203,11 +203,15 @@ These are source-contract defects, not verification-only tasks.
   host-compose embedded or external command providers, and cut mounted admin REST
   product create/update over to the owner port with deadline, payload-bound deterministic
   write identity, channel, actor, locale, and stable public errors.
-- [ ] Cut remaining mounted Product list/detail/catalog reads, REST
-  delete/publish/unpublish lifecycle commands, and GraphQL product lifecycle/schema
-  operations over to host-composed Product owner ports. Direct Product entities,
-  `CatalogService`, and `ProductCatalogSchemaService` remain explicit source debt;
-  repeatable lifecycle commands need an explicit caller idempotency contract before cutover.
+- [x] Cut mounted admin REST Product detail over to the host-selected
+  `ProductCatalogReadPort`, preserving `PRODUCTS_READ`, tenant/actor/channel context,
+  requested locale plus tenant fallback locale, a bounded deadline, and stable public errors.
+- [ ] Cut remaining mounted Product list/catalog reads, REST delete/publish/unpublish
+  lifecycle commands, and GraphQL product lifecycle/schema operations over to
+  host-composed Product owner ports. Direct Product entities, `CatalogService`, and
+  `ProductCatalogSchemaService` remain explicit source debt; repeatable lifecycle
+  commands need an explicit caller idempotency contract before cutover, while admin list
+  needs an owner query contract that preserves vendor/product-type filtering.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -605,6 +609,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - [ ] `node scripts/verify/verify-commerce-marketplace-financial-capability.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-command-port.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-admin-detail-read.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -637,8 +642,8 @@ Source inspection is not execution evidence.
   mutation, payment, or fulfillment ownership; unmounted admin compatibility GET
   handlers remain explicit source debt.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, order-read,
-  marketplace-financial topology, and Product command-port static guards against a
-  repository checkout and retain their output.
+  marketplace-financial topology, Product command-port, and Product admin-detail read
+  static guards against a repository checkout and retain their output.
 
 ### Compile/tests
 
@@ -811,6 +816,9 @@ Source inspection is not execution evidence.
 - [x] Publish and host-compose Product catalog command ports, then cut mounted admin
   REST product create/update away from `CatalogService` with payload-bound write
   identity and stable public error mapping; lifecycle/read/GraphQL cutover remains open.
+- [x] Cut mounted admin REST Product detail over to the host-selected Product read port
+  while preserving locale fallback, request context, permissions, and public envelope;
+  admin list and GraphQL Product reads remain separate source debt.
 
 ## Change rules
 
