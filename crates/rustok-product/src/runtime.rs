@@ -3,7 +3,10 @@ use std::sync::Arc;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
-use crate::{CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort};
+use crate::{
+    CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort, ProductCatalogSchemaReadPort,
+    ProductCatalogSchemaService,
+};
 
 /// Host-selected execution profile for the Product catalog read boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,6 +31,7 @@ impl ProductCatalogReadProfile {
 #[derive(Clone)]
 pub struct ProductCatalogReadRuntime {
     read_port: Arc<dyn ProductCatalogReadPort>,
+    schema_read_port: Option<Arc<dyn ProductCatalogSchemaReadPort>>,
     profile: ProductCatalogReadProfile,
 }
 
@@ -36,22 +40,39 @@ impl ProductCatalogReadRuntime {
         read_port: Arc<dyn ProductCatalogReadPort>,
         profile: ProductCatalogReadProfile,
     ) -> Self {
-        Self { read_port, profile }
+        Self {
+            read_port,
+            schema_read_port: None,
+            profile,
+        }
     }
 
     pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self::new(
-            Arc::new(CatalogService::new(db, event_bus)),
+            Arc::new(CatalogService::new(db.clone(), event_bus.clone())),
             ProductCatalogReadProfile::EmbeddedNative,
         )
+        .with_schema_read_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
     }
 
     pub fn external(read_port: Arc<dyn ProductCatalogReadPort>) -> Self {
         Self::new(read_port, ProductCatalogReadProfile::External)
     }
 
+    pub fn with_schema_read_port(
+        mut self,
+        schema_read_port: Arc<dyn ProductCatalogSchemaReadPort>,
+    ) -> Self {
+        self.schema_read_port = Some(schema_read_port);
+        self
+    }
+
     pub fn read_port(&self) -> Arc<dyn ProductCatalogReadPort> {
         self.read_port.clone()
+    }
+
+    pub fn schema_read_port(&self) -> Option<Arc<dyn ProductCatalogSchemaReadPort>> {
+        self.schema_read_port.clone()
     }
 
     pub const fn profile(&self) -> ProductCatalogReadProfile {
