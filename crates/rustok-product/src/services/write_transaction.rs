@@ -3,8 +3,8 @@ use std::ops::Deref;
 use crate::{
     error::{CommerceError, CommerceResult},
     services::index_refresh::{
-        product_locale_refresh_target, product_variant_refresh_target,
-        record_product_locale_refreshes_in_tx, record_product_variant_refreshes_in_tx,
+        product_locale_refresh_target, record_product_locale_refreshes_in_tx,
+        record_product_variant_refreshes_in_tx,
     },
 };
 use rustok_events::DomainEvent;
@@ -42,13 +42,18 @@ impl ProductWriteTransaction {
         actor_id: Option<Uuid>,
         event: DomainEvent,
     ) -> CommerceResult<()> {
-        if let Some(product_id) = product_index_revision_touch_target(&event) {
+        let product_attribute_id = product_index_revision_touch_target(&event);
+        if let Some(product_id) = product_attribute_id {
             self.bump_product_index_revision(tenant_id, product_id)
                 .await?;
         }
 
-        let product_locale_id = product_locale_refresh_target(&event);
-        let product_variant_id = product_variant_refresh_target(&event);
+        // Existing lifecycle Product events keep their established Product + ProductVariant fan-out.
+        // ProductAttributeValuesChanged is Product-only: it advances the Product clock and locale
+        // refresh ledger but must not re-emit every unchanged ProductVariant.
+        let lifecycle_product_id = product_locale_refresh_target(&event);
+        let product_locale_id = lifecycle_product_id.or(product_attribute_id);
+        let product_variant_id = lifecycle_product_id;
         let root_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
@@ -67,8 +72,6 @@ impl ProductWriteTransaction {
         }
 
         if let Some(product_id) = product_variant_id {
-            // ProductVariant fan-out is limited to lifecycle/Product commands that can affect the
-            // variant graph. Product-only EAV changes must not re-emit every unchanged variant.
             record_product_variant_refreshes_in_tx(
                 &self.transaction,
                 tenant_id,
