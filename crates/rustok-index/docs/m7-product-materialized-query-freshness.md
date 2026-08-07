@@ -1,173 +1,158 @@
 # M7 Product materialized/query freshness fence
 
-Status: `source_complete_postgres_packet_source_ready_execution_pending`.
+Status: `source_complete_linked_target_fence_execution_pending`.
 
-## Problem closed by the source fence
+## Problem closed at source level
 
-Product source admission already rejects stale Product-to-SalesChannel relation state, and automatic
-convergence re-establishes owner freshness after Product visibility or Channel identity changes. Those
-contracts do not by themselves protect an Index mutation that was produced under a valid source
-snapshot and then applied after owner state changed.
+Product source admission and automatic Product-to-SalesChannel convergence protect source reads, but an
+already-produced Index mutation can still arrive after owner state changes. A post-result freshness
+check is too late because stale root or linked rows may already have affected filtering, ordering,
+cursor pagination, many projections, aggregate ordering, and exact count.
 
-The race window is:
+The query boundary therefore treats owner freshness as an admission property of every materialized
+`index_entities` relation used by the compiler, not only the root row.
 
-1. Product source reads a valid Product projection and freshness witness;
-2. owner Product/Channel state changes;
-3. the already-produced mutation is applied to `index_entities/index_links`;
-4. an Index query executes before the corrective mutation arrives.
+## Generic entity query admission
 
-A post-result freshness check is insufficient because a stale row can already have changed filtering,
-ordering, cursor pagination, and exact count before the check sees returned rows.
+`rustok-index` owns `PostgresQueryEntityAdmission`, a trusted schema-scoped PostgreSQL entity-admission
+contract.
 
-## Generic root query admission
+A rule:
 
-`rustok-index` owns a trusted schema-scoped PostgreSQL root-admission contract.
-
-`PostgresQueryRootAdmission` accepts a source-code predicate template that:
-
-- must reference the compiler-controlled `{{root}}` alias;
+- must reference the compiler-controlled `{{entity}}` alias;
 - cannot contain bind placeholders, SQL statement boundaries, or comments;
 - is bounded to 32 KiB;
-- is applied to the compiler's exact canonical root `index_entities` baseline, including locale scope;
-- fails closed if page or exact-count SQL no longer contains exactly one expected root anchor.
+- changes no user bind, selected column, plan fingerprint, or cursor contract;
+- is applied to every compiler-owned materialized entity alias in page and exact-count SQL;
+- fails closed when the compiler emits an unknown entity alias family or omits the canonical
+  `is_deleted = FALSE` entity anchor.
 
-The admission predicate changes no user binds, selected columns, query fingerprint, or cursor contract.
-It is injected into root `WHERE` before user filter/cursor/order/limit semantics. The same predicate is
-injected into exact-count SQL.
+Current compiler alias families covered by the admission boundary are:
 
-`PostgresIndexQueryAdmissionCatalog` owns at most one rule per exact `SchemaRef`. Query runtime
-materialization snapshots that catalog into `PostgresIndexQueryPort`, rejects admission rules targeting
-an unregistered schema, and preserves the existing generic behavior for schemas without a rule.
+- `tN` for root and ordinary outer-join entity relations;
+- `mpN_tN` for many-cardinality projections;
+- `mx_tN` for many-cardinality filter `EXISTS` relations;
+- `mo_tN` for many-cardinality aggregate-order relations.
 
-## Product admission evidence
+`PostgresIndexQueryAdmissionCatalog` still owns at most one owner rule per exact `SchemaRef`. At runtime
+those owner rules are compiled into one schema-dispatch predicate. If at least one owner rule exists,
+the immutable runtime adds local pass-through descriptors for otherwise ungoverned registered root
+schemas. Those pass-through descriptors are not published owner rules; they only ensure that a query
+rooted elsewhere still applies governed freshness rules to linked targets.
 
-The selected distribution registers one rule for the canonical Product schema. A materialized Product
-root row is query-admissible only when all of these facts are true in the same PostgreSQL
-`REPEATABLE READ`, `READ ONLY` query snapshot:
+## Product graph owner rules
 
-- the owner Product still exists;
-- the exact Product locale translation still exists;
-- the materialized `index_entities.source_version` equals the latest Product
-  `product_index_graph_projection_snapshots.projection_epoch`;
-- that projection's Product component equals current `products.index_revision`;
-- a freshness witness exists for the projection's exact `relation_epoch`;
-- the witness Product revision is not ahead of current Product revision;
-- witness Channel identity generation equals current tenant `channel_index_identity_generations`
-  (or generation `0` when no Channel generation row exists);
-- there is no retained Product visibility convergence request with
-  `product_source_version > witness.product_source_version`.
+The selected Product distribution registers current entity admission for Product and ProductVariant.
+When Channel is selected it also registers SalesChannel admission. No new Index schema or freshness
+clock is introduced.
 
-The last condition is the current-visibility proof. Product convergence requests are appended only for
-Product INSERT or canonical `channel_visibility` changes. Therefore an unrelated Product scalar update
-does not falsely invalidate relation freshness, while any later visibility change makes an older
-witness query-inadmissible without re-parsing Product visibility JSON in SQL.
+### Product
 
-## Why no extra materialized watermark is needed
+A Product materialized row is admitted only when, in the same PostgreSQL `REPEATABLE READ, READ ONLY`
+query snapshot:
 
-The existing clocks already carry the required evidence:
+- the owner Product and exact locale translation still exist;
+- materialized `source_version` equals current Product `projection_epoch`;
+- the projection Product component equals current `products.index_revision`;
+- an exact relation freshness witness exists;
+- witness Channel generation equals current tenant Channel generation;
+- no visibility convergence request is newer than the witness Product revision.
 
-- `index_entities.source_version` is Product `projection_epoch`;
-- Product projection state identifies current Product and relation components;
-- the freshness witness identifies the observed Product revision and Channel generation;
-- the convergence request ledger identifies visibility-affecting Product revisions;
-- live Product/translation rows prove the materialized identity/locale still exists.
+This is the existing Product source-read -> mutation-apply fence, now reusable when Product appears as
+any governed materialized entity relation.
 
-A new Product schema, duplicate relation membership, query-time visibility parser, or new Index storage
-column would add another authority without improving the proof.
+### ProductVariant
 
-## Important transitions
+A ProductVariant row is admitted only when a live owner `product_variants` row exists for the same
+tenant/UUID and:
 
-### Product scalar/Variant change
+`product_variants.index_revision = index_entities.source_version`.
 
-Product `index_revision` and projection advance. An older materialized row fails the projection epoch
-comparison until the new Product mutation is applied.
+A delayed stale ProductVariant row therefore cannot contribute its old payload to Product `variants`
+projection/filter/order semantics after the owner revision has advanced or the owner row has been
+deleted.
 
-### Product visibility change
+### SalesChannel
 
-The Product update advances projection and appends an exact visibility convergence request. An older
-witness cannot satisfy the request-watermark check. The row remains query-inadmissible until resolver
-freshness is current and the new Product projection is materialized.
+A SalesChannel row is admitted only when a live owner `channels` row exists for the same tenant/UUID
+and:
 
-### Channel identity change
+`channels.index_revision = index_entities.source_version`.
 
-Current tenant Channel generation immediately differs from the old witness, so Product rows are
-query-inadmissible even if an old already-produced mutation applies afterward. Automatic convergence
-then refreshes witness/membership.
+A stale/deleted SalesChannel row therefore cannot contribute its old payload to Product
+`sales_channels` projection/filter/order semantics while the Product root itself remains current.
 
-If resolved UUID membership is unchanged, `relation_epoch`/`projection_epoch` need not move; updating
-the freshness witness to the current Channel generation is enough to make the unchanged materialized
-Product row query-admissible again.
+## Query surfaces fenced against stale target payloads
 
-If membership changes, Product `relation_epoch` and `projection_epoch` advance; the old materialized
-row remains inadmissible until the new Product mutation is applied.
+The same composite admission is applied before or inside every materialized target relation used by:
 
-### Product/locale delete
+- root predicates and exact count;
+- ordinary linked projection/filter/order joins;
+- many-cardinality nested projections;
+- many-cardinality `EXISTS` filters;
+- many-cardinality `MIN`/`MAX` aggregate ordering;
+- exact-count recompilation of the same plan.
 
-A stale materialized Product row fails immediately because the live Product or exact translation no
-longer exists, even before the retained delete mutation reaches Index storage.
+This closes the stale-materialized-target participation path without making generic Index code
+understand Product, ProductVariant, or SalesChannel owner storage.
 
-### Rejected Product owner data
+It does **not** yet prove complete linked-target availability semantics. In particular, a source link
+may exist while its target has not yet been materialized, and existing left-join / many-subquery
+semantics can represent an unavailable target as a missing/null relation. Complete Product graph parity
+still requires retained evidence and an explicit fail-closed policy for that availability window so a
+missing target cannot be mistaken for authoritative owner null/absence semantics.
 
-A rejected Product remains individually fail-closed. Its retained visibility request stays newer than
-its last valid freshness witness, so query admission excludes it without blocking unrelated valid
-Products in the same tenant.
+## Retained PostgreSQL packets
 
-## PostgreSQL evidence packet 1
+The existing retained packets remain execution-pending:
 
-`crates/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs` is now a retained,
-environment-gated source packet for the materialized stale-mutation race. Its detailed contract is in
-`m7-product-materialized-query-freshness-postgres-harness.md`.
+1. `product_materialized_query_freshness_postgres.rs` — delayed Product scalar mutation and locale
+   deletion;
+2. `product_channel_convergence_postgres.rs` — Product visibility / Channel identity convergence,
+   lease reclaim, rejected Product isolation, changed and unchanged membership;
+3. `product_channel_identity_transitions_postgres.rs` — Channel create/delete/tenant-move and
+   delete+recreate Product relation/freshness behavior.
 
-The packet uses the real Product source, real Product and Index migrations, persisted schema
-registration, `PostgresMutationStore`, and the canonical shared query runtime. It intentionally:
+They have not been executed or admitted by the implementation agent.
 
-- reads a valid Product mutation;
-- changes owner Product state before apply;
-- applies the delayed old mutation and proves that old source version is physically present in
-  `index_entities`;
-- proves the stale row is excluded before title filter/order/cursor lookahead/limit/exact count;
-- applies the corrective current mutation and proves ordinary two-page cursor behavior returns;
-- repeats the delayed-upsert window across owner locale deletion and proves the physically stored row
-  remains query-inadmissible with exact count zero.
+## Explicit remaining recreate boundary
 
-This packet is **source-ready, not executed, and not admitted**. No successful PostgreSQL evidence is
-claimed yet.
+ProductVariant and SalesChannel currently use their live owner `index_revision` as source version. A
+hard delete followed by recreation of the same UUID can reset that owner-local revision to an earlier
+numeric value. Equality-based entity admission cannot distinguish a new incarnation when the recreated
+row happens to reuse the same revision as an old materialized row.
 
-## Scope and remaining admission
+Therefore this slice does **not** claim delete+recreate identity safety for ProductVariant or
+SalesChannel target materialization. The next source slice must make those two owner source clocks
+monotonic across retained tombstone/recreate history, while preserving the current ProductVariant and
+SalesChannel SchemaRefs. Do not add another Product schema or compatibility version.
 
-The Product root source-read -> mutation-apply freshness mechanism is source-complete. The first
-retained PostgreSQL race packet is source-ready, but execution/admission remains pending.
+## Remaining M7 admission
 
-Still required before cutover:
+Still required before Storefront cutover:
 
-- execute and retain the first materialized stale-mutation PostgreSQL packet;
-- retained Product visibility + Channel-generation race evidence, including unchanged-membership and
-  changed-membership transitions;
-- automatic-convergence multi-host lease/restart/rejected-Product evidence;
-- complete Product/Variant/Channel query equivalence, including linked target availability behavior;
-- canonical Product typed event admission after event-contract digest verification;
-- Storefront cutover evidence after schema readiness, equivalence, convergence, and query-freshness
-  packets pass.
-
-The next source packet should combine Product visibility/Channel identity races with the convergence
-worker's durable multi-host/restart state machine. It must not introduce another Product schema or
-freshness clock.
+- implement recreate-safe monotonic ProductVariant and SalesChannel source clocks;
+- define and retain fail-closed linked-target availability semantics for link-present / target-missing
+  windows;
+- retain PostgreSQL linked-target stale/delete/recreate/query evidence after those source changes;
+- execute/admit the retained Product freshness/convergence/identity packets;
+- complete Product/ProductVariant/SalesChannel query equivalence and linked-target availability proof;
+- admit canonical Product typed events only after event-contract digest verification;
+- pass schema readiness, equivalence, convergence, freshness, and restart evidence.
 
 ## Maintainer verification
 
 Suggested commands, intentionally not run by the implementation agent:
 
 ```bash
-cargo test -p rustok-distribution --features mod-product --test product_materialized_query_freshness_postgres -- --nocapture
-node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
 node scripts/verify/verify-index-product-materialized-query-freshness.mjs
+node scripts/verify/verify-index-linked-target-query-freshness.mjs
 node scripts/verify/verify-index-query-runtime-composition.mjs
-node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 
-No tests, Node verifiers, Cargo checks, formatting, PostgreSQL scenarios, workflows, or CI were executed
-by the implementation agent.
+No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
+`git diff --check` were executed by the implementation agent.

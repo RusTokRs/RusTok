@@ -35,7 +35,7 @@ mod tests {
     };
 
     #[test]
-    fn selected_product_bridge_registers_two_current_schemas_three_factories_and_query_admission() {
+    fn selected_product_bridge_registers_two_current_schemas_three_factories_and_entity_admissions() {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(rustok_product::ProductRuntimeSelected);
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
@@ -68,13 +68,13 @@ mod tests {
         }));
         let admissions = extensions
             .get::<rustok_index::PostgresIndexQueryAdmissionCatalog>()
-            .expect("Product selection must publish one query admission rule");
-        assert_eq!(admissions.len(), 1);
+            .expect("Product selection must publish Product and ProductVariant query admissions");
+        assert_eq!(admissions.len(), 2);
         assert!(!extensions.contains::<ModuleWorkRegistrations>());
     }
 
     #[test]
-    fn selected_product_and_channel_bridge_registers_convergence_work() {
+    fn selected_product_and_channel_bridge_registers_channel_admission_and_convergence_work() {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(rustok_product::ProductRuntimeSelected);
         extensions.insert(rustok_channel::ChannelRuntimeSelected);
@@ -83,6 +83,10 @@ mod tests {
 
         register(&mut extensions).unwrap();
 
+        let admissions = extensions
+            .get::<rustok_index::PostgresIndexQueryAdmissionCatalog>()
+            .expect("Product+Channel selection must publish graph entity admissions");
+        assert_eq!(admissions.len(), 3);
         let registrations = extensions
             .get::<ModuleWorkRegistrations>()
             .expect("Product+Channel composition must publish convergence work");

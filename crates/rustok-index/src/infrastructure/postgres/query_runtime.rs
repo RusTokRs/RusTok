@@ -7,7 +7,9 @@ use thiserror::Error;
 use crate::application::{SharedIndexQueryRuntime, SharedIndexSchemaRegistry};
 use crate::domain::SchemaRef;
 
-use super::{PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryPort};
+use super::{
+    PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryAdmissionError, PostgresIndexQueryPort,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IndexQueryRuntimeCompositionError {
@@ -18,14 +20,20 @@ pub enum IndexQueryRuntimeCompositionError {
         owner_module: String,
         schema: SchemaRef,
     },
+    #[error(transparent)]
+    AdmissionCatalog(#[from] PostgresIndexQueryAdmissionError),
 }
 
 /// Materializes the canonical PostgreSQL-backed query runtime from the complete source registry.
 ///
 /// Absence of a source registry is represented as `Ok(None)` and never produces an empty or
-/// partially useful runtime. Trusted schema-scoped root admission rules are snapshotted into the
-/// immutable runtime at materialization time. Every rule must target a schema present in the same
-/// complete immutable registry; dangling rules fail composition rather than silently never applying.
+/// partially useful runtime. Trusted schema-scoped entity admission rules are snapshotted into the
+/// immutable runtime at materialization time. Every owner rule must target a schema present in the
+/// same complete immutable registry; dangling rules fail composition rather than silently never
+/// applying. When at least one owner rule exists, runtime-local pass-through descriptors are added
+/// for every otherwise ungoverned registered root schema so the same composite admission still
+/// fences governed linked targets reached from those roots.
+///
 /// The function performs no database I/O and makes no tenant schema-readiness or owner-freshness
 /// claim; those checks remain inside the query port when a request executes.
 pub fn materialize_postgres_index_query_runtime(
@@ -39,7 +47,7 @@ pub fn materialize_postgres_index_query_runtime(
     let Some(registry) = extensions.get::<SharedIndexSchemaRegistry>().cloned() else {
         return Ok(None);
     };
-    let admissions = extensions
+    let mut admissions = extensions
         .get::<PostgresIndexQueryAdmissionCatalog>()
         .cloned()
         .unwrap_or_default();
@@ -49,6 +57,11 @@ pub fn materialize_postgres_index_query_runtime(
                 owner_module: descriptor.owner_module().to_owned(),
                 schema: descriptor.schema().clone(),
             });
+        }
+    }
+    if !admissions.is_empty() {
+        for registered in registry.registry().iter() {
+            admissions.ensure_runtime_schema(registered.schema.reference.clone())?;
         }
     }
 
@@ -68,7 +81,7 @@ mod tests {
 
     use crate::{
         EntityName, FieldCardinality, FieldName, IndexField, IndexSchema, IndexValueType,
-        LocaleMode, ModuleName, PostgresIndexQueryAdmissionCatalog, PostgresQueryRootAdmission,
+        LocaleMode, ModuleName, PostgresIndexQueryAdmissionCatalog, PostgresQueryEntityAdmission,
         SchemaRef, SchemaVersion, SharedIndexQueryRuntime, materialize_index_schema_registry,
         register_index_schema_source, register_postgres_index_query_admission,
     };
@@ -147,7 +160,7 @@ mod tests {
             &mut extensions,
             "runtime_owner",
             selected.reference.clone(),
-            PostgresQueryRootAdmission::new("{{root}}.source_version > 0").unwrap(),
+            PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap(),
         )
         .unwrap();
         let registry = materialize_index_schema_registry(&extensions)
@@ -182,7 +195,7 @@ mod tests {
             &mut extensions,
             "runtime_owner",
             missing.clone(),
-            PostgresQueryRootAdmission::new("{{root}}.source_version > 0").unwrap(),
+            PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap(),
         )
         .unwrap();
         let registry = materialize_index_schema_registry(&extensions)

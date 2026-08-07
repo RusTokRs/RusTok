@@ -119,8 +119,8 @@ pub use postgres_compiler::{
     CompiledQueryColumn, PostgresBindValue, PostgresQueryBuildError, PostgresQueryCompileError,
 };
 pub use postgres_query_admission::{
-    PostgresQueryRootAdmission, PostgresQueryRootAdmissionApplyError,
-    PostgresQueryRootAdmissionError,
+    PostgresQueryEntityAdmission, PostgresQueryEntityAdmissionApplyError,
+    PostgresQueryEntityAdmissionError,
 };
 pub use postgres_query_result::{
     CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow,

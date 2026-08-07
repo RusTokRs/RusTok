@@ -70,6 +70,7 @@ const scripts = [
   'verify-index-product-channel-relation-freshness.mjs',
   'verify-index-product-channel-relation-convergence.mjs',
   'verify-index-product-materialized-query-freshness.mjs',
+  'verify-index-linked-target-query-freshness.mjs',
   'verify-index-product-materialized-query-freshness-postgres-harness.mjs',
   'verify-index-product-channel-convergence-postgres-harness.mjs',
   'verify-index-product-channel-identity-transitions-postgres-harness.mjs',
