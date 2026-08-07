@@ -66,6 +66,24 @@
     "forum_without_moderation": "Forum remains available and its neutral factories remain unmaterialized",
     "materialization_failure": "fail host composition; never fall back to another adapter or imply applied"
   },
+  "owner_application_operation": {
+    "owner": "rustok-moderation",
+    "table": "moderation_application_operations",
+    "identity": "tenant + immutable decision UUID/hash + exact reviewed subject",
+    "atomic_enqueue": "decision, typed effect, pending operation, case_decided event and Moderation command receipt share one owner transaction",
+    "typed_effect_backfill": "existing decisions are backfilled only when moderation_decision_effects exists; legacy effect None decisions remain non-dispatchable",
+    "states": [
+      "pending",
+      "applying",
+      "retryable",
+      "applied",
+      "rejected",
+      "operator_review"
+    ],
+    "lease": "bounded CAS claim with attempt counter, expiry and fresh UUID lease token; expired applying leases are reclaimable",
+    "applied_evidence": "ModerationDecisionApplication must match decision and exact reviewed subject identity before applied revision/time are stored",
+    "dispatch": "not yet implemented; future owner worker must invoke the host-materialized adapter and classify retry/terminal outcomes"
+  },
   "supported_effects": [
     "NoDomainMutation for forum_topic and forum_post",
     "permanent Lock for forum_topic using TopicService::set_locked_in_tx",
@@ -149,6 +167,9 @@
   ],
   "not_claimed": [
     "durable Moderation application worker or retry scheduler",
+    "automatic adapter dispatch and PortError classification",
+    "case lifecycle closure from application outcomes",
+    "application lifecycle outbox events",
     "operator recovery surface",
     "retained host composition execution evidence",
     "runtime decision application execution",

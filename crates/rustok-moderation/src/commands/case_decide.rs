@@ -6,6 +6,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::application::enqueue_application_operation_in_transaction;
 use crate::commands::finish;
 use crate::domain::{DecideModerationCaseCommand, ModerationCaseStatus, ModerationDecisionRecord};
 use crate::entities::{moderation_case, moderation_decision, moderation_decision_effect};
@@ -165,6 +166,13 @@ async fn decide_case_in_transaction(
     }
     .insert(&receipt.transaction)
     .await?;
+    enqueue_application_operation_in_transaction(
+        &receipt.transaction,
+        tenant_id,
+        &current,
+        &decision,
+    )
+    .await?;
     append_event(
         &receipt.transaction,
         tenant_id,
@@ -178,6 +186,7 @@ async fn decide_case_in_transaction(
             "effect_schema_version": command.effect.schema_version,
             "decision_hash": decision_hash,
             "case_revision": next_revision,
+            "application_status": "pending",
         }),
     )
     .await?;
