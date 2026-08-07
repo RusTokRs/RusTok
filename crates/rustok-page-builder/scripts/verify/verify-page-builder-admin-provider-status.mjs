@@ -12,6 +12,8 @@ const files = {
   canvas: "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
   policyPanel: "crates/rustok-page-builder/admin/src/editor/capability_controls.rs",
   preview: "crates/rustok-page-builder/admin/src/editor/server_preview.rs",
+  enLocale: "crates/rustok-page-builder/admin/locales/en.json",
+  ruLocale: "crates/rustok-page-builder/admin/locales/ru.json",
   pagesFacade: "crates/rustok-pages/admin/src/builder.rs",
   evidence: "crates/rustok-page-builder/contracts/evidence/page-builder-admin-provider-status-source.json",
   overlay: "docs/modules/page-builder-provider-degraded-controls-actualization-2026-08-07.md",
@@ -123,6 +125,17 @@ for (const marker of [
   "Server preview is unavailable under the current Page Builder provider status",
   "data-page-builder-provider-preview",
 ]) need(sources.preview, marker, "server preview provider gate");
+for (const marker of [
+  '"providerControl"',
+  '"observedHealth"',
+  '"hostProviderPolicy"',
+  '"rollout"',
+  '"degradationReasons"',
+  '"unobserved"',
+]) {
+  need(sources.enLocale, marker, "English provider status locale");
+  need(sources.ruLocale, marker, "Russian provider status locale");
+}
 
 for (const marker of [
   "fn pages_builder_capability_flags() -> BuilderCapabilityFlags",
