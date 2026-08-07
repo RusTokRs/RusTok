@@ -89,7 +89,8 @@ const transaction = requireMarkers(transactionPath, [
   'record_product_locale_refreshes_in_tx(',
   'record_product_variant_refreshes_in_tx(',
   'root_event_id',
-  'rolls back both the owner mutation and its event publication',
+  'Any source/ledger failure rolls',
+  'back both the owner mutation and its event publication',
 ]);
 const publishPosition = transaction.indexOf('.publish_in_tx_with_envelope_id(');
 const recordPosition = transaction.indexOf('record_product_locale_refreshes_in_tx(');
