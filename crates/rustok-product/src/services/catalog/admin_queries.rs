@@ -11,6 +11,34 @@ impl CatalogService {
         page: u64,
         per_page: u64,
     ) -> CommerceResult<AdminProductList> {
+        self.list_admin_products_with_compatibility_query(
+            tenant_id,
+            locale,
+            fallback_locale,
+            list_query,
+            page,
+            per_page,
+            None,
+            None,
+            None,
+            false,
+        )
+        .await
+    }
+
+    pub(crate) async fn list_admin_products_with_compatibility_query(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        list_query: AdminProductListQuery,
+        page: u64,
+        per_page: u64,
+        raw_status: Option<&str>,
+        vendor: Option<&str>,
+        product_type: Option<&str>,
+        empty_missing_title: bool,
+    ) -> CommerceResult<AdminProductList> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         if page == 0 || per_page == 0 || per_page > 100 {
             return Err(CommerceError::Validation(
@@ -21,15 +49,15 @@ impl CatalogService {
 
         let mut query = entities::product::Entity::find()
             .filter(entities::product::Column::TenantId.eq(tenant_id));
-        if let Some(raw_status) = list_query.raw_status.as_deref() {
+        if let Some(raw_status) = raw_status {
             query = query.filter(entities::product::Column::Status.eq(raw_status));
         } else if let Some(status) = list_query.status {
             query = query.filter(entities::product::Column::Status.eq(status));
         }
-        if let Some(vendor) = list_query.vendor.as_deref() {
+        if let Some(vendor) = vendor {
             query = query.filter(entities::product::Column::Vendor.eq(vendor));
         }
-        if let Some(product_type) = list_query.product_type.as_deref() {
+        if let Some(product_type) = product_type {
             query = query.filter(entities::product::Column::ProductType.eq(product_type));
         }
         if let Some(category_id) = list_query.category_id {
@@ -114,7 +142,7 @@ impl CatalogService {
                     title: translation
                         .map(|value| value.title.clone())
                         .unwrap_or_else(|| {
-                            if list_query.empty_missing_title {
+                            if empty_missing_title {
                                 String::new()
                             } else {
                                 "Untitled product".to_string()
