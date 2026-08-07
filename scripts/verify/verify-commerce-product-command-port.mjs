@@ -46,6 +46,13 @@ requireText(
   "rustok-product must publish ProductCatalogCommandRuntime",
 );
 
+const commandPort = read("crates/rustok-product/src/catalog_command_port.rs");
+requireText(
+  commandPort,
+  "require_policy(PortCallPolicy::write())",
+  "Product command port must enforce deadline and idempotency write semantics",
+);
+
 const productRuntime = read("crates/rustok-product/src/runtime.rs");
 requireText(
   productRuntime,
@@ -96,12 +103,22 @@ for (const method of ["create_product", "update_product"]) {
   );
   requireText(
     body,
+    "admin_product_command_idempotency_key(",
+    `${method} must bind its request payload into a deterministic write identity`,
+  );
+  requireText(
+    body,
     ".product_catalog_command_port()",
     `${method} must call the host-composed Product command port`,
   );
 }
 
 const sharedProducts = read("crates/rustok-commerce/src/controllers/products.rs");
+requireText(
+  sharedProducts,
+  ".with_idempotency_key(idempotency_key)",
+  "mounted Product command context must carry an idempotency key",
+);
 for (const [method, next] of [
   ["delete_product", "publish_product"],
   ["publish_product", "unpublish_product"],
@@ -112,6 +129,11 @@ for (const [method, next] of [
     body,
     "CatalogService::new",
     `${method} must not construct CatalogService`,
+  );
+  requireText(
+    body,
+    "admin_product_command_idempotency_key(",
+    `${method} must provide deterministic write identity`,
   );
   requireText(
     body,
