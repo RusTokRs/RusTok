@@ -1,5 +1,6 @@
 mod commands;
 pub mod application;
+pub mod application_dispatch;
 pub mod domain;
 pub mod entities;
 pub mod error;
@@ -15,6 +16,10 @@ use sea_orm_migration::MigrationTrait;
 pub use application::{
     DEFAULT_APPLICATION_LEASE_SECONDS, MAX_APPLICATION_LEASE_SECONDS,
     MAX_APPLICATION_RETRY_SECONDS, MAX_DUE_APPLICATION_OPERATIONS,
+};
+pub use application_dispatch::{
+    APPLICATION_ADAPTER_DEADLINE_SECONDS, APPLICATION_RETRY_BASE_SECONDS,
+    APPLICATION_RETRY_MAX_SECONDS, application_retry_delay_seconds,
 };
 pub use domain::*;
 pub use error::{ModerationError, ModerationResult};
