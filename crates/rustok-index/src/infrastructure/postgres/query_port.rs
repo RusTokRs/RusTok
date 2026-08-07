@@ -35,11 +35,10 @@ struct RequiredSchemaContract {
 
 /// PostgreSQL execution adapter for the transport-neutral [`IndexQueryPort`].
 ///
-/// The adapter compiles through the owned immutable registry, applies trusted owner entity admission
-/// and any query-path-scoped generic link-target availability policy before filter/order/pagination/
-/// count execution, verifies every schema touched by the plan against tenant-scoped persisted
-/// registration, and executes the page plus optional exact count inside one read-only repeatable-read
-/// snapshot.
+/// The adapter compiles through the owned immutable registry, applies query-path-scoped generic
+/// link-target availability and trusted owner entity admission before filter/order/pagination/count
+/// execution, verifies every schema touched by the plan against tenant-scoped persisted registration,
+/// and executes the page plus optional exact count inside one read-only repeatable-read snapshot.
 #[derive(Clone)]
 pub struct PostgresIndexQueryPort {
     db: DatabaseConnection,
@@ -144,13 +143,15 @@ impl IndexQueryPort for PostgresIndexQueryPort {
             return Err(IndexQueryExecutionError::UnsupportedBackend);
         }
 
+        let required_schemas = required_schema_contracts(&self.registry, &query)?;
         let page_query = self.registry.compile_postgres_page_query(&query)?;
         let compiled = self.admitted_compiled_query(&query, &page_query)?;
-        let required_schemas = required_schema_contracts(&self.registry, &query)?;
-        let transaction = self.db.begin().await.map_err(|error| {
-            IndexQueryExecutionError::storage("begin read-only snapshot", error)
-        })?;
-        let outcome = self
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| IndexQueryExecutionError::storage("begin query snapshot", error))?;
+        let result = self
             .execute_in_transaction(
                 &transaction,
                 &query,
@@ -159,15 +160,18 @@ impl IndexQueryPort for PostgresIndexQueryPort {
                 &required_schemas,
             )
             .await;
-        match outcome {
+
+        match result {
             Ok(page) => {
                 transaction.commit().await.map_err(|error| {
-                    IndexQueryExecutionError::storage("commit read-only snapshot", error)
+                    IndexQueryExecutionError::storage("commit query snapshot", error)
                 })?;
                 Ok(page)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                transaction.rollback().await.map_err(|rollback_error| {
+                    IndexQueryExecutionError::storage("rollback query snapshot", rollback_error)
+                })?;
                 Err(error)
             }
         }
@@ -178,7 +182,7 @@ fn required_schema_contracts(
     registry: &SchemaRegistry,
     query: &IndexQuery,
 ) -> Result<Vec<RequiredSchemaContract>, IndexQueryExecutionError> {
-    let plan = registry.plan(query)?;
+    let plan = registry.plan_query(query)?;
     let mut references = BTreeSet::new();
     references.insert(plan.root_schema.clone());
     for join in &plan.joins {
@@ -190,17 +194,17 @@ fn required_schema_contracts(
         .into_iter()
         .map(|reference| {
             let registered = registry.get(&reference).ok_or_else(|| {
-                IndexQueryExecutionError::contract_preparation(
-                    query.schema.clone(),
-                    format!("planned schema {reference} is absent from the immutable registry"),
-                )
+                IndexQueryExecutionError::SchemaNotReady {
+                    reference: reference.clone(),
+                    reason: PersistedSchemaReadinessFailure::Missing,
+                }
             })?;
             let schema_json = serde_json::to_value(&registered.schema).map_err(|error| {
-                IndexQueryExecutionError::contract_preparation(query.schema.clone(), error)
+                IndexQueryExecutionError::contract_preparation(reference.clone(), error)
             })?;
             Ok(RequiredSchemaContract {
                 reference,
-                fingerprint: registered.fingerprint.to_hex(),
+                fingerprint: registered.fingerprint.to_string(),
                 schema_json,
             })
         })
@@ -226,33 +230,39 @@ async fn verify_persisted_schemas(
             ))
             .await
             .map_err(|error| {
-                IndexQueryExecutionError::storage("verify persisted schema readiness", error)
+                IndexQueryExecutionError::storage("load persisted schema readiness", error)
+            })?
+            .ok_or_else(|| IndexQueryExecutionError::SchemaNotReady {
+                reference: required.reference.clone(),
+                reason: PersistedSchemaReadinessFailure::Missing,
             })?;
-        let Some(row) = row else {
-            return Err(IndexQueryExecutionError::PersistedSchemaNotReady {
-                schema: required.reference.clone(),
-                failure: PersistedSchemaReadinessFailure::NotRegistered,
-            });
-        };
-        let status: String = row.try_get("", "status").map_err(|error| {
-            IndexQueryExecutionError::storage("decode persisted schema status", error)
-        })?;
-        if status != "active" {
-            return Err(IndexQueryExecutionError::PersistedSchemaNotReady {
-                schema: required.reference.clone(),
-                failure: PersistedSchemaReadinessFailure::Retired,
-            });
-        }
+
         let fingerprint: String = row.try_get("", "schema_fingerprint").map_err(|error| {
             IndexQueryExecutionError::storage("decode persisted schema fingerprint", error)
         })?;
         let schema_json: JsonValue = row.try_get("", "schema_json").map_err(|error| {
-            IndexQueryExecutionError::storage("decode persisted schema JSON", error)
+            IndexQueryExecutionError::storage("decode persisted schema contract", error)
         })?;
-        if fingerprint != required.fingerprint || schema_json != required.schema_json {
-            return Err(IndexQueryExecutionError::PersistedSchemaNotReady {
-                schema: required.reference.clone(),
-                failure: PersistedSchemaReadinessFailure::FingerprintMismatch,
+        let status: String = row.try_get("", "status").map_err(|error| {
+            IndexQueryExecutionError::storage("decode persisted schema status", error)
+        })?;
+
+        if status != "active" {
+            return Err(IndexQueryExecutionError::SchemaNotReady {
+                reference: required.reference.clone(),
+                reason: PersistedSchemaReadinessFailure::Inactive,
+            });
+        }
+        if fingerprint != required.fingerprint {
+            return Err(IndexQueryExecutionError::SchemaNotReady {
+                reference: required.reference.clone(),
+                reason: PersistedSchemaReadinessFailure::FingerprintMismatch,
+            });
+        }
+        if schema_json != required.schema_json {
+            return Err(IndexQueryExecutionError::SchemaNotReady {
+                reference: required.reference.clone(),
+                reason: PersistedSchemaReadinessFailure::ContractMismatch,
             });
         }
     }
@@ -263,55 +273,29 @@ fn compiled_statement(compiled: &CompiledPostgresQuery) -> Statement {
     Statement::from_sql_and_values(
         DbBackend::Postgres,
         compiled.sql.clone(),
-        compiled.binds.iter().cloned().map(bind_value_to_sql),
+        compiled
+            .binds
+            .iter()
+            .cloned()
+            .map(postgres_bind_value)
+            .collect::<Vec<_>>(),
     )
 }
 
-async fn execute_exact_count(
-    transaction: &DatabaseTransaction,
-    count: &CompiledPostgresCount,
-) -> Result<CompiledPostgresCell, IndexQueryExecutionError> {
-    let row = transaction
-        .query_one(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            count.sql.clone(),
-            count.binds.iter().cloned().map(bind_value_to_sql),
-        ))
-        .await
-        .map_err(|error| IndexQueryExecutionError::storage("execute exact count", error))?
-        .ok_or_else(|| IndexQueryExecutionError::MissingExactCountRow)?;
-    let value: i64 = row.try_get("", EXACT_COUNT_ALIAS).map_err(|error| {
-        IndexQueryExecutionError::storage("decode exact count row", error)
-    })?;
-    Ok(CompiledPostgresCell::Integer(value))
+fn count_statement(compiled: &CompiledPostgresCount) -> Statement {
+    Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        compiled.sql.clone(),
+        compiled
+            .binds
+            .iter()
+            .cloned()
+            .map(postgres_bind_value)
+            .collect::<Vec<_>>(),
+    )
 }
 
-fn map_page_row(
-    row: QueryResult,
-    compiled: &CompiledPostgresQuery,
-) -> Result<CompiledPostgresRow, IndexQueryExecutionError> {
-    let mut output = CompiledPostgresRow::new();
-    for column in &compiled.columns {
-        let output_alias = match column {
-            CompiledQueryColumn::EntityId { output_alias, .. }
-            | CompiledQueryColumn::Field { output_alias, .. }
-            | CompiledQueryColumn::OrderValue { output_alias, .. } => output_alias,
-        };
-        let value: JsonValue = row.try_get("", output_alias).map_err(|error| {
-            IndexQueryExecutionError::storage("decode page projection", error)
-        })?;
-        output.insert(output_alias.clone(), CompiledPostgresCell::Json(value));
-    }
-    for column in &compiled.many_relations {
-        let value: JsonValue = row.try_get("", &column.output_alias).map_err(|error| {
-            IndexQueryExecutionError::storage("decode many relation projection", error)
-        })?;
-        output.insert(column.output_alias.clone(), CompiledPostgresCell::Json(value));
-    }
-    Ok(output)
-}
-
-fn bind_value_to_sql(value: PostgresBindValue) -> SqlValue {
+fn postgres_bind_value(value: PostgresBindValue) -> SqlValue {
     match value {
         PostgresBindValue::Boolean(value) => value.into(),
         PostgresBindValue::Integer(value) => value.into(),
@@ -319,6 +303,75 @@ fn bind_value_to_sql(value: PostgresBindValue) -> SqlValue {
         PostgresBindValue::Text(value) => value.into(),
         PostgresBindValue::Uuid(value) => value.into(),
         PostgresBindValue::Timestamp(value) => value.into(),
-        PostgresBindValue::Json(value) => value.into(),
+        PostgresBindValue::Json(value) => SqlValue::Json(Some(Box::new(value))),
     }
+}
+
+fn map_page_row(
+    row: QueryResult,
+    compiled: &CompiledPostgresQuery,
+) -> Result<CompiledPostgresRow, IndexQueryExecutionError> {
+    let mut values = Vec::with_capacity(compiled.columns.len() + compiled.many_relations.len());
+    for column in &compiled.columns {
+        match column {
+            CompiledQueryColumn::EntityId { output_alias, .. } => {
+                values.push((output_alias.clone(), optional_uuid_cell(&row, output_alias)?));
+            }
+            CompiledQueryColumn::Field { output_alias, .. }
+            | CompiledQueryColumn::OrderValue { output_alias, .. } => {
+                values.push((output_alias.clone(), optional_json_cell(&row, output_alias)?));
+            }
+        }
+    }
+    for column in &compiled.many_relations {
+        values.push((
+            column.output_alias.clone(),
+            optional_json_cell(&row, &column.output_alias)?,
+        ));
+    }
+    Ok(CompiledPostgresRow::from_values(values))
+}
+
+fn optional_uuid_cell(
+    row: &QueryResult,
+    alias: &str,
+) -> Result<CompiledPostgresCell, IndexQueryExecutionError> {
+    let value: Option<Uuid> = row.try_get("", alias).map_err(|error| {
+        IndexQueryExecutionError::invalid_row_column(alias, "a UUID or SQL null", error)
+    })?;
+    Ok(value.map_or(CompiledPostgresCell::Null, CompiledPostgresCell::Uuid))
+}
+
+fn optional_json_cell(
+    row: &QueryResult,
+    alias: &str,
+) -> Result<CompiledPostgresCell, IndexQueryExecutionError> {
+    let value: Option<JsonValue> = row.try_get("", alias).map_err(|error| {
+        IndexQueryExecutionError::invalid_row_column(alias, "JSONB or SQL null", error)
+    })?;
+    Ok(value.map_or(CompiledPostgresCell::Null, CompiledPostgresCell::Json))
+}
+
+async fn execute_exact_count(
+    transaction: &DatabaseTransaction,
+    count: &CompiledPostgresCount,
+) -> Result<CompiledPostgresRow, IndexQueryExecutionError> {
+    let row = transaction
+        .query_one(count_statement(count))
+        .await
+        .map_err(|error| {
+            IndexQueryExecutionError::storage("execute exact-count statement", error)
+        })?
+        .ok_or(IndexQueryExecutionError::MissingExactCountRow)?;
+    let value: i64 = row.try_get("", EXACT_COUNT_ALIAS).map_err(|error| {
+        IndexQueryExecutionError::invalid_row_column(
+            EXACT_COUNT_ALIAS,
+            "a non-null PostgreSQL bigint",
+            error,
+        )
+    })?;
+    Ok(CompiledPostgresRow::from_values([(
+        EXACT_COUNT_ALIAS.to_owned(),
+        CompiledPostgresCell::Integer(value),
+    )]))
 }
