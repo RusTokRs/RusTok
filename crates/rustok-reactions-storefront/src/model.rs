@@ -4,7 +4,7 @@ use uuid::Uuid;
 const MAX_REACTION_SOURCE_SLUG_BYTES: usize = 64;
 const MAX_REACTION_SUBJECT_KIND_BYTES: usize = 64;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ReactionSubjectUiRef {
     pub source: String,
     pub kind: String,
@@ -78,21 +78,21 @@ fn valid_segment(
     })
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReactionAction {
     Add,
     Remove,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReactionSelectionMode {
     Single,
     Multiple,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ReactionCatalogView {
     #[serde(rename = "selectionMode")]
     pub selection_mode: ReactionSelectionMode,
@@ -101,19 +101,19 @@ pub struct ReactionCatalogView {
     pub keys: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ReactionActorStateView {
     pub revision: String,
     pub selected: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ReactionAggregateView {
     pub reaction: String,
     pub count: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ReactionSnapshotView {
     pub catalog: ReactionCatalogView,
     #[serde(rename = "actorState")]
@@ -141,7 +141,7 @@ impl ReactionSnapshotView {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ReactionWriteResultView {
     #[serde(rename = "commandId")]
     pub command_id: Uuid,

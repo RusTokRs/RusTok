@@ -14894,6 +14894,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-reactions-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "leptos-auth",
+ "rustok-graphql",
+ "rustok-ui-core",
+ "rustok-ui-i18n-leptos",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-region"
 version = "0.1.0"
 dependencies = [
