@@ -60,13 +60,26 @@ A decision applies only when the reviewed moderation subject revision exactly ma
 
 The permanent topic lock goes through `TopicService::set_locked_in_tx`. The database trigger must advance the moderation revision in the same transaction; the adapter returns that post-application revision as `ModerationDecisionApplication.applied_revision`. A true no-op keeps the reviewed revision unchanged. An unexpected missing/non-advancing clock is an invariant failure, not a guessed success.
 
-The hidden reply visibility effect applies only neutral `SetVisibility { state: Hidden }` to `forum_post`. It uses Forum's existing `ReplyStatus::Hidden` lifecycle and the same owner primitives used by the established moderator path. An already-hidden reply is an exact no-op. Every other source status must have a valid Forum transition to `Hidden`; invalid lifecycle transitions fail closed.
+## Exact hidden and rejected reply lifecycle effects
 
-When an approved reply becomes hidden, the same owner transaction decrements the topic public reply count, category public reply count and author Forum reply statistics. Non-approved-to-hidden transitions do not alter those public counters. The transaction writes the canonical `ForumReplyStatusChanged` root event; that event is already a Forum Search full-scope source. When public category counters change, the canonical category projection invalidation is also written. Status, counters/statistics, events, moderation-revision advancement and the completed shared receipt therefore commit or roll back together.
+Neutral `SetVisibility { state: Hidden }` for `forum_post` maps exactly to Forum's existing `ReplyStatus::Hidden` lifecycle. Neutral `RejectPublication` maps exactly to the established Forum moderator rejection action, whose target is `ReplyStatus::Rejected`.
+
+Both effects use one bounded non-public status helper that preserves the established Forum status-transition and public-accounting rules:
+
+- an already-hidden Hidden decision and an already-rejected RejectPublication decision are exact no-ops;
+- every changed application must pass the existing `ReplyStatus` transition validator;
+- when the source reply was `Approved`, the same owner transaction decrements the topic public reply count, category public reply count and author Forum reply statistics;
+- transitions from another non-public state only change lifecycle state and do not alter those public counters;
+- every changed application writes the canonical `ForumReplyStatusChanged` root event;
+- when public category counters change, the canonical category projection invalidation is written in the same transaction.
+
+`RejectPublication` and `SetVisibility { state: Unpublished }` are deliberately **not** synonyms. The neutral Moderation API versions them as distinct effects. Forum already has an exact moderator `reject_reply -> ReplyStatus::Rejected` contract, so `RejectPublication` can reuse it. Forum does not currently have a separate exact lifecycle meaning for neutral `Unpublished`, so `Unpublished` remains unsupported and must not be collapsed into `ReplyStatus::Rejected`.
+
+Status, counters/statistics, events, moderation-revision advancement and the completed shared receipt commit or roll back together.
 
 ## Exact removed reply owner path
 
-Neutral `SetVisibility { state: Removed }` for `forum_post` is supported only because the complete existing Forum removal workflow is now reusable inside the adapter's already fenced owner transaction.
+Neutral `SetVisibility { state: Removed }` for `forum_post` is supported only because the complete existing Forum removal workflow is reusable inside the adapter's already fenced owner transaction.
 
 `ReplyService::remove_in_tx` is the single Forum-owned mutation path used by both direct reply deletion and Moderation removal. It does **not** merely set `ReplyStatus::Deleted`. It:
 
@@ -89,14 +102,15 @@ Supported:
 - `NoDomainMutation` for topic and reply decisions such as warning/no-violation outcomes;
 - permanent topic `Lock { effective_until: None }`, using the existing `TopicService::set_locked_in_tx` owner mutation and canonical Forum Search projection invalidation;
 - `SetVisibility { state: Hidden }` for `forum_post`, using exact `ReplyStatus::Hidden` lifecycle/accounting/event semantics;
-- `SetVisibility { state: Removed }` for `forum_post`, using the complete `ReplyService::remove_in_tx` soft-delete/tombstone/solution/counter owner path plus the canonical status event/projection.
+- `SetVisibility { state: Removed }` for `forum_post`, using the complete `ReplyService::remove_in_tx` soft-delete/tombstone/solution/counter owner path plus the canonical status event/projection;
+- `RejectPublication` for `forum_post`, using the established Forum moderator `ReplyStatus::Rejected` lifecycle/accounting/event semantics.
 
 Explicitly deferred:
 
 - temporary topic lock, because Forum does not yet own expiry-safe moderation enforcement state;
-- `SetVisibility { state: Unpublished }`, because it is not yet proven to be exactly equivalent to a Forum reply lifecycle state;
+- `SetVisibility { state: Unpublished }`, because the neutral API distinguishes it from RejectPublication and Forum does not yet own a separate exact unpublished lifecycle state;
 - topic remove/unpublish effects;
-- interaction restrictions, require-edit, publication rejection, suspension, escalation and account-sanction recommendation.
+- interaction restrictions, require-edit, suspension, escalation and account-sanction recommendation.
 
 Unsupported effects fail closed. `Unpublished` is not silently mapped to `Rejected`. `Removed` is not a status-only approximation: any future removal path must continue to go through the complete Forum owner helper.
 
@@ -120,6 +134,6 @@ cargo xtask module validate forum
 git diff --check
 ```
 
-Future runtime evidence should additionally cover migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply removal, trusted-caller enforcement, PostgreSQL serialization/reclaim, approved-to-hidden counter/stat/event atomicity, already-hidden replay/no-op behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `Unpublished` remains an unsupported-effect evidence case.
+Future runtime evidence should additionally cover migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply rejection/reply removal, trusted-caller enforcement and PostgreSQL serialization/reclaim. Retain approved-to-hidden and approved-to-rejected topic/category/author accounting plus status-event/projection atomicity, already-hidden/already-rejected no-op/replay behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `SetVisibility(Unpublished)` remains a distinct unsupported-effect evidence case.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
