@@ -83,11 +83,20 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_port.rs', 
   'PersistedSchemaReadinessFailure::Inactive',
 ]);
 
+requireMarkers('crates/rustok-index/src/application/source_event_id.rs', [
+  'pub fn derive_index_schema_source_event_id(',
+  'rustok-index-schema-source-event-id-v1',
+]);
+
 requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.md', [
   'Status: `source_complete_execution_pending`',
   '`PostgresSchemaRegistrationStore::register_current`',
+  'Inbox delivery identity is a separate boundary',
+  '`(tenant_id, source_name, delivery_id)`',
+  '`derive_index_schema_source_event_id`',
   'Recommended staged rebuild sequence',
   'use ordinary `register` to stage',
+  'schema-scoped deterministic Product replay delivery IDs',
   'call `register_current` with that already-staged exact contract',
   'Historical rows may be purged later',
   'single-current',
