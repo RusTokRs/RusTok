@@ -145,17 +145,20 @@ state instead of reusing the narrower Reactions/content revision. The bounded
 application source reuses the shared Outbox owner-operation receipt ledger,
 fences the active subject plus that revision clock, accepts only trusted
 service/system application callers and now supports `NoDomainMutation` for both
-subject kinds, permanent topic lock, exact `SetVisibility(Hidden)` and exact
-`SetVisibility(Removed)` for Forum replies. Approved-to-hidden applies the
-established topic/category/author public counter accounting and every changed
-hide writes the canonical `ForumReplyStatusChanged` event; already-hidden is a
-no-op. Removed reuses the complete `ReplyService::remove_in_tx` owner path for
-accepted-solution cleanup, soft-delete/tombstone capture, public/solution
-accounting and the canonical deleted status event/projection in the same fenced
-receipt transaction. `Unpublished` remains fail-closed rather than being
-approximated as `Rejected`. Moderation registry materialization, durable
-application orchestration, additional exact effects and retained migration/
-runtime/concurrency evidence remain pending.
+subject kinds, permanent topic lock, exact `SetVisibility(Hidden)`, exact
+`SetVisibility(Removed)` and exact `RejectPublication` for Forum replies.
+Approved-to-hidden and approved-to-rejected use the established
+topic/category/author public counter accounting and every changed lifecycle
+mutation writes the canonical `ForumReplyStatusChanged` event; already-hidden
+and already-rejected are no-ops. Removed reuses the complete
+`ReplyService::remove_in_tx` owner path for accepted-solution cleanup,
+soft-delete/tombstone capture, public/solution accounting and the canonical
+deleted status event/projection in the same fenced receipt transaction.
+`SetVisibility(Unpublished)` remains fail-closed and distinct from
+`RejectPublication`; it is not approximated as `ReplyStatus::Rejected`.
+Moderation registry materialization, durable application orchestration,
+additional exact effects and retained migration/runtime/concurrency evidence
+remain pending.
 
 ## Program ledger
 
@@ -180,7 +183,7 @@ runtime/concurrency evidence remain pending.
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
-| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt binding, exact reviewed-revision fencing, trusted application callers, `NoDomainMutation`, permanent topic lock, exact reply `Hidden`, and exact reply `Removed` through the complete soft-delete/tombstone/solution/counter owner path are source-ready. Retain PostgreSQL/SQLite migration/trigger/replay/concurrency, hide-accounting and removal/tombstone/solution/accounting evidence; add only exact remaining Forum-local effects/expiry-safe restrictions plus Moderation registry materialization/orchestration. Moderation keeps cases, decisions, appeals and audit. |
+| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt binding, exact reviewed-revision fencing, trusted application callers, `NoDomainMutation`, permanent topic lock, exact reply `Hidden`, exact reply `Removed` through the complete soft-delete/tombstone/solution/counter owner path, and exact reply `RejectPublication -> ReplyStatus::Rejected` are source-ready. Retain PostgreSQL/SQLite migration/trigger/replay/concurrency plus hide/reject/removal accounting, event, tombstone and solution evidence; keep `Unpublished` distinct/fail-closed, add expiry-safe restrictions only with explicit owner state, and complete Moderation registry materialization/orchestration. Moderation keeps cases, decisions, appeals and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
@@ -363,24 +366,31 @@ than freezing transient failure into replay.
 
 The bounded effect set now supports `NoDomainMutation` for topic/reply, permanent
 topic lock through `TopicService::set_locked_in_tx`, exact reply
-`SetVisibility { state: Hidden }`, and exact reply
-`SetVisibility { state: Removed }`. A real lock/hide/removal mutation must
-advance the dedicated moderation subject revision in the same transaction and
-the adapter returns that post-application value as
-`ModerationDecisionApplication.applied_revision`; a true no-op retains the
-reviewed revision. Missing or non-advancing revision state fails as an invariant
-rather than guessed success.
+`SetVisibility { state: Hidden }`, exact reply
+`SetVisibility { state: Removed }`, and exact reply `RejectPublication`.
+A real lock/hide/reject/removal mutation must advance the dedicated moderation
+subject revision in the same transaction and the adapter returns that
+post-application value as `ModerationDecisionApplication.applied_revision`; a
+true no-op retains the reviewed revision. Missing or non-advancing revision state
+fails as an invariant rather than guessed success.
 
-Reply `Hidden` maps only to the established `ReplyStatus::Hidden` lifecycle.
-Already-hidden is a no-op. For a changed hide, the adapter validates the Forum
-status transition and uses the same owner primitives as the established moderator
-path. Approved-to-hidden decrements the topic public reply count, category public
-reply count and author Forum reply statistics; other valid transitions to Hidden
-do not touch public counters. The same owner transaction writes the canonical
-`ForumReplyStatusChanged` root event, which is already a Forum Search full-scope
-source, and emits category projection invalidation when public counters changed.
+Reply `Hidden` maps only to the established `ReplyStatus::Hidden` lifecycle, and
+`RejectPublication` maps only to the established Forum moderator rejection
+action with target `ReplyStatus::Rejected`. Both use the same bounded non-public
+status owner primitives: an already-target reply is a no-op, each changed
+transition must pass the existing state machine, and an Approved source reply
+decrements topic/category/author public reply accounting. Other valid
+non-public-to-non-public transitions change lifecycle state without public
+counter deltas. Every changed hide/rejection writes the canonical
+`ForumReplyStatusChanged` root event, already a Forum Search full-scope source,
+and category projection invalidation is emitted when public counters changed.
 Status, counters/statistics, event/projection, moderation revision and shared
 receipt therefore commit or roll back together.
+
+Neutral `SetVisibility { state: Unpublished }` is a different Moderation effect
+from `RejectPublication`. Forum has an exact existing rejection lifecycle but no
+separate exact unpublished lifecycle state, so `Unpublished` remains fail-closed
+and must not be mapped to `ReplyStatus::Rejected`.
 
 Reply `Removed` is not a status-only mapping. Direct delete and Moderation removal
 share `ReplyService::remove_in_tx`, which claims the active reply, validates the
@@ -396,11 +406,9 @@ happens before subject reads; a fresh attempt against an already removed subject
 is unavailable rather than re-applied.
 
 Temporary locks fail closed because Forum does not yet own expiry-safe moderation
-enforcement state. `Unpublished` remains unsupported until an exact Forum
-lifecycle meaning is established; it is not approximated as `Rejected`. The
-remaining Moderation effect catalog stays pending. Moderation registry
-materialization and durable application workers remain owner/host work outside
-Forum.
+enforcement state. The remaining Moderation effect catalog stays pending.
+Moderation registry materialization and durable application workers remain
+owner/host work outside Forum.
 
 ### `FORUM-30`/`FORUM-31`: UI composition
 
@@ -420,7 +428,7 @@ Hosts register/mount packages and do not absorb policy.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
 7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply neutral host composition and Rust Playwright browser-evidence harness are source-ready. Execute and retain the browser/runtime evidence without adding Reactions functionality to Forum.
 8. Introduce Reputation/Achievements only after at least two producers agree.
-9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock and exact reply Hidden/Removed application are source-ready. Retain migration/replay/concurrency/hide/removal accounting and tombstone evidence, add only exact remaining Forum effects, then materialize/orchestrate them in the Moderation owner/host; never add Forum case queues.
+9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock and exact reply Hidden/Removed/RejectPublication application are source-ready. Retain migration/replay/concurrency/hide/reject/removal accounting, event, tombstone and solution evidence. Keep Unpublished distinct until Forum has an exact lifecycle contract; the next code milestone is Moderation owner/host adapter registry materialization and durable orchestration, never Forum case queues.
 
 ### Track 2 — close existing Forum work
 
@@ -459,12 +467,17 @@ Hosts register/mount packages and do not absorb policy.
 - Reply `SetVisibility(Hidden)` must preserve the exact Forum lifecycle, public
   counter/statistics and event/projection semantics; already-hidden must not
   duplicate counters or events.
+- Reply `RejectPublication` must preserve the exact established Forum
+  `ReplyStatus::Rejected` moderator lifecycle, public counter/statistics and
+  event/projection semantics; already-rejected must not duplicate counters or
+  events.
+- Neutral `SetVisibility(Unpublished)` is distinct from `RejectPublication` and
+  must not be mapped to `ReplyStatus::Rejected` without a separate explicit Forum
+  lifecycle contract.
 - Reply `SetVisibility(Removed)` must reuse `ReplyService::remove_in_tx`; no
   Moderation adapter may bypass the full Forum accepted-solution cleanup,
   soft-delete/tombstone capture, public/solution accounting and canonical
   status-event/projection semantics with a status-only approximation.
-- Neutral `Unpublished` must not be approximated as Forum `Rejected` until an
-  explicit Forum lifecycle contract establishes that meaning.
 - Temporary moderation effects must fail closed until Forum owns explicit
   expiry-safe enforcement state; permanent owner state must not be used as a
   lossy approximation of an expiring restriction.
@@ -582,14 +595,15 @@ to Forum.
 For FORUM-19, retain PostgreSQL/SQLite migration/backfill and trigger advancement
 evidence for the dedicated Forum moderation subject revision clocks plus shared-
 receipt replay/request-conflict, stale revision, trusted caller and concurrent
-content/lifecycle edit evidence. Also retain approved-to-hidden topic/category/
-author accounting, `ForumReplyStatusChanged`/projection atomicity and
-already-hidden no-op/replay. For Removed, retain soft-delete/tombstone revision,
-accepted-solution cleanup, approved/public and solution accounting, canonical
-status-event/projection atomicity, replay-before-subject-read and already-removed
-unavailable evidence across PostgreSQL/SQLite. `Unpublished` remains the next
-source effect only after its exact Forum lifecycle meaning is explicit; add
-expiry-safe local state before any temporary restriction. In parallel, the
-Moderation owner/host must materialize the registered adapter factories and
-provide durable application retry/runtime evidence before FORUM-19 can be
-promoted.
+content/lifecycle edit evidence. Retain approved-to-hidden and
+approved-to-rejected topic/category/author accounting,
+`ForumReplyStatusChanged`/projection atomicity and already-target no-op/replay.
+For Removed, retain soft-delete/tombstone revision, accepted-solution cleanup,
+approved/public and solution accounting, canonical status-event/projection
+atomicity, replay-before-subject-read and already-removed unavailable evidence
+across PostgreSQL/SQLite. `SetVisibility(Unpublished)` remains blocked because it
+is a distinct neutral effect from `RejectPublication` and Forum has no separate
+exact unpublished lifecycle state. Add expiry-safe local state before any
+temporary restriction. The next FORUM-19 source milestone is Moderation owner/host
+materialization of the registered adapter factories followed by durable
+application retry/runtime evidence; do not add Forum-owned case queues or audit.
