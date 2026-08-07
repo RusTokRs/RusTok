@@ -69,7 +69,7 @@ pub mod index_replay_runtime_composition;
 pub mod marketplace_catalog;
 pub mod marketplace_catalog_adapter;
 pub mod marketplace_catalog_cache;
-#[cfg(feature = "mod-commerce")]
+#[cfg(feature = "commerce-marketplace-financial")]
 pub mod marketplace_financial_worker;
 pub mod mcp_management;
 pub mod mcp_management_authority;

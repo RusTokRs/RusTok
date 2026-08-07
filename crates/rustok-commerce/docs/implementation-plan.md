@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-30
+Last reviewed: 2026-08-07
 
 ## Source of truth
 
@@ -185,13 +185,18 @@ These are source-contract defects, not verification-only tasks.
 - [x] Confirm that Commerce migrations and `MarketplaceFinancialRuntime` require
   marketplace owners even though `CommerceModule`, `rustok-module.toml`, and the
   `mod-commerce` feature do not declare or enable them.
-- [ ] Make marketplace financial integration an explicit optional Commerce capability;
-  base Commerce must compose and migrate without any marketplace owner.
-- [ ] Align Cargo features, `rustok-module.toml`, `CommerceModule::dependencies`,
-  distribution/server features, migration sources, listeners, GraphQL/REST surfaces,
-  and worker startup with that optional capability.
-- [ ] Add a lightweight source guard for the minimal Commerce topology and retain
-  compiled/migration evidence only when the validation policy allows it.
+- [x] Make marketplace financial integration an explicit optional Commerce capability;
+  base Commerce composes and migrates without any marketplace owner in source.
+- [x] Align the base `rustok-module.toml` / `CommerceModule::dependencies` contract with
+  marketplace-free `mod-commerce`, and align Cargo capability features,
+  distribution/server composition, migration sources, listeners, GraphQL/REST/OpenAPI
+  surfaces, runtime injection, and worker startup with explicit marketplace financial
+  selection.
+- [x] Add `scripts/verify/verify-commerce-marketplace-financial-capability.mjs` as the
+  lightweight source guard for the minimal Commerce topology; it is source-reviewed
+  but not executed in this slice.
+- [ ] Execute the minimal/base and marketplace-financial compile/migration profiles and
+  the new topology guard, then retain evidence when validation policy allows it.
 - [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,
   Payment, and Fulfillment concrete services behind host-composed owner ports.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
@@ -589,6 +594,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - [ ] `node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs`
 - [ ] `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
+- [ ] `node scripts/verify/verify-commerce-marketplace-financial-capability.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -620,15 +626,18 @@ Source inspection is not execution evidence.
   complete/post-order, and storefront order/return/change cutovers without changing
   mutation, payment, or fulfillment ownership; unmounted admin compatibility GET
   handlers remain explicit source debt.
-- [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, and order-read
-  static guards against a repository checkout and retain their output.
+- [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, order-read,
+  and marketplace-financial topology static guards against a repository checkout and
+  retain their output.
 
 ### Compile/tests
 
-- [ ] `cargo check -p rustok-commerce --lib`
+- [ ] `cargo check -p rustok-commerce --lib --no-default-features`
+- [ ] `cargo check -p rustok-commerce --lib --features marketplace-financial`
 - [ ] `cargo test -p rustok-commerce --test checkout_marketplace_economics_checkpoint`
 - [ ] `cargo check -p rustok-order --all-features`
-- [ ] `cargo check -p rustok-server --features mod-commerce`
+- [ ] `cargo check -p rustok-server --no-default-features --features mod-commerce`
+- [ ] `cargo check -p rustok-server --no-default-features --features commerce-marketplace-financial`
 - [ ] Targeted `OrderReadPort` six-operation, locale fallback, context, typed-error,
   host-composition, admin REST, mounted GraphQL, and storefront HTTP transport tests.
 - [ ] `cargo test -p rustok-order --test order_checkout_identity`
@@ -785,6 +794,10 @@ Source inspection is not execution evidence.
   return/order-change projections, and cut storefront, GraphQL, and mounted admin
   post-order reads while preserving mutations, refunds, unmounted admin compatibility
   GET source, and unvalidated status.
+- [x] Make marketplace financial integration an explicit optional Commerce capability:
+  keep base Commerce marketplace-free, gate financial migrations/transports/listeners/
+  workers, compose owner modules only through explicit capability features, and fail
+  closed before capture when marketplace lines reach a base-only checkout.
 
 ## Change rules
 

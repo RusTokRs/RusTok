@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use rustok_cart::{CartCheckoutPort, PreparedCartCheckoutSnapshot};
 use rustok_inventory::InventoryReservationIdentityPort;
+#[cfg(feature = "marketplace-financial")]
 use rustok_marketplace_allocation::MarketplaceAllocationCommandPort;
+#[cfg(feature = "marketplace-financial")]
 use rustok_marketplace_commission::MarketplaceCommissionCommandPort;
+#[cfg(feature = "marketplace-financial")]
 use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::providers::PaymentProviderRegistry;
@@ -13,16 +16,20 @@ use uuid::Uuid;
 use super::{
     CheckoutCompletedState, CheckoutFinalizationError, CheckoutFinalizationExecutor,
     CheckoutFulfillmentCreatedState, CheckoutFulfillmentStageError,
-    CheckoutFulfillmentStageExecutor, CheckoutMarketplaceAllocationError,
-    CheckoutMarketplaceAllocationStage, CheckoutMarketplaceCommissionError,
-    CheckoutMarketplaceCommissionStage, CheckoutMarketplaceEconomicsCheckpointError,
-    CheckoutMarketplaceEconomicsCheckpointJournal, CheckoutMarketplaceFinancialError,
-    CheckoutMarketplaceFinancialStage, CheckoutOperationError, CheckoutOperationJournal,
+    CheckoutFulfillmentStageExecutor, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderPlanError,
     CheckoutOrderPlanPayload, CheckoutOrderStageError, CheckoutOrderStageExecutor,
     CheckoutPaymentCapturedState, CheckoutPaymentReadyState, CheckoutPaymentStageError,
-    CheckoutPaymentStageExecutor, RecordCheckoutMarketplaceEconomicsCheckpoint,
-    build_marketplace_economics_evidence, validate_marketplace_economics_checkpoint,
+    CheckoutPaymentStageExecutor,
+};
+#[cfg(feature = "marketplace-financial")]
+use super::{
+    CheckoutMarketplaceAllocationError, CheckoutMarketplaceAllocationStage,
+    CheckoutMarketplaceCommissionError, CheckoutMarketplaceCommissionStage,
+    CheckoutMarketplaceEconomicsCheckpointError, CheckoutMarketplaceEconomicsCheckpointJournal,
+    CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialStage,
+    RecordCheckoutMarketplaceEconomicsCheckpoint, build_marketplace_economics_evidence,
+    validate_marketplace_economics_checkpoint,
 };
 
 #[derive(Debug, Error)]
@@ -33,12 +40,16 @@ pub enum CheckoutStagePipelineError {
     Plan(#[from] CheckoutOrderPlanError),
     #[error(transparent)]
     OrderStage(Box<CheckoutOrderStageError>),
+    #[cfg(feature = "marketplace-financial")]
     #[error(transparent)]
     MarketplaceAllocation(#[from] CheckoutMarketplaceAllocationError),
+    #[cfg(feature = "marketplace-financial")]
     #[error(transparent)]
     MarketplaceCommission(#[from] CheckoutMarketplaceCommissionError),
+    #[cfg(feature = "marketplace-financial")]
     #[error(transparent)]
     MarketplaceEconomicsCheckpoint(#[from] CheckoutMarketplaceEconomicsCheckpointError),
+    #[cfg(feature = "marketplace-financial")]
     #[error(transparent)]
     MarketplaceFinancial(#[from] CheckoutMarketplaceFinancialError),
     #[error(transparent)]
@@ -60,12 +71,17 @@ impl From<CheckoutOrderStageError> for CheckoutStagePipelineError {
 }
 
 pub struct CheckoutStagePipeline {
+    #[cfg(feature = "marketplace-financial")]
     db: sea_orm::DatabaseConnection,
     operation_journal: CheckoutOperationJournal,
     order_stage: CheckoutOrderStageExecutor,
+    #[cfg(feature = "marketplace-financial")]
     marketplace_allocation_stage: Option<CheckoutMarketplaceAllocationStage>,
+    #[cfg(feature = "marketplace-financial")]
     marketplace_commission_stage: Option<CheckoutMarketplaceCommissionStage>,
+    #[cfg(feature = "marketplace-financial")]
     marketplace_economics_checkpoint_journal: CheckoutMarketplaceEconomicsCheckpointJournal,
+    #[cfg(feature = "marketplace-financial")]
     marketplace_financial_stage: Option<CheckoutMarketplaceFinancialStage>,
     payment_stage: CheckoutPaymentStageExecutor,
     fulfillment_stage: CheckoutFulfillmentStageExecutor,
@@ -80,6 +96,7 @@ impl CheckoutStagePipeline {
         cart_checkout_port: Arc<dyn CartCheckoutPort>,
     ) -> Self {
         Self {
+            #[cfg(feature = "marketplace-financial")]
             db: db.clone(),
             operation_journal: CheckoutOperationJournal::new(db.clone()),
             order_stage: CheckoutOrderStageExecutor::new(
@@ -87,10 +104,14 @@ impl CheckoutStagePipeline {
                 event_bus.clone(),
                 inventory_port,
             ),
+            #[cfg(feature = "marketplace-financial")]
             marketplace_allocation_stage: None,
+            #[cfg(feature = "marketplace-financial")]
             marketplace_commission_stage: None,
+            #[cfg(feature = "marketplace-financial")]
             marketplace_economics_checkpoint_journal:
                 CheckoutMarketplaceEconomicsCheckpointJournal::new(db.clone()),
+            #[cfg(feature = "marketplace-financial")]
             marketplace_financial_stage: None,
             payment_stage: CheckoutPaymentStageExecutor::new(db.clone()),
             fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus),
@@ -98,6 +119,7 @@ impl CheckoutStagePipeline {
         }
     }
 
+    #[cfg(feature = "marketplace-financial")]
     pub fn with_marketplace_allocation_port(
         mut self,
         marketplace_allocation_port: Arc<dyn MarketplaceAllocationCommandPort>,
@@ -108,6 +130,7 @@ impl CheckoutStagePipeline {
         self
     }
 
+    #[cfg(feature = "marketplace-financial")]
     pub fn with_marketplace_commission_port(
         mut self,
         marketplace_commission_port: Arc<dyn MarketplaceCommissionCommandPort>,
@@ -118,6 +141,7 @@ impl CheckoutStagePipeline {
         self
     }
 
+    #[cfg(feature = "marketplace-financial")]
     pub fn with_marketplace_ledger_port(
         mut self,
         marketplace_ledger_port: Arc<dyn MarketplaceLedgerCommandPort>,
@@ -229,6 +253,7 @@ impl CheckoutStagePipeline {
             .map_err(Into::into)
     }
 
+    #[cfg(feature = "marketplace-financial")]
     async fn ensure_marketplace_economics_before_capture(
         &self,
         tenant_id: Uuid,
@@ -333,6 +358,26 @@ impl CheckoutStagePipeline {
         Ok(())
     }
 
+    #[cfg(not(feature = "marketplace-financial"))]
+    async fn ensure_marketplace_economics_before_capture(
+        &self,
+        _tenant_id: Uuid,
+        _actor_id: Uuid,
+        _operation_id: Uuid,
+        _lease_owner: &str,
+        payment_ready: &CheckoutPaymentReadyState,
+    ) -> CheckoutStagePipelineResult<()> {
+        if payment_ready.plan.payload.marketplace_lines.is_empty() {
+            Ok(())
+        } else {
+            Err(CheckoutStagePipelineError::Conflict(
+                "marketplace checkout lines require the `marketplace-financial` Commerce capability"
+                    .to_string(),
+            ))
+        }
+    }
+
+    #[cfg(feature = "marketplace-financial")]
     async fn ensure_marketplace_financial_after_capture(
         &self,
         tenant_id: Uuid,
@@ -352,6 +397,24 @@ impl CheckoutStagePipeline {
             .post_after_capture_if_present(tenant_id, actor_id, lease_owner, payment_captured)
             .await?;
         Ok(())
+    }
+
+    #[cfg(not(feature = "marketplace-financial"))]
+    async fn ensure_marketplace_financial_after_capture(
+        &self,
+        _tenant_id: Uuid,
+        _actor_id: Uuid,
+        _lease_owner: &str,
+        payment_captured: &CheckoutPaymentCapturedState,
+    ) -> CheckoutStagePipelineResult<()> {
+        if payment_captured.plan.payload.marketplace_lines.is_empty() {
+            Ok(())
+        } else {
+            Err(CheckoutStagePipelineError::Conflict(
+                "marketplace checkout lines require the `marketplace-financial` Commerce capability"
+                    .to_string(),
+            ))
+        }
     }
 
     async fn load_payment_ready_state(
