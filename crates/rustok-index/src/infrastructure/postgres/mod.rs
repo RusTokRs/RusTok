@@ -132,7 +132,8 @@ pub use schema_readiness::{
     PostgresIndexSchemaReadinessStore,
 };
 pub use schema_registration::{
-    PersistedSchemaRegistrationOutcome, PostgresSchemaRegistrationStore, SchemaRegistrationError,
+    PersistedSchemaRegistrationOutcome, PersistedSchemaSupersessionOutcome,
+    PostgresSchemaRegistrationStore, SchemaRegistrationError,
 };
 pub use secondary_index::{
     PostgresSecondaryIndexManager, SecondaryIndexClaimOutcome, SecondaryIndexError,
