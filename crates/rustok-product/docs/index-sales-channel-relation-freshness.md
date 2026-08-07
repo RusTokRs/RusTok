@@ -1,6 +1,6 @@
 # Product-SalesChannel relation freshness witness
 
-Status: `source_complete_materialized_convergence_and_runtime_evidence_pending`.
+Status: `source_and_automatic_convergence_complete_materialized_fence_and_runtime_evidence_pending`.
 
 ## Purpose
 
@@ -59,25 +59,39 @@ Live Product replay and Product locale absence require:
 A missing/stale witness therefore fails closed at source observation. Product hard-delete replay does
 not require a live witness because the mutation removes the graph rather than publishing membership.
 
+## Automatic convergence
+
+Product visibility changes now append durable exact convergence requests, and tenant Channel identity
+changes are detected by comparing the current Channel generation with Product-owned durable tenant
+checkpoint state. The selected distribution invokes the same bounded resolver through the generic
+ModuleWork scheduler, with tenant leases, restartable request cursors, and restartable 64-Product sweep
+cursors.
+
+This removes the previous requirement for an external caller to notice an owner change and manually
+invoke reconciliation. The detailed owner/runtime contract is documented in
+[index-sales-channel-relation-convergence.md](./index-sales-channel-relation-convergence.md).
+
 ## Materialized freshness boundary
 
-The witness does **not** make source observation and Index mutation application one cross-owner atomic
-transaction. A Channel identity change may commit after a Product source page was read but before that
-already-produced mutation is applied. The next source observation will fail closed, and a membership
-change can later advance relation/projection state, but the watermark alone is not a production
-materialized-view freshness guarantee.
+The witness plus automatic resolver convergence still do **not** make source observation and Index
+mutation application one cross-owner atomic transaction. A Channel identity change may commit after a
+Product source page was read but before that already-produced mutation is applied. The next source
+observation will fail closed and automatic convergence will repair owner relation state, but the
+watermark alone is not a production materialized-view freshness guarantee for an already-produced or
+already-applied mutation.
 
-Therefore authoritative cutover still requires automatic/bounded convergence plus retained evidence
-covering this in-flight window (or an equivalent materialized/query freshness fence). This distinction
-is deliberate: the witness closes stale source admission, not the remaining materialized convergence
-problem.
+Therefore authoritative cutover still requires retained evidence for this in-flight window plus an
+explicit materialized/query freshness fence (or an equivalent admission boundary). This distinction is
+deliberate: the witness closes stale source admission, and the convergence worker closes manual owner
+repair scheduling; neither by itself fences a previously produced Index mutation.
 
 ## Remaining admission
 
 Still required before production cutover:
 
-- automatic or otherwise bounded owner-change convergence/materialized freshness fencing;
-- retained PostgreSQL concurrency/restart/delete-recreate/in-flight freshness evidence;
+- materialized/query freshness fencing for the source-read -> mutation-apply window;
+- retained PostgreSQL multi-host/concurrency/restart/delete-recreate/in-flight freshness and
+  convergence evidence;
 - canonical Product typed event admission/routes after event-contract digest admission;
 - complete query equivalence and Storefront cutover evidence.
 
@@ -86,13 +100,14 @@ Still required before production cutover:
 Suggested commands, intentionally not run by the implementation agent:
 
 ```bash
+node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs
 node scripts/verify/verify-index-product-source.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-channel --all-targets
 cargo check -p rustok-product --all-targets
-cargo check -p rustok-distribution --all-targets
+cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 
