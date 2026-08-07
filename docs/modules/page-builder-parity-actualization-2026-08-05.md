@@ -1,7 +1,7 @@
 # Page Builder / Pages Parity Actualization
 
 Date: 2026-08-07
-Status: current-source-overlay / rebuild-provenance-source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / explicit-artifact-repair-transport-source-ready / execution-and-rollout-open
+Status: current-source-overlay / rebuild-provenance-source-ready / explicit-artifact-rebuild-source-ready / explicit-artifact-binding-replacement-source-ready / explicit-artifact-repair-transport-source-ready / repair-request-contract-harness-source-ready / execution-and-rollout-open
 
 This overlay reconciles the Page Builder programme with current `main`. It supersedes stale open-checkbox wording in older broad plans where that wording conflicts with merged source. It does not convert source-ready work into executed evidence.
 
@@ -101,7 +101,7 @@ immutable-artifact-integrity-audit-transport-source-ready
 
 Pages owns a bounded read-only immutable artifact integrity audit for one exact tenant and page.
 
-The command accepts only tenant-wide `pages:manage` (`PermissionScope::All`); owner-scoped Manage is rejected. It reads through one transaction and scans at most 512 records ordered by creation time and artifact id. It requests one extra row and sets `truncated=true` instead of claiming a complete audit when more retained records exist.
+The owner command requires `pages:manage` with `PermissionScope::All`. Under the current access-token permission bridge effective Pages Manage resolves to `All` when present and `None` when absent; there is no current Pages Manage `Own` request state. The explicit owner `All` check remains defense in depth for direct/internal callers and future authorization-model changes. The audit reads through one transaction and scans at most 512 records ordered by creation time and artifact id. It requests one extra row and sets `truncated=true` instead of claiming a complete audit when more retained records exist.
 
 Each record is reconstructed through the Page Builder static artifact and materialization contracts. The audit checks owner identity, canonical or operation-bound storage instance identity, static artifact hashes, build/renderer metadata, output byte limits, complete current materialization evidence and exact legacy all-`NULL` compatibility. Partial evidence fails closed.
 
@@ -124,8 +124,9 @@ The broad Phase 6 wording should now be read as follows:
 - bounded read-only integrity-audit command: source-ready;
 - GraphQL, HTTP and OpenAPI audit transport: source-ready;
 - explicit append-only rebuild service command: source-ready;
-- Explicit binding replacement service command: source-ready;
-- Bounded tenant-admin repair transports: source-ready;
+- explicit binding replacement service command: source-ready;
+- bounded tenant-admin repair transports: source-ready;
+- generated transport and request-contract harnesses: source-ready;
 - accepted database and transport evidence: pending.
 
 ### Reviewed publish rebuild provenance
@@ -154,7 +155,7 @@ explicit-artifact-rebuild-source-ready
 
 Pages has an explicit tenant-admin service command for one exact retained provenance row.
 
-The request binds tenant, page, source id, expected provenance hash, idempotency key and a fresh `ReviewedPagePublishRuntimeInput`. Tenant-wide `pages:manage` is required. The command never reads the mutable current draft.
+The request binds tenant, page, source id, expected provenance hash, idempotency key and a fresh `ReviewedPagePublishRuntimeInput`. Tenant-wide `pages:manage` is required. Under the current request model Manage present resolves to `PermissionScope::All` and Manage absent to `None`; the owner service still checks `All` before input validation or writes. The command never reads the mutable current draft.
 
 Before compilation it recomputes the provenance hash, re-sanitizes the retained sanitized source, verifies the sanitizer envelope and requires exact review hash, runtime scenario and runtime-context hash parity. The rebuilt source, static artifact, materialization hash, materialization identity and runtime snapshots must reproduce the retained reviewed publication exactly.
 
@@ -179,7 +180,7 @@ explicit-artifact-binding-replacement-source-ready
 
 Pages owns the separate explicit activation command for one exact rebuild receipt.
 
-The request binds tenant, page, rebuild operation id, expected page version, expected current artifact id and a distinct idempotency key. Tenant-wide `pages:manage` is required. The page must remain published.
+The request binds tenant, page, rebuild operation id, expected page version, expected current artifact id and a distinct idempotency key. Tenant-wide `pages:manage` is required; current request permissions again resolve Pages Manage to `All` when present and `None` when absent. The page must remain published.
 
 The selected rebuild receipt and retained provenance must be valid and mutually consistent. Its source artifact must equal the caller's expected current artifact, and the locked locale binding must still point to that exact source id and retained body. The replacement row must match the receipt's tenant, page, locale, operation-bound instance key, artifact hash and materialization hash. The existing Page Builder artifact verifier runs before the binding update.
 
@@ -191,13 +192,15 @@ Audit does not schedule rebuild or activation automatically.
 
 ### Bounded tenant-admin repair transports
 
-Marker:
+Markers:
 
 ```text
 explicit-artifact-repair-transport-source-ready
+explicit-artifact-repair-pages-manage-all-none-actualized
+explicit-artifact-repair-request-contract-harness-source-ready
 ```
 
-Pages now exposes the two existing repair owner commands through separate bounded adapters.
+Pages exposes the two existing repair owner commands through separate bounded adapters.
 
 GraphQL mounts:
 
@@ -215,13 +218,15 @@ POST /api/admin/pages/{id}/artifacts/activate
 
 OpenAPI registers both routes, their explicit owner inputs and bounded public result schemas.
 
-Both adapter families require the module to be enabled, fence the authenticated actor to the current tenant and require an effective `pages:manage` grant before delegation. The owner commands still enforce the authoritative tenant-wide `PermissionScope::All` scope before writes.
+GraphQL performs the tenant module-enabled check. Both transport families fence the authenticated actor to the current tenant and require an effective `pages:manage` grant before owner delegation. The owner commands independently enforce `PermissionScope::All` before writes.
 
 Adapters delegate once to `PageService`. They do not import entities, query artifact/provenance/binding tables, mutate owner records directly, emit lifecycle events or call cache infrastructure. Error mappers use only static public codes and static messages; raw `PagesError` text is never returned.
 
 The bounded rebuild result exposes operation/page/locale identities, source and rebuilt artifact ids, verified artifact/materialization hashes, replay state and timestamp. The bounded activation result exposes operation/page/version/locale identities, rebuild operation id, previous/replacement artifact ids, verified replacement hashes, replay state and timestamp.
 
 Both result shapes omit provenance source id, source publish operation id, storage instance key, idempotency keys, runtime context, materialization identity JSON and runtime snapshots. No discovery/list endpoint or combined repair endpoint is introduced.
+
+A generated contract harness builds the real Pages GraphQL schema and serializes the real Pages OpenAPI document. A separate request-level harness is source-ready to dispatch real GraphQL and Axum requests for both rebuild and activation, covering current-tenant mismatch, missing Manage, Manage-present owner validation and the static public error bodies. Neither harness is counted as execution evidence until the maintainer runs it.
 
 Current repair/rebuild matrix:
 
@@ -233,6 +238,9 @@ Current repair/rebuild matrix:
 | Canonical/rebuild storage instance identity | Source-ready | Migration and duplicate-identity evidence pending |
 | Explicit binding replacement | Source-ready | SQLite/PostgreSQL, fences, lifecycle and cache evidence pending |
 | Bounded tenant-admin repair transports | Source-ready | GraphQL/HTTP/OpenAPI execution pending |
+| Generated GraphQL/OpenAPI transport contract harness | Source-ready | Maintainer execution pending |
+| Request-level tenant/Manage/static-error harness | Source-ready | Maintainer execution pending |
+| Pages Manage `All`/`None` semantics | Source actualized | Maintainer execution pending |
 | Static public repair errors and bounded results | Source-ready | Response-shape execution pending |
 | Automatic audit-to-rebuild action | Deliberately absent | Not allowed |
 
@@ -241,18 +249,18 @@ Current repair/rebuild matrix:
 Source parity has advanced, but execution and rollout remain open.
 
 - No new test, source verifier, Cargo, formatting, migration, database, GraphQL, HTTP, OpenAPI, browser, workflow or CI execution is claimed here.
-- No audit, provenance, rebuild, binding replacement, repair transport, lifecycle/cache observation or tenant rollout scenario was executed.
+- No audit, provenance, rebuild, binding replacement, repair transport, request-contract, lifecycle/cache observation or tenant rollout scenario was executed.
 - No FFA/FBA promotion is made.
 
 ## Current next cursor
 
-1. Run the immutable artifact audit, provenance, explicit-rebuild, binding-replacement and repair-transport source guards.
-2. Retain SQLite/PostgreSQL audit evidence for valid canonical/rebuilt records, corruption, partial evidence, authorization and truncation.
+1. Run the generated repair transport and request-contract harnesses plus the immutable artifact audit, provenance, explicit-rebuild, binding-replacement and repair transport/request source guards.
+2. Retain SQLite/PostgreSQL audit evidence for valid canonical/rebuilt records, corruption, partial evidence, Manage present/absent authorization and truncation.
 3. Retain provenance migration/publish evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
-4. Retain explicit rebuild evidence for tenant-wide versus owner-scoped Manage, exact replay, idempotency conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction.
+4. Retain explicit rebuild evidence for Manage present/absent with `All`/`None` semantics, exact replay, idempotency conflict, provenance corruption, runtime mismatch and byte-for-byte reproduction.
 5. Prove rebuild appends a distinct artifact row while the active binding, page version, lifecycle events and cache generations remain unchanged.
-6. Retain Explicit binding replacement evidence for stale page version, stale current artifact, invalid replacement, one-locale mutation, exact replay, one activation per rebuild and unchanged source row.
+6. Retain explicit binding replacement evidence for stale page version, stale current artifact, invalid replacement, one-locale mutation, exact replay, one activation per rebuild and unchanged source row.
 7. Observe committed `NodeUpdated`/`NodePublished` processing and route/page/artifact generation changes only after activation commit.
-8. Retain repair transport execution evidence for GraphQL schema mounting, HTTP routes, OpenAPI schemas, current-tenant fences, tenant-wide authorization, static errors and bounded result fields.
+8. Retain repair transport execution evidence for generated GraphQL/OpenAPI contracts, current-tenant fences, Manage absent/present behavior, static errors and bounded result fields.
 9. Run the static publish resource-limit source guard and accepted real-project policy evidence.
 10. Execute existing metadata conflict/isolation, cache continuity, artifact/HTTP/browser and tenant Wave packets before promotion.
