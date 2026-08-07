@@ -75,7 +75,12 @@ for (const required of [
 const lib = read("crates/rustok-product/src/lib.rs");
 for (const required of [
   "mod catalog_schema_read_port;",
-  "pub use catalog_schema_read_port::ProductCatalogSchemaReadPort;",
+  "pub use catalog_schema_read_port::{",
+  "ProductCatalogSchemaReadPort",
+  "ProductEffectiveFormAttributeProjection",
+  "ProductEffectiveFormProjection",
+  "ProductEffectiveFormRequest",
+  "ProductEffectiveFormSubject",
 ]) {
   requireText(lib, required, `Product root must contain ${required}`);
 }
