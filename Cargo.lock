@@ -12377,6 +12377,7 @@ dependencies = [
  "rustok-media",
  "rustok-outbox",
  "rustok-profiles",
+ "rustok-reactions-api",
  "rustok-seo-targets",
  "rustok-taxonomy",
  "rustok-telemetry",
@@ -14862,10 +14863,12 @@ dependencies = [
 name = "rustok-reactions"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
  "chrono",
  "rustok-api",
  "rustok-core",
+ "rustok-events",
  "rustok-outbox",
  "rustok-reactions-api",
  "sea-orm",
