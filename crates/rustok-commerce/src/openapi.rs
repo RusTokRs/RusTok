@@ -4,6 +4,10 @@ use utoipa::openapi::request_body::RequestBodyBuilder;
 use utoipa::openapi::response::{ResponseBuilder, ResponsesBuilder};
 use utoipa::openapi::{Content, Ref};
 
+#[cfg(feature = "marketplace-financial")]
+#[path = "openapi_marketplace_financial.rs"]
+mod marketplace_financial;
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -67,20 +71,6 @@ use utoipa::openapi::{Content, Ref};
         crate::controllers::return_completion_operations::list_return_completion_operations,
         crate::controllers::return_completion_operations::show_return_completion_operation,
         crate::controllers::return_completion_operations::retry_return_completion_operation,
-        crate::controllers::marketplace_financial::list_financial_operator_review,
-        crate::controllers::marketplace_financial::show_financial_operation,
-        crate::controllers::marketplace_financial::retry_financial_operation,
-        crate::controllers::marketplace_financial::list_paid_event_operator_review,
-        crate::controllers::marketplace_financial::show_paid_event,
-        crate::controllers::marketplace_financial::retry_paid_event,
-        crate::controllers::marketplace_financial::run_recovery_sweep,
-        crate::controllers::marketplace_reversal_financial::list_operator_review,
-        crate::controllers::marketplace_reversal_financial::show_event,
-        crate::controllers::marketplace_reversal_financial::retry_event,
-        crate::controllers::marketplace_reversal_financial::run_recovery_sweep,
-        crate::controllers::marketplace_reversal_financial::list_adaptation_failures_operator_review,
-        crate::controllers::marketplace_reversal_financial::show_adaptation_failure,
-        crate::controllers::marketplace_reversal_financial::retry_adaptation_failure,
     ),
     components(
         schemas(
@@ -154,30 +144,22 @@ use utoipa::openapi::{Content, Ref};
             crate::controllers::checkout_operations::AdminCheckoutCompensationSweepResponse,
             crate::controllers::return_completion_operations::AdminListReturnCompletionOperationsParams,
             crate::services::ReturnCompletionOperationResponse,
-            crate::controllers::marketplace_financial::MarketplaceFinancialSweepInput,
-            crate::controllers::marketplace_financial::MarketplaceFinancialOperationResponse,
-            crate::controllers::marketplace_financial::MarketplacePaidEventResponse,
-            crate::controllers::marketplace_financial::MarketplaceFinancialSweepFailureResponse,
-            crate::controllers::marketplace_financial::MarketplaceFinancialSweepResponse,
-            crate::controllers::marketplace_reversal_financial::MarketplaceReversalSweepInput,
-            crate::controllers::marketplace_reversal_financial::MarketplaceReversalEventResponse,
-            crate::controllers::marketplace_reversal_financial::MarketplaceReversalAdaptationFailureResponse,
-            crate::controllers::marketplace_reversal_financial::MarketplaceReversalSweepFailureResponse,
-            crate::controllers::marketplace_reversal_financial::MarketplaceReversalSweepResponse,
         )
     ),
     modifiers(&CommerceOpenApiAddon),
     tags(
         (name = "commerce", description = "Ecommerce endpoints"),
         (name = "store", description = "Storefront ecommerce endpoints"),
-        (name = "admin", description = "Administrative ecommerce endpoints"),
-        (name = "admin-marketplace-financial", description = "Marketplace financial recovery and reconciliation endpoints")
+        (name = "admin", description = "Administrative ecommerce endpoints")
     )
 )]
 pub struct CommerceApiDoc;
 
 pub fn openapi_document() -> utoipa::openapi::OpenApi {
-    CommerceApiDoc::openapi()
+    let mut openapi = CommerceApiDoc::openapi();
+    #[cfg(feature = "marketplace-financial")]
+    openapi.merge(marketplace_financial::openapi_document());
+    openapi
 }
 
 pub struct CommerceOpenApiAddon;
