@@ -122,7 +122,15 @@ requireMarkers(schemaStorePath, [
   'schema version must increase for {identity}',
   'existing.fingerprint != fingerprint.to_string() || existing.schema_json != *schema_json',
   'Err(SchemaRegistrationError::VersionConflict {',
-  'schema.reference.version <= latest',
+  'pub async fn register_current(',
+  'retire_lower_active_schemas(',
+  "status = 'retired'",
+  "schema_version < $4 AND status = 'active'",
+]);
+forbidMarkers(schemaStorePath, read(schemaStorePath), [
+  'DELETE FROM index_schemas',
+  'DELETE FROM index_entities',
+  'DELETE FROM index_links',
 ]);
 
 const parityDocPath = 'crates/rustok-index/docs/m7-product-storefront-parity-gate.md';
@@ -135,7 +143,16 @@ requireMarkers(parityDocPath, [
   'dynamic typed EAV `attribute_filters`',
   'no silent same-key fingerprint replacement',
   'no parallel v4/v5 compatibility source/route',
+  'Single-current replacement persistence is source complete',
+  '`PostgresSchemaRegistrationStore::register_current`',
+  'every lower persisted Product key is retired',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
+]);
+
+requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.md', [
+  'Status: `source_complete_execution_pending`',
+  'single-current',
+  'This slice does not change the Product routing key or Product schema yet.',
 ]);
 
 const currentPlanPath = 'crates/rustok-index/docs/implementation-plan-current-2026-08-07.md';
@@ -145,4 +162,4 @@ requireMarkers(currentPlanPath, [
   'do not introduce a new Product schema/version to solve',
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront cutover remains fail-closed on the current immutable Product Index contract');
+console.log('[verify-index-product-storefront-parity-gate] Storefront cutover remains fail-closed on one immutable current Product Index contract');
