@@ -1,92 +1,90 @@
 # M7 canonical Product graph source
 
-Status: `canonical_source_complete_runtime_evidence_pending`
+Status: `canonical_source_and_freshness_gate_complete_runtime_evidence_pending`.
 
-The selected distribution now publishes exactly one current Product Index contract and one current
-ProductVariant contract. The old parallel Product/ProductVariant compatibility implementations have
-been removed from runtime code.
+The selected distribution publishes one current Product Index contract and one current ProductVariant
+contract. Parallel Product compatibility implementations remain removed.
 
-The generic Index `SchemaRef` still contains a positive numeric `SchemaVersion` because it is part of
-the storage and routing key for every module. That implementation detail no longer represents a set of
-coexisting Product contracts: only one Product and one ProductVariant schema are registered.
+The generic Index `SchemaRef` still contains a positive numeric `SchemaVersion` because that is a core
+storage/routing key, not a Product compatibility matrix.
 
-## Canonical Product
+## Canonical Product graph
 
-`product-postgres-primary` emits one locale-required Product record containing:
+`product-postgres-primary` emits one locale-required Product record with current Product scalars,
+`variant_ids`, and `sales_channel_ids`. It materializes exactly two many-cardinality links:
 
-- `id`;
-- `status`;
-- `title`;
-- `handle`;
-- `description`;
-- `vendor`;
-- `product_type`;
-- `primary_category_id`;
-- `variant_ids`;
-- `sales_channel_ids`.
+- `variants` to ProductVariant identity;
+- `sales_channels` to SalesChannel identity.
 
-It materializes two many-cardinality links:
+Product visibility slugs are resolver input only; they are not duplicated as transitional Index
+fields.
 
-- `variants` to the current ProductVariant identity;
-- `sales_channels` to the current SalesChannel identity.
+Physical Product/translation deletes remain represented by Product-owned tombstones and canonical
+`IndexMutation::Delete` mutations.
 
-Product visibility slugs remain Product-owner input for the cross-owner resolver. Transitional
-`channel_restricted` and `allowed_channel_slugs` fields are no longer part of the Index schema because
-resolved SalesChannel UUID membership is now the graph contract.
+## Complete mutation ordering
 
-The source scans stable `(product_id, locale)` identities and requires exact locale-bearing targeted
-loads. Physical deletes are retained through `product_index_tombstones` and emit the same canonical
-Product `IndexMutation::Delete` contract.
+Product scalar/translation/Variant-membership state advances under `products.index_revision`; resolved
+SalesChannel membership advances under `relation_epoch`.
 
-## Canonical ProductVariant
+`product_index_graph_projection_snapshots.projection_epoch` is the only complete Product mutation
+`source_version`. Live replay requires the current projection Product watermark to equal the current
+Product revision and joins the exact retained relation epoch referenced by projection state.
 
-`product-variant-postgres-primary` publishes one non-localized ProductVariant schema including its
-stable `id` and current scalar fields. It scans by stable `variant_id`, supports exact targeted loads,
-and uses `product_variant_index_tombstones` for retained deletes.
+Product hard-delete replay also uses projection epoch but does not require a live relation freshness
+witness, because the mutation removes the Product graph.
 
-There is no reverse ProductVariant-to-Product link because Product is locale-required while
-ProductVariant is not. Product owns the forward `variants` graph link.
+## Relation freshness gate
 
-## Complete Product mutation clock
+The Product relation owner now also retains
+`product_sales_channel_index_relation_freshness_snapshots`. A witness identifies the exact retained
+relation epoch and records:
 
-Product scalar/translation/Variant-membership state advances under `products.index_revision`, while
-resolved Product-to-SalesChannel membership advances under the Product-owned `relation_epoch`. A full
-Product record cannot safely use either independent counter directly.
+- observed Product source version;
+- canonical Product visibility key;
+- observed tenant Channel identity generation.
 
-`product_index_graph_projection_snapshots` therefore owns `projection_epoch`, the only complete Product
-record mutation `source_version`. The canonical Product source requires projection state, joins the
-exact retained SalesChannel relation referenced by that projection, and fails closed when the live
-Product revision is newer than the retained Product projection watermark.
+`rustok-channel` owns `channel_index_identity_generations`, which advances transactionally for Channel
+insert/delete/id/tenant/canonical-slug changes.
 
-The Product locale absence provider uses the same projection epoch and likewise refuses to manufacture
-an absence watermark from a newer unprojected Product revision.
+For every live Product row, the source derives the current visibility key from Product metadata and
+reads the current tenant Channel generation in the same PostgreSQL statement. It fails closed unless a
+witness for the projection's exact relation epoch has:
 
-Detailed owner contract:
-[Product graph projection ledger](../../rustok-product/docs/index-graph-projection-ledger.md).
+- the same visibility key;
+- the same Channel identity generation;
+- a positive Product source watermark not newer than the current Product revision.
+
+A missing or stale witness therefore cannot publish a live Product mutation. Product locale absence
+uses the same gate and returns no absence watermark when freshness is stale.
+
+Freshness-only changes do not advance `relation_epoch` or `projection_epoch` when the resolved UUID
+membership and complete Product record are unchanged. The witness can advance independently.
+
+Detailed contracts:
+
+- [Product graph projection ledger](../../rustok-product/docs/index-graph-projection-ledger.md)
+- [Product-SalesChannel relation ledger](../../rustok-product/docs/index-sales-channel-relation-ledger.md)
+- [Product-SalesChannel freshness witness](../../rustok-product/docs/index-sales-channel-relation-freshness.md)
+- [Cross-owner resolver](./m7-product-sales-channel-resolver.md)
 
 ## Ownership
 
-`rustok-product` owns Product/Variant persistence, revisions, tombstones, relation snapshots, and graph
-projection epochs. It has no `rustok-index` or `rustok-channel` dependency.
+`rustok-product` owns Product/Variant persistence, tombstones, relation membership, freshness witness
+storage, and graph projection epochs. It still has no `rustok-index` or `rustok-channel` dependency.
 
-`rustok-distribution` owns selected cross-module conversion and Product visibility to Channel identity
-resolution. It reads the Product-owned projection/relation state but never moves Channel SQL into the
-Product crate.
+`rustok-channel` owns the tenant identity generation. `rustok-distribution` owns cross-owner
+observation/resolution and Index conversion.
 
-## Freshness boundary
+## Still open
 
-A correct monotonic projection clock does not by itself prove that SalesChannel relation membership is
-fresh after Product visibility or Channel identity changes. The bounded resolver exists, but durable
-convergence triggering or an admitted freshness watermark remains required before this graph becomes
-authoritative.
+The source-level freshness gap is closed, but production admission still requires:
 
-Also still open:
-
-- retained PostgreSQL replay/concurrency/restart/delete-recreate evidence;
-- persisted tenant schema readiness evidence for the one current contract set;
-- Product typed event family and concrete consumer routes after event-contract digest admission;
-- tombstone retention/purge admission;
-- Storefront cutover and full query equivalence evidence.
+- retained PostgreSQL replay/freshness/concurrency/restart/delete-recreate evidence;
+- automatic convergence scheduling/triggering if the desired latency requires it;
+- persisted tenant schema readiness evidence;
+- Product typed event family/routes after event-contract digest admission;
+- tombstone retention admission, query equivalence, and Storefront cutover evidence.
 
 ## Validation ownership
 
