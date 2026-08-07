@@ -58,6 +58,12 @@ for (const marker of [
   "forum_reply_moderation_subject_revision_owner_update",
   "forum_topic_moderation_subject_revision_translation_update",
   "forum_reply_moderation_subject_revision_body_update",
+  "forum_topic_moderation_subject_revision_tenant_insert",
+  "forum_topic_moderation_subject_revision_tenant_update",
+  "forum_reply_moderation_subject_revision_tenant_insert",
+  "forum_reply_moderation_subject_revision_tenant_update",
+  "forum topic moderation subject revision tenant mismatch",
+  "forum reply moderation subject revision tenant mismatch",
   "revision = revision + 1",
 ]) {
   requireText(
