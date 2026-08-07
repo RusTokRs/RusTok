@@ -1,7 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked against `main@ca0672bf5f4d022df0316708035e49bf5fb23dd9` and continued on
-`agent/index-product-canonical-schema-20260807`.
+Status overlay rechecked against `main@98af57a349d3eede01536393d461ad55a526efe9` and continued on
+`agent/index-product-canonical-schema-20260807`. Main advanced after the branch point only through
+Forum/Reactions/Pages/Cargo.lock surfaces; the compare is disjoint from this Product/Index cleanup.
 
 This file is the current status overlay. `implementation-plan.md` remains historical architecture and
 milestone context.
