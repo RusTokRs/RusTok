@@ -19,7 +19,7 @@ last_reviewed: 2026-08-07
 | `REACTIONS-02` | `in_progress` | Actor state, aggregate deltas, typed semantic events and completed shared Outbox receipts now share one transaction. Bounded inspect/repair reconciliation is source-ready; retain rollback, replay, concurrency and repair evidence. |
 | `REACTIONS-03` | `in_progress` | Forum topic/reply provider, optional host materialization and executable composition profile tests are source-ready. Reactions stays outside defaults; retained execution evidence remains pending. |
 | `REACTIONS-04` | `in_progress` | Blog `post` producer and Blog+Reactions composition profile are source-ready over Blog-owned publication, channel visibility and owner version. The neutral-contract review now covers Forum and Blog producers; retain Blog provider/host runtime evidence before freezing shared transport or presentation contracts. |
-| `REACTIONS-05` | `in_progress` | Manifest-composed bounded GraphQL read/write transport is source-ready over the neutral owner ports. Retain schema/runtime execution evidence and add module-owned UI; no HTTP transport or presentation contract is frozen by this slice. |
+| `REACTIONS-05` | `in_progress` | Manifest-composed bounded GraphQL read/write transport plus a producer-neutral module-owned Leptos reaction-bar foundation are source-ready. Retain schema/runtime execution evidence and compose exact producer revisions into Forum/Blog UI before freezing the presentation contract; no HTTP transport is frozen by this slice. |
 | `REACTIONS-06` | `planned` | Runtime evidence, FBA contracts, import/reconciliation and release profiles. |
 
 ## Ownership
@@ -202,10 +202,31 @@ The manifest declares query, mutation and a runtime-data factory. The factory
 fails closed unless the host has already materialized
 `Arc<ReactionSubjectRegistry>`, then constructs `ReactionsService` from the host
 DB plus that registry. `rustok-server` enables the crate `graphql` feature only
-when `mod-reactions` is selected. This slice adds no producer-table reads, no
-HTTP-specific policy and no UI. The GraphQL contract remains source-ready rather
-than frozen until maintainer schema/runtime evidence is retained alongside the
+when `mod-reactions` is selected. This slice adds no producer-table reads and no
+HTTP-specific policy. The GraphQL contract remains source-ready rather than
+frozen until maintainer schema/runtime evidence is retained alongside the
 Forum+Blog provider evidence.
+
+## Storefront presentation foundation
+
+`rustok-reactions-storefront` is the first module-owned presentation slice over
+the neutral GraphQL transport. It is a reusable `ReactionBar`, not a standalone
+route and not a producer-specific persistence adapter.
+
+The UI accepts only an exact positive revisioned subject reference consisting of
+source, kind, subject UUID and subject revision. It never discovers or guesses a
+Forum/Blog revision and therefore cannot bypass producer authorization. Tenant
+and actor identity remain outside component/GraphQL input and come from the
+trusted UI auth context. Anonymous snapshots are read-only because the owner
+returns no actor state; each authenticated click creates a fresh command UUID,
+then reloads `reactionSnapshot` after success instead of maintaining a shadow
+aggregate or actor-state projection.
+
+The package intentionally has no dependency on `rustok-reactions`,
+`rustok-forum` or `rustok-blog`. Producer UI composition remains pending until a
+public Forum/Blog boundary can supply the exact current revision without exposing
+private persistence or inventing a parallel revision model. The source guard is
+`scripts/verify/verify-reactions-storefront-ui.mjs`.
 
 ## Executable composition evidence
 
@@ -235,9 +256,10 @@ rollback on event failure, concurrent actor updates, clean/blocked/drift
 reconciliation and receipt replay. Retain Blog provider authorization and
 Blog+Reactions host composition evidence. Retain manifest-composed GraphQL schema
 and runtime evidence for anonymous/authenticated reads, human-user writes,
-tenant mismatch, idempotent replay and stale/denied subjects. Then add the
-module-owned Reactions UI over the neutral transport without moving producer
-storage or presentation ownership into Forum/Blog.
+tenant mismatch, idempotent replay and stale/denied subjects. Retain the new
+storefront package source/runtime evidence, then add thin Forum/Blog composition
+that supplies the exact authorized producer revision without moving producer
+storage or presentation ownership into Reactions.
 
 Before release, execute SQLite and PostgreSQL migrations, retain replay,
 concurrency and rollback evidence, and retain bounded repair evidence for catalog
@@ -250,11 +272,14 @@ cargo test -p rustok-events reactions
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
 cargo test -p rustok-reactions --features graphql graphql
+cargo test -p rustok-reactions-storefront
 cargo test -p rustok-forum reaction_subject
 cargo test -p rustok-blog reaction_subject
 cargo check -p rustok-reactions-api --all-targets
 cargo check -p rustok-reactions --all-targets
 cargo check -p rustok-reactions --features graphql --all-targets
+cargo check -p rustok-reactions-storefront --all-targets
+cargo check -p rustok-reactions-storefront --features hydrate --all-targets
 cargo check -p rustok-forum --all-targets
 cargo check -p rustok-blog --all-targets
 cargo check -p rustok-distribution --features "mod-forum mod-reactions"
@@ -272,6 +297,7 @@ node scripts/verify/verify-blog-reaction-subject-provider.mjs
 node scripts/verify/verify-reactions-host-composition.mjs
 node scripts/verify/verify-reactions-composition-profiles.mjs
 node scripts/verify/verify-reactions-events-reconciliation.mjs
+node scripts/verify/verify-reactions-storefront-ui.mjs
 git diff --check
 ```
 

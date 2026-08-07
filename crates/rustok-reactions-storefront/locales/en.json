@@ -1,0 +1,11 @@
+{
+  "reactions.label": "Reactions",
+  "reactions.loading": "Loading reactions…",
+  "reactions.error.load": "Reactions are temporarily unavailable.",
+  "reactions.error.update": "Could not update this reaction.",
+  "reactions.signIn": "Sign in to react.",
+  "reactions.empty": "No reactions are available for this item.",
+  "reactions.like": "Like",
+  "reactions.selected": "Selected",
+  "reactions.count": "{count}"
+}
