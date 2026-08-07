@@ -17,6 +17,8 @@ use rustok_web::{HttpError, HttpResult};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{collections::HashMap, time::Instant};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -173,20 +175,58 @@ pub(crate) fn map_admin_product_error(
     HttpError::new(status, code, message)
 }
 
+pub(crate) fn admin_product_command_idempotency_key<T: Serialize>(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    product_id: Option<Uuid>,
+    operation: &'static str,
+    payload: &T,
+) -> HttpResult<String> {
+    let payload = serde_json::to_vec(payload).map_err(|_| {
+        tracing::error!(
+            owner = ADMIN_PRODUCT_OWNER,
+            tenant_id = %uuid_shape(tenant_id),
+            actor_id = %uuid_shape(actor_id),
+            product_id = %optional_uuid_shape(product_id),
+            operation,
+            error_kind = "request_identity_serialization",
+            public_code = "commerce_admin_product_failed",
+            boundary = ADMIN_PRODUCT_BOUNDARY,
+            "commerce admin product command identity could not be materialized"
+        );
+        HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_product_failed",
+            "Product operation could not be completed safely",
+        )
+    })?;
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(actor_id.as_bytes());
+    digest.update(operation.as_bytes());
+    if let Some(product_id) = product_id {
+        digest.update(product_id.as_bytes());
+    }
+    digest.update(payload);
+    Ok(format!(
+        "commerce-admin-product:{operation}:{}",
+        hex::encode(digest.finalize())
+    ))
+}
+
 pub(crate) fn admin_product_command_context(
     tenant_id: Uuid,
     auth: &AuthContext,
     request_context: &RequestContext,
-    product_id: Option<Uuid>,
-    operation: &'static str,
+    idempotency_key: String,
 ) -> PortContext {
-    let resource_id = product_id.unwrap_or(tenant_id);
     let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
-        format!("commerce-admin-product:{operation}:{resource_id}"),
+        idempotency_key.clone(),
     )
+    .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
@@ -512,8 +552,15 @@ pub async fn delete_product(
         "Permission denied: products:delete required",
     )?;
 
+    let idempotency_key = admin_product_command_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        "delete_product",
+        &(),
+    )?;
     let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, Some(id), "delete_product");
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
     runtime
         .product_catalog_command_port()
         .delete_product(port_context.clone(), id)
@@ -543,13 +590,15 @@ pub async fn publish_product(
         "Permission denied: products:update required",
     )?;
 
-    let port_context = admin_product_command_context(
+    let idempotency_key = admin_product_command_idempotency_key(
         tenant.id,
-        &auth,
-        &request_context,
+        auth.user_id,
         Some(id),
         "publish_product",
-    );
+        &(),
+    )?;
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
     let product = runtime
         .product_catalog_command_port()
         .publish_product(port_context.clone(), id)
@@ -579,13 +628,15 @@ pub async fn unpublish_product(
         "Permission denied: products:update required",
     )?;
 
-    let port_context = admin_product_command_context(
+    let idempotency_key = admin_product_command_idempotency_key(
         tenant.id,
-        &auth,
-        &request_context,
+        auth.user_id,
         Some(id),
         "unpublish_product",
-    );
+        &(),
+    )?;
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
     let product = runtime
         .product_catalog_command_port()
         .unpublish_product(port_context.clone(), id)
