@@ -98,4 +98,4 @@ crates/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.
 
 ## Validation boundary
 
-Execution remains pending. No Rust tests, PostgreSQL/SQLite scenarios, Node verifiers, Cargo checks, formatting, migrations, workflows or CI were run by this implementation slice. FFA/FBA promotion remains blocked on accepted execution evidence.
+Source execution remains pending. No Rust tests, PostgreSQL/SQLite scenarios, Node verifiers, Cargo checks, formatting, migrations, workflows or CI were run by this implementation slice. FFA/FBA promotion remains blocked on accepted execution evidence.
