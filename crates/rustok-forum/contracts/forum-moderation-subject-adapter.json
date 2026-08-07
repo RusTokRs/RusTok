@@ -50,16 +50,31 @@
     "sqlite_locking": "writer reservation uses the dedicated moderation revision row",
     "retryable_failure": "leave processing receipt reclaimable",
     "terminal_failure": "persist shared typed failed receipt",
-    "success": "Forum mutation and shared completed receipt commit in one transaction",
+    "success": "Forum mutation, required Forum root/projection events and shared completed receipt commit in one transaction",
     "applied_revision": "post-application moderation subject revision"
   },
   "supported_effects": [
     "NoDomainMutation for forum_topic and forum_post",
-    "permanent Lock for forum_topic using TopicService::set_locked_in_tx"
+    "permanent Lock for forum_topic using TopicService::set_locked_in_tx",
+    "SetVisibility Hidden for forum_post using exact Forum ReplyStatus::Hidden lifecycle semantics"
   ],
+  "reply_hidden_semantics": {
+    "target": "ReplyStatus::Hidden",
+    "already_hidden": "no-op without duplicate counters or ForumReplyStatusChanged event",
+    "approved_to_hidden": [
+      "decrement topic public reply count",
+      "decrement category public reply count",
+      "decrement author Forum reply statistics"
+    ],
+    "other_valid_to_hidden_transitions": "status change only; public counters remain unchanged",
+    "root_event": "ForumReplyStatusChanged",
+    "search_projection": "ForumReplyStatusChanged is a canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "atomicity": "status, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
   "deferred_effects": [
     "temporary topic Lock until Forum owns expiry-safe enforcement state",
-    "reply visibility effects",
+    "SetVisibility Unpublished until an exact Forum lifecycle mapping is established",
+    "SetVisibility Removed until the complete Forum soft-delete/tombstone/solution/counter owner path is reused",
     "topic visibility removal/unpublish effects",
     "RequireEdit",
     "RestrictInteraction",
@@ -83,6 +98,8 @@
     "retargeting a stale decision to a newer Forum revision",
     "reusing Reactions or content revision as the Moderation subject clock",
     "temporary lock without expiry-safe owner state",
+    "approximating Unpublished as Rejected without an explicit owner contract",
+    "approximating Removed as Deleted without the full Forum delete owner semantics",
     "reaction state catalog aggregate or presentation ownership changes"
   ],
   "not_claimed": [
@@ -91,6 +108,8 @@
     "runtime execution",
     "PostgreSQL concurrency evidence",
     "SQLite evidence",
+    "SetVisibility Unpublished support",
+    "SetVisibility Removed support",
     "complete FORUM-19 effect coverage",
     "release readiness"
   ]
