@@ -9,8 +9,8 @@ This directory contains the detailed technical architecture documentation for `r
 | Indexing Approach | Write Overhead | Cross-Module Filtering | Zero N+1 Queries | Consistency Model | Infrastructure Complexity |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Traditional SQL JOINs** | Low | Slow (Multi-table JOIN bottlenecks) | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
-| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
-| **External Search Sync (Elasticsearch / Algolia)** | High DDL & Row Bloat | Fast | Yes | Eventual (Lag & drift risks) | Heavy JVM/Cloud cluster |
+| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | Immediate | High |
+| **External Search Sync (Elasticsearch / Algolia)** | High | Fast | Yes | Eventual (lag & drift risks) | Heavy JVM/Cloud cluster |
 | **`rustok-index` (JSONB + Keyset Engine)** | **Low (Transactional Outbox Inbox)** | **Ultra-Fast (Derived B-Tree / GIN Indexes)** | **Yes (Single REPEATABLE READ query)** | **Immediate (Transactional Outbox)** | **Pure Rust + PostgreSQL (Zero external dependencies)** |
 
 ---
@@ -80,6 +80,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M7 Product-SalesChannel Freshness Witness](../../rustok-product/docs/index-sales-channel-relation-freshness.md)
 - [M7 Product-SalesChannel Cross-owner Resolver](./m7-product-sales-channel-resolver.md)
 - [M7 Product Graph Projection Ledger](../../rustok-product/docs/index-graph-projection-ledger.md)
+- [M7 Product Attribute Term Contract](./m7-product-attribute-term-contract.md)
 - [M7 Product Storefront Index Parity Gate](./m7-product-storefront-parity-gate.md)
 - [M4 Source-owned Schema Registry](./m4-source-schema-registry.md)
 - [M4 Single-current Schema Supersession](./m4-single-current-schema-supersession.md)
