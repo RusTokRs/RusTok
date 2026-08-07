@@ -48,7 +48,7 @@ CREATE TABLE product_sales_channel_index_relation_freshness_snapshots (
     CONSTRAINT chk_product_sales_channel_index_relation_freshness_product_source_positive
         CHECK (product_source_version > 0),
     CONSTRAINT chk_product_sales_channel_index_relation_freshness_visibility_key
-        CHECK (char_length(visibility_key) BETWEEN 1 AND 131072),
+        CHECK (octet_length(visibility_key) BETWEEN 1 AND 131072),
     CONSTRAINT chk_product_sales_channel_index_relation_freshness_channel_generation
         CHECK (channel_identity_generation >= 0)
 );
