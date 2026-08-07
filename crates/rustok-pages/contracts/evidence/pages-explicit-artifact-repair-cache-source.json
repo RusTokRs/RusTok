@@ -9,7 +9,7 @@
     "real_outbox_module_migrations_used": true,
     "real_pages_module_migrations_used": true,
     "real_page_service_publish_rebuild_activation_used": true,
-    "canonical_reviewed_publish_body_revision_used": true,
+    "reviewed_publish_revision_matches_owner_updated_at_snapshot": true,
     "canonical_artifact_snapshot_retained_before_damage": true,
     "canonical_artifact_payload_damaged_before_rebuild": true,
     "rebuild_uses_retained_provenance_not_damaged_artifact_payload": true,
@@ -45,6 +45,7 @@
     "workflows_or_ci_run": false
   },
   "linked_sources": {
+    "reviewed_publish_owner": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
     "rebuild_owner": "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
     "activation_owner": "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
     "artifact_owner": "crates/rustok-pages/src/services/page_builder_artifact.rs",
