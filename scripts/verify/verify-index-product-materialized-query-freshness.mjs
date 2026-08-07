@@ -123,14 +123,16 @@ const productAdmission = requireMarkers(productAdmissionPath, [
   'owner_channel.index_revision = {{entity}}.source_version',
   'register_postgres_index_query_link_target_availability',
   'PostgresQueryEntityAdmission::new(template)',
+  'PRODUCT_SCHEMA_ROUTING_KEY',
+  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'product_variant_schema_ref()',
   'sales_channel_schema_ref()',
   'extensions.contains::<rustok_channel::ChannelRuntimeSelected>()',
-  'SchemaVersion::new(3)',
   'SchemaVersion::new(2)',
   'SchemaVersion::INITIAL',
 ]);
 forbidMarkers(productAdmissionPath, productAdmission, [
+  'SchemaVersion::new(3)',
   'PostgresQueryRootAdmission',
   '{{root}}',
   'index_entities',
@@ -142,6 +144,7 @@ forbidMarkers(productAdmissionPath, productAdmission, [
 ]);
 
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+  'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
   'query_admission::register(extensions)?;',
   'assert_eq!(admissions.len(), 2)',
   'assert_eq!(admissions.len(), 3)',
@@ -182,4 +185,4 @@ forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.
   'retain PostgreSQL cases for linked filtering and many aggregate ordering',
 ]);
 
-console.log('[verify-index-product-materialized-query-freshness] Product graph freshness, availability and equivalence source contracts verified');
+console.log('[verify-index-product-materialized-query-freshness] current Product graph freshness, availability and equivalence source contracts verified');
