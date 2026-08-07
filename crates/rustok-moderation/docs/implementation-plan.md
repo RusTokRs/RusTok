@@ -262,7 +262,8 @@ again. Shutdown stops future shared-scheduler claims while an already claimed op
 finish its canonical dispatcher path.
 
 Application operation state, case lifecycle and the existing `moderation_events` owner audit
-ledger now advance atomically inside Moderation owner primitives:
+ledger advance atomically inside Moderation owner primitives for claims/finalizers executed
+after this source is active:
 
 - the first winning application claim moves `decided -> applying_decision`, increments the
   case revision, and appends `case_application_started`; every winning claim appends
@@ -284,6 +285,14 @@ leaving a partially advanced case/application pair. `moderation_events` remains 
 owner audit ledger; this source slice does not freeze a typed cross-domain Moderation event
 family in `rustok-events`.
 
+Upgrade compatibility is intentionally fail-honest. Application rows that were already
+terminal (`applied`, `rejected`, or `operator_review`) before this atomic lifecycle source
+became active are no longer due and therefore do not flow through the new claim/finalizer
+path. Their associated cases may still reflect the pre-audit state and they may lack truthful
+start/terminal lifecycle audit facts. This slice does not rewrite those rows and does not
+fabricate historical timestamps/events. Explicit bounded reconciliation of those legacy
+terminal rows is part of the next operator-recovery milestone.
+
 The Forum source slice demonstrates the matching receipt-first domain side using the shared
 Outbox owner-operation ledger. `PortContext.idempotency_key` equals the decision UUID; receipt
 admission binds the full immutable command before subject reads. Application then fences the
@@ -293,10 +302,12 @@ Forum moderation subject revision. Reply `Hidden` and `RejectPublication` share 
 bounded non-public lifecycle transaction; reply `Removed` uses the complete Forum removal
 owner path.
 
-The remaining orchestration code gap is bounded operator recovery: replay-safe retry/requeue
-and explicit re-review/new-decision flows over escalated application/case state without
-rewriting immutable decisions or bypassing domain idempotency. Shared scheduler/runtime and
-application-audit behavior still require retained execution evidence before promotion.
+The remaining orchestration code gap is bounded operator recovery: replay-safe retry/requeue,
+explicit re-review/new-decision flows over escalated application/case state, and truthful
+legacy-terminal reconciliation without rewriting immutable decisions, re-invoking domain
+mutation merely to manufacture audit history, or bypassing domain idempotency. Shared
+scheduler/runtime and application-audit behavior still require retained execution evidence
+before promotion.
 
 ## Source completed
 
@@ -335,17 +346,19 @@ application-audit behavior still require retained execution evidence before prom
   earliest-due candidate discovery, canonical one-attempt CAS delegation, no-op generic
   completion and shared host stop/background-worker lifecycle, guarded by
   `scripts/verify/verify-moderation-application-work-scheduler.mjs`;
-- atomic application/case audit lifecycle over existing owner storage: first-claim
-  `decided -> applying_decision`, retry/reclaim without duplicate case revision, applied
-  `-> closed` with active-key release, rejected/operator-review `-> escalated`, and matching
-  internal `moderation_events` audit facts in the same owner transaction, guarded by
-  `scripts/verify/verify-moderation-application-audit-lifecycle.mjs`.
+- atomic application/case audit lifecycle for newly executed claims/finalizers over existing
+  owner storage: first-claim `decided -> applying_decision`, retry/reclaim without duplicate
+  case revision, applied `-> closed` with active-key release, rejected/operator-review
+  `-> escalated`, and matching internal `moderation_events` audit facts in the same owner
+  transaction, guarded by `scripts/verify/verify-moderation-application-audit-lifecycle.mjs`.
 
 ## Next priorities
 
-1. Add bounded replay-safe operator recovery for escalated application/case state: define
-   retry/requeue versus explicit re-review/new-decision semantics, preserve immutable decision
-   identity, and never turn operator intervention into an idempotency bypass.
+1. Add bounded replay-safe operator recovery for escalated application/case state **and**
+   pre-audit terminal rows: define retry/requeue versus explicit re-review/new-decision
+   semantics, add truthful tenant/decision-scoped legacy-terminal reconciliation, preserve
+   immutable decision identity, never re-invoke a domain adapter merely to fabricate history,
+   and never turn operator intervention into an idempotency bypass.
 2. Retain application-audit and shared-scheduler evidence: first-claim case transition,
    retry/reclaim without duplicate case revision, terminal operation/case/audit atomicity,
    audit-insert rollback, case revision contention, background-worker-disabled no-dispatch,
@@ -355,7 +368,8 @@ application-audit behavior still require retained execution evidence before prom
    atomic decision enqueue, due bounds/order, concurrent claim, lease expiry/reclaim,
    stale-token rejection, command reconstruction, exact adapter selection, retry/error
    classification, stale-conflict review, invalid-success-evidence review, lost-response
-   replay, exactly-one case close and applied-evidence validation.
+   replay, exactly-one case close and explicit legacy-terminal reconciliation evidence once
+   that recovery source exists.
 4. Retain executable host-composition evidence for selected-owner/missing-owner,
    Moderation-only empty materialization and Forum+Moderation topic/reply materialization;
    prove factory build failures remain fail-closed.
@@ -401,6 +415,9 @@ application-audit behavior still require retained execution evidence before prom
   transaction and cannot partially commit;
 - the internal `moderation_events` audit ledger is not silently promoted into a public typed
   cross-domain event contract;
+- pre-audit terminal operation rows must be reconciled explicitly and truthfully; no recovery
+  path may invent historical lifecycle timestamps/events or re-run domain mutation solely to
+  manufacture audit history;
 - the dispatcher selects exactly the stored subject module/kind adapter and never falls back;
 - every domain application attempt uses the immutable decision UUID as its idempotency key;
 - retryable neutral errors and missing adapters never become applied or terminal rejection;
@@ -440,6 +457,8 @@ application-audit behavior still require retained execution evidence before prom
   the recovery boundary and no domain outcome is fabricated;
 - worker crash while applying: the expired lease becomes reclaimable; the case remains
   `applying_decision` and stale lease tokens cannot complete the reclaimed operation;
+- pre-audit terminal operation on upgrade: preserve the terminal operation truth, do not
+  fabricate missing lifecycle history, and require explicit bounded owner reconciliation;
 - moderation disabled: authorized domain-local enforcement may continue when product policy
   permits it, while report/case/appeal features are unavailable;
 - stale reviewed revision/conflict: operation enters operator review and the case escalates;
@@ -475,6 +494,8 @@ application-audit behavior still require retained execution evidence before prom
   finalizer rollback and case revision CAS contention evidence;
 - clean/upgraded PostgreSQL and SQLite decision-effect and application-operation migration
   evidence, including typed-effect-only backfill and legacy effectless exclusion;
+- explicit bounded legacy-terminal reconciliation evidence once the operator-recovery source
+  exists, including no domain re-application solely for audit reconstruction;
 - atomic decision/effect/pending-operation/event/receipt commit and replay evidence;
 - due ordering/bounds, concurrent claim, lease expiry/reclaim, stale-token rejection,
   command reconstruction, exact registry selection, retry scheduling/classification,
