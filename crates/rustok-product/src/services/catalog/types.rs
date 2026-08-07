@@ -216,6 +216,9 @@ pub struct AdminProductListQuery {
     pub raw_status: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    /// Compatibility projection control for legacy surfaces that used an empty title when no
+    /// translation was available. Owner-native consumers keep the existing `Untitled product`.
+    pub empty_missing_title: bool,
     pub category_id: Option<Uuid>,
     pub sort_by: StorefrontProductSortBy,
     pub sort_direction: StorefrontProductSortDirection,
@@ -235,6 +238,11 @@ impl AdminProductListQuery {
 
     pub fn with_product_type(mut self, product_type: Option<String>) -> Self {
         self.product_type = normalize_optional_text(product_type);
+        self
+    }
+
+    pub fn with_empty_missing_title(mut self, enabled: bool) -> Self {
+        self.empty_missing_title = enabled;
         self
     }
 
@@ -279,6 +287,7 @@ impl AdminProductListQuery {
             raw_status: None,
             vendor: None,
             product_type: None,
+            empty_missing_title: false,
             category_id: parse_optional_uuid(category_id, "category_id")?,
             sort_by: StorefrontProductSortBy::parse(sort_by)?,
             sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
@@ -431,6 +440,7 @@ mod tests {
         assert_eq!(query.sort_by, StorefrontProductSortBy::CreatedAt);
         assert_eq!(query.sort_direction, StorefrontProductSortDirection::Asc);
         assert_eq!(query.attribute_filters.len(), 1);
+        assert!(!query.empty_missing_title);
 
         let legacy = AdminProductListQuery::try_from_transport(
             None,
@@ -440,9 +450,11 @@ mod tests {
             Some("desc".to_string()),
         )
         .expect("legacy-compatible base query")
-        .with_raw_status(Some("deleted".to_string()));
+        .with_raw_status(Some("deleted".to_string()))
+        .with_empty_missing_title(true);
         assert_eq!(legacy.status, None);
         assert_eq!(legacy.raw_status.as_deref(), Some("deleted"));
+        assert!(legacy.empty_missing_title);
 
         assert!(
             AdminProductListQuery::try_from_transport(
