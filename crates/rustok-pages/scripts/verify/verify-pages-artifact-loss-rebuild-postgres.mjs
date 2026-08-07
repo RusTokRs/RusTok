@@ -205,8 +205,8 @@ requireOrder(rebuildCommand, [
   "verify_source(&source)?;",
   "let compiled = compile_exact_rebuild(&source, &reviewed)?;",
   "PageBuilderArtifactService::append_rebuilt_in_tx(",
-  "source_artifact_id: Set(source.artifact_id)",
   "page_artifact_rebuild_operation::ActiveModel",
+  "source_artifact_id: Set(source.artifact_id)",
   ".insert(&txn)",
   "txn.commit().await?;",
 ], "explicit rebuild retained-provenance ordering");
