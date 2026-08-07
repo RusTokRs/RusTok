@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::application::{SharedIndexQueryRuntime, SharedIndexSchemaRegistry};
 
-use super::PostgresIndexQueryPort;
+use super::{PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryPort};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IndexQueryRuntimeCompositionError {
@@ -17,8 +17,10 @@ pub enum IndexQueryRuntimeCompositionError {
 /// Materializes the canonical PostgreSQL-backed query runtime from the complete source registry.
 ///
 /// Absence of a source registry is represented as `Ok(None)` and never produces an empty or
-/// partially useful runtime. The function performs no database I/O and makes no tenant schema
-/// readiness claim; those checks remain inside the query port when a request executes.
+/// partially useful runtime. Trusted schema-scoped root admission rules are snapshotted into the
+/// immutable runtime at materialization time. The function performs no database I/O and makes no
+/// tenant schema-readiness or owner-freshness claim; those checks remain inside the query port when a
+/// request executes.
 pub fn materialize_postgres_index_query_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -30,10 +32,15 @@ pub fn materialize_postgres_index_query_runtime(
     let Some(registry) = extensions.get::<SharedIndexSchemaRegistry>().cloned() else {
         return Ok(None);
     };
+    let admissions = extensions
+        .get::<PostgresIndexQueryAdmissionCatalog>()
+        .cloned()
+        .unwrap_or_default();
 
-    let runtime = SharedIndexQueryRuntime::new(Arc::new(PostgresIndexQueryPort::new(
+    let runtime = SharedIndexQueryRuntime::new(Arc::new(PostgresIndexQueryPort::with_admissions(
         db,
         registry.shared(),
+        admissions,
     )));
     extensions.insert(runtime.clone());
     Ok(Some(runtime))
@@ -46,8 +53,9 @@ mod tests {
 
     use crate::{
         EntityName, FieldCardinality, FieldName, IndexField, IndexSchema, IndexValueType,
-        LocaleMode, ModuleName, SchemaRef, SchemaVersion, SharedIndexQueryRuntime,
-        materialize_index_schema_registry, register_index_schema_source,
+        LocaleMode, ModuleName, PostgresIndexQueryAdmissionCatalog, PostgresQueryRootAdmission,
+        SchemaRef, SchemaVersion, SharedIndexQueryRuntime, materialize_index_schema_registry,
+        register_index_schema_source, register_postgres_index_query_admission,
     };
 
     use super::{
@@ -113,6 +121,36 @@ mod tests {
                 .expect("runtime should be published")
                 .shared_port(),
         ));
+    }
+
+    #[tokio::test]
+    async fn query_admission_catalog_is_snapshotted_into_runtime_composition() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        let selected = schema();
+        register_index_schema_source(&mut extensions, "runtime_owner", selected.clone()).unwrap();
+        register_postgres_index_query_admission(
+            &mut extensions,
+            "runtime_owner",
+            selected.reference.clone(),
+            PostgresQueryRootAdmission::new("{{root}}.source_version > 0").unwrap(),
+        )
+        .unwrap();
+        let registry = materialize_index_schema_registry(&extensions)
+            .unwrap()
+            .expect("registry");
+        extensions.insert(registry);
+
+        materialize_postgres_index_query_runtime(&mut extensions, connection().await)
+            .expect("query runtime should materialize")
+            .expect("runtime");
+
+        assert_eq!(
+            extensions
+                .get::<PostgresIndexQueryAdmissionCatalog>()
+                .expect("admission catalog")
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
