@@ -80,8 +80,10 @@ requireMarkers(runtimePath, [
   '.get::<PostgresIndexQueryAdmissionCatalog>()',
   '.cloned()',
   '.unwrap_or_default()',
+  'AdmissionSchemaMissing',
   'PostgresIndexQueryPort::with_admissions(',
   'query_admission_catalog_is_snapshotted_into_runtime_composition',
+  'dangling_query_admission_schema_fails_composition',
 ]);
 
 const productAdmissionPath = 'crates/rustok-distribution/src/product_index/query_admission.rs';
@@ -130,7 +132,7 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
   'PostgresIndexQueryAdmissionDescriptor',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', [
-  'Status: `source_complete_runtime_evidence_pending`',
+  'Status: `source_complete_postgres_packet_source_ready_execution_pending`',
   'source-read -> mutation-apply',
   'A post-result freshness check is insufficient',
   'Generic root query admission',
@@ -140,6 +142,12 @@ requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness
   'same predicate is',
   'exact-count SQL',
   'Rejected Product owner data',
+  'PostgreSQL evidence packet 1',
+  'source-ready, not executed, and not admitted',
+]);
+requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness-postgres-harness.md', [
+  'Status: `source_ready_execution_pending`',
+  'physically present in `index_entities`',
 ]);
 
 const compilerPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
@@ -155,4 +163,4 @@ requireMarkers(compilerPath, [
   'AND {root_alias}.locale_key = {locale} AND {root_alias}.is_deleted = FALSE',
 ]);
 
-console.log('[verify-index-product-materialized-query-freshness] Product root query freshness fence verified');
+console.log('[verify-index-product-materialized-query-freshness] Product root query freshness fence and packet cursor verified');

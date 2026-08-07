@@ -1,6 +1,6 @@
 # Product-SalesChannel relation freshness witness
 
-Status: `source_and_automatic_convergence_complete_materialized_fence_and_runtime_evidence_pending`.
+Status: `source_convergence_and_materialized_fence_complete_runtime_evidence_pending`.
 
 ## Purpose
 
@@ -61,8 +61,8 @@ not require a live witness because the mutation removes the graph rather than pu
 
 ## Automatic convergence
 
-Product visibility changes now append durable exact convergence requests, and tenant Channel identity
-changes are detected by comparing the current Channel generation with Product-owned durable tenant
+Product visibility changes append durable exact convergence requests, and tenant Channel identity
+changes are detected by comparing current Channel generation with Product-owned durable tenant
 checkpoint state. The selected distribution invokes the same bounded resolver through the generic
 ModuleWork scheduler, with tenant leases, restartable request cursors, and restartable 64-Product sweep
 cursors.
@@ -73,25 +73,35 @@ invoke reconciliation. The detailed owner/runtime contract is documented in
 
 ## Materialized freshness boundary
 
-The witness plus automatic resolver convergence still do **not** make source observation and Index
-mutation application one cross-owner atomic transaction. A Channel identity change may commit after a
-Product source page was read but before that already-produced mutation is applied. The next source
-observation will fail closed and automatic convergence will repair owner relation state, but the
-watermark alone is not a production materialized-view freshness guarantee for an already-produced or
-already-applied mutation.
+The witness and convergence worker do not make source observation and Index mutation application one
+cross-owner atomic transaction. Instead, the canonical Index query boundary now supplies the separate
+materialized/query freshness fence.
 
-Therefore authoritative cutover still requires retained evidence for this in-flight window plus an
-explicit materialized/query freshness fence (or an equivalent admission boundary). This distinction is
-deliberate: the witness closes stale source admission, and the convergence worker closes manual owner
-repair scheduling; neither by itself fences a previously produced Index mutation.
+A Product root row is query-admissible only when the materialized Product `projection_epoch` matches the
+latest owner projection, the projection Product component matches current Product revision, the live
+Product and exact locale still exist, the freshness witness matches current Channel generation, and no
+visibility convergence request is newer than the witness Product revision.
+
+This means a mutation produced before a later owner change may still be accepted physically by generic
+Index mutation storage, but it cannot become query-authoritative while its owner evidence is stale. The
+fence is intentionally outside Product ownership: Product still does not depend on `rustok-index` or
+read Channel storage.
+
+The first retained PostgreSQL materialized-freshness packet is source-ready. It delays a real Product
+mutation across an owner revision change, confirms that the stale version is physically present in
+`index_entities`, and requires Product query admission to exclude it before filter/order/cursor/limit
+and exact count. The same packet covers locale deletion after source read. It has not been executed or
+admitted by the implementation agent.
 
 ## Remaining admission
 
 Still required before production cutover:
 
-- materialized/query freshness fencing for the source-read -> mutation-apply window;
-- retained PostgreSQL multi-host/concurrency/restart/delete-recreate/in-flight freshness and
-  convergence evidence;
+- execute/admit the delayed-mutation/locale-deletion PostgreSQL query-freshness packet;
+- retained Product visibility + Channel-generation convergence evidence for unchanged/changed
+  membership;
+- retained PostgreSQL multi-host/concurrency/restart/delete-recreate/rejected-Product convergence
+  evidence;
 - canonical Product typed event admission/routes after event-contract digest admission;
 - complete query equivalence and Storefront cutover evidence.
 
@@ -100,6 +110,9 @@ Still required before production cutover:
 Suggested commands, intentionally not run by the implementation agent:
 
 ```bash
+cargo test -p rustok-distribution --features mod-product --test product_materialized_query_freshness_postgres -- --nocapture
+node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
+node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs

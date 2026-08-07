@@ -178,24 +178,27 @@ const absence = requireMarkers(absencePath, [
 forbidMarkers(absencePath, absence, ['INSERT ', 'UPDATE ', 'DELETE FROM']);
 
 requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-freshness.md', [
-  'Status: `source_and_automatic_convergence_complete_materialized_fence_and_runtime_evidence_pending`',
+  'Status: `source_convergence_and_materialized_fence_complete_runtime_evidence_pending`',
   'freshness-only change does not pretend that the graph membership changed',
   '`channel_index_identity_generations`',
   'fails closed at source observation',
   '## Automatic convergence',
   'generic ModuleWork scheduler',
-  'still do **not** make source observation and Index mutation application one cross-owner atomic',
-  'materialized/query freshness fence',
+  '## Materialized freshness boundary',
+  'canonical Index query boundary now supplies the separate',
+  'cannot become query-authoritative',
+  'first retained PostgreSQL materialized-freshness packet is source-ready',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
-  'Status: `automatic_convergence_source_complete_runtime_evidence_pending`',
+  'Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`',
   'ProductSalesChannelIndexRelationFreshnessStore::record',
   'Automatic convergence composition',
   'Automatic convergence now re-establishes stale/missing relation freshness',
+  'materialized/query freshness fence separately closes',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-convergence.md', [
   'Automatic relation convergence is now source complete',
-  'materialized/query freshness window',
+  'materialized/query freshness fence is also source complete',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-graph-source.md', [
   'canonical_source_and_freshness_gate_complete_runtime_evidence_pending',
@@ -206,6 +209,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.
   'Channel identity generation',
   'Freshness watermark source complete',
   'Automatic owner-change relation convergence source complete',
+  'Materialized/query freshness fence source complete',
   'source-read -> mutation-apply',
 ]);
 
@@ -213,10 +217,11 @@ const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
 for (const expected of [
   "'verify-index-product-channel-relation-freshness.mjs'",
   "'verify-index-product-channel-relation-convergence.mjs'",
+  "'verify-index-product-materialized-query-freshness.mjs'",
 ]) {
   if (!aggregate.includes(expected)) {
     fail(`Index aggregate verifier is missing ${expected}`);
   }
 }
 
-console.log('[verify-index-product-channel-relation-freshness] source admission freshness and convergence boundary verified');
+console.log('[verify-index-product-channel-relation-freshness] source freshness, convergence, and materialized fence boundary verified');
