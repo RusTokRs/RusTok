@@ -83,6 +83,12 @@ pub struct AdminProductsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
     pub query: AdminProductListQuery,
+    /// Compatibility-only exact filters for mounted legacy REST. Owner-native callers leave
+    /// these unset and retain the typed query semantics above.
+    pub raw_status: Option<String>,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub empty_missing_title: bool,
     pub page: u64,
     pub per_page: u64,
 }
@@ -175,14 +181,29 @@ impl ProductCatalogReadPort for crate::CatalogService {
             .map_err(|error| product_context_error(&context, owner_operation, error))?;
         validate_admin_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
-        let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
-        self.list_admin_products_with_query(
+        let AdminProductsRequest {
+            locale,
+            fallback_locale,
+            query,
+            raw_status,
+            vendor,
+            product_type,
+            empty_missing_title,
+            page,
+            per_page,
+        } = request;
+        let locale = locale.as_deref().unwrap_or(context.locale.as_str());
+        self.list_admin_products_with_compatibility_query(
             tenant_id,
             locale,
-            request.fallback_locale.as_deref(),
-            request.query,
-            request.page,
-            request.per_page,
+            fallback_locale.as_deref(),
+            query,
+            page,
+            per_page,
+            raw_status.as_deref(),
+            vendor.as_deref(),
+            product_type.as_deref(),
+            empty_missing_title,
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
