@@ -1,90 +1,99 @@
 # Product to SalesChannel relation admission
 
-Status: `canonical_source_complete_freshness_and_runtime_evidence_pending`
+Status: `canonical_source_and_freshness_watermark_complete_runtime_evidence_pending`.
 
-The current Product Index graph already contains the Product-to-SalesChannel link. There is no future
-Product compatibility schema waiting to add it.
+The current Product Index graph contains the Product-to-SalesChannel link. There is one canonical
+Product contract; no compatibility schema is waiting to add relation support.
 
-## Relation owner contract
+## Durable membership
 
 `rustok-product` owns `product_sales_channel_index_relation_snapshots` and
 `ProductSalesChannelIndexRelationStore`.
 
 For each tenant/Product identity the append-only ledger stores a positive contiguous `relation_epoch`
-and the complete resolved SalesChannel UUID set. Membership is canonical, bounded, idempotent, and
-retained independently from Product and Channel physical rows.
+and the complete canonical SalesChannel UUID membership. Equal membership is idempotent and does not
+advance the epoch. Product hard delete retains final empty membership when needed.
 
-The writer locks the live Product and exact relation identity before append. Product hard delete uses
-the same ordering and retains an empty relation epoch when necessary, so a stale non-empty relation
-cannot be appended after deletion.
+The Product crate does not read Channel tables and has no `rustok-channel` or `rustok-index`
+dependency.
 
-The Product crate does not query Channel tables and does not depend on `rustok-channel` or
-`rustok-index`.
+## Durable freshness witness
+
+Membership and freshness are deliberately separate.
+
+`product_sales_channel_index_relation_freshness_snapshots` records that one retained relation epoch
+was verified against:
+
+- an observed Product `index_revision`;
+- the canonical Product channel-visibility key;
+- the tenant Channel identity generation.
+
+The witness ledger is Product-owned, append-only, and prevents numeric watermark regression. A
+freshness-only owner change can advance the witness without pretending that relation membership
+changed.
+
+Detailed owner contract:
+[Product-SalesChannel freshness witness](../../rustok-product/docs/index-sales-channel-relation-freshness.md).
+
+## Channel identity watermark
+
+`rustok-channel` owns `channel_index_identity_generations`. The tenant generation advances in the same
+transaction as Channel identity changes that can alter Product resolution: insert, delete, id change,
+tenant move, and canonical slug change. It does not advance for `is_active` or unrelated Channel
+configuration.
+
+This makes Channel-side relation freshness observable without coupling Product storage to Channel
+tables.
 
 ## Cross-owner resolution
 
-`rustok-distribution::product_index::channel_relation_resolver` converts Product visibility metadata
-into current tenant SalesChannel UUID membership.
+The distribution resolver reads Product visibility, Product revision, Channel identity generation,
+and current Channel UUID membership in a read-only repeatable-read snapshot. It writes membership
+through the Product relation owner, re-observes current owner state, requires the second UUID set to
+equal retained membership, and records the second observation as the freshness witness.
 
-Policy:
-
-- missing visibility or an empty canonical allowlist means unrestricted visibility;
-- unrestricted visibility resolves to every current tenant Channel identity;
-- restricted visibility matches canonical `lower(btrim(slug))` membership;
-- malformed/non-canonical Product visibility fails closed;
-- Channel `is_active` does not alter relation identity membership;
-- resolver pages and membership sets are bounded;
-- exact Product resolution uses observe/write/re-observe stabilization with at most three attempts.
-
-This resolver is a convergence primitive, not a continuous consumer or durability proof.
+Resolver bounds remain 1024 visibility slugs, 1024 resolved Channel UUIDs, 64 Products per tenant page,
+and three stabilization attempts. `channels.is_active` is not relation identity membership.
 
 ## Complete Product graph clock
 
-Product state and resolved relation membership have independent clocks. The complete Product Index
-record therefore uses neither component counter directly.
-
-`product_index_graph_projection_snapshots` retains both Product and relation watermarks and advances a
-separate contiguous `projection_epoch` whenever either retained component advances. The canonical
-Product Index source uses that projection epoch as its only full-record `source_version`.
+`product_index_graph_projection_snapshots.projection_epoch` remains the only full Product mutation
+`source_version`. Product revision and relation epoch are independent component clocks.
 
 The canonical Product source joins the exact relation row referenced by projection state and emits:
 
-- `sales_channel_ids` as a current graph field;
-- a many-cardinality `sales_channels` `IndexLink` to SalesChannel identity.
+- `sales_channel_ids`;
+- the many-cardinality `sales_channels` `IndexLink`.
 
-Product locale absence uses the same projection clock.
+For live Product replay it additionally requires a current freshness witness for that exact relation
+epoch. The current canonical Product visibility key and tenant Channel identity generation must equal
+the witness. Product locale absence uses the same gate.
 
-Detailed projection contract:
-`crates/rustok-product/docs/index-graph-projection-ledger.md`.
-
-## Freshness boundary
-
-Monotonic projection ordering does not prove that the relation resolver has already converged the
-newest Product visibility or Channel identity change. Durable Product/Channel convergence triggering
-or an admitted freshness watermark remains required before authoritative Product graph use.
+Hard-delete replay does not require a live freshness witness because it removes the Product graph.
 
 ## Production admission status
 
-1. Durable relation epoch storage: source complete.
-2. Bounded resolved membership discovery: source complete.
-3. Atomic membership + relation epoch commit: source complete.
-4. Retained empty membership on Product delete: source complete.
-5. Complete Product graph projection epoch: source complete.
-6. Canonical Product `sales_channels` link and projection-aware replay/absence: source complete.
-7. Durable Product/Channel convergence trigger or freshness watermark: pending.
-8. Product typed event route/consumer after event-contract digest admission: pending.
-9. PostgreSQL concurrency/restart/retry/delete-recreate/out-of-order/locale evidence: pending.
-10. Storefront/production cutover: pending.
+1. Durable relation membership storage: source complete.
+2. Bounded cross-owner membership resolution: source complete.
+3. Product-owned freshness witness ledger: source complete.
+4. Tenant-scoped Channel identity generation: source complete.
+5. Canonical Product replay/absence freshness gate: source complete.
+6. Complete Product graph projection clock and SalesChannel link: source complete.
+7. PostgreSQL concurrency/restart/delete-recreate/freshness evidence: pending.
+8. Automatic owner-change scheduling/triggering policy, if required for convergence latency: pending.
+9. Product typed event route/consumer after event-contract digest admission: pending.
+10. Storefront/production cutover and query equivalence: pending.
 
 ## Maintainer validation
 
 ```bash
+node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-source.mjs
-node scripts/verify/verify-index-product-graph-projection-ledger.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs
 node scripts/verify/verify-index-product-channel-relation-ledger.mjs
-node scripts/verify/verify-index-product-channel-relation-admission.mjs
+node scripts/verify/verify-index-product-graph-projection-ledger.mjs
 node scripts/verify/verify-index-query-contract.mjs
+cargo check -p rustok-channel --all-targets
 cargo check -p rustok-product --all-targets
 cargo check -p rustok-distribution --all-targets
 git diff --check
