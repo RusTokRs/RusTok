@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::entities::{
     page, page_artifact_binding_replacement_operation, page_artifact_rebuild_operation, page_body,
     page_publish_operation, page_publish_operation_artifact, page_publish_rebuild_source,
-    page_published_landing_artifact, page_static_landing_artifact,
+    page_published_landing_artifact, page_rollback_operation, page_static_landing_artifact,
 };
 use crate::error::{PagesError, PagesResult};
 use crate::services::PageBuilderArtifactService;
@@ -18,6 +18,7 @@ use crate::services::PageBuilderArtifactService;
 use super::artifact_binding_replacement::PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT;
 use super::publish_manifest::{is_sha256, rebuild_source_provenance_hash};
 
+const PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT: &str = "page_rollback_operation_v1";
 const MAX_RECOVERED_ACTIVATION_PREFIX: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -331,6 +332,18 @@ async fn verify_physical_loss_activation_prefix_in_tx(
         ));
     }
 
+    let anchor_version = resolve_repair_activation_anchor_in_tx(
+        txn,
+        operation,
+        current_page_version,
+    )
+    .await?;
+    if anchor_version > current_page_version {
+        return Err(PagesError::rollback_target_unavailable(
+            "repair activation anchor is newer than the current page version",
+        ));
+    }
+
     let query = || {
         page_artifact_binding_replacement_operation::Entity::find()
             .filter(
@@ -339,7 +352,7 @@ async fn verify_physical_loss_activation_prefix_in_tx(
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(operation.page_id))
             .filter(
                 page_artifact_binding_replacement_operation::Column::ResultVersion
-                    .gt(operation.result_version),
+                    .gt(anchor_version),
             )
             .filter(
                 page_artifact_binding_replacement_operation::Column::ResultVersion
@@ -354,7 +367,7 @@ async fn verify_physical_loss_activation_prefix_in_tx(
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
     };
 
-    let mut cursor = operation.result_version;
+    let mut cursor = anchor_version;
     let mut prefix_locales = std::collections::BTreeSet::new();
     for (index, activation) in activations.into_iter().enumerate() {
         if index >= MAX_RECOVERED_ACTIVATION_PREFIX {
@@ -440,6 +453,73 @@ async fn verify_physical_loss_activation_prefix_in_tx(
     Err(PagesError::rollback_target_unavailable(
         "physical-loss activation prefix does not contain every repaired locale whose manifest was lost",
     ))
+}
+
+async fn resolve_repair_activation_anchor_in_tx(
+    txn: &DatabaseTransaction,
+    operation: &page_publish_operation::Model,
+    current_page_version: i32,
+) -> PagesResult<i32> {
+    let query = || {
+        page_rollback_operation::Entity::find()
+            .filter(page_rollback_operation::Column::TenantId.eq(operation.tenant_id))
+            .filter(page_rollback_operation::Column::PageId.eq(operation.page_id))
+            .filter(page_rollback_operation::Column::TargetPublishOperationId.eq(operation.id))
+            .filter(
+                page_rollback_operation::Column::TargetArtifactSetHash
+                    .eq(operation.artifact_set_hash.as_str()),
+            )
+            .filter(page_rollback_operation::Column::ResultVersion.lte(current_page_version))
+            .order_by_desc(page_rollback_operation::Column::ResultVersion)
+            .order_by_desc(page_rollback_operation::Column::Id)
+    };
+    let rollback = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    };
+    let Some(rollback) = rollback else {
+        return Ok(operation.result_version);
+    };
+
+    if rollback.id.is_nil()
+        || rollback.tenant_id != operation.tenant_id
+        || rollback.page_id != operation.page_id
+        || rollback.target_publish_operation_id != operation.id
+        || rollback.idempotency_key.trim().is_empty()
+        || rollback.result_version <= operation.result_version
+        || rollback.result_version > current_page_version
+        || !is_sha256(&rollback.request_hash)
+        || !is_sha256(&rollback.source_artifact_set_hash)
+        || !is_sha256(&rollback.target_artifact_set_hash)
+        || rollback.source_artifact_set_hash == rollback.target_artifact_set_hash
+        || rollback.target_artifact_set_hash != operation.artifact_set_hash
+    {
+        return Err(PagesError::rollback_target_unavailable(
+            "repair rollback activation anchor failed identity or hash validation",
+        ));
+    }
+    let rollback_expected_version = rollback
+        .result_version
+        .checked_sub(1)
+        .filter(|version| *version > 0)
+        .ok_or_else(|| {
+            PagesError::rollback_target_unavailable(
+                "repair rollback activation anchor has an invalid result version",
+            )
+        })?;
+    let expected_request_hash = stable_hash(&(
+        PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT,
+        operation.tenant_id,
+        operation.page_id,
+        rollback_expected_version,
+        operation.id,
+    ))?;
+    if rollback.request_hash != expected_request_hash {
+        return Err(PagesError::rollback_target_unavailable(
+            "repair rollback activation anchor request hash failed validation",
+        ));
+    }
+    Ok(rollback.result_version)
 }
 
 async fn source_artifact_exists_in_tx(
