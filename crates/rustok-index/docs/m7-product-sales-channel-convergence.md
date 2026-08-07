@@ -97,9 +97,9 @@ in-flight stale-mutation window and for this convergence state machine remains p
 
 ## Retained PostgreSQL convergence packet
 
-`crates/rustok-distribution/tests/product_channel_convergence_postgres.rs` is now a source-ready,
-execution-pending packet for this state machine. It uses two independent generic `ModuleWorkScheduler`
-hosts and the production Product/Channel/Index storage/runtime path.
+`crates/rustok-distribution/tests/product_channel_convergence_postgres.rs` is a source-ready,
+execution-pending packet for the convergence state machine. It uses two independent generic
+`ModuleWorkScheduler` hosts and the production Product/Channel/Index storage/runtime path.
 
 The packet retains assertions for:
 
@@ -118,13 +118,36 @@ Detailed packet contract:
 
 This is retained source only. It has not been executed or admitted.
 
+## Retained Channel identity-transition packet
+
+`crates/rustok-distribution/tests/product_channel_identity_transitions_postgres.rs` is a separate
+source-ready, execution-pending packet for Channel create/delete/tenant-move/delete-recreate identity
+semantics.
+
+It retains evidence that:
+
+- Channel create and delete advance the tenant Channel generation and, when unrestricted Product UUID
+  membership changes, advance both Product `relation_epoch` and `projection_epoch`;
+- a Channel tenant move advances both old and new tenant generations, removes membership from the old
+  tenant Product, adds the same Channel UUID to the new tenant Product, and requires current Product
+  projection mutations on both sides before query authority returns;
+- delete + recreate of the same Channel UUID/canonical slug before convergence advances Channel
+  generation twice but produces the same final Product membership, so relation/projection do not
+  advance; only the freshness witness advances and the same materialized Product row becomes
+  query-admissible again without a Product mutation;
+- tenant scope remains isolated while the other tenant changes.
+
+Detailed packet contract:
+[M7 Product / Channel identity-transition PostgreSQL harness](./m7-product-channel-identity-transitions-postgres-harness.md).
+
+This is retained source only. It has not been executed or admitted.
+
 ## Remaining M7 admission
 
 - execute/admit the source-ready Product delayed-mutation/locale-deletion PostgreSQL query-freshness
   packet;
 - execute/admit the source-ready Product visibility + Channel-generation convergence packet;
-- retain any still-missing Channel create/delete/tenant-move and delete-recreate evidence not covered by
-  the slug-generation packet;
+- execute/admit the source-ready Channel create/delete/tenant-move/delete-recreate packet;
 - admit canonical Product typed events/routes only after event-contract digest verification;
 - prove complete Product/Variant/Channel query parity, including linked-target availability;
 - move Storefront traffic only after readiness, equivalence, convergence, and materialized-freshness
@@ -135,8 +158,10 @@ This is retained source only. It has not been executed or admitted.
 ```bash
 cargo test -p rustok-distribution --features mod-product --test product_materialized_query_freshness_postgres -- --nocapture
 cargo test -p rustok-distribution --features mod-product --test product_channel_convergence_postgres -- --nocapture
+cargo test -p rustok-distribution --features mod-product --test product_channel_identity_transitions_postgres -- --nocapture
 node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
 node scripts/verify/verify-index-product-channel-convergence-postgres-harness.mjs
+node scripts/verify/verify-index-product-channel-identity-transitions-postgres-harness.mjs
 node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
