@@ -21,7 +21,9 @@ impl CatalogService {
 
         let mut query = entities::product::Entity::find()
             .filter(entities::product::Column::TenantId.eq(tenant_id));
-        if let Some(status) = list_query.status {
+        if let Some(raw_status) = list_query.raw_status.as_deref() {
+            query = query.filter(entities::product::Column::Status.eq(raw_status));
+        } else if let Some(status) = list_query.status {
             query = query.filter(entities::product::Column::Status.eq(status));
         }
         if let Some(vendor) = list_query.vendor.as_deref() {
