@@ -543,7 +543,6 @@ pub async fn delete_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
     ensure_permissions(
@@ -552,23 +551,13 @@ pub async fn delete_product(
         "Permission denied: products:delete required",
     )?;
 
-    let idempotency_key = admin_product_command_idempotency_key(
-        tenant.id,
-        auth.user_id,
-        Some(id),
-        "delete_product",
-        &(),
-    )?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
-    runtime
-        .product_catalog_command_port()
-        .delete_product(port_context.clone(), id)
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
+    service
+        .delete_product(tenant.id, auth.user_id, id)
         .await
         .map_err(|error| {
-            map_admin_product_port_error(
+            map_admin_product_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "delete_product"),
-                &port_context,
                 error,
             )
         })?;
@@ -581,7 +570,6 @@ pub async fn publish_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
@@ -590,23 +578,13 @@ pub async fn publish_product(
         "Permission denied: products:update required",
     )?;
 
-    let idempotency_key = admin_product_command_idempotency_key(
-        tenant.id,
-        auth.user_id,
-        Some(id),
-        "publish_product",
-        &(),
-    )?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
-    let product = runtime
-        .product_catalog_command_port()
-        .publish_product(port_context.clone(), id)
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
+    let product = service
+        .publish_product(tenant.id, auth.user_id, id)
         .await
         .map_err(|error| {
-            map_admin_product_port_error(
+            map_admin_product_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "publish_product"),
-                &port_context,
                 error,
             )
         })?;
@@ -619,7 +597,6 @@ pub async fn unpublish_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
@@ -628,28 +605,18 @@ pub async fn unpublish_product(
         "Permission denied: products:update required",
     )?;
 
-    let idempotency_key = admin_product_command_idempotency_key(
-        tenant.id,
-        auth.user_id,
-        Some(id),
-        "unpublish_product",
-        &(),
-    )?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
-    let product = runtime
-        .product_catalog_command_port()
-        .unpublish_product(port_context.clone(), id)
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
+    let product = service
+        .unpublish_product(tenant.id, auth.user_id, id)
         .await
         .map_err(|error| {
-            map_admin_product_port_error(
+            map_admin_product_error(
                 AdminProductErrorContext::new(
                     tenant.id,
                     auth.user_id,
                     Some(id),
                     "unpublish_product",
                 ),
-                &port_context,
                 error,
             )
         })?;
