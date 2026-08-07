@@ -156,6 +156,21 @@ for (const marker of [
 ]) need(sources.harness, marker, "artifact-loss rebuild harness");
 
 requireOrder(sources.harness, [
+  "let body_revision = draft",
+  ".body",
+  ".as_ref()",
+  ".updated_at",
+  ".clone();",
+  ".publish_reviewed(",
+  "revision: body_revision,",
+], "artifact-loss reviewed publish revision fixture");
+for (const marker of [
+  "Sha256::digest",
+  'format!("{}\\0{}", body.format, body.content)',
+  "use sha2::{Digest, Sha256};",
+]) forbid(sources.harness, marker, "artifact-loss reviewed publish revision fixture");
+
+requireOrder(sources.harness, [
   "let canonical_artifact =",
   "let page_before_loss =",
   "let events_before_loss =",
