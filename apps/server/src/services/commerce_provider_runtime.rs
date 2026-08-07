@@ -153,6 +153,30 @@ pub fn attach_commerce_provider_registries(
         }
     };
 
+    #[cfg(feature = "mod-product")]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_product::ProductCatalogCommandRuntime>()
+            .or_else(|| server.shared_get::<rustok_product::ProductCatalogCommandRuntime>())
+            .or_else(|| {
+                server
+                    .shared_get::<rustok_outbox::TransactionalEventBus>()
+                    .map(|event_bus| {
+                        rustok_product::ProductCatalogCommandRuntime::in_process(
+                            server.db_clone(),
+                            event_bus,
+                        )
+                    })
+            });
+        match runtime {
+            Some(runtime) => {
+                server.shared_insert(runtime.clone());
+                host.with_shared_value(runtime)
+            }
+            None => host,
+        }
+    };
+
     #[cfg(all(
         feature = "mod-marketplace_listing",
         feature = "mod-marketplace_seller",

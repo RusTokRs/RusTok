@@ -1,6 +1,6 @@
 # M7 Product-to-SalesChannel cross-owner resolver
 
-Status: `automatic_convergence_source_complete_runtime_evidence_pending`.
+Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`.
 
 ## Current contract
 
@@ -72,31 +72,39 @@ state, or cross-owner storage writes beyond the existing Product-owned relation/
 Detailed convergence contract:
 [Product-to-SalesChannel automatic convergence](./m7-product-sales-channel-convergence.md).
 
-## Replay boundary
+## Replay and query boundary
 
-The canonical Product Index source already materializes the `sales_channels` link. Live replay is
-fail-closed unless the latest freshness witness for the projection's exact relation epoch matches:
+The canonical Product Index source materializes the `sales_channels` link. Live replay is fail-closed
+unless the latest freshness witness for the projection's exact relation epoch matches current canonical
+Product visibility and current tenant Channel identity generation. Product locale absence uses the same
+freshness gate. Product hard-delete replay remains independent of a live witness because it removes the
+graph.
 
-- current canonical Product visibility; and
-- current tenant Channel identity generation.
+Automatic convergence now re-establishes stale/missing relation freshness without a manual caller.
+The materialized/query freshness fence separately closes the in-flight source-read -> mutation-apply
+authority gap: a Product mutation produced before a later owner change may still be physically applied,
+but the Product root row is query-inadmissible until materialized `projection_epoch`, current Product
+revision, live locale identity, current freshness witness, Channel generation, and visibility-request
+watermark agree.
 
-Product locale absence uses the same freshness gate. Product hard-delete replay remains independent of
-a live witness because it removes the graph.
-
-Automatic convergence now re-establishes stale/missing relation freshness without a manual caller. It
-still does not make source observation atomic with later Index mutation application; the in-flight
-source-read -> mutation-apply materialized/query freshness boundary remains open.
+The first retained PostgreSQL packet for delayed Product scalar mutation and locale deletion is
+source-ready and execution-pending. Visibility/Channel-generation races plus multi-host/restart
+convergence evidence remain the next packet.
 
 ## Still open
 
-- retained PostgreSQL multi-host/restart/delete-recreate/freshness/convergence evidence;
-- a materialized/query freshness fence or equivalent admission evidence for in-flight mutations;
+- execute/admit retained PostgreSQL delayed-mutation query-freshness evidence;
+- Product visibility + Channel-generation convergence evidence for unchanged/changed membership;
+- multi-host lease/restart/delete-recreate/rejected-Product convergence evidence;
 - Product typed event routes after event-contract digest admission;
 - complete Product/Variant/Channel query equivalence and Storefront cutover evidence.
 
 ## Maintainer verification
 
 ```bash
+cargo test -p rustok-distribution --features mod-product --test product_materialized_query_freshness_postgres -- --nocapture
+node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
+node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs

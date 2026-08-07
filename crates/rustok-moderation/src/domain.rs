@@ -156,6 +156,46 @@ impl ModerationCasePriority {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModerationApplicationOperationStatus {
+    Pending,
+    Applying,
+    Retryable,
+    Applied,
+    Rejected,
+    OperatorReview,
+}
+
+impl ModerationApplicationOperationStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Applying => "applying",
+            Self::Retryable => "retryable",
+            Self::Applied => "applied",
+            Self::Rejected => "rejected",
+            Self::OperatorReview => "operator_review",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "pending" => Some(Self::Pending),
+            "applying" => Some(Self::Applying),
+            "retryable" => Some(Self::Retryable),
+            "applied" => Some(Self::Applied),
+            "rejected" => Some(Self::Rejected),
+            "operator_review" => Some(Self::OperatorReview),
+            _ => None,
+        }
+    }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Applied | Self::Rejected | Self::OperatorReview)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SubmitModerationReportCommand {
     pub scope: ModerationScopeRef,
@@ -247,6 +287,27 @@ pub struct ModerationDecisionRecord {
     pub decision_hash: String,
     pub decided_by: Uuid,
     pub decided_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModerationApplicationOperationRecord {
+    pub decision_id: Uuid,
+    pub tenant_id: Uuid,
+    pub case_id: Uuid,
+    pub decision_hash: String,
+    pub subject: ModerationSubjectRef,
+    pub status: ModerationApplicationOperationStatus,
+    pub attempt_count: i32,
+    pub next_attempt_at: DateTime<Utc>,
+    pub lease_token: Option<Uuid>,
+    pub lease_owner: Option<String>,
+    pub lease_expires_at: Option<DateTime<Utc>>,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub applied_revision: Option<i64>,
+    pub applied_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -7,6 +7,7 @@ pub(crate) use absence::PRODUCT_ABSENCE_WATERMARK_FACTORY;
 mod product;
 #[cfg(test)]
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
+mod query_admission;
 pub(crate) mod relation_admission;
 #[path = "../product_variant_index.rs"]
 mod variant;
@@ -19,6 +20,7 @@ pub(crate) fn register(
     product::register(extensions)?;
     variant::register(extensions)?;
     absence::register(extensions)?;
+    query_admission::register(extensions)?;
     channel_relation_convergence::register(extensions)
 }
 
@@ -33,7 +35,7 @@ mod tests {
     };
 
     #[test]
-    fn selected_product_bridge_registers_two_current_schemas_and_three_factories() {
+    fn selected_product_bridge_registers_two_current_schemas_three_factories_and_query_admission() {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(rustok_product::ProductRuntimeSelected);
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
@@ -64,6 +66,10 @@ mod tests {
             factory.owner_module() == "product"
                 && factory.factory_name() == PRODUCT_ABSENCE_WATERMARK_FACTORY
         }));
+        let admissions = extensions
+            .get::<rustok_index::PostgresIndexQueryAdmissionCatalog>()
+            .expect("Product selection must publish one query admission rule");
+        assert_eq!(admissions.len(), 1);
         assert!(!extensions.contains::<ModuleWorkRegistrations>());
     }
 

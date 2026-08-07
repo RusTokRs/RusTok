@@ -120,7 +120,7 @@
       "capabilities": ["preview", "tree", "properties", "publish"],
       "rollout_state": "wave0_baseline",
       "metadata_properties": {
-        "state": "source_connected_legacy_form_pending",
+        "state": "source_connected_execution_pending",
         "contract": "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
         "contribution_source": "crates/rustok-pages/admin/src/contributions.rs",
         "owner_port_source": "crates/rustok-pages/admin/src/metadata_properties.rs",
@@ -133,7 +133,7 @@
         "document_revision_independent": true,
         "fly_document_write": false,
         "owner_persistence": "pages",
-        "legacy_form": "PageMetadataEditor_pending_removal",
+        "legacy_form": "PageMetadataEditor_removed",
         "executed_evidence": "pending"
       },
       "materialization_persistence": {
@@ -142,7 +142,10 @@
         "materialization_hash_column": "materialization_hash",
         "materialization_identity_column": "materialization_identity",
         "runtime_snapshots_column": "runtime_snapshots",
-        "unique_key": ["tenant_id", "page_id", "locale", "build_hash", "materialization_hash"],
+        "instance_key_column": "instance_key",
+        "unique_key": ["tenant_id", "page_id", "locale", "build_hash", "materialization_hash", "instance_key"],
+        "canonical_instance_key": "canonical",
+        "rebuild_instance_key": "rebuild:<operation-id>",
         "legacy_mode": "verified_static_artifact_with_null_evidence",
         "partial_evidence": "rejected",
         "storefront_integrity": "PageBuilderMaterializedStaticLandingArtifact::verify_integrity",
@@ -173,7 +176,7 @@
         "raw_context_persisted": false
       },
       "artifact_rollback": {
-        "state": "service_public_transport_and_admin_control_integrated",
+        "state": "service_public_transport_admin_control_and_repair_cursor_source_ready",
         "input": "RollbackPageInput",
         "result": "RollbackPageResult",
         "service": "PageService::rollback_to_previous",
@@ -186,9 +189,14 @@
           "winner": "highest_activation_result_version",
           "rollback_resolution": "target_publish_operation_id",
           "resolved_manifest_required": true,
-          "hash_match_without_activation_receipt": "rejected"
+          "hash_match_without_activation_receipt": "rejected",
+          "repair_current_cursor_fallback": "retained_publish_provenance_plus_exact_rebuild_and_activation_receipts",
+          "repair_current_cursor_source": "crates/rustok-pages/src/services/page/artifact_set.rs",
+          "repair_current_cursor_strict_manifest_first": true,
+          "repair_current_cursor_database_errors_masked": false
         },
         "target_manifest_required": true,
+        "historical_target_provenance_fallback": false,
         "activation_receipt_trace_required": true,
         "receipt_entity": "page_rollback_operation",
         "idempotency_unique_key": ["tenant_id", "page_id", "idempotency_key"],
@@ -208,6 +216,44 @@
           "network_or_5xx": "retain_same_command_identity",
           "typed_graphql_or_4xx": "clear_pending_identity"
         },
+        "executed_evidence": "pending"
+      },
+      "artifact_repair": {
+        "state": "service_transport_recovery_and_rollback_continuity_source_ready_execution_pending",
+        "audit_service": "PageService::audit_immutable_artifact_integrity",
+        "rebuild_provenance_entity": "page_publish_rebuild_source",
+        "rebuild_service": "PageService::rebuild_immutable_artifact",
+        "rebuild_receipt_entity": "page_artifact_rebuild_operation",
+        "activation_service": "PageService::replace_rebuilt_artifact_binding",
+        "activation_receipt_entity": "page_artifact_binding_replacement_operation",
+        "physical_loss_recovery": {
+          "missing_binding_allowed": true,
+          "source_artifact_must_be_absent": true,
+          "retained_body_identity_required": true,
+          "source_publish_result_version_must_equal_current_expected_version": true,
+          "source_artifact_recreation": false
+        },
+        "rollback_continuity": {
+          "state": "source_ready_execution_pending",
+          "strict_publish_manifest_first": true,
+          "current_cursor_only": true,
+          "requires_explicit_repair_chain": true,
+          "current_set_hash_must_equal_source_publish": true,
+          "complete_retained_provenance_required": true,
+          "surviving_manifest_rows_must_match_retained_provenance": true,
+          "unchanged_locales_require_original_manifest_rows": true,
+          "missing_manifest_row_requires_absent_source_artifact": true,
+          "exact_rebuild_receipt_required_for_changed_artifact_id": true,
+          "exact_activation_receipt_required_for_changed_artifact_id": true,
+          "historical_target_original_manifest_required": true,
+          "source": "crates/rustok-pages/src/services/page/artifact_set.rs",
+          "test": "crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs",
+          "verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs",
+          "executed_evidence": "pending"
+        },
+        "automatic_audit_to_rebuild": false,
+        "automatic_rebuild_to_activation": false,
+        "automatic_activation_to_rollback": false,
         "executed_evidence": "pending"
       },
       "cache_consumer": {
@@ -248,7 +294,14 @@
         "rollback_idempotency_conflict": "PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT",
         "rollback_receipt_integrity": "PAGE_ROLLBACK_OPERATION_INTEGRITY",
         "rollback_target_unavailable": "PAGE_ROLLBACK_TARGET_UNAVAILABLE",
-        "rollback_requires_published": "PAGE_ROLLBACK_REQUIRES_PUBLISHED"
+        "rollback_requires_published": "PAGE_ROLLBACK_REQUIRES_PUBLISHED",
+        "artifact_rebuild_idempotency_conflict": "PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT",
+        "artifact_rebuild_source_invalid": "PAGE_ARTIFACT_REBUILD_SOURCE_INVALID",
+        "artifact_rebuild_operation_integrity": "PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY",
+        "artifact_binding_replacement_idempotency_conflict": "PAGE_ARTIFACT_BINDING_REPLACEMENT_IDEMPOTENCY_CONFLICT",
+        "artifact_binding_replacement_current_conflict": "PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT",
+        "artifact_binding_replacement_target_invalid": "PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID",
+        "artifact_binding_replacement_operation_integrity": "PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY"
       },
       "degraded_mode_errors": {
         "builder_disabled": "FEATURE_DISABLED",
@@ -273,11 +326,13 @@
     "local_plan": "crates/rustok-page-builder/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-page-builder-fba-baseline.mjs",
+    "contract_registry_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs",
     "reviewed_publish_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs",
     "publish_transport_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
     "pages_metadata_properties_verifier": "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
     "pages_cache_verifier": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
     "pages_rollback_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
+    "pages_repair_rollback_continuity_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs",
     "runtime_order_smoke": "crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs"
   }

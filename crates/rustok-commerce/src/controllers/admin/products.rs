@@ -4,16 +4,17 @@ use axum::{
     http::StatusCode,
 };
 use rustok_api::Permission;
-use rustok_api::{AuthContext, TenantContext};
-use rustok_product::CatalogService;
+use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::super::{
     CommerceHttpRuntime,
-    common::{PaginatedResponse, ensure_permissions},
+    common::{PaginatedResponse, PaginationMeta, ensure_permissions},
     products::{
-        AdminProductErrorContext, ListProductsParams, ProductListItem, map_admin_product_error,
+        AdminProductErrorContext, ListProductsParams, ProductListItem,
+        admin_product_command_context, admin_product_command_idempotency_key,
+        map_admin_product_port_error,
     },
 };
 use crate::{
@@ -206,13 +207,112 @@ async fn validate_admin_product_shipping_profile_input(
     )
 )]
 pub async fn list_products(
-    state: State<CommerceHttpRuntime>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
-    query: Query<ListProductsParams>,
+    request_context: RequestContext,
+    Query(params): Query<ListProductsParams>,
 ) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
-    super::super::products::list_products(state, tenant, auth, request_context, query).await
+    ensure_permissions(
+        &auth,
+        &[Permission::PRODUCTS_LIST],
+        "Permission denied: products:list required",
+    )?;
+
+    let requested_limit = params
+        .pagination
+        .as_ref()
+        .map(|pagination| pagination.per_page);
+    let pagination = params.pagination.unwrap_or_default();
+    let locale = params
+        .locale
+        .as_deref()
+        .unwrap_or(request_context.locale.as_str())
+        .to_string();
+    let list_query = rustok_product::AdminProductListQuery {
+        search: params.search,
+        status: None,
+        category_id: None,
+        sort_by: rustok_product::StorefrontProductSortBy::CreatedAt,
+        sort_direction: rustok_product::StorefrontProductSortDirection::Desc,
+        attribute_filters: Vec::new(),
+    };
+    let port_context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        rustok_api::PortActor::user(auth.user_id.to_string()),
+        locale.as_str(),
+        format!(
+            "commerce-admin-product:list:{}:{}",
+            pagination.page,
+            pagination.limit()
+        ),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let port_context = match request_context.channel_slug.as_deref() {
+        Some(channel) => port_context.with_channel(channel),
+        None => port_context,
+    };
+    let products = runtime
+        .product_catalog_read_port()
+        .list_admin_products(
+            port_context.clone(),
+            rustok_product::AdminProductsRequest {
+                locale: Some(locale),
+                fallback_locale: Some(tenant.default_locale.clone()),
+                query: list_query,
+                raw_status: params.status,
+                vendor: params.vendor,
+                product_type: params.product_type,
+                empty_missing_title: true,
+                page: pagination.page,
+                per_page: pagination.limit(),
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_admin_product_port_error(
+                AdminProductErrorContext::new(tenant.id, auth.user_id, None, "list_products"),
+                &port_context,
+                error,
+            )
+        })?;
+
+    let items = products
+        .items
+        .into_iter()
+        .map(|product| ProductListItem {
+            id: product.id,
+            status: product.status.to_string(),
+            title: product.title,
+            handle: product.handle,
+            seller_id: product.seller_id,
+            vendor: product.vendor,
+            product_type: product.product_type,
+            shipping_profile_slug: Some(
+                product
+                    .shipping_profile_slug
+                    .as_deref()
+                    .and_then(normalize_shipping_profile_slug)
+                    .unwrap_or_else(|| "default".to_string()),
+            ),
+            tags: product.tags,
+            created_at: product.created_at.to_rfc3339(),
+            published_at: product.published_at.map(|value| value.to_rfc3339()),
+        })
+        .collect::<Vec<_>>();
+
+    rustok_telemetry::metrics::record_read_path_budget(
+        "http",
+        "commerce.list_products",
+        requested_limit,
+        products.per_page,
+        items.len(),
+    );
+
+    Ok(Json(PaginatedResponse {
+        data: items,
+        meta: PaginationMeta::new(products.page, products.per_page, products.total),
+    }))
 }
 
 /// Create admin ecommerce product
@@ -230,6 +330,7 @@ pub async fn create_product(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Json(input): Json<CreateProductInput>,
 ) -> HttpResult<(StatusCode, Json<ProductResponse>)> {
     ensure_permissions(
@@ -250,13 +351,23 @@ pub async fn create_product(
     )
     .await?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .create_product(tenant.id, auth.user_id, input)
+    let idempotency_key = admin_product_command_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        None,
+        "create_product",
+        &input,
+    )?;
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+    let product = runtime
+        .product_catalog_command_port()
+        .create_product(port_context.clone(), input)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, None, "create_product"),
+                &port_context,
                 error,
             )
         })?;
@@ -276,13 +387,49 @@ pub async fn create_product(
     )
 )]
 pub async fn show_product(
-    state: State<CommerceHttpRuntime>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
-    path: Path<Uuid>,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::show_product(state, tenant, auth, request_context, path).await
+    ensure_permissions(
+        &auth,
+        &[Permission::PRODUCTS_READ],
+        "Permission denied: products:read required",
+    )?;
+
+    let port_context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        rustok_api::PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-product:show:{id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let port_context = match request_context.channel_slug.as_deref() {
+        Some(channel) => port_context.with_channel(channel),
+        None => port_context,
+    };
+    let product = runtime
+        .product_catalog_read_port()
+        .read_product_projection(
+            port_context.clone(),
+            rustok_product::ProductProjectionRequest {
+                product_id: id,
+                locale: Some(request_context.locale.clone()),
+                fallback_locale: Some(tenant.default_locale.clone()),
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_admin_product_port_error(
+                AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "show_product"),
+                &port_context,
+                error,
+            )
+        })?;
+
+    Ok(Json(product))
 }
 
 /// Update admin ecommerce product
@@ -301,6 +448,7 @@ pub async fn update_product(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateProductInput>,
 ) -> HttpResult<Json<ProductResponse>> {
@@ -322,13 +470,23 @@ pub async fn update_product(
     )
     .await?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .update_product(tenant.id, auth.user_id, id, input)
+    let idempotency_key = admin_product_command_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        "update_product",
+        &input,
+    )?;
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+    let product = runtime
+        .product_catalog_command_port()
+        .update_product(port_context.clone(), id, input)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "update_product"),
+                &port_context,
                 error,
             )
         })?;

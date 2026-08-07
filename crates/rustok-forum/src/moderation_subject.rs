@@ -5,21 +5,27 @@ use chrono::Utc;
 use rustok_api::{
     HostRuntimeContext, PortActorKind, PortCallPolicy, PortContext, PortError,
 };
+use rustok_events::DomainEvent;
 use rustok_moderation_api::{
     ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationDecisionEffectAction,
     ModerationSubjectAdapterBuildError, ModerationSubjectAdapterFactory,
     ModerationSubjectAdapterKey, ModerationSubjectCommandPort, ModerationSubjectKind,
+    ModerationVisibilityState,
 };
-use rustok_outbox::idempotency;
+use rustok_outbox::{TransactionalEventBus, idempotency};
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
     IsolationLevel, Statement, TransactionTrait,
 };
 use uuid::Uuid;
 
-use crate::error::ForumError;
-use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
-use crate::services::TopicService;
+use crate::error::{ForumError, ForumResult};
+use crate::services::projection_invalidation::{
+    publish_forum_category_projection_direct_in_tx, publish_forum_topic_projection_direct_in_tx,
+};
+use crate::services::user_stats::UserStatsService;
+use crate::services::{CategoryService, ReplyService, TopicService};
+use crate::state_machine::ReplyStatus;
 
 pub const FORUM_MODERATION_MODULE: &str = "forum";
 const FORUM_OWNER_SLUG: &str = "forum";
@@ -86,6 +92,7 @@ impl ModerationSubjectCommandPort for ForumModerationSubjectAdapter {
         validate_trusted_caller(&context)?;
         validate_command_for_adapter(&self.key, &command)?;
         let tenant_id = parse_tenant_id(&context)?;
+        let actor_id = trusted_actor_uuid(&context);
 
         let expected_idempotency_key = command.decision_id.to_string();
         if context.idempotency_key.as_deref() != Some(expected_idempotency_key.as_str()) {
@@ -110,7 +117,9 @@ impl ModerationSubjectCommandPort for ForumModerationSubjectAdapter {
             idempotency::Admission::ReplayError(error) => return Err(error),
         };
 
-        let result = self.execute_apply(tenant_id, lease, &command).await;
+        let result = self
+            .execute_apply(tenant_id, actor_id, lease, &command)
+            .await;
         if let Err(error) = &result {
             // Retryable storage/serialization failures leave the processing lease
             // reclaimable instead of freezing a transient failure into the
@@ -133,11 +142,19 @@ impl ForumModerationSubjectAdapter {
     async fn execute_apply(
         &self,
         tenant_id: Uuid,
+        actor_id: Option<Uuid>,
         lease: idempotency::Lease,
         command: &ApplyModerationDecisionCommand,
     ) -> Result<ModerationDecisionApplication, PortError> {
         let transaction = begin_application_transaction(&self.db).await?;
-        let result = apply_inside_transaction(&transaction, tenant_id, &self.key, command).await;
+        let result = apply_inside_transaction(
+            &transaction,
+            tenant_id,
+            actor_id,
+            &self.key,
+            command,
+        )
+        .await;
         match result {
             Ok(application) => {
                 idempotency::complete(&transaction, lease, &application).await?;
@@ -155,6 +172,7 @@ impl ForumModerationSubjectAdapter {
 async fn apply_inside_transaction(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
+    actor_id: Option<Uuid>,
     key: &ModerationSubjectAdapterKey,
     command: &ApplyModerationDecisionCommand,
 ) -> Result<ModerationDecisionApplication, PortError> {
@@ -204,7 +222,7 @@ async fn apply_inside_transaction(
                 publish_forum_topic_projection_direct_in_tx(
                     transaction,
                     tenant_id,
-                    None,
+                    actor_id,
                     command.subject.id,
                 )
                 .await
@@ -223,6 +241,43 @@ async fn apply_inside_transaction(
                 "Forum does not yet own an expiry-safe moderation lock state",
             ));
         }
+        (
+            ModerationSubjectKind::ForumPost,
+            ModerationDecisionEffectAction::SetVisibility {
+                state: ModerationVisibilityState::Hidden,
+            },
+        ) => apply_reply_hidden_effect_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            command.subject.id,
+        )
+        .await
+        .map_err(forum_error)?,
+        (
+            ModerationSubjectKind::ForumPost,
+            ModerationDecisionEffectAction::SetVisibility {
+                state: ModerationVisibilityState::Removed,
+            },
+        ) => apply_reply_removed_effect_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            command.subject.id,
+        )
+        .await
+        .map_err(forum_error)?,
+        (
+            ModerationSubjectKind::ForumPost,
+            ModerationDecisionEffectAction::RejectPublication,
+        ) => apply_reply_rejected_effect_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            command.subject.id,
+        )
+        .await
+        .map_err(forum_error)?,
         _ => {
             return Err(PortError::validation(
                 "forum.moderation_effect_unsupported",
@@ -257,6 +312,140 @@ async fn apply_inside_transaction(
         applied_revision,
         applied_at: Utc::now(),
     })
+}
+
+async fn apply_reply_hidden_effect_in_tx(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    reply_id: Uuid,
+) -> ForumResult<bool> {
+    apply_reply_non_public_status_effect_in_tx(
+        transaction,
+        tenant_id,
+        actor_id,
+        reply_id,
+        ReplyStatus::Hidden,
+    )
+    .await
+}
+
+async fn apply_reply_rejected_effect_in_tx(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    reply_id: Uuid,
+) -> ForumResult<bool> {
+    apply_reply_non_public_status_effect_in_tx(
+        transaction,
+        tenant_id,
+        actor_id,
+        reply_id,
+        ReplyStatus::Rejected,
+    )
+    .await
+}
+
+async fn apply_reply_non_public_status_effect_in_tx(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    reply_id: Uuid,
+    target: ReplyStatus,
+) -> ForumResult<bool> {
+    let reply = ReplyService::find_reply_in_tx(transaction, tenant_id, reply_id).await?;
+    if reply.status == target {
+        return Ok(false);
+    }
+
+    reply.status.validate_transition(&target)?;
+    let topic_id = reply.topic_id;
+    let old_status = reply.status.to_string();
+    ReplyService::set_status_in_tx(transaction, tenant_id, reply_id, target).await?;
+
+    let changed_category_id = if reply.status == ReplyStatus::Approved {
+        let topic = TopicService::adjust_reply_count_in_tx(transaction, tenant_id, topic_id, -1)
+            .await?;
+        CategoryService::adjust_counters_in_tx(
+            transaction,
+            tenant_id,
+            topic.category_id,
+            0,
+            -1,
+        )
+        .await?;
+        UserStatsService::adjust_reply_count_in_tx(
+            transaction,
+            tenant_id,
+            reply.author_id,
+            -1,
+        )
+        .await?;
+        Some(topic.category_id)
+    } else {
+        None
+    };
+
+    TransactionalEventBus::publish_root_in_tx(
+        transaction,
+        tenant_id,
+        actor_id,
+        DomainEvent::ForumReplyStatusChanged {
+            reply_id,
+            topic_id,
+            old_status,
+            new_status: target.to_string(),
+            moderator_id: actor_id,
+        },
+    )
+    .await?;
+
+    if let Some(category_id) = changed_category_id {
+        publish_forum_category_projection_direct_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            category_id,
+        )
+        .await?;
+    }
+
+    Ok(true)
+}
+
+async fn apply_reply_removed_effect_in_tx(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    reply_id: Uuid,
+) -> ForumResult<bool> {
+    let outcome = ReplyService::remove_in_tx(transaction, tenant_id, reply_id).await?;
+
+    TransactionalEventBus::publish_root_in_tx(
+        transaction,
+        tenant_id,
+        actor_id,
+        DomainEvent::ForumReplyStatusChanged {
+            reply_id,
+            topic_id: outcome.topic_id,
+            old_status: outcome.old_status.to_string(),
+            new_status: ReplyStatus::Deleted.to_string(),
+            moderator_id: actor_id,
+        },
+    )
+    .await?;
+
+    if outcome.was_public {
+        publish_forum_category_projection_direct_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            outcome.category_id,
+        )
+        .await?;
+    }
+
+    Ok(true)
 }
 
 async fn begin_application_transaction(
@@ -481,6 +670,12 @@ fn validate_trusted_caller(context: &PortContext) -> Result<(), PortError> {
             "Forum moderation decision application is restricted to trusted orchestration callers",
         )),
     }
+}
+
+fn trusted_actor_uuid(context: &PortContext) -> Option<Uuid> {
+    Uuid::parse_str(context.actor.id.trim())
+        .ok()
+        .filter(|actor_id| !actor_id.is_nil())
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {

@@ -1,6 +1,6 @@
 # Product to SalesChannel relation admission
 
-Status: `canonical_source_freshness_and_convergence_complete_runtime_evidence_pending`.
+Status: `canonical_source_freshness_convergence_and_query_fence_complete_runtime_evidence_pending`.
 
 The current Product Index graph contains the Product-to-SalesChannel link. There is one canonical
 Product contract; no compatibility schema is waiting to add relation support.
@@ -96,6 +96,25 @@ the witness. Product locale absence uses the same gate.
 
 Hard-delete replay does not require a live freshness witness because it removes the Product graph.
 
+## Materialized/query freshness admission
+
+The source-read -> mutation-apply window is now fenced at the generic Index root query boundary.
+`rustok-index` applies a trusted schema-scoped admission predicate before user filter, cursor, order,
+pagination/limit, and exact count in the same PostgreSQL repeatable-read query snapshot.
+
+The canonical Product rule requires the materialized Product `source_version` to equal the latest
+Product `projection_epoch`, requires the projection Product component to equal current owner revision,
+requires current relation freshness/Channel generation evidence, rejects a visibility request newer than
+the witness, and requires the live Product plus exact locale translation to still exist.
+
+Therefore a previously valid Product mutation that is applied after owner state changes is physically
+allowed to land in Index storage but remains query-inadmissible until current owner state is
+materialized. This adds no Product schema, duplicate relation watermark, or Product-owned Channel
+read.
+
+Detailed contract:
+[M7 Product materialized/query freshness fence](./m7-product-materialized-query-freshness.md).
+
 ## Production admission status
 
 1. Durable relation membership storage: source complete.
@@ -107,18 +126,23 @@ Hard-delete replay does not require a live freshness witness because it removes 
 7. Durable Product visibility requests and tenant convergence checkpoint/lease: source complete.
 8. Automatic Product visibility / Channel identity relation convergence through generic ModuleWork:
    source complete.
-9. PostgreSQL concurrency/restart/delete-recreate/freshness/convergence evidence: pending.
-10. Materialized/query freshness admission for the source-read -> mutation-apply window: pending.
+9. Materialized/query freshness admission for the source-read -> mutation-apply window: source complete;
+   PostgreSQL execution/admission evidence pending.
+10. PostgreSQL concurrency/restart/delete-recreate/freshness/convergence evidence: pending.
 11. Product typed event route/consumer after event-contract digest admission: pending.
 12. Storefront/production cutover and query equivalence: pending.
 
-Automatic convergence does not authorize cutover by itself. A previously valid source page can still be
-in flight when owner facts change; that already-produced mutation needs a materialized/query freshness
-fence or equivalent retained admission evidence.
+Automatic convergence plus the query fence closes the source-level authority gap, but neither authorizes
+cutover without retained PostgreSQL execution evidence. The first delayed-mutation/locale-deletion
+query-freshness packet is source-ready; Product visibility/Channel-generation and multi-host convergence
+evidence remains the next packet.
 
 ## Maintainer validation
 
 ```bash
+cargo test -p rustok-distribution --features mod-product --test product_materialized_query_freshness_postgres -- --nocapture
+node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
+node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-source.mjs

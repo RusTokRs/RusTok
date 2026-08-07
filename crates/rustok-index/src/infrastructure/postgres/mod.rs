@@ -12,6 +12,7 @@ mod drift_repair_recovery;
 mod drift_snapshot_reader;
 mod mutation_store;
 mod partition_admission;
+mod query_admission;
 mod query_port;
 mod query_runtime;
 mod replay_runtime;
@@ -107,6 +108,10 @@ pub use partition_admission::{
     PartitionAdmissionReason, PartitionBaselineEvidence, PartitionEvidence,
     PartitionMeasurementCoverage, PartitionRelationPlan, PartitionShadowEvidence,
     PartitionShadowPlan, PartitionStrategy, evaluate_partition_admission,
+};
+pub use query_admission::{
+    PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryAdmissionDescriptor,
+    PostgresIndexQueryAdmissionError, register_postgres_index_query_admission,
 };
 pub use query_port::PostgresIndexQueryPort;
 pub use query_runtime::{

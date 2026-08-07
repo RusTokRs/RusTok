@@ -199,6 +199,35 @@ These are source-contract defects, not verification-only tasks.
   the new topology guard, then retain evidence when validation policy allows it.
 - [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,
   Payment, and Fulfillment concrete services behind host-composed owner ports.
+- [x] Publish Product-owned `ProductCatalogCommandPort` / `ProductCatalogCommandRuntime`,
+  host-compose embedded or external command providers, and cut mounted admin REST
+  product create/update over to the owner port with deadline, payload-bound deterministic
+  write identity, channel, actor, locale, and stable public errors.
+- [x] Cut mounted admin REST Product detail over to the host-selected
+  `ProductCatalogReadPort`, preserving `PRODUCTS_READ`, tenant/actor/channel context,
+  requested locale plus tenant fallback locale, a bounded deadline, and stable public errors.
+- [x] Publish an optional fail-closed admin-list capability on `ProductCatalogReadPort`
+  without changing the existing `AdminProductListQuery` public shape, and cut mounted
+  admin REST Product list to the host-selected owner port while preserving exact legacy
+  status/vendor/product-type/search filtering, created-at-desc ordering, pagination,
+  locale fallback, empty missing-title projection, normalized/default shipping-profile
+  slug, tags, request context, deadline, and public error envelope.
+- [x] Cut mounted admin GraphQL Product catalog reads to the host-selected
+  `ProductCatalogReadRuntime` / `ProductCatalogReadPort`, preserving tenant/permission
+  admission, typed catalog filters, pagination validation, requested/default locale,
+  request channel, authenticated actor, bounded deadline, response projection, and
+  correlation-aware stable public owner errors.
+- [x] Publish an optional filtered storefront-list capability without changing
+  `PublishedProductsRequest`, and cut mounted storefront GraphQL Product catalog reads
+  to the host-selected `ProductCatalogReadRuntime` / `ProductCatalogReadPort` while
+  preserving search/category/sort/attribute filters, pagination validation, channel
+  visibility, requested/default locale, service actor/deadline context, response
+  projection, and correlation-aware stable public owner errors.
+- [ ] Cut remaining mounted Product REST delete/publish/unpublish lifecycle commands and
+  GraphQL product lifecycle/schema operations over to host-composed Product owner ports.
+  Direct Product entities, `CatalogService`, and `ProductCatalogSchemaService` remain
+  explicit source debt; repeatable lifecycle commands need an explicit caller
+  idempotency contract before cutover.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -213,7 +242,7 @@ These are source-contract defects, not verification-only tasks.
 - [x] Cut storefront return and order-change list reads to the same host-selected
   runtime while preserving filters, ordering, complete DTOs, totals, and envelopes.
 - [x] Cut GraphQL return/order-change detail and list reads to the scoped host-selected
-  runtime with validated actor, resolved channel/effective locale context, typed
+  runtime with validated actor, resolved channel/effective-locale context, typed
   not-found compatibility errors, and no concrete owner service storage.
 - [x] Cut mounted admin return/order-change detail and list reads to the host-selected
   runtime while preserving `ORDERS_READ`, filters, clamped pagination, totals, public
@@ -595,6 +624,11 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs`
 - [ ] `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - [ ] `node scripts/verify/verify-commerce-marketplace-financial-capability.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-command-port.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-admin-detail-read.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-admin-list-read.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-admin-graphql-read.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-storefront-graphql-read.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -627,8 +661,9 @@ Source inspection is not execution evidence.
   mutation, payment, or fulfillment ownership; unmounted admin compatibility GET
   handlers remain explicit source debt.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, order-read,
-  and marketplace-financial topology static guards against a repository checkout and
-  retain their output.
+  marketplace-financial topology, Product command-port, Product admin-detail read,
+  Product admin-list read, Product admin-GraphQL read, and Product storefront-GraphQL
+  read static guards against a repository checkout and retain their output.
 
 ### Compile/tests
 
@@ -798,6 +833,24 @@ Source inspection is not execution evidence.
   keep base Commerce marketplace-free, gate financial migrations/transports/listeners/
   workers, compose owner modules only through explicit capability features, and fail
   closed before capture when marketplace lines reach a base-only checkout.
+- [x] Publish and host-compose Product catalog command ports, then cut mounted admin
+  REST product create/update away from `CatalogService` with payload-bound write
+  identity and stable public error mapping; lifecycle/read/GraphQL cutover remains open.
+- [x] Cut mounted admin REST Product detail over to the host-selected Product read port
+  while preserving locale fallback, request context, permissions, and public envelope;
+  admin list and GraphQL Product reads remain separate source debt.
+- [x] Cut mounted admin REST Product list over to the optional host-selected Product
+  read-port capability while preserving legacy filters, ordering, pagination, locale
+  fallback, empty-title/default-shipping envelope, and source compatibility for existing
+  Product read-port adapters; GraphQL catalog and lifecycle cutover remain open.
+- [x] Cut mounted admin GraphQL Product catalog reads to the host-selected Product read
+  runtime/port with authenticated actor, request channel/locale context, bounded deadline,
+  existing filter/pagination semantics, unchanged response projection, and safe stable
+  public owner errors; storefront catalog and lifecycle/schema cutover remain open.
+- [x] Publish the optional filtered storefront Product read capability and cut mounted
+  storefront GraphQL catalog reads to the host-selected Product runtime/port without
+  changing the existing published-list request, filter/pagination/channel semantics, or
+  GraphQL projection; Product lifecycle/schema cutover remains open.
 
 ## Change rules
 

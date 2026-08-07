@@ -141,14 +141,31 @@ Forum now also publishes source-ready `rustok-moderation-api` subject adapter
 factories for `forum_topic` and `forum_post` without depending on the Moderation
 owner crate. FORUM-19 adds dedicated tenant-scoped Forum moderation subject
 revision clocks for topic/reply core, content, lifecycle and local enforcement
-state instead of reusing the narrower Reactions/content revision. The first
-bounded application slice reuses the shared Outbox owner-operation receipt
-ledger, fences the active subject plus that revision clock, accepts only trusted
-service/system application callers and supports `NoDomainMutation` for both
-subject kinds plus permanent topic lock through the existing Forum owner
-mutation. Moderation registry materialization, durable application orchestration,
-additional effects and retained migration/runtime/concurrency evidence remain
-pending.
+state instead of reusing the narrower Reactions/content revision. The bounded
+application source reuses the shared Outbox owner-operation receipt ledger,
+fences the active subject plus that revision clock, accepts only trusted
+service/system application callers and now supports `NoDomainMutation` for both
+subject kinds, permanent topic lock, exact `SetVisibility(Hidden)`, exact
+`SetVisibility(Removed)` and exact `RejectPublication` for Forum replies.
+Approved-to-hidden and approved-to-rejected use the established
+topic/category/author public counter accounting and every changed lifecycle
+mutation writes the canonical `ForumReplyStatusChanged` event; already-hidden
+and already-rejected are no-ops. Removed reuses the complete
+`ReplyService::remove_in_tx` owner path for accepted-solution cleanup,
+soft-delete/tombstone capture, public/solution accounting and the canonical
+deleted status event/projection in the same fenced receipt transaction.
+`SetVisibility(Unpublished)` remains fail-closed and distinct from
+`RejectPublication`; it is not approximated as `ReplyStatus::Rejected`.
+The optional server host source-materializes the neutral Moderation adapter
+registry when `mod-moderation` and `ModerationModule` are both selected. A
+Moderation-only profile materializes an empty registry; Forum+Moderation
+materializes exactly the topic/reply adapters; Forum without Moderation remains
+valid. The Moderation owner now also has source-ready durable application
+operations: typed-effect-only migration/backfill, atomic pending intent with the
+immutable decision, bounded due reads, UUID lease-token CAS claims, expired-lease
+reclaim and applied-evidence validation. Background adapter dispatch, automatic
+retry classification, case closure and retained runtime/concurrency evidence
+remain pending.
 
 ## Program ledger
 
@@ -173,7 +190,7 @@ pending.
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
-| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt binding, exact reviewed-revision fencing, trusted application callers, `NoDomainMutation` and permanent topic lock are source-ready. Retain PostgreSQL/SQLite migration/trigger/replay/concurrency evidence, add remaining Forum-local effects/expiry-safe restrictions and Moderation registry materialization/orchestration; Moderation keeps cases, decisions, appeals and audit. |
+| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt binding, exact reviewed-revision fencing, trusted application callers, `NoDomainMutation`, permanent topic lock, exact reply `Hidden`, exact reply `Removed` through the complete soft-delete/tombstone/solution/counter owner path, exact reply `RejectPublication -> ReplyStatus::Rejected`, optional server host materialization, and Moderation-owned durable application-operation persistence/leases are source-ready. Retain host plus PostgreSQL/SQLite operation/migration/lease/replay/concurrency and Forum hide/reject/removal accounting/event/tombstone/solution evidence; keep `Unpublished` distinct/fail-closed. The remaining code gap is owner worker/adapter dispatch, retry/error classification, lost-response recovery and case/application audit lifecycle. Moderation keeps cases, decisions, appeals and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
@@ -325,14 +342,38 @@ subject adapters and applies validated effects through
 `ModerationSubjectCommandPort`, retaining only Forum subject revision/local
 enforcement state and bounded shared-receipt provenance.
 
-Forum now registers neutral factories for `forum_topic` and `forum_post` while
-depending only on `rustok-moderation-api`. The first bounded adapter slice reuses
+Forum registers neutral factories for `forum_topic` and `forum_post` while
+depending only on `rustok-moderation-api`. The adapter reuses
 `rustok-outbox::idempotency` rather than creating a Forum application receipt
 table. The Moderation decision UUID must equal the trusted write `PortContext`
 idempotency key; shared receipt admission binds the full command and happens
 before subject reads so replay does not re-evaluate a changed Forum subject.
 Direct user callers are rejected; only service/system orchestration callers may
 enter the application port.
+
+The optional server host materializes the neutral subject-adapter registry only
+when `mod-moderation` selects the owner and `ModerationModule` is present in the
+supplied `ModuleRegistry`. Materialization happens after `HostRuntimeContext`
+exists and after Forum host facts are composed. Moderation without Forum produces
+a valid empty registry; Forum+Moderation materializes `forum/forum_topic` and
+`forum/forum_post`; Forum without Moderation remains available with
+unmaterialized neutral factories. Missing owner, factory build, duplicate-key and
+factory-key mismatch failures remain startup errors. Host composition itself does
+not dispatch decisions.
+
+The Moderation owner now persists one durable `moderation_application_operations`
+row per typed immutable decision. New decision + typed effect + pending operation
++ `case_decided` event + Moderation command receipt share one owner transaction.
+Upgrade backfill creates pending operations only for decisions that already have
+`moderation_decision_effects`; historical `effect: None` decisions remain
+non-dispatchable. The operation snapshots decision hash plus exact reviewed
+subject identity and supports bounded due reads, fresh UUID lease-token CAS claim,
+expired-lease reclaim, explicit retry scheduling, rejected/operator-review
+terminal states and exact `ModerationDecisionApplication` evidence before
+`applied`. This state belongs exclusively to Moderation; Forum neither stores nor
+reads it. Background adapter invocation, `PortError` classification/backoff,
+lost-response worker recovery, case closure and application lifecycle events
+remain owner work.
 
 The existing Reactions/current-revision clock is intentionally not reused for
 Moderation because it does not advance on every lifecycle/enforcement mutation.
@@ -354,18 +395,52 @@ Non-retryable failures may be stored as terminal shared receipts, while retryabl
 storage/serialization failures leave the processing lease reclaimable rather
 than freezing transient failure into replay.
 
-This slice supports `NoDomainMutation` for topic/reply and permanent topic lock
-through `TopicService::set_locked_in_tx` plus canonical Forum Search projection
-invalidation. A real lock mutation must advance the dedicated moderation subject
-revision in the same transaction and the adapter returns that post-application
-value as `ModerationDecisionApplication.applied_revision`; a true no-op retains
-the reviewed revision. Missing or non-advancing revision state fails as an
-invariant rather than guessed success. Temporary locks fail closed because Forum
-does not yet own expiry-safe moderation enforcement state. Reply visibility
-effects and the remaining Moderation effect catalog stay pending; they must map
-to exact Forum owner semantics rather than being approximated through unrelated
-statuses. Moderation registry materialization and durable application workers
-remain owner/host work outside Forum.
+The bounded effect set now supports `NoDomainMutation` for topic/reply, permanent
+topic lock through `TopicService::set_locked_in_tx`, exact reply
+`SetVisibility { state: Hidden }`, exact reply
+`SetVisibility { state: Removed }`, and exact reply `RejectPublication`.
+A real lock/hide/reject/removal mutation must advance the dedicated moderation
+subject revision in the same transaction and the adapter returns that
+post-application value as `ModerationDecisionApplication.applied_revision`; a
+true no-op retains the reviewed revision. Missing or non-advancing revision state
+fails as an invariant rather than guessed success.
+
+Reply `Hidden` maps only to the established `ReplyStatus::Hidden` lifecycle, and
+`RejectPublication` maps only to the established Forum moderator rejection
+action with target `ReplyStatus::Rejected`. Both use the same bounded non-public
+status owner primitives: an already-target reply is a no-op, each changed
+transition must pass the existing state machine, and an Approved source reply
+decrements topic/category/author public reply accounting. Other valid
+non-public-to-non-public transitions change lifecycle state without public
+counter deltas. Every changed hide/rejection writes the canonical
+`ForumReplyStatusChanged` root event, already a Forum Search full-scope source,
+and category projection invalidation is emitted when public counters changed.
+Status, counters/statistics, event/projection, moderation revision and shared
+receipt therefore commit or roll back together.
+
+Neutral `SetVisibility { state: Unpublished }` is a different Moderation effect
+from `RejectPublication`. Forum has an exact existing rejection lifecycle but no
+separate exact unpublished lifecycle state, so `Unpublished` remains fail-closed
+and must not be mapped to `ReplyStatus::Rejected`.
+
+Reply `Removed` is not a status-only mapping. Direct delete and Moderation removal
+share `ReplyService::remove_in_tx`, which claims the active reply, validates the
+existing transition to `ReplyStatus::Deleted`, removes an accepted-solution
+relation when present, performs the established `status = deleted` plus
+`deleted_at` soft delete so delete revisions/tombstone history are captured, and
+applies the existing public-reply and solution-stat accounting. The adapter then
+writes the same canonical `ForumReplyStatusChanged` fact with `new_status =
+deleted` and category projection invalidation when public counters changed.
+Soft-delete/tombstone, solution cleanup, accounting, event/projection, moderation
+revision and completed receipt commit or roll back together. Receipt replay
+happens before subject reads; a fresh attempt against an already removed subject
+is unavailable rather than re-applied.
+
+Temporary locks fail closed because Forum does not yet own expiry-safe moderation
+enforcement state. The remaining Moderation effect catalog stays pending. The
+remaining orchestration source gap is the Moderation worker/dispatcher over the
+new durable operations: exact adapter lookup, failure classification/backoff,
+crash/lost-response recovery and case/application audit lifecycle.
 
 ### `FORUM-30`/`FORUM-31`: UI composition
 
@@ -385,7 +460,7 @@ Hosts register/mount packages and do not absorb policy.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
 7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply neutral host composition and Rust Playwright browser-evidence harness are source-ready. Execute and retain the browser/runtime evidence without adding Reactions functionality to Forum.
 8. Introduce Reputation/Achievements only after at least two producers agree.
-9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing and permanent topic-lock application are source-ready. Retain migration/replay/concurrency evidence, add exact remaining Forum effects, then materialize/orchestrate them in the Moderation owner/host; never add Forum case queues.
+9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock, exact reply Hidden/Removed/RejectPublication application, optional server host registry materialization and Moderation-owned durable application-operation persistence/leases are source-ready. Retain selected-owner/missing-owner, operation migration/lease and Forum mutation/replay/concurrency evidence. Keep Unpublished distinct; the next code milestone is the Moderation owner worker/adapter dispatcher with bounded retry/lost-response recovery, never Forum case queues.
 
 ### Track 2 — close existing Forum work
 
@@ -412,6 +487,13 @@ Hosts register/mount packages and do not absorb policy.
 - Forum depends only on `rustok-moderation-api`, not the Moderation owner crate;
   reports, cases, queues, decisions, appeals and cross-domain audit remain outside
   Forum persistence.
+- `mod-moderation` remains optional and is not implied by `mod-forum`. Selecting
+  the owner feature without `ModerationModule` is a startup configuration error;
+  Forum without the owner remains valid with unmaterialized neutral factories.
+- Moderation application-operation persistence belongs only to `rustok-moderation`.
+  Forum must not copy pending/applying/retry/lease/applied orchestration state.
+  Legacy decisions without typed effects remain non-dispatchable; a stale worker
+  lease must not bypass the Forum domain receipt or exact reviewed revision.
 - FORUM-19 owns only subject-local moderation revision clocks and local enforcement
   state. Those revision rows must not contain reports, decisions, audit payloads,
   application-attempt state or copied Reactions state.
@@ -421,6 +503,20 @@ Hosts register/mount packages and do not absorb policy.
 - Moderation decision application uses the shared Outbox owner-operation receipt
   ledger. Forum must not create a second application receipt table or retarget a
   reviewed decision to a newer subject revision.
+- Reply `SetVisibility(Hidden)` must preserve the exact Forum lifecycle, public
+  counter/statistics and event/projection semantics; already-hidden must not
+  duplicate counters or events.
+- Reply `RejectPublication` must preserve the exact established Forum
+  `ReplyStatus::Rejected` moderator lifecycle, public counter/statistics and
+  event/projection semantics; already-rejected must not duplicate counters or
+  events.
+- Neutral `SetVisibility(Unpublished)` is distinct from `RejectPublication` and
+  must not be mapped to `ReplyStatus::Rejected` without a separate explicit Forum
+  lifecycle contract.
+- Reply `SetVisibility(Removed)` must reuse `ReplyService::remove_in_tx`; no
+  Moderation adapter may bypass the full Forum accepted-solution cleanup,
+  soft-delete/tombstone capture, public/solution accounting and canonical
+  status-event/projection semantics with a status-only approximation.
 - Temporary moderation effects must fail closed until Forum owns explicit
   expiry-safe enforcement state; permanent owner state must not be used as a
   lossy approximation of an expiring restriction.
@@ -460,6 +556,8 @@ Hosts register/mount packages and do not absorb policy.
 ```bash
 node scripts/verify/verify-forum-shared-capability-ownership.mjs
 node scripts/verify/verify-forum-moderation-subject-adapter.mjs
+node scripts/verify/verify-moderation-host-composition.mjs
+node scripts/verify/verify-moderation-application-operation.mjs
 node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
 node scripts/verify/verify-forum-reaction-subject-provider.mjs
@@ -482,14 +580,20 @@ cargo test -p rustok-reactions-storefront
 cargo test -p rustok-forum reaction_subject
 cargo test -p rustok-forum moderation_subject -- --nocapture
 cargo test -p rustok-blog reaction_subject
+cargo test -p rustok-moderation
 cargo test -p rustok-e2e-rust --test leptos_storefront_forum_reactions -- --nocapture
 cargo check -p rustok-reactions --features graphql --all-targets
 cargo check -p rustok-reactions-storefront --all-targets
 cargo check -p rustok-forum --all-targets
+cargo check -p rustok-moderation --all-targets
 cargo check -p rustok-distribution --features "mod-forum mod-reactions"
 cargo check -p rustok-server --no-default-features --features mod-reactions
 cargo check -p rustok-server --no-default-features --features "mod-forum mod-reactions"
 cargo test -p rustok-server --no-default-features --features "mod-blog mod-reactions" --test reactions_composition_profiles blog_with_reactions_materializes_post_provider
+cargo check -p rustok-server --no-default-features --features mod-moderation
+cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"
+cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles
+cargo test -p rustok-server --no-default-features --features "mod-forum mod-moderation" --test moderation_composition_profiles
 cargo run -p rustok-events --example event_contract_digests -- --write
 cargo xtask module validate forum
 npm run verify:forum:admin-boundary
@@ -498,8 +602,8 @@ git diff --check
 ```
 
 Tests, lockfile/event-digest generation and runtime evidence are maintainer-run.
-Source contracts, Moderation adapter/migration source and browser harness source
-do not promote runtime status.
+Source contracts, Moderation adapter/migration/materialization/application-operation
+source and browser harness source do not promote runtime status.
 
 ## Release gates
 
@@ -535,14 +639,20 @@ browser harness from
 catalogs, state, commands, aggregate ownership or copied Reactions presentation
 to Forum.
 
-For FORUM-19, first retain PostgreSQL/SQLite migration/backfill and trigger
-advancement evidence for the dedicated Forum moderation subject revision clocks,
-then retain shared-receipt replay/request-conflict, stale revision, trusted caller
-and concurrent content/lifecycle edit versus permanent-lock evidence. Add the next
-exact Forum-owned effect mapping without inventing a parallel moderation owner:
-reply visibility/lifecycle application is the next candidate only if it can
-preserve existing Forum counters/events/projections and exact revision fencing.
-Add expiry-safe local state before accepting any temporary restriction. In
-parallel, the Moderation owner/host must materialize the registered adapter
-factories and provide durable application retry/runtime evidence before FORUM-19
-can be promoted.
+For FORUM-19, retain server composition evidence for selected `mod-moderation`
+with a registered owner, selected-feature/missing-owner failure,
+Moderation-only empty materialization and Forum+Moderation topic/reply adapter
+materialization. Retain clean/upgraded PostgreSQL/SQLite evidence for
+`moderation_application_operations`, typed-effect-only backfill, atomic
+decision/effect/pending-operation/event/receipt commit, bounded due ordering,
+concurrent claim, lease expiry/reclaim, stale-token rejection, retry scheduling
+and applied-evidence validation. Also retain the Forum moderation subject revision
+migration/trigger, shared-receipt replay/request-conflict, stale revision, trusted
+caller and concurrent content/lifecycle evidence plus hide/reject/removal
+accounting/event/tombstone/solution semantics. `SetVisibility(Unpublished)` stays
+blocked until Forum owns a distinct exact lifecycle, and temporary effects still
+require expiry-safe Forum state. The next FORUM-19 code milestone is the
+Moderation owner worker/dispatcher: reconstruct immutable commands, invoke the
+exact host-materialized adapter, classify `PortError`, apply bounded backoff,
+recover crashes/lost responses without double application, and advance
+case/application audit lifecycle. Do not add Forum-owned case queues or audit.

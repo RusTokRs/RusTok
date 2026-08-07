@@ -50,20 +50,98 @@
     "sqlite_locking": "writer reservation uses the dedicated moderation revision row",
     "retryable_failure": "leave processing receipt reclaimable",
     "terminal_failure": "persist shared typed failed receipt",
-    "success": "Forum mutation and shared completed receipt commit in one transaction",
+    "success": "Forum mutation, required Forum root/projection events and shared completed receipt commit in one transaction",
     "applied_revision": "post-application moderation subject revision"
+  },
+  "host_materialization": {
+    "host": "rustok-server",
+    "owner_feature": "mod-moderation",
+    "owner_selection": "ModerationModule must be present in ModuleRegistry when mod-moderation is selected",
+    "factory_timing": "materialize only after HostRuntimeContext exists and Forum host facts have been composed",
+    "moderation_without_forum": "materialize an empty subject adapter registry",
+    "forum_with_moderation": [
+      "forum/forum_topic",
+      "forum/forum_post"
+    ],
+    "forum_without_moderation": "Forum remains available and its neutral factories remain unmaterialized",
+    "materialization_failure": "fail host composition; never fall back to another adapter or imply applied"
+  },
+  "owner_application_operation": {
+    "owner": "rustok-moderation",
+    "table": "moderation_application_operations",
+    "identity": "tenant + immutable decision UUID/hash + exact reviewed subject",
+    "atomic_enqueue": "decision, typed effect, pending operation, case_decided event and Moderation command receipt share one owner transaction",
+    "typed_effect_backfill": "existing decisions are backfilled only when moderation_decision_effects exists; legacy effect None decisions remain non-dispatchable",
+    "states": [
+      "pending",
+      "applying",
+      "retryable",
+      "applied",
+      "rejected",
+      "operator_review"
+    ],
+    "lease": "bounded CAS claim with attempt counter, expiry and fresh UUID lease token; expired applying leases are reclaimable",
+    "applied_evidence": "ModerationDecisionApplication must match decision and exact reviewed subject identity before applied revision/time are stored",
+    "dispatch": "not yet implemented; future owner worker must invoke the host-materialized adapter and classify retry/terminal outcomes"
   },
   "supported_effects": [
     "NoDomainMutation for forum_topic and forum_post",
-    "permanent Lock for forum_topic using TopicService::set_locked_in_tx"
+    "permanent Lock for forum_topic using TopicService::set_locked_in_tx",
+    "SetVisibility Hidden for forum_post using exact Forum ReplyStatus::Hidden lifecycle semantics",
+    "SetVisibility Removed for forum_post using the complete Forum ReplyService::remove_in_tx soft-delete owner path",
+    "RejectPublication for forum_post using exact Forum ReplyStatus::Rejected moderator publication semantics"
   ],
+  "reply_hidden_semantics": {
+    "target": "ReplyStatus::Hidden",
+    "already_hidden": "no-op without duplicate counters or ForumReplyStatusChanged event",
+    "approved_to_hidden": [
+      "decrement topic public reply count",
+      "decrement category public reply count",
+      "decrement author Forum reply statistics"
+    ],
+    "other_valid_to_hidden_transitions": "status change only; public counters remain unchanged",
+    "root_event": "ForumReplyStatusChanged",
+    "search_projection": "ForumReplyStatusChanged is a canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "atomicity": "status, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
+  "reply_rejected_semantics": {
+    "neutral_effect": "RejectPublication",
+    "target": "ReplyStatus::Rejected",
+    "owner_contract": "the established Forum moderator reject_reply action uses ReplyStatus::Rejected and the same validated reply lifecycle",
+    "already_rejected": "no-op without duplicate counters or ForumReplyStatusChanged event",
+    "approved_to_rejected": [
+      "decrement topic public reply count",
+      "decrement category public reply count",
+      "decrement author Forum reply statistics"
+    ],
+    "other_valid_to_rejected_transitions": "status change only; public counters remain unchanged",
+    "root_event": "ForumReplyStatusChanged with new_status rejected",
+    "search_projection": "ForumReplyStatusChanged is the canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "unpublished_distinction": "SetVisibility Unpublished is a separate neutral effect and remains unsupported; it is not mapped to ReplyStatus::Rejected",
+    "atomicity": "status, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
+  "reply_removed_semantics": {
+    "target": "ReplyStatus::Deleted plus deleted_at soft-delete tombstone",
+    "owner_helper": "ReplyService::remove_in_tx",
+    "owner_mutations": [
+      "validate the existing Forum transition to ReplyStatus::Deleted",
+      "remove accepted-solution relation when this reply owns it",
+      "capture delete revisions through the established Forum soft-delete guards",
+      "set status deleted and deleted_at atomically",
+      "decrement topic/category/author public reply accounting when the reply was approved",
+      "decrement author solution statistics when the removed reply was the accepted solution"
+    ],
+    "root_event": "ForumReplyStatusChanged with new_status deleted",
+    "search_projection": "ForumReplyStatusChanged remains the canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "idempotency": "completed Moderation receipt replays before subject reads; an already soft-deleted subject is unavailable rather than re-deleted",
+    "atomicity": "soft delete/tombstone, solution cleanup, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
   "deferred_effects": [
     "temporary topic Lock until Forum owns expiry-safe enforcement state",
-    "reply visibility effects",
+    "SetVisibility Unpublished until an exact Forum lifecycle mapping is established",
     "topic visibility removal/unpublish effects",
     "RequireEdit",
     "RestrictInteraction",
-    "RejectPublication",
     "SuspendSubject",
     "Escalate",
     "AccountSanctionRecommended"
@@ -72,7 +150,7 @@
     "Moderation owns reports cases queues decisions appeals application orchestration and cross-domain audit",
     "Forum owns topic/reply lifecycle state moderation subject revision local enforcement and Search projection invalidation",
     "Forum depends on rustok-moderation-api only and does not depend on rustok-moderation",
-    "Forum registers subject adapter factories but does not materialize the Moderation owner runtime"
+    "Forum registers neutral subject adapter factories; the selected host composes rustok-moderation and materializes them"
   ],
   "forbidden": [
     "Forum moderation case table",
@@ -83,14 +161,21 @@
     "retargeting a stale decision to a newer Forum revision",
     "reusing Reactions or content revision as the Moderation subject clock",
     "temporary lock without expiry-safe owner state",
+    "mapping SetVisibility Unpublished to ReplyStatus::Rejected",
+    "bypassing ReplyService::remove_in_tx for Moderation Removed reply application",
     "reaction state catalog aggregate or presentation ownership changes"
   ],
   "not_claimed": [
-    "adapter registry materialization in rustok-moderation",
     "durable Moderation application worker or retry scheduler",
-    "runtime execution",
+    "automatic adapter dispatch and PortError classification",
+    "case lifecycle closure from application outcomes",
+    "application lifecycle outbox events",
+    "operator recovery surface",
+    "retained host composition execution evidence",
+    "runtime decision application execution",
     "PostgreSQL concurrency evidence",
     "SQLite evidence",
+    "SetVisibility Unpublished support",
     "complete FORUM-19 effect coverage",
     "release readiness"
   ]

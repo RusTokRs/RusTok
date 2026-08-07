@@ -5,7 +5,9 @@ use axum::{
 };
 use rustok_api::Permission;
 use rustok_api::locale_tags_match;
-use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_api::{
+    AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext,
+};
 use rustok_product::{
     CatalogService, CommerceError,
     entities::{product, product_translation},
@@ -15,6 +17,8 @@ use rustok_web::{HttpError, HttpResult};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{collections::HashMap, time::Instant};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -167,6 +171,140 @@ pub(crate) fn map_admin_product_error(
         status = %status,
         boundary = ADMIN_PRODUCT_BOUNDARY,
         "commerce admin product operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+pub(crate) fn admin_product_command_idempotency_key<T: Serialize>(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    product_id: Option<Uuid>,
+    operation: &'static str,
+    payload: &T,
+) -> HttpResult<String> {
+    let payload = serde_json::to_vec(payload).map_err(|_| {
+        tracing::error!(
+            owner = ADMIN_PRODUCT_OWNER,
+            tenant_id = %uuid_shape(tenant_id),
+            actor_id = %uuid_shape(actor_id),
+            product_id = %optional_uuid_shape(product_id),
+            operation,
+            error_kind = "request_identity_serialization",
+            public_code = "commerce_admin_product_failed",
+            boundary = ADMIN_PRODUCT_BOUNDARY,
+            "commerce admin product command identity could not be materialized"
+        );
+        HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_product_failed",
+            "Product operation could not be completed safely",
+        )
+    })?;
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(actor_id.as_bytes());
+    digest.update(operation.as_bytes());
+    if let Some(product_id) = product_id {
+        digest.update(product_id.as_bytes());
+    }
+    digest.update(payload);
+    Ok(format!(
+        "commerce-admin-product:{operation}:{}",
+        hex::encode(digest.finalize())
+    ))
+}
+
+pub(crate) fn admin_product_command_context(
+    tenant_id: Uuid,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    idempotency_key: String,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        idempotency_key.clone(),
+    )
+    .with_idempotency_key(idempotency_key)
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+pub(crate) fn map_admin_product_port_error(
+    context: AdminProductErrorContext,
+    port_context: &PortContext,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_product_invalid",
+            "Product request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict if error.code == "product.duplicate_handle" => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_handle_conflict",
+            "A product with this handle already exists",
+            "duplicate_handle",
+        ),
+        PortErrorKind::Conflict if error.code == "product.duplicate_sku" => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_sku_conflict",
+            "A product variant with this SKU already exists",
+            "duplicate_sku",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_state_conflict",
+            "Product operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_product_storage_unavailable",
+            "Product storage is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_product_failed",
+            "Product operation could not be completed safely",
+            "invariant_violation",
+        ),
+    };
+    let diagnostic = AdminProductDiagnosticContext::from(&context);
+    tracing::error!(
+        owner = ADMIN_PRODUCT_OWNER,
+        owner_operation = context.operation,
+        correlation_id = %port_context.correlation_id,
+        tenant_id = %diagnostic.tenant_id,
+        actor_id = %diagnostic.actor_id,
+        product_id = ?diagnostic.product_id,
+        operation = %diagnostic.operation,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_PRODUCT_BOUNDARY,
+        "commerce admin product owner command failed"
     );
     HttpError::new(status, code, message)
 }

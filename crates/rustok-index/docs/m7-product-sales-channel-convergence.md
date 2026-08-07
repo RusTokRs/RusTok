@@ -1,18 +1,13 @@
 # M7 Product-to-SalesChannel automatic convergence
 
-Status: `source_complete_runtime_evidence_pending`.
+Status: `source_and_query_fence_complete_runtime_evidence_pending`.
 
 ## Selected boundary
 
-The canonical Product Index relation already has three separate durable facts:
-
-1. membership in Product-owned `relation_epoch` snapshots;
-2. complete Product mutation ordering in Product-owned `projection_epoch` snapshots;
-3. freshness witnesses proving the retained membership was resolved from current Product visibility
-   and tenant Channel identity generation.
-
-This slice adds the missing automatic convergence path without creating another Product schema or event
-family.
+The canonical Product Index relation has separate durable facts for membership, complete Product
+mutation ordering, freshness, automatic owner-change convergence, and materialized query admission.
+This separation prevents a freshness-only observation from fabricating relation membership or a new
+Product schema.
 
 Product owns:
 
@@ -56,9 +51,9 @@ a live relation to publish, and hard-delete replay is already independent of fre
 
 Rejected Product owner data is isolated rather than allowed to poison the ordered queue. Invalid
 visibility, an oversized allowlist, or too many resolved Channel targets complete the exact request
-without a freshness witness. That Product remains fail-closed in canonical source admission. A later
-Product correction appends another exact request; a Channel-side correction advances Channel identity
-generation and starts another tenant sweep.
+without a freshness witness. That Product remains fail-closed in canonical source/query admission. A
+later Product correction appends another exact request; a Channel-side correction advances Channel
+identity generation and starts another tenant sweep.
 
 ## Channel identity changes
 
@@ -67,7 +62,7 @@ missing checkpoint forces a baseline sweep. A newer Channel generation starts a 
 with a fixed generation and Product UUID keyset cursor.
 
 A rejected Product does not head-of-line block later valid Products in the same tenant. The convergence
-page leaves that Product source-stale, continues the remaining exact resolver calls, and checkpoints the
+page leaves that Product stale, continues the remaining exact resolver calls, and checkpoints the
 bounded page. Retryable concurrency/storage/relation/freshness errors still stop the page and preserve
 its durable cursor for retry.
 
@@ -91,27 +86,58 @@ Automatic relation convergence is now source complete. It closes the previous re
 external caller manually invoke Product relation reconciliation after Product visibility or Channel
 identity changes, while isolating rejected Product owner data from valid tenant progress.
 
-It does **not** close the materialized/query freshness window. Source observation and Index mutation
-application are still separate transactions. A Channel identity change can commit after a Product
-source page was read and before that page's mutation reaches `index_entities/index_links`. The next
-source observation fails closed and this worker repairs the owner relation, but authoritative query
-admission still needs a materialized/query freshness fence or equivalent retained evidence.
+The separate materialized/query freshness fence is also source complete. Product root queries compare
+materialized `projection_epoch` with current Product projection/revision, live locale identity, relation
+freshness, current Channel generation, and the visibility-request watermark before user
+filter/order/cursor/limit/exact-count semantics. Therefore an already-produced stale mutation can land
+in Index storage without becoming query-authoritative.
 
-Therefore this slice does not authorize Storefront cutover.
+Source completeness still does not authorize Storefront cutover. PostgreSQL execution evidence for the
+in-flight stale-mutation window and for this convergence state machine remains pending.
+
+## Retained PostgreSQL convergence packet
+
+`crates/rustok-distribution/tests/product_channel_convergence_postgres.rs` is now a source-ready,
+execution-pending packet for this state machine. It uses two independent generic `ModuleWorkScheduler`
+hosts and the production Product/Channel/Index storage/runtime path.
+
+The packet retains assertions for:
+
+- live-lease exclusion and reclaim after lease expiry;
+- restart continuation without resetting the Product visibility cursor;
+- malformed Product isolation while later valid Products still receive current freshness;
+- Product visibility `alpha -> beta` after source read, including physical stale Index materialization,
+  relation/projection advancement, query exclusion, and corrective current mutation;
+- Channel generation change with unchanged unrestricted UUID membership, where only freshness advances
+  and the same materialized Product becomes admissible again;
+- Channel generation change with changed restricted membership, where relation/projection advance and
+  the old Index row stays inadmissible until the current Product mutation is applied.
+
+Detailed packet contract:
+[M7 Product visibility / Channel identity convergence PostgreSQL harness](./m7-product-channel-convergence-postgres-harness.md).
+
+This is retained source only. It has not been executed or admitted.
 
 ## Remaining M7 admission
 
-- execute PostgreSQL evidence for relation/freshness/convergence storage, rejected-Product isolation,
-  and multi-host lease recovery;
-- retain Channel create/delete/slug/tenant, Product visibility, retry/restart/delete-recreate evidence;
-- close the source-read -> mutation-apply materialized/query freshness window;
+- execute/admit the source-ready Product delayed-mutation/locale-deletion PostgreSQL query-freshness
+  packet;
+- execute/admit the source-ready Product visibility + Channel-generation convergence packet;
+- retain any still-missing Channel create/delete/tenant-move and delete-recreate evidence not covered by
+  the slug-generation packet;
 - admit canonical Product typed events/routes only after event-contract digest verification;
-- prove complete Product/Variant/Channel query parity;
-- move Storefront traffic only after readiness, equivalence, and materialized-freshness evidence pass.
+- prove complete Product/Variant/Channel query parity, including linked-target availability;
+- move Storefront traffic only after readiness, equivalence, convergence, and materialized-freshness
+  evidence pass.
 
 ## Maintainer verification
 
 ```bash
+cargo test -p rustok-distribution --features mod-product --test product_materialized_query_freshness_postgres -- --nocapture
+cargo test -p rustok-distribution --features mod-product --test product_channel_convergence_postgres -- --nocapture
+node scripts/verify/verify-index-product-materialized-query-freshness-postgres-harness.mjs
+node scripts/verify/verify-index-product-channel-convergence-postgres-harness.mjs
+node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs
@@ -121,5 +147,5 @@ cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 
-No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, or CI
-were executed by the implementation agent.
+No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
+`git diff --check` were executed by the implementation agent.

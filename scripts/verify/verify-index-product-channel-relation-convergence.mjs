@@ -195,27 +195,30 @@ requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-converge
   'source-read -> mutation-apply',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-convergence.md', [
-  'Status: `source_complete_runtime_evidence_pending`',
+  'Status: `source_and_query_fence_complete_runtime_evidence_pending`',
   'Generic ModuleWork composition',
   'Multi-host and restart behavior',
-  'rejected Product',
   'Automatic relation convergence is now source complete',
-  'materialized/query freshness window',
+  'materialized/query freshness fence is also source complete',
+  'PostgreSQL execution evidence',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
-  'Status: `automatic_convergence_source_complete_runtime_evidence_pending`',
-  'Product-to-SalesChannel automatic convergence',
+  'Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`',
+  'ProductSalesChannelIndexRelationFreshnessStore::record',
+  'Automatic convergence composition',
   'Automatic convergence now re-establishes stale/missing relation freshness',
+  'materialized/query freshness fence separately closes',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
   'Automatic Product visibility / Channel identity relation convergence through generic ModuleWork',
-  'Materialized/query freshness admission for the source-read -> mutation-apply window: pending',
+  'Materialized/query freshness admission for the source-read -> mutation-apply window: source complete',
+  'PostgreSQL execution/admission evidence pending',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'Product-owned visibility convergence requests and tenant lease/checkpoint state',
   'bounded generic ModuleWork Product-SalesChannel automatic convergence',
   'Automatic owner-change relation convergence source complete',
-  'materialized/query freshness fence',
+  'Materialized/query freshness fence source complete',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
@@ -223,4 +226,4 @@ if (!aggregate.includes("'verify-index-product-channel-relation-convergence.mjs'
   fail('Index aggregate verifier does not include Product-SalesChannel convergence guard');
 }
 
-console.log('[verify-index-product-channel-relation-convergence] durable convergence contract verified');
+console.log('[verify-index-product-channel-relation-convergence] durable convergence and query-fence contract verified');
