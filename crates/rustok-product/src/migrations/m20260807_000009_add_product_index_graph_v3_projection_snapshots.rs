@@ -52,6 +52,68 @@ CREATE INDEX idx_product_index_graph_v3_projection_current
         projection_epoch DESC
     );
 
+CREATE OR REPLACE FUNCTION rustok_product_guard_index_graph_v3_projection_snapshot()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    previous_projection_epoch BIGINT;
+    previous_product_source_version BIGINT;
+    previous_relation_epoch BIGINT;
+    lock_key TEXT;
+BEGIN
+    lock_key := NEW.tenant_id::text
+        || E'\x1f' || NEW.product_id::text
+        || E'\x1fproduct-index-graph-v3-projection';
+    PERFORM pg_advisory_xact_lock(hashtextextended(lock_key, 0));
+
+    SELECT
+        projection.projection_epoch,
+        projection.product_source_version,
+        projection.relation_epoch
+      INTO
+        previous_projection_epoch,
+        previous_product_source_version,
+        previous_relation_epoch
+      FROM product_index_graph_v3_projection_snapshots projection
+     WHERE projection.tenant_id = NEW.tenant_id
+       AND projection.product_id = NEW.product_id
+     ORDER BY projection.projection_epoch DESC
+     LIMIT 1;
+
+    IF previous_projection_epoch IS NULL THEN
+        IF NEW.projection_epoch <> 1 THEN
+            RAISE EXCEPTION 'first Product Index graph v3 projection epoch must equal 1';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF previous_projection_epoch = 9223372036854775807 THEN
+        RAISE EXCEPTION 'Product Index graph v3 projection epoch is exhausted';
+    END IF;
+    IF NEW.projection_epoch <> previous_projection_epoch + 1 THEN
+        RAISE EXCEPTION 'Product Index graph v3 projection epoch must advance exactly once';
+    END IF;
+    IF NEW.product_source_version < previous_product_source_version
+       OR NEW.relation_epoch < previous_relation_epoch
+    THEN
+        RAISE EXCEPTION 'Product Index graph v3 projection input watermark regressed';
+    END IF;
+    IF NEW.product_source_version = previous_product_source_version
+       AND NEW.relation_epoch = previous_relation_epoch
+    THEN
+        RAISE EXCEPTION 'unchanged Product Index graph v3 projection input must not append a new epoch';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_product_index_graph_v3_projection_insert
+BEFORE INSERT ON product_index_graph_v3_projection_snapshots
+FOR EACH ROW
+EXECUTE FUNCTION rustok_product_guard_index_graph_v3_projection_snapshot();
+
 CREATE OR REPLACE FUNCTION rustok_product_reject_index_graph_v3_projection_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -162,6 +224,9 @@ BEGIN
         RETURN;
     END IF;
 
+    -- These GREATEST calls merge already retained input watermarks only. They are not an Index
+    -- source-version encoding. The independent projection_epoch below is the future v3 source
+    -- version and advances exactly once when either input watermark advances.
     effective_product_source_version := GREATEST(
         observed_product_source_version,
         previous_product_source_version
@@ -274,7 +339,11 @@ AFTER UPDATE OF index_revision ON products
 FOR EACH ROW
 EXECUTE FUNCTION rustok_product_capture_index_graph_v3_projection_from_product();
 
-CREATE TRIGGER trg_products_index_graph_v3_projection_delete
+-- PostgreSQL fires same-kind triggers in name order. This delete trigger sorts after the existing
+-- trg_products_retain_empty_channel_relation trigger, so Product hard delete first retains the final
+-- empty relation epoch. The relation INSERT trigger below then advances projection state using that
+-- final relation; this trailing Product trigger is idempotent for the same input pair.
+CREATE TRIGGER trg_products_zz_index_graph_v3_projection_delete
 AFTER DELETE ON products
 FOR EACH ROW
 EXECUTE FUNCTION rustok_product_capture_index_graph_v3_projection_from_product();
@@ -313,17 +382,20 @@ EXECUTE FUNCTION rustok_product_capture_index_graph_v3_projection_from_relation(
                 r#"
 DROP TRIGGER IF EXISTS trg_product_channel_relation_index_graph_v3_projection_insert
     ON product_sales_channel_index_relation_snapshots;
-DROP TRIGGER IF EXISTS trg_products_index_graph_v3_projection_delete ON products;
+DROP TRIGGER IF EXISTS trg_products_zz_index_graph_v3_projection_delete ON products;
 DROP TRIGGER IF EXISTS trg_products_index_graph_v3_projection_update ON products;
 DROP TRIGGER IF EXISTS trg_products_index_graph_v3_projection_insert ON products;
 DROP TRIGGER IF EXISTS trg_product_index_graph_v3_projection_delete
     ON product_index_graph_v3_projection_snapshots;
 DROP TRIGGER IF EXISTS trg_product_index_graph_v3_projection_update
     ON product_index_graph_v3_projection_snapshots;
+DROP TRIGGER IF EXISTS trg_product_index_graph_v3_projection_insert
+    ON product_index_graph_v3_projection_snapshots;
 DROP FUNCTION IF EXISTS rustok_product_capture_index_graph_v3_projection_from_relation();
 DROP FUNCTION IF EXISTS rustok_product_capture_index_graph_v3_projection_from_product();
 DROP FUNCTION IF EXISTS rustok_product_reconcile_index_graph_v3_projection(UUID, UUID);
 DROP FUNCTION IF EXISTS rustok_product_reject_index_graph_v3_projection_mutation();
+DROP FUNCTION IF EXISTS rustok_product_guard_index_graph_v3_projection_snapshot();
 DROP TABLE IF EXISTS product_index_graph_v3_projection_snapshots;
 "#,
             )
