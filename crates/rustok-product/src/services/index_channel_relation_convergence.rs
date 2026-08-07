@@ -24,6 +24,30 @@ pub enum ProductSalesChannelIndexRelationConvergenceWork {
     },
 }
 
+impl ProductSalesChannelIndexRelationConvergenceWork {
+    fn validate(&self) -> Result<(), ProductSalesChannelIndexRelationConvergenceError> {
+        match self {
+            Self::VisibilityRequest {
+                sequence_no,
+                product_id,
+                product_source_version,
+            } => {
+                if *sequence_no <= 0 || product_id.is_nil() || *product_source_version == 0 {
+                    return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
+                }
+            }
+            Self::ChannelSweep {
+                after_product_id, ..
+            } => {
+                if after_product_id.is_some_and(|value| value.is_nil()) {
+                    return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductSalesChannelIndexRelationConvergenceClaim {
     tenant_id: Uuid,
@@ -32,6 +56,23 @@ pub struct ProductSalesChannelIndexRelationConvergenceClaim {
 }
 
 impl ProductSalesChannelIndexRelationConvergenceClaim {
+    pub fn restore(
+        tenant_id: Uuid,
+        lease_token: Uuid,
+        work: ProductSalesChannelIndexRelationConvergenceWork,
+    ) -> Result<Self, ProductSalesChannelIndexRelationConvergenceError> {
+        validate_tenant(tenant_id)?;
+        if lease_token.is_nil() {
+            return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
+        }
+        work.validate()?;
+        Ok(Self {
+            tenant_id,
+            lease_token,
+            work,
+        })
+    }
+
     pub fn tenant_id(&self) -> Uuid {
         self.tenant_id
     }
@@ -126,12 +167,14 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
         claim: &ProductSalesChannelIndexRelationConvergenceClaim,
     ) -> Result<(), ProductSalesChannelIndexRelationConvergenceError> {
         ensure_postgres(&self.db)?;
-        let ProductSalesChannelIndexRelationConvergenceWork::VisibilityRequest {
-            sequence_no,
-            ..
-        } = claim.work
-        else {
-            return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
+        let sequence_no = match claim.work() {
+            ProductSalesChannelIndexRelationConvergenceWork::VisibilityRequest {
+                sequence_no,
+                ..
+            } => *sequence_no,
+            ProductSalesChannelIndexRelationConvergenceWork::ChannelSweep { .. } => {
+                return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
+            }
         };
         if sequence_no <= 0 {
             return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
@@ -154,10 +197,13 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
         if next_after_product_id.is_some_and(|value| value.is_nil()) {
             return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
         }
-        let ProductSalesChannelIndexRelationConvergenceWork::ChannelSweep { generation, .. } =
-            claim.work
-        else {
-            return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
+        let generation = match claim.work() {
+            ProductSalesChannelIndexRelationConvergenceWork::ChannelSweep { generation, .. } => {
+                *generation
+            }
+            ProductSalesChannelIndexRelationConvergenceWork::VisibilityRequest { .. } => {
+                return Err(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState);
+            }
         };
         let generation = non_negative_i64(
             generation,
@@ -201,13 +247,7 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
             .begin()
             .await
             .map_err(|_| ProductSalesChannelIndexRelationConvergenceError::Unavailable)?;
-        let result = retry_in_transaction(
-            &transaction,
-            claim,
-            delay_seconds,
-            error_marker,
-        )
-        .await;
+        let result = retry_in_transaction(&transaction, claim, delay_seconds, error_marker).await;
         finish(transaction, result).await
     }
 
@@ -297,12 +337,13 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
         } else {
             return Ok(ProductSalesChannelIndexRelationConvergenceClaimOutcome::Idle);
         };
+        work.validate()?;
 
         let lease_token = Uuid::new_v4();
-        let starting_sweep_generation = match work {
+        let starting_sweep_generation = match &work {
             ProductSalesChannelIndexRelationConvergenceWork::ChannelSweep { generation, .. }
                 if state.sweep_generation.is_none() => Some(non_negative_i64(
-                    generation,
+                    *generation,
                     ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState,
                 )?),
             _ => None,
