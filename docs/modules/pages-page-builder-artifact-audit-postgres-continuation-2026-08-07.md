@@ -38,11 +38,13 @@ crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-aud
 
 The harness is gated by `RUSTOK_PAGES_TEST_DATABASE_URL` with `DATABASE_URL` fallback and accepts only `postgres://` or `postgresql://` URLs. It creates a unique schema, applies the real `OutboxModule` and `PagesModule` migrations, installs only the tenant-module enablement fixture required by Pages, and drops the schema after the scenario.
 
-Reviewed publish uses the current body revision contract:
+Reviewed publish follows the current production `reviewed_publish::body_revision_snapshot` contract exactly:
 
 ```text
-updated_at:sha256(format\0content)
+body.updated_at.to_string()
 ```
+
+The harness therefore sends the created body DTO's matching `body.updated_at` value directly. It does not append a content digest. The source guard binds this fixture to the production owner and forbids the stale `updated_at:sha256(format\0content)` construction in this audit packet.
 
 No custom artifact/audit tables are created.
 
@@ -133,6 +135,7 @@ pages_immutable_artifact_integrity_audit_postgres_source_unvalidated
 | --- | --- | --- |
 | Immutable artifact audit owner | Source-ready | Runtime evidence pending |
 | Immutable artifact audit GraphQL/HTTP transports | Source-ready | Transport execution pending |
+| Audit reviewed-publish revision fixture | Owner-aligned | Execution pending |
 | Audit Manage `All`/`None` authorization | SQLite harness-ready | SQLite execution pending |
 | Audit canonical and rebuilt artifact semantics | SQLite + PostgreSQL harness-ready | Execution pending |
 | Audit bounded truncation (`max_records=1`) | SQLite + PostgreSQL harness-ready | Execution pending |
@@ -141,18 +144,19 @@ pages_immutable_artifact_integrity_audit_postgres_source_unvalidated
 | Audit PostgreSQL page/id/record shared-lock source binding | Harness + guard ready | PostgreSQL execution pending |
 | Audit PostgreSQL concurrent update `lock_timeout` | Harness-ready | PostgreSQL execution pending |
 | Provenance migration/publish rollback/loss evidence | Source owner exists | Dedicated packet still open |
-| Explicit repair owner/transport/cache packets | Source-ready | Maintainer execution pending |
+| Explicit repair owner/transport/cache packets | Source-ready | Maintainer execution pending; revision-fixture recheck remains separate |
 | Automatic repair | Deliberately absent | Not allowed |
 | FFA/FBA promotion | Open | Not promoted |
 
 ## Next cursor
 
-1. Execute the SQLite and PostgreSQL audit harnesses plus both audit source guards and retain accepted evidence.
-2. Retain the dedicated provenance migration/publish packet for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
-3. Execute the repair transport/request/PostgreSQL/failure/cache packets already source-ready.
-4. Retain successful bounded audit transport execution with current-tenant and Pages Manage fencing.
-5. Execute the broader artifact/HTTP/browser and tenant Wave packets before any FFA/FBA promotion.
-6. Keep automatic audit-to-rebuild and rebuild-to-activation chaining absent until accepted execution evidence supports any policy change.
+1. Align the remaining repair PostgreSQL/negative/cache publish-revision fixtures with the current reviewed-publish owner before their maintainer execution.
+2. Execute the SQLite and PostgreSQL audit harnesses plus both audit source guards and retain accepted evidence.
+3. Retain the dedicated provenance migration/publish packet for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
+4. Execute the repair transport/request/PostgreSQL/failure/cache packets after their revision-fixture cleanup.
+5. Retain successful bounded audit transport execution with current-tenant and Pages Manage fencing.
+6. Execute the broader artifact/HTTP/browser and tenant Wave packets before any FFA/FBA promotion.
+7. Keep automatic audit-to-rebuild and rebuild-to-activation chaining absent until accepted execution evidence supports any policy change.
 
 ## Maintainer validation
 
