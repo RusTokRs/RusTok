@@ -13,9 +13,10 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
     let reactions_enabled = use_is_module_enabled("reactions");
     let route = use_context::<UiRouteContext>().unwrap_or_default();
     let topic_id = explicit_forum_topic_id(&route);
+    let subject_topic_id = topic_id.clone();
     let locale = route.locale.clone();
 
-    let subject_resource = Resource::new_blocking(
+    let revision_resource = Resource::new_blocking(
         move || (reactions_enabled.get(), topic_id.clone(), locale.clone()),
         |(enabled, topic_id, locale)| async move {
             if !enabled {
@@ -24,7 +25,9 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
             let Some(topic_id) = topic_id else {
                 return Ok(None);
             };
-            load_forum_topic_reaction_subject(topic_id, locale).await
+            fetch_storefront_topic_current_revision(topic_id.to_string(), locale)
+                .await
+                .map_err(|_| ())
         },
     );
 
@@ -33,20 +36,33 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
             <ForumView />
             <Suspense fallback=|| ()>
                 {move || {
-                    let subject_resource = subject_resource;
+                    let revision_resource = revision_resource;
+                    let topic_id = subject_topic_id.clone();
                     Suspend::new(async move {
-                        match subject_resource.await {
-                            Ok(Some(subject)) => view! {
-                                <section
-                                    class="rounded-[1.5rem] border border-border bg-card p-5 shadow-sm"
-                                    data-storefront-composition="forum-topic-reactions"
-                                >
-                                    <ReactionBar subject />
-                                </section>
-                            }
-                            .into_any(),
-                            Ok(None) | Err(_) => ().into_any(),
+                        let Some(topic_id) = topic_id else {
+                            return ().into_any();
+                        };
+                        let Ok(Some(revision)) = revision_resource.await else {
+                            return ().into_any();
+                        };
+                        let Ok(subject) = ReactionSubjectUiRef::new(
+                            "forum",
+                            "topic",
+                            topic_id,
+                            revision,
+                        ) else {
+                            return ().into_any();
+                        };
+
+                        view! {
+                            <section
+                                class="rounded-[1.5rem] border border-border bg-card p-5 shadow-sm"
+                                data-storefront-composition="forum-topic-reactions"
+                            >
+                                <ReactionBar subject />
+                            </section>
                         }
+                        .into_any()
                     })
                 }}
             </Suspense>
@@ -61,22 +77,6 @@ fn explicit_forum_topic_id(route: &UiRouteContext) -> Option<Uuid> {
     let value = route.query_value("topic")?.trim();
     let topic_id = Uuid::parse_str(value).ok()?;
     (!topic_id.is_nil()).then_some(topic_id)
-}
-
-async fn load_forum_topic_reaction_subject(
-    topic_id: Uuid,
-    locale: Option<String>,
-) -> Result<Option<ReactionSubjectUiRef>, ()> {
-    let Some(revision) = fetch_storefront_topic_current_revision(topic_id.to_string(), locale)
-        .await
-        .map_err(|_| ())?
-    else {
-        return Ok(None);
-    };
-
-    ReactionSubjectUiRef::new("forum", "topic", topic_id, revision)
-        .map(Some)
-        .map_err(|_| ())
 }
 
 #[cfg(test)]
