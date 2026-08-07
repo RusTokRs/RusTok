@@ -36,6 +36,9 @@ const channelMigration = requireMarkers(channelMigrationPath, [
   'lower(btrim(OLD.slug)) IS NOT DISTINCT FROM lower(btrim(NEW.slug))',
   'old_tenant::text < new_tenant::text',
   'generation = previous_generation + 1',
+  'FOR seed_tenant_id IN',
+  'ORDER BY seeded.tenant_id::text',
+  'PERFORM rustok_channel_bump_index_identity_generation(seed_tenant_id)',
 ]);
 forbidMarkers(channelMigrationPath, channelMigration, [
   'is_active',
@@ -62,7 +65,11 @@ const freshnessMigration = requireMarkers(freshnessMigrationPath, [
   'REFERENCES product_sales_channel_index_relation_snapshots',
   'octet_length(visibility_key) BETWEEN 1 AND 131072',
   'rustok_product_guard_channel_relation_freshness_snapshot',
+  'FOR KEY SHARE',
+  'freshness witness requires a live Product',
+  'product-sales-channel-index-relation',
   'product-sales-channel-index-relation-freshness',
+  'freshness witness requires the current relation epoch',
   'freshness relation epoch regressed',
   'freshness Product watermark regressed',
   'freshness Channel watermark regressed',
@@ -85,12 +92,17 @@ const freshnessStorePath =
   'crates/rustok-product/src/services/index_channel_relation_freshness.rs';
 const freshnessStore = requireMarkers(freshnessStorePath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES: usize = 131_072',
+  'RELATION_LOCK_DOMAIN: &str = "product-sales-channel-index-relation"',
+  'FRESHNESS_LOCK_DOMAIN: &str = "product-sales-channel-index-relation-freshness"',
   'pub struct ProductSalesChannelIndexRelationFreshnessRecord',
   'pub struct ProductSalesChannelIndexRelationFreshnessStore',
   'pub async fn record(',
   'require_live_product(transaction, tenant_id, product_id).await?',
   'FOR KEY SHARE',
-  'require_relation_epoch(transaction, tenant_id, product_id, relation_epoch).await?',
+  'RELATION_LOCK_DOMAIN,',
+  'FRESHNESS_LOCK_DOMAIN,',
+  'require_current_relation_epoch(transaction, tenant_id, product_id, relation_epoch).await?',
+  'ProductSalesChannelIndexRelationFreshnessError::RelationNotCurrent',
   'ProductSalesChannelIndexRelationFreshnessError::WatermarkRegressed',
   'INSERT INTO product_sales_channel_index_relation_freshness_snapshots',
   'ORDER BY sequence_no DESC',
@@ -130,7 +142,6 @@ const resolver = requireMarkers(resolverPath, [
   'verified.product_source_version',
   'verified.visibility_key.clone()',
   'verified.channel_identity_generation',
-  'ProductSalesChannelIndexRelationFreshnessError::WatermarkRegressed',
   'MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3',
 ]);
 forbidMarkers(resolverPath, resolver, [
@@ -187,6 +198,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.
   'Product-SalesChannel freshness witness',
   'Channel identity generation',
   'Freshness watermark source complete',
+  'source-read -> mutation-apply in-flight window',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
