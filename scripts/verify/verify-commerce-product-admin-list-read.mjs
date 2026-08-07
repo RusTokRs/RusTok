@@ -35,48 +35,43 @@ function functionSlice(source, name, nextName) {
 }
 
 const ports = read("crates/rustok-product/src/ports.rs");
-requireText(
-  ports,
+for (const required of [
   "async fn list_admin_products(",
-  "ProductCatalogReadPort must publish admin list reads",
-);
-requireText(
-  ports,
   "pub struct AdminProductsRequest",
-  "Product owner must publish the typed admin list request",
-);
-requireText(
-  ports,
+  "pub raw_status: Option<String>",
+  "pub vendor: Option<String>",
+  "pub product_type: Option<String>",
+  "pub empty_missing_title: bool",
   "product.admin_list_unavailable",
-  "ProductCatalogReadPort admin list must remain an optional fail-closed capability",
-);
-requireText(
-  ports,
   "product admin listing is unavailable",
-  "optional Product admin list capability must expose a stable unavailable message",
-);
-requireText(
-  ports,
+  "list_admin_products_with_compatibility_query(",
   "require_policy(PortCallPolicy::read())",
-  "admin list owner call must preserve read deadline policy",
-);
+]) {
+  requireText(ports, required, `Product admin list port contract must contain ${required}`);
+}
 
 const queryTypes = read("crates/rustok-product/src/services/catalog/types.rs");
-for (const required of [
+for (const forbidden of [
   "pub raw_status: Option<String>",
   "pub vendor: Option<String>",
   "pub product_type: Option<String>",
   "pub empty_missing_title: bool",
 ]) {
-  requireText(queryTypes, required, `owner admin list query must retain ${required}`);
+  forbidText(
+    queryTypes,
+    forbidden,
+    `existing AdminProductListQuery public shape must not gain compatibility field ${forbidden}`,
+  );
 }
 
 const ownerQuery = read("crates/rustok-product/src/services/catalog/admin_queries.rs");
 for (const required of [
+  "list_admin_products_with_compatibility_query(",
   "Column::Status.eq(raw_status)",
   "Column::Vendor.eq(vendor)",
   "Column::ProductType.eq(product_type)",
-  "if list_query.empty_missing_title",
+  "if empty_missing_title",
+  "String::new()",
 ]) {
   requireText(ownerQuery, required, `owner admin list implementation must contain ${required}`);
 }
