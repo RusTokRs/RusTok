@@ -129,7 +129,7 @@ impl PostgresIndexQueryAdmissionCatalog {
     /// The policy is one-hop by construction: deeper paths are checked at their first root link here,
     /// while target owner freshness is reused inside the target lookup. Current Product graph targets
     /// are link-free, so no recursive SQL or owner-specific compiler behavior is required.
-    pub fn apply_link_target_availability(
+    pub(crate) fn apply_link_target_availability(
         &self,
         query: &IndexQuery,
         compiled: &mut CompiledPostgresQuery,
@@ -156,10 +156,6 @@ impl PostgresIndexQueryAdmissionCatalog {
         Ok(())
     }
 
-    /// Adds a runtime-local pass-through root descriptor for an otherwise ungoverned registered
-    /// schema. Pass-through descriptors are never published as owner rules; they exist only in the
-    /// immutable query runtime so a query rooted at any registered schema still applies the same
-    /// composite owner admission to governed linked targets.
     pub(crate) fn ensure_runtime_schema(
         &mut self,
         schema: SchemaRef,
@@ -233,7 +229,7 @@ pub enum PostgresIndexQueryAdmissionError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
-pub enum PostgresIndexQueryLinkAvailabilityApplyError {
+pub(crate) enum PostgresIndexQueryLinkAvailabilityApplyError {
     #[error("compiled PostgreSQL query root admission anchor count is {actual}, expected exactly one")]
     RootAnchorMismatch { actual: usize },
 }
@@ -394,7 +390,10 @@ mod tests {
                     .to_owned(),
                 binds: Vec::new(),
             }),
-            plan_fingerprint: crate::QueryPlanFingerprint::new([0; 32]),
+            plan_fingerprint: serde_json::from_value(
+                serde_json::to_value([0_u8; 32]).unwrap(),
+            )
+            .unwrap(),
         }
     }
 
