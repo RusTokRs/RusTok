@@ -82,6 +82,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M7 Product Graph Projection Ledger](../../rustok-product/docs/index-graph-projection-ledger.md)
 - [M7 Product Storefront Index Parity Gate](./m7-product-storefront-parity-gate.md)
 - [M4 Source-owned Schema Registry](./m4-source-schema-registry.md)
+- [M4 Single-current Schema Supersession](./m4-single-current-schema-supersession.md)
 - [M4 Query Runtime Composition](./m4-query-runtime-composition.md)
 - [M4 PostgreSQL Query Port Contract](./m4-postgres-query-port.md)
 - [M4 Many-link Aggregate Ordering](./m4-many-link-aggregate-ordering.md)

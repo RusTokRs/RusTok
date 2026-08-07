@@ -91,9 +91,8 @@ immutable. Re-registering the same `SchemaRef` with a different fingerprint or J
 `VersionConflict`; inserting a non-increasing schema version returns `NonMonotonicVersion`.
 
 The current Product routing key is already persisted and intentionally represents the one selected
-canonical Product contract. Appending Storefront-only fields under that same key without an admitted
-replacement/rebuild protocol would create fingerprint drift and fail schema readiness. It would not be
-a safe "current code only" change.
+canonical Product contract. Appending Storefront-only fields under that same key would create
+fingerprint drift and fail schema readiness. It would not be a safe "current code only" change.
 
 Conversely, adding a `Product v4` compatibility branch only to make Storefront work would violate the
 single-current-contract direction. This gate therefore rejects both shortcuts:
@@ -101,21 +100,45 @@ single-current-contract direction. This gate therefore rejects both shortcuts:
 - no silent same-key fingerprint replacement;
 - no parallel v4/v5 compatibility source/route.
 
+## Single-current replacement persistence is source complete
+
+Generic Index persistence now has an explicit replacement primitive documented in
+`m4-single-current-schema-supersession.md`:
+
+`PostgresSchemaRegistrationStore::register_current`.
+
+Ordinary `register` can first stage one monotonically higher immutable routing key while lower persisted
+keys remain active for the rebuild window. After that staged key is completely rebuilt and verified,
+`register_current` resolves the exact same staged contract and atomically marks every lower active key
+`retired` in the final authority-transition transaction.
+
+Retirement does not rewrite or delete historical entity/link/inbox/replay rows. Their immutable schema
+rows remain for foreign-key integrity, while exact persisted readiness and query execution reject a
+retired schema as non-authoritative.
+
+This solves the persistence-side **single-current** replacement mechanism without adding a parallel
+runtime compatibility branch. It does not by itself expand Product or make a replacement Product key
+ready.
+
 ## Cutover admission rule
 
-Product Storefront Index cutover remains **false** until one future change proves all of the following:
+Product Storefront Index cutover remains **false** until one future Product replacement proves all of the
+following:
 
 1. one current Product Index contract covers every Storefront result field and ordering/filter input
    that is claimed by the cutover;
 2. typed Product attribute predicates have an admitted Index representation and exact owner parity, or
    the Storefront contract explicitly stops claiming those filters before cutover;
-3. any immutable-schema replacement is explicit, fail-closed, and rebuild-safe for persisted
-   `index_schemas`, materialized entities/links, inbox identities, replay state, and tenant readiness;
-4. no old Product schema is runtime-selected in parallel;
-5. retained PostgreSQL equivalence compares owner-native and Index results for locale fallback,
+3. the replacement immutable Product contract is staged through ordinary registration and complete
+   new-key rebuild/replay, then made authoritative through explicit single-current supersession — never
+   through same-key fingerprint replacement;
+4. every lower persisted Product key is retired at final supersession and no old Product schema is
+   runtime-selected in parallel by the replacement code;
+5. exact tenant schema readiness succeeds for the replacement key before final consumer cutover;
+6. retained PostgreSQL equivalence compares owner-native and Index results for locale fallback,
    visibility, search, category, typed attributes, both sort keys/directions, pagination, exact count,
    and linked-target lag;
-6. only after those checks may the Storefront transport select Index as an authoritative provider.
+7. only after those checks may the Storefront transport select Index as an authoritative provider.
 
 Until then, owner-native PostgreSQL remains authoritative for the catalog list.
 
@@ -132,22 +155,25 @@ The guard verifies that:
 - owner query/DTO source still exposes the required controls/result fields listed above;
 - the current Product Index schema still lacks the known missing Storefront fields;
 - same-key schema fingerprint reuse remains rejected by generic Index registration;
+- staged single-current supersession remains available for a future replacement;
 - the current Index implementation plan keeps Storefront traffic cutover evidence-gated.
 
 ## Deliberate limits
 
-This slice does not choose a replacement strategy for the immutable current Product schema. In
-particular it does not add a schema version, purge persisted Product Index state, invent a second
-Storefront Product entity, duplicate EAV data, or weaken schema fingerprint/readiness checks.
+This slice does not change the Product routing key or Product fields. It does not purge persisted Product
+Index state, invent a second Storefront Product entity, duplicate EAV data, weaken schema
+fingerprint/readiness checks, or switch traffic.
 
-That architecture choice must be explicit because it changes persistence and rebuild semantics. The
-fail-closed gate is the safe current result.
+The next Product schema replacement must use one higher internal routing key as a storage identity while
+publishing only that one replacement Product contract in new runtime code. The old key is historical
+storage, not a compatibility implementation.
 
 ## Maintainer verification
 
 Suggested commands, intentionally not run by the implementation agent:
 
 ```bash
+node scripts/verify/verify-index-schema-supersession.mjs
 node scripts/verify/verify-index-product-storefront-parity-gate.mjs
 node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-product-storefront-boundary.mjs

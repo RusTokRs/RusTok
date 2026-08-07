@@ -20,6 +20,22 @@ pub enum PersistedSchemaRegistrationOutcome {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersistedSchemaSupersessionOutcome {
+    registration: PersistedSchemaRegistrationOutcome,
+    retired_schema_count: u64,
+}
+
+impl PersistedSchemaSupersessionOutcome {
+    pub fn registration(&self) -> &PersistedSchemaRegistrationOutcome {
+        &self.registration
+    }
+
+    pub fn retired_schema_count(&self) -> u64 {
+        self.retired_schema_count
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SchemaRegistrationError {
     #[error("schema registration tenant id must not be nil")]
@@ -63,14 +79,7 @@ impl PostgresSchemaRegistrationStore {
         tenant_id: Uuid,
         schema: &IndexSchema,
     ) -> Result<PersistedSchemaRegistrationOutcome, SchemaRegistrationError> {
-        if tenant_id.is_nil() {
-            return Err(SchemaRegistrationError::NilTenantId);
-        }
-        let fingerprint = schema
-            .fingerprint()
-            .map_err(|error| SchemaRegistrationError::InvalidSchema(error.to_string()))?;
-        let schema_json = serde_json::to_value(schema)
-            .map_err(|error| SchemaRegistrationError::InvalidSchema(error.to_string()))?;
+        let (fingerprint, schema_json) = registration_contract(tenant_id, schema)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         let result = self
             .register_in_transaction(
@@ -81,16 +90,34 @@ impl PostgresSchemaRegistrationStore {
                 &schema_json,
             )
             .await;
-        match result {
-            Ok(outcome) => {
-                transaction.commit().await.map_err(storage_error)?;
-                Ok(outcome)
-            }
-            Err(error) => {
-                transaction.rollback().await.map_err(storage_error)?;
-                Err(error)
-            }
-        }
+        finish_transaction(transaction, result).await
+    }
+
+    /// Registers exactly one new/current schema contract for an identity and atomically retires every
+    /// lower active persisted routing key for the same tenant/module/entity.
+    ///
+    /// This is an explicit single-current supersession primitive, not the default registration path.
+    /// Historical entity/link/inbox/replay rows are not deleted or rewritten; their schema rows remain
+    /// present for foreign-key integrity but become non-authoritative because persisted readiness and
+    /// query execution reject retired contracts. Callers must still rebuild/materialize the new current
+    /// routing key before any consumer cutover.
+    pub async fn register_current(
+        &self,
+        tenant_id: Uuid,
+        schema: &IndexSchema,
+    ) -> Result<PersistedSchemaSupersessionOutcome, SchemaRegistrationError> {
+        let (fingerprint, schema_json) = registration_contract(tenant_id, schema)?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        let result = self
+            .register_current_in_transaction(
+                &transaction,
+                tenant_id,
+                schema,
+                fingerprint,
+                &schema_json,
+            )
+            .await;
+        finish_transaction(transaction, result).await
     }
 
     async fn register_in_transaction(
@@ -119,30 +146,138 @@ impl PostgresSchemaRegistrationStore {
             });
         }
 
-        let inserted = transaction
-            .execute(Statement::from_sql_and_values(
-                backend,
-                insert_schema_sql(backend),
-                schema_values(tenant_id, schema, fingerprint, schema_json, backend),
-            ))
-            .await
-            .map_err(storage_error)?;
-        if inserted.rows_affected() == 1 {
-            return Ok(PersistedSchemaRegistrationOutcome::Inserted {
-                reference: schema.reference.clone(),
-                fingerprint,
+        insert_or_resolve_schema(
+            transaction,
+            tenant_id,
+            schema,
+            fingerprint,
+            schema_json,
+            backend,
+        )
+        .await
+    }
+
+    async fn register_current_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        schema: &IndexSchema,
+        fingerprint: SchemaFingerprint,
+        schema_json: &JsonValue,
+    ) -> Result<PersistedSchemaSupersessionOutcome, SchemaRegistrationError> {
+        let backend = transaction.get_database_backend();
+        ensure_supported_backend(backend)?;
+        lock_schema_identity(transaction, tenant_id, schema, backend).await?;
+
+        let latest = load_latest_version(transaction, tenant_id, schema, backend).await?;
+        if let Some(latest) = latest
+            && schema.reference.version < latest
+        {
+            return Err(SchemaRegistrationError::NonMonotonicVersion {
+                identity: schema.reference.identity(),
+                latest,
+                attempted: schema.reference.version,
             });
         }
 
-        let existing = load_exact_schema(transaction, tenant_id, schema, backend)
+        let registration = if let Some(existing) =
+            load_exact_schema(transaction, tenant_id, schema, backend).await?
+        {
+            resolve_existing_schema(schema, fingerprint, schema_json, existing)?
+        } else {
+            if latest == Some(schema.reference.version) {
+                return Err(SchemaRegistrationError::Storage(
+                    "latest schema routing key exists but exact contract row is missing".to_owned(),
+                ));
+            }
+            insert_or_resolve_schema(
+                transaction,
+                tenant_id,
+                schema,
+                fingerprint,
+                schema_json,
+                backend,
+            )
             .await?
-            .ok_or_else(|| {
-                SchemaRegistrationError::Storage(
-                    "schema insert lost conflict row before verification".to_owned(),
-                )
-            })?;
-        resolve_existing_schema(schema, fingerprint, schema_json, existing)
+        };
+
+        let retired_schema_count = retire_lower_active_schemas(
+            transaction,
+            tenant_id,
+            schema,
+            backend,
+        )
+        .await?;
+
+        Ok(PersistedSchemaSupersessionOutcome {
+            registration,
+            retired_schema_count,
+        })
     }
+}
+
+fn registration_contract(
+    tenant_id: Uuid,
+    schema: &IndexSchema,
+) -> Result<(SchemaFingerprint, JsonValue), SchemaRegistrationError> {
+    if tenant_id.is_nil() {
+        return Err(SchemaRegistrationError::NilTenantId);
+    }
+    let fingerprint = schema
+        .fingerprint()
+        .map_err(|error| SchemaRegistrationError::InvalidSchema(error.to_string()))?;
+    let schema_json = serde_json::to_value(schema)
+        .map_err(|error| SchemaRegistrationError::InvalidSchema(error.to_string()))?;
+    Ok((fingerprint, schema_json))
+}
+
+async fn finish_transaction<T>(
+    transaction: DatabaseTransaction,
+    result: Result<T, SchemaRegistrationError>,
+) -> Result<T, SchemaRegistrationError> {
+    match result {
+        Ok(outcome) => {
+            transaction.commit().await.map_err(storage_error)?;
+            Ok(outcome)
+        }
+        Err(error) => {
+            transaction.rollback().await.map_err(storage_error)?;
+            Err(error)
+        }
+    }
+}
+
+async fn insert_or_resolve_schema(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    schema: &IndexSchema,
+    fingerprint: SchemaFingerprint,
+    schema_json: &JsonValue,
+    backend: DbBackend,
+) -> Result<PersistedSchemaRegistrationOutcome, SchemaRegistrationError> {
+    let inserted = transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            insert_schema_sql(backend),
+            schema_values(tenant_id, schema, fingerprint, schema_json, backend),
+        ))
+        .await
+        .map_err(storage_error)?;
+    if inserted.rows_affected() == 1 {
+        return Ok(PersistedSchemaRegistrationOutcome::Inserted {
+            reference: schema.reference.clone(),
+            fingerprint,
+        });
+    }
+
+    let existing = load_exact_schema(transaction, tenant_id, schema, backend)
+        .await?
+        .ok_or_else(|| {
+            SchemaRegistrationError::Storage(
+                "schema insert lost conflict row before verification".to_owned(),
+            )
+        })?;
+    resolve_existing_schema(schema, fingerprint, schema_json, existing)
 }
 
 struct StoredSchema {
@@ -253,6 +388,23 @@ async fn load_latest_version(
         .transpose()
 }
 
+async fn retire_lower_active_schemas(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    schema: &IndexSchema,
+    backend: DbBackend,
+) -> Result<u64, SchemaRegistrationError> {
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            retire_lower_active_schemas_sql(backend),
+            schema_scope_values(tenant_id, schema, backend),
+        ))
+        .await
+        .map(|result| result.rows_affected())
+        .map_err(storage_error)
+}
+
 fn stored_schema(row: QueryResult) -> Result<StoredSchema, SchemaRegistrationError> {
     Ok(StoredSchema {
         fingerprint: row
@@ -351,6 +503,18 @@ fn select_latest_version_sql(backend: DbBackend) -> &'static str {
         }
         DbBackend::Sqlite => {
             "SELECT schema_version FROM index_schemas WHERE tenant_id = ?1 AND module_name = ?2 AND entity_name = ?3 ORDER BY schema_version DESC LIMIT 1"
+        }
+        _ => unreachable!("unsupported backend rejected before SQL selection"),
+    }
+}
+
+fn retire_lower_active_schemas_sql(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Postgres => {
+            "UPDATE index_schemas SET status = 'retired', updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version < $4 AND status = 'active'"
+        }
+        DbBackend::Sqlite => {
+            "UPDATE index_schemas SET status = 'retired', updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ?1 AND module_name = ?2 AND entity_name = ?3 AND schema_version < ?4 AND status = 'active'"
         }
         _ => unreachable!("unsupported backend rejected before SQL selection"),
     }
