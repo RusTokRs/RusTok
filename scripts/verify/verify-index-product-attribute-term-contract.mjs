@@ -49,7 +49,7 @@ const source = requireMarkers(modulePath, [
   'FilterExpr::Or(vec![',
   'FilterExpr::Not(Box::new(requested_present))',
 ]);
-if (source.includes('attribute code')) {
+if (source.includes('pa.code ||') || source.includes('pa.code::text ||')) {
   fail(`${modulePath} must key persisted terms by stable attribute UUID rather than mutable public code`);
 }
 
