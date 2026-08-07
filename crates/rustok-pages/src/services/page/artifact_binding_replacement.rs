@@ -48,10 +48,11 @@ impl PageService {
     /// locale, and the current page version is anchored either by the retained publish itself or by
     /// an exact later rollback receipt that reactivated that same publish set. Any version gap after
     /// that anchor must be explained completely by a bounded contiguous chain of earlier activations
-    /// from the exact same publish for other locales. Both paths update one localized binding,
-    /// advance the page version, emit lifecycle events and store one replayable activation receipt
-    /// atomically. The command never compiles, sanitizes, rebuilds or reads the mutable body as repair
-    /// authority.
+    /// from the exact same publish. A locale may repeat only when its prior rebuilt instance is also
+    /// physically absent; the latest repair for every other locale must remain bound and intact.
+    /// Both paths update one localized binding, advance the page version, emit lifecycle events and
+    /// store one replayable activation receipt atomically. The command never compiles, sanitizes,
+    /// rebuilds or reads the mutable body as repair authority.
     pub async fn replace_rebuilt_artifact_binding(
         &self,
         tenant_id: Uuid,
@@ -551,22 +552,15 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
     }
 
     let mut cursor = anchor_version;
-    let mut prior_locales = std::collections::BTreeSet::new();
+    let mut latest_by_locale = std::collections::BTreeMap::<
+        String,
+        (Uuid, page_artifact_rebuild_operation::Model),
+    >::new();
     for operation in operations {
         verify_replacement_operation(&operation)?;
         if operation.expected_version != cursor || operation.result_version != cursor + 1 {
             return Err(replacement_current_conflict(
                 "recovery activation anchor version is stale: prior artifact activations are not a contiguous version chain",
-            ));
-        }
-        if operation.locale == target_locale {
-            return Err(replacement_current_conflict(
-                "recovery activation anchor version is stale: the target locale already appears in the prior recovery activation chain",
-            ));
-        }
-        if !prior_locales.insert(operation.locale.clone()) {
-            return Err(replacement_current_conflict(
-                "recovery activation anchor version is stale: a locale is repeated in the prior recovery activation chain",
             ));
         }
 
@@ -611,55 +605,26 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
             ));
         }
 
-        let prior_binding = load_binding_for_update_in_tx(
-            txn,
-            tenant_id,
-            page_id,
-            operation.locale.as_str(),
-        )
-        .await?
-        .ok_or_else(|| {
-            replacement_current_conflict(
-                "recovery activation anchor version is stale: a prior repaired locale binding is no longer active",
+        if let Some((_, previous_rebuild)) = latest_by_locale.get(&operation.locale)
+            && recovery_artifact_if_present_in_tx(
+                txn,
+                tenant_id,
+                page_id,
+                operation.locale.as_str(),
+                previous_rebuild.rebuilt_artifact_id,
             )
-        })?;
-        if prior_binding.page_body_id != prior_source.page_body_id
-            || prior_binding.artifact_id != prior_rebuild.rebuilt_artifact_id
+            .await?
+            .is_some()
         {
             return Err(replacement_current_conflict(
-                "recovery activation anchor version is stale: a prior repaired locale binding changed after activation",
+                "recovery activation anchor version is stale: a repeated locale still has its prior rebuilt immutable artifact",
             ));
         }
 
-        let prior_artifact_query = || {
-            page_static_landing_artifact::Entity::find_by_id(prior_rebuild.rebuilt_artifact_id)
-                .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
-                .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
-                .filter(
-                    page_static_landing_artifact::Column::Locale.eq(operation.locale.as_str()),
-                )
-        };
-        let prior_artifact = match txn.get_database_backend() {
-            DbBackend::Sqlite => prior_artifact_query().one(txn).await?,
-            DbBackend::Postgres | DbBackend::MySql => {
-                prior_artifact_query().lock_shared().one(txn).await?
-            }
-        }
-        .ok_or_else(|| {
-            replacement_current_conflict(
-                "recovery activation anchor version is stale: a prior repaired immutable artifact is unavailable",
-            )
-        })?;
-        if prior_artifact.instance_key != prior_rebuild.artifact_instance_key
-            || prior_artifact.artifact_hash != prior_rebuild.rebuilt_artifact_hash
-            || prior_artifact.materialization_hash.as_deref()
-                != Some(prior_rebuild.rebuilt_materialization_hash.as_str())
-        {
-            return Err(replacement_current_conflict(
-                "recovery activation anchor version is stale: a prior repaired immutable artifact drifted from its rebuild receipt",
-            ));
-        }
-
+        latest_by_locale.insert(
+            operation.locale.clone(),
+            (prior_source.page_body_id, prior_rebuild),
+        );
         cursor = operation.result_version;
     }
     if cursor != expected_version {
@@ -667,7 +632,88 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
             "recovery activation chain ends at version `{cursor}` instead of current version `{expected_version}`",
         )));
     }
+
+    for (locale, (page_body_id, latest_rebuild)) in latest_by_locale {
+        let binding = load_binding_for_update_in_tx(txn, tenant_id, page_id, locale.as_str()).await?;
+        if locale == target_locale {
+            if binding.is_some() {
+                return Err(replacement_current_conflict(
+                    "recovery activation anchor version is stale: target locale binding unexpectedly became active before repeated recovery",
+                ));
+            }
+            if recovery_artifact_if_present_in_tx(
+                txn,
+                tenant_id,
+                page_id,
+                locale.as_str(),
+                latest_rebuild.rebuilt_artifact_id,
+            )
+            .await?
+            .is_some()
+            {
+                return Err(replacement_current_conflict(
+                    "recovery activation anchor version is stale: target locale prior rebuilt immutable artifact still exists",
+                ));
+            }
+            continue;
+        }
+
+        let binding = binding.ok_or_else(|| {
+            replacement_current_conflict(
+                "recovery activation anchor version is stale: latest repaired locale binding is no longer active",
+            )
+        })?;
+        if binding.page_body_id != page_body_id
+            || binding.artifact_id != latest_rebuild.rebuilt_artifact_id
+        {
+            return Err(replacement_current_conflict(
+                "recovery activation anchor version is stale: latest repaired locale binding changed after activation",
+            ));
+        }
+
+        let artifact = recovery_artifact_if_present_in_tx(
+            txn,
+            tenant_id,
+            page_id,
+            locale.as_str(),
+            latest_rebuild.rebuilt_artifact_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            replacement_current_conflict(
+                "recovery activation anchor version is stale: latest repaired immutable artifact is unavailable",
+            )
+        })?;
+        if artifact.instance_key != latest_rebuild.artifact_instance_key
+            || artifact.artifact_hash != latest_rebuild.rebuilt_artifact_hash
+            || artifact.materialization_hash.as_deref()
+                != Some(latest_rebuild.rebuilt_materialization_hash.as_str())
+        {
+            return Err(replacement_current_conflict(
+                "recovery activation anchor version is stale: latest repaired immutable artifact drifted from its rebuild receipt",
+            ));
+        }
+    }
     Ok(())
+}
+
+async fn recovery_artifact_if_present_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+    artifact_id: Uuid,
+) -> PagesResult<Option<page_static_landing_artifact::Model>> {
+    let query = || {
+        page_static_landing_artifact::Entity::find_by_id(artifact_id)
+            .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+            .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
+            .filter(page_static_landing_artifact::Column::Locale.eq(locale))
+    };
+    Ok(match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    })
 }
 
 async fn load_replacement_artifact_in_tx(
