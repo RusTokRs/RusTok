@@ -1,3 +1,4 @@
+#[cfg(feature = "marketplace-financial")]
 mod marketplace_financial;
 mod mutations;
 mod product_catalog;
@@ -14,6 +15,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::storefront_channel::is_module_enabled_for_request_channel;
 
+#[cfg(feature = "marketplace-financial")]
 pub use marketplace_financial::{
     MarketplaceFinancialOperationGql, MarketplaceFinancialSweepFailureGql,
     MarketplaceFinancialSweepGql, MarketplacePaidEventGql,
@@ -70,6 +72,7 @@ fn optional_text_shape(value: Option<&str>) -> &'static str {
     }
 }
 
+#[cfg(feature = "marketplace-financial")]
 #[derive(MergedObject, Default)]
 pub struct CommerceQueryRoot(
     query::CommerceQuery,
@@ -77,14 +80,24 @@ pub struct CommerceQueryRoot(
     marketplace_financial::MarketplaceFinancialQuery,
 );
 
+#[cfg(not(feature = "marketplace-financial"))]
+#[derive(MergedObject, Default)]
+pub struct CommerceQueryRoot(query::CommerceQuery, product_catalog::ProductCatalogQuery);
+
 pub type CommerceQuery = CommerceQueryRoot;
 
+#[cfg(feature = "marketplace-financial")]
 #[allow(non_upper_case_globals)]
 pub const CommerceQuery: CommerceQueryRoot = CommerceQueryRoot(
     query::CommerceQuery,
     product_catalog::ProductCatalogQuery,
     marketplace_financial::MarketplaceFinancialQuery,
 );
+
+#[cfg(not(feature = "marketplace-financial"))]
+#[allow(non_upper_case_globals)]
+pub const CommerceQuery: CommerceQueryRoot =
+    CommerceQueryRoot(query::CommerceQuery, product_catalog::ProductCatalogQuery);
 
 pub(crate) const MODULE_SLUG: &str = "commerce";
 pub(crate) const PRODUCT_MODULE_SLUG: &str = "product";
