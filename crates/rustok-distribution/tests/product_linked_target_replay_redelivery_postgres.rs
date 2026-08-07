@@ -314,7 +314,8 @@ async fn run_scenario(database: &TestDatabase) -> TestResult<()> {
         .ok_or_else(|| std::io::Error::other("replay checkpoint was not committed on retry"))?;
     assert!(checkpoint.is_complete());
     assert_eq!(checkpoint.source_version(), Some(current_version));
-    assert_eq!(checkpoint.last_delivery_id(), Some(current.event_id().to_string().as_str()));
+    let current_delivery_id = current.event_id().to_string();
+    assert_eq!(checkpoint.last_delivery_id(), Some(current_delivery_id.as_str()));
 
     // Deliver the never-before-applied intermediate canonical mutation after current v3 is durable.
     // The replay sink must classify it as stale rather than regressing target payload or source version.
@@ -557,14 +558,15 @@ async fn assert_graph_payload(query: &SharedIndexQueryRuntime, expected_sku: &st
     let page = query.execute_query(variant_graph_query()?).await?;
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.exact_count, Some(1));
+    let variants_link = LinkName::new("variants")?;
     let variants = page.items[0]
         .nested_relations
         .iter()
-        .find(|projection| projection.path == vec![LinkName::new("variants")?])
+        .find(|projection| projection.path == vec![variants_link.clone()])
         .ok_or_else(|| std::io::Error::other("variants nested projection is missing"))?;
     assert_eq!(variants.items.len(), 1);
     let sku_path = FieldPath::linked(
-        [LinkName::new("variants")?],
+        [variants_link],
         FieldName::new("sku")?,
     );
     let sku = variants.items[0]
@@ -572,7 +574,7 @@ async fn assert_graph_payload(query: &SharedIndexQueryRuntime, expected_sku: &st
         .iter()
         .find(|field| field.path == sku_path)
         .ok_or_else(|| std::io::Error::other("variants.sku projection is missing"))?;
-    assert_eq!(sku.value, IndexValue::String(expected_sku.to_owned()));
+    assert_eq!(&sku.value, &IndexValue::String(expected_sku.to_owned()));
     Ok(())
 }
 
