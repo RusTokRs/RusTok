@@ -9,7 +9,7 @@
     "real_outbox_sys_events_migration_used": true,
     "real_channel_module_migrations_used": true,
     "real_pages_module_migrations_used": true,
-    "canonical_reviewed_publish_body_revision_used": true,
+    "reviewed_publish_revision_matches_owner_updated_at_snapshot": true,
     "corrupt_provenance_rejected": true,
     "corrupt_provenance_error_code_bound": true,
     "corrupt_provenance_adds_no_rebuild_receipt": true,
