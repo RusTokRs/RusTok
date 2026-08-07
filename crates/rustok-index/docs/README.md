@@ -9,8 +9,8 @@ This directory contains the detailed technical architecture documentation for `r
 | Indexing Approach | Write Overhead | Cross-Module Filtering | Zero N+1 Queries | Consistency Model | Infrastructure Complexity |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Traditional SQL JOINs** | Low | Slow (Multi-table JOIN bottlenecks) | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
-| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | Immediate | High |
-| **External Search Sync (Elasticsearch / Algolia)** | High | Fast | Yes | Eventual (lag & drift risks) | Heavy JVM/Cloud cluster |
+| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
+| **External Search Sync (Elasticsearch / Algolia)** | High DDL & Row Bloat | Fast | Yes | Eventual (Lag & drift risks) | Heavy JVM/Cloud cluster |
 | **`rustok-index` (JSONB + Keyset Engine)** | **Low (Transactional Outbox Inbox)** | **Ultra-Fast (Derived B-Tree / GIN Indexes)** | **Yes (Single REPEATABLE READ query)** | **Immediate (Transactional Outbox)** | **Pure Rust + PostgreSQL (Zero external dependencies)** |
 
 ---
