@@ -28,6 +28,7 @@ pub struct CommerceHttpRuntime {
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
     product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
+    product_catalog_command_runtime: rustok_product::ProductCatalogCommandRuntime,
     #[cfg(feature = "marketplace-financial")]
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
 }
@@ -82,6 +83,12 @@ impl CommerceHttpRuntime {
         self.product_catalog_read_runtime.read_port()
     }
 
+    fn product_catalog_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_product::ProductCatalogCommandPort> {
+        self.product_catalog_command_runtime.command_port()
+    }
+
     #[cfg(feature = "marketplace-financial")]
     fn marketplace_financial_operator_service(&self) -> crate::MarketplaceFinancialOperatorService {
         self.marketplace_financial_runtime
@@ -132,6 +139,13 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require ProductCatalogReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let product_catalog_command_runtime = runtime
+            .shared_get::<rustok_product::ProductCatalogCommandRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require ProductCatalogCommandRuntime in HostRuntimeContext"
+                )
+            })?;
         #[cfg(feature = "marketplace-financial")]
         let marketplace_financial_runtime = runtime
             .shared_get::<crate::MarketplaceFinancialRuntime>()
@@ -153,6 +167,7 @@ impl CommerceHttpRuntime {
             fulfillment_lifecycle_read_runtime,
             order_read_runtime,
             product_catalog_read_runtime,
+            product_catalog_command_runtime,
             #[cfg(feature = "marketplace-financial")]
             marketplace_financial_runtime,
         })
