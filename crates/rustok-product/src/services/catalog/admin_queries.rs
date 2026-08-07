@@ -113,7 +113,13 @@ impl CatalogService {
                     status: product.status,
                     title: translation
                         .map(|value| value.title.clone())
-                        .unwrap_or_else(|| "Untitled product".to_string()),
+                        .unwrap_or_else(|| {
+                            if list_query.empty_missing_title {
+                                String::new()
+                            } else {
+                                "Untitled product".to_string()
+                            }
+                        }),
                     handle: translation
                         .map(|value| value.handle.clone())
                         .unwrap_or_default(),
