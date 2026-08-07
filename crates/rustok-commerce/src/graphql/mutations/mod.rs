@@ -1,5 +1,6 @@
 use async_graphql::MergedObject;
 
+#[cfg(feature = "marketplace-financial")]
 use super::marketplace_financial::MarketplaceFinancialMutation;
 
 #[path = "safe_cart.rs"]
@@ -32,6 +33,7 @@ mod typed_shipping_enrichment_helper;
 #[path = "typed_shipping_option_helper.rs"]
 mod typed_shipping_option_helper;
 
+#[cfg(feature = "marketplace-financial")]
 #[derive(MergedObject, Default)]
 pub struct CommerceMutation(
     pub cart::CommerceCartMutation,
@@ -44,7 +46,19 @@ pub struct CommerceMutation(
     pub MarketplaceFinancialMutation,
 );
 
-#[cfg(test)]
+#[cfg(not(feature = "marketplace-financial"))]
+#[derive(MergedObject, Default)]
+pub struct CommerceMutation(
+    pub cart::CommerceCartMutation,
+    pub catalog::CommerceCatalogMutation,
+    pub checkout::CommerceCheckoutMutation,
+    pub fulfillment::CommerceFulfillmentMutation,
+    pub pricing::CommercePricingMutation,
+    pub provider_operations::CommerceProviderMutation,
+    pub reconciliation::CommerceReconciliationMutation,
+);
+
+#[cfg(all(test, feature = "marketplace-financial"))]
 mod tests {
     use async_graphql::{EmptySubscription, Schema};
 
