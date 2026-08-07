@@ -4,7 +4,7 @@ use rustok_core::{CONTENT_FORMAT_GRAPESJS, PermissionScope, SecurityContext};
 use rustok_events::DomainEvent;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
+    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -34,6 +34,7 @@ pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID: &str =
 pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY: &str =
     "PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY";
 const MAX_REPLACEMENT_IDEMPOTENCY_KEY_BYTES: usize = 191;
+const MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS: usize = 256;
 
 impl PageService {
     /// Activates one exact rebuilt immutable artifact for its locale in one owner transaction.
@@ -43,10 +44,11 @@ impl PageService {
     /// artifact. The ordinary path requires the current locale binding to still point at the source
     /// artifact. A deliberately narrow recovery path also admits a physically lost source artifact
     /// only when the locale binding is absent, the retained source body is still current for the
-    /// locale, and the retained publish operation produced the exact current page version. Both paths
-    /// update one localized binding, advance the page version, emit lifecycle events and store one
-    /// replayable activation receipt atomically. The command never compiles, sanitizes, rebuilds or
-    /// reads the mutable body as repair authority.
+    /// locale, and the current page version is either the retained publish result version or is
+    /// explained completely by a bounded contiguous chain of earlier activations from that exact
+    /// publish for other locales. Both paths update one localized binding, advance the page version,
+    /// emit lifecycle events and store one replayable activation receipt atomically. The command
+    /// never compiles, sanitizes, rebuilds or reads the mutable body as repair authority.
     pub async fn replace_rebuilt_artifact_binding(
         &self,
         tenant_id: Uuid,
@@ -387,10 +389,196 @@ async fn ensure_missing_binding_recovery_in_tx(
             "retained source publish operation does not match rebuild provenance",
         ));
     }
-    if publish.result_version != expected_version {
+    if publish.result_version > expected_version {
         return Err(replacement_current_conflict(format!(
-            "retained source publish version is stale: expected current version `{expected_version}`, found `{}`",
+            "retained source publish version is stale: expected current version `{expected_version}`, found future source version `{}`",
             publish.result_version,
+        )));
+    }
+    if publish.result_version < expected_version {
+        ensure_sequential_missing_binding_recovery_version_chain_in_tx(
+            txn,
+            tenant_id,
+            page_id,
+            expected_version,
+            &publish,
+            rebuild.locale.as_str(),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    expected_version: i32,
+    publish: &page_publish_operation::Model,
+    target_locale: &str,
+) -> PagesResult<()> {
+    let version_gap = expected_version
+        .checked_sub(publish.result_version)
+        .filter(|gap| *gap > 0)
+        .ok_or_else(|| {
+            replacement_current_conflict(format!(
+                "retained source publish version is stale: expected current version `{expected_version}`, found `{}`",
+                publish.result_version,
+            ))
+        })?;
+    let version_gap = usize::try_from(version_gap).map_err(|_| {
+        replacement_current_conflict(
+            "retained source publish version is stale: sequential recovery version gap is invalid",
+        )
+    })?;
+    if version_gap > MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS {
+        return Err(replacement_current_conflict(format!(
+            "retained source publish version is stale: sequential recovery gap `{version_gap}` exceeds the bounded activation limit `{MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS}`",
+        )));
+    }
+
+    let query = || {
+        page_artifact_binding_replacement_operation::Entity::find()
+            .filter(
+                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
+            )
+            .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(page_id))
+            .filter(
+                page_artifact_binding_replacement_operation::Column::ResultVersion
+                    .gt(publish.result_version),
+            )
+            .filter(
+                page_artifact_binding_replacement_operation::Column::ResultVersion
+                    .lte(expected_version),
+            )
+            .order_by_asc(page_artifact_binding_replacement_operation::Column::ResultVersion)
+            .order_by_asc(page_artifact_binding_replacement_operation::Column::Id)
+    };
+    let operations = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().all(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
+    };
+    if operations.len() != version_gap {
+        return Err(replacement_current_conflict(format!(
+            "retained source publish version is stale: current version gap is not fully explained by prior artifact activations from the selected publish",
+        )));
+    }
+
+    let mut cursor = publish.result_version;
+    let mut prior_locales = std::collections::BTreeSet::new();
+    for operation in operations {
+        verify_replacement_operation(&operation)?;
+        if operation.expected_version != cursor || operation.result_version != cursor + 1 {
+            return Err(replacement_current_conflict(
+                "retained source publish version is stale: prior artifact activations are not a contiguous version chain",
+            ));
+        }
+        if operation.locale == target_locale {
+            return Err(replacement_current_conflict(
+                "retained source publish version is stale: the target locale already appears in the prior recovery activation chain",
+            ));
+        }
+        if !prior_locales.insert(operation.locale.clone()) {
+            return Err(replacement_current_conflict(
+                "retained source publish version is stale: a locale is repeated in the prior recovery activation chain",
+            ));
+        }
+
+        let expected_request_hash = stable_replacement_hash(&(
+            PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT,
+            tenant_id,
+            page_id,
+            operation.rebuild_operation_id,
+            operation.expected_version,
+            operation.expected_current_artifact_id,
+        ))?;
+        if operation.request_hash != expected_request_hash {
+            return Err(replacement_operation_integrity(
+                "prior sequential recovery activation receipt request hash failed validation",
+            ));
+        }
+
+        let prior_rebuild = load_rebuild_operation_in_tx(
+            txn,
+            tenant_id,
+            page_id,
+            operation.rebuild_operation_id,
+        )
+        .await?;
+        verify_rebuild_receipt(&prior_rebuild)?;
+        let prior_source =
+            load_rebuild_source_in_tx(txn, tenant_id, page_id, prior_rebuild.source_id).await?;
+        verify_rebuild_source(&prior_source)?;
+        ensure_rebuild_matches_source(&prior_rebuild, &prior_source)?;
+        if prior_rebuild.source_publish_operation_id != publish.id
+            || prior_source.operation_id != publish.id
+            || operation.page_body_id != prior_source.page_body_id
+            || operation.locale != prior_source.locale
+            || operation.expected_current_artifact_id != prior_rebuild.source_artifact_id
+            || operation.replacement_artifact_id != prior_rebuild.rebuilt_artifact_id
+            || operation.replacement_artifact_hash != prior_rebuild.rebuilt_artifact_hash
+            || operation.replacement_materialization_hash
+                != prior_rebuild.rebuilt_materialization_hash
+        {
+            return Err(replacement_current_conflict(
+                "retained source publish version is stale: a prior activation does not belong to the exact selected publish repair chain",
+            ));
+        }
+
+        let prior_binding = load_binding_for_update_in_tx(
+            txn,
+            tenant_id,
+            page_id,
+            operation.locale.as_str(),
+        )
+        .await?
+        .ok_or_else(|| {
+            replacement_current_conflict(
+                "retained source publish version is stale: a prior repaired locale binding is no longer active",
+            )
+        })?;
+        if prior_binding.page_body_id != prior_source.page_body_id
+            || prior_binding.artifact_id != prior_rebuild.rebuilt_artifact_id
+        {
+            return Err(replacement_current_conflict(
+                "retained source publish version is stale: a prior repaired locale binding changed after activation",
+            ));
+        }
+
+        let prior_artifact_query = || {
+            page_static_landing_artifact::Entity::find_by_id(prior_rebuild.rebuilt_artifact_id)
+                .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+                .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
+                .filter(
+                    page_static_landing_artifact::Column::Locale.eq(operation.locale.as_str()),
+                )
+        };
+        let prior_artifact = match txn.get_database_backend() {
+            DbBackend::Sqlite => prior_artifact_query().one(txn).await?,
+            DbBackend::Postgres | DbBackend::MySql => {
+                prior_artifact_query().lock_shared().one(txn).await?
+            }
+        }
+        .ok_or_else(|| {
+            replacement_current_conflict(
+                "retained source publish version is stale: a prior repaired immutable artifact is unavailable",
+            )
+        })?;
+        if prior_artifact.instance_key != prior_rebuild.artifact_instance_key
+            || prior_artifact.artifact_hash != prior_rebuild.rebuilt_artifact_hash
+            || prior_artifact.materialization_hash.as_deref()
+                != Some(prior_rebuild.rebuilt_materialization_hash.as_str())
+        {
+            return Err(replacement_current_conflict(
+                "retained source publish version is stale: a prior repaired immutable artifact drifted from its rebuild receipt",
+            ));
+        }
+
+        cursor = operation.result_version;
+    }
+    if cursor != expected_version {
+        return Err(replacement_current_conflict(format!(
+            "retained source publish version is stale: activation chain ends at version `{cursor}` instead of current version `{expected_version}`",
         )));
     }
     Ok(())
