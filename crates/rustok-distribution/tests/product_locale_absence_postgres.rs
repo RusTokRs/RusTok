@@ -224,6 +224,12 @@ CREATE TABLE taxonomy_terms (
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     UNIQUE (tenant_id, id)
 );
+-- This Product-only harness does not run Channel migrations, but the canonical Product source reads
+-- the Channel-owned tenant identity watermark. An empty table represents a tenant with no Channels.
+CREATE TABLE channel_index_identity_generations (
+    tenant_id UUID PRIMARY KEY,
+    generation BIGINT NOT NULL CHECK (generation > 0)
+);
 "#,
     )
     .await?;
@@ -247,8 +253,8 @@ VALUES (
     'product-locale-absence-fixture'
 );
 
--- The canonical Product absence provider is projection-aware. Seed one resolved relation snapshot
--- after the initial translation so its relation trigger creates the exact current graph projection.
+-- Seed one resolved relation snapshot after the initial translation so its relation trigger creates
+-- the exact current graph projection.
 INSERT INTO product_sales_channel_index_relation_snapshots (
     tenant_id,
     product_id,
@@ -260,6 +266,35 @@ INSERT INTO product_sales_channel_index_relation_snapshots (
     1,
     '[]'::jsonb
 );
+
+-- The tenant has no Channels, so generation 0 is the exact current identity watermark and default
+-- Product metadata is unrestricted visibility (`all`).
+INSERT INTO product_sales_channel_index_relation_freshness_snapshots (
+    tenant_id,
+    product_id,
+    relation_epoch,
+    product_source_version,
+    visibility_key,
+    channel_identity_generation
+)
+SELECT
+    product.tenant_id,
+    product.id,
+    relation.relation_epoch,
+    product.index_revision,
+    'all',
+    0
+FROM products product
+JOIN LATERAL (
+    SELECT relation_epoch
+    FROM product_sales_channel_index_relation_snapshots relation
+    WHERE relation.tenant_id = product.tenant_id
+      AND relation.product_id = product.id
+    ORDER BY relation.relation_epoch DESC
+    LIMIT 1
+) relation ON TRUE
+WHERE product.tenant_id = '{TENANT_ID}'
+  AND product.id = '{PRODUCT_ID}';
 "#
     ))
     .await?;
