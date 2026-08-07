@@ -23,15 +23,9 @@ CREATE TABLE channel_index_identity_generations (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_channel_index_identity_generation_tenant_non_nil
         CHECK (tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid),
-    CONSTRAINT chk_channel_index_identity_generation_non_negative
+    CONSTRAINT chk_channel_index_identity_generation_positive
         CHECK (generation > 0)
 );
-
-INSERT INTO channel_index_identity_generations (tenant_id, generation, updated_at)
-SELECT tenant_id, 1, CURRENT_TIMESTAMP
-FROM channels
-GROUP BY tenant_id
-ON CONFLICT (tenant_id) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION rustok_channel_bump_index_identity_generation(target_tenant_id UUID)
 RETURNS VOID
@@ -117,10 +111,19 @@ BEGIN
 END;
 $$;
 
+-- Install the identity trigger before seeding the baseline. This closes the migration window: a
+-- concurrent Channel identity write is either captured by the trigger or already represented by the
+-- post-trigger backfill. The tenant advisory lock serializes trigger-created rows with the seed.
 CREATE TRIGGER trg_channels_track_index_identity_generation
 AFTER INSERT OR DELETE OR UPDATE OF id, tenant_id, slug ON channels
 FOR EACH ROW
 EXECUTE FUNCTION rustok_channel_track_index_identity_generation();
+
+INSERT INTO channel_index_identity_generations (tenant_id, generation, updated_at)
+SELECT tenant_id, 1, CURRENT_TIMESTAMP
+FROM channels
+GROUP BY tenant_id
+ON CONFLICT (tenant_id) DO NOTHING;
 "#,
             )
             .await?;
