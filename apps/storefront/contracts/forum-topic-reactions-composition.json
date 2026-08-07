@@ -1,0 +1,45 @@
+{
+  "id": "forum-topic-reactions-composition",
+  "status": "source_ready_maintainer_execution_pending",
+  "owner": "apps/storefront host composition",
+  "producer": "rustok-forum",
+  "capability": "rustok-reactions",
+  "presentation": "rustok-reactions-storefront::ReactionBar",
+  "activation": [
+    "tenant has reactions enabled",
+    "UiRouteContext route segment is forum",
+    "route has an explicit non-nil topic UUID",
+    "Forum current-topic-revision facade returns an exact revision"
+  ],
+  "mapping": {
+    "source": "forum",
+    "kind": "topic",
+    "subject_id": "explicit Forum route topic UUID",
+    "subject_revision": "visibility-gated Forum current revision"
+  },
+  "ownership": [
+    "Forum owns topic identity revision lifecycle visibility and producer authorization",
+    "Reactions owns catalog actor state aggregates commands GraphQL transport and ReactionBar",
+    "storefront host owns only cross-module composition",
+    "Forum owner and Forum storefront packages do not depend on Reactions owner or presentation"
+  ],
+  "degraded_behavior": [
+    "ForumView always renders independently of optional Reactions composition",
+    "home Forum slot never activates topic Reactions from a shared topic query parameter",
+    "disabled Reactions renders no host-owned placeholder",
+    "Forum revision lookup failure renders no host-owned Reactions error UI",
+    "invalid neutral subject construction renders no host-owned Reactions error UI"
+  ],
+  "forbidden": [
+    "reaction persistence or producer-table reads in host composition",
+    "reactionSnapshot or applyReaction reimplementation in host",
+    "reaction catalog actor state aggregate or command logic in Forum",
+    "hard-coded Reactions availability copy in host composition",
+    "reply reaction composition or per-reply revision fan-out in this slice"
+  ],
+  "not_claimed": [
+    "reply ReactionBar composition",
+    "runtime or browser evidence",
+    "Reactions enabled by default"
+  ]
+}
