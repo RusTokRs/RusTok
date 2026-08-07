@@ -140,10 +140,19 @@ pub(crate) fn CapabilityPolicyPanel(
             "rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
         }
     };
-    let observed_health = provider_status
+    let observed_health_state = provider_status
         .as_ref()
         .and_then(|status| status.health.as_ref())
-        .map(|health| health.state.as_str().to_string())
+        .map(|health| health.state.as_str())
+        .unwrap_or("unobserved");
+    let observed_health_display = if observed_health_state == "unobserved" {
+        unobserved_label.clone()
+    } else {
+        observed_health_state.to_string()
+    };
+    let host_provider_display = host_provider
+        .map(EditorProviderState::as_str)
+        .map(str::to_string)
         .unwrap_or_else(|| unobserved_label.clone());
     let rollout = provider_status.as_ref().map(|status| {
         format!(
@@ -173,18 +182,15 @@ pub(crate) fn CapabilityPolicyPanel(
             class="space-y-3 rounded-xl border border-border bg-card p-3"
             data-fly-capability-policy="true"
             data-fly-provider-control-state=provider_control_state.as_str()
-            data-fly-provider-health=observed_health.clone()
+            data-fly-provider-health=observed_health_state
         >
             <div class="flex items-center justify-between gap-2">
                 <h2 class="font-semibold">{title}</h2>
                 <span class=provider_class>{format!("{provider_control_label}: {}", provider_control_state.as_str())}</span>
             </div>
             <div class="grid gap-1 rounded bg-muted/40 px-2 py-2 text-xs text-muted-foreground">
-                <p>{format!("{observed_health_label}: {observed_health}")}</p>
-                <p>{format!(
-                    "{host_policy_label}: {}",
-                    host_provider.map(EditorProviderState::as_str).unwrap_or("unobserved")
-                )}</p>
+                <p>{format!("{observed_health_label}: {observed_health_display}")}</p>
+                <p>{format!("{host_policy_label}: {host_provider_display}")}</p>
                 <p>{format!("{rollout_label}: {}", rollout.unwrap_or_else(|| unobserved_label.clone()))}</p>
                 <p>{format!("{degradation_label}: {degradation_reasons}")}</p>
             </div>
