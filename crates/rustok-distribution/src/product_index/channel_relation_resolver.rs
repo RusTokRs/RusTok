@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 
-use std::collections::BTreeSet;
-
 use rustok_product::{
     MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, ProductSalesChannelIndexRelationError,
+    ProductSalesChannelIndexRelationFreshnessError, ProductSalesChannelIndexRelationFreshnessStore,
     ProductSalesChannelIndexRelationStore, ProductSalesChannelIndexRelationWriteOutcome,
 };
 use sea_orm::{
@@ -14,8 +13,12 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::channel_visibility::{
+    ProductChannelVisibility, ProductChannelVisibilityError, decode_product_visibility,
+};
+pub(crate) use super::channel_visibility::MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS;
+
 pub(crate) const MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE: usize = 64;
-pub(crate) const MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024;
 pub(crate) const MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +29,7 @@ pub(crate) struct ProductSalesChannelRelationResolveReceipt {
     channel_ids: Vec<Uuid>,
     unrestricted: bool,
     changed: bool,
+    channel_identity_generation: u64,
 }
 
 impl ProductSalesChannelRelationResolveReceipt {
@@ -51,6 +55,10 @@ impl ProductSalesChannelRelationResolveReceipt {
 
     pub(crate) fn changed(&self) -> bool {
         self.changed
+    }
+
+    pub(crate) fn channel_identity_generation(&self) -> u64 {
+        self.channel_identity_generation
     }
 }
 
@@ -99,25 +107,25 @@ pub(crate) enum ProductSalesChannelRelationResolverError {
     Unavailable,
     #[error(transparent)]
     RelationOwner(#[from] ProductSalesChannelIndexRelationError),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ProductChannelVisibility {
-    Unrestricted,
-    Restricted(Vec<String>),
+    #[error(transparent)]
+    FreshnessOwner(#[from] ProductSalesChannelIndexRelationFreshnessError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProductChannelObservation {
     channel_ids: Vec<Uuid>,
     unrestricted: bool,
+    product_source_version: u64,
+    visibility_key: String,
+    channel_identity_generation: u64,
 }
 
 /// Distribution-owned resolver for Product visibility -> current SalesChannel UUID membership.
 ///
-/// The resolver deliberately lives outside both owners. It reads Product visibility and Channel
-/// identity storage, then submits only the complete resolved UUID set to the Product-owned relation
-/// store. It does not write Index rows, publish events, mutate Product metadata, or own a task loop.
+/// The resolver reads both owners under one read-only snapshot, writes membership through the
+/// Product relation owner, re-observes current state, and then records an append-only Product-owned
+/// freshness witness for the exact retained relation epoch. It never writes Index rows or owns a
+/// background loop.
 #[derive(Clone)]
 pub(crate) struct ProductSalesChannelRelationResolver {
     db: DatabaseConnection,
@@ -128,9 +136,6 @@ impl ProductSalesChannelRelationResolver {
         Self { db }
     }
 
-    /// Reconcile one exact Product. The observed Product/Channel state is read under one
-    /// REPEATABLE READ snapshot, written through the Product owner, and observed again. A bounded
-    /// retry loop closes ordinary cross-owner races without claiming a durable event/watermark.
     pub(crate) async fn reconcile_product(
         &self,
         tenant_id: Uuid,
@@ -140,6 +145,7 @@ impl ProductSalesChannelRelationResolver {
         validate_scope(tenant_id, product_id)?;
         self.ensure_postgres()?;
         let owner = ProductSalesChannelIndexRelationStore::new(self.db.clone());
+        let freshness = ProductSalesChannelIndexRelationFreshnessStore::new(self.db.clone());
 
         for _ in 0..MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS {
             let observed = self.observe(tenant_id, product_id).await?;
@@ -149,17 +155,42 @@ impl ProductSalesChannelRelationResolver {
                 .map_err(map_relation_error)?;
             let verified = self.observe(tenant_id, product_id).await?;
 
-            if verified.channel_ids == observed.channel_ids {
-                return Ok(resolve_receipt(tenant_id, product_id, verified, outcome));
+            // The second observation is already a complete current snapshot. If its resolved UUIDs
+            // equal the membership retained by the owner, freshness can be witnessed even when an
+            // owner watermark advanced without changing membership.
+            if verified.channel_ids == outcome.record().channel_ids() {
+                match freshness
+                    .record(
+                        tenant_id,
+                        product_id,
+                        outcome.record().relation_epoch(),
+                        verified.product_source_version,
+                        verified.visibility_key.clone(),
+                        verified.channel_identity_generation,
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        return Ok(resolve_receipt(tenant_id, product_id, verified, outcome));
+                    }
+                    Err(ProductSalesChannelIndexRelationFreshnessError::WatermarkRegressed) => {
+                        continue;
+                    }
+                    Err(ProductSalesChannelIndexRelationFreshnessError::ProductNotFound) => {
+                        return Err(ProductSalesChannelRelationResolverError::ProductNotFound);
+                    }
+                    Err(error) => {
+                        return Err(ProductSalesChannelRelationResolverError::FreshnessOwner(error));
+                    }
+                }
             }
         }
 
         Err(ProductSalesChannelRelationResolverError::ConcurrentChange)
     }
 
-    /// Bounded convergence primitive for Channel create/delete/slug/identity changes and initial
-    /// backfill. Each Product is reconciled independently, so an interrupted page can be retried
-    /// from the same cursor; already committed Products return an idempotent unchanged owner result.
+    /// Bounded convergence primitive for Channel identity changes, Product visibility changes, and
+    /// initial backfill. An interrupted page is safe to retry from the same cursor.
     pub(crate) async fn reconcile_tenant_page(
         &self,
         tenant_id: Uuid,
@@ -225,10 +256,16 @@ impl ProductSalesChannelRelationResolver {
             .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
 
         let result = async {
-            let visibility = load_product_visibility(&transaction, tenant_id, product_id).await?;
+            let (visibility, product_source_version) =
+                load_product_visibility(&transaction, tenant_id, product_id).await?;
+            let channel_identity_generation =
+                load_channel_identity_generation(&transaction, tenant_id).await?;
             let channel_ids = resolve_channel_ids(&transaction, tenant_id, &visibility).await?;
             Ok::<_, ProductSalesChannelRelationResolverError>(ProductChannelObservation {
-                unrestricted: matches!(visibility, ProductChannelVisibility::Unrestricted),
+                unrestricted: visibility.is_unrestricted(),
+                visibility_key: visibility.freshness_key(),
+                product_source_version,
+                channel_identity_generation,
                 channel_ids,
             })
         }
@@ -288,11 +325,11 @@ async fn load_product_visibility(
     transaction: &sea_orm::DatabaseTransaction,
     tenant_id: Uuid,
     product_id: Uuid,
-) -> Result<ProductChannelVisibility, ProductSalesChannelRelationResolverError> {
+) -> Result<(ProductChannelVisibility, u64), ProductSalesChannelRelationResolverError> {
     let row = transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT metadata FROM products WHERE tenant_id = $1 AND id = $2",
+            "SELECT metadata, index_revision FROM products WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), product_id.into()],
         ))
         .await
@@ -301,7 +338,46 @@ async fn load_product_visibility(
     let metadata = row
         .try_get::<JsonValue>("", "metadata")
         .map_err(|_| ProductSalesChannelRelationResolverError::InvalidProductVisibility)?;
-    decode_product_visibility(&metadata)
+    let source_version = row
+        .try_get::<i64>("", "index_revision")
+        .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
+    if source_version <= 0 {
+        return Err(ProductSalesChannelRelationResolverError::Unavailable);
+    }
+    let visibility = decode_product_visibility(&metadata).map_err(map_visibility_error)?;
+    Ok((
+        visibility,
+        u64::try_from(source_version)
+            .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?,
+    ))
+}
+
+async fn load_channel_identity_generation(
+    transaction: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+) -> Result<u64, ProductSalesChannelRelationResolverError> {
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            SELECT generation
+            FROM channel_index_identity_generations
+            WHERE tenant_id = $1
+            "#,
+            vec![tenant_id.into()],
+        ))
+        .await
+        .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
+    let Some(row) = row else {
+        return Ok(0);
+    };
+    let generation = row
+        .try_get::<i64>("", "generation")
+        .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
+    if generation <= 0 {
+        return Err(ProductSalesChannelRelationResolverError::Unavailable);
+    }
+    u64::try_from(generation).map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)
 }
 
 async fn resolve_channel_ids(
@@ -372,45 +448,6 @@ fn channel_resolution_query(
     }
 }
 
-fn decode_product_visibility(
-    metadata: &JsonValue,
-) -> Result<ProductChannelVisibility, ProductSalesChannelRelationResolverError> {
-    let object = metadata
-        .as_object()
-        .ok_or(ProductSalesChannelRelationResolverError::InvalidProductVisibility)?;
-    let Some(channel_visibility) = object.get("channel_visibility") else {
-        return Ok(ProductChannelVisibility::Unrestricted);
-    };
-    let channel_visibility = channel_visibility
-        .as_object()
-        .ok_or(ProductSalesChannelRelationResolverError::InvalidProductVisibility)?;
-    let allowed_channel_slugs = channel_visibility
-        .get("allowed_channel_slugs")
-        .ok_or(ProductSalesChannelRelationResolverError::InvalidProductVisibility)?
-        .as_array()
-        .ok_or(ProductSalesChannelRelationResolverError::InvalidProductVisibility)?;
-    if allowed_channel_slugs.is_empty() {
-        return Ok(ProductChannelVisibility::Unrestricted);
-    }
-    if allowed_channel_slugs.len() > MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS {
-        return Err(ProductSalesChannelRelationResolverError::TooManyVisibilitySlugs);
-    }
-
-    let mut canonical = BTreeSet::new();
-    for value in allowed_channel_slugs {
-        let raw = value
-            .as_str()
-            .ok_or(ProductSalesChannelRelationResolverError::InvalidProductVisibility)?;
-        let normalized = raw.trim().to_ascii_lowercase();
-        if normalized.is_empty() || normalized != raw || !canonical.insert(normalized) {
-            return Err(ProductSalesChannelRelationResolverError::InvalidProductVisibility);
-        }
-    }
-    Ok(ProductChannelVisibility::Restricted(
-        canonical.into_iter().collect(),
-    ))
-}
-
 fn decode_product_id(
     row: QueryResult,
     tenant_id: Uuid,
@@ -438,6 +475,19 @@ fn validate_scope(
         return Err(ProductSalesChannelRelationResolverError::InvalidProduct);
     }
     Ok(())
+}
+
+fn map_visibility_error(
+    error: ProductChannelVisibilityError,
+) -> ProductSalesChannelRelationResolverError {
+    match error {
+        ProductChannelVisibilityError::TooManySlugs => {
+            ProductSalesChannelRelationResolverError::TooManyVisibilitySlugs
+        }
+        ProductChannelVisibilityError::Invalid | ProductChannelVisibilityError::SlugTooLong => {
+            ProductSalesChannelRelationResolverError::InvalidProductVisibility
+        }
+    }
 }
 
 fn map_relation_error(
@@ -472,49 +522,13 @@ fn resolve_receipt(
         channel_ids: verified.channel_ids,
         unrestricted: verified.unrestricted,
         changed,
+        channel_identity_generation: verified.channel_identity_generation,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn absent_or_empty_allowlist_is_unrestricted() {
-        assert_eq!(
-            decode_product_visibility(&serde_json::json!({})).unwrap(),
-            ProductChannelVisibility::Unrestricted
-        );
-        assert_eq!(
-            decode_product_visibility(&serde_json::json!({
-                "channel_visibility": { "allowed_channel_slugs": [] }
-            }))
-            .unwrap(),
-            ProductChannelVisibility::Unrestricted
-        );
-    }
-
-    #[test]
-    fn restricted_allowlist_requires_canonical_owner_storage() {
-        assert_eq!(
-            decode_product_visibility(&serde_json::json!({
-                "channel_visibility": { "allowed_channel_slugs": ["mobile", "web"] }
-            }))
-            .unwrap(),
-            ProductChannelVisibility::Restricted(vec!["mobile".to_owned(), "web".to_owned()])
-        );
-        for invalid in [
-            serde_json::json!({ "channel_visibility": { "allowed_channel_slugs": "web" } }),
-            serde_json::json!({ "channel_visibility": { "allowed_channel_slugs": [" Web "] } }),
-            serde_json::json!({ "channel_visibility": { "allowed_channel_slugs": ["web", "web"] } }),
-            serde_json::json!({ "channel_visibility": { "allowed_channel_slugs": [null] } }),
-        ] {
-            assert!(matches!(
-                decode_product_visibility(&invalid),
-                Err(ProductSalesChannelRelationResolverError::InvalidProductVisibility)
-            ));
-        }
-    }
 
     #[test]
     fn restricted_resolution_matches_normalized_channel_slug_without_active_filter() {
@@ -535,5 +549,12 @@ mod tests {
         assert_eq!(MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE, 64);
         assert_eq!(MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS, 1024);
         assert_eq!(MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS, 3);
+    }
+
+    #[test]
+    fn channel_identity_generation_is_tenant_scoped_and_zero_when_absent() {
+        let sql = "SELECT generation FROM channel_index_identity_generations WHERE tenant_id = $1";
+        assert!(sql.contains("tenant_id = $1"));
+        assert!(!sql.contains("channels.is_active"));
     }
 }
