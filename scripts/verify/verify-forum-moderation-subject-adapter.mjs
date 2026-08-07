@@ -8,6 +8,7 @@ const revisionMigration = fs.readFileSync(
   "utf8",
 );
 const adapter = fs.readFileSync("crates/rustok-forum/src/moderation_subject.rs", "utf8");
+const replyOwner = fs.readFileSync("crates/rustok-forum/src/services/reply_owner.rs", "utf8");
 const contract = JSON.parse(
   fs.readFileSync("crates/rustok-forum/contracts/forum-moderation-subject-adapter.json", "utf8"),
 );
@@ -92,6 +93,9 @@ for (const marker of [
   "publish_forum_topic_projection_direct_in_tx",
   "ModerationVisibilityState::Hidden",
   "apply_reply_hidden_effect_in_tx",
+  "ModerationVisibilityState::Removed",
+  "apply_reply_removed_effect_in_tx",
+  "ReplyService::remove_in_tx",
   "ReplyService::set_status_in_tx",
   "TopicService::adjust_reply_count_in_tx",
   "CategoryService::adjust_counters_in_tx",
@@ -103,7 +107,23 @@ for (const marker of [
   requireText(adapter, marker, `Forum Moderation adapter is missing ${marker}`);
 }
 
-// The bounded visibility slice is intentionally exact: only Hidden is mapped.
+for (const marker of [
+  "ReplyRemovalOutcome",
+  "pub(crate) async fn remove_in_tx",
+  "claim_reply_delete_in_tx",
+  "reply.status.validate_transition(&ReplyStatus::Deleted)",
+  "forum_solution::Entity::delete_many()",
+  "mark_reply_deleted_in_tx",
+  "TopicService::adjust_reply_count_in_tx",
+  "CategoryService::adjust_counters_in_tx",
+  "UserStatsService::adjust_reply_count_in_tx",
+  "UserStatsService::adjust_solution_count_in_tx",
+]) {
+  requireText(replyOwner, marker, `Forum reply removal owner path is missing ${marker}`);
+}
+
+// Unpublished remains intentionally unsupported until Forum defines one exact
+// lifecycle meaning. Removed is allowed only through ReplyService::remove_in_tx.
 forbidText(
   adapter,
   "ModerationVisibilityState::Unpublished",
@@ -111,8 +131,13 @@ forbidText(
 );
 forbidText(
   adapter,
-  "ModerationVisibilityState::Removed",
-  "Forum must not approximate neutral Removed without the complete Forum delete owner semantics",
+  "mark_reply_deleted_in_tx",
+  "Moderation adapter must not bypass the Forum reply removal owner helper",
+);
+forbidText(
+  adapter,
+  "forum_solution::Entity",
+  "Moderation adapter must not duplicate Forum accepted-solution removal logic",
 );
 
 for (const forbidden of [
@@ -139,11 +164,17 @@ if (contract.capability_owner !== "rustok-moderation") {
 if (!contract.supported_effects.some((effect) => effect.includes("SetVisibility Hidden"))) {
   throw new Error("contract must record the exact hidden reply visibility effect");
 }
+if (!contract.supported_effects.some((effect) => effect.includes("SetVisibility Removed"))) {
+  throw new Error("contract must record the exact removed reply visibility effect");
+}
+if (contract.reply_removed_semantics?.owner_helper !== "ReplyService::remove_in_tx") {
+  throw new Error("Removed must bind to the complete Forum reply removal owner helper");
+}
 if (!contract.deferred_effects.some((effect) => effect.includes("SetVisibility Unpublished"))) {
   throw new Error("contract must keep Unpublished deferred");
 }
-if (!contract.deferred_effects.some((effect) => effect.includes("SetVisibility Removed"))) {
-  throw new Error("contract must keep Removed deferred");
+if (contract.deferred_effects.some((effect) => effect.includes("SetVisibility Removed"))) {
+  throw new Error("contract must not keep Removed deferred after exact owner-path reuse");
 }
 if (!contract.forbidden.includes("direct rustok-moderation owner dependency")) {
   throw new Error("contract must forbid a direct Moderation owner dependency");
