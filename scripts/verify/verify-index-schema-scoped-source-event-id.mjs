@@ -45,7 +45,7 @@ const inbox = requireMarkers(inboxPath, [
   '.col(IndexInbox::TenantId)',
   '.col(IndexInbox::SourceName)',
   '.col(IndexInbox::DeliveryId)',
-  '.col(ColumnDef::new(IndexInbox::SchemaVersion)',
+  'ColumnDef::new(IndexInbox::SchemaVersion)',
 ]);
 const inboxPrimaryKey = inbox.slice(
   inbox.indexOf('.name("pk_index_inbox")'),
