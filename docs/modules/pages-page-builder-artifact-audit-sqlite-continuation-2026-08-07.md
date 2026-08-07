@@ -10,6 +10,14 @@ The immutable artifact audit owner and bounded GraphQL/HTTP transports are alrea
 
 This continuation adds that missing SQLite source packet without changing production behavior.
 
+A later source packet now also covers the PostgreSQL-specific lock-backed audit cursor:
+
+```text
+docs/modules/pages-page-builder-artifact-audit-postgres-continuation-2026-08-07.md
+```
+
+Both SQLite and PostgreSQL audit evidence remain execution-pending.
+
 Source marker:
 
 ```text
@@ -124,20 +132,19 @@ pages_immutable_artifact_integrity_audit_sqlite_source_unvalidated
 | Audit bounded record truncation (`max_records=1`) | Harness-ready | SQLite execution pending |
 | Audit corrupted immutable payload finding | Harness-ready | SQLite execution pending |
 | Audit partial materialization finding | Harness-ready | SQLite execution pending |
-| Audit PostgreSQL locking/scan evidence | Not yet packeted | PostgreSQL source packet still open |
-| Provenance migration/publish rollback/loss evidence | Source owner exists | Dedicated execution packet still open |
+| Audit PostgreSQL locking/scan evidence | Harness + guard ready | PostgreSQL execution pending |
+| Provenance migration/publish rollback/loss evidence | Source owner exists | Dedicated source packet still open |
 | Explicit repair owner/transport/cache packets | Source-ready | Maintainer execution pending |
 | Automatic repair | Deliberately absent | Not allowed |
 | FFA/FBA promotion | Open | Not promoted |
 
 ## Next cursor
 
-1. Execute the new audit SQLite harness and source guard together with the existing audit owner/transport guards; retain accepted evidence.
-2. Add the separate PostgreSQL audit packet for lock-backed scanning and the same valid/corrupt/partial bounded semantics if PostgreSQL-specific evidence is still required after SQLite acceptance.
-3. Retain provenance migration/publish execution evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
-4. Execute the repair transport/request/PostgreSQL/failure/cache packets already source-ready.
-5. Execute artifact/HTTP/browser and tenant Wave packets before FFA/FBA promotion.
-6. Keep automatic audit-to-rebuild and rebuild-to-activation chaining absent until accepted execution evidence supports any policy change.
+1. Execute the SQLite and PostgreSQL audit harnesses plus their source guards together with the existing audit owner/transport guard; retain accepted evidence.
+2. Retain provenance migration/publish evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
+3. Execute the repair transport/request/PostgreSQL/failure/cache packets already source-ready.
+4. Execute artifact/HTTP/browser and tenant Wave packets before FFA/FBA promotion.
+5. Keep automatic audit-to-rebuild and rebuild-to-activation chaining absent until accepted execution evidence supports any policy change.
 
 ## Maintainer validation
 
@@ -145,8 +152,11 @@ Suggested commands, intentionally not run here:
 
 ```bash
 node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
 cargo test -p rustok-pages --test immutable_artifact_integrity_audit_sqlite -- --nocapture
+RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
+  cargo test -p rustok-pages --test immutable_artifact_integrity_audit_postgres -- --nocapture
 cargo check -p rustok-pages --all-targets
 ```
 
