@@ -112,6 +112,7 @@ pub use partition_admission::{
 pub use query_admission::{
     PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryAdmissionDescriptor,
     PostgresIndexQueryAdmissionError, register_postgres_index_query_admission,
+    register_postgres_index_query_link_target_availability,
 };
 pub use query_port::PostgresIndexQueryPort;
 pub use query_runtime::{
