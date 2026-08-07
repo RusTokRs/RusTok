@@ -51,6 +51,7 @@ async-trait.workspace = true
 sea-orm.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
+rustok-runtime.workspace = true
 rustok-modules.workspace = true
 rustok-auth.workspace = true
 rustok-cache.workspace = true
