@@ -127,6 +127,55 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+INSERT INTO moderation_application_operations (
+    decision_id,
+    tenant_id,
+    case_id,
+    decision_hash,
+    subject_module,
+    subject_kind,
+    subject_id,
+    subject_revision,
+    status,
+    attempt_count,
+    next_attempt_at,
+    created_at,
+    updated_at
+)
+SELECT
+    d.id,
+    d.tenant_id,
+    d.case_id,
+    d.decision_hash,
+    c.subject_module,
+    c.subject_kind,
+    c.subject_id,
+    d.subject_revision,
+    'pending',
+    0,
+    d.created_at,
+    d.created_at,
+    d.created_at
+FROM moderation_decisions d
+JOIN moderation_cases c
+  ON c.tenant_id = d.tenant_id
+ AND c.id = d.case_id
+JOIN moderation_decision_effects e
+  ON e.tenant_id = d.tenant_id
+ AND e.decision_id = d.id
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM moderation_application_operations a
+    WHERE a.decision_id = d.id
+)
+"#,
+            )
+            .await?;
+
+        manager
             .create_index(
                 Index::create()
                     .name("idx_moderation_application_operations_due")
