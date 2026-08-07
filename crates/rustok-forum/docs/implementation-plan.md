@@ -118,11 +118,13 @@ channel visibility and owner version, with a Blog+Reactions composition profile
 in source. Optional owner selection, host materialization and executable source
 evidence are source-ready. A bounded manifest-composed GraphQL read/write
 transport over the neutral Reactions ports and the separate module-owned
-`rustok-reactions-storefront` reaction controls are source-ready. Forum now also
-has generic visibility-gated `forumStorefrontTopicCurrentRevision` and
-`forumStorefrontReplyCurrentRevision` owner facts; they expose only Forum
-revision state and do not construct reaction subjects or depend on the Reactions
-owner/UI package. Maintainer lockfile/event-digest generation and retained
+`rustok-reactions-storefront` reaction controls are source-ready. Forum exposes
+generic visibility-gated `forumStorefrontTopicCurrentRevision` and
+`forumStorefrontReplyCurrentRevision` owner facts and now carries them through a
+dual-path storefront transport facade: native server functions for SSR/hydrate
+and GraphQL for headless/CSR. These paths expose only Forum revision state and do
+not construct reaction subjects or depend on the Reactions owner/UI package.
+Maintainer lockfile/event-digest generation and retained
 owner/provider/schema/runtime/UI evidence remain pending, as does final
 host/storefront composition.
 
@@ -148,7 +150,7 @@ host/storefront composition.
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`. Finish member-card composition, privacy/block behavior, Forum-stat enrichment and no-N+1 evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
-| `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls and generic visibility-gated Forum topic/reply current-revision facts are source-ready. Regenerate `Cargo.lock`/event digests, retain owner/event/repair/Forum+Blog/GraphQL/UI runtime evidence, then compose the separate Reactions UI without moving reaction ownership into Forum; Forum votes remain separate. |
+| `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls and dual-path generic visibility-gated Forum topic/reply current-revision transport are source-ready. Regenerate `Cargo.lock`/event digests, retain owner/event/repair/Forum+Blog/GraphQL/UI/runtime transport evidence, then compose the separate Reactions UI through a neutral host extension without moving reaction ownership into Forum; Forum votes remain separate. |
 | `FORUM-19` | `planned` | Integrate `rustok-moderation-api` subject/effect adapters and Forum-local restrictions. Moderation owns cases and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
@@ -256,12 +258,14 @@ a frozen presentation contract; retained schema/runtime evidence remains.
 The presentation owner is also separate. `rustok-reactions-storefront` provides
 module-owned neutral controls over the Reactions GraphQL transport and has no
 Forum/Blog/private-owner dependency. Forum does not copy those controls. Instead,
-Forum now exposes `forumStorefrontTopicCurrentRevision` and
+Forum exposes `forumStorefrontTopicCurrentRevision` and
 `forumStorefrontReplyCurrentRevision` as generic Forum owner facts after the
-same tenant/channel/audience gates as the corresponding storefront reads. They
-return only positive decimal revisions derived from Forum revision history; they
-do not create reaction subjects, catalogs, actor state or commands. Host/
-storefront composition that passes exact producer facts into the separate
+same tenant/channel/audience gates as the corresponding storefront reads. The
+Forum storefront facade now selects native server functions for SSR/hydrate and
+GraphQL owner fields for headless/CSR, preserving FFA transport parity while
+returning only positive decimal revisions derived from Forum revision history.
+Neither adapter creates reaction subjects, catalogs, actor state or commands.
+Host/storefront composition that passes exact producer facts into the separate
 Reactions UI remains pending.
 
 Reputation and achievements remain separate shared capabilities consuming
@@ -291,7 +295,7 @@ Hosts register/mount packages and do not absorb policy.
 4. Optional distribution/server selection and host materialization after Forum facts: source-ready, maintainer verification pending.
 5. Executable composition profiles, sealed semantic reaction events and bounded aggregate reconciliation: source-ready; retain execution, rollback, replay and repair evidence.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
-7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls and generic visibility-gated Forum topic/reply current-revision facts are source-ready. Compose the separate Reactions UI from those producer facts without adding Reactions functionality to Forum.
+7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls and dual-path generic visibility-gated Forum topic/reply current-revision transport are source-ready. Add a neutral host extension hook and compose the separate Reactions UI from those producer facts without adding Reactions functionality to Forum.
 8. Introduce Reputation/Achievements only after at least two producers agree.
 9. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
 
@@ -334,6 +338,8 @@ Hosts register/mount packages and do not absorb policy.
 - Forum current-revision reads remain generic Forum owner facts. They must not
   construct reaction subjects, import Reactions UI/owner crates or duplicate
   reaction state/commands inside Forum.
+- Forum current-revision storefront adapters must preserve native/GraphQL path
+  parity and the same visibility/status gates before exposing a revision.
 - Reactions semantic event envelope identity is the admitted owner-operation
   UUID; it is not a Forum route/revision/vote identity.
 - Reactions bounded reconciliation repairs aggregate projection only and cannot
@@ -353,6 +359,7 @@ node scripts/verify/verify-reactions-events-reconciliation.mjs
 node scripts/verify/verify-reactions-storefront-ui.mjs
 node scripts/verify/verify-forum-storefront-topic-current-revision.mjs
 node scripts/verify/verify-forum-storefront-reply-current-revision.mjs
+node scripts/verify/verify-forum-storefront-current-revision-transport-parity.mjs
 cargo test -p rustok-events reactions
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
@@ -402,7 +409,8 @@ aggregate reconciliation and repair receipt replay. Retain Blog provider and
 Blog+Reactions composition evidence plus manifest-composed Reactions GraphQL
 schema/runtime evidence for anonymous/authenticated reads, human-user writes,
 tenant mismatch, idempotent replay and stale/denied subjects. Retain the separate
-Reactions storefront source/runtime evidence and the generic Forum topic/reply
-current-revision GraphQL evidence. Then compose the separate Reactions UI from
-producer-owned facts without adding reaction catalogs, state, commands or
-presentation ownership to Forum.
+Reactions storefront source/runtime evidence plus Forum topic/reply current-
+revision GraphQL/native transport parity evidence. Then add a neutral storefront
+extension hook and compose the separate Reactions UI from producer-owned facts
+without adding reaction catalogs, state, commands or presentation ownership to
+Forum.
