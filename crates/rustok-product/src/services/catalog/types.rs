@@ -211,6 +211,8 @@ impl StorefrontProductListQuery {
 pub struct AdminProductListQuery {
     pub search: Option<String>,
     pub status: Option<entities::product::ProductStatus>,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
     pub category_id: Option<Uuid>,
     pub sort_by: StorefrontProductSortBy,
     pub sort_direction: StorefrontProductSortDirection,
@@ -218,6 +220,16 @@ pub struct AdminProductListQuery {
 }
 
 impl AdminProductListQuery {
+    pub fn with_vendor(mut self, vendor: Option<String>) -> Self {
+        self.vendor = normalize_optional_text(vendor);
+        self
+    }
+
+    pub fn with_product_type(mut self, product_type: Option<String>) -> Self {
+        self.product_type = normalize_optional_text(product_type);
+        self
+    }
+
     pub fn try_from_transport(
         search: Option<String>,
         status: Option<String>,
@@ -256,6 +268,8 @@ impl AdminProductListQuery {
         Ok(Self {
             search: normalize_optional_text(search),
             status,
+            vendor: None,
+            product_type: None,
             category_id: parse_optional_uuid(category_id, "category_id")?,
             sort_by: StorefrontProductSortBy::parse(sort_by)?,
             sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
@@ -397,9 +411,13 @@ mod tests {
             Some("asc".to_string()),
             vec!["color=red".to_string()],
         )
-        .expect("valid admin list query");
+        .expect("valid admin list query")
+        .with_vendor(Some("  Acme  ".to_string()))
+        .with_product_type(Some("  Camera  ".to_string()));
         assert_eq!(query.search.as_deref(), Some("camera"));
         assert_eq!(query.status, Some(entities::product::ProductStatus::Active));
+        assert_eq!(query.vendor.as_deref(), Some("Acme"));
+        assert_eq!(query.product_type.as_deref(), Some("Camera"));
         assert_eq!(query.sort_by, StorefrontProductSortBy::CreatedAt);
         assert_eq!(query.sort_direction, StorefrontProductSortDirection::Asc);
         assert_eq!(query.attribute_filters.len(), 1);
