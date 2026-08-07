@@ -12,8 +12,9 @@ use uuid::Uuid;
 
 use crate::dto::{ReplacePageArtifactBindingInput, ReplacePageArtifactBindingResult};
 use crate::entities::{
-    page, page_artifact_binding_replacement_operation, page_artifact_rebuild_operation,
-    page_publish_rebuild_source, page_published_landing_artifact, page_static_landing_artifact,
+    page, page_artifact_binding_replacement_operation, page_artifact_rebuild_operation, page_body,
+    page_publish_operation, page_publish_rebuild_source, page_published_landing_artifact,
+    page_static_landing_artifact,
 };
 use crate::error::{PagesError, PagesResult};
 use crate::services::page_builder_artifact::PageBuilderArtifactService;
@@ -38,10 +39,14 @@ impl PageService {
     /// Activates one exact rebuilt immutable artifact for its locale in one owner transaction.
     ///
     /// The command requires tenant-wide `pages:manage`, a page-version fence and the exact current
-    /// binding artifact id. It verifies the rebuild receipt, retained provenance and replacement
-    /// artifact, updates one localized binding, advances the page version, emits lifecycle events and
-    /// stores one replayable activation receipt atomically. It never compiles, sanitizes, rebuilds or
-    /// reads the mutable body.
+    /// source artifact id. It verifies the rebuild receipt, retained provenance and replacement
+    /// artifact. The ordinary path requires the current locale binding to still point at the source
+    /// artifact. A deliberately narrow recovery path also admits a physically lost source artifact
+    /// only when the locale binding is absent, the retained source body is still current for the
+    /// locale, and the retained publish operation produced the exact current page version. Both paths
+    /// update one localized binding, advance the page version, emit lifecycle events and store one
+    /// replayable activation receipt atomically. The command never compiles, sanitizes, rebuilds or
+    /// reads the mutable body as repair authority.
     pub async fn replace_rebuilt_artifact_binding(
         &self,
         tenant_id: Uuid,
@@ -144,22 +149,39 @@ impl PageService {
             rebuild.locale.as_str(),
         )
         .await?;
-        if binding.page_body_id != source.page_body_id {
-            return Err(replacement_current_conflict(
-                "current locale binding body does not match retained rebuild provenance",
-            ));
-        }
-        if binding.artifact_id != input.expected_current_artifact_id {
-            return Err(replacement_current_conflict(format!(
-                "current locale binding changed: expected artifact `{}`, found `{}`",
-                input.expected_current_artifact_id, binding.artifact_id,
-            )));
-        }
-        if rebuild.rebuilt_artifact_id == binding.artifact_id {
-            return Err(replacement_current_conflict(
-                "rebuilt artifact is already the current locale binding",
-            ));
-        }
+        let page_body_id = match binding {
+            Some(binding) => {
+                if binding.page_body_id != source.page_body_id {
+                    return Err(replacement_current_conflict(
+                        "current locale binding body does not match retained rebuild provenance",
+                    ));
+                }
+                if binding.artifact_id != input.expected_current_artifact_id {
+                    return Err(replacement_current_conflict(format!(
+                        "current locale binding changed: expected artifact `{}`, found `{}`",
+                        input.expected_current_artifact_id, binding.artifact_id,
+                    )));
+                }
+                if rebuild.rebuilt_artifact_id == binding.artifact_id {
+                    return Err(replacement_current_conflict(
+                        "rebuilt artifact is already the current locale binding",
+                    ));
+                }
+                binding.page_body_id
+            }
+            None => {
+                ensure_missing_binding_recovery_in_tx(
+                    &txn,
+                    tenant_id,
+                    page_id,
+                    input.expected_version,
+                    &rebuild,
+                    &source,
+                )
+                .await?;
+                source.page_body_id
+            }
+        };
 
         let replacement = load_replacement_artifact_in_tx(
             &txn,
@@ -224,7 +246,7 @@ impl PageService {
             tenant_id: Set(tenant_id),
             page_id: Set(page_id),
             rebuild_operation_id: Set(rebuild.id),
-            page_body_id: Set(binding.page_body_id),
+            page_body_id: Set(page_body_id),
             locale: Set(rebuild.locale),
             idempotency_key: Set(idempotency_key),
             request_hash: Set(request_hash),
@@ -286,18 +308,92 @@ async fn load_binding_for_update_in_tx(
     tenant_id: Uuid,
     page_id: Uuid,
     locale: &str,
-) -> PagesResult<page_published_landing_artifact::Model> {
+) -> PagesResult<Option<page_published_landing_artifact::Model>> {
     let query = || {
         page_published_landing_artifact::Entity::find()
             .filter(page_published_landing_artifact::Column::TenantId.eq(tenant_id))
             .filter(page_published_landing_artifact::Column::PageId.eq(page_id))
             .filter(page_published_landing_artifact::Column::Locale.eq(locale))
     };
-    match txn.get_database_backend() {
+    Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
+    })
+}
+
+async fn ensure_missing_binding_recovery_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    expected_version: i32,
+    rebuild: &page_artifact_rebuild_operation::Model,
+    source: &page_publish_rebuild_source::Model,
+) -> PagesResult<()> {
+    let source_artifact_query = || {
+        page_static_landing_artifact::Entity::find_by_id(rebuild.source_artifact_id)
+            .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+            .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
+            .filter(page_static_landing_artifact::Column::Locale.eq(rebuild.locale.as_str()))
+    };
+    let source_artifact = match txn.get_database_backend() {
+        DbBackend::Sqlite => source_artifact_query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => {
+            source_artifact_query().lock_shared().one(txn).await?
+        }
+    };
+    if source_artifact.is_some() {
+        return Err(replacement_current_conflict(
+            "current locale binding is unavailable while the retained source artifact still exists",
+        ));
     }
-    .ok_or_else(|| replacement_current_conflict("current locale binding is unavailable"))
+
+    let body_query = || {
+        page_body::Entity::find_by_id(source.page_body_id)
+            .filter(page_body::Column::TenantId.eq(tenant_id))
+            .filter(page_body::Column::PageId.eq(page_id))
+            .filter(page_body::Column::Locale.eq(rebuild.locale.as_str()))
+    };
+    let body = match txn.get_database_backend() {
+        DbBackend::Sqlite => body_query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => body_query().lock_shared().one(txn).await?,
+    }
+    .ok_or_else(|| {
+        replacement_current_conflict(
+            "retained source page body is unavailable for missing-binding recovery",
+        )
+    })?;
+    if body.id != source.page_body_id {
+        return Err(replacement_current_conflict(
+            "retained source page body identity changed before missing-binding recovery",
+        ));
+    }
+
+    let publish_query = || {
+        page_publish_operation::Entity::find_by_id(source.operation_id)
+            .filter(page_publish_operation::Column::TenantId.eq(tenant_id))
+            .filter(page_publish_operation::Column::PageId.eq(page_id))
+    };
+    let publish = match txn.get_database_backend() {
+        DbBackend::Sqlite => publish_query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => publish_query().lock_shared().one(txn).await?,
+    }
+    .ok_or_else(|| {
+        replacement_current_conflict(
+            "retained source publish operation is unavailable for missing-binding recovery",
+        )
+    })?;
+    if publish.id != rebuild.source_publish_operation_id || publish.id != source.operation_id {
+        return Err(replacement_current_conflict(
+            "retained source publish operation does not match rebuild provenance",
+        ));
+    }
+    if publish.result_version != expected_version {
+        return Err(replacement_current_conflict(format!(
+            "retained source publish version is stale: expected current version `{expected_version}`, found `{}`",
+            publish.result_version,
+        )));
+    }
+    Ok(())
 }
 
 async fn load_replacement_artifact_in_tx(
