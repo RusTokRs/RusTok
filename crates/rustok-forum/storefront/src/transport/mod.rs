@@ -57,6 +57,7 @@ pub async fn fetch_storefront_forum(
     }
 }
 
+#[allow(dead_code)]
 pub async fn fetch_storefront_topic_current_revision(
     topic_id: String,
     locale: Option<String>,
@@ -69,6 +70,7 @@ pub async fn fetch_storefront_topic_current_revision(
     }
 }
 
+#[allow(dead_code)]
 pub async fn fetch_storefront_reply_current_revision(
     reply_id: String,
     locale: Option<String>,
