@@ -31,20 +31,23 @@ const catalog = requireMarkers(catalogPath, [
   'DuplicateLinkAvailabilitySchema',
   'pub fn register_postgres_index_query_link_target_availability(',
   'pub(crate) fn apply_link_target_availability(',
+  'fn referenced_first_hop_links(query: &IndexQuery)',
   'query.referenced_paths()',
   'path.links().first()',
   'if link_names.is_empty()',
   'require_requested_link_targets_predicate(&link_names, &target_owner_admission)',
   'apply_root_predicate(&mut compiled.sql, &predicate)?',
   'compiled.exact_count.as_mut()',
-  'availability_link.source_version = {root}.source_version',
-  'availability_link.link_name IN ({requested_links})',
-  'availability_target.entity_id = availability_link.target_entity_id',
-  'availability_target.locale_key = availability_link.target_locale_key',
-  'availability_target.is_deleted = FALSE',
+  '{link}.source_version = {root}.source_version',
+  '{link}.link_name IN ({requested_links})',
+  '{target}.entity_id = {link}.target_entity_id',
+  '{target}.locale_key = {link}.target_locale_key',
+  '{target}.is_deleted = FALSE',
   'owner_dispatch_for_alias(&owner_rules, AVAILABILITY_TARGET_ALIAS)',
-  'scalar_only_query_does_not_require_unreferenced_link_targets',
-  'queried_link_requires_current_owner_admitted_target_in_page_and_count',
+  'scalar_only_query_has_no_referenced_link_targets',
+  'linked_query_collects_only_first_hop_link_names',
+  'availability_predicate_uses_current_source_link_and_owner_admitted_target',
+  'root_availability_predicate_applies_to_page_and_count_anchor_shape',
 ]);
 forbidMarkers(catalogPath, catalog, [
   'rustok-product',
@@ -53,6 +56,7 @@ forbidMarkers(catalogPath, catalog, [
   'channel_index_identity_generations',
   'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
   'SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS',
+  'QueryPlanFingerprint',
 ]);
 
 const portPath = 'crates/rustok-index/src/infrastructure/postgres/query_port.rs';
@@ -95,8 +99,8 @@ const owner = requireMarkers(ownerPath, [
   'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
   'SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS',
 ]);
-if ((owner.match(/register_postgres_index_query_link_target_availability\(/g) ?? []).length !== 2) {
-  fail('Product query admission must contain one import-use registration call plus the function name only once in code');
+if ((owner.match(/register_postgres_index_query_link_target_availability\(/g) ?? []).length !== 1) {
+  fail('Product query admission must register exactly one link-target availability policy');
 }
 forbidMarkers(ownerPath, owner, ['index_entities', 'index_links', '$1']);
 
