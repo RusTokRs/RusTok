@@ -6,21 +6,17 @@ use uuid::Uuid;
 
 use crate::shared::context::enabled_modules::use_is_module_enabled;
 
+const FORUM_ROUTE_SEGMENT: &str = "forum";
+
 #[component]
 pub fn ForumStorefrontComposition() -> impl IntoView {
     let reactions_enabled = use_is_module_enabled("reactions");
     let route = use_context::<UiRouteContext>().unwrap_or_default();
-    let topic_id = route
-        .query
-        .get("topic")
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned);
+    let topic_id = explicit_forum_topic_id(&route);
     let locale = route.locale.clone();
 
     let subject_resource = Resource::new_blocking(
-        move || (reactions_enabled.get(), topic_id.clone(), locale.clone()),
+        move || (reactions_enabled.get(), topic_id, locale.clone()),
         |(enabled, topic_id, locale)| async move {
             if !enabled {
                 return Ok(None);
@@ -28,14 +24,14 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
             let Some(topic_id) = topic_id else {
                 return Ok(None);
             };
-            load_forum_topic_reaction_subject(topic_id.as_str(), locale).await
+            load_forum_topic_reaction_subject(topic_id, locale).await
         },
     );
 
     view! {
         <div class="space-y-4">
             <ForumView />
-            <Suspense fallback=|| view! { <span class="hidden"></span> }>
+            <Suspense fallback=|| ()>
                 {move || {
                     let subject_resource = subject_resource;
                     Suspend::new(async move {
@@ -49,17 +45,7 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
                                 </section>
                             }
                             .into_any(),
-                            Ok(None) => view! { <span class="hidden"></span> }.into_any(),
-                            Err(_) => view! {
-                                <p
-                                    class="rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground"
-                                    role="status"
-                                    data-storefront-composition="forum-topic-reactions-unavailable"
-                                >
-                                    "Reactions are temporarily unavailable for this topic."
-                                </p>
-                            }
-                            .into_any(),
+                            Ok(None) | Err(_) => ().into_any(),
                         }
                     })
                 }}
@@ -68,22 +54,77 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
     }
 }
 
+fn explicit_forum_topic_id(route: &UiRouteContext) -> Option<Uuid> {
+    if route.route_segment.as_deref() != Some(FORUM_ROUTE_SEGMENT) {
+        return None;
+    }
+    let value = route.query_value("topic")?.trim();
+    let topic_id = Uuid::parse_str(value).ok()?;
+    (!topic_id.is_nil()).then_some(topic_id)
+}
+
 async fn load_forum_topic_reaction_subject(
-    topic_id: &str,
+    topic_id: Uuid,
     locale: Option<String>,
-) -> Result<Option<ReactionSubjectUiRef>, String> {
-    let topic_id = match Uuid::parse_str(topic_id) {
-        Ok(topic_id) if !topic_id.is_nil() => topic_id,
-        _ => return Ok(None),
-    };
+) -> Result<Option<ReactionSubjectUiRef>, ()> {
     let Some(revision) = fetch_storefront_topic_current_revision(topic_id.to_string(), locale)
         .await
-        .map_err(|_| "Forum topic reaction owner revision is unavailable".to_string())?
+        .map_err(|_| ())?
     else {
         return Ok(None);
     };
 
     ReactionSubjectUiRef::new("forum", "topic", topic_id, revision)
         .map(Some)
-        .map_err(|_| "Forum topic reaction owner revision is invalid".to_string())
+        .map_err(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+
+    #[test]
+    fn explicit_topic_is_scoped_to_forum_module_route() {
+        let topic_id = "12345678-9abc-4def-8123-456789abcdef";
+        let mut query = BTreeMap::new();
+        query.insert("topic".to_string(), topic_id.to_string());
+        let forum_route = UiRouteContext {
+            route_segment: Some("forum".to_string()),
+            query: query.clone(),
+            ..Default::default()
+        };
+        assert_eq!(
+            explicit_forum_topic_id(&forum_route).map(|id| id.to_string()),
+            Some(topic_id.to_string())
+        );
+
+        let home_slot = UiRouteContext {
+            route_segment: None,
+            query,
+            ..Default::default()
+        };
+        assert!(explicit_forum_topic_id(&home_slot).is_none());
+    }
+
+    #[test]
+    fn explicit_topic_rejects_missing_invalid_and_nil_identity() {
+        for topic in [
+            None,
+            Some("not-a-uuid"),
+            Some("00000000-0000-0000-0000-000000000000"),
+        ] {
+            let mut query = BTreeMap::new();
+            if let Some(topic) = topic {
+                query.insert("topic".to_string(), topic.to_string());
+            }
+            let route = UiRouteContext {
+                route_segment: Some("forum".to_string()),
+                query,
+                ..Default::default()
+            };
+            assert!(explicit_forum_topic_id(&route).is_none());
+        }
+    }
 }
