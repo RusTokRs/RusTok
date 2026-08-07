@@ -142,7 +142,7 @@ forbidMarkers(resolverPath, resolver, [
 ]);
 
 const productSourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
-const productSource = requireMarkers(productSourcePath, [
+requireMarkers(productSourcePath, [
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',
   'freshness.visibility_key AS freshness_visibility_key',
@@ -151,7 +151,7 @@ const productSource = requireMarkers(productSourcePath, [
   'freshness_visibility_key != current_visibility_key',
   'freshness_channel_identity_generation != current_channel_identity_generation',
   'freshness_product_source_version > observed_product_source_version',
-  'A deleted Product does not require a live freshness witness',
+  'does not require a live freshness witness',
 ]);
 
 const absencePath = 'crates/rustok-distribution/src/product_index/absence.rs';
@@ -184,7 +184,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-graph-source.md', [
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'Product-SalesChannel freshness witness',
   'Channel identity generation',
-  'freshness watermark source complete',
+  'Freshness watermark source complete',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
