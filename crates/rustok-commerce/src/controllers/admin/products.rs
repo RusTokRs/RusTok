@@ -4,8 +4,7 @@ use axum::{
     http::StatusCode,
 };
 use rustok_api::Permission;
-use rustok_api::{AuthContext, TenantContext};
-use rustok_product::CatalogService;
+use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -13,7 +12,8 @@ use super::super::{
     CommerceHttpRuntime,
     common::{PaginatedResponse, ensure_permissions},
     products::{
-        AdminProductErrorContext, ListProductsParams, ProductListItem, map_admin_product_error,
+        AdminProductErrorContext, ListProductsParams, ProductListItem,
+        admin_product_command_context, map_admin_product_port_error,
     },
 };
 use crate::{
@@ -209,7 +209,7 @@ pub async fn list_products(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
+    request_context: RequestContext,
     query: Query<ListProductsParams>,
 ) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
     super::super::products::list_products(state, tenant, auth, request_context, query).await
@@ -230,6 +230,7 @@ pub async fn create_product(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Json(input): Json<CreateProductInput>,
 ) -> HttpResult<(StatusCode, Json<ProductResponse>)> {
     ensure_permissions(
@@ -250,13 +251,16 @@ pub async fn create_product(
     )
     .await?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .create_product(tenant.id, auth.user_id, input)
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, None, "create_product");
+    let product = runtime
+        .product_catalog_command_port()
+        .create_product(port_context.clone(), input)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, None, "create_product"),
+                &port_context,
                 error,
             )
         })?;
@@ -279,7 +283,7 @@ pub async fn show_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
+    request_context: RequestContext,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     super::super::products::show_product(state, tenant, auth, request_context, path).await
@@ -301,6 +305,7 @@ pub async fn update_product(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateProductInput>,
 ) -> HttpResult<Json<ProductResponse>> {
@@ -322,13 +327,21 @@ pub async fn update_product(
     )
     .await?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .update_product(tenant.id, auth.user_id, id, input)
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "update_product",
+    );
+    let product = runtime
+        .product_catalog_command_port()
+        .update_product(port_context.clone(), id, input)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "update_product"),
+                &port_context,
                 error,
             )
         })?;
@@ -351,9 +364,10 @@ pub async fn delete_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     path: Path<Uuid>,
 ) -> HttpResult<StatusCode> {
-    super::super::products::delete_product(state, tenant, auth, path).await
+    super::super::products::delete_product(state, tenant, auth, request_context, path).await
 }
 
 /// Publish admin ecommerce product
@@ -371,9 +385,10 @@ pub async fn publish_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::publish_product(state, tenant, auth, path).await
+    super::super::products::publish_product(state, tenant, auth, request_context, path).await
 }
 
 /// Unpublish admin ecommerce product
@@ -391,7 +406,8 @@ pub async fn unpublish_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::unpublish_product(state, tenant, auth, path).await
+    super::super::products::unpublish_product(state, tenant, auth, request_context, path).await
 }
