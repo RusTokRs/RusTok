@@ -75,6 +75,7 @@ const scripts = [
   'verify-index-linked-target-recreate-postgres-harness.mjs',
   'verify-index-linked-target-availability-equivalence-postgres-harness.mjs',
   'verify-index-linked-target-replay-redelivery-postgres-harness.mjs',
+  'verify-index-product-storefront-parity-gate.mjs',
   'verify-index-product-materialized-query-freshness-postgres-harness.mjs',
   'verify-index-product-channel-convergence-postgres-harness.mjs',
   'verify-index-product-channel-identity-transitions-postgres-harness.mjs',

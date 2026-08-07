@@ -80,6 +80,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M7 Product-SalesChannel Freshness Witness](../../rustok-product/docs/index-sales-channel-relation-freshness.md)
 - [M7 Product-SalesChannel Cross-owner Resolver](./m7-product-sales-channel-resolver.md)
 - [M7 Product Graph Projection Ledger](../../rustok-product/docs/index-graph-projection-ledger.md)
+- [M7 Product Storefront Index Parity Gate](./m7-product-storefront-parity-gate.md)
 - [M4 Source-owned Schema Registry](./m4-source-schema-registry.md)
 - [M4 Query Runtime Composition](./m4-query-runtime-composition.md)
 - [M4 PostgreSQL Query Port Contract](./m4-postgres-query-port.md)
