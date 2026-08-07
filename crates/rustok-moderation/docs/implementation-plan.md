@@ -172,18 +172,19 @@ registry:
 - Forum without Moderation remains valid and does not materialize the owner registry;
 - factory build, duplicate-key and factory-key mismatch errors remain startup failures.
 
-This wiring is composition only. It does not dispatch decisions, persist application attempts,
-mark a Moderation decision applied, or add domain logic to the host.
+This wiring remains composition only. It does not itself dispatch decisions or add domain
+logic to the host. Durable application intent and lease state now live in the Moderation
+owner and are consumed by the future dispatcher rather than by the host composition layer.
 
 ## Application lifecycle
 
-Durable decision application must use receipt-first replay and explicit states such as
-pending, applying, retryable, applied, rejected, and operator-review.
+Durable decision application uses explicit owner states `pending`, `applying`, `retryable`,
+`applied`, `rejected`, and `operator_review`.
 
 Required semantics:
 
 - identity is tenant + decision ID + decision hash + subject;
-- identical completed application replays before subject reads;
+- identical completed domain application replays before subject reads;
 - the same decision ID with another hash conflicts;
 - domain mutation and domain receipt/audit commit atomically;
 - moderation records applied evidence only after the adapter returns a matching
@@ -192,25 +193,41 @@ Required semantics:
 - validation, unsupported effect, and stale revision never become success;
 - crash recovery cannot double-apply a decision.
 
-The Forum source slice demonstrates receipt-first domain application using the shared
-Outbox owner-operation ledger. `PortContext.idempotency_key` must equal the decision UUID;
-receipt admission binds the full immutable command before subject reads. Application then
-fences the active Forum subject and dedicated moderation revision row. Success completes the
-shared receipt in the same Forum transaction as the local effect and returns the
-post-application Forum moderation subject revision. Reply `Hidden` and `RejectPublication`
-share the same bounded non-public lifecycle transaction: exact state transition, required
-approved-source topic/category/author public-count changes, `ForumReplyStatusChanged`,
-category projection invalidation when those counters changed, moderation revision advancement
-and the completed receipt commit together. For reply `Removed`, the same transaction uses the
-shared Forum reply-removal owner helper so soft-delete/tombstone capture, accepted-solution
-cleanup, public/solution accounting, `ForumReplyStatusChanged`, category projection when
-required, moderation revision advancement and the completed receipt commit or roll back
-together. Completed receipt replay occurs before subject reads; a new attempt against an
-already soft-deleted reply is unavailable rather than re-applied. Non-retryable domain
-failures may become terminal receipt errors, while retryable storage/serialization failures
-leave the processing lease reclaimable. The host can now materialize these adapters in
-source, but the Moderation owner still needs durable application attempt state,
-scheduler/backoff, dispatch/recovery and applied-evidence recording.
+The Moderation owner now persists `moderation_application_operations` as one current
+operation per immutable decision. `decide_case_replay_safe` creates the decision, typed
+effect, pending operation, `case_decided` event and command receipt in one owner transaction.
+Migration `m20260807_000004_create_moderation_application_operations` backfills only existing
+decisions with a typed `moderation_decision_effects` row; historical `effect: None` decisions
+remain non-dispatchable.
+
+The operation snapshots the decision hash and exact reviewed subject. Bounded due reads and
+CAS claim move due pending/retryable rows, or applying rows with expired leases, into
+`applying`; every claim increments `attempt_count` and creates a fresh UUID lease token with
+bounded expiry. Retryable completion sets an explicit bounded `next_attempt_at`. Applied,
+rejected and operator-review completion require the exact unexpired lease token, so a stale
+worker cannot finish after another worker reclaims an expired attempt.
+
+`mark_application_applied` additionally requires returned `ModerationDecisionApplication`
+evidence to match decision UUID plus exact subject module/kind/UUID/reviewed revision, and
+requires `applied_revision >= reviewed_revision` before storing applied revision/time. The
+persistence layer also rejects applying rows without a complete lease tuple and applied
+revisions older than the reviewed revision.
+
+The Forum source slice demonstrates receipt-first domain application using the shared Outbox
+owner-operation ledger. `PortContext.idempotency_key` must equal the decision UUID; receipt
+admission binds the full immutable command before subject reads. Application then fences the
+active Forum subject and dedicated moderation revision row. Success completes the shared
+receipt in the same Forum transaction as the local effect and returns the post-application
+Forum moderation subject revision. Reply `Hidden` and `RejectPublication` share the same
+bounded non-public lifecycle transaction; reply `Removed` uses the complete Forum removal
+owner path. Completed Forum receipt replay occurs before subject reads, which is the domain
+primitive the future Moderation worker must rely on for lost-response recovery.
+
+The remaining orchestration gap is the worker/dispatcher: reconstruct the immutable
+`ApplyModerationDecisionCommand`, look up the exact host-materialized adapter, classify
+`PortError`, choose bounded retry/backoff, recover lost responses through operation/domain
+receipt state, and advance case/application audit lifecycle. No background dispatch is
+claimed by this operation-foundation slice.
 
 ## Source completed
 
@@ -235,39 +252,53 @@ scheduler/backoff, dispatch/recovery and applied-evidence recording.
 - server host source materialization of the neutral adapter registry under explicit
   `mod-moderation` selection, with source profiles for Forum-disabled, Moderation-only,
   Forum+Moderation and selected-feature/missing-owner behavior, guarded by
-  `scripts/verify/verify-moderation-host-composition.mjs`.
+  `scripts/verify/verify-moderation-host-composition.mjs`;
+- durable application-operation foundation: typed-effect-only migration/backfill, atomic
+  decision/effect/pending-operation enqueue, bounded due reads, UUID lease-token CAS claim,
+  expired-lease reclaim, retryable/rejected/operator-review/applied transitions and exact
+  applied-evidence validation, guarded by
+  `scripts/verify/verify-moderation-application-operation.mjs`.
 
 ## Next priorities
 
-1. Add durable Moderation-owner decision-application operations, attempt state, leases,
-   retry/backoff, crash/lost-response recovery, adapter dispatch and applied-evidence
-   validation.
-2. Retain executable host-composition evidence for selected-owner/missing-owner,
+1. Add the Moderation owner worker/dispatcher over the durable application operations:
+   reconstruct immutable commands, select the exact materialized adapter, classify adapter
+   failures, apply bounded retry/backoff, recover crashes/lost responses and advance
+   case/application audit lifecycle without double application.
+2. Retain clean/upgraded PostgreSQL/SQLite application-operation migration/backfill evidence,
+   atomic decision enqueue, due bounds/order, concurrent claim, lease expiry/reclaim,
+   stale-token rejection, retry scheduling and applied-evidence validation.
+3. Retain executable host-composition evidence for selected-owner/missing-owner,
    Moderation-only empty materialization and Forum+Moderation topic/reply materialization;
    prove factory build failures remain fail-closed.
-3. Keep Forum `SetVisibility(Unpublished)` blocked until Forum owns an explicit lifecycle
+4. Keep Forum `SetVisibility(Unpublished)` blocked until Forum owns an explicit lifecycle
    meaning distinct from `RejectPublication`; add explicit expiry-safe state before temporary
    restrictions and admit no lossy approximation.
-4. Retain PostgreSQL/SQLite migration/backfill/trigger evidence for Forum moderation revision
+5. Retain PostgreSQL/SQLite migration/backfill/trigger evidence for Forum moderation revision
    clocks plus concurrent content/lifecycle edit versus permanent-lock/reply-hide/
    reply-reject/reply-remove application evidence, approved-to-hidden/approved-to-rejected
    accounting/event atomicity and removed-reply tombstone/accepted-solution/accounting/event
    atomicity.
-5. Add PostgreSQL Moderation active-case/decision-effect/revision-CAS evidence.
-6. Add moderation-specific RBAC resources and tenant permission registration.
-7. Publish transactional outbox contracts for report, case, decision, application, and
+6. Add PostgreSQL Moderation active-case/decision-effect/revision-CAS evidence.
+7. Add moderation-specific RBAC resources and tenant permission registration.
+8. Publish transactional outbox contracts for report, case, decision, application, and
    appeal lifecycle events.
-8. Integrate Groups as the membership-scoped expiry reference adapter, then Blog, Comments,
+9. Integrate Groups as the membership-scoped expiry reference adapter, then Blog, Comments,
    Pages, Reviews, Marketplace, Media, Messaging, and Profiles.
-9. Add versioned policies, premoderation, automated assessment providers, appeals, and
-   capability-scoped account sanctions.
-10. Publish admin queue/case/application surfaces only after owner runtime composition.
+10. Add versioned policies, premoderation, automated assessment providers, appeals, and
+   capability-scoped account sanctions; publish admin queue/case/application surfaces only
+   after owner runtime composition.
 
 ## Invariants
 
 - no cross-domain foreign keys;
 - every decision references the exact reviewed subject revision;
 - decision effect is immutable, typed, versioned, and part of decision hash identity;
+- every new typed decision commits one durable pending application operation atomically;
+- historical decisions without typed effects remain non-dispatchable and are not backfilled;
+- only a live UUID lease token may finish an applying operation; expired leases are reclaimable;
+- applied evidence must match the immutable decision and exact reviewed subject before the
+  Moderation owner records `applied`;
 - moderation never writes domain-owned tables;
 - domain modules never import moderation entities or services;
 - domain-specific subject revision clocks remain domain-owned and are not copied into
@@ -284,8 +315,11 @@ scheduler/backoff, dispatch/recovery and applied-evidence recording.
 
 - moderation unavailable: existing domain enforcement remains authoritative; no new
   sanction is inferred;
-- adapter missing/unavailable: application remains pending/retryable;
+- adapter missing/unavailable: durable application remains pending/retryable and is never
+  marked applied;
 - domain owner unavailable: moderation retains durable intent and does not mark applied;
+- worker crash while applying: the expired lease becomes reclaimable; stale lease tokens
+  cannot complete the reclaimed operation;
 - moderation disabled: authorized domain-local enforcement may continue when product policy
   permits it, while report/case/appeal features are unavailable;
 - stale revision: conflict and explicit re-review/new decision;
@@ -302,11 +336,16 @@ scheduler/backoff, dispatch/recovery and applied-evidence recording.
 - `node scripts/verify/verify-moderation-api-boundary.mjs`;
 - `node scripts/verify/verify-forum-moderation-subject-adapter.mjs`;
 - `node scripts/verify/verify-moderation-host-composition.mjs`;
+- `node scripts/verify/verify-moderation-application-operation.mjs`;
 - `cargo check -p rustok-server --no-default-features --features mod-moderation`;
 - `cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"`;
 - `cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles`;
 - `cargo test -p rustok-server --no-default-features --features "mod-forum mod-moderation" --test moderation_composition_profiles`;
-- clean/upgraded PostgreSQL and SQLite decision-effect migration evidence;
+- clean/upgraded PostgreSQL and SQLite decision-effect and application-operation migration
+  evidence, including typed-effect-only backfill and legacy effectless exclusion;
+- atomic decision/effect/pending-operation/event/receipt commit and replay evidence;
+- due ordering/bounds, concurrent claim, lease expiry/reclaim, stale-token rejection,
+  retry scheduling, terminal transition and applied-evidence mismatch evidence;
 - Forum moderation subject revision migration/backfill and topic/reply content/lifecycle
   trigger-advance evidence on PostgreSQL and SQLite;
 - duplicate/missing/mismatched adapter registry behavior;
@@ -314,7 +353,7 @@ scheduler/backoff, dispatch/recovery and applied-evidence recording.
   evidence;
 - historical decision `effect: None` read and non-dispatch evidence;
 - PostgreSQL duplicate-report, active-case, and case-revision contention tests;
-- decision application crash/retry/lost-response recovery;
+- decision application worker crash/retry/lost-response recovery;
 - Forum shared-receipt replay/request conflict, trusted caller, stale revision, permanent-lock,
   reply-hide, reply-reject and reply-remove versus concurrent content/lifecycle edit evidence;
 - approved-to-hidden and approved-to-rejected topic/category/author counter adjustment,
@@ -329,5 +368,5 @@ scheduler/backoff, dispatch/recovery and applied-evidence recording.
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback
   evidence.
 
-No new execution evidence is claimed by the host materialization source slice. Maintainer-run
-verification remains required before promotion.
+No new execution evidence is claimed by the durable application-operation source slice.
+Maintainer-run verification remains required before promotion.
