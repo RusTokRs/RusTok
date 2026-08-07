@@ -120,12 +120,19 @@ AFTER INSERT OR DELETE OR UPDATE OF id, tenant_id, slug ON channels
 FOR EACH ROW
 EXECUTE FUNCTION rustok_channel_track_index_identity_generation();
 
-SELECT rustok_channel_bump_index_identity_generation(seed.tenant_id)
-FROM (
-    SELECT DISTINCT tenant_id
-    FROM channels
-) seed
-ORDER BY seed.tenant_id;
+DO $$
+DECLARE
+    seed_tenant_id UUID;
+BEGIN
+    FOR seed_tenant_id IN
+        SELECT DISTINCT tenant_id
+        FROM channels
+        ORDER BY tenant_id::text
+    LOOP
+        PERFORM rustok_channel_bump_index_identity_generation(seed_tenant_id);
+    END LOOP;
+END;
+$$;
 "#,
             )
             .await?;
