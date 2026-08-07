@@ -1,12 +1,12 @@
 # Product-SalesChannel relation freshness witness
 
-Status: `source_complete_runtime_evidence_pending`.
+Status: `source_complete_materialized_convergence_and_runtime_evidence_pending`.
 
 ## Purpose
 
-Resolved Product-to-SalesChannel membership is correct only when it was observed from the current
-Product visibility contract and the current tenant Channel identity set. Membership equality alone is
-not enough evidence: an owner watermark can change while the final UUID set remains identical.
+Resolved Product-to-SalesChannel membership is source-admissible only when it was observed from the
+current Product visibility contract and the current tenant Channel identity set. Membership equality
+alone is not enough evidence: an owner watermark can change while the final UUID set remains identical.
 
 `product_sales_channel_index_relation_freshness_snapshots` is the Product-owned append-only witness for
 that boundary. It is separate from `relation_epoch`; a freshness-only change does not pretend that the
@@ -14,76 +14,71 @@ graph membership changed.
 
 ## Witness
 
-Each row retains:
-
-- exact tenant and Product identity;
-- the retained Product-to-SalesChannel `relation_epoch` that was verified;
-- the observed positive Product `index_revision`;
-- an opaque canonical Product visibility key;
-- the observed tenant Channel identity generation;
-- a positive tenant-local append sequence.
+Each row retains exact tenant/Product identity, the verified `relation_epoch`, observed positive Product
+`index_revision`, an opaque canonical Product visibility key, observed tenant Channel identity
+generation, and a positive tenant-local append sequence.
 
 The Product owner validates only opaque/numeric evidence and the referenced relation epoch. It does not
-read Channel storage and still has no dependency on `rustok-channel` or `rustok-index`.
-
-The witness ledger is append-only. Numeric owner watermarks cannot regress. An exact duplicate tuple is
-idempotent and does not append another row.
+read Channel storage and has no dependency on `rustok-channel` or `rustok-index`. The ledger is
+append-only, numeric owner watermarks cannot regress, and an exact duplicate tuple is idempotent.
 
 ## Channel identity watermark
 
 `rustok-channel` owns `channel_index_identity_generations`, one durable generation per tenant. The
-generation advances transactionally for Channel identity changes that can alter Product relation
-resolution:
+generation advances transactionally for Channel insert/delete/id movement/tenant movement/canonical
+slug change. `is_active`, targets, OAuth configuration, resolution policies, and unrelated Channel
+state do not advance it.
 
-- Channel insert;
-- Channel delete;
-- Channel id change;
-- Channel tenant movement, bumping both affected tenants;
-- canonical slug change.
-
-`is_active`, Channel targets, OAuth configuration, resolution policies, and other unrelated Channel
-state do not advance this watermark. A tenant that has never had a Channel is represented by generation
-`0`; after its first Channel identity mutation the retained generation is positive and survives later
-removal of all Channels.
+A tenant with no historical Channel identity row is generation `0`. After the first identity mutation,
+the positive generation remains retained even if all Channels are later removed.
 
 ## Resolver admission
 
 For one exact Product the distribution resolver:
 
 1. observes Product metadata, Product `index_revision`, tenant Channel identity generation, and resolved
-   Channel UUID membership in one `REPEATABLE READ`, `READ ONLY` transaction;
+   UUID membership in `REPEATABLE READ`, `READ ONLY`;
 2. writes membership through `ProductSalesChannelIndexRelationStore::replace`;
 3. performs a fresh second observation;
-4. requires that second resolved UUID set to equal the retained relation membership;
-5. records the second observation as a Product-owned freshness witness for that relation epoch.
+4. requires the second UUID set to equal retained relation membership;
+5. records that observation as the Product-owned freshness witness.
 
-A concurrent owner change after the second observation does not create a false authoritative read: the
-canonical Product source compares the retained witness with current owner facts on every live replay.
+If owner state changes before a later source read, the canonical Product source sees the new current
+facts and rejects the stale witness.
 
 ## Canonical replay gate
 
 Live Product replay and Product locale absence require:
 
-- current projection Product watermark to equal the current Product revision;
-- a freshness witness for the exact relation epoch referenced by projection state;
-- current canonical Product visibility key to equal the witness key;
-- current tenant Channel identity generation to equal the witness generation;
-- witness Product source version not to exceed the current Product revision.
+- current projection Product watermark equal to the current Product revision;
+- a witness for the exact relation epoch referenced by projection state;
+- current canonical visibility key equal to the witness key;
+- current tenant Channel identity generation equal to the witness generation;
+- witness Product source version not newer than the current Product revision.
 
-A missing/stale witness therefore fails closed. Product hard-delete replay does not require a live
-freshness witness because the mutation removes the graph rather than publishing membership.
+A missing/stale witness therefore fails closed at source observation. Product hard-delete replay does
+not require a live witness because the mutation removes the graph rather than publishing membership.
+
+## Materialized freshness boundary
+
+The witness does **not** make source observation and Index mutation application one cross-owner atomic
+transaction. A Channel identity change may commit after a Product source page was read but before that
+already-produced mutation is applied. The next source observation will fail closed, and a membership
+change can later advance relation/projection state, but the watermark alone is not a production
+materialized-view freshness guarantee.
+
+Therefore authoritative cutover still requires automatic/bounded convergence plus retained evidence
+covering this in-flight window (or an equivalent materialized/query freshness fence). This distinction
+is deliberate: the witness closes stale source admission, not the remaining materialized convergence
+problem.
 
 ## Remaining admission
 
-This closes the source-level freshness watermark gap. It does not provide automatic owner-change
-scheduling: after a visibility or Channel identity change, a caller still has to invoke exact Product
-reconciliation or a bounded tenant sweep before the live Product source becomes readable again.
-
 Still required before production cutover:
 
-- retained PostgreSQL concurrency/restart/delete-recreate/freshness evidence;
-- durable scheduling/triggering policy if automatic convergence latency is required;
-- canonical Product typed event admission and routes after event-contract digest admission;
+- automatic or otherwise bounded owner-change convergence/materialized freshness fencing;
+- retained PostgreSQL concurrency/restart/delete-recreate/in-flight freshness evidence;
+- canonical Product typed event admission/routes after event-contract digest admission;
 - complete query equivalence and Storefront cutover evidence.
 
 ## Maintainer verification
