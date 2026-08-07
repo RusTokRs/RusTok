@@ -61,8 +61,7 @@ forbidMarkers(compilerPath, compiler, [
   'SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS',
 ]);
 
-const catalogPath = 'crates/rustok-index/src/infrastructure/postgres/query_admission.rs';
-requireMarkers(catalogPath, [
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_admission.rs', [
   'rule: Option<PostgresQueryEntityAdmission>',
   'pub(crate) fn ensure_runtime_schema(',
   'rule: None',
@@ -71,9 +70,7 @@ requireMarkers(catalogPath, [
   'schema_guard(schema)',
   'PostgresQueryEntityAdmission::new(format!(',
 ]);
-
-const runtimePath = 'crates/rustok-index/src/infrastructure/postgres/query_runtime.rs';
-requireMarkers(runtimePath, [
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
   'if !admissions.is_empty()',
   'for registered in registry.registry().iter()',
   'admissions.ensure_runtime_schema(registered.schema.reference.clone())?',
@@ -92,37 +89,58 @@ const owner = requireMarkers(ownerPath, [
   'owner_channel.tenant_id = {{entity}}.tenant_id',
   'owner_channel.id = {{entity}}.entity_id',
   'owner_channel.index_revision = {{entity}}.source_version',
-  'extensions.contains::<rustok_channel::ChannelRuntimeSelected>()',
 ]);
 forbidMarkers(ownerPath, owner, ['index_entities', 'index_links', '$1']);
 
-const variantSource = requireMarkers('crates/rustok-distribution/src/product_variant_index.rs', [
+requireMarkers('crates/rustok-distribution/src/product_variant_index.rs', [
   'v.index_revision',
   'tombstone.source_version AS index_revision',
   'PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2',
 ]);
-const channelSource = requireMarkers('crates/rustok-distribution/src/channel_index.rs', [
+requireMarkers('crates/rustok-distribution/src/channel_index.rs', [
   'c.index_revision',
   'tombstone.source_version AS index_revision',
   'SchemaVersion::INITIAL',
 ]);
-for (const [relative, source] of [
-  ['crates/rustok-distribution/src/product_variant_index.rs', variantSource],
-  ['crates/rustok-distribution/src/channel_index.rs', channelSource],
-]) {
-  if (!source.includes('index_revision')) fail(`${relative} lost current owner source revision`);
-}
 
-requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', [
-  'Query surfaces fenced against stale target payloads',
-  'many-cardinality nested projections',
-  'many-cardinality `EXISTS` filters',
-  'many-cardinality `MIN`/`MAX` aggregate ordering',
-  'does **not** yet prove complete linked-target availability semantics',
-  'link exists while its target has not yet been materialized',
-  'Explicit remaining recreate boundary',
-  'hard delete followed by recreation of the same UUID can reset',
-  'next source slice must make those two owner source clocks monotonic',
+const variantTombstoneMigration =
+  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs';
+requireMarkers(variantTombstoneMigration, [
+  'CREATE TABLE product_variant_index_tombstones',
+  'OLD.index_revision + 1',
+  'rustok_product_variant_seed_index_revision_from_tombstone',
+  'NEW.index_revision := GREATEST(NEW.index_revision, retained_source_version + 1)',
+  'rustok_product_variant_clear_inserted_index_tombstone',
+  'tombstone.source_version >= live_source_version',
 ]);
 
-console.log('[verify-index-linked-target-query-freshness] linked target stale-payload fence and remaining availability gate verified');
+const channelTombstoneMigration =
+  'crates/rustok-channel/src/migrations/m20260731_000011_add_channel_index_tombstones.rs';
+requireMarkers(channelTombstoneMigration, [
+  'CREATE TABLE channel_index_tombstones',
+  'OLD.index_revision + 1',
+  'rustok_channel_seed_index_revision_from_tombstone',
+  'NEW.index_revision := GREATEST(NEW.index_revision, retained_source_version + 1)',
+  'rustok_channel_clear_inserted_index_tombstone',
+  'tombstone.source_version >= live_source_version',
+]);
+
+const freshnessDoc = requireMarkers(
+  'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
+  [
+    'Recreate monotonicity is already source complete',
+    'do **not** need a new recreate clock',
+    'm20260731_000004_add_product_index_tombstones',
+    'm20260731_000011_add_channel_index_tombstones',
+    'No new ProductVariant/SalesChannel ledger or schema version should be added',
+    'Remaining linked-target availability boundary',
+    'link exists but the target has not yet been materialized',
+    'product_linked_target_recreate_postgres.rs',
+  ],
+);
+forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
+  'next source slice must make those two owner source clocks monotonic',
+  'implement recreate-safe monotonic ProductVariant and SalesChannel source clocks',
+]);
+
+console.log('[verify-index-linked-target-query-freshness] linked target freshness and retained recreate monotonicity verified');
