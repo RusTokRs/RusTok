@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::collections::BTreeSet;
 
 use rustok_product::{
@@ -458,7 +460,10 @@ fn resolve_receipt(
     verified: ProductChannelObservation,
     outcome: ProductSalesChannelIndexRelationWriteOutcome,
 ) -> ProductSalesChannelRelationResolveReceipt {
-    let changed = !matches!(outcome, ProductSalesChannelIndexRelationWriteOutcome::Unchanged(_));
+    let changed = !matches!(
+        &outcome,
+        ProductSalesChannelIndexRelationWriteOutcome::Unchanged(_)
+    );
     let relation_epoch = outcome.record().relation_epoch();
     ProductSalesChannelRelationResolveReceipt {
         tenant_id,
