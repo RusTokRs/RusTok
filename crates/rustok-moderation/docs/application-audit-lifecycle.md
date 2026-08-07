@@ -8,7 +8,7 @@ This slice makes the existing Moderation application operation, case lifecycle a
 
 It does not add a second queue, scheduler, audit table, domain adapter path or cross-domain event family. `moderation_application_operations` remains the durable application state, `moderation_cases` remains the case state machine, and the existing `moderation_events` table remains the Moderation-owned audit ledger.
 
-Operator retry/requeue/re-review commands are deliberately left for the next bounded owner slice. That follow-up must also reconcile pre-audit terminal operation rows truthfully rather than inventing historical lifecycle events.
+The follow-up bounded operator-recovery slice is now source-ready in `application_recovery.rs`; it adds explicit same-decision requeue and truthful legacy-terminal reconciliation without changing the audit lifecycle's dispatcher/lease boundary.
 
 ## Claim and case start
 
@@ -62,21 +62,13 @@ This distinction remains important: a deterministic domain/contract rejection is
 
 ## Upgrade compatibility for pre-audit terminal rows
 
-This source slice intentionally adds no migration and does not fabricate audit history for application operations that were already terminal before the atomic lifecycle source existed.
+The atomic lifecycle source intentionally added no migration and did not fabricate audit history for application operations that were already terminal before it existed.
 
-A legacy row already in `applied`, `rejected` or `operator_review` is no longer due and therefore cannot pass through the new claim/finalizer path. Its associated case may consequently still reflect the pre-audit lifecycle state (for example `decided`) and there may be no truthful `case_application_started` / terminal lifecycle audit pair to backfill.
+The owner recovery source now handles those rows explicitly through `operator_reconcile_legacy_application_replay_safe`. It validates exact immutable decision/operation/case identity and stored terminal shape, then maps `applied -> closed` and `rejected|operator_review -> escalated`. An already-consistent terminal case is a no-op.
 
-Those rows are a bounded reconciliation concern, not evidence that the historical events occurred. The next operator-recovery slice must define an explicit owner reconciliation path that:
+This is reconciliation, not historical replay. It never invokes a domain adapter merely to manufacture history and writes only present-time `application_legacy_terminal_reconciled` / `case_legacy_terminal_reconciled` facts. For legacy applied rows, the case closes at the current reconciliation time while the older stored `applied_at` remains domain-application evidence; no historical close time or missing lifecycle event is invented.
 
-- inspects exact immutable decision, operation and case identity;
-- distinguishes legacy terminal-state reconciliation from a new domain application attempt;
-- never re-invokes a domain adapter merely to manufacture lifecycle history;
-- never invents historical event timestamps or claims that an unobserved lifecycle transition happened;
-- preserves an already accepted `applied` operation as applied while bringing case state forward through an explicit reconciliation fact;
-- keeps rejected/operator-review recovery fail-closed and operator-visible;
-- remains bounded and tenant/decision scoped.
-
-Until that follow-up exists and is evidenced, upgraded legacy terminal rows are explicitly **not** claimed reconciled by this slice.
+Same-decision operator requeue is a separate explicit action. Only `rejected` or `operator_review` may return to `retryable`; `applied` can never be requeued. True stale-revision re-review requires a new case and new immutable decision on a freshly authorized producer revision rather than retargeting the old decision.
 
 ## Crash and lost-response behavior
 
@@ -109,39 +101,38 @@ Future public/transactional outbox contracts, if needed by another module, must 
 
 ## Explicitly not claimed
 
-This slice does not add:
+The combined audit + recovery source does not add:
 
-- operator retry/requeue/re-review commands;
-- reconciliation of pre-audit terminal application rows and their legacy case state;
-- a UI or admin recovery surface;
-- automatic creation of a replacement decision after escalation;
+- an authorized admin transport/UI or Moderation RBAC surface for recovery;
+- automatic in-place re-review or replacement-decision creation;
 - report dismissal/closure policy beyond the existing report state model;
 - a new migration or audit/event table;
 - a new scheduler loop or host task;
 - a typed cross-domain Moderation event family;
-- retained SQLite/PostgreSQL, crash, concurrency or scheduler execution evidence.
+- retained SQLite/PostgreSQL, crash, concurrency, recovery or scheduler execution evidence.
 
 ## Ownership and Reactions boundary
 
-Moderation remains the only owner of reports, cases, immutable decisions, application operations, retries and cross-domain moderation audit. Forum owns only Forum topic/reply state, the dedicated Forum moderation subject revision and the domain-side receipt/effect transaction.
+Moderation remains the only owner of reports, cases, immutable decisions, application operations, retries, operator recovery and cross-domain moderation audit. Forum owns only Forum topic/reply state, the dedicated Forum moderation subject revision and the domain-side receipt/effect transaction.
 
-This slice is unrelated to Reactions. Existing `rustok-reactions` remains the reaction catalog/state/command/aggregate/event/repair owner and `rustok-reactions-storefront` remains the reusable presentation owner. No duplicate Forum reactions subsystem is created.
+This work is unrelated to Reactions. Existing `rustok-reactions` remains the reaction catalog/state/command/aggregate/event/repair owner and `rustok-reactions-storefront` remains the reusable presentation owner. No duplicate Forum reactions subsystem is created.
 
 ## Maintainer verification handoff
 
-Suggested checks, intentionally not run while preparing this slice:
+Suggested checks, intentionally not run while preparing these source slices:
 
 ```bash
 node scripts/verify/verify-moderation-application-operation.mjs
 node scripts/verify/verify-moderation-application-dispatch-once.mjs
 node scripts/verify/verify-moderation-application-work-scheduler.mjs
 node scripts/verify/verify-moderation-application-audit-lifecycle.mjs
+node scripts/verify/verify-moderation-application-operator-recovery.mjs
 cargo check -p rustok-moderation --all-targets
 cargo test -p rustok-moderation
 cargo xtask module validate moderation
 git diff --check
 ```
 
-Retained evidence should cover: first claim `decided -> applying_decision`; retry/reclaim without another case revision; claim/event rollback on audit failure; retryable operation + retry event atomicity; applied operation + `closed` case + cleared active key + both audit events atomicity; rejected/operator-review operation + `escalated` case + both audit events atomicity; stale-token finalizer rollback; case revision CAS contention; domain lost-response receipt replay followed by exactly one case close; owner storage failure followed by lease reclaim; PostgreSQL/SQLite parity; and explicit evidence for legacy-terminal reconciliation once the follow-up recovery path exists.
+Retained evidence should cover: first claim `decided -> applying_decision`; retry/reclaim without another case revision; claim/event rollback on audit failure; retryable operation + retry event atomicity; applied operation + `closed` case + cleared active key + both audit events atomicity; rejected/operator-review operation + `escalated` case + both audit events atomicity; stale-token finalizer rollback; case revision CAS contention; domain lost-response receipt replay followed by exactly one case close; owner storage failure followed by lease reclaim; human recovery actor/receipt/revision gates; rejected/operator-review requeue and applied denial; next scheduler claim after requeue; legacy terminal reconciliation/no-op without domain invocation; and PostgreSQL/SQLite parity.
 
-No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
+No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows, CI or `git diff --check` were executed while preparing these source slices.
