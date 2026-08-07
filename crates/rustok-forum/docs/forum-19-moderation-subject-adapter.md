@@ -4,7 +4,7 @@ Status: **bounded source-ready slice / maintainer execution pending**
 
 ## Scope
 
-This slice starts FORUM-19 by making Forum a producer-side consumer of the neutral `rustok-moderation-api` application port. It does not move reports, cases, queues, decisions, appeals, application orchestration or cross-domain audit into Forum.
+FORUM-19 makes Forum a producer-side consumer of the neutral `rustok-moderation-api` application port. It does not move reports, cases, queues, decisions, appeals, application orchestration or cross-domain audit into Forum.
 
 Forum registers two `ModerationSubjectAdapterFactory` instances:
 
@@ -50,7 +50,7 @@ The moderation subject clock is intentionally distinct from:
 - `updated_at` timestamps;
 - the global `forum_domain_events.sequence_no`.
 
-This gives `ModerationSubjectRef.revision` one subject-local monotonic owner identity that covers the state this first adapter is allowed to review and mutate, without coupling Moderation to Reactions or to a global event offset.
+This gives `ModerationSubjectRef.revision` one subject-local monotonic owner identity that covers the state this adapter is allowed to review and mutate, without coupling Moderation to Reactions or to a global event offset.
 
 ## Exact revision and concurrency boundary
 
@@ -60,28 +60,37 @@ A decision applies only when the reviewed moderation subject revision exactly ma
 
 The permanent topic lock goes through `TopicService::set_locked_in_tx`. The database trigger must advance the moderation revision in the same transaction; the adapter returns that post-application revision as `ModerationDecisionApplication.applied_revision`. A true no-op keeps the reviewed revision unchanged. An unexpected missing/non-advancing clock is an invariant failure, not a guessed success.
 
+The reply visibility slice applies only the neutral `SetVisibility { state: Hidden }` effect to `forum_post`. It uses Forum's existing `ReplyStatus::Hidden` lifecycle and the same owner primitives used by the established moderator path. An already-hidden reply is an exact no-op. Every other source status must have a valid Forum transition to `Hidden`; invalid lifecycle transitions fail closed.
+
+When an approved reply becomes hidden, the same owner transaction decrements the topic public reply count, category public reply count and author Forum reply statistics. Non-approved-to-hidden transitions do not alter those public counters. The transaction writes the canonical `ForumReplyStatusChanged` root event; that event is already a Forum Search full-scope source. When public category counters change, the canonical category projection invalidation is also written. Status, counters/statistics, events, moderation-revision advancement and the completed shared receipt therefore commit or roll back together.
+
+A service/system actor UUID is carried into the Forum event when the trusted port actor identity is a non-nil UUID. Non-UUID service identities remain representable by the Moderation-owned cross-domain audit while Forum's existing optional `moderator_id` field stays `None`.
+
 ## Effects in this bounded slice
 
 Supported:
 
 - `NoDomainMutation` for topic and reply decisions such as warning/no-violation outcomes;
-- permanent topic `Lock { effective_until: None }`, using the existing `TopicService::set_locked_in_tx` owner mutation and canonical Forum Search projection invalidation.
+- permanent topic `Lock { effective_until: None }`, using the existing `TopicService::set_locked_in_tx` owner mutation and canonical Forum Search projection invalidation;
+- `SetVisibility { state: Hidden }` for `forum_post`, using exact `ReplyStatus::Hidden` lifecycle/accounting/event semantics.
 
 Explicitly deferred:
 
 - temporary topic lock, because Forum does not yet own expiry-safe moderation enforcement state;
-- reply hide/reject and topic remove/unpublish effects;
+- `SetVisibility { state: Unpublished }`, because it is not yet proven to be exactly equivalent to a Forum reply lifecycle state;
+- `SetVisibility { state: Removed }`, because Forum removal requires the complete soft-delete/tombstone/solution/counter owner path and must not be approximated by setting a status;
+- topic remove/unpublish effects;
 - interaction restrictions, require-edit, publication rejection, suspension, escalation and account-sanction recommendation.
 
-Unsupported effects fail closed. They are not approximated by unrelated existing Forum statuses.
+Unsupported effects fail closed. `Unpublished` is not silently mapped to `Rejected`, and `Removed` is not silently mapped to `Deleted`.
 
 ## Ownership preserved
 
-Moderation remains authoritative for report intake, cases, queues, immutable decisions, appeals, retry/application orchestration and cross-domain audit. Forum retains only topic/reply lifecycle, the Forum-owned moderation subject revision, local enforcement state and its own projection invalidation.
+Moderation remains authoritative for report intake, cases, queues, immutable decisions, appeals, retry/application orchestration and cross-domain audit. Forum retains only topic/reply lifecycle, the Forum-owned moderation subject revision, local enforcement state and its own events/projection invalidation.
 
 `rustok-forum` depends on `rustok-moderation-api`; it does not depend on the `rustok-moderation` owner crate and does not read Moderation persistence.
 
-This change is unrelated to Reactions ownership. It adds no reaction catalog, state, command, aggregate, transport or presentation code to Forum, and the new moderation revision clock is not a second Reactions revision system.
+This change is unrelated to Reactions ownership. It adds no reaction catalog, state, command, aggregate, transport or presentation code to Forum, and the moderation revision clock is not a second Reactions revision system.
 
 ## Maintainer verification handoff
 
@@ -95,6 +104,6 @@ cargo xtask module validate forum
 git diff --check
 ```
 
-Future runtime evidence should additionally cover migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body edit versus permanent lock, trusted-caller enforcement, PostgreSQL serialization/reclaim, and disabled/unmaterialized Moderation profiles.
+Future runtime evidence should additionally cover migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock or reply hide, trusted-caller enforcement, PostgreSQL serialization/reclaim, approved-to-hidden counter/stat/event atomicity, already-hidden replay/no-op behavior, and disabled/unmaterialized Moderation profiles.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.

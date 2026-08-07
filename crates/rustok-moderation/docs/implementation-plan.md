@@ -124,23 +124,31 @@ For Groups:
 - moderation admin FFA owns queue/case/decision/application surfaces; Groups FFA owns current
   local enforcement state and authorized direct domain actions.
 
-For Forum's first bounded adapter slice:
+For Forum's bounded adapter source:
 
 - Forum registers `forum_topic` and `forum_post` factories through the neutral API and has no
   dependency on the Moderation owner crate;
 - Forum owns only its monotonic moderation subject revision clocks, existing topic/reply
-  lifecycle/enforcement state, and Search projection invalidation;
+  lifecycle/enforcement state, Forum counters/statistics, semantic events and Search
+  projection invalidation;
 - Forum reuses `rustok-outbox::idempotency` / `owner_operation_receipts` for bounded application
   provenance instead of creating a Forum case, decision, audit, or application-receipt
   subsystem;
 - `NoDomainMutation` is accepted for both subject kinds;
 - permanent topic lock maps to the existing Forum owner lock mutation plus Forum Search
   projection invalidation and advances the dedicated moderation subject revision;
-- temporary lock and all remaining visibility/restriction effects fail closed until an exact
-  owner semantic and, where required, expiry-safe Forum state exists.
+- `SetVisibility { state: Hidden }` for `forum_post` maps exactly to `ReplyStatus::Hidden`;
+  approved-to-hidden applies the existing topic/category/author public-count accounting,
+  every changed hide publishes `ForumReplyStatusChanged`, and an already-hidden reply is a
+  no-op without duplicate counters or events;
+- `Unpublished` and `Removed` are still unsupported: Forum does not approximate them as
+  `Rejected` or `Deleted`; removal must reuse the complete Forum soft-delete/tombstone/
+  solution/counter owner semantics before it can be admitted;
+- temporary lock and the remaining restriction effects fail closed until an exact owner
+  semantic and, where required, expiry-safe Forum state exists.
 
-Direct domain actions and moderation-driven actions converge on the same domain owner
-mutation path. Whether a direct action also opens a case is host/product policy.
+Direct domain actions and moderation-driven actions converge on the same domain invariants
+and owner primitives. Whether a direct action also opens a case is host/product policy.
 
 ## Application lifecycle
 
@@ -164,10 +172,13 @@ Outbox owner-operation ledger. `PortContext.idempotency_key` must equal the deci
 receipt admission binds the full immutable command before subject reads. Application then
 fences the active Forum subject and dedicated moderation revision row. Success completes the
 shared receipt in the same Forum transaction as the local effect and returns the
-post-application Forum moderation subject revision. Non-retryable domain failures may become
-terminal receipt errors, while retryable storage/serialization failures leave the processing
-lease reclaimable. This is producer-side source only; the Moderation owner still needs its
-durable application attempt state, scheduler/backoff and host runtime materialization.
+post-application Forum moderation subject revision. For reply `Hidden`, the same transaction
+also contains the exact Forum status mutation, any required public-counter/stat updates,
+`ForumReplyStatusChanged`, and category projection invalidation when those counters changed.
+Non-retryable domain failures may become terminal receipt errors, while retryable
+storage/serialization failures leave the processing lease reclaimable. This is producer-side
+source only; the Moderation owner still needs its durable application attempt state,
+scheduler/backoff and host runtime materialization.
 
 ## Source completed
 
@@ -185,7 +196,8 @@ durable application attempt state, scheduler/backoff and host runtime materializ
 - source guard `scripts/verify/verify-moderation-api-boundary.mjs`;
 - Forum as the first real domain adapter producer in source: `forum_topic`/`forum_post`
   factories, dedicated owner moderation-revision clocks, shared receipt/revision fencing,
-  trusted caller gate, no-op decisions and permanent topic lock, guarded by
+  trusted caller gate, no-op decisions, permanent topic lock, and exact reply `Hidden`
+  visibility application with Forum accounting/events, guarded by
   `scripts/verify/verify-forum-moderation-subject-adapter.mjs`.
 
 ## Next priorities
@@ -194,11 +206,13 @@ durable application attempt state, scheduler/backoff and host runtime materializ
    retry/backoff, crash/lost-response recovery, and applied-evidence validation.
 2. Materialize the registered adapter factories in host runtime and expose bounded operator
    recovery; prove missing/unavailable adapters stay retryable.
-3. Extend Forum only with exact owner effect mappings: reply visibility/lifecycle is the next
-   candidate if counters/events/projections remain atomic; add explicit expiry-safe state
-   before temporary restrictions.
+3. Extend Forum only with another exact owner effect mapping. `Unpublished` may be considered
+   only after its Forum lifecycle meaning is explicit; `Removed` stays blocked until the
+   complete Forum soft-delete/tombstone/solution/counter owner path is reused. Add explicit
+   expiry-safe state before temporary restrictions.
 4. Retain PostgreSQL/SQLite migration/backfill/trigger evidence for Forum moderation revision
-   clocks plus concurrent content/lifecycle edit versus permanent-lock application evidence.
+   clocks plus concurrent content/lifecycle edit versus permanent-lock/reply-hide application
+   evidence and approved-to-hidden accounting/event atomicity.
 5. Add PostgreSQL Moderation active-case/decision-effect/revision-CAS evidence.
 6. Add moderation-specific RBAC resources and tenant permission registration.
 7. Publish transactional outbox contracts for report, case, decision, application, and
@@ -256,8 +270,10 @@ durable application attempt state, scheduler/backoff and host runtime materializ
 - historical decision `effect: None` read and non-dispatch evidence;
 - PostgreSQL duplicate-report, active-case, and case-revision contention tests;
 - decision application crash/retry/lost-response recovery;
-- Forum shared-receipt replay/request conflict, trusted caller, stale revision and
-  permanent-lock versus concurrent content/lifecycle edit evidence;
+- Forum shared-receipt replay/request conflict, trusted caller, stale revision, permanent-lock
+  and reply-hide versus concurrent content/lifecycle edit evidence;
+- approved-to-hidden topic/category/author counter adjustment, status-event/projection
+  atomicity, already-hidden no-op/replay, and unsupported Unpublished/Removed evidence;
 - replay and changed-hash conflict across moderation and domain receipts;
 - stale revision, unsupported effect, tenant/scope isolation, and owner adapter tests;
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback

@@ -90,10 +90,30 @@ for (const marker of [
   "IsolationLevel::Serializable",
   "TopicService::set_locked_in_tx",
   "publish_forum_topic_projection_direct_in_tx",
+  "ModerationVisibilityState::Hidden",
+  "apply_reply_hidden_effect_in_tx",
+  "ReplyService::set_status_in_tx",
+  "TopicService::adjust_reply_count_in_tx",
+  "CategoryService::adjust_counters_in_tx",
+  "UserStatsService::adjust_reply_count_in_tx",
+  "DomainEvent::ForumReplyStatusChanged",
+  "publish_forum_category_projection_direct_in_tx",
   "forum.moderation_subject_revision_not_advanced",
 ]) {
   requireText(adapter, marker, `Forum Moderation adapter is missing ${marker}`);
 }
+
+// The bounded visibility slice is intentionally exact: only Hidden is mapped.
+forbidText(
+  adapter,
+  "ModerationVisibilityState::Unpublished",
+  "Forum must not approximate neutral Unpublished before an exact Forum lifecycle mapping exists",
+);
+forbidText(
+  adapter,
+  "ModerationVisibilityState::Removed",
+  "Forum must not approximate neutral Removed without the complete Forum delete owner semantics",
+);
 
 for (const forbidden of [
   "rustok_moderation::",
@@ -115,6 +135,15 @@ if (contract.status !== "source_ready_maintainer_execution_pending") {
 }
 if (contract.capability_owner !== "rustok-moderation") {
   throw new Error("Moderation ownership must remain with rustok-moderation");
+}
+if (!contract.supported_effects.some((effect) => effect.includes("SetVisibility Hidden"))) {
+  throw new Error("contract must record the exact hidden reply visibility effect");
+}
+if (!contract.deferred_effects.some((effect) => effect.includes("SetVisibility Unpublished"))) {
+  throw new Error("contract must keep Unpublished deferred");
+}
+if (!contract.deferred_effects.some((effect) => effect.includes("SetVisibility Removed"))) {
+  throw new Error("contract must keep Removed deferred");
 }
 if (!contract.forbidden.includes("direct rustok-moderation owner dependency")) {
   throw new Error("contract must forbid a direct Moderation owner dependency");
