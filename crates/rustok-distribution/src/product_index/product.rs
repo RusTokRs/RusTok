@@ -20,11 +20,6 @@ use uuid::Uuid;
 pub(crate) const PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary";
 const PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay";
 
-// Index core still requires one numeric SchemaVersion in every SchemaRef. Product publishes only
-// this one current contract; there are no compatibility schema branches in the runtime catalog.
-const PRODUCT_SCHEMA_VERSION: u32 = 3;
-const PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2;
-
 const PRODUCT_ROWS_CTE: &str = r#"
 product_graph_projection AS (
     SELECT DISTINCT ON (projection.tenant_id, projection.product_id)
@@ -34,7 +29,7 @@ product_graph_projection AS (
         projection.product_source_version,
         projection.relation_epoch,
         relation.channel_ids
-    FROM product_index_graph_v3_projection_snapshots projection
+    FROM product_index_graph_projection_snapshots projection
     JOIN product_sales_channel_index_relation_snapshots relation
       ON relation.tenant_id = projection.tenant_id
      AND relation.product_id = projection.product_id
@@ -229,7 +224,8 @@ fn product_schema_ref() -> Result<SchemaRef, ProductIndexBridgeError> {
             .map_err(ProductIndexBridgeError::InvalidContract)?,
         entity: EntityName::new("product")
             .map_err(ProductIndexBridgeError::InvalidContract)?,
-        version: SchemaVersion::new(PRODUCT_SCHEMA_VERSION),
+        // Index core requires one positive schema key. Only this current contract is registered.
+        version: SchemaVersion::new(3),
     })
 }
 
@@ -239,7 +235,8 @@ fn product_variant_schema_ref() -> Result<SchemaRef, ProductIndexBridgeError> {
             .map_err(ProductIndexBridgeError::InvalidContract)?,
         entity: EntityName::new("product_variant")
             .map_err(ProductIndexBridgeError::InvalidContract)?,
-        version: SchemaVersion::new(PRODUCT_VARIANT_SCHEMA_VERSION),
+        // ProductVariant likewise has one current runtime contract.
+        version: SchemaVersion::new(2),
     })
 }
 
@@ -519,7 +516,8 @@ impl ProductRow {
             .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
         let source_version = positive_u64(&row, "source_version")?;
         let observed_product_source_version = positive_u64(&row, "observed_product_source_version")?;
-        let projected_product_source_version = positive_u64(&row, "projected_product_source_version")?;
+        let projected_product_source_version =
+            positive_u64(&row, "projected_product_source_version")?;
         let _relation_epoch = positive_u64(&row, "relation_epoch")?;
         let raw_locale = row
             .try_get::<String>("", "locale")
@@ -537,8 +535,8 @@ impl ProductRow {
             return Err(ProductIndexBridgeError::InvalidRow);
         }
 
-        // A projection row is mandatory even for a delete. Decode its relation membership before
-        // branching so missing/corrupt projection state cannot silently turn into a delete mutation.
+        // Projection is mandatory even for delete. Decode relation membership before branching so
+        // missing/corrupt graph state cannot silently become a delete mutation.
         let sales_channel_ids = decode_uuid_json_list(&row, "sales_channel_ids")?;
 
         if is_deleted {
@@ -783,13 +781,34 @@ mod tests {
         assert_eq!(schema.reference, product_schema_ref().unwrap());
         assert_eq!(schema.fields.len(), 10);
         assert_eq!(schema.links.len(), 2);
-        assert!(schema.fields.iter().any(|field| field.name.as_str() == "sales_channel_ids"));
-        assert!(!schema.fields.iter().any(|field| field.name.as_str() == "channel_restricted"));
-        assert!(!schema.fields.iter().any(|field| field.name.as_str() == "allowed_channel_slugs"));
+        assert!(
+            schema
+                .fields
+                .iter()
+                .any(|field| field.name.as_str() == "sales_channel_ids")
+        );
+        assert!(
+            !schema
+                .fields
+                .iter()
+                .any(|field| field.name.as_str() == "channel_restricted")
+        );
+        assert!(
+            !schema
+                .fields
+                .iter()
+                .any(|field| field.name.as_str() == "allowed_channel_slugs")
+        );
         assert_eq!(schema.links[0].name.as_str(), "variants");
-        assert_eq!(schema.links[0].target_schema, product_variant_schema_ref().unwrap());
+        assert_eq!(
+            schema.links[0].target_schema,
+            product_variant_schema_ref().unwrap()
+        );
         assert_eq!(schema.links[1].name.as_str(), "sales_channels");
-        assert_eq!(schema.links[1].target_schema, sales_channel_schema_ref().unwrap());
+        assert_eq!(
+            schema.links[1].target_schema,
+            sales_channel_schema_ref().unwrap()
+        );
     }
 
     #[test]
@@ -818,7 +837,7 @@ mod tests {
 
     #[test]
     fn canonical_product_projection_sql_requires_owner_projection_and_relation_membership() {
-        assert!(PRODUCT_ROWS_CTE.contains("product_index_graph_v3_projection_snapshots"));
+        assert!(PRODUCT_ROWS_CTE.contains("product_index_graph_projection_snapshots"));
         assert!(PRODUCT_ROWS_CTE.contains("product_sales_channel_index_relation_snapshots"));
         assert!(PRODUCT_ROWS_CTE.contains("projection.projection_epoch AS source_version"));
         assert!(PRODUCT_ROWS_CTE.contains("projection.channel_ids AS sales_channel_ids"));
