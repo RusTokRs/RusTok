@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use super::super::{
     CommerceHttpRuntime,
-    common::{PaginatedResponse, ensure_permissions},
+    common::{PaginatedResponse, PaginationMeta, ensure_permissions},
     products::{
         AdminProductErrorContext, ListProductsParams, ProductListItem,
         admin_product_command_context, admin_product_command_idempotency_key,
@@ -207,13 +207,112 @@ async fn validate_admin_product_shipping_profile_input(
     )
 )]
 pub async fn list_products(
-    state: State<CommerceHttpRuntime>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
-    query: Query<ListProductsParams>,
+    Query(params): Query<ListProductsParams>,
 ) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
-    super::super::products::list_products(state, tenant, auth, request_context, query).await
+    ensure_permissions(
+        &auth,
+        &[Permission::PRODUCTS_LIST],
+        "Permission denied: products:list required",
+    )?;
+
+    let requested_limit = params
+        .pagination
+        .as_ref()
+        .map(|pagination| pagination.per_page);
+    let pagination = params.pagination.unwrap_or_default();
+    let locale = params
+        .locale
+        .as_deref()
+        .unwrap_or(request_context.locale.as_str())
+        .to_string();
+    let list_query = rustok_product::AdminProductListQuery {
+        search: params.search,
+        status: None,
+        raw_status: params.status,
+        vendor: params.vendor,
+        product_type: params.product_type,
+        empty_missing_title: true,
+        category_id: None,
+        sort_by: rustok_product::StorefrontProductSortBy::CreatedAt,
+        sort_direction: rustok_product::StorefrontProductSortDirection::Desc,
+        attribute_filters: Vec::new(),
+    };
+    let port_context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        rustok_api::PortActor::user(auth.user_id.to_string()),
+        locale.as_str(),
+        format!(
+            "commerce-admin-product:list:{}:{}",
+            pagination.page,
+            pagination.limit()
+        ),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let port_context = match request_context.channel_slug.as_deref() {
+        Some(channel) => port_context.with_channel(channel),
+        None => port_context,
+    };
+    let products = runtime
+        .product_catalog_read_port()
+        .list_admin_products(
+            port_context.clone(),
+            rustok_product::AdminProductsRequest {
+                locale: Some(locale),
+                fallback_locale: Some(tenant.default_locale.clone()),
+                query: list_query,
+                page: pagination.page,
+                per_page: pagination.limit(),
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_admin_product_port_error(
+                AdminProductErrorContext::new(tenant.id, auth.user_id, None, "list_products"),
+                &port_context,
+                error,
+            )
+        })?;
+
+    let items = products
+        .items
+        .into_iter()
+        .map(|product| ProductListItem {
+            id: product.id,
+            status: product.status.to_string(),
+            title: product.title,
+            handle: product.handle,
+            seller_id: product.seller_id,
+            vendor: product.vendor,
+            product_type: product.product_type,
+            shipping_profile_slug: Some(
+                product
+                    .shipping_profile_slug
+                    .as_deref()
+                    .and_then(normalize_shipping_profile_slug)
+                    .unwrap_or_else(|| "default".to_string()),
+            ),
+            tags: product.tags,
+            created_at: product.created_at.to_rfc3339(),
+            published_at: product.published_at.map(|value| value.to_rfc3339()),
+        })
+        .collect::<Vec<_>>();
+
+    rustok_telemetry::metrics::record_read_path_budget(
+        "http",
+        "commerce.list_products",
+        requested_limit,
+        products.per_page,
+        items.len(),
+    );
+
+    Ok(Json(PaginatedResponse {
+        data: items,
+        meta: PaginationMeta::new(products.page, products.per_page, products.total),
+    }))
 }
 
 /// Create admin ecommerce product
