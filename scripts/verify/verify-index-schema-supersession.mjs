@@ -53,10 +53,14 @@ forbidMarkers(storePath, store, [
 const testsPath = 'crates/rustok-index/src/infrastructure/postgres/schema_registration_tests.rs';
 requireMarkers(testsPath, [
   'ordinary_registration_does_not_implicitly_retire_older_contracts',
+  'staged_latest_contract_can_be_promoted_without_reinsertion',
   'explicit_current_supersession_retires_all_lower_active_contracts',
   'explicit_current_supersession_is_idempotent_for_latest_current_contract',
   'historical_exact_contract_cannot_be_declared_current_after_supersession',
   'supersession_is_tenant_scoped',
+  'promoted.registration()',
+  'PersistedSchemaRegistrationOutcome::Unchanged { .. }',
+  'promoted.retired_schema_count(), 1',
   'outcome.retired_schema_count(), 2',
   'repeated.retired_schema_count(), 0',
   'schema_status(&db, TENANT_A, 1).await, "retired"',
@@ -82,9 +86,12 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_port.rs', 
 requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.md', [
   'Status: `source_complete_execution_pending`',
   '`PostgresSchemaRegistrationStore::register_current`',
+  'Recommended staged rebuild sequence',
+  'use ordinary `register` to stage',
+  'call `register_current` with that already-staged exact contract',
   'Historical rows may be purged later',
   'single-current',
   'This slice does not change the Product routing key or Product schema yet.',
 ]);
 
-console.log('[verify-index-schema-supersession] explicit single-current schema supersession source contract verified');
+console.log('[verify-index-schema-supersession] explicit single-current staged schema supersession source contract verified');
