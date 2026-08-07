@@ -13,6 +13,7 @@ const evidence = JSON.parse(read(
 ));
 const harness = read("crates/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs");
 const owner = read("crates/rustok-pages/src/services/page/artifact_integrity_audit.rs");
+const reviewedPublish = read("crates/rustok-pages/src/services/page/reviewed_publish.rs");
 const continuation = read(
   "docs/modules/pages-page-builder-artifact-audit-sqlite-continuation-2026-08-07.md",
 );
@@ -60,6 +61,7 @@ for (const [key, expected] of Object.entries({
   real_channel_module_migrations_used: true,
   real_pages_module_migrations_used: true,
   real_reviewed_publish_used: true,
+  reviewed_publish_revision_matches_owner_updated_at_snapshot: true,
   real_explicit_rebuild_used: true,
   real_audit_owner_used: true,
   pages_manage_present_resolves_all: true,
@@ -118,6 +120,26 @@ for (const marker of [
 ]) requireText(harness, marker, "audit SQLite harness foundation");
 
 requireOrder(harness, [
+  "let revision = draft",
+  ".body",
+  ".as_ref()",
+  ".updated_at",
+  ".clone();",
+  ".publish_reviewed(",
+  "revision,",
+], "SQLite reviewed publish revision fixture");
+for (const forbidden of [
+  "Sha256::digest",
+  'format!("{}\\0{}", body.format, body.content)',
+  "use sha2::{Digest, Sha256};",
+]) forbidText(harness, forbidden, "SQLite reviewed publish revision fixture");
+requireOrder(reviewedPublish, [
+  "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
+  ".map(|body| (body.locale.clone(), body.updated_at.to_string()))",
+  "revisions.sort();",
+], "reviewed publish owner revision snapshot");
+
+requireOrder(harness, [
   "let complete = service",
   "max_records: Some(2)",
   "assert_eq!(complete.scanned_artifact_count, 2);",
@@ -163,6 +185,7 @@ requireOrder(owner, [
 for (const marker of [
   "immutable-artifact-audit-sqlite-harness-source-ready",
   "pages_immutable_artifact_integrity_audit_sqlite_source_unvalidated",
+  "body.updated_at",
   "canonical and rebuilt",
   "partial materialization",
   "max_records=1",
