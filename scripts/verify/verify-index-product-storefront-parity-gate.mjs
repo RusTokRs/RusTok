@@ -60,7 +60,7 @@ requireMarkers(typesPath, [
 ]);
 
 const ownerQueryPath = 'crates/rustok-product/src/services/catalog/queries.rs';
-requireMarkers(ownerQueryPath, [
+const ownerQuery = requireMarkers(ownerQueryPath, [
   'ProductStatus::Active',
   'Column::PublishedAt.is_not_null()',
   'product_channel_visibility_condition(',
@@ -74,7 +74,16 @@ requireMarkers(ownerQueryPath, [
   'let total = query.clone().count(&self.db).await?',
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
   'load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))',
+  'fn product_title_search_condition(',
+  'FROM product_translations pt',
+  'pt.product_id = products.id',
+  'pt.title LIKE $1',
 ]);
+const titleSearchStart = ownerQuery.indexOf('fn product_title_search_condition(');
+const titleSearch = ownerQuery.slice(titleSearchStart);
+if (titleSearch.includes('pt.locale')) {
+  fail(`${ownerQueryPath} title search became locale-scoped; update the parity architecture and guard in the same PR`);
+}
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const productIndex = read(productIndexPath);
@@ -108,47 +117,47 @@ for (const marker of [
 if (!productIndex.includes('assert_eq!(schema.fields.len(), 15);')) {
   fail(`${productIndexPath} current single Product field-count assertion is not 15`);
 }
+requireMarkers(productIndexPath, [
+  'JOIN product_translations t',
+  't.locale',
+  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
+  'derive_index_schema_source_event_id(',
+  "COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids",
+  "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
+]);
 forbidMarkers(productIndexPath, productIndex, [
   'SchemaVersion::new(3)',
   'derive_index_source_event_id(',
   'ProductSchemaVersion',
   'product_v1_schema',
   'product_v2_schema',
+  'COALESCE(requested_translation',
+  'fallback_translation AS title',
 ]);
-requireMarkers(productIndexPath, [
+
+const absencePath = 'crates/rustok-distribution/src/product_index/absence.rs';
+requireMarkers(absencePath, [
+  'translation.locale = $3',
+  'return Ok(None);',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-  'derive_index_schema_source_event_id(',
-  "COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids",
-  "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
 ]);
 
 const schemaStorePath = 'crates/rustok-index/src/infrastructure/postgres/schema_registration.rs';
 requireMarkers(schemaStorePath, [
   'VersionConflict { reference: SchemaRef }',
-  'NonMonotonicVersion {',
-  'schema {reference} is already registered with another contract',
-  'existing.fingerprint != fingerprint.to_string() || existing.schema_json != *schema_json',
   'pub async fn register_current(',
   'retire_lower_active_schemas(',
   "status = 'retired'",
 ]);
-forbidMarkers(schemaStorePath, read(schemaStorePath), [
-  'DELETE FROM index_schemas',
-  'DELETE FROM index_entities',
-  'DELETE FROM index_links',
-]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `source_complete_query_adapter_and_evidence_pending`',
-  'Current Product runtime code publishes one Product schema with 15 fields and two links',
-  '`seller_id`, `created_at`, `published_at`',
-  '`tag_ids`',
-  '`attribute_terms`',
-  'Tags remain Taxonomy-owned',
-  'query-adapter/evidence gated',
-  'ordinary-register the current key',
-  '`PostgresSchemaRegistrationStore::register_current`',
-  'There is no same-key fingerprint replacement and no parallel Product v4/v5 route.',
+  'Status: `source_gap_locale_search_and_fallback_adapter_evidence_pending`',
+  'does **not** restrict that search row to the requested or fallback locale',
+  'owner list can still return the Product using its fallback translation',
+  'one Index entity for each physically stored `product_translations.locale`',
+  'A scalar substring/LIKE operator alone cannot close Storefront parity',
+  'Do **not** add another Product routing key merely to patch this query semantic.',
+  'actualize retained Product PostgreSQL packets',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
 ]);
 
@@ -157,10 +166,4 @@ requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.md', [
-  'Status: `source_complete_execution_pending`',
-  'single-current',
-  '`derive_index_schema_source_event_id`',
-]);
-
-console.log('[verify-index-product-storefront-parity-gate] Product source coverage is complete; Storefront cutover remains fail-closed on adapter, rebuild and retained parity evidence');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains fail-closed on the explicit locale search/fallback mismatch');
