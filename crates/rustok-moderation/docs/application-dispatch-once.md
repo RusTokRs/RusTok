@@ -65,9 +65,11 @@ The default Moderation operation lease is 60 seconds, leaving a bounded margin b
 The one-attempt dispatcher classifies only the returned neutral `PortError` contract:
 
 - `error.retryable == true` -> `retryable`;
-- non-retryable `InvariantViolation` -> `operator_review`;
+- non-retryable `Conflict` or `InvariantViolation` -> `operator_review`;
 - all other non-retryable neutral port errors -> `rejected`;
 - missing exact adapter -> `retryable`.
+
+A stale reviewed revision is a Forum `Conflict`; routing it to `operator_review` preserves the existing requirement for explicit re-review/new decision rather than treating stale content as an ordinary rejected application.
 
 Retry delay uses a deterministic bounded exponential schedule based on the **post-claim** attempt count:
 
@@ -123,6 +125,6 @@ cargo xtask module validate moderation
 git diff --check
 ```
 
-Retained evidence should cover: not-due no claim/no adapter call; exact command reconstruction; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable rejection; invariant operator-review; successful applied evidence; mismatched successful evidence -> operator-review; lost-response replay with the same decision UUID idempotency key; adapter runtime exceeding lease; stale-token finish rejection after reclaim; owner DB failure after claim followed by lease reclaim; and both PostgreSQL/SQLite operation semantics.
+Retained evidence should cover: not-due no claim/no adapter call; exact command reconstruction; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable validation/not-found/forbidden rejection; conflict/invariant operator-review; stale-revision re-review classification; successful applied evidence; mismatched successful evidence -> operator-review; lost-response replay with the same decision UUID idempotency key; adapter runtime exceeding lease; stale-token finish rejection after reclaim; owner DB failure after claim followed by lease reclaim; and both PostgreSQL/SQLite operation semantics.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
