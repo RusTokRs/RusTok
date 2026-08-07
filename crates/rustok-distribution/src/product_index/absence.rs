@@ -69,8 +69,8 @@ impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider {
             .ok_or_else(|| permanent("product_index_absence_locale_required"))?;
 
         // The canonical Product record uses projection_epoch as its only materialized source
-        // version. Absence must use the same clock and fails closed until the projection catches up
-        // to the exact live Product revision and references an existing retained relation epoch.
+        // version. Absence uses the same clock and fails closed until projection catches up to the
+        // exact live Product revision and references one retained relation epoch.
         let row = self
             .db
             .query_one(Statement::from_sql_and_values(
@@ -83,7 +83,7 @@ JOIN LATERAL (
         projection.projection_epoch,
         projection.product_source_version,
         projection.relation_epoch
-    FROM product_index_graph_v3_projection_snapshots projection
+    FROM product_index_graph_projection_snapshots projection
     WHERE projection.tenant_id = product.tenant_id
       AND projection.product_id = product.id
     ORDER BY projection.projection_epoch DESC
@@ -146,8 +146,9 @@ fn require_product_key(
     if db.get_database_backend() != DbBackend::Postgres {
         return Err(permanent("product_index_absence_backend_unsupported"));
     }
-    if product_schema_ref().is_err() || product_schema_ref().is_ok_and(|schema| schema != key.schema) {
-        return Err(permanent("product_index_absence_schema_mismatch"));
+    match product_schema_ref() {
+        Ok(schema) if schema == key.schema => {}
+        _ => return Err(permanent("product_index_absence_schema_mismatch")),
     }
     if key.locale.is_none() {
         return Err(permanent("product_index_absence_locale_required"));
@@ -159,6 +160,8 @@ fn product_schema_ref() -> Result<SchemaRef, String> {
     Ok(SchemaRef {
         module: ModuleName::new("rustok-product").map_err(|error| error.to_string())?,
         entity: EntityName::new("product").map_err(|error| error.to_string())?,
+        // Index core requires a positive schema key. Only this current Product contract is
+        // registered; this number is not a compatibility branch.
         version: SchemaVersion::new(3),
     })
 }
