@@ -476,13 +476,28 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
 
 async fn enable_pages_module(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
     db.execute_unprepared(
-        "CREATE TABLE tenant_modules (tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, enabled BOOLEAN NOT NULL)",
+        "CREATE TABLE tenant_modules (\
+            id UUID PRIMARY KEY NOT NULL, \
+            tenant_id UUID NOT NULL, \
+            module_slug TEXT NOT NULL, \
+            enabled BOOLEAN NOT NULL, \
+            settings JSONB NOT NULL, \
+            created_at TIMESTAMPTZ NOT NULL, \
+            updated_at TIMESTAMPTZ NOT NULL\
+        )",
     )
     .await?;
     db.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,
-        "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES ($1, $2, $3)",
-        vec![tenant_id.into(), "pages".into(), true.into()],
+        "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            Uuid::new_v4().into(),
+            tenant_id.into(),
+            "pages".into(),
+            true.into(),
+            json!({}).into(),
+        ],
     ))
     .await?;
     Ok(())
