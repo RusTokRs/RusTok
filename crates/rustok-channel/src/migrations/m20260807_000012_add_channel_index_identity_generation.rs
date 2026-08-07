@@ -125,9 +125,12 @@ DECLARE
     seed_tenant_id UUID;
 BEGIN
     FOR seed_tenant_id IN
-        SELECT DISTINCT tenant_id
-        FROM channels
-        ORDER BY tenant_id::text
+        SELECT seeded.tenant_id
+        FROM (
+            SELECT DISTINCT tenant_id
+            FROM channels
+        ) seeded
+        ORDER BY seeded.tenant_id::text
     LOOP
         PERFORM rustok_channel_bump_index_identity_generation(seed_tenant_id);
     END LOOP;
