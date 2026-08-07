@@ -5,7 +5,9 @@ use axum::{
 };
 use rustok_api::Permission;
 use rustok_api::locale_tags_match;
-use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_api::{
+    AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext,
+};
 use rustok_product::{
     CatalogService, CommerceError,
     entities::{product, product_translation},
@@ -167,6 +169,102 @@ pub(crate) fn map_admin_product_error(
         status = %status,
         boundary = ADMIN_PRODUCT_BOUNDARY,
         "commerce admin product operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+pub(crate) fn admin_product_command_context(
+    tenant_id: Uuid,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    product_id: Option<Uuid>,
+    operation: &'static str,
+) -> PortContext {
+    let resource_id = product_id.unwrap_or(tenant_id);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-product:{operation}:{resource_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+pub(crate) fn map_admin_product_port_error(
+    context: AdminProductErrorContext,
+    port_context: &PortContext,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_product_invalid",
+            "Product request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict if error.code == "product.duplicate_handle" => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_handle_conflict",
+            "A product with this handle already exists",
+            "duplicate_handle",
+        ),
+        PortErrorKind::Conflict if error.code == "product.duplicate_sku" => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_sku_conflict",
+            "A product variant with this SKU already exists",
+            "duplicate_sku",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_state_conflict",
+            "Product operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_product_storage_unavailable",
+            "Product storage is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_product_failed",
+            "Product operation could not be completed safely",
+            "invariant_violation",
+        ),
+    };
+    let diagnostic = AdminProductDiagnosticContext::from(&context);
+    tracing::error!(
+        owner = ADMIN_PRODUCT_OWNER,
+        owner_operation = context.operation,
+        correlation_id = %port_context.correlation_id,
+        tenant_id = %diagnostic.tenant_id,
+        actor_id = %diagnostic.actor_id,
+        product_id = ?diagnostic.product_id,
+        operation = %diagnostic.operation,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_PRODUCT_BOUNDARY,
+        "commerce admin product owner command failed"
     );
     HttpError::new(status, code, message)
 }
@@ -405,6 +503,7 @@ pub async fn delete_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
     ensure_permissions(
@@ -413,13 +512,16 @@ pub async fn delete_product(
         "Permission denied: products:delete required",
     )?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    service
-        .delete_product(tenant.id, auth.user_id, id)
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, Some(id), "delete_product");
+    runtime
+        .product_catalog_command_port()
+        .delete_product(port_context.clone(), id)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "delete_product"),
+                &port_context,
                 error,
             )
         })?;
@@ -432,6 +534,7 @@ pub async fn publish_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
@@ -440,13 +543,21 @@ pub async fn publish_product(
         "Permission denied: products:update required",
     )?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .publish_product(tenant.id, auth.user_id, id)
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "publish_product",
+    );
+    let product = runtime
+        .product_catalog_command_port()
+        .publish_product(port_context.clone(), id)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "publish_product"),
+                &port_context,
                 error,
             )
         })?;
@@ -459,6 +570,7 @@ pub async fn unpublish_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
@@ -467,18 +579,26 @@ pub async fn unpublish_product(
         "Permission denied: products:update required",
     )?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .unpublish_product(tenant.id, auth.user_id, id)
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "unpublish_product",
+    );
+    let product = runtime
+        .product_catalog_command_port()
+        .unpublish_product(port_context.clone(), id)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(
                     tenant.id,
                     auth.user_id,
                     Some(id),
                     "unpublish_product",
                 ),
+                &port_context,
                 error,
             )
         })?;
