@@ -227,8 +227,17 @@ BEGIN
         END IF;
     END IF;
 
+    IF NEW.available_at IS DISTINCT FROM OLD.available_at
+       AND (OLD.lease_token IS NULL OR NEW.lease_token IS NOT NULL)
+    THEN
+        RAISE EXCEPTION 'Product-SalesChannel convergence availability may change only while releasing a lease';
+    END IF;
+
     IF NEW.lease_token IS DISTINCT FROM OLD.lease_token THEN
         IF NEW.lease_token IS NOT NULL THEN
+            IF CURRENT_TIMESTAMP < OLD.available_at THEN
+                RAISE EXCEPTION 'Product-SalesChannel convergence lease cannot be acquired before availability';
+            END IF;
             IF NEW.attempt_count <> OLD.attempt_count + 1 THEN
                 RAISE EXCEPTION 'Product-SalesChannel convergence lease acquisition must advance attempt count exactly once';
             END IF;
@@ -280,8 +289,21 @@ BEGIN
     VALUES (NEW.tenant_id)
     ON CONFLICT (tenant_id) DO NOTHING;
 
-    IF TG_OP = 'INSERT'
-       OR OLD.tenant_id IS DISTINCT FROM NEW.tenant_id
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO product_sales_channel_index_relation_convergence_requests (
+            tenant_id,
+            product_id,
+            product_source_version
+        ) VALUES (
+            NEW.tenant_id,
+            NEW.id,
+            NEW.index_revision
+        )
+        ON CONFLICT (tenant_id, product_id, product_source_version) DO NOTHING;
+        RETURN NEW;
+    END IF;
+
+    IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id
        OR OLD.id IS DISTINCT FROM NEW.id
        OR (OLD.metadata #> '{channel_visibility}')
             IS DISTINCT FROM (NEW.metadata #> '{channel_visibility}')
