@@ -1,0 +1,28 @@
+{
+  "id": "forum-storefront-topic-current-revision",
+  "status": "source_ready_maintainer_execution_pending",
+  "owner": "rustok-forum",
+  "surface": "graphql_storefront_owner_fact",
+  "field": "forumStorefrontTopicCurrentRevision",
+  "value": "positive decimal Forum owner revision",
+  "authorization": [
+    "same module-enabled and public-channel gate as selected topic read",
+    "same authenticated/public topic audience visibility path as selected topic read",
+    "tenant mismatch fails before revision access",
+    "missing and denied topics expose no revision"
+  ],
+  "ownership": [
+    "revision is derived only from Forum-owned captured topic revision history",
+    "Forum exposes no reaction subject DTO from this surface",
+    "Forum storefront has no dependency on rustok-reactions or rustok-reactions-storefront",
+    "optional consumers may combine topic identity plus this owner revision outside Forum"
+  ],
+  "not_claimed": [
+    "reaction catalog ownership",
+    "reaction actor state",
+    "reaction commands",
+    "ReactionBar embedding",
+    "reply revision storefront exposure",
+    "runtime or browser evidence"
+  ]
+}
