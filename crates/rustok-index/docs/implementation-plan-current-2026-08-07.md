@@ -12,9 +12,7 @@ cursor.
 
 The repair implementation, recovery policy, PostgreSQL harness, and retained-evidence admission source
 are complete. Maintainer execution of the locked packet remains required and is not claimed by source
-inspection.
-
-Independent M7 source work can continue while that owner-execution gate is pending.
+inspection. Independent M7 source work can continue while that owner-execution gate is pending.
 
 ## Current source-complete foundation
 
@@ -30,7 +28,7 @@ Independent M7 source work can continue while that owner-execution gate is pendi
 - projection-aware Product locale absence;
 - Product-SalesChannel freshness witness ledger;
 - tenant-scoped Channel identity generation;
-- live Product replay/absence freshness gate;
+- live Product replay/absence source-admission freshness gate;
 - persisted tenant schema readiness gate.
 
 ## Canonical Product policy
@@ -41,15 +39,11 @@ schema through `product-variant-postgres-primary`, and the current SalesChannel 
 `sales-channel-postgres-primary`.
 
 The generic numeric `SchemaVersion` inside `SchemaRef` remains an Index storage/routing primitive only;
-it is not a Product compatibility matrix.
-
-The current Product graph contains Product scalars, `variant_ids`/`variants`, and
-`sales_channel_ids`/`sales_channels`. Product visibility slugs stay owner-side resolver input rather
-than transitional Index fields.
+it is not a Product compatibility matrix. The current Product graph contains Product scalars,
+`variant_ids`/`variants`, and `sales_channel_ids`/`sales_channels`. Product visibility slugs stay
+owner-side resolver input rather than transitional Index fields.
 
 ## Membership, ordering, and freshness are separate
-
-Three different clocks/evidence surfaces now have explicit responsibilities:
 
 1. `relation_epoch` changes only when resolved Product-to-SalesChannel UUID membership changes.
 2. `projection_epoch` advances when complete Product record inputs move and is the only Product Index
@@ -83,13 +77,14 @@ Live Product replay and Product locale absence fail closed unless the latest wit
 projection relation epoch matches the current canonical visibility key and current tenant Channel
 identity generation. A witness Product watermark may be older than the current Product revision only
 when current visibility still matches; unrelated Product updates therefore do not falsely stale the
-relation.
+relation. Product hard-delete replay does not require a live freshness witness because it removes the
+graph.
 
-Product hard-delete replay does not require a live freshness witness because it removes the graph.
-
-This closes the source-level freshness watermark gap. It does **not** start a worker or claim automatic
-convergence latency: an owner change makes live Product replay unavailable until exact Product
-reconciliation or a bounded tenant sweep records a current witness.
+This completes **source admission** freshness fencing, not materialized-view convergence. Source read
+and Index mutation application are not one cross-owner transaction: a Channel identity change can
+commit after a Product source page was read but before its already-produced mutation is applied. The
+next source read will reject the old witness, but authoritative query freshness still depends on
+bounded automatic convergence or an equivalent materialized/query fence plus retained evidence.
 
 ## Event-contract admission status
 
@@ -136,25 +131,26 @@ Required sequence remains:
 - [x] Canonical Product graph projection epoch and projection-aware Product absence.
 - [x] Product-SalesChannel freshness witness.
 - [x] Channel identity generation.
-- [x] Canonical Product replay/absence fail-closed freshness gate.
+- [x] Canonical Product replay/absence fail-closed source freshness gate.
 - [x] Remove parallel Product/ProductVariant compatibility implementations.
 - [ ] Execute PostgreSQL evidence for schema readiness, relation/freshness storage, resolver
       convergence, projection concurrency/delete ordering, and canonical replay.
-- [ ] Decide and implement automatic owner-change convergence scheduling/triggering if required by the
-      production freshness SLO; the watermark already prevents stale authoritative reads.
+- [ ] Implement bounded automatic owner-change convergence or an equivalent materialized/query
+      freshness fence; specifically cover the source-read -> mutation-apply in-flight window.
 - [ ] Admit canonical Product typed wire events/routes/consumers after digest verification.
 - [ ] Retain Channel create/delete/slug/identity, Product visibility, retry/restart/delete-recreate,
-      out-of-order, locale fan-out, and freshness evidence.
+      out-of-order, locale fan-out, in-flight mutation, and freshness evidence.
 - [ ] Prove complete Product/Variant/Channel query parity.
-- [ ] Move Storefront traffic only after readiness/equivalence/freshness evidence passes.
+- [ ] Move Storefront traffic only after readiness/equivalence/materialized-freshness evidence passes.
 
 ## Next implementation step
 
 Primary owner step remains: execute and admit the locked M6 repair PostgreSQL packet.
 
 Next unblocked M7 source step: compose **automatic freshness convergence** from existing owner changes
-without weakening the fail-closed watermark. Prefer a bounded durable trigger/queue/checkpoint over a
-blind background sweep; keep typed Product event work separately blocked until digest admission.
+without weakening the fail-closed source watermark. Prefer a bounded durable queue/checkpoint or an
+equivalent materialized freshness fence over a blind background sweep. Keep typed Product event work
+separately blocked until digest admission.
 
 ## Maintainer verification for this slice
 
