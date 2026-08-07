@@ -1,7 +1,7 @@
 # Implementation Plan for `rustok-pages`
 
-Date: 2026-08-06  
-Status: `in_progress / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / execution-browser-rollout-pending`
+Date: 2026-08-07  
+Status: `in_progress / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / execution-rollout-pending`
 
 ## Policy: current code only
 
@@ -19,9 +19,12 @@ Forbidden:
 - direct DOM-to-database persistence;
 - fallback signing secrets or unsigned inline-edit claims;
 - moving bearer tokens, sessions, grants or proofs through authoring URLs or DOM attributes;
-- enabling the same-origin admin launch in standalone/token-based admin builds.
+- enabling the same-origin admin launch in standalone/token-based admin builds;
+- mutable current draft content as immutable artifact repair authority;
+- automatic audit -> rebuild -> activation -> rollback chaining;
+- provenance-only rollback targets without live immutable artifacts and their required historical manifest.
 
-Fly remains the only visual document and command authority. Pages owns page identity, localization, document revisions, lifecycle, route history, immutable published bindings, caches, authenticated inline grants/save transport and the module-owned inline asset HTTP contract. Pages admin owns the optional same-origin launch control. Release engineering owns deterministic composition and evidence, not Pages document policy.
+Fly remains the only visual document and command authority. Pages owns page identity, localization, document revisions, lifecycle, route history, immutable published bindings, artifact audit/rebuild/activation/rollback, caches, authenticated inline grants/save transport and the module-owned inline asset HTTP contract. Pages admin owns the optional same-origin launch control. Release engineering owns deterministic composition and evidence, not Pages document policy.
 
 `source-ready` means code/contracts exist. It does not mean tests, Cargo, formatting, verifiers, databases, Trunk, npm, WASM, server binaries, Docker images, HTTP, browsers, workflows, CI or tenant rollout were executed.
 
@@ -35,7 +38,65 @@ Fly remains the only visual document and command authority. Pages owns page iden
 - Published Fly documents remain immutable without an explicit draft lifecycle.
 - Reviewed Page Builder materialization remains the required publish path.
 - Rollback selects a prior immutable manifest without compiling the current draft.
-- Database, GraphQL, REST, publish, rollback and event schemas are unchanged by the inline-authoring slices.
+- Public/admin publication and rollback transports remain delegated to Pages owner services.
+
+### Immutable artifact integrity, rebuild, activation and rollback continuity
+
+The reviewed publish transaction persists three independent authority layers:
+
+```text
+page_publish_operations
++ page_publish_operation_artifacts
++ page_publish_rebuild_sources
+```
+
+The immutable artifact itself remains public render authority. Retained rebuild provenance is deliberately independent of artifact-row lifetime so a tenant administrator can investigate and explicitly reproduce a lost immutable storage instance without reading mutable current draft content as repair authority.
+
+The source-ready recovery chain is:
+
+```text
+bounded integrity audit
+-> retained exact publish provenance
+-> explicit append-only rebuild
+-> explicit one-locale activation
+-> bounded missing-binding physical-loss recovery
+-> sequential same-publish recovery for additional lost locales
+-> repair-aware current rollback cursor
+```
+
+Important boundaries:
+
+- audit is read-only and tenant-wide `pages:manage`;
+- rebuild appends `instance_key = rebuild:<operation-id>` and never changes the active binding, page version, events or caches;
+- activation requires tenant-wide `pages:manage`, exact page version, exact rebuild receipt/provenance and exact expected historical source artifact id;
+- an existing locale binding must still match the retained source body/artifact exactly and never falls through to loss recovery;
+- missing-binding recovery requires the source artifact to be physically absent, retained source body identity to remain present and the exact source publish operation to remain available;
+- the first recovered locale requires the current page version to equal the source publish result version;
+- a later lost locale from the same publish may bridge the version gap only through a bounded contiguous sequence of prior activation receipts from that exact publish, for other unique locales, with request/rebuild/provenance/binding/artifact identity revalidated at every step;
+- any unexplained page-version increment, foreign publish, repeated locale, changed prior binding or drifted rebuilt artifact remains fail-closed;
+- each activation changes one locale only, advances `pages.version` exactly once and writes `NodeUpdated` + `NodePublished` transactionally;
+- cache effects remain event-driven after commit;
+- rollback tries the original publish manifest first; repair fallback is current-cursor-only and requires exact retained provenance plus rebuild/activation receipts;
+- surviving current manifest rows must still match retained provenance;
+- a repaired current locale may lack its manifest row only when its historical source artifact is also absent;
+- historical rollback targets still require their original manifest and live immutable artifact records;
+- no repair command automatically triggers the next command.
+
+No new schema is required for multi-locale recovery: `page_artifact_binding_replacement_operations` already records `expected_version`/`result_version` and has the `(tenant_id, page_id, result_version)` index used to prove the sequential activation chain.
+
+Source packets:
+
+- `contracts/evidence/pages-explicit-artifact-binding-replacement-source.json`;
+- `docs/explicit-immutable-artifact-loss-activation-recovery.md`;
+- `tests/artifact_loss_activation_recovery_postgres.rs`;
+- `tests/artifact_loss_multilocale_activation_recovery_postgres.rs`;
+- `tests/artifact_repair_rollback_continuity_postgres.rs`;
+- `scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs`;
+- `scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs`;
+- `scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs`;
+- `scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs`.
+
+Execution remains unvalidated. The source packets do not claim that PostgreSQL, SQLite, request, cache or browser scenarios passed.
 
 ### Exact Translation metadata target
 
@@ -65,6 +126,8 @@ migration, concurrent CAS, and change-cursor recovery evidence.
 - Navigation and SEO owner payloads remain bound into the exact private revalidation ETag.
 - The selected immutable published artifact remains public render authority after draft mutation.
 - The anonymous public Pages route remains SSR-only and unchanged.
+- `NodeUpdated`, `NodePublished`, `NodeUnpublished` and `NodeDeleted` drive bounded generation rotation for route/page/artifact caches after commit.
+- Publish, rollback and repair activation reuse the same event-driven cache boundary; no repair path writes cache state inline.
 
 ### Authenticated real-DOM adapter: source-ready
 
@@ -173,7 +236,7 @@ RUSTFLAGS
 
 Admin WASM and dedicated authoring WASM do not inherit native linker flags. Native reproducibility flags are restored for the server binary.
 
-Release, infrastructure and hardening workflows now use the allow-listed full action SHAs. The `release-infra-approved` policy protects the common orchestrator, both downstream builders and the dedicated client builder. Release readiness requires hashes, sizes, HTTP and browser evidence rather than source inspection alone.
+Release, infrastructure and hardening workflows use the allow-listed full action SHAs. The `release-infra-approved` policy protects the common orchestrator, both downstream builders and the dedicated client builder. Release readiness requires hashes, sizes, HTTP and browser evidence rather than source inspection alone.
 
 No release workflow, reproducibility job, Docker build or artifact was executed in this source slice.
 
@@ -188,6 +251,11 @@ Dependency graph and built-artifact execution evidence remain pending.
 - `src/services/page/inline_edit.rs`
 - `src/services/page/inline_edit_feature.rs`
 - `src/services/page/inline_edit_runtime.rs`
+- `src/services/page/artifact_integrity_audit.rs`
+- `src/services/page/artifact_rebuild.rs`
+- `src/services/page/artifact_binding_replacement.rs`
+- `src/services/page/artifact_set.rs`
+- `src/services/page/rollback.rs`
 - `src/http/inline_edit_assets.rs`
 - `storefront/src/inline_edit.rs`
 - `admin/src/inline_edit_launch.rs`
@@ -203,6 +271,7 @@ Dependency graph and built-artifact execution evidence remain pending.
 - `contracts/evidence/pages-inline-edit-asset-delivery-source.json`
 - `contracts/evidence/pages-inline-edit-admin-launch-source.json`
 - `contracts/evidence/pages-inline-edit-release-composition-source.json`
+- `contracts/evidence/pages-explicit-artifact-binding-replacement-source.json`
 
 ## Historical source markers
 
@@ -221,17 +290,25 @@ These exact phrases remain only for retained static guard compatibility and desc
 
 ## Remaining work: execution evidence only
 
-### P0 — protected source review
+### P0 — artifact repair and rollback evidence
+
+- [ ] Run the explicit artifact binding replacement source guard.
+- [ ] Run the single-locale physical-loss activation PostgreSQL packet.
+- [ ] Run the multi-locale sequential physical-loss activation PostgreSQL packet.
+- [ ] Retain the unexplained-version-drift rejection packet.
+- [ ] Run the repair-to-rollback continuity PostgreSQL packet after a repaired current set.
+- [ ] Retain historical-target missing-manifest and current-manifest corruption/source-present negatives.
+- [ ] Run prior provenance, audit, rebuild, repair atomicity/failure/cache and transport packets.
+
+### P1 — protected source review and focused validation
 
 - [ ] Apply and review the required `release-infra-approved` label for the protected workflow/build changes.
 - [ ] Review the exact action pins, occurrence counts and base-owned approval behavior.
-
-### P1 — focused validation
-
 - [ ] Run Pages inline consumer, route, asset, launch and release-composition static guards.
 - [ ] Run release infrastructure, supply-chain and readiness guards.
 - [ ] Run focused Cargo checks/tests for Pages admin/storefront/server profiles.
 - [ ] Re-run anonymous dependency graph and built-artifact exclusion checks.
+- [ ] Run metadata revision/isolation and cache continuity packets.
 
 ### P2 — deterministic artifacts
 
@@ -259,11 +336,18 @@ These exact phrases remain only for retained static guard compatibility and desc
 
 ## Execution status
 
-No tests, static verifiers, formatting, Cargo checks, npm installs, Trunk builds, WASM builds, native builds, Docker builds, HTTP hosts, browsers, dependency graphs, workflows or CI were executed by the implementation agent.
+No tests, static verifiers, formatting, Cargo checks, npm installs, Trunk builds, WASM builds, native builds, Docker builds, HTTP hosts, browsers, dependency graphs, PostgreSQL scenarios, workflows or CI were executed by the implementation agent.
 
 Suggested commands, intentionally not run:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs
+RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_loss_activation_recovery_postgres -- --nocapture
+RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_loss_multilocale_activation_recovery_postgres -- --nocapture
+RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_repair_rollback_continuity_postgres -- --nocapture
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs

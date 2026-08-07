@@ -57,10 +57,10 @@ const sources = Object.fromEntries(
 );
 const evidence = JSON.parse(sources.evidence);
 
-if (evidence.format !== "pages_explicit_artifact_binding_replacement_source_v2") {
+if (evidence.format !== "pages_explicit_artifact_binding_replacement_source_v3") {
   failures.push("evidence format drifted");
 }
-if (evidence.status !== "pages_explicit_artifact_binding_replacement_recovery_source_unvalidated") {
+if (evidence.status !== "pages_explicit_artifact_binding_replacement_multilocale_recovery_source_unvalidated") {
   failures.push("evidence status drifted");
 }
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
@@ -73,7 +73,8 @@ for (const key of [
   "missing_binding_recovery_requires_source_artifact_absent",
   "missing_binding_recovery_requires_retained_source_body_identity",
   "missing_binding_recovery_requires_exact_source_publish_operation",
-  "missing_binding_recovery_requires_publish_result_version_equal_current_expected",
+  "missing_binding_first_recovery_accepts_publish_result_version_equal_current_expected",
+  "missing_binding_sequential_recovery_rejects_unexplained_version_gap",
   "existing_binding_mismatch_never_falls_back_to_recovery",
   "postgres_recovery_harness_source_ready",
   "postgres_success_recovery_case_source_ready",
@@ -111,7 +112,9 @@ for (const marker of [
   "page_body::Entity::find_by_id(source.page_body_id)",
   "page_publish_operation::Entity::find_by_id(source.operation_id)",
   "publish.id != rebuild.source_publish_operation_id",
-  "publish.result_version != expected_version",
+  "publish.result_version > expected_version",
+  "publish.result_version < expected_version",
+  "ensure_sequential_missing_binding_recovery_version_chain_in_tx",
   "PageBuilderArtifactService::bind_existing_body_in_tx",
   "page_body_id: Set(page_body_id)",
   "DomainEvent::NodeUpdated",
@@ -186,9 +189,10 @@ for (const marker of [
 for (const marker of [
   "Missing-binding recovery admission",
   "publish_operation.result_version == expected_version",
+  "Sequential multi-locale version chain",
   "Existing-binding path remains strict",
   "source artifact still exists",
-  "stale-source-publish-version",
+  "unexplained lifecycle/version increment",
 ]) {
   need(sources.packet, marker, "recovery packet");
 }
