@@ -1,14 +1,15 @@
 mod absence;
 pub(crate) mod channel_relation_resolver;
-pub(crate) mod graph;
 #[cfg(test)]
 pub(crate) use absence::PRODUCT_ABSENCE_WATERMARK_FACTORY;
-#[cfg(test)]
-pub(crate) use graph::{PRODUCT_INDEX_SOURCE, PRODUCT_VARIANT_INDEX_SOURCE};
 mod product;
+#[cfg(test)]
+pub(crate) use product::PRODUCT_INDEX_SOURCE;
 pub(crate) mod relation_admission;
 #[path = "../product_variant_index.rs"]
 mod variant;
+#[cfg(test)]
+pub(crate) use variant::PRODUCT_VARIANT_INDEX_SOURCE;
 
 pub(crate) fn register(
     extensions: &mut rustok_core::ModuleRuntimeExtensions,
@@ -28,7 +29,7 @@ mod tests {
     };
 
     #[test]
-    fn selected_product_bridge_set_registers_four_schemas_and_three_stable_factories() {
+    fn selected_product_bridge_registers_two_current_schemas_and_three_factories() {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(rustok_product::ProductRuntimeSelected);
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
@@ -41,7 +42,7 @@ mod tests {
                 .get::<rustok_index::IndexSchemaSourceCatalog>()
                 .unwrap()
                 .len(),
-            4
+            2
         );
         let factories = extensions
             .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
