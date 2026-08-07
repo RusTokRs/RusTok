@@ -1,7 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-07
 
-Status overlay rechecked against `main@618daf85db5daeab78459434c02a484284e60a7f` and continued on
-`agent/index-product-relation-freshness-20260807`.
+Status overlay rechecked against `main@183c78d8c76ffb14ba9e37179e5a13fa693e11de` and continued on
+`agent/index-product-relation-freshness-20260807`. The intervening Forum/Reactions/Pages work is
+disjoint from this Product/Channel freshness slice.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution
 cursor.
@@ -72,6 +73,10 @@ For an exact Product, the distribution resolver now:
 3. re-observes current owner facts;
 4. requires the second UUID set to equal retained relation membership;
 5. records the second observation through `ProductSalesChannelIndexRelationFreshnessStore`.
+
+The Product owner accepts a freshness witness only for a live Product and the current retained
+`relation_epoch`, under lock order Product row -> relation advisory lock -> freshness advisory lock.
+Direct SQL inserts use the same DDL guard and lock order.
 
 Live Product replay and Product locale absence fail closed unless the latest witness for the exact
 projection relation epoch matches the current canonical visibility key and current tenant Channel
