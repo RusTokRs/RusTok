@@ -65,16 +65,38 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
+    current_relation_epoch BIGINT;
     previous_relation_epoch BIGINT;
     previous_product_source_version BIGINT;
     previous_visibility_key TEXT;
     previous_channel_identity_generation BIGINT;
-    lock_key TEXT;
+    relation_lock_key TEXT;
+    freshness_lock_key TEXT;
 BEGIN
-    lock_key := NEW.tenant_id::text
+    -- Relation ownership always locks Product row -> relation advisory lock. Freshness service follows
+    -- the same order and then takes its narrower witness lock, so direct inserts cannot witness a
+    -- relation epoch that is concurrently being superseded.
+    relation_lock_key := NEW.tenant_id::text
+        || E'\x1f' || NEW.product_id::text
+        || E'\x1fproduct-sales-channel-index-relation';
+    PERFORM pg_advisory_xact_lock(hashtextextended(relation_lock_key, 0));
+
+    freshness_lock_key := NEW.tenant_id::text
         || E'\x1f' || NEW.product_id::text
         || E'\x1fproduct-sales-channel-index-relation-freshness';
-    PERFORM pg_advisory_xact_lock(hashtextextended(lock_key, 0));
+    PERFORM pg_advisory_xact_lock(hashtextextended(freshness_lock_key, 0));
+
+    SELECT relation_epoch
+      INTO current_relation_epoch
+      FROM product_sales_channel_index_relation_snapshots
+     WHERE tenant_id = NEW.tenant_id
+       AND product_id = NEW.product_id
+     ORDER BY relation_epoch DESC
+     LIMIT 1;
+
+    IF current_relation_epoch IS NULL OR NEW.relation_epoch <> current_relation_epoch THEN
+        RAISE EXCEPTION 'Product-SalesChannel freshness witness requires the current relation epoch';
+    END IF;
 
     SELECT
         relation_epoch,
