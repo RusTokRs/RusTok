@@ -4,7 +4,10 @@ mod artifact_repair;
 mod inline_edit_assets;
 
 pub use artifact_integrity_audit::{__path_audit_page_artifacts, audit_page_artifacts};
-pub use artifact_repair::{activate_rebuilt_page_artifact, rebuild_page_artifact};
+pub use artifact_repair::{
+    __path_activate_rebuilt_page_artifact, __path_rebuild_page_artifact,
+    activate_rebuilt_page_artifact, rebuild_page_artifact,
+};
 
 use anyhow::Context;
 use axum::{

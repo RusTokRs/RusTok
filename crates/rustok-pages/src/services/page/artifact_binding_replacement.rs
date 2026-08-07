@@ -3,8 +3,8 @@ use rustok_api::{Action, Resource};
 use rustok_core::{CONTENT_FORMAT_GRAPESJS, PermissionScope, SecurityContext};
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
+    DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};

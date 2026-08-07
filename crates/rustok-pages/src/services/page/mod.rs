@@ -51,9 +51,7 @@ pub use crate::error::{
 };
 pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
 pub(crate) use helpers::is_page_visible_for_channel;
-pub(crate) use translation_apply::{
-    ApplyExactPageMetadataTranslationInput, PageMetadataTranslationApplyResult,
-};
+pub(crate) use translation_apply::ApplyExactPageMetadataTranslationInput;
 pub use inline_edit::{
     DEFAULT_PAGE_INLINE_EDIT_CLOCK_SKEW_MS, DEFAULT_PAGE_INLINE_EDIT_GRANT_TTL_MS,
     IssuedPageInlineEditGrant, MAX_PAGE_INLINE_EDIT_GRANT_TTL_MS, MAX_PAGE_INLINE_EDIT_KEYS,

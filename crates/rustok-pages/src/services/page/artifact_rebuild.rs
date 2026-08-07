@@ -2,12 +2,13 @@ use chrono::Utc;
 use rustok_api::{Action, Resource};
 use rustok_core::{CONTENT_FORMAT_GRAPESJS, PermissionScope, SecurityContext};
 use rustok_page_builder::{
-    PageBuilderReviewedPublishRuntime, PageBuilderStaticLandingMaterializationIdentity,
-    compile_materialized_static_landing, sanitize_static_landing_project,
+    PageBuilderPublishRuntimeReviewError, PageBuilderReviewedPublishRuntime,
+    PageBuilderStaticLandingMaterializationIdentity, compile_materialized_static_landing,
+    sanitize_static_landing_project,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
+    DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -58,7 +59,7 @@ impl PageService {
         let reviewed: PageBuilderReviewedPublishRuntime = input
             .runtime
             .try_into()
-            .map_err(|error| PagesError::publish_runtime_review_invalid(error.to_string()))?;
+            .map_err(|error: PageBuilderPublishRuntimeReviewError| PagesError::publish_runtime_review_invalid(error.to_string()))?;
         let request_hash = stable_rebuild_hash(&(
             PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT,
             tenant_id,
