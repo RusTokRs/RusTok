@@ -9,8 +9,8 @@ with a different fingerprint/JSON contract fails closed. That rule prevents sile
 consumer eventually needs a safe way to replace one current contract with another without keeping two
 runtime compatibility branches active.
 
-`PostgresSchemaRegistrationStore::register_current` is the explicit generic supersession primitive for
-that case.
+`PostgresSchemaRegistrationStore::register_current` is the explicit generic authority-transition
+primitive for that case.
 
 It is deliberately separate from ordinary `register`.
 
@@ -26,6 +26,9 @@ It is deliberately separate from ordinary `register`.
 - leave any previously active lower routing keys unchanged.
 
 No existing module gains automatic retirement behavior merely because this API exists.
+
+That unchanged behavior is useful for a staged rebuild: a monotonically higher replacement contract may
+be registered and populated while the lower persisted contract is still active.
 
 ## Explicit current supersession
 
@@ -49,7 +52,7 @@ additional rows.
 Trying to declare an older historical key current after a later key exists fails with
 `NonMonotonicVersion`, even when that older exact contract is still present in storage.
 
-## Why retirement is enough for the registration boundary
+## Why retirement is enough for the authority boundary
 
 `index_entities` and `index_links` retain the numeric schema key and schema fingerprint in their storage
 identity/foreign-key chain. Supersession does **not** rewrite or delete those historical rows.
@@ -57,27 +60,37 @@ identity/foreign-key chain. Supersession does **not** rewrite or delete those hi
 That is intentional:
 
 - historical rows keep valid foreign keys to their immutable schema row;
-- new-current mutations use a different routing key and therefore cannot collide with old entity,
+- replacement mutations use a different routing key and therefore cannot collide with old entity,
   link, inbox, checkpoint, or replay identities;
-- tenant schema readiness requires the exact runtime-selected current `SchemaRef`, fingerprint, JSON,
-  and `status = active`;
+- tenant schema readiness requires the exact runtime-selected `SchemaRef`, fingerprint, JSON, and
+  `status = active`;
 - PostgreSQL query execution performs the same exact persisted-schema status/fingerprint/contract
   check before returning rows;
 - an old runtime/schema reference therefore fails closed once its persisted contract is retired.
 
 Retirement is an authority transition, not a data purge.
 
-## Rebuild/cutover boundary
+## Recommended staged rebuild sequence
 
-`register_current` does **not** claim that the new current contract has been materialized. A caller that
-uses supersession must still:
+For a replacement that should avoid unnecessarily retiring the old persisted authority before the new
+materialization is ready:
 
-1. publish only the one new current schema in the runtime source catalog;
-2. register/supersede that contract for the tenant;
-3. rebuild or replay all required entities/links under the new routing key;
-4. require exact persisted readiness for the new key;
-5. retain parity/freshness/restart evidence;
-6. only then cut an authoritative consumer over.
+1. source code defines **one** replacement current schema; no old compatibility branch is added;
+2. use ordinary `register` to stage the monotonically higher immutable routing key while the lower
+   persisted key remains active;
+3. replay/rebuild the replacement key completely;
+4. verify exact persisted readiness, parity, freshness, and restart evidence for the replacement key;
+5. call `register_current` with that already-staged exact contract;
+6. in that final transaction every lower active key becomes `retired`;
+7. cut authoritative consumers to the replacement runtime only after that authority transition.
+
+A rolling deployment can temporarily have old and new process generations, and staging can temporarily
+leave two persisted keys `active`, but source code still contains only one replacement implementation.
+There is no Product v4/v5 compatibility branch or dual query path in the new runtime.
+
+If fail-closed downtime is acceptable, callers may invoke `register_current` before rebuild; the old
+contract then becomes non-authoritative immediately. The staged sequence above is preferred for
+production replacement.
 
 Historical rows may be purged later through a separately admitted maintenance policy, but purge is not
 required for correctness and is intentionally not coupled to source-module migrations.
@@ -92,10 +105,10 @@ This generic supersession primitive provides the missing persistence mechanism f
 **single-current** Product replacement:
 
 - one monotonically higher internal routing key;
-- only that contract published by Product runtime code;
-- all lower persisted Product keys retired atomically per tenant;
-- new-key replay/rebuild before Storefront cutover;
-- no old Product source/query compatibility branch selected in parallel.
+- only that replacement contract published by new Product runtime code;
+- staged new-key replay/rebuild before authority transition;
+- all lower persisted Product keys retired atomically per tenant at final supersession;
+- no old Product source/query compatibility branch selected in the replacement runtime.
 
 This slice does not change the Product routing key or Product schema yet.
 
