@@ -4,7 +4,9 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{AdminProductList, AdminProductListQuery, StorefrontProductList};
+use crate::{
+    AdminProductList, AdminProductListQuery, StorefrontProductList, StorefrontProductListQuery,
+};
 use crate::dto::ProductResponse;
 use crate::entities::product_variant;
 
@@ -13,6 +15,7 @@ const MAX_ADMIN_PRODUCTS_PER_PAGE: u64 = 100;
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
 const READ_VARIANT_PRODUCT_PROJECTION_OPERATION: &str = "read_variant_product_projection";
 const LIST_PUBLISHED_PRODUCTS_OPERATION: &str = "list_published_products";
+const LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION: &str = "list_filtered_published_products";
 const LIST_ADMIN_PRODUCTS_OPERATION: &str = "list_admin_products";
 
 /// Transport-neutral owner boundary for product catalog read projections.
@@ -40,6 +43,19 @@ pub trait ProductCatalogReadPort: Send + Sync {
         context: PortContext,
         request: PublishedProductsRequest,
     ) -> Result<StorefrontProductList, PortError>;
+
+    /// Optional filtered storefront-list capability for consumers that need the full owner
+    /// search/category/sort/attribute-filter contract. Existing adapters remain compatible.
+    async fn list_filtered_published_products(
+        &self,
+        _context: PortContext,
+        _request: FilteredPublishedProductsRequest,
+    ) -> Result<StorefrontProductList, PortError> {
+        Err(PortError::unavailable(
+            "product.filtered_published_list_unavailable",
+            "filtered product listing is unavailable",
+        ))
+    }
 
     /// Optional admin-list capability. Existing remote/test adapters remain source-compatible
     /// until they explicitly support this projection; mounted consumers fail closed otherwise.
@@ -76,6 +92,14 @@ pub struct PublishedProductsRequest {
     pub public_channel_slug: Option<String>,
     pub page: u64,
     pub per_page: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilteredPublishedProductsRequest {
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub public_channel_slug: Option<String>,
+    pub query: StorefrontProductListQuery,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -167,6 +191,29 @@ impl ProductCatalogReadPort for crate::CatalogService {
             request.public_channel_slug.as_deref(),
             request.page,
             request.per_page,
+        )
+        .await
+        .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
+    }
+
+    async fn list_filtered_published_products(
+        &self,
+        context: PortContext,
+        request: FilteredPublishedProductsRequest,
+    ) -> Result<StorefrontProductList, PortError> {
+        let owner_operation = LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION;
+        context
+            .require_policy(PortCallPolicy::read())
+            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
+        crate::CatalogService::list_published_products_with_query(
+            self,
+            tenant_id,
+            locale,
+            request.fallback_locale.as_deref(),
+            request.public_channel_slug.as_deref(),
+            request.query,
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
