@@ -68,7 +68,7 @@ requireContains(
 );
 requireContains(
   composition,
-  'route_segment.as_deref() != Some(FORUM_ROUTE_SEGMENT)',
+  'route.route_segment.as_deref() != Some(FORUM_ROUTE_SEGMENT)',
   "Topic reaction composition must run only on the Forum module route, never the shared home slot",
 );
 requireContains(
@@ -83,23 +83,18 @@ requireContains(
 );
 requireContains(
   composition,
-  "let Ok(Some(revision)) = revision_resource.await else",
-  "The async resource must carry only the Forum-owned current revision fact",
+  'ReactionSubjectUiRef::new(\n                            "forum",\n                            "topic"',
+  "Only the host render may construct the neutral Forum topic Reactions subject",
 );
 requireContains(
   composition,
-  "ReactionSubjectUiRef::new(",
-  "Only the final host render may construct the neutral Reactions subject UI ref",
+  'data-storefront-composition="forum-topic-reactions"',
+  "Topic host composition must keep its explicit source marker",
 );
 requireContains(
   composition,
-  '"forum"',
-  "Forum topic composition must preserve the neutral producer source",
-);
-requireContains(
-  composition,
-  '"topic"',
-  "Forum topic composition must preserve the neutral producer kind",
+  "reply_id.is_none().then_some(topic_id).flatten()",
+  "A selected reply must suppress the topic bar so the host never mounts two ambiguous Reactions controls",
 );
 requireContains(
   composition,
@@ -143,8 +138,8 @@ if (!contract.degraded_behavior.includes("home Forum slot never activates topic 
 if (!contract.degraded_behavior.includes("Forum revision lookup failure renders no host-owned Reactions error UI")) {
   throw new Error("Composition contract must keep Reactions failure presentation out of the host");
 }
-if (!contract.not_claimed.includes("reply ReactionBar composition")) {
-  throw new Error("Topic composition slice must not claim reply-level Reactions UI");
+if (!contract.forbidden.includes("per-visible-reply reaction revision fan-out")) {
+  throw new Error("Topic composition contract must keep reply-list fan-out forbidden");
 }
 
 console.log("forum topic Reactions storefront host composition ownership: ok");
