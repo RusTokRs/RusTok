@@ -278,7 +278,7 @@ async fn assert_shared_scan_locks_block_artifact_update(
     updater
         .execute_unprepared("SET LOCAL lock_timeout = '100ms'")
         .await?;
-    let update = updater
+    let update_error = updater
         .execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE page_static_landing_artifacts SET document_html = $1 WHERE id = $2",
@@ -287,8 +287,14 @@ async fn assert_shared_scan_locks_block_artifact_update(
                 artifact_id.into(),
             ],
         ))
-        .await;
-    assert!(update.is_err());
+        .await
+        .expect_err("concurrent artifact update must be blocked by shared scan locks");
+    assert!(
+        update_error
+            .to_string()
+            .to_ascii_lowercase()
+            .contains("lock timeout")
+    );
     updater.rollback().await?;
     locker.commit().await?;
 
@@ -318,11 +324,11 @@ async fn publish_fixture(
     let slug = format!("audit-{label}");
     let project = json!({
         "pages": [{
-            "id": slug,
+            "id": slug.clone(),
             "flyPageMeta": {
                 "title": format!("Immutable artifact audit {label}"),
                 "description": "PostgreSQL audit regression",
-                "slug": slug
+                "slug": slug.clone()
             },
             "component": {
                 "id": "root",
