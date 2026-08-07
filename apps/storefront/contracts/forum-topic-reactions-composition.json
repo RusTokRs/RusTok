@@ -9,6 +9,7 @@
     "tenant has reactions enabled",
     "UiRouteContext route segment is forum",
     "route has an explicit non-nil topic UUID",
+    "route has no valid explicit reply selection",
     "Forum current-topic-revision facade returns an exact revision"
   ],
   "mapping": {
@@ -28,17 +29,18 @@
     "home Forum slot never activates topic Reactions from a shared topic query parameter",
     "disabled Reactions renders no host-owned placeholder",
     "Forum revision lookup failure renders no host-owned Reactions error UI",
-    "invalid neutral subject construction renders no host-owned Reactions error UI"
+    "invalid neutral subject construction renders no host-owned Reactions error UI",
+    "a valid explicit reply selection gives the single host ReactionBar to that selected reply"
   ],
   "forbidden": [
     "reaction persistence or producer-table reads in host composition",
     "reactionSnapshot or applyReaction reimplementation in host",
     "reaction catalog actor state aggregate or command logic in Forum",
     "hard-coded Reactions availability copy in host composition",
-    "reply reaction composition or per-reply revision fan-out in this slice"
+    "per-visible-reply reaction revision fan-out"
   ],
   "not_claimed": [
-    "reply ReactionBar composition",
+    "simultaneous topic and selected-reply ReactionBars",
     "runtime or browser evidence",
     "Reactions enabled by default"
   ]
