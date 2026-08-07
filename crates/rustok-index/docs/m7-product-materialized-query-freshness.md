@@ -129,28 +129,49 @@ Together the recreate and equivalence packets cover nested projection, linked fi
 ordering, exact-count parity, target-only update lag, same-UUID recreate lag, and fresh query-runtime
 recomposition without introducing process-local availability state.
 
+## Replay/redelivery composition packet
+
+`product_linked_target_replay_redelivery_postgres.rs` is source-ready and execution-pending. It composes
+canonical ProductVariant replay with real PostgreSQL mutation storage and Product graph queries.
+
+The packet keeps Product membership/projection unchanged while Variant owner state advances from
+materialized v1 through an undelivered canonical v2 to current v3. Before v3 materialization, scalar
+Product remains visible while the `variants` graph query fails closed.
+
+A fail-once checkpoint adapter injects a crash boundary after the real PostgreSQL v3 mutation commit but
+before replay checkpoint durability. The original query runtime and a newly composed query runtime both
+immediately expose v3. A newly constructed replay worker then replays the same stable v3 event, receives
+`Duplicate`, and commits the checkpoint. The previously unseen v2 event arrives later and receives
+`StaleIgnored`; a final v3 redelivery remains `Duplicate`. Neither late delivery can regress target source
+version, payload, or graph authority.
+
+The fail-once adapter is only a deterministic test boundary. Generic PostgreSQL replay-job/checkpoint
+lease persistence remains owned by the existing M6 replay contract; no Product-specific checkpoint
+state is introduced.
+
 ## Retained M7 PostgreSQL packets
 
-Five packets are source-ready and execution/admission pending:
+Six packets are source-ready and execution/admission pending:
 
 1. `product_materialized_query_freshness_postgres.rs`;
 2. `product_channel_convergence_postgres.rs`;
 3. `product_channel_identity_transitions_postgres.rs`;
 4. `product_linked_target_recreate_postgres.rs`;
-5. `product_linked_target_availability_equivalence_postgres.rs`.
+5. `product_linked_target_availability_equivalence_postgres.rs`;
+6. `product_linked_target_replay_redelivery_postgres.rs`.
 
 None has been executed or admitted by the implementation agent.
 
 ## Remaining M7 evidence
 
-The linked-target query availability source contract and query-equivalence packet are now source
-complete. Remaining work before Storefront cutover is no longer another query policy or owner clock:
+The linked-target query freshness, availability, equivalence, and replay/redelivery composition source
+contracts are now complete. Remaining work before Storefront cutover is no longer another query/replay
+policy or owner clock:
 
-- execute/admit the five retained Product PostgreSQL packets;
-- retain explicit replay-worker / duplicate-redelivery / crash-ordering evidence for target recovery if
-  the generic M5 replay packet does not already prove the required Product graph sequence;
+- execute/admit the six retained Product PostgreSQL packets;
 - finish canonical Product typed event admission after event-contract digest verification;
-- retain remaining out-of-order/locale fan-out evidence;
+- retain the typed incremental route's separate crash-between-commit-and-ack/redelivery evidence;
+- retain remaining locale fan-out evidence;
 - complete Storefront Product/ProductVariant/SalesChannel query parity and cutover evidence.
 
 ## Maintainer verification
@@ -164,9 +185,14 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-distribution --features mod-product \
   --test product_linked_target_availability_equivalence_postgres -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-distribution --features mod-product \
+  --test product_linked_target_replay_redelivery_postgres -- --nocapture
 node scripts/verify/verify-index-link-target-availability.mjs
 node scripts/verify/verify-index-linked-target-recreate-postgres-harness.mjs
 node scripts/verify/verify-index-linked-target-availability-equivalence-postgres-harness.mjs
+node scripts/verify/verify-index-linked-target-replay-redelivery-postgres-harness.mjs
+node scripts/verify/verify-index-source-replay-contract.mjs
 node scripts/verify/verify-index-linked-target-query-freshness.mjs
 node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-query-contract.mjs
