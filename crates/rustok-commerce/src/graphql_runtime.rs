@@ -299,6 +299,7 @@ pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope(
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
+    #[cfg(feature = "marketplace-financial")]
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
     shipping_option_read_runtime: CommerceShippingOptionReadRuntime,
     fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
@@ -315,6 +316,7 @@ impl CommerceGraphqlRuntimeData {
         self.fulfillment_provider_registry.clone()
     }
 
+    #[cfg(feature = "marketplace-financial")]
     pub fn marketplace_financial_runtime(&self) -> crate::MarketplaceFinancialRuntime {
         self.marketplace_financial_runtime.clone()
     }
@@ -347,10 +349,11 @@ pub fn attach_schema_data(
         fulfillment_provider_registry: inputs
             .shared_get::<FulfillmentProviderRegistry>()
             .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
+        #[cfg(feature = "marketplace-financial")]
         marketplace_financial_runtime: inputs
             .shared_get::<crate::MarketplaceFinancialRuntime>()
             .ok_or_else(|| {
-                "commerce GraphQL requires MarketplaceFinancialRuntime in host composition"
+                "commerce marketplace-financial GraphQL requires MarketplaceFinancialRuntime in host composition"
                     .to_string()
             })?,
         shipping_option_read_runtime: inputs
