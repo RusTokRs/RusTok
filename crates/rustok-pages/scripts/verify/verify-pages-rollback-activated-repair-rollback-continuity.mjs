@@ -11,9 +11,8 @@ const files = {
   activation: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
   rollback: "crates/rustok-pages/src/services/page/rollback.rs",
   test: "crates/rustok-pages/tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs",
+  repeatedTest: "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json",
-  priorOverlay: "docs/modules/pages-page-builder-rollback-activated-recovery-actualization-2026-08-07.md",
-  currentOverlay: "docs/modules/pages-page-builder-rollback-activated-repair-rollback-continuity-actualization-2026-08-07.md",
   fba: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
 };
 
@@ -46,7 +45,6 @@ const sources = Object.fromEntries(
   Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]),
 );
 const evidence = JSON.parse(sources.evidence);
-
 if (evidence.format !== "pages_rollback_activated_repair_rollback_continuity_source_v1") {
   failures.push("evidence format drifted");
 }
@@ -77,7 +75,9 @@ for (const key of [
   "postgres_three_publish_success_source_ready",
   "postgres_corrupted_rollback_anchor_hash_rejection_source_ready",
 ]) {
-  if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
+  if (evidence.source_contract?.[key] !== true) {
+    failures.push(`source_contract.${key} must be true`);
+  }
 }
 for (const key of [
   "tests_run",
@@ -88,7 +88,9 @@ for (const key of [
   "database_scenario_run",
   "workflows_or_ci_run",
 ]) {
-  if (evidence.source_contract?.[key] !== false) failures.push(`source_contract.${key} must remain false`);
+  if (evidence.source_contract?.[key] !== false) {
+    failures.push(`source_contract.${key} must remain false`);
+  }
 }
 
 for (const marker of [
@@ -96,19 +98,15 @@ for (const marker of [
   "resolve_repair_activation_anchor_in_tx",
   "TargetPublishOperationId.eq(operation.id)",
   "TargetArtifactSetHash",
-  "ResultVersion.lte(current_page_version)",
-  "order_by_desc(page_rollback_operation::Column::ResultVersion)",
-  "rollback.result_version <= operation.result_version",
-  "rollback.result_version > current_page_version",
-  "let rollback_expected_version = rollback",
-  ".checked_sub(1)",
   "rollback.request_hash != expected_request_hash",
-  "return Ok(operation.result_version)",
   "let anchor_version = resolve_repair_activation_anchor_in_tx",
   ".gt(anchor_version)",
   "let mut cursor = anchor_version",
   ".limit((MAX_RECOVERED_ACTIVATION_PREFIX + 1) as u64)",
-  "required_locales.is_subset(&prefix_locales)",
+  "required_current_artifacts",
+  "proven_required_locales",
+  "required_locales.is_subset(&proven_required_locales)",
+  "recovery_artifact_if_present_for_rollback_in_tx",
 ]) {
   need(sources.artifactSet, marker, "artifact-set recovery source");
 }
@@ -117,6 +115,7 @@ for (const marker of [
   "resolve_missing_binding_recovery_anchor_in_tx",
   "TargetPublishOperationId.eq(publish.id)",
   "rollback.request_hash != expected_request_hash",
+  "latest_by_locale",
 ]) {
   need(sources.activation, marker, "activation admission source");
 }
@@ -127,7 +126,6 @@ for (const marker of [
 ]) {
   need(sources.rollback, marker, "rollback cursor source");
 }
-
 for (const marker of [
   "rollback_continues_after_rollback_activated_physical_loss_repair_on_postgres",
   "rollback_rejects_repaired_cursor_when_rollback_activation_anchor_hash_is_corrupted_on_postgres",
@@ -135,34 +133,23 @@ for (const marker of [
   "publish-p1-v1",
   "publish-p2-v1",
   "rollback-p2-to-p1-v1",
-  "repair_rollback_activated_publish",
-  "UPDATE page_rollback_operations SET request_hash = $1 WHERE id = $2",
   "RUSTOK_PAGES_TEST_DATABASE_URL",
 ]) {
-  need(sources.test, marker, "PostgreSQL source packet");
+  need(sources.test, marker, "rollback-anchor PostgreSQL packet");
 }
-for (const marker of [
-  "Rollback-Activated Artifact-Loss Recovery Actualization",
-  "rollback activation anchor",
-]) {
-  need(sources.priorOverlay, marker, "prior overlay");
-}
-for (const marker of [
-  "Rollback-Activated Repair-to-Rollback Continuity Actualization",
-  "publish-or-rollback activation anchor",
-  "three-publish",
-  "execution remains pending",
-]) {
-  need(sources.currentOverlay, marker, "current overlay");
-}
+need(
+  sources.repeatedTest,
+  "rollback_continues_after_same_locale_is_recovered_twice_on_postgres",
+  "repeated-loss rollback regression",
+);
 for (const marker of [
   "rollback_activated_repair_to_rollback",
   "physical_loss_activation_prefix_anchor",
+  "latest_repair_state_per_locale",
   "pages_rollback_activated_repair_rollback_continuity_verifier",
 ]) {
   need(sources.fba, marker, "Page Builder FBA registry");
 }
-
 for (const marker of [
   "sanitize_static_landing_project",
   "compile_materialized_static_landing",
