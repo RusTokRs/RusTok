@@ -1,4 +1,5 @@
 mod absence;
+mod attribute_terms;
 mod channel_relation_convergence;
 pub(crate) mod channel_relation_resolver;
 mod channel_visibility;

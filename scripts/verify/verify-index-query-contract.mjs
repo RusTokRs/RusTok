@@ -64,6 +64,7 @@ const scripts = [
   'verify-index-product-source.mjs',
   'verify-index-product-locale-refresh-ledger.mjs',
   'verify-index-product-eav-owner-clock.mjs',
+  'verify-index-product-attribute-term-contract.mjs',
   'verify-index-product-variant-refresh-ledger.mjs',
   'verify-index-product-refresh-canonical-writer.mjs',
   'verify-index-product-refresh-relay-step.mjs',
