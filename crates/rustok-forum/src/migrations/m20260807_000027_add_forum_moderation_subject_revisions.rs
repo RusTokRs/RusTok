@@ -310,8 +310,8 @@ CREATE TABLE IF NOT EXISTS forum_topic_moderation_subject_revisions (
     topic_id TEXT NOT NULL,
     revision INTEGER NOT NULL,
     PRIMARY KEY (tenant_id, topic_id),
-    FOREIGN KEY (tenant_id, topic_id)
-        REFERENCES forum_topics (tenant_id, id)
+    FOREIGN KEY (topic_id)
+        REFERENCES forum_topics (id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CHECK (revision > 0)
 );
@@ -321,8 +321,8 @@ CREATE TABLE IF NOT EXISTS forum_reply_moderation_subject_revisions (
     reply_id TEXT NOT NULL,
     revision INTEGER NOT NULL,
     PRIMARY KEY (tenant_id, reply_id),
-    FOREIGN KEY (tenant_id, reply_id)
-        REFERENCES forum_replies (tenant_id, id)
+    FOREIGN KEY (reply_id)
+        REFERENCES forum_replies (id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CHECK (revision > 0)
 );
@@ -332,6 +332,54 @@ SELECT tenant_id, id, 1 FROM forum_topics;
 
 INSERT OR IGNORE INTO forum_reply_moderation_subject_revisions (tenant_id, reply_id, revision)
 SELECT tenant_id, id, 1 FROM forum_replies;
+
+CREATE TRIGGER IF NOT EXISTS forum_topic_moderation_subject_revision_tenant_insert
+BEFORE INSERT ON forum_topic_moderation_subject_revisions
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1 FROM forum_topics topic
+    WHERE topic.id = NEW.topic_id
+      AND topic.tenant_id = NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'forum topic moderation subject revision tenant mismatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_topic_moderation_subject_revision_tenant_update
+BEFORE UPDATE OF tenant_id, topic_id ON forum_topic_moderation_subject_revisions
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1 FROM forum_topics topic
+    WHERE topic.id = NEW.topic_id
+      AND topic.tenant_id = NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'forum topic moderation subject revision tenant mismatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_reply_moderation_subject_revision_tenant_insert
+BEFORE INSERT ON forum_reply_moderation_subject_revisions
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1 FROM forum_replies reply
+    WHERE reply.id = NEW.reply_id
+      AND reply.tenant_id = NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'forum reply moderation subject revision tenant mismatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_reply_moderation_subject_revision_tenant_update
+BEFORE UPDATE OF tenant_id, reply_id ON forum_reply_moderation_subject_revisions
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1 FROM forum_replies reply
+    WHERE reply.id = NEW.reply_id
+      AND reply.tenant_id = NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'forum reply moderation subject revision tenant mismatch');
+END;
 
 CREATE TRIGGER IF NOT EXISTS forum_topic_moderation_subject_revision_insert
 AFTER INSERT ON forum_topics
@@ -459,6 +507,10 @@ DROP TRIGGER IF EXISTS forum_reply_moderation_subject_revision_owner_update;
 DROP TRIGGER IF EXISTS forum_topic_moderation_subject_revision_owner_update;
 DROP TRIGGER IF EXISTS forum_reply_moderation_subject_revision_insert;
 DROP TRIGGER IF EXISTS forum_topic_moderation_subject_revision_insert;
+DROP TRIGGER IF EXISTS forum_reply_moderation_subject_revision_tenant_update;
+DROP TRIGGER IF EXISTS forum_reply_moderation_subject_revision_tenant_insert;
+DROP TRIGGER IF EXISTS forum_topic_moderation_subject_revision_tenant_update;
+DROP TRIGGER IF EXISTS forum_topic_moderation_subject_revision_tenant_insert;
 DROP TABLE IF EXISTS forum_reply_moderation_subject_revisions;
 DROP TABLE IF EXISTS forum_topic_moderation_subject_revisions;
 "#;
