@@ -267,6 +267,17 @@ async fn apply_inside_transaction(
         )
         .await
         .map_err(forum_error)?,
+        (
+            ModerationSubjectKind::ForumPost,
+            ModerationDecisionEffectAction::RejectPublication,
+        ) => apply_reply_rejected_effect_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            command.subject.id,
+        )
+        .await
+        .map_err(forum_error)?,
         _ => {
             return Err(PortError::validation(
                 "forum.moderation_effect_unsupported",
@@ -309,15 +320,48 @@ async fn apply_reply_hidden_effect_in_tx(
     actor_id: Option<Uuid>,
     reply_id: Uuid,
 ) -> ForumResult<bool> {
+    apply_reply_non_public_status_effect_in_tx(
+        transaction,
+        tenant_id,
+        actor_id,
+        reply_id,
+        ReplyStatus::Hidden,
+    )
+    .await
+}
+
+async fn apply_reply_rejected_effect_in_tx(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    reply_id: Uuid,
+) -> ForumResult<bool> {
+    apply_reply_non_public_status_effect_in_tx(
+        transaction,
+        tenant_id,
+        actor_id,
+        reply_id,
+        ReplyStatus::Rejected,
+    )
+    .await
+}
+
+async fn apply_reply_non_public_status_effect_in_tx(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    reply_id: Uuid,
+    target: ReplyStatus,
+) -> ForumResult<bool> {
     let reply = ReplyService::find_reply_in_tx(transaction, tenant_id, reply_id).await?;
-    if reply.status == ReplyStatus::Hidden {
+    if reply.status == target {
         return Ok(false);
     }
 
-    reply.status.validate_transition(&ReplyStatus::Hidden)?;
+    reply.status.validate_transition(&target)?;
     let topic_id = reply.topic_id;
     let old_status = reply.status.to_string();
-    ReplyService::set_status_in_tx(transaction, tenant_id, reply_id, ReplyStatus::Hidden).await?;
+    ReplyService::set_status_in_tx(transaction, tenant_id, reply_id, target).await?;
 
     let changed_category_id = if reply.status == ReplyStatus::Approved {
         let topic = TopicService::adjust_reply_count_in_tx(transaction, tenant_id, topic_id, -1)
@@ -350,7 +394,7 @@ async fn apply_reply_hidden_effect_in_tx(
             reply_id,
             topic_id,
             old_status,
-            new_status: ReplyStatus::Hidden.to_string(),
+            new_status: target.to_string(),
             moderator_id: actor_id,
         },
     )
