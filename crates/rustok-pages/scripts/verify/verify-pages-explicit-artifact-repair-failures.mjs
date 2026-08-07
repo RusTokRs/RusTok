@@ -29,6 +29,9 @@ const continuation = read(
 const postgresContinuation = read(
   "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md",
 );
+const actualization = read(
+  "docs/modules/page-builder-parity-actualization-2026-08-05.md",
+);
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -346,6 +349,14 @@ for (const marker of [
   "negative SQLite repair harnesses",
 ]) {
   requireText(postgresContinuation, marker, "PostgreSQL continuation cursor");
+}
+for (const marker of [
+  "repair-failure-harness-source-ready",
+  "Rebuild provenance/runtime negative harness",
+  "Activation stale-version/invalid-target/unpublished harness",
+  "negative provenance/runtime failures are now harness-ready",
+]) {
+  requireText(actualization, marker, "canonical parity actualization");
 }
 
 for (const forbidden of [
