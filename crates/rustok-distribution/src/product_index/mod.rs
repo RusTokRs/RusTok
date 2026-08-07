@@ -1,4 +1,5 @@
 mod absence;
+pub(crate) mod channel_relation_resolver;
 pub(crate) mod graph;
 #[cfg(test)]
 pub(crate) use absence::PRODUCT_ABSENCE_WATERMARK_FACTORY;

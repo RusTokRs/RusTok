@@ -65,6 +65,7 @@ const scripts = [
   'verify-index-product-refresh-canonical-writer.mjs',
   'verify-index-product-refresh-relay-step.mjs',
   'verify-index-product-channel-relation-ledger.mjs',
+  'verify-index-product-channel-relation-resolver.mjs',
   'verify-index-product-variant-source.mjs',
   'verify-index-product-graph-source.mjs',
   'verify-index-product-tombstone-source.mjs',

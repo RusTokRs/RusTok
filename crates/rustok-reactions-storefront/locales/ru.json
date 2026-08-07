@@ -1,0 +1,11 @@
+{
+  "reactions.label": "Реакции",
+  "reactions.loading": "Загрузка реакций…",
+  "reactions.error.load": "Реакции временно недоступны.",
+  "reactions.error.update": "Не удалось обновить реакцию.",
+  "reactions.signIn": "Войдите, чтобы оставить реакцию.",
+  "reactions.empty": "Для этого элемента реакции недоступны.",
+  "reactions.like": "Нравится",
+  "reactions.selected": "Выбрано",
+  "reactions.count": "{count}"
+}

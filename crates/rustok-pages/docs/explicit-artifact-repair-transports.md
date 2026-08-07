@@ -31,7 +31,7 @@ Both mutations:
 - return only bounded receipt fields;
 - map every owner failure to a static public code and static message.
 
-The owner commands remain authoritative and independently require tenant-wide `PermissionScope::All`. An owner-scoped Manage grant may pass the adapter's coarse permission check but is rejected by the owner command before writes.
+The owner commands remain authoritative and independently require tenant-wide `PermissionScope::All`. In the current request permission model Pages Manage does not have an `Own` scope: effective `pages:manage` resolves to `All`, while its absence resolves to `None`. Request evidence therefore covers Manage present/absent rather than inventing an owner-scoped Pages Manage grant. The owner `All` check remains defense in depth for direct/internal callers and any future authorization model that could introduce a narrower Pages Manage scope.
 
 ## HTTP
 
@@ -114,10 +114,14 @@ This slice does not add:
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+cargo test -p rustok-pages --test explicit_artifact_repair_transport_contract -- --nocapture
+cargo test -p rustok-pages --test explicit_artifact_repair_request_contract -- --nocapture
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
 cargo check -p rustok-pages --all-targets
 ```
 
-GraphQL schema construction, GraphQL mutation execution, HTTP route execution, OpenAPI generation, tenant-wide versus owner-scoped authorization, static error responses and database/runtime scenarios remain pending.
+Generated schema/OpenAPI execution, request-level tenant/permission/static-error evidence and full database/runtime scenarios remain pending.
