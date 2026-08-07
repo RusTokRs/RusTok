@@ -243,13 +243,14 @@ mod tests {
     fn domain_context_keeps_decision_idempotency_across_attempts() {
         let tenant_id = Uuid::new_v4();
         let decision_id = Uuid::new_v4();
+        let decision_id_text = decision_id.to_string();
         let first = application_port_context(tenant_id, decision_id, Uuid::new_v4());
         let second = application_port_context(tenant_id, decision_id, Uuid::new_v4());
 
         assert_eq!(first.tenant_id, tenant_id.to_string());
         assert_eq!(first.actor.kind, PortActorKind::Service);
         assert_eq!(first.actor.id, APPLICATION_DISPATCH_ACTOR);
-        assert_eq!(first.idempotency_key.as_deref(), Some(decision_id.to_string().as_str()));
+        assert_eq!(first.idempotency_key.as_deref(), Some(decision_id_text.as_str()));
         assert_eq!(second.idempotency_key, first.idempotency_key);
         assert_ne!(second.correlation_id, first.correlation_id);
         assert_eq!(
