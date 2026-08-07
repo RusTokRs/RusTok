@@ -53,6 +53,19 @@
     "success": "Forum mutation, required Forum root/projection events and shared completed receipt commit in one transaction",
     "applied_revision": "post-application moderation subject revision"
   },
+  "host_materialization": {
+    "host": "rustok-server",
+    "owner_feature": "mod-moderation",
+    "owner_selection": "ModerationModule must be present in ModuleRegistry when mod-moderation is selected",
+    "factory_timing": "materialize only after HostRuntimeContext exists and Forum host facts have been composed",
+    "moderation_without_forum": "materialize an empty subject adapter registry",
+    "forum_with_moderation": [
+      "forum/forum_topic",
+      "forum/forum_post"
+    ],
+    "forum_without_moderation": "Forum remains available and its neutral factories remain unmaterialized",
+    "materialization_failure": "fail host composition; never fall back to another adapter or imply applied"
+  },
   "supported_effects": [
     "NoDomainMutation for forum_topic and forum_post",
     "permanent Lock for forum_topic using TopicService::set_locked_in_tx",
@@ -119,7 +132,7 @@
     "Moderation owns reports cases queues decisions appeals application orchestration and cross-domain audit",
     "Forum owns topic/reply lifecycle state moderation subject revision local enforcement and Search projection invalidation",
     "Forum depends on rustok-moderation-api only and does not depend on rustok-moderation",
-    "Forum registers subject adapter factories but does not materialize the Moderation owner runtime"
+    "Forum registers neutral subject adapter factories; the selected host composes rustok-moderation and materializes them"
   ],
   "forbidden": [
     "Forum moderation case table",
@@ -135,9 +148,10 @@
     "reaction state catalog aggregate or presentation ownership changes"
   ],
   "not_claimed": [
-    "adapter registry materialization in rustok-moderation",
     "durable Moderation application worker or retry scheduler",
-    "runtime execution",
+    "operator recovery surface",
+    "retained host composition execution evidence",
+    "runtime decision application execution",
     "PostgreSQL concurrency evidence",
     "SQLite evidence",
     "SetVisibility Unpublished support",
