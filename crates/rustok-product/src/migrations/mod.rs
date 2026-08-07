@@ -35,6 +35,7 @@ mod m20260807_000008_add_product_sales_channel_index_relation_snapshots;
 mod m20260807_000009_add_product_index_graph_v3_projection_snapshots;
 mod m20260807_000010_canonicalize_product_index_graph_projection;
 mod m20260807_000011_add_product_sales_channel_relation_freshness;
+mod m20260807_000012_add_product_sales_channel_relation_convergence;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -74,6 +75,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260807_000009_add_product_index_graph_v3_projection_snapshots::Migration),
         Box::new(m20260807_000010_canonicalize_product_index_graph_projection::Migration),
         Box::new(m20260807_000011_add_product_sales_channel_relation_freshness::Migration),
+        Box::new(m20260807_000012_add_product_sales_channel_relation_convergence::Migration),
     ]
 }
 
