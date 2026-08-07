@@ -1,12 +1,13 @@
 # M7 Product-to-SalesChannel cross-owner resolver
 
-Status: `freshness_watermark_source_complete_runtime_evidence_pending`.
+Status: `automatic_convergence_source_complete_runtime_evidence_pending`.
 
 ## Current contract
 
 `rustok-distribution::product_index::channel_relation_resolver` is the selected cross-owner boundary
-for Product visibility to SalesChannel UUID membership. It does not write Index tables, publish broker
-events, mutate Product metadata, or own a background loop.
+for Product visibility to SalesChannel UUID membership. The resolver itself does not write Index
+tables, publish broker events, mutate Product metadata, or own a background loop. Automatic invocation
+is composed separately through the generic ModuleWork runtime.
 
 For one exact Product it observes in PostgreSQL `REPEATABLE READ`, `READ ONLY`:
 
@@ -28,7 +29,7 @@ tenant page, and three stabilization attempts.
 
 ## Membership and freshness
 
-Resolution now has two Product-owned durable outputs with different semantics:
+Resolution has two Product-owned durable outputs with different semantics:
 
 1. `ProductSalesChannelIndexRelationStore::replace` owns the complete UUID membership and advances
    `relation_epoch` only when that membership changes.
@@ -55,9 +56,25 @@ membership.
 A tenant with no historical Channel identity has generation `0`. Once the first Channel identity
 mutation occurs, the positive generation is retained even if all Channels are later deleted.
 
+## Automatic convergence composition
+
+`rustok-distribution::product_index::channel_relation_convergence` wraps this resolver in one generic
+`ModuleWorkRegistration` when both Product and Channel are selected.
+
+Product visibility changes append exact Product-owned requests. Channel identity changes are detected
+by comparing current Channel generation with a Product-owned tenant checkpoint. A Channel-generation
+pass walks the tenant with the resolver's existing 64-Product keyset page. Claims, lease expiry, retry
+availability, visibility cursor, sweep generation, and sweep cursor are durable Product-owned state.
+
+The resolver remains a bounded primitive: it does not gain `tokio::spawn`, sleep/retry loops, broker
+state, or cross-owner storage writes beyond the existing Product-owned relation/freshness stores.
+
+Detailed convergence contract:
+[Product-to-SalesChannel automatic convergence](./m7-product-sales-channel-convergence.md).
+
 ## Replay boundary
 
-The canonical Product Index source already materializes the `sales_channels` link. Live replay is now
+The canonical Product Index source already materializes the `sales_channels` link. Live replay is
 fail-closed unless the latest freshness witness for the projection's exact relation epoch matches:
 
 - current canonical Product visibility; and
@@ -66,20 +83,21 @@ fail-closed unless the latest freshness witness for the projection's exact relat
 Product locale absence uses the same freshness gate. Product hard-delete replay remains independent of
 a live witness because it removes the graph.
 
-This is an admitted source-level freshness watermark, not an automatic convergence scheduler. Owner
-changes intentionally make live Product replay unavailable until an exact reconciliation or bounded
-tenant sweep records a current witness.
+Automatic convergence now re-establishes stale/missing relation freshness without a manual caller. It
+still does not make source observation atomic with later Index mutation application; the in-flight
+source-read -> mutation-apply materialized/query freshness boundary remains open.
 
 ## Still open
 
-- retained PostgreSQL concurrency/restart/delete-recreate/freshness evidence;
-- host scheduling or owner-triggered reconciliation if automatic convergence latency is required;
+- retained PostgreSQL multi-host/restart/delete-recreate/freshness/convergence evidence;
+- a materialized/query freshness fence or equivalent admission evidence for in-flight mutations;
 - Product typed event routes after event-contract digest admission;
 - complete Product/Variant/Channel query equivalence and Storefront cutover evidence.
 
 ## Maintainer verification
 
 ```bash
+node scripts/verify/verify-index-product-channel-relation-convergence.mjs
 node scripts/verify/verify-index-product-channel-relation-freshness.mjs
 node scripts/verify/verify-index-product-channel-relation-resolver.mjs
 node scripts/verify/verify-index-product-channel-relation-ledger.mjs
@@ -87,7 +105,7 @@ node scripts/verify/verify-index-product-source.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-channel --all-targets
 cargo check -p rustok-product --all-targets
-cargo check -p rustok-distribution --all-targets
+cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 
