@@ -81,8 +81,13 @@ for (const forbidden of [
 const transactionPath = 'crates/rustok-product/src/services/write_transaction.rs';
 const transaction = requireMarkers(transactionPath, [
   'product_locale_refresh_target(&event)',
+  'product_index_revision_touch_target(&event)',
+  'DomainEvent::ProductAttributeValuesChanged { product_id } => Some(*product_id)',
+  'let product_locale_id = lifecycle_product_id.or(product_attribute_id);',
+  'let product_variant_id = lifecycle_product_id;',
   '.publish_in_tx_with_envelope_id(',
   'record_product_locale_refreshes_in_tx(',
+  'record_product_variant_refreshes_in_tx(',
   'root_event_id',
   'rolls back both the owner mutation and its event publication',
 ]);
@@ -111,13 +116,15 @@ if (cargo.includes('rustok-index')) {
 requireMarkers('crates/rustok-product/docs/index-locale-refresh-ledger.md', [
   'Status: `owner_source_complete_wire_and_consumer_pending`',
   '`refresh_id`, reserved as the future typed event and Index inbox identity',
-  '`root_event_id`, the exact durable Product lifecycle envelope',
+  '`root_event_id`, the exact durable Product owner envelope',
+  '`products.index_revision` remains the single Product owner input watermark',
+  '`ProductAttributeValuesChanged` event first advances the Product Index clock',
   'final positive `products.index_revision`',
   '`product_index_tombstones.source_version`',
   '`ProductIndexLocaleRefreshSource::list` exposes at most 256 rows',
   'does not add or change a `rustok-events` wire family',
-  'ProductVariant requires a separate owner slice',
-  'No validation command or database scenario was executed',
+  'does not fabricate relation-convergence work',
+  'No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI',
 ]);
 
 console.log('[verify-index-product-locale-refresh-ledger] Product locale owner ledger contract verified');
