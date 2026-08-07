@@ -13,6 +13,7 @@
     "real_pages_module_migrations_used": true,
     "minimal_pages_module_enablement_fixture_used": true,
     "transactional_outbox_transport_used": true,
+    "reviewed_publish_revision_matches_owner_updated_at_snapshot": true,
     "reviewed_publish_creates_rebuild_provenance": true,
     "mutable_current_body_is_not_rebuild_authority": true,
     "corrupted_source_artifact_is_retained": true,
@@ -50,6 +51,7 @@
     "workflows_or_ci_run": false
   },
   "linked_sources": {
+    "reviewed_publish_owner": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
     "rebuild_owner": "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
     "activation_owner": "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
     "rebuild_migration": "crates/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",

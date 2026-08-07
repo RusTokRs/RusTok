@@ -10,6 +10,7 @@ const files = {
   harness: "crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json",
   continuation: "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md",
+  reviewedPublish: "crates/rustok-pages/src/services/page/reviewed_publish.rs",
   rebuildOwner: "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
   activationOwner: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
   rebuildMigration: "crates/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
@@ -90,6 +91,7 @@ for (const key of [
   "real_pages_module_migrations_used",
   "minimal_pages_module_enablement_fixture_used",
   "transactional_outbox_transport_used",
+  "reviewed_publish_revision_matches_owner_updated_at_snapshot",
   "reviewed_publish_creates_rebuild_provenance",
   "mutable_current_body_is_not_rebuild_authority",
   "corrupted_source_artifact_is_retained",
@@ -162,6 +164,33 @@ for (const marker of [
   "SysEvents::find_by_id(rolled_back_event_id)",
   "txn.rollback().await?;",
 ]) need(sources.harness, marker, "PostgreSQL repair harness");
+requireOrder(
+  sources.harness,
+  [
+    "let body_revision = draft",
+    ".body",
+    ".as_ref()",
+    ".updated_at",
+    ".clone();",
+    ".publish_reviewed(",
+    "revision: body_revision,",
+  ],
+  "PostgreSQL repair reviewed publish revision fixture",
+);
+for (const marker of [
+  "Sha256::digest",
+  'format!("{}\\0{}", body.format, body.content)',
+  "use sha2::{Digest, Sha256};",
+]) forbid(sources.harness, marker, "PostgreSQL repair reviewed publish revision fixture");
+requireOrder(
+  sources.reviewedPublish,
+  [
+    "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
+    ".map(|body| (body.locale.clone(), body.updated_at.to_string()))",
+    "revisions.sort();",
+  ],
+  "reviewed publish owner revision snapshot",
+);
 
 for (const marker of [
   "CREATE TABLE page_artifact_rebuild_operations",
