@@ -9,14 +9,34 @@
     {
       "kind": "forum_topic",
       "source": "forum topic owner",
-      "revision": "latest captured Forum topic revision id + 1"
+      "revision": "forum_topic_moderation_subject_revisions.revision"
     },
     {
       "kind": "forum_post",
       "source": "Forum reply owner",
-      "revision": "latest captured Forum reply revision id + 1"
+      "revision": "forum_reply_moderation_subject_revisions.revision"
     }
   ],
+  "revision_clock": {
+    "owner": "rustok-forum",
+    "persistence": [
+      "forum_topic_moderation_subject_revisions",
+      "forum_reply_moderation_subject_revisions"
+    ],
+    "backfill": "existing subjects start with a positive opaque revision",
+    "advances_on": [
+      "topic core lifecycle moderation fields and soft delete",
+      "topic translation insert update delete",
+      "reply core lifecycle structural fields and soft delete",
+      "reply body insert update delete"
+    ],
+    "not_equivalent_to": [
+      "Reactions subject revision",
+      "latest content revision row id",
+      "updated_at timestamp",
+      "global Forum domain event sequence"
+    ]
+  },
   "application": {
     "trusted_callers": ["service", "system"],
     "direct_user_callers": "forbidden",
@@ -24,11 +44,14 @@
     "receipt_owner": "rustok-outbox owner_operation_receipts",
     "receipt_namespace": "forum",
     "request_binding": "full ApplyModerationDecisionCommand including immutable decision_hash",
-    "revision_rule": "exact reviewed revision must equal current Forum owner revision before mutation",
+    "revision_rule": "exact reviewed Forum moderation subject revision must match before mutation",
+    "revision_locking": "active subject row and moderation revision row are transactionally fenced before application",
     "postgres_isolation": "serializable read-write owner transaction",
+    "sqlite_locking": "writer reservation uses the dedicated moderation revision row",
     "retryable_failure": "leave processing receipt reclaimable",
     "terminal_failure": "persist shared typed failed receipt",
-    "success": "Forum mutation and shared completed receipt commit in one transaction"
+    "success": "Forum mutation and shared completed receipt commit in one transaction",
+    "applied_revision": "post-application moderation subject revision"
   },
   "supported_effects": [
     "NoDomainMutation for forum_topic and forum_post",
@@ -47,7 +70,7 @@
   ],
   "ownership": [
     "Moderation owns reports cases queues decisions appeals application orchestration and cross-domain audit",
-    "Forum owns topic/reply lifecycle state current revision local enforcement and Search projection invalidation",
+    "Forum owns topic/reply lifecycle state moderation subject revision local enforcement and Search projection invalidation",
     "Forum depends on rustok-moderation-api only and does not depend on rustok-moderation",
     "Forum registers subject adapter factories but does not materialize the Moderation owner runtime"
   ],
@@ -58,6 +81,7 @@
     "Forum copy of Moderation decisions or audit log",
     "direct rustok-moderation owner dependency",
     "retargeting a stale decision to a newer Forum revision",
+    "reusing Reactions or content revision as the Moderation subject clock",
     "temporary lock without expiry-safe owner state",
     "reaction state catalog aggregate or presentation ownership changes"
   ],
