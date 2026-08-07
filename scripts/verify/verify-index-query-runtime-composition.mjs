@@ -43,13 +43,16 @@ const materializerPath = 'crates/rustok-index/src/infrastructure/postgres/query_
 const materializer = requireMarkers(materializerPath, [
   'pub enum IndexQueryRuntimeCompositionError',
   'AlreadyMaterialized',
+  'AdmissionSchemaMissing',
   'pub fn materialize_postgres_index_query_runtime(',
   'extensions.contains::<SharedIndexQueryRuntime>()',
   'extensions.get::<SharedIndexSchemaRegistry>().cloned()',
-  'extensions',
   '.get::<PostgresIndexQueryAdmissionCatalog>()',
   '.cloned()',
   '.unwrap_or_default()',
+  'for descriptor in admissions.iter()',
+  'registry.registry().get(descriptor.schema()).is_none()',
+  'descriptor.owner_module().to_owned()',
   'PostgresIndexQueryPort::with_admissions(',
   'registry.shared()',
   'admissions,',
@@ -58,6 +61,7 @@ const materializer = requireMarkers(materializerPath, [
   'missing_source_registry_does_not_publish_false_runtime',
   'complete_source_registry_materializes_one_shared_runtime',
   'query_admission_catalog_is_snapshotted_into_runtime_composition',
+  'dangling_query_admission_schema_fails_composition',
   'duplicate_query_runtime_materialization_fails_closed',
 ]);
 for (const forbidden of [
