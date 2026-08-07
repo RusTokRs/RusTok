@@ -81,7 +81,7 @@ for (const marker of [
   "PortActorKind::Service",
   "PortActorKind::System",
   "idempotency::admit",
-  "command.decision_id.toString",
+  "command.decision_id.to_string()",
   "forum.moderation_decision_idempotency_mismatch",
   "forum.moderation_subject_revision_conflict",
   "forum_topic_moderation_subject_revisions",
