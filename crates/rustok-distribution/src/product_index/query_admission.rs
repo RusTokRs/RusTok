@@ -5,6 +5,8 @@ use rustok_index::{
     register_postgres_index_query_link_target_availability,
 };
 
+use super::PRODUCT_SCHEMA_ROUTING_KEY;
+
 const PRODUCT_QUERY_MATERIALIZED_FRESHNESS: &str = r#"
 EXISTS (
     SELECT 1
@@ -146,7 +148,12 @@ fn register_rule(
 }
 
 fn product_schema_ref() -> rustok_core::Result<SchemaRef> {
-    schema_ref("rustok-product", "product", SchemaVersion::new(3), "Product")
+    schema_ref(
+        "rustok-product",
+        "product",
+        SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY),
+        "Product",
+    )
 }
 
 fn product_variant_schema_ref() -> rustok_core::Result<SchemaRef> {
