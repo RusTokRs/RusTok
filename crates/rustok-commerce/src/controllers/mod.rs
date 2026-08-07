@@ -2,7 +2,9 @@ pub mod admin;
 #[path = "admin/checkout_operations.rs"]
 pub(crate) mod checkout_operations;
 mod common;
+#[cfg(feature = "marketplace-financial")]
 pub(crate) mod marketplace_financial;
+#[cfg(feature = "marketplace-financial")]
 pub(crate) mod marketplace_reversal_financial;
 pub mod products;
 mod reconciliation;
@@ -26,6 +28,7 @@ pub struct CommerceHttpRuntime {
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
     product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
+    #[cfg(feature = "marketplace-financial")]
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
 }
 
@@ -79,11 +82,13 @@ impl CommerceHttpRuntime {
         self.product_catalog_read_runtime.read_port()
     }
 
+    #[cfg(feature = "marketplace-financial")]
     fn marketplace_financial_operator_service(&self) -> crate::MarketplaceFinancialOperatorService {
         self.marketplace_financial_runtime
             .operator_service(self.db_clone(), self.event_bus())
     }
 
+    #[cfg(feature = "marketplace-financial")]
     fn marketplace_reversal_operator_service(&self) -> crate::MarketplaceReversalOperatorService {
         self.marketplace_financial_runtime
             .reversal_operator_service(self.db_clone())
@@ -127,11 +132,12 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require ProductCatalogReadRuntime in HostRuntimeContext"
                 )
             })?;
+        #[cfg(feature = "marketplace-financial")]
         let marketplace_financial_runtime = runtime
             .shared_get::<crate::MarketplaceFinancialRuntime>()
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Commerce HTTP routes require MarketplaceFinancialRuntime in HostRuntimeContext"
+                    "Commerce marketplace-financial HTTP routes require MarketplaceFinancialRuntime in HostRuntimeContext"
                 )
             })?;
         Ok(Self {
@@ -147,6 +153,7 @@ impl CommerceHttpRuntime {
             fulfillment_lifecycle_read_runtime,
             order_read_runtime,
             product_catalog_read_runtime,
+            #[cfg(feature = "marketplace-financial")]
             marketplace_financial_runtime,
         })
     }
@@ -154,7 +161,7 @@ impl CommerceHttpRuntime {
 
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
     let state = CommerceHttpRuntime::from_host(runtime)?;
-    Ok(axum::Router::new()
+    let router = axum::Router::new()
         .nest("/store", store::axum_router())
         .nest("/admin", admin::axum_router())
         .nest(
@@ -168,11 +175,11 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .nest(
             "/admin/fulfillment-provider-operations",
             reconciliation::axum_router(),
-        )
-        .nest(
-            "/admin/marketplace-financial",
-            marketplace_financial::axum_router()
-                .merge(marketplace_reversal_financial::axum_router()),
-        )
-        .with_state(state))
+        );
+    #[cfg(feature = "marketplace-financial")]
+    let router = router.nest(
+        "/admin/marketplace-financial",
+        marketplace_financial::axum_router().merge(marketplace_reversal_financial::axum_router()),
+    );
+    Ok(router.with_state(state))
 }
