@@ -1,8 +1,8 @@
 {
-  "format": "pages_rollback_activated_artifact_loss_recovery_source_v1",
-  "status": "pages_rollback_activated_artifact_loss_recovery_source_unvalidated",
-  "generated_at": "2026-08-07T18:52:00+03:00",
-  "scope": "Explicit missing-binding artifact-loss recovery may use an exact rollback receipt as a later activation anchor for the same retained publish, while every post-anchor version remains activation-chain fenced",
+  "format": "pages_rollback_activated_artifact_loss_recovery_source_v2",
+  "status": "pages_rollback_activated_artifact_loss_latest_state_recovery_source_unvalidated",
+  "generated_at": "2026-08-07T20:44:00+03:00",
+  "scope": "Explicit missing-binding recovery may use an exact rollback receipt as an activation anchor for the same retained publish while post-anchor versions remain bounded same-publish lineage fenced",
   "source_contract": {
     "direct_publish_result_version_remains_a_valid_recovery_anchor": true,
     "rollback_anchor_requires_exact_target_publish_operation": true,
@@ -15,11 +15,13 @@
     "missing_matching_rollback_anchor_falls_back_to_original_publish_anchor": true,
     "post_anchor_version_gap_requires_only_contiguous_same_publish_activation_receipts": true,
     "post_anchor_activation_scan_is_physically_bounded_to_257_rows": true,
-    "post_anchor_prior_locales_must_be_unique_and_other": true,
+    "post_anchor_tracks_latest_repair_state_per_locale": true,
+    "post_anchor_repeated_locale_requires_prior_rebuilt_artifact_absent": true,
     "post_anchor_activation_request_hashes_are_recomputed": true,
     "post_anchor_rebuild_and_provenance_are_revalidated": true,
-    "post_anchor_prior_bindings_must_remain_active": true,
-    "post_anchor_rebuilt_artifact_identity_is_revalidated": true,
+    "post_anchor_latest_non_target_bindings_must_remain_active": true,
+    "post_anchor_latest_non_target_rebuilt_artifact_identity_is_revalidated": true,
+    "post_anchor_target_binding_must_be_absent_before_recovery": true,
     "source_artifact_must_still_be_physically_absent": true,
     "retained_source_body_identity_is_still_required": true,
     "rollback_receipt_is_not_repair_source_authority": true,
@@ -28,6 +30,7 @@
     "postgres_two_locale_recovery_after_rollback_source_ready": true,
     "postgres_noncanonical_rollback_anchor_hash_rejection_source_ready": true,
     "postgres_unexplained_post_rollback_version_drift_rejection_source_ready": true,
+    "postgres_repeated_loss_packet_is_separate": true,
     "schema_migration_dto_transport_cache_or_ui_changes_are_not_added": true,
     "tests_run": false,
     "static_verifier_run": false,
@@ -45,7 +48,7 @@
     "post_rollback_activation_chain": false,
     "unexplained_post_rollback_version_drift": false,
     "same_publish_provenance": false,
-    "prior_binding_identity": false,
+    "latest_repair_state_per_locale": false,
     "rebuilt_artifact_identity": false
   }
 }
