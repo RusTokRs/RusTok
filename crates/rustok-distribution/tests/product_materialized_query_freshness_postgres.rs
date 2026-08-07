@@ -162,6 +162,12 @@ async fn run_materialized_freshness_scenarios(database: &TestDatabase) -> TestRe
     let delayed = load_product_mutation(&runtime.sources, STALE_PRODUCT_ID, "en").await?;
     let delayed_source_version = delayed.source_version();
     bump_stale_product_owner_revision(&database.writer).await?;
+    assert_owner_projection_advanced(
+        &database.writer,
+        STALE_PRODUCT_ID,
+        delayed_source_version,
+    )
+    .await?;
     apply_product_mutation(&runtime, delayed).await?;
     assert_materialized_source_version(
         &database.mutation,
@@ -222,6 +228,12 @@ async fn run_materialized_freshness_scenarios(database: &TestDatabase) -> TestRe
         load_product_mutation(&runtime.sources, LOCALE_DELETE_PRODUCT_ID, "en").await?;
     let locale_delayed_source_version = locale_delayed.source_version();
     delete_product_locale(&database.writer).await?;
+    assert_owner_projection_advanced(
+        &database.writer,
+        LOCALE_DELETE_PRODUCT_ID,
+        locale_delayed_source_version,
+    )
+    .await?;
     apply_product_mutation(&runtime, locale_delayed).await?;
     assert_materialized_source_version(
         &database.mutation,
@@ -398,6 +410,35 @@ fn projected_string<'a>(
         ))
         .into()),
     }
+}
+
+async fn assert_owner_projection_advanced(
+    db: &DatabaseConnection,
+    product_id: Uuid,
+    delayed_source_version: u64,
+) -> TestResult<()> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+SELECT CAST(projection_epoch AS TEXT) AS projection_epoch_text
+FROM product_index_graph_projection_snapshots
+WHERE tenant_id = $1
+  AND product_id = $2
+ORDER BY projection_epoch DESC
+LIMIT 1
+"#,
+            vec![TENANT_ID.into(), product_id.into()],
+        ))
+        .await?
+        .ok_or_else(|| std::io::Error::other("expected current Product projection"))?;
+    let projection_epoch: String = row.try_get("", "projection_epoch_text")?;
+    let projection_epoch = projection_epoch.parse::<u64>()?;
+    assert!(
+        projection_epoch > delayed_source_version,
+        "owner projection {projection_epoch} must be newer than delayed mutation {delayed_source_version}"
+    );
+    Ok(())
 }
 
 async fn assert_materialized_source_version(
