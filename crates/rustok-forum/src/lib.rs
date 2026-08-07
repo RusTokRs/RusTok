@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::search_projection::register_search_projection_source;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_moderation_api::register_moderation_subject_adapter_factory;
 use rustok_notifications_api::register_notification_source_provider_factory;
 use rustok_reactions_api::register_reaction_subject_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
@@ -19,6 +20,7 @@ pub mod graphql;
 pub mod locale;
 pub mod mentions;
 pub mod migrations;
+mod moderation_subject;
 mod moderation_transport;
 pub mod notification_recipient;
 mod notification_source;
@@ -55,6 +57,9 @@ pub use entities::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
 pub use mentions::*;
+pub use moderation_subject::{
+    FORUM_MODERATION_MODULE, ForumModerationSubjectAdapterFactory,
+};
 pub use notification_recipient::{
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY,
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY_UNAVAILABLE, ForumNotificationRecipientContext,
@@ -248,6 +253,24 @@ impl RusToKModule for ForumModule {
         .map_err(|error| {
             rustok_core::Error::Validation(format!(
                 "forum reaction subject factory registration failed: {error}"
+            ))
+        })?;
+        register_moderation_subject_adapter_factory(
+            extensions,
+            moderation_subject::ForumModerationSubjectAdapterFactory::topic(),
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "forum moderation topic adapter factory registration failed: {error}"
+            ))
+        })?;
+        register_moderation_subject_adapter_factory(
+            extensions,
+            moderation_subject::ForumModerationSubjectAdapterFactory::reply(),
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "forum moderation reply adapter factory registration failed: {error}"
             ))
         })?;
         register_notification_source_provider_factory(

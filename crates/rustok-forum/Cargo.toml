@@ -27,6 +27,7 @@ uuid.workspace = true
 rustok-content.workspace = true
 rustok-core = { workspace = true, features = ["server"] }
 rustok-events.workspace = true
+rustok-moderation-api = { path = "../rustok-moderation-api" }
 rustok-notifications-api.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles.workspace = true
