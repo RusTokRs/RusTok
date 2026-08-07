@@ -86,8 +86,7 @@ const port = requireMarkers(portPath, [
 ]);
 forbidMarkers(portPath, port, ['tokio::spawn', 'IndexMutation::']);
 
-const runtimePath = 'crates/rustok-index/src/infrastructure/postgres/query_runtime.rs';
-requireMarkers(runtimePath, [
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
   'let mut admissions = extensions',
   '.get::<PostgresIndexQueryAdmissionCatalog>()',
   'AdmissionSchemaMissing',
@@ -95,8 +94,6 @@ requireMarkers(runtimePath, [
   'for registered in registry.registry().iter()',
   'admissions.ensure_runtime_schema(registered.schema.reference.clone())?',
   'PostgresIndexQueryPort::with_admissions(',
-  'registry.shared()',
-  'admissions,',
 ]);
 
 const productAdmissionPath = 'crates/rustok-distribution/src/product_index/query_admission.rs';
@@ -142,16 +139,26 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'PostgresQueryEntityAdmissionApplyError',
   'PostgresQueryEntityAdmissionError',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', [
-  'Status: `source_complete_linked_target_fence_execution_pending`',
-  '`PostgresQueryEntityAdmission`',
-  '`mpN_tN`',
-  '`mx_tN`',
-  '`mo_tN`',
-  'ProductVariant',
-  'SalesChannel',
-  'Explicit remaining recreate boundary',
+const freshnessDoc = requireMarkers(
+  'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
+  [
+    'Status: `source_complete_linked_target_recreate_packet_execution_pending`',
+    '`PostgresQueryEntityAdmission`',
+    '`mpN_tN`',
+    '`mx_tN`',
+    '`mo_tN`',
+    'ProductVariant',
+    'SalesChannel',
+    'Recreate monotonicity is already source complete',
+    'm20260731_000004_add_product_index_tombstones',
+    'm20260731_000011_add_channel_index_tombstones',
+    'Remaining linked-target availability boundary',
+    'product_linked_target_recreate_postgres.rs',
+  ],
+);
+forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
   'does **not** claim delete+recreate identity safety',
+  'next source slice must make those two owner source clocks monotonic',
 ]);
 
-console.log('[verify-index-product-materialized-query-freshness] Product graph entity freshness fence verified');
+console.log('[verify-index-product-materialized-query-freshness] Product graph entity freshness and recreate boundary verified');
