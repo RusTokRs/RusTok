@@ -1,6 +1,6 @@
 # M7 canonical Product graph source
 
-Status: `single_current_storefront_source_complete_rebuild_and_query_evidence_pending`.
+Status: `single_current_product_source_complete_storefront_locale_query_gap_open`.
 
 The selected distribution publishes one current Product Index contract and one current ProductVariant
 contract. Parallel Product compatibility implementations remain removed.
@@ -31,6 +31,22 @@ Localized tag names remain Taxonomy-owned; Product Index stores only stable tag 
 Physical Product/translation deletes remain represented by Product-owned tombstones and canonical
 `IndexMutation::Delete` mutations.
 
+## Localized identity boundary
+
+One Product Index entity corresponds to one **physically stored** `product_translations.locale` row.
+The source does not fabricate requested-locale records from a fallback translation. The absence provider
+correctly treats a missing exact locale as absent.
+
+That generic source rule is not yet Storefront-equivalent. Owner Storefront list search currently
+matches title through any Product translation, and owner result localization can return a fallback
+translation when the requested locale is absent. A current-locale scalar title filter or a second
+independent fallback query cannot by itself preserve the same global admission, de-duplication, ordering,
+page boundary, and exact count.
+
+This is now an explicit Storefront query/source gap. Do not add another Product routing key or parallel
+Product schema merely to work around it. The effective localized Storefront identity/search architecture
+must be resolved at the generic query/owner-contract layer first.
+
 ## Single-current immutable replacement
 
 The previous Product schema fingerprint was not changed in place. Current runtime code uses one
@@ -59,8 +75,8 @@ boundary. Resolved SalesChannel membership advances under `relation_epoch`.
 revision and joins the exact retained relation epoch referenced by projection state.
 
 The current source additionally materializes Product-owned tag UUIDs and canonical typed EAV terms in
-the same PostgreSQL source read. EAV commands already advance Product `index_revision` and graph
-projection before their refresh ledger is captured.
+the same PostgreSQL source read. EAV commands advance Product `index_revision` and graph projection
+before their refresh ledger is captured.
 
 Product hard-delete replay also uses projection epoch but does not decode live Storefront fields or
 require a live relation freshness witness because the mutation removes the Product graph.
@@ -89,11 +105,12 @@ Detailed contracts:
 
 ## Still open
 
-Source coverage is complete, but production/Storefront admission still requires:
+The Product source contract itself is current, but production/Storefront admission still requires:
 
 - staged current-key rebuild and final persisted supersession;
-- retained PostgreSQL replay/freshness/concurrency/restart/delete-recreate execution;
-- generic scalar text substring filtering needed to reproduce owner title search;
+- actualization and execution of retained PostgreSQL packets on the current key/15-field contract;
+- an explicit effective localized Product list identity/search/fallback architecture;
+- any generic text-pattern primitive required by that chosen architecture;
 - Storefront query translation and bounded Taxonomy tag-name hydration;
 - full owner-vs-Index Storefront equivalence;
 - Product typed event family/routes after event-contract digest admission;
