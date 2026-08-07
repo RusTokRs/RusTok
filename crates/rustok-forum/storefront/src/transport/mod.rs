@@ -2,12 +2,14 @@ mod graphql_adapter {
     include!("graphql_adapter.rs");
     include!("category_route_graphql_adapter.rs");
     include!("topic_route_graphql_adapter.rs");
+    include!("revision_graphql_adapter.rs");
 }
 mod native_server_adapter {
     include!("native_server_adapter.rs");
     include!("native_server_adapter_bulk.rs");
     include!("native_server_adapter_category_route.rs");
     include!("native_server_adapter_topic_route.rs");
+    include!("native_server_adapter_revision.rs");
 }
 
 use crate::model::{
@@ -52,6 +54,30 @@ pub async fn fetch_storefront_forum(
             locale,
         )
         .await
+    }
+}
+
+pub async fn fetch_storefront_topic_current_revision(
+    topic_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, TransportError> {
+    if use_native_transport() {
+        native_server_adapter::fetch_storefront_topic_current_revision_server(topic_id, locale)
+            .await
+    } else {
+        graphql_adapter::fetch_storefront_topic_current_revision_graphql(topic_id, locale).await
+    }
+}
+
+pub async fn fetch_storefront_reply_current_revision(
+    reply_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, TransportError> {
+    if use_native_transport() {
+        native_server_adapter::fetch_storefront_reply_current_revision_server(reply_id, locale)
+            .await
+    } else {
+        graphql_adapter::fetch_storefront_reply_current_revision_graphql(reply_id, locale).await
     }
 }
 
