@@ -95,6 +95,7 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
     };
     let db = database.connection().await?;
     let tenant_id = Uuid::new_v4();
+    enable_pages_module(&db, tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let service = PageService::new(db.clone(), event_bus.clone());
     let reviewed = PageBuilderReviewedPublishRuntime::new(
@@ -473,6 +474,20 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
     database.cleanup().await
 }
 
+async fn enable_pages_module(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
+    db.execute_unprepared(
+        "CREATE TABLE tenant_modules (tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, enabled BOOLEAN NOT NULL)",
+    )
+    .await?;
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES ($1, $2, $3)",
+        vec![tenant_id.into(), "pages".into(), true.into()],
+    ))
+    .await?;
+    Ok(())
+}
+
 async fn assert_rebuild_receipt_constraint_rolls_back_page_marker(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -659,12 +674,4 @@ async fn scoped_connection(
     db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}""#))
         .await?;
     Ok(db)
-}
-
-#[allow(dead_code)]
-fn _postgres_statement_type_guard(_: Statement) {}
-
-#[allow(dead_code)]
-fn _postgres_backend_guard() -> DbBackend {
-    DbBackend::Postgres
 }
