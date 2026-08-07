@@ -1,4 +1,5 @@
 mod absence;
+mod channel_relation_convergence;
 pub(crate) mod channel_relation_resolver;
 mod channel_visibility;
 #[cfg(test)]
@@ -17,12 +18,14 @@ pub(crate) fn register(
 ) -> rustok_core::Result<()> {
     product::register(extensions)?;
     variant::register(extensions)?;
-    absence::register(extensions)
+    absence::register(extensions)?;
+    channel_relation_convergence::register(extensions)
 }
 
 #[cfg(test)]
 mod tests {
     use rustok_core::ModuleRuntimeExtensions;
+    use rustok_runtime::ModuleWorkRegistrations;
 
     use super::{
         PRODUCT_ABSENCE_WATERMARK_FACTORY, PRODUCT_INDEX_SOURCE, PRODUCT_VARIANT_INDEX_SOURCE,
@@ -61,5 +64,22 @@ mod tests {
             factory.owner_module() == "product"
                 && factory.factory_name() == PRODUCT_ABSENCE_WATERMARK_FACTORY
         }));
+        assert!(!extensions.contains::<ModuleWorkRegistrations>());
+    }
+
+    #[test]
+    fn selected_product_and_channel_bridge_registers_convergence_work() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(rustok_product::ProductRuntimeSelected);
+        extensions.insert(rustok_channel::ChannelRuntimeSelected);
+        extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
+        extensions.insert(rustok_index::PostgresIndexSourceFactoryCatalog::new());
+
+        register(&mut extensions).unwrap();
+
+        let registrations = extensions
+            .get::<ModuleWorkRegistrations>()
+            .expect("Product+Channel composition must publish convergence work");
+        assert!(!registrations.is_empty());
     }
 }
