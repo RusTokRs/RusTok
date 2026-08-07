@@ -12,12 +12,15 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 
 use super::{
     BeginCheckoutOperation, CheckoutCompletedState, CheckoutError,
-    CheckoutFulfillmentStageError, CheckoutMarketplaceAllocationError,
-    CheckoutMarketplaceCommissionError, CheckoutMarketplaceEconomicsCheckpointError,
-    CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationStage, CheckoutOperationStatus, CheckoutPaymentStageError,
-    CheckoutPlanBuilder, CheckoutStagePipeline, CheckoutStagePipelineError,
-    DEFAULT_CHECKOUT_LEASE_SECONDS,
+    CheckoutFulfillmentStageError, CheckoutOperationCheckpoint, CheckoutOperationError,
+    CheckoutOperationJournal, CheckoutOperationStage, CheckoutOperationStatus,
+    CheckoutPaymentStageError, CheckoutPlanBuilder, CheckoutStagePipeline,
+    CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
+};
+#[cfg(feature = "marketplace-financial")]
+use super::{
+    CheckoutMarketplaceAllocationError, CheckoutMarketplaceCommissionError,
+    CheckoutMarketplaceEconomicsCheckpointError,
 };
 
 #[derive(Debug, Error)]
@@ -375,20 +378,24 @@ fn pipeline_failure_disposition(error: &CheckoutStagePipelineError) -> FailureDi
         | CheckoutStagePipelineError::PaymentStage(CheckoutPaymentStageError::Boundary {
             retryable: true,
             ..
-        })
-        | CheckoutStagePipelineError::MarketplaceAllocation(
+        }) => FailureDisposition::Retryable,
+        #[cfg(feature = "marketplace-financial")]
+        CheckoutStagePipelineError::MarketplaceAllocation(
             CheckoutMarketplaceAllocationError::Boundary {
                 retryable: true, ..
             },
-        )
-        | CheckoutStagePipelineError::MarketplaceCommission(
+        ) => FailureDisposition::Retryable,
+        #[cfg(feature = "marketplace-financial")]
+        CheckoutStagePipelineError::MarketplaceCommission(
             CheckoutMarketplaceCommissionError::Boundary {
                 retryable: true, ..
             },
-        )
-        | CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(
+        ) => FailureDisposition::Retryable,
+        #[cfg(feature = "marketplace-financial")]
+        CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(
             CheckoutMarketplaceEconomicsCheckpointError::Database(_),
         ) => FailureDisposition::Retryable,
+        #[cfg(feature = "marketplace-financial")]
         CheckoutStagePipelineError::MarketplaceFinancial(error) if error.retryable() => {
             FailureDisposition::Retryable
         }
@@ -410,21 +417,27 @@ fn checkout_error_code(error: &CheckoutError) -> String {
 
 fn pipeline_error_code(error: &CheckoutStagePipelineError) -> String {
     match error {
+        #[cfg(feature = "marketplace-financial")]
         CheckoutStagePipelineError::MarketplaceAllocation(
             CheckoutMarketplaceAllocationError::Boundary { code, .. },
-        )
-        | CheckoutStagePipelineError::MarketplaceCommission(
+        ) => code.clone(),
+        #[cfg(feature = "marketplace-financial")]
+        CheckoutStagePipelineError::MarketplaceCommission(
             CheckoutMarketplaceCommissionError::Boundary { code, .. },
         ) => code.clone(),
+        #[cfg(feature = "marketplace-financial")]
         CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(
             CheckoutMarketplaceEconomicsCheckpointError::Database(_),
         ) => "checkout.marketplace_economics_checkpoint_unavailable".to_string(),
+        #[cfg(feature = "marketplace-financial")]
         CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(_) => {
             "checkout.marketplace_economics_checkpoint_conflict".to_string()
         }
+        #[cfg(feature = "marketplace-financial")]
         CheckoutStagePipelineError::MarketplaceFinancial(error) if error.retryable() => {
             "checkout.marketplace_financial_retryable".to_string()
         }
+        #[cfg(feature = "marketplace-financial")]
         CheckoutStagePipelineError::MarketplaceFinancial(_) => {
             "checkout.marketplace_financial_operator_review".to_string()
         }
@@ -615,6 +628,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "marketplace-financial")]
     fn retryable_marketplace_boundary_does_not_force_compensation() {
         let error = CheckoutStagePipelineError::MarketplaceCommission(
             CheckoutMarketplaceCommissionError::Boundary {

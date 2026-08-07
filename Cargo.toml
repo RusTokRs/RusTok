@@ -230,7 +230,7 @@ rustok-modules = { path = "crates/rustok-modules" }
 rustok-events = { path = "crates/rustok-events" }
 rustok-events-module = { path = "crates/rustok-events-module" }
 rustok-commerce-foundation = { path = "crates/rustok-commerce-foundation" }
-rustok-commerce = { path = "crates/rustok-commerce" }
+rustok-commerce = { path = "crates/rustok-commerce", default-features = false }
 rustok-marketplace = { path = "crates/rustok-marketplace" }
 rustok-marketplace-seller = { path = "crates/rustok-marketplace-seller" }
 rustok-marketplace-seller-admin = { path = "crates/rustok-marketplace-seller/admin" }

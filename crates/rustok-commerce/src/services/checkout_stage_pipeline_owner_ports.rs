@@ -17,17 +17,16 @@ use super::{
     CheckoutCompletedState, CheckoutFinalizationError, CheckoutFinalizationExecutor,
     CheckoutFulfillmentCreatedState, CheckoutFulfillmentStageError,
     CheckoutFulfillmentStageExecutor, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderPlanError,
-    CheckoutOrderPlanPayload, CheckoutOrderStageError, CheckoutOrderStageExecutor,
-    CheckoutPaymentCapturedState, CheckoutPaymentReadyState, CheckoutPaymentStageError,
-    CheckoutPaymentStageExecutor,
+    CheckoutOperationStage, CheckoutOrderPlanError, CheckoutOrderPlanPayload,
+    CheckoutOrderStageError, CheckoutOrderStageExecutor, CheckoutPaymentCapturedState,
+    CheckoutPaymentReadyState, CheckoutPaymentStageError, CheckoutPaymentStageExecutor,
 };
 #[cfg(feature = "marketplace-financial")]
 use super::{
     CheckoutMarketplaceAllocationError, CheckoutMarketplaceAllocationStage,
     CheckoutMarketplaceCommissionError, CheckoutMarketplaceCommissionStage,
     CheckoutMarketplaceEconomicsCheckpointError, CheckoutMarketplaceEconomicsCheckpointJournal,
-    CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialStage,
+    CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialStage, CheckoutOperationStatus,
     RecordCheckoutMarketplaceEconomicsCheckpoint, build_marketplace_economics_evidence,
     validate_marketplace_economics_checkpoint,
 };

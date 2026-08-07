@@ -156,9 +156,14 @@ mod marketplace_financial;
 pub struct CommerceApiDoc;
 
 pub fn openapi_document() -> utoipa::openapi::OpenApi {
-    let mut openapi = CommerceApiDoc::openapi();
+    let openapi = CommerceApiDoc::openapi();
     #[cfg(feature = "marketplace-financial")]
-    openapi.merge(marketplace_financial::openapi_document());
+    {
+        let mut openapi = openapi;
+        openapi.merge(marketplace_financial::openapi_document());
+        openapi
+    }
+    #[cfg(not(feature = "marketplace-financial"))]
     openapi
 }
 

@@ -13,6 +13,7 @@ use rustok_api::{
     PortError, PortErrorKind, RequestContext, TenantContext, TenantContextExtension,
     graphql::GraphqlRuntimeInputs,
 };
+#[cfg(feature = "marketplace-financial")]
 use rustok_commerce::MarketplaceFinancialRuntime;
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::graphql_runtime::{
@@ -202,10 +203,10 @@ fn host_runtime(
     fulfillment_port: Arc<dyn FulfillmentReadPort>,
 ) -> HostRuntimeContext {
     let event_bus = mock_transactional_event_bus();
-    HostRuntimeContext::new(db.clone())
-        .with_shared_value(event_bus.clone())
-        .with_shared_value(MarketplaceFinancialRuntime::in_process(db.clone()))
-        .with_shared_value(CommerceShippingOptionReadRuntime::in_process(db.clone()))
+    let host = HostRuntimeContext::new(db.clone()).with_shared_value(event_bus.clone());
+    #[cfg(feature = "marketplace-financial")]
+    let host = host.with_shared_value(MarketplaceFinancialRuntime::in_process(db.clone()));
+    host.with_shared_value(CommerceShippingOptionReadRuntime::in_process(db.clone()))
         .with_shared_value(CommerceFulfillmentLifecycleReadRuntime::new(
             fulfillment_port,
         ))

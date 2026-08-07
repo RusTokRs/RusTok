@@ -235,6 +235,7 @@ pub(crate) fn test_app_context(
     db: sea_orm::DatabaseConnection,
 ) -> crate::controllers::CommerceHttpRuntime {
     let event_bus = mock_transactional_event_bus();
+    #[cfg(feature = "marketplace-financial")]
     let marketplace_financial_runtime = crate::MarketplaceFinancialRuntime::in_process(db.clone());
     let shipping_option_read_runtime =
         crate::graphql_runtime::CommerceShippingOptionReadRuntime::in_process(db.clone());
@@ -255,6 +256,7 @@ pub(crate) fn test_app_context(
         fulfillment_lifecycle_read_runtime,
         order_read_runtime,
         product_catalog_read_runtime,
+        #[cfg(feature = "marketplace-financial")]
         marketplace_financial_runtime,
     }
 }
