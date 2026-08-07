@@ -24,8 +24,9 @@ for (const marker of [
   "RequeueModerationApplicationCommand",
   "ReconcileLegacyModerationApplicationCommand",
   "ModerationApplicationRecoveryRecord",
+  "pub status: ModerationReportStatus",
 ]) {
-  requireText(domain, marker, `Moderation recovery domain contract is missing ${marker}`);
+  requireText(domain, marker, `Moderation recovery domain compatibility is missing ${marker}`);
 }
 
 for (const marker of [
