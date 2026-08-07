@@ -56,6 +56,50 @@ fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
         .unwrap_or_default()
 }
 
+fn product_schema_read_port_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    actor: rustok_api::PortActor,
+    locale: &str,
+    operation: &'static str,
+) -> rustok_api::PortContext {
+    let context = rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        locale,
+        format!("commerce-graphql-product-schema:{operation}:{tenant_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    ctx.data_opt::<RequestContext>()
+        .and_then(|request| request.channel_slug.as_deref())
+        .map(str::trim)
+        .filter(|channel| !channel.is_empty())
+        .map(|channel| context.clone().with_channel(channel))
+        .unwrap_or(context)
+}
+
+fn product_schema_read_port(
+    db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
+    context: &rustok_api::PortContext,
+    operation: &'static str,
+) -> Result<std::sync::Arc<dyn rustok_product::ProductCatalogSchemaReadPort>> {
+    let runtime = crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+        db.clone(),
+        event_bus.clone(),
+    );
+    runtime.schema_read_port().ok_or_else(|| {
+        super::product_catalog::product_catalog_port_error(
+            context,
+            rustok_api::PortError::unavailable(
+                "product.schema_read_unavailable",
+                "product schema directory is unavailable",
+            ),
+            operation,
+        )
+    })
+}
+
 #[Object]
 impl CommerceQuery {
     /// Pricing-authoritative admin product detail.
@@ -1554,7 +1598,7 @@ impl CommerceQuery {
     ) -> Result<GqlProductAttributeList> {
         require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         let tenant_id = product_query_tenant(ctx, tenant_id)?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
             "Permission denied: products:read required",
@@ -1562,11 +1606,26 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        let items = service
-            .list_attributes(tenant_id, locale.trim())
+        let locale = locale.trim();
+        let port_context = product_schema_read_port_context(
+            ctx,
+            tenant_id,
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+            locale,
+            "product_attributes",
+        );
+        let schema_read_port =
+            product_schema_read_port(db, event_bus, &port_context, "product_attributes")?;
+        let items = schema_read_port
+            .list_attributes(port_context.clone())
             .await
-            .map_err(|error| map_product_service_error(error, "product_query"))?
+            .map_err(|error| {
+                super::product_catalog::product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "product_attributes",
+                )
+            })?
             .into_iter()
             .map(Into::into)
             .collect::<Vec<_>>();
@@ -1585,7 +1644,7 @@ impl CommerceQuery {
     ) -> Result<GqlCatalogCategoryList> {
         require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         let tenant_id = product_query_tenant(ctx, tenant_id)?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
             "Permission denied: products:read required",
@@ -1593,11 +1652,26 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        let items = service
-            .list_categories(tenant_id, locale.trim())
+        let locale = locale.trim();
+        let port_context = product_schema_read_port_context(
+            ctx,
+            tenant_id,
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+            locale,
+            "catalog_categories",
+        );
+        let schema_read_port =
+            product_schema_read_port(db, event_bus, &port_context, "catalog_categories")?;
+        let items = schema_read_port
+            .list_categories(port_context.clone())
             .await
-            .map_err(|error| map_product_service_error(error, "product_query"))?
+            .map_err(|error| {
+                super::product_catalog::product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "catalog_categories",
+                )
+            })?
             .into_iter()
             .map(Into::into)
             .collect::<Vec<_>>();
@@ -1616,7 +1690,7 @@ impl CommerceQuery {
     ) -> Result<GqlProductAttributeSchemaList> {
         require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         let tenant_id = product_query_tenant(ctx, tenant_id)?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
             "Permission denied: products:read required",
@@ -1624,11 +1698,30 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        let items = service
-            .list_schemas(tenant_id, locale.trim())
+        let locale = locale.trim();
+        let port_context = product_schema_read_port_context(
+            ctx,
+            tenant_id,
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+            locale,
+            "product_attribute_schemas",
+        );
+        let schema_read_port = product_schema_read_port(
+            db,
+            event_bus,
+            &port_context,
+            "product_attribute_schemas",
+        )?;
+        let items = schema_read_port
+            .list_schemas(port_context.clone())
             .await
-            .map_err(|error| map_product_service_error(error, "product_query"))?
+            .map_err(|error| {
+                super::product_catalog::product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "product_attribute_schemas",
+                )
+            })?
             .into_iter()
             .map(Into::into)
             .collect::<Vec<_>>();
