@@ -110,7 +110,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admis
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'bounded cross-owner Product visibility to SalesChannel UUID resolver',
   'one canonical Product Index source',
-  'freshness watermark source complete',
+  'Freshness watermark source complete',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
