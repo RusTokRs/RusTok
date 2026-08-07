@@ -141,9 +141,12 @@ For Forum's bounded adapter source:
   approved-to-hidden applies the existing topic/category/author public-count accounting,
   every changed hide publishes `ForumReplyStatusChanged`, and an already-hidden reply is a
   no-op without duplicate counters or events;
-- `Unpublished` and `Removed` are still unsupported: Forum does not approximate them as
-  `Rejected` or `Deleted`; removal must reuse the complete Forum soft-delete/tombstone/
-  solution/counter owner semantics before it can be admitted;
+- `SetVisibility { state: Removed }` for `forum_post` is admitted only through the complete
+  Forum `ReplyService::remove_in_tx` owner path. It validates the existing transition to
+  `ReplyStatus::Deleted`, performs accepted-solution cleanup, soft-delete/tombstone capture,
+  public/solution accounting and the canonical deleted status event/projection in the same
+  fenced receipt transaction;
+- `Unpublished` remains unsupported and is not approximated as `Rejected`;
 - temporary lock and the remaining restriction effects fail closed until an exact owner
   semantic and, where required, expiry-safe Forum state exists.
 
@@ -175,7 +178,12 @@ shared receipt in the same Forum transaction as the local effect and returns the
 post-application Forum moderation subject revision. For reply `Hidden`, the same transaction
 also contains the exact Forum status mutation, any required public-counter/stat updates,
 `ForumReplyStatusChanged`, and category projection invalidation when those counters changed.
-Non-retryable domain failures may become terminal receipt errors, while retryable
+For reply `Removed`, the same transaction uses the shared Forum reply-removal owner helper so
+soft-delete/tombstone capture, accepted-solution cleanup, public/solution accounting,
+`ForumReplyStatusChanged`, category projection when required, moderation revision advancement
+and the completed receipt commit or roll back together. Completed receipt replay occurs before
+subject reads; a new attempt against an already soft-deleted reply is unavailable rather than
+re-applied. Non-retryable domain failures may become terminal receipt errors, while retryable
 storage/serialization failures leave the processing lease reclaimable. This is producer-side
 source only; the Moderation owner still needs its durable application attempt state,
 scheduler/backoff and host runtime materialization.
@@ -196,8 +204,8 @@ scheduler/backoff and host runtime materialization.
 - source guard `scripts/verify/verify-moderation-api-boundary.mjs`;
 - Forum as the first real domain adapter producer in source: `forum_topic`/`forum_post`
   factories, dedicated owner moderation-revision clocks, shared receipt/revision fencing,
-  trusted caller gate, no-op decisions, permanent topic lock, and exact reply `Hidden`
-  visibility application with Forum accounting/events, guarded by
+  trusted caller gate, no-op decisions, permanent topic lock, exact reply `Hidden`, and exact
+  reply `Removed` through the complete Forum removal owner path, guarded by
   `scripts/verify/verify-forum-moderation-subject-adapter.mjs`.
 
 ## Next priorities
@@ -207,12 +215,12 @@ scheduler/backoff and host runtime materialization.
 2. Materialize the registered adapter factories in host runtime and expose bounded operator
    recovery; prove missing/unavailable adapters stay retryable.
 3. Extend Forum only with another exact owner effect mapping. `Unpublished` may be considered
-   only after its Forum lifecycle meaning is explicit; `Removed` stays blocked until the
-   complete Forum soft-delete/tombstone/solution/counter owner path is reused. Add explicit
-   expiry-safe state before temporary restrictions.
+   only after its Forum lifecycle meaning is explicit. Add explicit expiry-safe state before
+   temporary restrictions.
 4. Retain PostgreSQL/SQLite migration/backfill/trigger evidence for Forum moderation revision
-   clocks plus concurrent content/lifecycle edit versus permanent-lock/reply-hide application
-   evidence and approved-to-hidden accounting/event atomicity.
+   clocks plus concurrent content/lifecycle edit versus permanent-lock/reply-hide/reply-remove
+   application evidence, approved-to-hidden accounting/event atomicity and removed-reply
+   tombstone/accepted-solution/accounting/event atomicity.
 5. Add PostgreSQL Moderation active-case/decision-effect/revision-CAS evidence.
 6. Add moderation-specific RBAC resources and tenant permission registration.
 7. Publish transactional outbox contracts for report, case, decision, application, and
@@ -270,10 +278,14 @@ scheduler/backoff and host runtime materialization.
 - historical decision `effect: None` read and non-dispatch evidence;
 - PostgreSQL duplicate-report, active-case, and case-revision contention tests;
 - decision application crash/retry/lost-response recovery;
-- Forum shared-receipt replay/request conflict, trusted caller, stale revision, permanent-lock
-  and reply-hide versus concurrent content/lifecycle edit evidence;
+- Forum shared-receipt replay/request conflict, trusted caller, stale revision, permanent-lock,
+  reply-hide and reply-remove versus concurrent content/lifecycle edit evidence;
 - approved-to-hidden topic/category/author counter adjustment, status-event/projection
-  atomicity, already-hidden no-op/replay, and unsupported Unpublished/Removed evidence;
+  atomicity and already-hidden no-op/replay evidence;
+- removed-reply delete-revision/tombstone capture, accepted-solution cleanup, public/solution
+  accounting, status-event/projection atomicity, receipt replay and already-removed unavailable
+  evidence on PostgreSQL and SQLite;
+- unsupported `Unpublished` evidence;
 - replay and changed-hash conflict across moderation and domain receipts;
 - stale revision, unsupported effect, tenant/scope isolation, and owner adapter tests;
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback

@@ -145,14 +145,17 @@ state instead of reusing the narrower Reactions/content revision. The bounded
 application source reuses the shared Outbox owner-operation receipt ledger,
 fences the active subject plus that revision clock, accepts only trusted
 service/system application callers and now supports `NoDomainMutation` for both
-subject kinds, permanent topic lock, and exact `SetVisibility(Hidden)` for Forum
-replies. Approved-to-hidden applies the established topic/category/author public
-counter accounting and every changed hide writes the canonical
-`ForumReplyStatusChanged` event; already-hidden is a no-op. `Unpublished` and
-`Removed` remain fail-closed rather than being approximated as `Rejected` or
-`Deleted`. Moderation registry materialization, durable application
-orchestration, additional exact effects and retained migration/runtime/
-concurrency evidence remain pending.
+subject kinds, permanent topic lock, exact `SetVisibility(Hidden)` and exact
+`SetVisibility(Removed)` for Forum replies. Approved-to-hidden applies the
+established topic/category/author public counter accounting and every changed
+hide writes the canonical `ForumReplyStatusChanged` event; already-hidden is a
+no-op. Removed reuses the complete `ReplyService::remove_in_tx` owner path for
+accepted-solution cleanup, soft-delete/tombstone capture, public/solution
+accounting and the canonical deleted status event/projection in the same fenced
+receipt transaction. `Unpublished` remains fail-closed rather than being
+approximated as `Rejected`. Moderation registry materialization, durable
+application orchestration, additional exact effects and retained migration/
+runtime/concurrency evidence remain pending.
 
 ## Program ledger
 
@@ -177,7 +180,7 @@ concurrency evidence remain pending.
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
-| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt binding, exact reviewed-revision fencing, trusted application callers, `NoDomainMutation`, permanent topic lock and exact reply `Hidden` visibility application with canonical counters/events are source-ready. Retain PostgreSQL/SQLite migration/trigger/replay/concurrency and hide-accounting evidence, add only exact remaining Forum-local effects/expiry-safe restrictions and Moderation registry materialization/orchestration; Moderation keeps cases, decisions, appeals and audit. |
+| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt binding, exact reviewed-revision fencing, trusted application callers, `NoDomainMutation`, permanent topic lock, exact reply `Hidden`, and exact reply `Removed` through the complete soft-delete/tombstone/solution/counter owner path are source-ready. Retain PostgreSQL/SQLite migration/trigger/replay/concurrency, hide-accounting and removal/tombstone/solution/accounting evidence; add only exact remaining Forum-local effects/expiry-safe restrictions plus Moderation registry materialization/orchestration. Moderation keeps cases, decisions, appeals and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
@@ -359,10 +362,11 @@ storage/serialization failures leave the processing lease reclaimable rather
 than freezing transient failure into replay.
 
 The bounded effect set now supports `NoDomainMutation` for topic/reply, permanent
-topic lock through `TopicService::set_locked_in_tx`, and exact reply
-`SetVisibility { state: Hidden }`. A real lock/hide mutation must advance the
-dedicated moderation subject revision in the same transaction and the adapter
-returns that post-application value as
+topic lock through `TopicService::set_locked_in_tx`, exact reply
+`SetVisibility { state: Hidden }`, and exact reply
+`SetVisibility { state: Removed }`. A real lock/hide/removal mutation must
+advance the dedicated moderation subject revision in the same transaction and
+the adapter returns that post-application value as
 `ModerationDecisionApplication.applied_revision`; a true no-op retains the
 reviewed revision. Missing or non-advancing revision state fails as an invariant
 rather than guessed success.
@@ -378,13 +382,25 @@ source, and emits category projection invalidation when public counters changed.
 Status, counters/statistics, event/projection, moderation revision and shared
 receipt therefore commit or roll back together.
 
+Reply `Removed` is not a status-only mapping. Direct delete and Moderation removal
+share `ReplyService::remove_in_tx`, which claims the active reply, validates the
+existing transition to `ReplyStatus::Deleted`, removes an accepted-solution
+relation when present, performs the established `status = deleted` plus
+`deleted_at` soft delete so delete revisions/tombstone history are captured, and
+applies the existing public-reply and solution-stat accounting. The adapter then
+writes the same canonical `ForumReplyStatusChanged` fact with `new_status =
+deleted` and category projection invalidation when public counters changed.
+Soft-delete/tombstone, solution cleanup, accounting, event/projection, moderation
+revision and completed receipt commit or roll back together. Receipt replay
+happens before subject reads; a fresh attempt against an already removed subject
+is unavailable rather than re-applied.
+
 Temporary locks fail closed because Forum does not yet own expiry-safe moderation
 enforcement state. `Unpublished` remains unsupported until an exact Forum
-lifecycle meaning is established. `Removed` remains unsupported until the full
-Forum soft-delete/tombstone/solution/counter owner path can be reused; neither is
-approximated as `Rejected`/`Deleted`. The remaining Moderation effect catalog
-stays pending. Moderation registry materialization and durable application
-workers remain owner/host work outside Forum.
+lifecycle meaning is established; it is not approximated as `Rejected`. The
+remaining Moderation effect catalog stays pending. Moderation registry
+materialization and durable application workers remain owner/host work outside
+Forum.
 
 ### `FORUM-30`/`FORUM-31`: UI composition
 
@@ -404,7 +420,7 @@ Hosts register/mount packages and do not absorb policy.
 6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
 7. Bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply neutral host composition and Rust Playwright browser-evidence harness are source-ready. Execute and retain the browser/runtime evidence without adding Reactions functionality to Forum.
 8. Introduce Reputation/Achievements only after at least two producers agree.
-9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock and exact reply Hidden application are source-ready. Retain migration/replay/concurrency/accounting evidence, add only exact remaining Forum effects, then materialize/orchestrate them in the Moderation owner/host; never add Forum case queues.
+9. Forum `rustok-moderation-api` topic/reply factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, permanent topic lock and exact reply Hidden/Removed application are source-ready. Retain migration/replay/concurrency/hide/removal accounting and tombstone evidence, add only exact remaining Forum effects, then materialize/orchestrate them in the Moderation owner/host; never add Forum case queues.
 
 ### Track 2 — close existing Forum work
 
@@ -443,9 +459,12 @@ Hosts register/mount packages and do not absorb policy.
 - Reply `SetVisibility(Hidden)` must preserve the exact Forum lifecycle, public
   counter/statistics and event/projection semantics; already-hidden must not
   duplicate counters or events.
-- Neutral `Unpublished` must not be approximated as Forum `Rejected`, and neutral
-  `Removed` must not be approximated as `Deleted` without reusing the complete
-  Forum deletion owner path.
+- Reply `SetVisibility(Removed)` must reuse `ReplyService::remove_in_tx`; no
+  Moderation adapter may bypass the full Forum accepted-solution cleanup,
+  soft-delete/tombstone capture, public/solution accounting and canonical
+  status-event/projection semantics with a status-only approximation.
+- Neutral `Unpublished` must not be approximated as Forum `Rejected` until an
+  explicit Forum lifecycle contract establishes that meaning.
 - Temporary moderation effects must fail closed until Forum owns explicit
   expiry-safe enforcement state; permanent owner state must not be used as a
   lossy approximation of an expiring restriction.
@@ -564,11 +583,13 @@ For FORUM-19, retain PostgreSQL/SQLite migration/backfill and trigger advancemen
 evidence for the dedicated Forum moderation subject revision clocks plus shared-
 receipt replay/request-conflict, stale revision, trusted caller and concurrent
 content/lifecycle edit evidence. Also retain approved-to-hidden topic/category/
-author accounting, `ForumReplyStatusChanged`/projection atomicity, already-hidden
-no-op/replay and unsupported `Unpublished`/`Removed` evidence. The next source
-effect may map `Unpublished` only after its exact Forum lifecycle meaning is
-explicit. Keep `Removed` blocked until the complete Forum soft-delete/tombstone/
-solution/counter owner path is reused, and add expiry-safe local state before any
-temporary restriction. In parallel, the Moderation owner/host must materialize
-the registered adapter factories and provide durable application retry/runtime
-evidence before FORUM-19 can be promoted.
+author accounting, `ForumReplyStatusChanged`/projection atomicity and
+already-hidden no-op/replay. For Removed, retain soft-delete/tombstone revision,
+accepted-solution cleanup, approved/public and solution accounting, canonical
+status-event/projection atomicity, replay-before-subject-read and already-removed
+unavailable evidence across PostgreSQL/SQLite. `Unpublished` remains the next
+source effect only after its exact Forum lifecycle meaning is explicit; add
+expiry-safe local state before any temporary restriction. In parallel, the
+Moderation owner/host must materialize the registered adapter factories and
+provide durable application retry/runtime evidence before FORUM-19 can be
+promoted.

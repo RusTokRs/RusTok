@@ -60,11 +60,27 @@ A decision applies only when the reviewed moderation subject revision exactly ma
 
 The permanent topic lock goes through `TopicService::set_locked_in_tx`. The database trigger must advance the moderation revision in the same transaction; the adapter returns that post-application revision as `ModerationDecisionApplication.applied_revision`. A true no-op keeps the reviewed revision unchanged. An unexpected missing/non-advancing clock is an invariant failure, not a guessed success.
 
-The reply visibility slice applies only the neutral `SetVisibility { state: Hidden }` effect to `forum_post`. It uses Forum's existing `ReplyStatus::Hidden` lifecycle and the same owner primitives used by the established moderator path. An already-hidden reply is an exact no-op. Every other source status must have a valid Forum transition to `Hidden`; invalid lifecycle transitions fail closed.
+The hidden reply visibility effect applies only neutral `SetVisibility { state: Hidden }` to `forum_post`. It uses Forum's existing `ReplyStatus::Hidden` lifecycle and the same owner primitives used by the established moderator path. An already-hidden reply is an exact no-op. Every other source status must have a valid Forum transition to `Hidden`; invalid lifecycle transitions fail closed.
 
 When an approved reply becomes hidden, the same owner transaction decrements the topic public reply count, category public reply count and author Forum reply statistics. Non-approved-to-hidden transitions do not alter those public counters. The transaction writes the canonical `ForumReplyStatusChanged` root event; that event is already a Forum Search full-scope source. When public category counters change, the canonical category projection invalidation is also written. Status, counters/statistics, events, moderation-revision advancement and the completed shared receipt therefore commit or roll back together.
 
-A service/system actor UUID is carried into the Forum event when the trusted port actor identity is a non-nil UUID. Non-UUID service identities remain representable by the Moderation-owned cross-domain audit while Forum's existing optional `moderator_id` field stays `None`.
+## Exact removed reply owner path
+
+Neutral `SetVisibility { state: Removed }` for `forum_post` is supported only because the complete existing Forum removal workflow is now reusable inside the adapter's already fenced owner transaction.
+
+`ReplyService::remove_in_tx` is the single Forum-owned mutation path used by both direct reply deletion and Moderation removal. It does **not** merely set `ReplyStatus::Deleted`. It:
+
+- claims the active reply and validates the existing Forum transition to `ReplyStatus::Deleted`;
+- removes an accepted-solution relation when the removed reply owns it;
+- performs the established `status = deleted` plus `deleted_at` soft delete, so the existing database guards capture delete revisions/tombstone history;
+- decrements topic/category/author public reply accounting when the removed reply was approved;
+- decrements author solution statistics when the removed reply was the accepted solution.
+
+The helper returns only the exact owner facts needed for established event publication. The normal delete path keeps its existing authorization and `TransactionalEventBus` instance. The Moderation adapter calls the same mutation helper, then writes the same canonical `ForumReplyStatusChanged` fact with `new_status = deleted` through the transaction-only outbox helper and writes category projection invalidation only when public counters changed.
+
+Because the adapter has already fenced the active subject/revision, a changed removal must advance the dedicated moderation revision on the `status/deleted_at` update. Completed receipt replay happens before subject reads, so a decision is not re-applied to the now soft-deleted subject. A new attempt against an already removed subject is unavailable rather than treated as another successful removal.
+
+A service/system actor UUID is carried into Forum events when the trusted port actor identity is a non-nil UUID. Non-UUID service identities remain representable by the Moderation-owned cross-domain audit while Forum's existing optional `moderator_id` field stays `None`.
 
 ## Effects in this bounded slice
 
@@ -72,17 +88,17 @@ Supported:
 
 - `NoDomainMutation` for topic and reply decisions such as warning/no-violation outcomes;
 - permanent topic `Lock { effective_until: None }`, using the existing `TopicService::set_locked_in_tx` owner mutation and canonical Forum Search projection invalidation;
-- `SetVisibility { state: Hidden }` for `forum_post`, using exact `ReplyStatus::Hidden` lifecycle/accounting/event semantics.
+- `SetVisibility { state: Hidden }` for `forum_post`, using exact `ReplyStatus::Hidden` lifecycle/accounting/event semantics;
+- `SetVisibility { state: Removed }` for `forum_post`, using the complete `ReplyService::remove_in_tx` soft-delete/tombstone/solution/counter owner path plus the canonical status event/projection.
 
 Explicitly deferred:
 
 - temporary topic lock, because Forum does not yet own expiry-safe moderation enforcement state;
 - `SetVisibility { state: Unpublished }`, because it is not yet proven to be exactly equivalent to a Forum reply lifecycle state;
-- `SetVisibility { state: Removed }`, because Forum removal requires the complete soft-delete/tombstone/solution/counter owner path and must not be approximated by setting a status;
 - topic remove/unpublish effects;
 - interaction restrictions, require-edit, publication rejection, suspension, escalation and account-sanction recommendation.
 
-Unsupported effects fail closed. `Unpublished` is not silently mapped to `Rejected`, and `Removed` is not silently mapped to `Deleted`.
+Unsupported effects fail closed. `Unpublished` is not silently mapped to `Rejected`. `Removed` is not a status-only approximation: any future removal path must continue to go through the complete Forum owner helper.
 
 ## Ownership preserved
 
@@ -104,6 +120,6 @@ cargo xtask module validate forum
 git diff --check
 ```
 
-Future runtime evidence should additionally cover migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock or reply hide, trusted-caller enforcement, PostgreSQL serialization/reclaim, approved-to-hidden counter/stat/event atomicity, already-hidden replay/no-op behavior, and disabled/unmaterialized Moderation profiles.
+Future runtime evidence should additionally cover migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply removal, trusted-caller enforcement, PostgreSQL serialization/reclaim, approved-to-hidden counter/stat/event atomicity, already-hidden replay/no-op behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `Unpublished` remains an unsupported-effect evidence case.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
