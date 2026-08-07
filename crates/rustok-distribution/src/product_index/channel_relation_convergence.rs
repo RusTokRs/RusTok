@@ -15,7 +15,7 @@ use rustok_product::{
 use rustok_runtime::{
     HostRuntimeContext, ModuleWorkRegistration, ModuleWorkRegistrations, ModuleWorkScheduler,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -150,6 +150,69 @@ impl ProductSalesChannelRelationConvergenceAdapter {
         Ok(Some((tenant_id, generation)))
     }
 
+    async fn reconcile_sweep_page(
+        &self,
+        tenant_id: Uuid,
+        after_product_id: Option<Uuid>,
+    ) -> Result<Option<Uuid>, ProductSalesChannelRelationResolverError> {
+        let fetch_limit = i64::try_from(MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE + 1)
+            .expect("convergence page lookahead is bounded below i64::MAX");
+        let (sql, values): (&str, Vec<Value>) = match after_product_id {
+            Some(after_product_id) => (
+                "SELECT id FROM products WHERE tenant_id = $1 AND id > $2 ORDER BY id ASC LIMIT $3",
+                vec![tenant_id.into(), after_product_id.into(), fetch_limit.into()],
+            ),
+            None => (
+                "SELECT id FROM products WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2",
+                vec![tenant_id.into(), fetch_limit.into()],
+            ),
+        };
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+            .await
+            .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
+        let has_more = rows.len() > MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE;
+        let mut product_ids = Vec::with_capacity(
+            rows.len()
+                .min(MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE),
+        );
+        for row in rows
+            .into_iter()
+            .take(MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE)
+        {
+            let product_id = row
+                .try_get::<Uuid>("", "id")
+                .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
+            if product_id.is_nil()
+                || product_ids
+                    .last()
+                    .is_some_and(|previous| product_id <= *previous)
+            {
+                return Err(ProductSalesChannelRelationResolverError::Unavailable);
+            }
+            product_ids.push(product_id);
+        }
+        let next_product_id = has_more.then(|| {
+            *product_ids
+                .last()
+                .expect("convergence lookahead implies one processed Product")
+        });
+
+        for product_id in product_ids {
+            match self.resolver.reconcile_product(tenant_id, product_id).await {
+                Ok(_) | Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {}
+                Err(error) if owner_rejected(&error) => {
+                    // A malformed Product stays fail-closed at source admission, but it must not
+                    // head-of-line block valid Products later in the same tenant. Correcting its
+                    // visibility appends an exact Product-owned convergence request.
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(next_product_id)
+    }
+
     fn work_item(
         claim: &ProductSalesChannelIndexRelationConvergenceClaim,
     ) -> Result<ModuleWorkItem, ModuleWorkError> {
@@ -208,6 +271,17 @@ impl ProductSalesChannelRelationConvergenceAdapter {
             Err(_) => Err(ModuleWorkError::Source(CLAIM_FAILED_CODE.to_owned())),
         }
     }
+
+    async fn complete_visibility(
+        &self,
+        claim: &ProductSalesChannelIndexRelationConvergenceClaim,
+    ) -> Result<ModuleWorkOutcome, ModuleWorkError> {
+        self.store
+            .complete_visibility(claim)
+            .await
+            .map_err(|_| ModuleWorkError::Handler(EXECUTION_FAILED_CODE.to_owned()))?;
+        Ok(ModuleWorkOutcome::Completed)
+    }
 }
 
 #[async_trait]
@@ -259,29 +333,21 @@ impl ModuleWorkHandler for ProductSalesChannelRelationConvergenceAdapter {
                 .await
             {
                 Ok(_) | Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {
-                    self.store
-                        .complete_visibility(&claim)
-                        .await
-                        .map_err(|_| ModuleWorkError::Handler(EXECUTION_FAILED_CODE.to_owned()))?;
-                    Ok(ModuleWorkOutcome::Completed)
+                    self.complete_visibility(&claim).await
                 }
+                Err(error) if owner_rejected(&error) => self.complete_visibility(&claim).await,
                 Err(error) => Ok(classify_resolver_error(error)),
             },
             ProductSalesChannelIndexRelationConvergenceWork::ChannelSweep {
                 after_product_id,
                 ..
             } => match self
-                .resolver
-                .reconcile_tenant_page(
-                    claim.tenant_id(),
-                    after_product_id,
-                    MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE,
-                )
+                .reconcile_sweep_page(claim.tenant_id(), after_product_id)
                 .await
             {
-                Ok(page) => {
+                Ok(next_product_id) => {
                     self.store
-                        .complete_sweep_page(&claim, page.next_product_id())
+                        .complete_sweep_page(&claim, next_product_id)
                         .await
                         .map_err(|_| ModuleWorkError::Handler(EXECUTION_FAILED_CODE.to_owned()))?;
                     Ok(ModuleWorkOutcome::Completed)
@@ -371,6 +437,15 @@ impl ConvergencePayloadWork {
     }
 }
 
+fn owner_rejected(error: &ProductSalesChannelRelationResolverError) -> bool {
+    matches!(
+        error,
+        ProductSalesChannelRelationResolverError::InvalidProductVisibility
+            | ProductSalesChannelRelationResolverError::TooManyVisibilitySlugs
+            | ProductSalesChannelRelationResolverError::TooManyResolvedChannels
+    )
+}
+
 fn classify_resolver_error(error: ProductSalesChannelRelationResolverError) -> ModuleWorkOutcome {
     match error {
         ProductSalesChannelRelationResolverError::InvalidTenant
@@ -427,5 +502,18 @@ mod tests {
         assert_eq!(MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE, 64);
         assert_eq!(LEASE_DURATION, Duration::from_secs(300));
         assert_eq!(RETRY_DELAY, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn owner_rejection_isolated_from_retryable_storage_failures() {
+        assert!(owner_rejected(
+            &ProductSalesChannelRelationResolverError::InvalidProductVisibility
+        ));
+        assert!(!owner_rejected(
+            &ProductSalesChannelRelationResolverError::ConcurrentChange
+        ));
+        assert!(!owner_rejected(
+            &ProductSalesChannelRelationResolverError::Unavailable
+        ));
     }
 }
