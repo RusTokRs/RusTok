@@ -30,7 +30,7 @@ pub fn spawn_module_event_dispatcher(
 
     #[cfg(feature = "mod-commerce")]
     spawn_paid_order_label_worker_if_enabled(ctx);
-    #[cfg(feature = "mod-commerce")]
+    #[cfg(feature = "commerce-marketplace-financial")]
     spawn_marketplace_financial_worker_if_enabled(ctx);
     #[cfg(feature = "mod-payment")]
     spawn_payment_provider_event_worker_if_enabled(ctx);
@@ -68,7 +68,7 @@ fn enrich_runtime_extensions_after_event_start(
         enriched.insert(rustok_pages::PagesCacheReadRuntime::new(provider));
     }
 
-    #[cfg(feature = "mod-commerce")]
+    #[cfg(feature = "commerce-marketplace-financial")]
     {
         let financial_runtime = ctx
             .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
@@ -125,7 +125,7 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
     );
 }
 
-#[cfg(feature = "mod-commerce")]
+#[cfg(feature = "commerce-marketplace-financial")]
 fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
     if !ctx.settings().runtime.runs_background_workers()
         || ctx.shared_contains::<
@@ -291,7 +291,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         extensions.insert(fulfillment_registry);
     }
 
-    #[cfg(feature = "mod-commerce")]
+    #[cfg(feature = "commerce-marketplace-financial")]
     {
         let financial_runtime = runtime_ctx
             .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
@@ -609,9 +609,9 @@ mod tests {
                     .is_some()
             );
         }
-        #[cfg(feature = "mod-commerce")]
+        #[cfg(feature = "commerce-marketplace-financial")]
         assert!(extensions.contains::<rustok_commerce::MarketplaceFinancialRuntime>());
-        #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+        #[cfg(all(feature = "commerce-marketplace-financial", feature = "mod-payment"))]
         assert!(extensions.contains::<rustok_payment::PaymentProviderEventObservers>());
     }
 }
