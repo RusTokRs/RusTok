@@ -44,7 +44,7 @@ impl PostgresIndexSourceFactory for ProductLocaleAbsencePostgresFactory {
             extensions,
             "product",
             PRODUCT_ABSENCE_PROVIDER,
-            [product_schema_ref(1)?, product_schema_ref(2)?],
+            [product_schema_ref()?],
             ProductLocaleAbsenceProvider { db },
         )
         .map_err(|error| error.to_string())
@@ -68,15 +68,37 @@ impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider {
             .as_ref()
             .ok_or_else(|| permanent("product_index_absence_locale_required"))?;
 
+        // The canonical Product record uses projection_epoch as its only materialized source
+        // version. Absence must use the same clock and fails closed until the projection catches up
+        // to the exact live Product revision and references an existing retained relation epoch.
         let row = self
             .db
             .query_one(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
-SELECT CAST(product.index_revision AS TEXT) AS source_version_text
+SELECT CAST(projection.projection_epoch AS TEXT) AS source_version_text
 FROM products product
+JOIN LATERAL (
+    SELECT
+        projection.projection_epoch,
+        projection.product_source_version,
+        projection.relation_epoch
+    FROM product_index_graph_v3_projection_snapshots projection
+    WHERE projection.tenant_id = product.tenant_id
+      AND projection.product_id = product.id
+    ORDER BY projection.projection_epoch DESC
+    LIMIT 1
+) projection
+  ON projection.product_source_version = product.index_revision
 WHERE product.tenant_id = $1
   AND product.id = $2
+  AND EXISTS (
+      SELECT 1
+      FROM product_sales_channel_index_relation_snapshots relation
+      WHERE relation.tenant_id = product.tenant_id
+        AND relation.product_id = product.id
+        AND relation.relation_epoch = projection.relation_epoch
+  )
   AND NOT EXISTS (
       SELECT 1
       FROM product_translations translation
@@ -124,9 +146,7 @@ fn require_product_key(
     if db.get_database_backend() != DbBackend::Postgres {
         return Err(permanent("product_index_absence_backend_unsupported"));
     }
-    let valid_schema = matches!(key.schema.version.get(), 1 | 2)
-        && product_schema_ref(key.schema.version.get()).is_ok_and(|schema| schema == key.schema);
-    if !valid_schema {
+    if product_schema_ref().is_err() || product_schema_ref().is_ok_and(|schema| schema != key.schema) {
         return Err(permanent("product_index_absence_schema_mismatch"));
     }
     if key.locale.is_none() {
@@ -135,11 +155,11 @@ fn require_product_key(
     Ok(())
 }
 
-fn product_schema_ref(version: u32) -> Result<SchemaRef, String> {
+fn product_schema_ref() -> Result<SchemaRef, String> {
     Ok(SchemaRef {
         module: ModuleName::new("rustok-product").map_err(|error| error.to_string())?,
         entity: EntityName::new("product").map_err(|error| error.to_string())?,
-        version: SchemaVersion::new(version),
+        version: SchemaVersion::new(3),
     })
 }
 
