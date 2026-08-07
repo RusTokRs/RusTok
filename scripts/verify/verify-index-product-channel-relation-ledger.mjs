@@ -106,30 +106,29 @@ requireMarkers('crates/rustok-product/src/lib.rs', [
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS',
 ]);
 
-requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-ledger.md', [
-  'Status: `owner_storage_source_complete_cross_owner_resolution_and_index_wiring_pending`',
+const ledgerDoc = requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-ledger.md', [
+  'Status: `canonical_graph_source_complete_freshness_and_runtime_evidence_pending`',
   '`product_sales_channel_index_relation_snapshots`',
   '`ProductSalesChannelIndexRelationStore::replace`',
   '`FOR KEY SHARE`',
-  '`list_changes`',
-  '`scan_current`',
-  '`load_current`',
-  'AFTER DELETE',
-  'empty Product',
-  'no dependency on `rustok-index` or `rustok-channel`',
-  'new Product schema version',
+  '`product_index_graph_projection_snapshots.projection_epoch`',
+  '`sales_channel_ids`',
+  '`sales_channels` link',
+  'no `rustok-index` or `rustok-channel` dependency',
   'No tests, Node verifiers, Cargo checks',
 ]);
+for (const legacy of ['Product v1', 'Product v2', 'Product v3', 'new Product schema version']) {
+  if (ledgerDoc.includes(legacy)) fail(`relation ledger doc retains legacy compatibility text: ${legacy}`);
+}
+
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
-  'owner storage',
-  '`FOR KEY SHARE`',
-  'cross-owner resolver',
-  'unrestricted',
-  'new Product schema version',
+  'current Product Index graph already contains the Product-to-SalesChannel link',
+  '`product_index_graph_projection_snapshots`',
+  'Durable Product/Channel convergence triggering',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
-  'Product-owned append-only Product-to-SalesChannel relation snapshot ledger',
-  'cross-owner Product visibility to Channel UUID resolver',
+  'Product-owned Product-to-SalesChannel relation snapshots',
+  'one canonical Product Index source',
 ]);
 
 const aggregate = read('scripts/verify/verify-index-query-contract.mjs');
@@ -137,4 +136,4 @@ if (!aggregate.includes("'verify-index-product-channel-relation-ledger.mjs'")) {
   fail('Index aggregate verifier does not include the Product-SalesChannel relation ledger guard');
 }
 
-console.log('[verify-index-product-channel-relation-ledger] Product-SalesChannel owner ledger contract verified');
+console.log('[verify-index-product-channel-relation-ledger] canonical Product-SalesChannel owner ledger verified');

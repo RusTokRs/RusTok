@@ -24,92 +24,105 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const factoryPath = 'crates/rustok-index/src/infrastructure/postgres/source_factory.rs';
-const factory = requireMarkers(factoryPath, [
-  'pub trait PostgresIndexSourceFactory',
-  'pub struct PostgresIndexSourceFactoryCatalog',
-  'pub fn materialize_postgres_index_sources',
-  'let mut staged = extensions.clone();',
-  '*extensions = staged;',
-]);
-forbidMarkers(factoryPath, factory, ['rustok_product', 'tokio::spawn', 'loop {']);
-
 const productCargo = read('crates/rustok-product/Cargo.toml');
-forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, ['rustok-index']);
-const productRoot = requireMarkers('crates/rustok-product/src/lib.rs', [
-  'pub struct ProductRuntimeSelected;',
-  'extensions.insert(ProductRuntimeSelected);',
-  '&["taxonomy"]',
-]);
-forbidMarkers('crates/rustok-product/src/lib.rs', productRoot, [
-  'rustok_index',
-  'register_index_schema_source',
-]);
+forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, ['rustok-index', 'rustok-channel']);
 
-const wrapper = requireMarkers('crates/rustok-distribution/src/product_index/product.rs', [
-  'pub(crate) use super::graph::PRODUCT_INDEX_SOURCE;',
-  'super::graph::register_product(extensions)',
+const modulePath = 'crates/rustok-distribution/src/product_index/mod.rs';
+const moduleSource = requireMarkers(modulePath, [
+  'mod product;',
+  'mod variant;',
+  'product::register(extensions)?;',
+  'variant::register(extensions)?;',
+  'absence::register(extensions)',
+  'selected_product_bridge_registers_two_current_schemas_and_three_factories',
 ]);
-forbidMarkers('crates/rustok-distribution/src/product_index/product.rs', wrapper, [
-  'DatabaseConnection',
-  'FROM products',
-]);
+forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
-const sourcePath = 'crates/rustok-distribution/src/product_index/graph.rs';
+for (const removed of [
+  'crates/rustok-distribution/src/product_index/graph.rs',
+  'crates/rustok-index/docs/m7-product-source.md',
+  'crates/rustok-index/docs/m7-product-variant-source.md',
+  'crates/rustok-product/docs/index-graph-v3-projection-ledger.md',
+  'scripts/verify/verify-index-product-graph-source.mjs',
+  'scripts/verify/verify-index-product-v3-projection-ledger.mjs',
+]) {
+  if (fs.existsSync(resolve(removed))) {
+    fail(`removed Product compatibility artifact still exists: ${removed}`);
+  }
+}
+
+const sourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
 const source = requireMarkers(sourcePath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
-  'PRODUCT_EVENT_DOMAIN_V1: &str = "rustok-product.product-replay-v1"',
-  'PRODUCT_EVENT_DOMAIN_V2: &str = "rustok-product.product-replay-v2"',
-  'fn product_v1_schema()',
-  'fn product_v2_schema()',
-  'reference: product_schema_ref(1)?',
-  'reference: product_schema_ref(2)?',
+  'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
+  'fn product_schema()',
   'locale_mode: LocaleMode::Required',
+  'scalar_field("id", IndexValueType::Uuid, false, true, true)?',
   'scalar_field("status", IndexValueType::String, false, true, true)?',
   'scalar_field("title", IndexValueType::String, false, true, true)?',
   'scalar_field("handle", IndexValueType::String, false, true, true)?',
   'scalar_field("description", IndexValueType::String, true, false, false)?',
   'scalar_field("vendor", IndexValueType::String, true, true, true)?',
   'scalar_field("product_type", IndexValueType::String, true, true, true)?',
-  'product_schema_ref(1).map_err(|error| error.to_string())?',
-  'product_schema_ref(2).map_err(|error| error.to_string())?',
-  'ProductPostgresIndexSource { db }',
-  'impl IndexSource for ProductPostgresIndexSource',
+  'many_field("variant_ids", IndexValueType::Uuid, true)?',
+  'many_field("sales_channel_ids", IndexValueType::Uuid, true)?',
+  'name: link_name("variants")?',
+  'name: link_name("sales_channels")?',
+  'target_schema: product_variant_schema_ref()?',
+  'target_schema: sales_channel_schema_ref()?',
+  'assert_eq!(schema.fields.len(), 10);',
+  'assert_eq!(schema.links.len(), 2);',
+  'product_index_graph_projection_snapshots',
+  'product_sales_channel_index_relation_snapshots',
+  'projection.projection_epoch AS source_version',
+  'projection.channel_ids AS sales_channel_ids',
+  'projected_product_source_version != observed_product_source_version',
   'FROM products p',
   'JOIN product_translations t',
   'FROM product_index_tombstones tombstone',
+  'jsonb_agg(v.id ORDER BY v.id)',
   '(row.product_id, row.locale) > ($2, $3)',
   'ORDER BY row.product_id ASC, row.locale ASC',
-  'request.limit() + 1',
   'WITH requested(product_id, locale) AS (VALUES {})',
-  'PRODUCT_EVENT_DOMAIN_V1',
-  'schema: product_schema_ref(schema_version)?',
-  '#[serde(deny_unknown_fields)]',
-  'versioned_product_graph_preserves_v1_and_adds_product_to_variant_path',
+  'IndexMutation::Delete {',
+  'IndexMutation::Upsert {',
+  'canonical_product_schema_contains_only_current_fields_and_links',
+  'canonical_product_registration_publishes_one_schema_and_one_source_factory',
 ]);
 forbidMarkers(sourcePath, source, [
-  'ORDER BY p.index_revision',
+  'ProductSchemaVersion',
+  'product_v1_schema',
+  'product_v2_schema',
+  'PRODUCT_EVENT_DOMAIN_V1',
+  'PRODUCT_EVENT_DOMAIN_V2',
+  'product-replay-v1',
+  'product-replay-v2',
+  'FROM channels',
+  'JOIN channels',
   'index_entities',
   'index_links',
-  'index_jobs',
-  'index_checkpoints',
   'tokio::spawn',
   'tokio::time::sleep',
   'loop {',
-  'rustok_search',
 ]);
 
 const absencePath = 'crates/rustok-distribution/src/product_index/absence.rs';
 const absence = requireMarkers(absencePath, [
   'PRODUCT_ABSENCE_WATERMARK_FACTORY',
   'product-locale-absence-postgres',
-  'impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider',
-  'CAST(product.index_revision AS TEXT) AS source_version_text',
+  '[product_schema_ref()?]',
+  'product_index_graph_projection_snapshots',
+  'projection.product_source_version = product.index_revision',
+  'product_sales_channel_index_relation_snapshots',
   'FROM product_translations translation',
   'FROM product_index_tombstones tombstone',
   'IndexSourceAbsenceWatermark::new(key, source_version)',
 ]);
 forbidMarkers(absencePath, absence, [
+  'product_schema_ref(1)',
+  'product_schema_ref(2)',
+  'product_index_graph_v3_projection_snapshots',
+  'CAST(product.index_revision AS TEXT)',
   'INSERT ',
   'UPDATE ',
   'DELETE FROM',
@@ -119,50 +132,24 @@ forbidMarkers(absencePath, absence, [
   'loop {',
 ]);
 
-const revisionMigration = requireMarkers(
-  'crates/rustok-product/src/migrations/m20260730_000001_add_product_index_revision.rs',
+const canonicalMigration = requireMarkers(
+  'crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs',
   [
-    'ADD COLUMN index_revision BIGINT NOT NULL DEFAULT 1',
-    'NEW.index_revision := OLD.index_revision + 1;',
-    'trg_products_bump_index_revision',
-    'trg_product_translations_bump_index_revision',
-    'AFTER INSERT OR UPDATE OR DELETE ON product_translations',
+    'product_index_graph_projection_snapshots',
+    'rustok_product_guard_index_graph_projection_snapshot',
+    'rustok_product_reconcile_index_graph_projection',
+    'trg_products_zz_index_graph_projection_delete',
+    'trg_product_channel_relation_index_graph_projection_insert',
   ],
 );
 forbidMarkers(
-  'crates/rustok-product/src/migrations/m20260730_000001_add_product_index_revision.rs',
-  revisionMigration,
-  ['index_entities', 'index_links'],
+  'crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs',
+  canonicalMigration,
+  ['FROM channels', 'JOIN channels', 'index_entities', 'index_links', 'IndexMutation'],
 );
 
-const tombstoneMigration = requireMarkers(
-  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
-  [
-    'CREATE TABLE product_index_tombstones',
-    'rustok_product_store_index_tombstone',
-    'rustok_product_capture_index_tombstones',
-    'rustok_product_seed_index_revision_from_tombstones',
-    'rustok_product_clear_superseded_index_tombstone',
-  ],
-);
-forbidMarkers(
-  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
-  tombstoneMigration,
-  ['index_entities', 'index_links', 'index_jobs'],
-);
-
-requireMarkers('crates/rustok-index/docs/m7-product-source.md', [
-  'Status: `source_complete_owner_execution_pending`',
-  '`rustok-product::product@1` and `@2`',
-  'stable `(product_id, locale)` identity',
-  '`product_index_tombstones`',
-  'Translation deletion or identity movement stores an exact locale tombstone',
-  '`product-locale-absence-postgres`',
-  'positive `products.index_revision`',
-  'maintainer-run',
-]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-source.mjs'",
 ]);
 
-console.log('[verify-index-product-source] OK');
+console.log('[verify-index-product-source] canonical Product source contract verified');

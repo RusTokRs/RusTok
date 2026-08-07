@@ -75,7 +75,8 @@ if (devDependencies.includes('tokio.workspace = true')) {
 
 for (const bridgePath of [
   'crates/rustok-distribution/src/channel_index.rs',
-  'crates/rustok-distribution/src/product_index/graph.rs',
+  'crates/rustok-distribution/src/product_index/product.rs',
+  'crates/rustok-distribution/src/product_variant_index.rs',
 ]) {
   const bridge = requireMarkers(bridgePath, ['register_index_source(']);
   if (bridge.includes('IndexSourceCatalog::register')) {
