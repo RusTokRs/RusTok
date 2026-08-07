@@ -45,6 +45,8 @@ for (const required of [
   "pub struct ProductEffectiveFormRequest",
   "pub struct ProductEffectiveFormProjection",
   "pub struct ProductEffectiveFormAttributeProjection",
+  '"product.effective_form_unavailable"',
+  "product effective form is unavailable",
   "require_policy(PortCallPolicy::read())",
   "ProductCatalogSchemaService::list_attributes(",
   "ProductCatalogSchemaService::list_categories(",
