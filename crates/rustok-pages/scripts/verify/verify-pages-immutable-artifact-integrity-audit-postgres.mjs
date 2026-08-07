@@ -13,6 +13,7 @@ const evidence = JSON.parse(read(
 ));
 const harness = read("crates/rustok-pages/tests/immutable_artifact_integrity_audit_postgres.rs");
 const owner = read("crates/rustok-pages/src/services/page/artifact_integrity_audit.rs");
+const reviewedPublish = read("crates/rustok-pages/src/services/page/reviewed_publish.rs");
 const continuation = read(
   "docs/modules/pages-page-builder-artifact-audit-postgres-continuation-2026-08-07.md",
 );
@@ -65,9 +66,9 @@ for (const [key, expected] of Object.entries({
   real_outbox_module_migrations_used: true,
   real_pages_module_migrations_used: true,
   real_reviewed_publish_used: true,
+  reviewed_publish_revision_matches_owner_updated_at_snapshot: true,
   real_explicit_rebuild_used: true,
   real_audit_owner_used: true,
-  canonical_reviewed_publish_body_revision_used: true,
   valid_canonical_and_rebuilt_audit_source_present: true,
   bounded_max_records_truncation_source_present: true,
   corrupt_payload_hashed_finding_source_present: true,
@@ -112,13 +113,31 @@ for (const marker of [
   "OutboxModule",
   "PagesModule.migrations()",
   "CREATE TABLE tenant_modules",
-  "Sha256::digest",
-  'format!("{}\\0{}", body.format, body.content)',
   ".publish_reviewed(",
   ".rebuild_immutable_artifact(",
   ".audit_immutable_artifact_integrity(",
   "PAGE_ARTIFACT_INTEGRITY_INVALID",
 ]) requireText(harness, marker, "audit PostgreSQL harness foundation");
+
+requireOrder(harness, [
+  "let revision = draft",
+  ".body",
+  ".as_ref()",
+  ".updated_at",
+  ".clone();",
+  ".publish_reviewed(",
+  "revision,",
+], "PostgreSQL reviewed publish revision fixture");
+for (const forbidden of [
+  "Sha256::digest",
+  'format!("{}\\0{}", body.format, body.content)',
+  "use sha2::{Digest, Sha256};",
+]) forbidText(harness, forbidden, "PostgreSQL reviewed publish revision fixture");
+requireOrder(reviewedPublish, [
+  "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
+  ".map(|body| (body.locale.clone(), body.updated_at.to_string()))",
+  "revisions.sort();",
+], "reviewed publish owner revision snapshot");
 
 requireOrder(harness, [
   "let complete = service",
@@ -191,6 +210,7 @@ for (const marker of [
 for (const marker of [
   "immutable-artifact-audit-postgres-harness-source-ready",
   "pages_immutable_artifact_integrity_audit_postgres_source_unvalidated",
+  "body.updated_at",
   "lock_timeout",
   "canonical and rebuilt",
   "partial materialization",

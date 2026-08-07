@@ -42,6 +42,18 @@ Fail-closed source guard:
 crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs
 ```
 
+## Reviewed publish revision contract
+
+The audit fixture must follow the current production `reviewed_publish::body_revision_snapshot` exactly. The owner currently snapshots each body revision as:
+
+```text
+body.updated_at.to_string()
+```
+
+The harness therefore supplies the created body DTO's matching `body.updated_at` value directly. It does **not** append a content digest. The source guard binds the fixture to the owner implementation and forbids the stale `updated_at:sha256(format\0content)` construction in this audit packet.
+
+This correction changes test scaffolding only; production reviewed-publish behavior is unchanged.
+
 ## Covered owner scenarios
 
 The harness uses isolated in-memory SQLite databases plus the real Outbox system-event migration, Channel migrations and Pages migrations. It reviewed-publishes a real GrapesJS page through `PageService` and uses the same retained provenance/rebuild owner path already used by the explicit repair packets.
@@ -127,6 +139,7 @@ pages_immutable_artifact_integrity_audit_sqlite_source_unvalidated
 | --- | --- | --- |
 | Immutable artifact audit owner | Source-ready | Runtime evidence pending |
 | Immutable artifact audit GraphQL/HTTP transports | Source-ready | Transport execution pending |
+| Audit reviewed-publish revision fixture | Owner-aligned | Execution pending |
 | Audit Manage `All`/`None` owner authorization | Harness-ready | SQLite execution pending |
 | Audit valid canonical/rebuilt records | Harness-ready | SQLite execution pending |
 | Audit bounded record truncation (`max_records=1`) | Harness-ready | SQLite execution pending |
@@ -134,17 +147,18 @@ pages_immutable_artifact_integrity_audit_sqlite_source_unvalidated
 | Audit partial materialization finding | Harness-ready | SQLite execution pending |
 | Audit PostgreSQL locking/scan evidence | Harness + guard ready | PostgreSQL execution pending |
 | Provenance migration/publish rollback/loss evidence | Source owner exists | Dedicated source packet still open |
-| Explicit repair owner/transport/cache packets | Source-ready | Maintainer execution pending |
+| Explicit repair owner/transport/cache packets | Source-ready | Maintainer execution pending; revision-fixture recheck remains separate |
 | Automatic repair | Deliberately absent | Not allowed |
 | FFA/FBA promotion | Open | Not promoted |
 
 ## Next cursor
 
-1. Execute the SQLite and PostgreSQL audit harnesses plus their source guards together with the existing audit owner/transport guard; retain accepted evidence.
-2. Retain provenance migration/publish evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
-3. Execute the repair transport/request/PostgreSQL/failure/cache packets already source-ready.
-4. Execute artifact/HTTP/browser and tenant Wave packets before FFA/FBA promotion.
-5. Keep automatic audit-to-rebuild and rebuild-to-activation chaining absent until accepted execution evidence supports any policy change.
+1. Align the remaining repair PostgreSQL/negative/cache publish-revision fixtures with the current reviewed-publish owner before their maintainer execution.
+2. Execute the SQLite and PostgreSQL audit harnesses plus their source guards together with the existing audit owner/transport guard; retain accepted evidence.
+3. Retain provenance migration/publish evidence for exact locale capture, aggregate-hash mismatch rollback, artifact-row loss and legacy no-backfill behavior.
+4. Execute the repair transport/request/PostgreSQL/failure/cache packets after their revision-fixture cleanup.
+5. Execute artifact/HTTP/browser and tenant Wave packets before FFA/FBA promotion.
+6. Keep automatic audit-to-rebuild and rebuild-to-activation chaining absent until accepted execution evidence supports any policy change.
 
 ## Maintainer validation
 

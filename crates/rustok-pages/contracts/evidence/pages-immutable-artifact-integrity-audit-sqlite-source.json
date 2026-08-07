@@ -9,6 +9,7 @@
     "real_channel_module_migrations_used": true,
     "real_pages_module_migrations_used": true,
     "real_reviewed_publish_used": true,
+    "reviewed_publish_revision_matches_owner_updated_at_snapshot": true,
     "real_explicit_rebuild_used": true,
     "real_audit_owner_used": true,
     "pages_manage_present_resolves_all": true,
