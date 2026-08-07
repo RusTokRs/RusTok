@@ -129,7 +129,7 @@ fn validate_relation_alias(alias: &str) -> Result<(), PostgresQueryRootAdmission
 fn root_baseline(root_alias: &str) -> String {
     let root = quote_identifier(root_alias);
     format!(
-        "{root}.tenant_id = $1 AND {root}.module_name = $2 AND {root}.entity_name = $3 AND {root}.schema_version = $4 AND {root}.is_deleted = FALSE"
+        "{root}.tenant_id = $1 AND {root}.module_name = $2 AND {root}.entity_name = $3 AND {root}.schema_version = $4 AND {root}.locale_key = $5 AND {root}.is_deleted = FALSE"
     )
 }
 
@@ -177,10 +177,11 @@ mod tests {
     }
 
     #[test]
-    fn admission_anchor_is_exact_and_fail_closed() {
+    fn admission_anchor_matches_locale_scoped_compiler_baseline_and_fails_closed() {
+        let baseline = root_baseline("t0");
+        assert!(baseline.contains("\"t0\".locale_key = $5"));
         let mut sql = format!(
-            "SELECT 1 FROM index_entities AS \"t0\" WHERE {}",
-            root_baseline("t0")
+            "SELECT 1 FROM index_entities AS \"t0\" WHERE {baseline}"
         );
         apply_to_sql(&mut sql, "t0", "\"t0\".source_version > 0").unwrap();
         assert!(sql.contains("AND (\"t0\".source_version > 0)"));
