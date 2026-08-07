@@ -27,14 +27,14 @@ pub struct ProductEffectiveFormRequest {
     pub subject: ProductEffectiveFormSubject,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ProductEffectiveFormProjection {
     pub category_id: Uuid,
     pub attributes: Vec<ProductEffectiveFormAttributeProjection>,
     pub detached_attribute_ids: Vec<Uuid>,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ProductEffectiveFormAttributeProjection {
     pub attribute_id: Uuid,
     pub code: String,
