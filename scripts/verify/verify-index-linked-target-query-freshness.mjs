@@ -69,14 +69,17 @@ requireMarkers(catalogPath, [
   'required_link_targets: BTreeMap<SchemaRef, String>',
   'pub fn require_current_link_targets(',
   'pub(crate) fn apply_link_target_availability(',
+  'fn referenced_first_hop_links(query: &IndexQuery)',
   'query.referenced_paths()',
   'path.links().first()',
-  'availability_link.source_version = {root}.source_version',
-  'availability_link.link_name IN ({requested_links})',
-  'availability_target.is_deleted = FALSE',
+  '{link}.source_version = {root}.source_version',
+  '{link}.link_name IN ({requested_links})',
+  '{target}.is_deleted = FALSE',
   'owner_dispatch_for_alias(&owner_rules, AVAILABILITY_TARGET_ALIAS)',
-  'scalar_only_query_does_not_require_unreferenced_link_targets',
-  'queried_link_requires_current_owner_admitted_target_in_page_and_count',
+  'scalar_only_query_has_no_referenced_link_targets',
+  'linked_query_collects_only_first_hop_link_names',
+  'availability_predicate_uses_current_source_link_and_owner_admitted_target',
+  'root_availability_predicate_applies_to_page_and_count_anchor_shape',
 ]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
   'LinkAvailabilitySchemaMissing',
@@ -137,13 +140,15 @@ requireMarkers(
 const freshnessDoc = requireMarkers(
   'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
   [
-    'Status: `source_complete_link_target_availability_execution_pending`',
+    'Status: `source_complete_link_target_availability_equivalence_execution_pending`',
     'Query-path-scoped linked-target availability',
     'scalar-only Product queries do not become dependent',
     'current link row + missing/stale/deleted target = query fails closed',
     'Recreate monotonicity remains source complete',
-    'Remaining M7 evidence',
+    'Filter/order/count/runtime equivalence packet',
     'product_linked_target_recreate_postgres.rs',
+    'product_linked_target_availability_equivalence_postgres.rs',
+    'Remaining M7 evidence',
   ],
 );
 forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
@@ -151,6 +156,7 @@ forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.
   'next unblocked M7 source-design gap',
   'define and retain fail-closed linked-target availability semantics',
   'next source slice must make those two owner source clocks monotonic',
+  'retain PostgreSQL cases for linked filtering and many aggregate ordering',
 ]);
 
-console.log('[verify-index-linked-target-query-freshness] linked target freshness, recreate monotonicity, and availability source contract verified');
+console.log('[verify-index-linked-target-query-freshness] linked target freshness, recreate monotonicity, availability and equivalence source contracts verified');
