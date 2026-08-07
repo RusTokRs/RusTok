@@ -1,0 +1,246 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(PageStaticLandingArtifacts::Table)
+                    .add_column(
+                        ColumnDef::new(PageStaticLandingArtifacts::InstanceKey)
+                            .string_len(64)
+                            .not_null()
+                            .default("canonical"),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_page_static_landing_artifacts_build")
+                    .table(PageStaticLandingArtifacts::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_static_landing_artifacts_build")
+                    .table(PageStaticLandingArtifacts::Table)
+                    .col(PageStaticLandingArtifacts::TenantId)
+                    .col(PageStaticLandingArtifacts::PageId)
+                    .col(PageStaticLandingArtifacts::Locale)
+                    .col(PageStaticLandingArtifacts::BuildHash)
+                    .col(PageStaticLandingArtifacts::MaterializationHash)
+                    .col(PageStaticLandingArtifacts::InstanceKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(PageArtifactRebuildOperations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::PageId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::SourceId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::SourcePublishOperationId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::Locale)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::IdempotencyKey)
+                            .string_len(191)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::RequestHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::ExpectedProvenanceHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::ReviewHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::ArtifactInstanceKey)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::SourceArtifactId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::RebuiltArtifactId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::RebuiltArtifactHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::RebuiltMaterializationHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactRebuildOperations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_artifact_rebuild_operations_page")
+                            .from(
+                                PageArtifactRebuildOperations::Table,
+                                PageArtifactRebuildOperations::PageId,
+                            )
+                            .to(Pages::Table, Pages::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_artifact_rebuild_operations_source")
+                            .from(
+                                PageArtifactRebuildOperations::Table,
+                                PageArtifactRebuildOperations::SourceId,
+                            )
+                            .to(PagePublishRebuildSources::Table, PagePublishRebuildSources::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_artifact_rebuild_operations_idempotency")
+                    .table(PageArtifactRebuildOperations::Table)
+                    .col(PageArtifactRebuildOperations::TenantId)
+                    .col(PageArtifactRebuildOperations::PageId)
+                    .col(PageArtifactRebuildOperations::IdempotencyKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_artifact_rebuild_operations_source")
+                    .table(PageArtifactRebuildOperations::Table)
+                    .col(PageArtifactRebuildOperations::TenantId)
+                    .col(PageArtifactRebuildOperations::PageId)
+                    .col(PageArtifactRebuildOperations::SourceId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_artifact_rebuild_operations_artifact")
+                    .table(PageArtifactRebuildOperations::Table)
+                    .col(PageArtifactRebuildOperations::TenantId)
+                    .col(PageArtifactRebuildOperations::RebuiltArtifactId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+        // Forward-only by design. Once an exact rebuilt instance exists, restoring the old
+        // five-column uniqueness contract could discard a valid append-only recovery artifact.
+        Ok(())
+    }
+}
+
+#[derive(DeriveIden)]
+enum PageStaticLandingArtifacts {
+    Table,
+    TenantId,
+    PageId,
+    Locale,
+    BuildHash,
+    MaterializationHash,
+    InstanceKey,
+}
+
+#[derive(DeriveIden)]
+enum PageArtifactRebuildOperations {
+    Table,
+    Id,
+    TenantId,
+    PageId,
+    SourceId,
+    SourcePublishOperationId,
+    Locale,
+    IdempotencyKey,
+    RequestHash,
+    ExpectedProvenanceHash,
+    ReviewHash,
+    ArtifactInstanceKey,
+    SourceArtifactId,
+    RebuiltArtifactId,
+    RebuiltArtifactHash,
+    RebuiltMaterializationHash,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum PagePublishRebuildSources {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum Pages {
+    Table,
+    Id,
+}

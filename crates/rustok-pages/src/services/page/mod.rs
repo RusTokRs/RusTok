@@ -1,4 +1,6 @@
+mod artifact_binding_replacement;
 mod artifact_integrity_audit;
+mod artifact_rebuild;
 mod artifact_set;
 mod create;
 mod document;
@@ -23,11 +25,22 @@ use sea_orm::DatabaseConnection;
 
 use crate::entities::page_translation;
 
+pub use artifact_binding_replacement::{
+    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT,
+    PAGE_ARTIFACT_BINDING_REPLACEMENT_IDEMPOTENCY_CONFLICT,
+    PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT,
+    PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY,
+    PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID,
+};
 pub use artifact_integrity_audit::{
     AuditPageArtifactsInput, DEFAULT_PAGE_ARTIFACT_AUDIT_RECORDS,
     MAX_PAGE_ARTIFACT_AUDIT_FINDINGS, MAX_PAGE_ARTIFACT_AUDIT_RECORDS,
     PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT, PAGE_ARTIFACT_INTEGRITY_INVALID,
     PageArtifactIntegrityAuditResult, PageArtifactIntegrityFinding,
+};
+pub use artifact_rebuild::{
+    PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT, PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT,
+    PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY, PAGE_ARTIFACT_REBUILD_SOURCE_INVALID,
 };
 pub use crate::error::{
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,

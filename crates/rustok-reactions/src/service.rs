@@ -4,7 +4,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
-use rustok_outbox::idempotency;
+use rustok_events::ReactionsEvent;
+use rustok_outbox::{ContractEventWriteOnceError, TransactionalEventBus, idempotency};
 use rustok_reactions_api::{
     ApplyReactionCommand, ReactionAction, ReactionActorState, ReactionAggregate, ReactionCatalog,
     ReactionContractError, ReactionKey, ReactionProviderError, ReactionReadPort,
@@ -178,6 +179,7 @@ impl ReactionsService {
         let transaction = self.database.begin().await.map_err(database_error)?;
         let result = apply_inside_transaction(
             &transaction,
+            lease.operation_id,
             command,
             canonical_subject,
             catalog_revision,
@@ -297,6 +299,7 @@ impl ReactionWritePort for ReactionsService {
 
 async fn apply_inside_transaction(
     transaction: &DatabaseTransaction,
+    event_envelope_id: Uuid,
     command: &ApplyReactionCommand,
     canonical_subject: ReactionSubjectRef,
     catalog_revision: u64,
@@ -355,6 +358,7 @@ async fn apply_inside_transaction(
     selected = next_selected;
 
     deltas.retain(|_, delta| *delta != 0);
+    let event_deltas = deltas.clone();
     let next_revision = if changed {
         current_revision.checked_add(1).ok_or_else(|| {
             PortError::invariant_violation(
@@ -389,6 +393,16 @@ async fn apply_inside_transaction(
             )
             .await?;
         }
+        publish_actor_state_changed(
+            transaction,
+            event_envelope_id,
+            command,
+            &canonical_subject,
+            next_revision,
+            &selected,
+            &event_deltas,
+        )
+        .await?;
     }
 
     ReactionWriteReceipt::new(
@@ -401,6 +415,68 @@ async fn apply_inside_transaction(
         next_revision,
     )
     .map_err(contract_error_to_port_error)
+}
+
+async fn publish_actor_state_changed(
+    transaction: &DatabaseTransaction,
+    envelope_id: Uuid,
+    command: &ApplyReactionCommand,
+    subject: &ReactionSubjectRef,
+    state_revision: u64,
+    selected: &[ReactionKey],
+    deltas: &BTreeMap<ReactionKey, i64>,
+) -> Result<(), PortError> {
+    let action = match command.action() {
+        ReactionAction::Add => "add",
+        ReactionAction::Remove => "remove",
+    };
+    let added_keys = deltas
+        .iter()
+        .filter(|(_, delta)| **delta > 0)
+        .map(|(reaction, _)| reaction.to_string())
+        .collect();
+    let removed_keys = deltas
+        .iter()
+        .filter(|(_, delta)| **delta < 0)
+        .map(|(reaction, _)| reaction.to_string())
+        .collect();
+    let event = ReactionsEvent::ActorStateChanged {
+        command_id: command.identity().command_id(),
+        source_slug: subject.source().to_string(),
+        subject_kind: subject.kind().to_string(),
+        subject_id: subject.subject_id(),
+        subject_revision: u64_to_i64(
+            subject.subject_revision(),
+            "reaction event subject revision",
+        )?,
+        actor_id: command.identity().actor_id(),
+        requested_reaction: command.reaction().to_string(),
+        action: action.to_string(),
+        state_revision: u64_to_i64(state_revision, "reaction event state revision")?,
+        selected_keys: selected.iter().map(ToString::to_string).collect(),
+        added_keys,
+        removed_keys,
+    };
+
+    match TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id(
+        transaction,
+        envelope_id,
+        subject.tenant_id(),
+        Some(command.identity().actor_id()),
+        event,
+    )
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(ContractEventWriteOnceError::Conflict) => Err(PortError::conflict(
+            "reactions.event_identity_conflict",
+            "reaction semantic event identity is already bound to different facts",
+        )),
+        Err(ContractEventWriteOnceError::Unavailable) => Err(PortError::unavailable(
+            "reactions.event_unavailable",
+            "reaction semantic event could not be persisted",
+        )),
+    }
 }
 
 fn plan_selection(

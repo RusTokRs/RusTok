@@ -1,6 +1,8 @@
 //! SeaORM entities for pages module.
 
 pub mod page;
+pub mod page_artifact_binding_replacement_operation;
+pub mod page_artifact_rebuild_operation;
 pub mod page_body;
 pub mod page_builder_scenario_baseline;
 pub mod page_channel_visibility;
@@ -17,6 +19,8 @@ pub mod page_translation;
 pub mod translation_change;
 
 pub use page::Entity as Page;
+pub use page_artifact_binding_replacement_operation::Entity as PageArtifactBindingReplacementOperation;
+pub use page_artifact_rebuild_operation::Entity as PageArtifactRebuildOperation;
 pub use page_builder_scenario_baseline::Entity as PageBuilderScenarioBaseline;
 pub use page_channel_visibility::Entity as PageChannelVisibility;
 pub use page_publish_operation::Entity as PagePublishOperation;

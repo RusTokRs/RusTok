@@ -1,0 +1,116 @@
+name: Event contract digest admission
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Verify the committed artifact or generate a maintainer-review patch
+        required: true
+        default: generate_patch
+        type: choice
+        options:
+          - verify
+          - generate_patch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: event-contract-digest-admission-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  EVIDENCE_ROOT: evidence/event-contract-digest-admission
+  COMMITTED_ARTIFACT: crates/rustok-events/contracts/event-contract-digests.json
+
+jobs:
+  digest-admission:
+    name: Generate canonical event contract digest patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: event-contract-digest-admission
+
+      - name: Verify admission workflow source contract
+        run: node scripts/verify/verify-event-contract-digest-admission.mjs
+
+      - name: Generate canonical artifact and review patch
+        id: generate
+        shell: bash
+        env:
+          ADMISSION_MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+
+          mkdir -p "$EVIDENCE_ROOT"
+          cp "$COMMITTED_ARTIFACT" "$EVIDENCE_ROOT/event-contract-digests.committed.json"
+
+          cargo run --locked -p rustok-events --example event_contract_digests -- --write
+
+          cp "$COMMITTED_ARTIFACT" "$EVIDENCE_ROOT/event-contract-digests.generated.json"
+          git diff -- "$COMMITTED_ARTIFACT" > "$EVIDENCE_ROOT/event-contract-digests.patch"
+
+          if [[ -s "$EVIDENCE_ROOT/event-contract-digests.patch" ]]; then
+            status=drift
+          else
+            status=match
+          fi
+
+          {
+            echo "format_version=1"
+            echo "source_sha=${GITHUB_SHA}"
+            echo "source_ref=${GITHUB_REF}"
+            echo "toolchain=${RUST_TOOLCHAIN}"
+            echo "mode=${ADMISSION_MODE}"
+            echo "status=${status}"
+            echo "generator=cargo run --locked -p rustok-events --example event_contract_digests -- --write"
+          } > "$EVIDENCE_ROOT/manifest.env"
+
+          sha256sum \
+            "$EVIDENCE_ROOT/event-contract-digests.committed.json" \
+            "$EVIDENCE_ROOT/event-contract-digests.generated.json" \
+            "$EVIDENCE_ROOT/event-contract-digests.patch" \
+            "$EVIDENCE_ROOT/manifest.env" \
+            > "$EVIDENCE_ROOT/SHA256SUMS"
+
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+
+      - name: Archive canonical digest admission packet
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: event-contract-digest-admission-${{ github.sha }}
+          path: evidence/event-contract-digest-admission
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9
+
+      - name: Enforce verification mode
+        if: steps.generate.outputs.status == 'drift' && inputs.mode == 'verify'
+        shell: bash
+        run: |
+          echo "::error::Committed event-contract digests differ from the canonical generator output."
+          echo "Run this workflow in generate_patch mode, review the archived patch, and admit it in a separate PR."
+          exit 1
+
+      - name: Report generated patch
+        if: steps.generate.outputs.status == 'drift' && inputs.mode == 'generate_patch'
+        run: echo "Canonical drift patch archived for maintainer review; no repository write was performed."
+
+      - name: Report matching artifact
+        if: steps.generate.outputs.status == 'match'
+        run: echo "Committed event-contract digest artifact matches the canonical generator output."

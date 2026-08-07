@@ -30,10 +30,19 @@ pub use public_error::{ProductPublicError, map_product_public_error};
 pub use runtime::{ProductCatalogReadProfile, ProductCatalogReadRuntime};
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
-    MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, ProductAttributeFilter,
-    ProductCatalogSchemaService, ProductIndexLocaleRefreshRecord,
-    ProductIndexLocaleRefreshSource, StorefrontProductList, StorefrontProductListItem,
-    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+    MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE,
+    MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE,
+    MAX_PRODUCT_SALES_CHANNEL_RELATION_TARGETS, ProductAttributeFilter,
+    ProductCatalogSchemaService, ProductIndexLocaleRefreshRecord, ProductIndexLocaleRefreshSource,
+    ProductIndexRefreshCanonicalWriter, ProductIndexRefreshContract,
+    ProductIndexRefreshContractTarget, ProductIndexRefreshEventFactory,
+    ProductIndexRefreshPublicationError, ProductIndexRefreshRelayError,
+    ProductIndexRefreshRelayStep, ProductIndexRefreshRelayStepOutcome,
+    ProductIndexVariantRefreshRecord, ProductIndexVariantRefreshSource,
+    ProductSalesChannelIndexRelationError, ProductSalesChannelIndexRelationRecord,
+    ProductSalesChannelIndexRelationStore, ProductSalesChannelIndexRelationWriteOutcome,
+    StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
+    StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 
 /// Typed marker proving that `ProductModule` participated in runtime extension registration.

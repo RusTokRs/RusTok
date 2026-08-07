@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "contract": "reactions_events_reconciliation_v1",
+  "module": "reactions",
+  "status": "source_ready_maintainer_execution_pending",
+  "event_family": {
+    "crate": "rustok-events",
+    "schema_version": 1,
+    "types": [
+      "reactions.actor_state.changed",
+      "reactions.subject.reconciled"
+    ],
+    "envelope_identity": "owner_operation_receipts.id",
+    "write_once": true,
+    "transactional": true
+  },
+  "command_event_invariants": [
+    "actor state, aggregate deltas, semantic event and completed owner receipt share one transaction",
+    "one changed command emits one actor-state event",
+    "idempotent no-op and completed receipt replay emit no new event",
+    "event persistence failure rolls back actor state, aggregates and receipt completion",
+    "payload contains stable identities, bounded reaction keys and revisions only"
+  ],
+  "reconciliation": {
+    "scope": "one tenant-scoped subject per request",
+    "claim": "reactions:reconcile",
+    "max_actor_states": 1000,
+    "max_aggregate_rows": 128,
+    "max_issues": 64,
+    "inspect_is_read_only": true,
+    "repair_is_idempotent": true,
+    "repair_projection": "reaction_aggregates",
+    "repair_source": "valid reaction_actor_states under the immutable current catalog",
+    "blocked_conditions": [
+      "missing or corrupt current catalog",
+      "non-positive actor-state revision",
+      "corrupt or duplicate actor selection",
+      "actor selection outside catalog or selection policy"
+    ],
+    "forbidden_repairs": [
+      "mutating actor selections",
+      "rewriting immutable catalog snapshots",
+      "reading producer-private tables",
+      "guessing producer visibility or lifecycle policy"
+    ]
+  },
+  "required_files": [
+    "crates/rustok-events/CRATE_API.md",
+    "crates/rustok-events/src/reactions.rs",
+    "crates/rustok-events/src/contract.rs",
+    "crates/rustok-events/src/lib.rs",
+    "crates/rustok-events/tests/reactions_contracts.rs",
+    "crates/rustok-reactions/src/service.rs",
+    "crates/rustok-reactions/src/reconciliation.rs",
+    "crates/rustok-reactions/src/lib.rs",
+    "crates/rustok-reactions/docs/implementation-plan.md",
+    "crates/rustok-forum/docs/implementation-plan.md",
+    "scripts/verify/verify-reactions-events-reconciliation.mjs"
+  ],
+  "deliberate_limits": [
+    "no GraphQL, REST or native transport",
+    "no admin or storefront UI",
+    "no background reconciliation worker or scheduler",
+    "no second producer adapter",
+    "no notification, reputation or achievement consumer",
+    "no runtime execution claim",
+    "event contract digest regeneration remains maintainer-run"
+  ],
+  "validation": [
+    "cargo test -p rustok-events reactions",
+    "cargo test -p rustok-reactions",
+    "cargo check -p rustok-reactions --all-targets",
+    "cargo run -p rustok-events --example event_contract_digests -- --write",
+    "node scripts/verify/verify-reactions-events-reconciliation.mjs",
+    "git diff --check"
+  ]
+}

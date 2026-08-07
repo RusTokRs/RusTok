@@ -45,6 +45,7 @@ use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleRuntimeExtensions, RusToKModule,
 };
+use rustok_reactions_api::register_reaction_subject_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
@@ -56,6 +57,7 @@ pub mod graphql;
 pub mod locale;
 pub mod migrations;
 pub mod openapi;
+mod reaction_subject;
 pub mod richtext;
 mod seo_targets;
 pub mod services;
@@ -79,6 +81,10 @@ pub use dto::{
 pub use entities::*;
 pub use error::{BlogError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
+pub use reaction_subject::{
+    BLOG_POST_REACTION_KIND, BLOG_REACTION_SOURCE, BLOG_REACTION_V1_KEY,
+    BlogReactionSubjectProviderFactory,
+};
 pub use rustok_comments::CommentsThreadPort;
 pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{
@@ -138,7 +144,17 @@ impl RusToKModule for BlogModule {
                     "blog SEO target registration failed: {error}"
                 ))
             },
+        )?;
+        register_reaction_subject_provider_factory(
+            extensions,
+            reaction_subject::BlogReactionSubjectProviderFactory,
         )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "blog reaction subject factory registration failed: {error}"
+            ))
+        })?;
+        Ok(())
     }
 
     fn register_event_listeners(

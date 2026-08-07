@@ -20,17 +20,20 @@ This directory contains the detailed technical architecture documentation for `r
 1. **Schema-Agnostic PostgreSQL JSONB Storage**: Envelopes entity state into benchmarked `JSONB` structures while maintaining independent relational graphs (`index_links`).
 2. **Derived Secondary Indexes**: Automatically creates typed PostgreSQL partial B-Tree expression indexes for scalar fields and GIN containment indexes for arrays.
 3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors use a separate authenticated, confidential, tenant/schema/source-bound codec plus a private server `SecretRef` keyring, sealed one-page service boundary, and bounded GraphQL transport. Drift discovery uses a separate exact-scope candidate contract, read-only PostgreSQL `txid` visibility fence, bounded two-phase keyset reader, double-observed owner/materialized confirmation, serializable idempotent finding persistence, authorization-gated lifecycle audit, durable targeted-repair reservations/receipts, concrete missing-entity and orphan-link repair paths through command-bound inbox identities, and an immutable authorization-gated recovery ledger for ambiguous `prepared` commands.
-4. **Durable Rebuilds & Outbox Inbox**: Fences stale checkpoint writers with advisory locks, deduplicates mutations via `index_inbox`, and logs consistency findings (`index_consistency_findings`).
+4. **Durable Rebuilds & Persisted Readiness**: Fences stale checkpoint writers with advisory locks, deduplicates mutations via `index_inbox`, logs consistency findings (`index_consistency_findings`), and fail-closes authoritative cutover unless the explicit tenant schema set matches active persisted `index_schemas` contracts exactly.
 
 ---
 
 ## Reference Documents
 
+- [Current Implementation Plan — 2026-08-07](./implementation-plan-current-2026-08-07.md)
+- [Historical Milestone Plan](./implementation-plan.md)
 - [Source Module Integration Contract](./module-source-integration.md)
-- [Live Implementation Plan](./implementation-plan.md)
 - [M5 Mutation Event Commit/Ack Contract](./m5-mutation-event-ack-contract.md)
 - [M5 Exact Source Refresh Event Worker](./m5-source-refresh-event.md)
 - [M5 Product Locale Refresh Owner Ledger](../../rustok-product/docs/index-locale-refresh-ledger.md)
+- [M5 Product Refresh Canonical Writer](../../rustok-product/docs/index-refresh-canonical-writer.md)
+- [M5 Product Refresh Durable Relay Step](../../rustok-product/docs/index-refresh-relay-step.md)
 - [M5 Social Graph Production Mutation Route](./m5-social-graph-mutation-route.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
 - [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
@@ -70,6 +73,9 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
 - [M6 Reconciliation Dead-letter Inspection](./m6-reconciliation-dead-letter-inspection.md)
 - [M6 Reconciliation Dead-letter Requeue](./m6-reconciliation-dead-letter-requeue.md)
+- [M7 Tenant Schema Readiness Gate](./m7-schema-readiness.md)
+- [M7 Product-SalesChannel Relation Admission](./m7-product-sales-channel-relation-admission.md)
+- [M7 Product-SalesChannel Owner Ledger](../../rustok-product/docs/index-sales-channel-relation-ledger.md)
 - [M4 Source-owned Schema Registry](./m4-source-schema-registry.md)
 - [M4 Query Runtime Composition](./m4-query-runtime-composition.md)
 - [M4 PostgreSQL Query Port Contract](./m4-postgres-query-port.md)

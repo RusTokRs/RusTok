@@ -1,80 +1,142 @@
-# Checkout fulfillment stage owner context
+# Checkout fulfillment stage error safety and retry disposition
 
-Status: **source-ready / unvalidated**
+Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-This slice retains the exact `PortContext` used by the mounted durable checkout
-fulfillment stage for three typed owner calls:
+The mounted durable checkout fulfillment stage keeps its established business logic
+behind a private retained source and now sanitizes failures from all three typed owner
+calls before they reach the stage mapper:
 
 - `CheckoutFulfillmentExecutionPort::ensure_checkout_fulfillments`;
 - `CheckoutFulfillmentExecutionPort::read_checkout_fulfillments`;
 - `CheckoutOrderPaymentSettlementPort::settle_checkout_payment`.
 
-Each call now constructs one context value, delegates a clone of that value to
-the owner port, and reuses the original context when mapping a returned
-`PortError` into `CheckoutFulfillmentStageError::Boundary`.
+The complete canonical `PortContext`, requests, successful DTOs, lifecycle policy,
+idempotency identities, stage checkpoints, and retry disposition remain unchanged.
 
-## Retained diagnostic context
+## Public and persisted error policy
 
-The structured boundary event records:
+The exact owner `code`, typed `PortErrorKind`, and `retryable` value are retained.
+Owner message text is not copied into `CheckoutFulfillmentStageError::Boundary`, the
+staged pipeline error string, or checkout operation journal persistence.
 
-- truthful owner identity (`rustok_fulfillment` or `rustok_order`);
-- correlation and tenant identity;
-- actor, channel, and locale;
-- causation, traceparent, idempotency key, and deadline;
-- exact owner operation and commerce stage;
-- stable owner error code, typed error kind, and retryability;
-- explicit `commerce_checkout_fulfillment_stage` boundary identity.
+Fulfillment owner failures use these Commerce-owned messages:
 
-Unavailable, timeout, and invariant failures use error severity. Validation,
-not-found, conflict, forbidden, and other policy rejections use warning severity.
-The complete typed `PortError` remains internal diagnostic data.
+| Owner kind | Stage message |
+| --- | --- |
+| `Validation` | `Checkout fulfillment request is invalid` |
+| `NotFound` | `Checkout fulfillment resource was not found` |
+| `Conflict` | `Checkout fulfillment state conflicts with the requested operation` |
+| `Forbidden` | `Checkout fulfillment operation is not permitted` |
+| `Unavailable` / `Timeout` | `Checkout fulfillment service is temporarily unavailable` |
+| `InvariantViolation` | `Checkout fulfillment operation could not be completed safely` |
+
+Order payment-settlement failures use the corresponding stable order-settlement
+messages, including `Checkout order settlement service is temporarily unavailable`
+for unavailable/timeout failures.
+
+## Diagnostic policy
+
+The mounted facade emits only:
+
+- a redacted diagnostic token;
+- truthful owner, owner operation, and commerce stage;
+- owner code, typed kind, retryability, message presence, and message length;
+- bounded tenant/actor identity shapes;
+- actor kind plus claim and role counts;
+- channel, locale, correlation, causation, trace, and idempotency presence shapes;
+- deadline milliseconds;
+- the stable `commerce_checkout_fulfillment_execution_adapter` boundary.
+
+Raw `PortError`, owner message text, tenant/actor identities, correlation values,
+channel/locale values, causation, traceparent, and idempotency keys are not emitted.
+
+Unavailable, timeout, and invariant failures remain error-level diagnostics.
+Validation, not-found, conflict, forbidden, and other ordinary owner rejections remain
+warning-level diagnostics.
+
+## Legacy isolation
+
+`checkout_fulfillment_stages_legacy.rs` retains the previously mounted business logic
+unchanged. The mounted facade:
+
+1. wraps the canonical fulfillment and order-settlement owner ports;
+2. sanitizes owner failures before the retained mapper receives them;
+3. suppresses the retained raw compatibility tracing macros;
+4. keeps the retained implementation private;
+5. preserves canonical custom owner-port injection on
+   `CheckoutFulfillmentStageExecutor`.
+
+The retained mapper therefore still preserves stage, code, message, and retryability
+structurally, but the message it receives is already the static Commerce-owned message.
+
+## Retry policy
+
+The existing staged-checkout disposition remains unchanged:
+
+- retryable fulfillment ensure/read boundary → `retryable_error`;
+- retryable order-payment settlement boundary → `retryable_error`;
+- non-retryable fulfillment-stage boundary → `compensation_required`;
+- fulfillment-stage conflict → unchanged `compensation_required`;
+- fulfillment-stage operation/journal error → unchanged `compensation_required`.
+
+`CheckoutOperationJournal::claim_execution` continues to admit `retryable_error`, and
+`RecoveringStagedCheckoutService` continues to invoke synchronous compensation only
+for `compensation_required`.
+
+## Resume safety
+
+The owner operations keep their established durable identities:
+
+- fulfillment ensure uses `checkout:{operation_id}:fulfillment-set`;
+- fulfillment read remains side-effect free;
+- order payment settlement uses
+  `checkout:{operation_id}:order:payment-settlement`;
+- successful owner outcomes are validated before
+  `payment_captured -> fulfillment_created`.
 
 ## Preserved contracts
 
-This slice does not change:
+This source wave does not change:
 
 - fulfillment or order owner port traits;
-- ensure/read/settlement request and response DTOs;
-- fulfillment plan construction and cart-line provenance checks;
-- captured-payment admission and amount validation;
-- payment-reference or manual-provider fallback behavior;
-- fulfillment idempotency and order-settlement idempotency keys;
-- bounded stage-loop behavior;
-- the `payment_captured -> fulfillment_created` checkpoint;
-- `CheckoutFulfillmentStageError::Boundary` stage, code, message, or retryability;
-- FBA or FFA status.
+- ensure/read/settlement request or response DTOs;
+- owner execution, adoption, settlement, or lifecycle policy;
+- fulfillment plan construction or cart-line provenance checks;
+- captured-payment admission or amount validation;
+- payment-reference/manual-provider fallback behavior;
+- idempotency keys, causation, locale, deadlines, or delegated contexts;
+- stage checkpoints, operation journal, or recovery implementations;
+- pipeline error-code mapping or retry disposition;
+- HTTP, GraphQL, or native field/route contracts;
+- Commerce FFA/FBA status.
 
-## Static evidence
+## Source evidence
 
-The focused source guard is:
+- `crates/rustok-commerce/contracts/evidence/checkout-fulfillment-stage-error-safety-source-review.json`
+- `crates/rustok-commerce/contracts/evidence/checkout-fulfillment-retry-disposition-source-review.json`
+- `scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs`
+- `scripts/verify/verify-commerce-staged-checkout-fulfillment-retry-disposition.mjs`
+- `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 
-```text
-scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs
-```
+## Remaining work
 
-It verifies three retained contexts, three cloned owner delegations, exact owner
-and operation attribution, structured diagnostic fields, severity policy,
-existing typed lifecycle admission, checkpoint preservation, and removal of the
-old context-dropping mapper.
-
-## Still open
-
-This slice does not deliver:
-
-- fulfillment or order owner policy-admission diagnostics;
-- checkout compensation context retention;
-- remaining fulfillment GraphQL/HTTP/native adapters;
-- remaining order, payment, inventory, customer, tax, or promotion mapper cleanup;
-- runtime, restart, remote-profile, or cross-database evidence.
+The broad ecommerce mapper-cleanup P0 remains open for other fulfillment adapters,
+tax, promotion, remaining ecommerce adapters, and non-`PortError` public envelopes.
+Compile, runtime, database, restart, remote-port, workflow, and CI evidence also
+remain open.
 
 ## Intended maintainer checks
 
 ```bash
 node scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
+node scripts/verify/verify-commerce-staged-checkout-fulfillment-retry-disposition.mjs
+node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs
+node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs
 cargo check -p rustok-commerce --lib
 ```
 
-These commands were not run by the implementation agent.
+No tests, Node verifiers, Cargo commands, formatting, fulfillment-owner calls,
+order-owner calls, database scenarios, restart scenarios, remote-port scenarios,
+workflows, or CI were executed.

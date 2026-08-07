@@ -8,260 +8,166 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
-const source = readFileSync(
-  new URL('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs', root),
-  'utf8',
-);
+const read = (file) => readFileSync(new URL(file, root), 'utf8');
 const failures = [];
+const requireText = (source, value, label) => {
+  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+};
+const forbidText = (source, value, label) => {
+  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+};
 
-const requireText = (content, value, label) => {
-  if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
-};
-const forbidText = (content, value, label) => {
-  if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
-};
-const between = (content, start, end, label) => {
-  const startIndex = content.indexOf(start);
-  const endIndex = content.indexOf(end, startIndex + start.length);
-  if (startIndex < 0 || endIndex < 0) {
-    failures.push(`${label}: unable to isolate source block`);
-    return '';
+const services = read('crates/rustok-commerce/src/services/mod.rs');
+const facade = read('crates/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
+const retained = read('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
+const cartContract = read('crates/rustok-cart/src/ports.rs');
+const cartOwner = read('crates/rustok-cart/src/owner_ports.rs');
+const doc = read('crates/rustok-commerce/docs/checkout-compensation-cart-context.md');
+const evidenceText = read(
+  'crates/rustok-commerce/contracts/evidence/checkout-cart-compensation-error-safety-source-review.json',
+);
+const evidence = JSON.parse(evidenceText);
+
+requireText(
+  services,
+  '#[path = "checkout_compensation_error_safe.rs"]\nmod checkout_compensation;',
+  'mounted cart-safe compensation facade',
+);
+forbidText(
+  services,
+  '#[path = "checkout_compensation_payment_safe.rs"]\nmod checkout_compensation;',
+  'superseded compensation mount',
+);
+
+for (const marker of [
+  'include!("checkout_compensation_owner_ports.rs");',
+  'use super::rustok_cart_shim as rustok_cart;',
+  'use super::rustok_inventory_shim as rustok_inventory;',
+  'use super::rustok_order_shim as rustok_order;',
+  'use super::rustok_payment_shim as rustok_payment;',
+  'wrap_cart_checkout_port(cart_port)',
+  'pub(crate) fn cart_snapshot(',
+  'pub(crate) fn cart_release(',
+  'BoundaryFacts::cart_snapshot(&request)',
+  'BoundaryFacts::cart_release(&request)',
+  '.read_cart_checkout_snapshot(context, request)',
+  '.release_cart_checkout(context, request)',
+]) requireText(facade, marker, 'cart-safe facade topology');
+
+for (const marker of [
+  'owner: "rustok_cart"',
+  'operation: "read_cart_checkout_snapshot"',
+  'operation: "release_cart_checkout"',
+  'stage: "read_cart"',
+  'stage: "release_cart"',
+  'boundary: "commerce_checkout_cart_snapshot_compensation_adapter"',
+  'boundary: "commerce_checkout_cart_release_compensation_adapter"',
+  'primary_id_shape: uuid_shape(request.cart_id)',
+  'opaque_text_shape: optional_text_shape(request.locale.as_deref())',
+  'opaque_text_len: request.locale.as_ref().map(|value| value.chars().count())',
+]) requireText(facade, marker, 'bounded cart request facts');
+
+for (const marker of [
+  '"Checkout cart compensation request is invalid"',
+  '"Checkout cart compensation resource was not found"',
+  '"Checkout cart compensation conflicts with the current cart state"',
+  '"Checkout cart compensation is not permitted"',
+  '"Checkout cart compensation service is temporarily unavailable"',
+  '"Checkout cart compensation could not be completed safely"',
+]) requireText(facade, marker, 'static cart public message');
+
+for (const marker of [
+  'kind: error.kind',
+  'code: error.code',
+  'retryable: error.retryable',
+  'owner_message_present',
+  'owner_message_len',
+  'tenant_id_shape',
+  'actor_id_shape',
+  'correlation_id_shape',
+  'causation_id_shape',
+  'traceparent_shape',
+  'idempotency_key_shape',
+  'struct DiagnosticError;',
+  'formatter.write_str("redacted")',
+]) requireText(facade, marker, 'bounded cart error diagnostics');
+
+for (const marker of [
+  'error = ?error',
+  'internal_message = %error.message',
+  'correlation_id = %context.correlation_id',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'idempotency_key = ?context.idempotency_key',
+]) forbidText(facade, marker, 'raw mounted cart diagnostics');
+
+const cartSuppressions = facade.match(/&& \$owner != "rustok_cart"/g) ?? [];
+if (cartSuppressions.length !== 2) {
+  failures.push(`expected two cart compatibility-log suppressions, found ${cartSuppressions.length}`);
+}
+
+for (const marker of [
+  'async fn read_cart_checkout_snapshot(',
+  'async fn release_cart_checkout(',
+]) requireText(cartContract, marker, 'canonical cart contract');
+for (const marker of [
+  'READ_CART_CHECKOUT_SNAPSHOT_OPERATION',
+  'RELEASE_CART_CHECKOUT_OPERATION',
+  'PortError::validation("cart.validation", "cart request is invalid")',
+  'PortError::not_found("cart.cart_not_found", "cart was not found")',
+]) requireText(cartOwner, marker, 'cart owner boundary');
+
+for (const marker of [
+  'self.release_remaining_reservations(tenant_id, operation)',
+  'self.release_cart(tenant_id, operation)',
+  'read_cart_checkout_snapshot(',
+  'release_cart_checkout(',
+  'CartStatus::CheckingOut',
+  'CartStatus::Active => {}',
+  'CartStatus::Completed',
+  'CartStatus::Abandoned',
+  'let message = compensation.to_string();',
+  'mark_compensation_retryable(',
+]) requireText(retained, marker, 'retained compensation behavior');
+
+for (const marker of [
+  'Status: **source-reviewed / unvalidated**',
+  'No tests, Node verifiers, Cargo commands',
+]) requireText(doc, marker, 'truthful cart documentation');
+
+if (evidence.status !== 'commerce_checkout_cart_compensation_error_safety_source_reviewed_unvalidated') {
+  failures.push(`unexpected evidence status: ${evidence.status}`);
+}
+for (const [key, expected] of Object.entries({
+  mounted_combined_payment_order_inventory_cart_facade_active: true,
+  retained_compensation_business_logic_changed: false,
+  constructor_cart_port_wrapped: true,
+  cart_snapshot_path_wrapped: true,
+  cart_release_path_wrapped: true,
+  cart_owner_message_public: false,
+  cart_owner_message_persisted: false,
+  raw_cart_context_values_logged: false,
+  raw_cart_request_values_logged: false,
+  legacy_cart_diagnostic_suppressed: true,
+  cart_lifecycle_behavior_changed: false,
+  broad_ecommerce_cleanup_closed: false,
+  runtime_evidence_claimed: false,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(`evidence source_contract.${key} must be ${expected}`);
   }
-  return content.slice(startIndex, endIndex);
-};
-
-const orchestrationBlock = between(
-  source,
-  '    async fn compensate_claimed(',
-  '    async fn compensate_payment(',
-  'compensation orchestration block',
-);
-const paymentBlock = between(
-  source,
-  '    async fn compensate_payment(',
-  '    async fn compensate_order(',
-  'payment compensation block',
-);
-const orderBlock = between(
-  source,
-  '    async fn compensate_order(',
-  '    async fn release_remaining_reservations(',
-  'order compensation block',
-);
-const inventoryBlock = between(
-  source,
-  '    async fn release_remaining_reservations(',
-  '    async fn release_cart(',
-  'inventory release block',
-);
-const cartBlock = between(
-  source,
-  '    async fn release_cart(',
-  '\n}\n\nfn cart_status(',
-  'cart release block',
-);
-const cartStatusBlock = between(
-  source,
-  'fn cart_status(',
-  'fn inventory_context(',
-  'cart status helper',
-);
-const cartContextBlock = between(
-  source,
-  'fn cart_context(',
-  'fn order_context(',
-  'cart context helper',
-);
-const ownerMapper = between(
-  source,
-  'fn owner_boundary_error(',
-  'fn boundary_error(',
-  'owner boundary mapper',
-);
-const boundaryMapper = between(
-  source,
-  'fn boundary_error(',
-  'fn compensation_error_code(',
-  'generic boundary mapper',
-);
-
-for (const [value, label] of [
-  ['PortErrorKind', 'typed port error classification import'],
-  [
-    'const CHECKOUT_COMPENSATION_OWNER_BOUNDARY: &str = "checkout_compensation_owner_port";',
-    'stable compensation owner boundary',
-  ],
-  ['const CART_COMPENSATION_OWNER: &str = "rustok_cart";', 'truthful cart owner'],
-  [
-    'const CART_SNAPSHOT_OPERATION: &str = "read_cart_checkout_snapshot";',
-    'exact cart snapshot operation',
-  ],
-  [
-    'const CART_RELEASE_OPERATION: &str = "release_cart_checkout";',
-    'exact cart release operation',
-  ],
-]) requireText(source, value, label);
-
-for (const [value, label] of [
-  ['let cart_read_context =', 'retained cart read context'],
-  ['cart_context(tenant_id, operation, self.port_deadline, "read", false)', 'cart read context construction'],
-  ['cart_read_context.clone()', 'cart read context delegation clone'],
-  ['&cart_read_context', 'cart read context mapper input'],
-  ['CART_COMPENSATION_OWNER', 'cart read mapper owner'],
-  ['CART_SNAPSHOT_OPERATION', 'cart snapshot mapper operation'],
-  ['"read_cart"', 'cart read commerce stage'],
-  ['CartCheckoutSnapshotRequest {', 'cart snapshot request'],
-  ['cart_id: operation.cart_id', 'cart snapshot identity'],
-  ['locale: None', 'cart snapshot locale request'],
-  ['let cart_release_context =', 'retained cart release context'],
-  ['cart_context(tenant_id, operation, self.port_deadline, "release", true)', 'cart release context construction'],
-  ['cart_release_context.clone()', 'cart release context delegation clone'],
-  ['&cart_release_context', 'cart release context mapper input'],
-  ['CART_RELEASE_OPERATION', 'cart release mapper operation'],
-  ['"release_cart"', 'cart release commerce stage'],
-  ['CartCheckoutLifecycleRequest {', 'cart release request'],
-  ['CartStatus::CheckingOut', 'checking-out release admission'],
-  ['CartStatus::Active => {}', 'active cart no-op'],
-  ['CartStatus::Completed', 'completed cart reconciliation'],
-  ['CartStatus::Abandoned', 'abandoned cart conflict'],
-  ['cart_status(&released)? != CartStatus::Active', 'released cart active validation'],
-]) requireText(cartBlock, value, label);
-
-const readBindings = cartBlock.match(/let cart_read_context\s*=/g) ?? [];
-const readClones = cartBlock.match(/cart_read_context\.clone\(\)/g) ?? [];
-const readMapperInputs = cartBlock.match(/&cart_read_context/g) ?? [];
-const releaseBindings = cartBlock.match(/let cart_release_context\s*=/g) ?? [];
-const releaseClones = cartBlock.match(/cart_release_context\.clone\(\)/g) ?? [];
-const releaseMapperInputs = cartBlock.match(/&cart_release_context/g) ?? [];
-if (readBindings.length !== 1 || readClones.length !== 1 || readMapperInputs.length !== 1) {
-  failures.push(
-    `expected one retained cart read context, one clone, and one mapper input, found ${readBindings.length}/${readClones.length}/${readMapperInputs.length}`,
-  );
 }
-if (
-  releaseBindings.length !== 1 ||
-  releaseClones.length !== 1 ||
-  releaseMapperInputs.length !== 1
-) {
-  failures.push(
-    `expected one retained cart release context, one clone, and one mapper input, found ${releaseBindings.length}/${releaseClones.length}/${releaseMapperInputs.length}`,
-  );
+for (const [key, value] of Object.entries(evidence.validation ?? {})) {
+  if (value !== false) failures.push(`evidence validation.${key} must remain false`);
 }
-
-for (const [value, label] of [
-  ['PortActor::service("rustok-commerce.checkout-compensation")', 'cart service actor'],
-  ['PLATFORM_FALLBACK_LOCALE', 'cart effective locale'],
-  ['checkout:{}:compensation:cart:{action}', 'cart correlation identity'],
-  ['.with_causation_id(operation.id.to_string())', 'cart causation'],
-  ['.with_deadline(deadline)', 'cart deadline'],
-  ['if write {', 'cart write semantics branch'],
-  ['.with_idempotency_key(format!(', 'cart release idempotency key'],
-]) requireText(cartContextBlock, value, label);
-
-for (const [value, label] of [
-  ['context: &PortContext', 'retained context input'],
-  ["owner: &'static str", 'owner input'],
-  ["operation: &'static str", 'owner operation input'],
-  ["stage: &'static str", 'commerce stage input'],
-  ['error: PortError', 'original port error input'],
-  [
-    'log_owner_boundary_error(context, owner, operation, stage, &error);',
-    'diagnostics before mapping',
-  ],
-  ['fn log_owner_boundary_error(', 'structured diagnostic helper'],
-  ['error = ?error', 'original port error'],
-  ['owner = owner', 'truthful dynamic owner'],
-  ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['channel = ?context.channel', 'channel context'],
-  ['locale = %context.locale', 'locale context'],
-  ['causation_id = ?context.causation_id', 'causation context'],
-  ['traceparent = ?context.traceparent', 'trace context'],
-  ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
-  ['operation = operation', 'exact owner operation field'],
-  ['stage = stage', 'commerce stage field'],
-  ['code = %error.code', 'original port code'],
-  ['internal_message = %error.message', 'original public-safe port message'],
-  ['error_kind = ?error.kind', 'typed port error kind'],
-  ['retryable = error.retryable', 'original retryability'],
-  ['boundary = CHECKOUT_COMPENSATION_OWNER_BOUNDARY', 'boundary field'],
-  [
-    'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
-    'technical severity classification',
-  ],
-  ['tracing::error!(', 'technical error severity'],
-  ['tracing::warn!(', 'ordinary rejection severity'],
-]) requireText(ownerMapper, value, label);
-
-const diagnosticIndex = ownerMapper.indexOf(
-  'log_owner_boundary_error(context, owner, operation, stage, &error);',
-);
-const manualRoutingIndex = ownerMapper.indexOf('if matches!(');
-const boundaryDelegationIndex = ownerMapper.indexOf('boundary_error(stage, error)');
-if (
-  !(
-    diagnosticIndex >= 0 &&
-    diagnosticIndex < manualRoutingIndex &&
-    manualRoutingIndex < boundaryDelegationIndex
-  )
-) {
-  failures.push('cart owner diagnostics must precede unchanged owner routing and boundary mapping');
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  failures.push('evidence execution must remain empty');
 }
-
-for (const [value, label] of [
-  ['ORDER_MANUAL_RECONCILIATION_CODE | PAYMENT_MANUAL_RECONCILIATION_CODE', 'manual routing remains payment/order only'],
-  ['boundary_error(stage, error)', 'cart generic boundary delegation'],
-]) requireText(ownerMapper, value, label);
-
-for (const [value, label] of [
-  ['CheckoutCompensationError::Boundary {', 'stable boundary envelope'],
-  ['stage,', 'stable boundary stage'],
-  ['code: error.code', 'stable boundary code'],
-  ['message: error.message', 'stable boundary message'],
-  ['retryable: error.retryable', 'stable boundary retryability'],
-]) requireText(boundaryMapper, value, label);
-
-for (const [value, label] of [
-  ['cart.lifecycle_status()', 'typed cart lifecycle conversion'],
-  ['cart {} has an unknown lifecycle state', 'unknown lifecycle reconciliation'],
-]) requireText(cartStatusBlock, value, label);
-
-for (const [value, label] of [
-  ['self.compensate_payment(tenant_id, actor_id, operation)', 'payment-first orchestration'],
-  ['self.compensate_order(tenant_id, actor_id, operation)', 'order-second orchestration'],
-  ['self.release_remaining_reservations(tenant_id, operation)', 'inventory-third orchestration'],
-  ['self.release_cart(tenant_id, operation)', 'cart-fourth orchestration'],
-]) requireText(orchestrationBlock, value, label);
-
-for (const [content, value, label] of [
-  [paymentBlock, 'compensate_checkout_payment(', 'payment compensation remains mounted'],
-  [orderBlock, 'compensate_checkout_order(', 'order compensation remains mounted'],
-  [inventoryBlock, 'release_inventory_by_identity(', 'inventory release remains mounted'],
-]) requireText(content, value, label);
-
-for (const [value, label] of [
-  [
-    'read_cart_checkout_snapshot(\n                cart_context(tenant_id, operation, self.port_deadline, "read", false)',
-    'inline cart read context delegation',
-  ],
-  [
-    'release_cart_checkout(\n                        cart_context(tenant_id, operation, self.port_deadline, "release", true)',
-    'inline cart release context delegation',
-  ],
-  ['.map_err(|error| boundary_error("read_cart", error))?', 'context-dropping cart read mapper'],
-  ['.map_err(|error| boundary_error("release_cart", error))?', 'context-dropping cart release mapper'],
-  ['owner_boundary_error("read_cart", error)', 'legacy cart read owner mapper'],
-  ['owner_boundary_error("release_cart", error)', 'legacy cart release owner mapper'],
-]) forbidText(cartBlock, value, label);
 
 if (failures.length > 0) {
-  console.error('Checkout compensation cart context verification failed:');
+  console.error('Checkout cart compensation error-safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log(
-  '✔ Checkout cart compensation retains snapshot and release owner context without changing public envelopes',
-);
+console.log('✔ Checkout cart compensation errors are source-guarded behind bounded Commerce adapters');

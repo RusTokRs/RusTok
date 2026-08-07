@@ -4,6 +4,7 @@ use crate::{
     error::CommerceResult,
     services::index_refresh::{
         product_locale_refresh_target, record_product_locale_refreshes_in_tx,
+        record_product_variant_refreshes_in_tx,
     },
 };
 use rustok_events::DomainEvent;
@@ -48,10 +49,17 @@ impl ProductWriteTransaction {
             .await?;
 
         if let Some(product_id) = product_id {
-            // Capture the exact post-command Product source state in the same
-            // transaction as the durable root event. Any source/ledger failure
-            // rolls back both the owner mutation and its event publication.
+            // Capture the exact post-command Product and ProductVariant source state.
+            // Any source/ledger failure rolls back both the owner mutation and its event publication.
+            // The same atomic boundary includes both refresh ledgers.
             record_product_locale_refreshes_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
+                root_event_id,
+            )
+            .await?;
+            record_product_variant_refreshes_in_tx(
                 &self.transaction,
                 tenant_id,
                 product_id,

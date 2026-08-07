@@ -5,8 +5,11 @@
     "crates/rustok-commerce/src/services/checkout_payment_stages.rs",
     "crates/rustok-commerce/src/services/checkout_payment_stages_legacy.rs",
     "crates/rustok-commerce/src/services/staged_checkout.rs",
+    "crates/rustok-commerce/src/services/checkout_operation.rs",
+    "crates/rustok-commerce/src/services/recovering_staged_checkout.rs",
     "crates/rustok-commerce/docs/checkout-payment-stage-context.md",
     "scripts/verify/verify-commerce-checkout-payment-stage-context.mjs",
+    "scripts/verify/verify-commerce-staged-checkout-payment-retry-disposition.mjs",
     "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
     "scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs"
   ],
@@ -35,7 +38,15 @@
     "typed_lifecycle_guard_updated": true,
     "successful_dtos_changed": false,
     "checkpoint_order_changed": false,
-    "failure_disposition_changed": false,
+    "failure_disposition_changed": true,
+    "retryable_payment_boundary_disposition_retryable": true,
+    "non_retryable_payment_boundary_disposition_compensation_required": true,
+    "retryable_payment_boundary_synchronous_compensation": false,
+    "operation_journal_implementation_changed": false,
+    "recovery_service_implementation_changed": false,
+    "payment_stage_execution_changed": false,
+    "payment_stage_error_code_mapping_changed": false,
+    "source_tests_added": true,
     "http_contract_changed": false,
     "graphql_contract_changed": false,
     "native_contract_changed": false,
@@ -51,11 +62,13 @@
     "format_run": false,
     "provider_calls_run": false,
     "database_scenarios_run": false,
+    "restart_scenarios_run": false,
+    "remote_port_scenarios_run": false,
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
     "runtime_proven": false
   },
   "execution": [],
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, provider calls, database scenarios, workflows, or CI were executed."
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, provider calls, database scenarios, restart scenarios, remote-port scenarios, workflows, or CI were executed."
 }

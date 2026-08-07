@@ -113,6 +113,32 @@ pub struct PublishPageResult {
     pub published_at: String,
 }
 
+/// Explicit tenant-admin request to rebuild one immutable artifact source without switching bindings.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RebuildPageArtifactInput {
+    pub source_id: Uuid,
+    pub expected_provenance_hash: String,
+    pub idempotency_key: String,
+    pub runtime: ReviewedPagePublishRuntimeInput,
+}
+
+/// Durable receipt for one append-only immutable artifact rebuild.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RebuildPageArtifactResult {
+    pub operation_id: Uuid,
+    pub page_id: Uuid,
+    pub source_id: Uuid,
+    pub source_publish_operation_id: Uuid,
+    pub locale: String,
+    pub source_artifact_id: Uuid,
+    pub rebuilt_artifact_id: Uuid,
+    pub artifact_instance_key: String,
+    pub artifact_hash: String,
+    pub materialization_hash: String,
+    pub replayed: bool,
+    pub rebuilt_at: String,
+}
+
 /// Idempotent command that restores the previous distinct immutable publish artifact set.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RollbackPageInput {

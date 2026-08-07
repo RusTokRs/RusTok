@@ -1,8 +1,10 @@
 mod artifact_integrity_audit;
+mod artifact_repair;
 #[cfg(feature = "inline-edit-assets")]
 mod inline_edit_assets;
 
 pub use artifact_integrity_audit::{__path_audit_page_artifacts, audit_page_artifacts};
+pub use artifact_repair::{activate_rebuilt_page_artifact, rebuild_page_artifact};
 
 use anyhow::Context;
 use axum::{
@@ -123,7 +125,8 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .with_state(publish_runtime);
     let router = crate::controllers::axum_router(runtime)?
         .merge(publish_router)
-        .merge(artifact_integrity_audit::router(runtime)?);
+        .merge(artifact_integrity_audit::router(runtime)?)
+        .merge(artifact_repair::router(runtime)?);
     #[cfg(feature = "inline-edit-assets")]
     let router = router.merge(inline_edit_assets::router());
     Ok(router)

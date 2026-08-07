@@ -19,6 +19,8 @@ const files = {
   ports: "crates/rustok-order/src/ports.rs",
   orderLib: "crates/rustok-order/src/lib.rs",
 };
+const legacyStageFile =
+  "crates/rustok-commerce/src/services/checkout_order_stages_legacy.rs";
 
 const requireMarker = (failures, source, marker, file) => {
   if (!source.includes(marker)) failures.push(`${file}: missing ${marker}`);
@@ -33,7 +35,32 @@ export function verifyCommerceCheckoutCompletionCutover({ root = defaultRoot } =
   const sources = Object.fromEntries(
     Object.entries(files).map(([key, file]) => [key, read(file)]),
   );
+  const stageFacade = sources.stage;
+  const legacyStagePath = path.join(root, legacyStageFile);
+  const legacyStage = fs.existsSync(legacyStagePath) ? read(legacyStageFile) : "";
+  sources.stage = `${stageFacade}\n${legacyStage}`;
   const failures = [];
+
+  if (legacyStage) {
+    requireMarker(
+      failures,
+      stageFacade,
+      'include!("checkout_order_stages_legacy.rs");',
+      files.stage,
+    );
+    requireMarker(
+      failures,
+      stageFacade,
+      "struct SanitizingCheckoutCompletionPort",
+      files.stage,
+    );
+    requireMarker(
+      failures,
+      stageFacade,
+      "pub struct CheckoutOrderRecoveryAdapter",
+      files.stage,
+    );
+  }
 
   for (const marker of [
     "CheckoutCompletionPort",
@@ -120,7 +147,10 @@ export function verifyCommerceCheckoutCompletionCutover({ root = defaultRoot } =
 
   return {
     status: "ok",
-    checked_files: Object.values(files),
+    checked_files: [
+      ...Object.values(files),
+      ...(legacyStage ? [legacyStageFile] : []),
+    ],
   };
 }
 

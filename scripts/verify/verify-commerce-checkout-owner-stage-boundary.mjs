@@ -13,6 +13,13 @@ const forbidText = (source, value, label) => {
 };
 
 const services = read('crates/rustok-commerce/src/services/mod.rs');
+const orderStageFacade = read(
+  'crates/rustok-commerce/src/services/checkout_order_stages.rs',
+);
+const orderStageLegacy = read(
+  'crates/rustok-commerce/src/services/checkout_order_stages_legacy.rs',
+);
+const orderStage = `${orderStageFacade}\n${orderStageLegacy}`;
 const paymentStageFacade = read(
   'crates/rustok-commerce/src/services/checkout_payment_stages.rs',
 );
@@ -20,15 +27,21 @@ const paymentStageLegacy = read(
   'crates/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
 );
 const paymentStage = `${paymentStageFacade}\n${paymentStageLegacy}`;
-const fulfillmentStage = read(
+const fulfillmentStageFacade = read(
   'crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
 );
+const fulfillmentStageLegacy = read(
+  'crates/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
+);
+const fulfillmentStage = `${fulfillmentStageFacade}\n${fulfillmentStageLegacy}`;
 const pipeline = read(
   'crates/rustok-commerce/src/services/checkout_stage_pipeline_owner_ports.rs',
 );
+const orderCompletionOwner = read('crates/rustok-order/src/ports.rs');
+const orderRecoveryOwner = read('crates/rustok-order/src/checkout_order_recovery.rs');
 const paymentOwner = read('crates/rustok-payment/src/checkout_execution.rs');
 const fulfillmentOwner = read('crates/rustok-fulfillment/src/checkout_execution.rs');
-const orderOwner = read(
+const orderSettlementOwner = read(
   'crates/rustok-order/src/checkout_payment_settlement.rs',
 );
 
@@ -36,6 +49,21 @@ requireText(
   services,
   '#[path = "checkout_stage_pipeline_owner_ports.rs"]',
   'commerce services mount',
+);
+requireText(
+  orderStageFacade,
+  'include!("checkout_order_stages_legacy.rs");',
+  'mounted order-stage facade',
+);
+requireText(
+  orderStageFacade,
+  'struct SanitizingCheckoutCompletionPort',
+  'mounted order completion adapter',
+);
+requireText(
+  orderStageFacade,
+  'pub struct CheckoutOrderRecoveryAdapter',
+  'mounted order recovery/read adapter',
 );
 requireText(
   paymentStageFacade,
@@ -47,7 +75,34 @@ requireText(
   'struct SanitizingCheckoutPaymentExecutionPort',
   'mounted payment-stage owner adapter',
 );
+requireText(
+  fulfillmentStageFacade,
+  'include!("checkout_fulfillment_stages_legacy.rs");',
+  'mounted fulfillment-stage facade',
+);
+requireText(
+  fulfillmentStageFacade,
+  'struct SanitizingCheckoutFulfillmentExecutionPort',
+  'mounted fulfillment-stage owner adapter',
+);
+requireText(
+  fulfillmentStageFacade,
+  'struct SanitizingCheckoutOrderPaymentSettlementPort',
+  'mounted order-settlement owner adapter',
+);
+
 for (const [source, label, required] of [
+  [
+    orderStage,
+    'order stage',
+    [
+      'CheckoutCompletionPort',
+      'CheckoutOrderRecoveryAdapter',
+      'recover_existing_checkout(',
+      'complete_checkout(',
+      'read_checkout_order(',
+    ],
+  ],
   [
     paymentStage,
     'payment stage',
@@ -74,8 +129,9 @@ for (const [source, label, required] of [
     pipeline,
     'mounted pipeline',
     [
-      'payment_stage.load_payment_captured_state',
-      'fulfillment_stage.load_fulfillment_created_state',
+      'self.order_stage\n            .load_payment_ready_state',
+      'self.payment_stage\n            .load_payment_captured_state',
+      'self.fulfillment_stage\n            .load_fulfillment_created_state',
     ],
   ],
 ]) {
@@ -85,6 +141,7 @@ for (const [source, label, required] of [
 }
 
 for (const [source, label] of [
+  [orderStage, 'order stage'],
   [paymentStage, 'payment stage'],
   [fulfillmentStage, 'fulfillment stage'],
   [pipeline, 'mounted pipeline'],
@@ -104,6 +161,12 @@ for (const [source, label] of [
 
 for (const [source, label, port, operation] of [
   [
+    orderCompletionOwner,
+    'order completion owner',
+    'CheckoutCompletionPort',
+    'complete_checkout(',
+  ],
+  [
     paymentOwner,
     'payment owner',
     'CheckoutPaymentExecutionPort',
@@ -116,8 +179,8 @@ for (const [source, label, port, operation] of [
     'create_fulfillment(',
   ],
   [
-    orderOwner,
-    'order owner',
+    orderSettlementOwner,
+    'order settlement owner',
     'CheckoutOrderPaymentSettlementPort',
     'mark_paid(',
   ],
@@ -126,6 +189,14 @@ for (const [source, label, port, operation] of [
   requireText(source, operation, label);
   requireText(source, 'require_policy(PortCallPolicy::', label);
 }
+
+for (const [value, label] of [
+  ['pub struct CheckoutOrderRecoveryAdapter', 'order recovery adapter'],
+  ['recover_existing_checkout(', 'order recovery operation'],
+  ['read_checkout_order(', 'order recovery read operation'],
+  ['context.require_policy(PortCallPolicy::write())?;', 'order recovery write policy'],
+  ['context.require_policy(PortCallPolicy::read())?;', 'order recovery read policy'],
+]) requireText(orderRecoveryOwner, value, label);
 
 for (const key of [
   'payment_collection:{}:authorize',
@@ -151,5 +222,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Checkout payment, fulfillment, order settlement, and pipeline recovery use owner boundaries',
+  '✔ Checkout order, payment, fulfillment, order settlement, and pipeline recovery use sanitized owner boundaries',
 );

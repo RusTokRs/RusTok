@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-08-06
+last_reviewed: 2026-08-07
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -66,7 +66,7 @@ must not copy that owner's source-of-truth data or read its private tables.
 | Public handle, display name, biography, locale and profile privacy | `rustok-profiles` | Batch summaries and compose Forum statistics. |
 | Avatar/banner and all binary asset lifecycle | `rustok-media` | Store typed media references and attachment policy only. |
 | Follow/block relationship facts | `rustok-social-graph` and profile privacy ports | Request exact bounded facts; never read relation tables. |
-| Reaction catalog, actor reactions and aggregate reaction counts | `rustok-reactions` | Publish Forum subject adapter, authorization, events and UI composition. |
+| Reaction catalog, actor reactions and aggregate reaction counts | `rustok-reactions` | Publish Forum subject adapter and authorization; consume permitted semantic facts and compose UI. |
 | Cross-domain reputation ledger and achievements/badges | planned `rustok-reputation` / achievement capability | Publish semantic facts and display permitted projections. |
 | Reports, cases, queues, decisions, appeals and cross-domain audit | `rustok-moderation` through `rustok-moderation-api` | Report subjects and apply validated effects to Forum state. |
 | Notification inbox, fan-out, grouping, preferences, digests and deliveries | `rustok-notifications` | Publish source events/providers and authorize current targets. |
@@ -108,16 +108,18 @@ integrate them instead of cloning their data models.
 
 The Reactions owner now has neutral bounded API contracts, unique source
 provider/factory registries, PostgreSQL/SQLite-compatible tenant-composite
-persistence, immutable catalog snapshots, shared Outbox command receipts and
-atomic actor-state/aggregate updates. Forum publishes a source-ready
-`topic`/`reply` provider factory with exact active-state, visibility and current-
-revision authorization plus a bounded single-`like` v1 catalog. Optional owner
-selection and host materialization are source-ready in the distribution and
-server, after Forum audience and recipient-context providers. The server now has
-executable source evidence for all three optional profiles plus the selected-
-feature/missing-owner failure. Maintainer lockfile generation and retained
-execution evidence remains pending. No reaction event/reconciliation layer,
-transport or UI exists yet.
+persistence, immutable catalog snapshots, shared Outbox command receipts,
+atomic actor-state/aggregate updates, sealed semantic reaction events and
+bounded aggregate reconciliation. Forum publishes a source-ready `topic`/`reply`
+provider factory with exact active-state, visibility and current-revision
+authorization plus a bounded single-`like` v1 catalog. Blog now supplies the
+second real producer through the same neutral SPI using Blog-owned publication,
+channel visibility and owner version, with a Blog+Reactions composition profile
+in source. Optional owner selection, host materialization and executable source
+evidence are source-ready. A bounded manifest-composed GraphQL read/write
+transport over the neutral Reactions ports is also source-ready. Maintainer
+lockfile/event-digest generation and retained owner/provider/schema/runtime
+evidence remain pending; module-owned reaction UI does not yet exist.
 
 ## Program ledger
 
@@ -141,7 +143,7 @@ transport or UI exists yet.
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`. Finish member-card composition, privacy/block behavior, Forum-stat enrichment and no-N+1 evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
-| `FORUM-18` | `in_progress` | Neutral API, owner selection/persistence, shared receipts, atomic aggregates, Forum provider, host materialization and executable composition-profile tests are source-ready. Regenerate `Cargo.lock`, retain owner/profile runs, then add events/reconciliation, transports/UI and runtime proof; Forum votes remain separate. |
+| `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source and bounded GraphQL read/write transport are ready. Regenerate `Cargo.lock` and event digests, retain owner/event/repair/Forum+Blog/GraphQL runtime evidence, then add module-owned UI and final runtime proof; Forum votes remain separate. |
 | `FORUM-19` | `planned` | Integrate `rustok-moderation-api` subject/effect adapters and Forum-local restrictions. Moderation owns cases and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
@@ -193,34 +195,59 @@ revisioned reconciled projection. Forum never stores copied profile source data.
 
 Existing Forum votes remain Forum semantics and must be hardened independently.
 `rustok-reactions` owns reusable reaction catalogs, actor state, shared-receipt
-command execution and aggregate projections. Forum owns topic/reply existence,
-current revision, visibility and reaction-policy authorization through its
-provider.
+command execution, aggregate projections, semantic reaction events and bounded
+aggregate repair. Forum owns topic/reply existence, current revision, visibility
+and reaction-policy authorization through its provider.
 
 The Forum provider factory supports `topic` and `reply`, checks tenant/source/
 kind, active soft-delete state, approved/open lifecycle and the existing rich
 audience visibility service, and returns one bounded single-selection `like`
-catalog. Its current revision is `latest captured Forum revision id + 1`, so the
-identity advances with captured topic translation/metadata and reply-body edits.
-Missing and denied targets share one `Unavailable` result; revision conflict is
-returned only after current visibility succeeds. Delegated service/system access
-uses the existing exact recipient-context port rather than inventing profile or
-authority storage.
+catalog. The `topic`/`reply` provider factory current revision is
+`latest captured Forum revision id + 1`, so the identity advances with captured
+topic translation/metadata and reply-body edits. Missing and denied targets
+share one `Unavailable` result; revision conflict is returned only after current
+visibility succeeds. Delegated service/system access uses the existing exact
+recipient-context port rather than inventing profile or authority storage.
 
 Forum registers only the neutral provider factory and depends only on the API
 crate through an explicit path. It does not depend on the Reactions owner and
-does not add Reactions to Forum module dependencies. The optional `mod-reactions`
-feature selects the owner independently in the distribution/server, remains
-outside defaults, and materializes the Forum provider only after host audience
-and recipient-context facts exist.
+does not add Reactions to Forum module dependencies. The optional
+`mod-reactions` feature selects the owner independently in the
+distribution/server, remains outside defaults, and materializes the Forum
+provider only after host audience and recipient-context facts exist. This is the
+optional owner selection and host materialization boundary.
 
 The Reactions-disabled Forum composition remains valid: Forum commands and reads
 continue without owner storage or a materialized reaction registry. Reactions
-without Forum materializes an empty source registry; Forum with Reactions
-materializes the `forum` source with `topic` and `reply` kinds. The public server
-composition entrypoint now has executable tests for each profile and for the
-selected-feature/missing-owner startup failure. Retained execution evidence
-remains pending.
+without Forum or Blog materializes an empty source registry; Forum with Reactions
+materializes the `forum` source with `topic` and `reply` kinds. Blog is the
+second real producer and materializes the `blog` source with `post` while using
+Blog-owned positive version, `published` lifecycle and typed channel visibility.
+Forum and Blog both depend only on the neutral API, so no producer implies the
+Reactions owner. Executable source evidence exists for these profiles and the
+selected-feature/missing-owner failure, but retained execution evidence remains
+pending.
+
+A changed Reactions command commits actor state, aggregate deltas, one sealed
+`reactions.actor_state.changed` event and its completed owner receipt atomically.
+No-op and receipt replay do not publish another fact. Reactions repair is bounded
+to one exact stored subject and rebuilds only aggregate projection rows from
+valid actor selections under the immutable current catalog. Missing/corrupt
+catalog or actor-state corruption blocks repair; the repair never mutates Forum
+content, visibility, lifecycle, votes or producer-private state.
+
+The first Reactions transport slice is manifest-composed GraphQL over the
+existing neutral read/write ports. Tenant comes only from `TenantContext`;
+subject source/kind/UUID/revision remain caller input, while actor identity is
+never accepted from the caller. Anonymous reads request public state only,
+authenticated human reads may include their actor state, and writes require a
+human-user principal. The mutation command UUID is also the owner idempotency
+key. Producer visibility, lifecycle, revision and catalog decisions remain in
+Forum/Blog providers, and GraphQL does not read producer-private storage.
+Positive revisions and aggregate counts are exposed as decimal strings to avoid
+GraphQL integer-width truncation. This is source-ready transport foundation, not
+a frozen presentation contract; retained schema/runtime evidence and
+module-owned Reactions UI remain.
 
 Reputation and achievements remain separate shared capabilities consuming
 semantic facts. Forum trust remains Forum-owned because it controls Forum
@@ -247,10 +274,11 @@ Hosts register/mount packages and do not absorb policy.
 2. Reactions owner persistence/atomic aggregates: source-ready, lockfile and runtime evidence pending.
 3. Forum `topic`/`reply` provider factory and disabled Forum profile: source-ready, maintainer verification pending.
 4. Optional distribution/server selection and host materialization after Forum facts: source-ready, maintainer verification pending.
-5. Executable source evidence for all profiles: source-ready; retain the four maintainer runs and lockfile delta.
-6. Add semantic events/reconciliation and a second producer before freezing shared presentation contracts.
-7. Introduce Reputation/Achievements only after at least two producers agree.
-8. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
+5. Executable composition profiles, sealed semantic reaction events and bounded aggregate reconciliation: source-ready; retain execution, rollback, replay and repair evidence.
+6. Second producer and neutral-contract review: Blog `post` source and Blog+Reactions composition profile are source-ready; retain provider/host execution evidence before freezing shared presentation contracts.
+7. Bounded Reactions GraphQL transport: source-ready over neutral owner ports; retain schema/runtime execution evidence, then add module-owned UI without moving producer policy into transport.
+8. Introduce Reputation/Achievements only after at least two producers agree.
+9. Integrate Forum with `rustok-moderation-api`; never add Forum case queues.
 
 ### Track 2 — close existing Forum work
 
@@ -281,9 +309,17 @@ Hosts register/mount packages and do not absorb policy.
 - Reactions owner tables contain no Forum routes, content, visibility or copied
   profile data.
 - Forum's neutral Reactions API dependency does not make the Reactions owner a
-  required Forum module dependency.
+  required Forum module dependency; the same boundary is now proven by Blog as
+  a second producer.
 - Selecting `mod-reactions` without registering `ReactionsModule` is a startup
   configuration error, not an implicit empty owner.
+- Reactions GraphQL derives tenant and actor scope from trusted request context;
+  it does not accept caller-supplied tenant/actor identity or duplicate producer
+  authorization in transport code.
+- Reactions semantic event envelope identity is the admitted owner-operation
+  UUID; it is not a Forum route/revision/vote identity.
+- Reactions bounded reconciliation repairs aggregate projection only and cannot
+  mutate Forum-owned subjects or reinterpret Forum votes.
 
 ## Required verification
 
@@ -292,23 +328,29 @@ node scripts/verify/verify-forum-shared-capability-ownership.mjs
 node scripts/verify/verify-reactions-foundation.mjs
 node scripts/verify/verify-reactions-owner-persistence.mjs
 node scripts/verify/verify-forum-reaction-subject-provider.mjs
+node scripts/verify/verify-blog-reaction-subject-provider.mjs
 node scripts/verify/verify-reactions-host-composition.mjs
 node scripts/verify/verify-reactions-composition-profiles.mjs
+node scripts/verify/verify-reactions-events-reconciliation.mjs
+cargo test -p rustok-events reactions
 cargo test -p rustok-reactions-api
 cargo test -p rustok-reactions
+cargo test -p rustok-reactions --features graphql graphql
 cargo test -p rustok-forum reaction_subject
+cargo test -p rustok-blog reaction_subject
+cargo check -p rustok-reactions --features graphql --all-targets
 cargo check -p rustok-distribution --features "mod-forum mod-reactions"
-cargo test -p rustok-server --no-default-features --features mod-forum --test reactions_composition_profiles forum_without_reactions_keeps_forum_host_composition_available
-cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles reactions_without_forum_materializes_an_empty_subject_registry
-cargo test -p rustok-server --no-default-features --features mod-reactions --test reactions_composition_profiles selected_reactions_feature_fails_when_owner_module_is_missing
-cargo test -p rustok-server --no-default-features --features "mod-forum mod-reactions" --test reactions_composition_profiles forum_with_reactions_materializes_topic_and_reply_provider
+cargo check -p rustok-server --no-default-features --features mod-reactions
+cargo check -p rustok-server --no-default-features --features "mod-forum mod-reactions"
+cargo test -p rustok-server --no-default-features --features "mod-blog mod-reactions" --test reactions_composition_profiles blog_with_reactions_materializes_post_provider
+cargo run -p rustok-events --example event_contract_digests -- --write
 cargo xtask module validate forum
 npm run verify:forum:admin-boundary
 npm run verify:forum:storefront-boundary
 git diff --check
 ```
 
-Tests, lockfile generation and retained runtime evidence are maintainer-run.
+Tests, lockfile/event-digest generation and runtime evidence are maintainer-run.
 Source contracts do not promote runtime status.
 
 ## Release gates
@@ -330,6 +372,11 @@ runtime claims without retained executable evidence.
 
 ## Immediate next action
 
-Retain the four composition-profile runs and regenerate `Cargo.lock`. Then add
-transactional semantic reaction events and bounded reconciliation before any
-transport or UI slice.
+Regenerate the event-contract digests and `Cargo.lock`, then retain SQLite and
+PostgreSQL evidence for changed/no-op/replayed reaction event cardinality,
+rollback on event failure, concurrent actor writes, clean/blocked/drift bounded
+aggregate reconciliation and repair receipt replay. Retain Blog provider and
+Blog+Reactions composition evidence plus manifest-composed GraphQL schema/runtime
+evidence for anonymous/authenticated reads, human-user writes, tenant mismatch,
+idempotent replay and stale/denied subjects. Then add module-owned Reactions UI
+without moving producer-owned visibility or lifecycle into Reactions.

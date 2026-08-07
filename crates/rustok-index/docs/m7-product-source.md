@@ -74,10 +74,21 @@ This proof is separate from ordinary targeted load and is consumed only by bound
 capture. Tombstoned locales remain ordinary `Delete` mutations; unknown Product identities remain
 non-authoritative.
 
+## Persisted tenant readiness
+
+The generic [`M7 tenant schema readiness gate`](./m7-schema-readiness.md) is source complete. It can
+require the exact selected Product/ProductVariant/SalesChannel schema set for one tenant against the
+immutable runtime registry and persisted `index_schemas` rows. Missing, inactive, fingerprint-drifted,
+or schema-JSON-drifted contracts fail the complete readiness request closed.
+
+The readiness gate does not apply missing schemas automatically and does not authorize cutover by
+itself. Owner verification and the remaining replay/equivalence/freshness admission still apply.
+
 ## Explicitly open
 
-- production mutation-event routes and concrete broker consumer wiring;
-- persisted per-tenant schema readiness;
+- production Product/ProductVariant mutation-event routes and concrete broker consumer wiring after
+  canonical event-contract digest admission;
+- owner execution/evidence for the persisted tenant schema readiness gate;
 - complete durable Product-to-SalesChannel relation semantics;
 - tombstone purge admission and retained retention evidence;
 - real PostgreSQL replay, restart, absence-diagnosis, freshness, and equivalence evidence;
@@ -93,6 +104,7 @@ The implementation agent did not run commands. The repository owner should run:
 ```bash
 node scripts/verify/verify-index-product-source.mjs
 node scripts/verify/verify-index-product-graph-source.mjs
+node scripts/verify/verify-index-schema-readiness.mjs
 node scripts/verify/verify-index-source-absence-watermark.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets

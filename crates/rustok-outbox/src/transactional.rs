@@ -117,6 +117,47 @@ impl TransactionalEventBus {
         OutboxTransport::write_contract_envelope_once_in_tx(txn, envelope).await
     }
 
+    /// Writes one caused sealed contract exactly once using an existing owner
+    /// identity as the canonical envelope UUID.
+    ///
+    /// Exact replay requires the same non-nil causal predecessor in addition to
+    /// envelope scope and typed payload. Reusing the envelope UUID with another
+    /// causation UUID is a conflict. Delivery still starts only after the owner
+    /// transaction commits and remains owned by `OutboxRelay`.
+    pub async fn publish_contract_once_direct_in_tx_with_envelope_id_and_causation<C, E>(
+        txn: &C,
+        envelope_id: Uuid,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        causation_id: Uuid,
+        event: E,
+    ) -> std::result::Result<Uuid, ContractEventWriteOnceError>
+    where
+        C: ConnectionTrait,
+        E: EventContract,
+    {
+        let event_type = event.event_type();
+        let envelope = ContractEventEnvelope::new_with_envelope_id_and_causation(
+            envelope_id,
+            tenant_id,
+            actor_id,
+            causation_id,
+            event,
+        )
+        .map_err(|error| {
+            tracing::error!(
+                envelope_id = %envelope_id,
+                causation_id = %causation_id,
+                event_type,
+                error = %error,
+                "Canonical caused contract write-once envelope construction failed"
+            );
+            ContractEventWriteOnceError::Unavailable
+        })?;
+
+        OutboxTransport::write_contract_envelope_once_in_tx(txn, envelope).await
+    }
+
     pub async fn publish_in_tx<C>(
         &self,
         txn: &C,

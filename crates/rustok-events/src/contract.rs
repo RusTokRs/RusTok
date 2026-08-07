@@ -7,9 +7,12 @@ use uuid::Uuid;
 
 use crate::{
     BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
+use crate::{
+    BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
     ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
-    RbacArtifactPermissionEvent, RbacRoleMutationEvent, SocialGraphRelationEvent,
+    RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent,
     TranslationWorkflowEvent, ValidateEvent,
+};
 };
 
 pub(crate) mod sealed {
@@ -51,6 +54,8 @@ pub enum ContractEventPayload {
     RbacArtifactPermission(RbacArtifactPermissionEvent),
     #[serde(rename = "rbac_role_mutation")]
     RbacRoleMutation(RbacRoleMutationEvent),
+    #[serde(rename = "reactions")]
+    Reactions(ReactionsEvent),
     #[serde(rename = "social_graph_relation")]
     SocialGraphRelation(SocialGraphRelationEvent),
     #[serde(rename = "translation_workflow")]
@@ -68,6 +73,7 @@ impl ContractEventPayload {
             Self::MarketplaceSeller(event) => event.event_type(),
             Self::RbacArtifactPermission(event) => event.event_type(),
             Self::RbacRoleMutation(event) => event.event_type(),
+            Self::Reactions(event) => event.event_type(),
             Self::SocialGraphRelation(event) => event.event_type(),
             Self::TranslationWorkflow(event) => event.event_type(),
         }
@@ -83,6 +89,7 @@ impl ContractEventPayload {
             Self::MarketplaceSeller(event) => event.schema_version(),
             Self::RbacArtifactPermission(event) => event.schema_version(),
             Self::RbacRoleMutation(event) => event.schema_version(),
+            Self::Reactions(event) => event.schema_version(),
             Self::SocialGraphRelation(event) => event.schema_version(),
             Self::TranslationWorkflow(event) => event.schema_version(),
         }
@@ -100,6 +107,7 @@ impl ValidateEvent for ContractEventPayload {
             Self::MarketplaceSeller(event) => event.validate(),
             Self::RbacArtifactPermission(event) => event.validate(),
             Self::RbacRoleMutation(event) => event.validate(),
+            Self::Reactions(event) => event.validate(),
             Self::SocialGraphRelation(event) => event.validate(),
             Self::TranslationWorkflow(event) => event.validate(),
         }
@@ -170,6 +178,31 @@ impl ContractEventEnvelope {
         E: EventContract,
     {
         Self::new_with_identity(envelope_id, tenant_id, actor_id, None, event)
+    }
+
+    /// Creates a typed envelope with one exact caller-owned durable identity
+    /// and one exact causal predecessor envelope.
+    ///
+    /// The supplied envelope UUID is also the correlation UUID. Causation stays
+    /// in envelope metadata rather than the typed payload, so this constructor
+    /// does not change any event-family schema or contract digest.
+    pub fn new_with_envelope_id_and_causation<E>(
+        envelope_id: Uuid,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        causation_id: Uuid,
+        event: E,
+    ) -> Result<Self, EventContractEnvelopeError>
+    where
+        E: EventContract,
+    {
+        Self::new_with_identity(
+            envelope_id,
+            tenant_id,
+            actor_id,
+            Some(causation_id),
+            event,
+        )
     }
 
     /// Creates a typed envelope that is causally linked to one exact durable
@@ -442,6 +475,26 @@ mod tests {
     }
 
     #[test]
+    fn explicit_contract_envelope_identity_and_causation_are_exact() {
+        let envelope_id = Uuid::new_v4();
+        let causation_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let envelope = ContractEventEnvelope::new_with_envelope_id_and_causation(
+            envelope_id,
+            Uuid::new_v4(),
+            Some(actor_id),
+            causation_id,
+            mention_event(),
+        )
+        .expect("explicit caused envelope should validate");
+
+        assert_eq!(envelope.id(), envelope_id);
+        assert_eq!(envelope.correlation_id(), envelope_id);
+        assert_eq!(envelope.actor_id(), Some(actor_id));
+        assert_eq!(envelope.causation_id(), Some(causation_id));
+    }
+
+    #[test]
     fn explicit_contract_envelope_identity_rejects_nil_uuid() {
         let error = ContractEventEnvelope::new_with_envelope_id(
             Uuid::nil(),
@@ -493,6 +546,25 @@ mod tests {
         assert!(matches!(
             error,
             EventContractEnvelopeError::Validation(EventValidationError::NilUuid("tenant_id"))
+        ));
+    }
+
+    #[test]
+    fn explicit_contract_envelope_identity_rejects_nil_causation_uuid() {
+        let error = ContractEventEnvelope::new_with_envelope_id_and_causation(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            None,
+            Uuid::nil(),
+            mention_event(),
+        )
+        .expect_err("nil explicit causation identity must fail closed");
+
+        assert!(matches!(
+            error,
+            EventContractEnvelopeError::Validation(EventValidationError::NilUuid(
+                "causation_id"
+            ))
         ));
     }
 }

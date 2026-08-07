@@ -1,123 +1,103 @@
-# Checkout order stage owner context
+# Checkout order stage error safety
 
-Status: **source-ready / unvalidated**
+Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-This source slice closes the consumer-side structured-context gap for the mounted
-checkout order stage in
-`crates/rustok-commerce/src/services/checkout_order_stages.rs`.
+This source wave closes the mounted Commerce checkout order-stage consumer mapper for three Order owner calls:
 
-The mounted stage already used `CheckoutOrderRecoveryAdapter` and
-`CheckoutCompletionPort`. Before this slice, three failed owner calls mapped a
-`PortError` through the generic commerce boundary mapper with only a stage name:
+- `CheckoutOrderRecoveryAdapter::recover_existing_checkout`;
+- `CheckoutCompletionPort::complete_checkout`;
+- `CheckoutOrderRecoveryAdapter::read_checkout_order`.
 
-- legacy/existing order recovery through `recover_existing_checkout`;
-- owner completion through `complete_checkout`;
-- order projection read through `read_checkout_order`.
+The established order-stage implementation is retained unchanged in `checkout_order_stages_legacy.rs` and mounted only through `checkout_order_stages.rs`.
 
-The complete `PortContext` was therefore unavailable when those failures were
-mapped, so correlation, actor, locale, causation, idempotency, deadline, typed
-severity, and truthful owner-operation attribution were lost.
+The facade wraps the canonical Order owner boundaries before their failures return to the retained mapper. The complete canonical `PortContext` is still delegated to Order. Only the Commerce consumer-facing error and diagnostic projection changes.
 
-## Delivered source contract
+## Public and persisted error policy
 
-The inventory-reserved stage retains one `write_context`:
+The Order owner code, typed kind, and retryability remain available to the Commerce boundary. Owner message text is not copied into `CheckoutOrderStageError::Boundary`, staged pipeline error strings, or checkout-operation error persistence.
 
-- recovery receives `write_context.clone()`;
-- completion receives `write_context.clone()` when recovery returns no order;
-- both failure mappers retain the original context.
+| Owner kind | Order-stage message |
+| --- | --- |
+| `Validation` | `Checkout order request is invalid` |
+| `NotFound` | `Checkout order resource was not found` |
+| `Conflict` | `Checkout order state conflicts with the requested operation` |
+| `Forbidden` | `Checkout order operation is not permitted` |
+| `Unavailable` / `Timeout` | `Checkout order service is temporarily unavailable` |
+| `InvariantViolation` | `Checkout order operation could not be completed safely` |
 
-The projection reader retains one separate `read_context`:
+The existing `CheckoutOrderStageError::Boundary` shape remains unchanged:
 
-- `read_checkout_order` receives `read_context.clone()`;
-- the original read context remains available for failure mapping.
+- `stage` remains the existing Commerce stage (`recover_existing`, `complete`, or `read_order`);
+- `code` remains the exact Order owner code;
+- `message` is now the static kind-based Commerce message;
+- `retryable` remains the Order owner value.
 
-All three failures are attributed to owner `rustok_order` with exact operations:
+This slice does not change staged-checkout failure disposition. Any retry/compensation policy for order-stage failures remains a separate task.
 
-- `recover_existing_checkout` and commerce stage `recover_existing`;
-- `complete_checkout` and commerce stage `complete`;
-- `read_checkout_order` and commerce stage `read_order`.
+## Diagnostics
 
-Before the existing public boundary mapping runs, the order-stage mapper records:
+The Commerce adapter emits only bounded facts:
 
-- the original `PortError`;
-- correlation id and tenant id;
-- actor, channel, and locale;
-- causation id and traceparent;
-- idempotency key and deadline;
-- owner, exact owner operation, and commerce stage;
-- original code, public-safe message, typed kind, and retryability;
-- boundary `commerce_checkout_order_stage`.
+- a diagnostic token whose `Debug` output is `redacted`;
+- truthful owner `rustok_order` and exact owner operation;
+- tenant and actor identity shapes;
+- actor kind plus claim and role counts;
+- channel, locale, correlation, causation, trace, and idempotency presence/shape facts;
+- deadline milliseconds;
+- exact owner code, typed kind, and retryability;
+- owner-message presence/shape and character length;
+- boundary `commerce_checkout_order_stage_adapter`.
 
-Unavailable, timeout, and invariant failures use error severity. Other owner
-rejections use warning severity.
+Unavailable, timeout, and invariant failures use error severity. Validation, not-found, conflict, forbidden, and other ordinary rejections use warning severity.
+
+The retained compatibility tracing macros are shadowed, so the former raw `PortError`, owner message, tenant, actor, channel, locale, correlation, causation, traceparent, and idempotency values are not emitted a second time.
 
 ## Preserved behavior
 
-This slice does not change:
+This source wave does not change:
 
-- operation or plan journal reads and writes;
+- `CheckoutCompletionPort` or Order recovery request/response contracts;
 - immutable order plan persistence;
 - inventory reservation execution;
-- legacy snapshot and request hash calculation;
-- recovery request contents or legacy adoption semantics;
-- the shared completion request and its immutable reuse;
+- legacy snapshot/request hash construction or adoption semantics;
+- recovery-before-completion ordering;
+- completion request reuse;
 - completion idempotency key `checkout:{operation_id}:order:complete`;
-- read contexts remaining non-idempotent;
-- completion-result/order-projection identity validation;
-- confirmed-order lifecycle validation before inventory adoption;
-- inventory adoption and order-created/payment-ready checkpoints;
-- projection locale and fallback-locale request values;
-- payment-ready recovery lifecycle validation;
-- `CheckoutOrderStageError::Boundary` stage, code, message, or retryability;
-- FBA or FFA status.
+- projection read request locale/fallback-locale values;
+- completion result/order projection identity validation;
+- typed `OrderStatusKind` admission;
+- inventory adoption;
+- `inventory_reserved -> order_created -> payment_ready` checkpoints;
+- successful DTOs;
+- public executor methods or custom canonical completion-port injection;
+- HTTP, GraphQL, or native contracts;
+- Commerce FFA or FBA status.
 
-Order-stage port errors continue through the same generic `Boundary` envelope
-after diagnostics.
+## Evidence
 
-## Static evidence
+- `crates/rustok-commerce/contracts/evidence/checkout-order-stage-error-safety-source-review.json`
+- `scripts/verify/verify-commerce-checkout-order-stage-context.mjs`
+- `scripts/verify/verify-commerce-checkout-completion-cutover.mjs`
+- `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
+- `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 
-`scripts/verify/verify-commerce-checkout-order-stage-context.mjs` guards:
+## Remaining work
 
-- one retained write context, two delegation clones, and two mapper inputs;
-- one retained read context, one delegation clone, and one mapper input;
-- truthful order owner and exact recovery/completion/read operations;
-- existing actor, locale fallback, correlation, causation, idempotency, and
-  deadline construction;
-- full available `PortContext` fields in diagnostics;
-- original `PortError` code, message, kind, and retryability;
-- typed severity and explicit boundary identity;
-- diagnostics before unchanged public boundary mapping;
-- unchanged boundary envelope fields;
-- unchanged legacy hashes, request reuse, projection validation, adoption, and
-  stage checkpoints;
-- absence of old context-dropping mapper calls and moved/inline contexts.
+The broader ecommerce correlation-safe mapper cleanup remains open for remaining Order adapters, inventory, customer, tax, promotion, other ecommerce adapters, and non-`PortError` public envelopes.
 
-The existing completion-cutover verifier was synchronized only to require
-`write_context.clone()` for the completion command and to forbid the old moved
-context form. Its owner-boundary and cutover assertions remain intact.
+Compile, runtime, replay, restart, remote-port, cross-transport, database, workflow, and CI evidence also remain open. The retained legacy order-stage source should be removed only after compile/replay/upgraded-path evidence proves the compatibility source is no longer required.
 
-## Remaining gaps
-
-The master ecommerce correlation-safe mapper task remains open for:
-
-- remaining fulfillment consumers and order adapters;
-- remaining inventory, customer, tax, promotion, and ecommerce adapters;
-- remaining payment execution or compensation adapters outside the mounted stages;
-- non-`PortError` public envelopes;
-- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
-
-No architecture status is promoted from source-only evidence.
-
-## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
+## Intended maintainer checks
 
 ```bash
 node scripts/verify/verify-commerce-checkout-order-stage-context.mjs
 node scripts/verify/verify-commerce-checkout-completion-cutover.mjs
+node --test scripts/verify/verify-commerce-checkout-completion-cutover.test.mjs
 node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
+node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs
 cargo check -p rustok-commerce --lib
 ```
+
+No tests, Node verifiers, Cargo commands, formatting, Order owner calls, database scenarios, restart scenarios, remote-port scenarios, workflows, or CI were executed.

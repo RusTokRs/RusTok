@@ -16,6 +16,7 @@ mod query_port;
 mod query_runtime;
 mod replay_runtime;
 mod schema_lease;
+mod schema_readiness;
 mod schema_registration;
 mod secondary_index;
 mod source_factory;
@@ -37,6 +38,8 @@ mod partition_admission_tests;
 mod postgres_reference_equivalence_tests;
 #[cfg(test)]
 mod schema_lease_tests;
+#[cfg(test)]
+mod schema_readiness_tests;
 #[cfg(test)]
 mod schema_registration_tests;
 #[cfg(test)]
@@ -116,6 +119,11 @@ pub use replay_runtime::{
 pub use schema_lease::{
     PostgresSchemaLeaseStore, SchemaApplicationLease, SchemaApplicationLeaseRequest,
     SchemaLeaseAcquireOutcome, SchemaLeaseError,
+};
+pub use schema_readiness::{
+    IndexSchemaReadinessEntry, IndexSchemaReadinessError, IndexSchemaReadinessFailure,
+    IndexSchemaReadinessReceipt, IndexSchemaReadinessRequest, MAX_INDEX_SCHEMA_READINESS_SCHEMAS,
+    PostgresIndexSchemaReadinessStore,
 };
 pub use schema_registration::{
     PersistedSchemaRegistrationOutcome, PostgresSchemaRegistrationStore, SchemaRegistrationError,
