@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::entities::checkout_operation;
 
-use super::{
+use crate::{
     CheckoutInventoryExecutionError, CheckoutInventoryOrderAdoptionError,
     CheckoutInventoryOrderAdoptionService, CheckoutInventoryReservationExecutor,
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
@@ -557,7 +557,7 @@ fn log_checkout_order_boundary_failure(
             );
         }
         _ => {
-            tracing::warn!(
+            tracing::warn_event!(
                 error = ?boundary_error,
                 owner = ORDER_STAGE_OWNER,
                 correlation_id = %context.correlation_id,

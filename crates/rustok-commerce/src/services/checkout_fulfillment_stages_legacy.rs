@@ -16,7 +16,7 @@ use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::{
+use crate::{
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderPlanRecord,
     CheckoutPaymentCapturedState, DEFAULT_CHECKOUT_LEASE_SECONDS,
@@ -548,7 +548,7 @@ fn log_checkout_fulfillment_stage_boundary_failure(
             );
         }
         _ => {
-            tracing::warn!(
+            tracing::warn_event!(
                 error = ?boundary_error,
                 owner = owner,
                 correlation_id = %context.correlation_id,

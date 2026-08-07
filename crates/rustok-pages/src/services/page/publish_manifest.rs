@@ -302,10 +302,6 @@ pub(super) fn rebuild_source_provenance_hash(
     ))
 }
 
-pub(super) fn stable_publish_identity_hash(value: &impl Serialize) -> PagesResult<String> {
-    stable_hash(value)
-}
-
 fn stable_hash(value: &impl Serialize) -> PagesResult<String> {
     let bytes = serde_json::to_vec(value).map_err(|error| {
         PagesError::publish_operation_integrity(format!(

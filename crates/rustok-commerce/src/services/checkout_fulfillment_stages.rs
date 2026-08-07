@@ -375,18 +375,18 @@ mod rustok_order_shim {
 mod tracing_shim {
     macro_rules! error {
         ($($tokens:tt)*) => {{
-            let _ = stringify!($($tokens)*);
+            ::tracing::error!($($tokens)*);
         }};
     }
 
-    macro_rules! warn {
+    macro_rules! warn_event {
         ($($tokens:tt)*) => {{
-            let _ = stringify!($($tokens)*);
+            ::tracing::warn!($($tokens)*);
         }};
     }
 
     pub(crate) use error;
-    pub(crate) use warn;
+    pub(crate) use warn_event;
 }
 
 mod legacy {

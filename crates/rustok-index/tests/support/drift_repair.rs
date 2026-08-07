@@ -1,3 +1,5 @@
+#![expect(dead_code, reason = "Shared test support module for rustok-index integration test targets")]
+
 use std::{
     collections::BTreeMap,
     env,

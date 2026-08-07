@@ -749,7 +749,7 @@ mod tracing_shim {
         }};
     }
 
-    macro_rules! warn {
+    macro_rules! warn_event {
         (error = ?$error:expr, owner = $owner:expr, $($rest:tt)*) => {{
             if $owner != "rustok_payment"
                 && $owner != "rustok_order"
@@ -762,7 +762,7 @@ mod tracing_shim {
     }
 
     pub(crate) use error;
-    pub(crate) use warn;
+    pub(crate) use warn_event;
 }
 
 mod legacy {
