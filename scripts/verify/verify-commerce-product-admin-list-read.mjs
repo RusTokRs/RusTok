@@ -72,6 +72,9 @@ for (const required of [
   "Column::ProductType.eq(product_type)",
   "if empty_missing_title",
   "String::new()",
+  "if legacy_shipping_profile_fallback",
+  ".and_then(normalize_shipping_profile_slug)",
+  "extract_shipping_profile_slug(&product.metadata)",
 ]) {
   requireText(ownerQuery, required, `owner admin list implementation must contain ${required}`);
 }
