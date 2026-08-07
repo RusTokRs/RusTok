@@ -1,6 +1,7 @@
 mod commands;
 pub mod application;
 pub mod application_dispatch;
+pub mod application_recovery;
 mod application_scheduler;
 pub mod domain;
 pub mod entities;
@@ -22,6 +23,7 @@ pub use application_dispatch::{
     APPLICATION_ADAPTER_DEADLINE_SECONDS, APPLICATION_RETRY_BASE_SECONDS,
     APPLICATION_RETRY_MAX_SECONDS, application_retry_delay_seconds,
 };
+pub use application_recovery::MAX_APPLICATION_RECOVERY_REASON_BYTES;
 pub use domain::*;
 pub use error::{ModerationError, ModerationResult};
 pub use ports::*;
