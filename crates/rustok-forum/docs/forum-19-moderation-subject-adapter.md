@@ -11,11 +11,11 @@ Forum registers two `ModerationSubjectAdapterFactory` instances:
 - `forum/forum_topic` for Forum topics;
 - `forum/forum_post` for Forum replies.
 
-The factories remain producer-owned neutral runtime extensions. The selected server host now materializes the shared Moderation subject-adapter registry only when the optional `mod-moderation` owner feature is selected. Durable decision-application orchestration, retry state and operator recovery remain responsibilities of the Moderation owner/host and are not claimed by this slice.
+The factories remain producer-owned neutral runtime extensions. The selected server host materializes the shared Moderation subject-adapter registry only when the optional `mod-moderation` owner feature is selected. The Moderation owner now also has source-ready durable decision-application operation persistence and lease/CAS primitives. Background dispatch, automatic retry classification, case closure and operator recovery remain pending owner/host work.
 
 ## Host materialization boundary
 
-`rustok-server::build_shared_runtime_extensions_with_host_providers` now materializes the neutral Moderation adapter registry after module runtime extensions and Forum host facts are composed.
+`rustok-server::build_shared_runtime_extensions_with_host_providers` materializes the neutral Moderation adapter registry after module runtime extensions and Forum host facts are composed.
 
 The source contract is explicit:
 
@@ -27,6 +27,18 @@ The source contract is explicit:
 - factory build, duplicate-key or key-mismatch failures remain startup errors and never fall back to another adapter.
 
 The host uses `HostRuntimeContext` for factory materialization. It does not copy Forum subject logic into `rustok-moderation`, and it does not create a second adapter implementation in the server.
+
+## Moderation-owned durable application operation
+
+`rustok-moderation` now owns one source-ready `moderation_application_operations` row per typed immutable decision. This storage is not Forum state and is never copied into Forum.
+
+A new decision, typed effect, pending application operation, `case_decided` event and Moderation command receipt commit or roll back in one owner transaction. Upgrade backfill creates pending operations only for historical decisions that already have a typed `moderation_decision_effects` row. Legacy `effect: None` decisions remain non-dispatchable.
+
+The operation snapshots the immutable decision hash and exact reviewed subject module/kind/UUID/revision. Its bounded lifecycle is `pending -> applying -> retryable|applied|rejected|operator_review`. Claiming uses a fresh UUID lease token, bounded expiry and attempt counter; an expired applying lease is reclaimable. Finishing an attempt requires the exact live lease token.
+
+`mark_application_applied` accepts only `ModerationDecisionApplication` evidence matching the stored decision and exact reviewed Forum subject identity, with `applied_revision >= reviewed_revision`. This records evidence only; the background worker that reconstructs `ApplyModerationDecisionCommand`, invokes the host-materialized adapter, classifies `PortError`, chooses retry delay and advances case/application audit lifecycle remains the next owner slice.
+
+This orchestration state does not replace Forum's domain receipt. The Forum adapter still receives the immutable decision UUID/hash and uses its shared Outbox owner-operation receipt before subject reads, so future lost-response retry can rely on domain replay rather than reapply the mutation.
 
 ## Trusted application boundary
 
@@ -144,18 +156,22 @@ Suggested checks, intentionally not run while preparing this slice:
 ```bash
 node scripts/verify/verify-forum-moderation-subject-adapter.mjs
 node scripts/verify/verify-moderation-host-composition.mjs
+node scripts/verify/verify-moderation-application-operation.mjs
 cargo test -p rustok-forum moderation_subject -- --nocapture
 cargo check -p rustok-forum --all-targets
+cargo test -p rustok-moderation
+cargo check -p rustok-moderation --all-targets
 cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles
 cargo test -p rustok-server --no-default-features --features "mod-forum mod-moderation" --test moderation_composition_profiles
 cargo check -p rustok-server --no-default-features --features mod-moderation
 cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"
 cargo xtask module validate forum
+cargo xtask module validate moderation
 git diff --check
 ```
 
-Future retained evidence should cover selected-owner/missing-owner startup behavior, Moderation-only empty materialization and Forum+Moderation topic/reply materialization in addition to migration/backfill on PostgreSQL and SQLite, trigger advancement for topic/reply content and lifecycle changes, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply rejection/reply removal, trusted-caller enforcement and PostgreSQL serialization/reclaim. Retain approved-to-hidden and approved-to-rejected topic/category/author accounting plus status-event/projection atomicity, already-hidden/already-rejected no-op/replay behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `SetVisibility(Unpublished)` remains a distinct unsupported-effect evidence case.
+Future retained evidence should cover selected-owner/missing-owner startup behavior, Moderation-only empty materialization and Forum+Moderation topic/reply materialization; clean/upgraded application-operation migration on PostgreSQL/SQLite; typed-effect-only backfill; decision/effect/pending-operation/receipt atomicity; due ordering/bounds; concurrent lease claim; lease expiry/reclaim; stale-token rejection; retry scheduling; terminal outcomes and applied-evidence mismatch. Forum evidence still includes moderation-revision migration/backfill/trigger advancement, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply rejection/reply removal, trusted-caller enforcement and PostgreSQL serialization/reclaim. Retain approved-to-hidden and approved-to-rejected topic/category/author accounting plus status-event/projection atomicity, already-hidden/already-rejected no-op/replay behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `SetVisibility(Unpublished)` remains a distinct unsupported-effect evidence case.
 
-Durable Moderation application-attempt persistence, leases/backoff, crash/lost-response recovery and operator recovery remain pending owner work.
+Background Moderation adapter dispatch, automatic `PortError` classification/backoff, case lifecycle closure, application lifecycle outbox events and operator recovery remain pending owner work.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
