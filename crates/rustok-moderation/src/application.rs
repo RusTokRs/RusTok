@@ -1,17 +1,17 @@
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 
 use crate::domain::{
     ModerationApplicationOperationRecord, ModerationApplicationOperationStatus,
-    ModerationDecisionApplication, ModerationSubjectKind,
+    ModerationCaseStatus, ModerationDecisionApplication, ModerationSubjectKind,
 };
 use crate::entities::{moderation_application_operation, moderation_case, moderation_decision};
 use crate::error::{ModerationError, ModerationResult};
-use crate::service::ModerationService;
+use crate::service::{ModerationService, append_event, find_case};
 
 pub const DEFAULT_APPLICATION_LEASE_SECONDS: i64 = 60;
 pub const MAX_APPLICATION_LEASE_SECONDS: i64 = 900;
@@ -84,9 +84,7 @@ impl ModerationService {
         tenant_id: Uuid,
         decision_id: Uuid,
     ) -> ModerationResult<Option<ModerationApplicationOperationRecord>> {
-        moderation_application_operation::Entity::find_by_id(decision_id)
-            .filter(moderation_application_operation::Column::TenantId.eq(tenant_id))
-            .one(self.database())
+        find_application_operation_model(self.database(), tenant_id, decision_id)
             .await?
             .map(map_application_operation)
             .transpose()
@@ -131,6 +129,7 @@ impl ModerationService {
         let now = Utc::now().fixed_offset();
         let lease_expires_at = now + Duration::seconds(lease_seconds);
         let lease_token = Uuid::new_v4();
+        let transaction = self.database().begin().await?;
         let result = moderation_application_operation::Entity::update_many()
             .col_expr(
                 moderation_application_operation::Column::Status,
@@ -146,7 +145,7 @@ impl ModerationService {
             )
             .col_expr(
                 moderation_application_operation::Column::LeaseOwner,
-                Expr::value(Some(lease_owner)),
+                Expr::value(Some(lease_owner.clone())),
             )
             .col_expr(
                 moderation_application_operation::Column::LeaseExpiresAt,
@@ -162,17 +161,78 @@ impl ModerationService {
             )
             .col_expr(
                 moderation_application_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::value(now),
             )
             .filter(moderation_application_operation::Column::TenantId.eq(tenant_id))
             .filter(moderation_application_operation::Column::DecisionId.eq(decision_id))
             .filter(due_condition(now))
-            .exec(self.database())
+            .exec(&transaction)
             .await?;
         if result.rows_affected == 0 {
+            transaction.rollback().await?;
             return Ok(None);
         }
-        self.get_application_operation(tenant_id, decision_id).await
+
+        let operation = find_application_operation_model(&transaction, tenant_id, decision_id)
+            .await?
+            .ok_or(ModerationError::ApplicationOperationNotFound(decision_id))?;
+        let case = find_case(&transaction, tenant_id, operation.case_id).await?;
+        let case_status = parse_case_status(case.status.as_str())?;
+        let case_revision = match case_status {
+            ModerationCaseStatus::Decided => {
+                let revision = transition_case_status_in_transaction(
+                    &transaction,
+                    tenant_id,
+                    &case,
+                    ModerationCaseStatus::Decided,
+                    ModerationCaseStatus::ApplyingDecision,
+                    now,
+                )
+                .await?;
+                append_event(
+                    &transaction,
+                    tenant_id,
+                    "case",
+                    case.id,
+                    "case_application_started",
+                    serde_json::json!({
+                        "decision_id": decision_id,
+                        "attempt_count": operation.attempt_count,
+                        "revision": revision,
+                    }),
+                )
+                .await?;
+                revision
+            }
+            ModerationCaseStatus::ApplyingDecision => case.revision,
+            _ => {
+                transaction.rollback().await?;
+                return Err(ModerationError::LifecycleConflict {
+                    from: case.status,
+                    to: ModerationCaseStatus::ApplyingDecision.as_str().to_string(),
+                });
+            }
+        };
+
+        append_event(
+            &transaction,
+            tenant_id,
+            "application",
+            decision_id,
+            "application_attempt_claimed",
+            serde_json::json!({
+                "case_id": operation.case_id,
+                "attempt_count": operation.attempt_count,
+                "lease_owner": lease_owner,
+                "lease_expires_at": operation.lease_expires_at.clone(),
+                "case_revision": case_revision,
+            }),
+        )
+        .await?;
+
+        let operation = map_application_operation(operation)?;
+        transaction.commit().await?;
+        Ok(Some(operation))
     }
 
     pub async fn mark_application_retryable(
@@ -251,9 +311,8 @@ impl ModerationService {
         lease_token: Uuid,
         application: ModerationDecisionApplication,
     ) -> ModerationResult<ModerationApplicationOperationRecord> {
-        let current = moderation_application_operation::Entity::find_by_id(decision_id)
-            .filter(moderation_application_operation::Column::TenantId.eq(tenant_id))
-            .one(self.database())
+        let transaction = self.database().begin().await?;
+        let current = find_application_operation_model(&transaction, tenant_id, decision_id)
             .await?
             .ok_or(ModerationError::ApplicationOperationNotFound(decision_id))?;
         validate_application_evidence(&current, &application)?;
@@ -294,7 +353,7 @@ impl ModerationService {
             )
             .col_expr(
                 moderation_application_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::value(now),
             )
             .filter(moderation_application_operation::Column::TenantId.eq(tenant_id))
             .filter(moderation_application_operation::Column::DecisionId.eq(decision_id))
@@ -304,14 +363,59 @@ impl ModerationService {
             )
             .filter(moderation_application_operation::Column::LeaseToken.eq(lease_token))
             .filter(moderation_application_operation::Column::LeaseExpiresAt.gt(now))
-            .exec(self.database())
+            .exec(&transaction)
             .await?;
         if result.rows_affected != 1 {
+            transaction.rollback().await?;
             return Err(self.application_cas_conflict(tenant_id, decision_id).await?);
         }
-        self.get_application_operation(tenant_id, decision_id)
+
+        let operation = find_application_operation_model(&transaction, tenant_id, decision_id)
             .await?
-            .ok_or(ModerationError::ApplicationOperationNotFound(decision_id))
+            .ok_or(ModerationError::ApplicationOperationNotFound(decision_id))?;
+        let case = find_case(&transaction, tenant_id, operation.case_id).await?;
+        let case_revision = transition_case_status_in_transaction(
+            &transaction,
+            tenant_id,
+            &case,
+            ModerationCaseStatus::ApplyingDecision,
+            ModerationCaseStatus::Closed,
+            now,
+        )
+        .await?;
+
+        append_event(
+            &transaction,
+            tenant_id,
+            "application",
+            decision_id,
+            "application_applied",
+            serde_json::json!({
+                "case_id": operation.case_id,
+                "attempt_count": operation.attempt_count,
+                "applied_revision": application.applied_revision,
+                "applied_at": application.applied_at,
+            }),
+        )
+        .await?;
+        append_event(
+            &transaction,
+            tenant_id,
+            "case",
+            operation.case_id,
+            "case_closed",
+            serde_json::json!({
+                "decision_id": decision_id,
+                "application_status": ModerationApplicationOperationStatus::Applied.as_str(),
+                "applied_revision": application.applied_revision,
+                "revision": case_revision,
+            }),
+        )
+        .await?;
+
+        let operation = map_application_operation(operation)?;
+        transaction.commit().await?;
+        Ok(operation)
     }
 
     async fn finish_with_error(
@@ -326,7 +430,32 @@ impl ModerationService {
     ) -> ModerationResult<ModerationApplicationOperationRecord> {
         let error_code = normalize_text(error_code, "error_code", MAX_ERROR_CODE_BYTES)?;
         let error_message = normalize_text(error_message, "error_message", MAX_ERROR_MESSAGE_BYTES)?;
+        match next_status {
+            ModerationApplicationOperationStatus::Retryable if next_attempt_at.is_none() => {
+                return Err(ModerationError::Invariant(
+                    "retryable moderation application requires next_attempt_at".to_string(),
+                ));
+            }
+            ModerationApplicationOperationStatus::Rejected
+            | ModerationApplicationOperationStatus::OperatorReview
+                if next_attempt_at.is_some() =>
+            {
+                return Err(ModerationError::Invariant(
+                    "terminal moderation application must not schedule a retry".to_string(),
+                ));
+            }
+            ModerationApplicationOperationStatus::Retryable
+            | ModerationApplicationOperationStatus::Rejected
+            | ModerationApplicationOperationStatus::OperatorReview => {}
+            _ => {
+                return Err(ModerationError::Invariant(
+                    "invalid moderation application error transition".to_string(),
+                ));
+            }
+        }
+
         let now = Utc::now().fixed_offset();
+        let transaction = self.database().begin().await?;
         let mut update = moderation_application_operation::Entity::update_many()
             .col_expr(
                 moderation_application_operation::Column::Status,
@@ -346,7 +475,7 @@ impl ModerationService {
             )
             .col_expr(
                 moderation_application_operation::Column::LastErrorCode,
-                Expr::value(Some(error_code)),
+                Expr::value(Some(error_code.clone())),
             )
             .col_expr(
                 moderation_application_operation::Column::LastErrorMessage,
@@ -354,7 +483,7 @@ impl ModerationService {
             )
             .col_expr(
                 moderation_application_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::value(now),
             )
             .filter(moderation_application_operation::Column::TenantId.eq(tenant_id))
             .filter(moderation_application_operation::Column::DecisionId.eq(decision_id))
@@ -370,13 +499,86 @@ impl ModerationService {
                 Expr::value(next_attempt_at),
             );
         }
-        let result = update.exec(self.database()).await?;
+        let result = update.exec(&transaction).await?;
         if result.rows_affected != 1 {
+            transaction.rollback().await?;
             return Err(self.application_cas_conflict(tenant_id, decision_id).await?);
         }
-        self.get_application_operation(tenant_id, decision_id)
+
+        let operation = find_application_operation_model(&transaction, tenant_id, decision_id)
             .await?
-            .ok_or(ModerationError::ApplicationOperationNotFound(decision_id))
+            .ok_or(ModerationError::ApplicationOperationNotFound(decision_id))?;
+        let case = find_case(&transaction, tenant_id, operation.case_id).await?;
+        match next_status {
+            ModerationApplicationOperationStatus::Retryable => {
+                require_case_status(&case, ModerationCaseStatus::ApplyingDecision)?;
+                append_event(
+                    &transaction,
+                    tenant_id,
+                    "application",
+                    decision_id,
+                    "application_retry_scheduled",
+                    serde_json::json!({
+                        "case_id": operation.case_id,
+                        "attempt_count": operation.attempt_count,
+                        "error_code": error_code,
+                        "next_attempt_at": operation.next_attempt_at,
+                    }),
+                )
+                .await?;
+            }
+            ModerationApplicationOperationStatus::Rejected
+            | ModerationApplicationOperationStatus::OperatorReview => {
+                let case_revision = transition_case_status_in_transaction(
+                    &transaction,
+                    tenant_id,
+                    &case,
+                    ModerationCaseStatus::ApplyingDecision,
+                    ModerationCaseStatus::Escalated,
+                    now,
+                )
+                .await?;
+                let application_event_type = if next_status
+                    == ModerationApplicationOperationStatus::Rejected
+                {
+                    "application_rejected"
+                } else {
+                    "application_operator_review"
+                };
+                append_event(
+                    &transaction,
+                    tenant_id,
+                    "application",
+                    decision_id,
+                    application_event_type,
+                    serde_json::json!({
+                        "case_id": operation.case_id,
+                        "attempt_count": operation.attempt_count,
+                        "error_code": error_code,
+                    }),
+                )
+                .await?;
+                append_event(
+                    &transaction,
+                    tenant_id,
+                    "case",
+                    operation.case_id,
+                    "case_escalated",
+                    serde_json::json!({
+                        "decision_id": decision_id,
+                        "application_status": next_status.as_str(),
+                        "error_code": operation.last_error_code.clone(),
+                        "revision": case_revision,
+                    }),
+                )
+                .await?;
+            }
+            _ => unreachable!("validated application error status"),
+        }
+
+        let operation = map_application_operation(operation)?;
+        transaction.commit().await?;
+        Ok(operation)
     }
 
     async fn application_cas_conflict(
@@ -384,9 +586,7 @@ impl ModerationService {
         tenant_id: Uuid,
         decision_id: Uuid,
     ) -> ModerationResult<ModerationError> {
-        if moderation_application_operation::Entity::find_by_id(decision_id)
-            .filter(moderation_application_operation::Column::TenantId.eq(tenant_id))
-            .one(self.database())
+        if find_application_operation_model(self.database(), tenant_id, decision_id)
             .await?
             .is_some()
         {
@@ -395,6 +595,85 @@ impl ModerationService {
             Ok(ModerationError::ApplicationOperationNotFound(decision_id))
         }
     }
+}
+
+async fn find_application_operation_model<C>(
+    connection: &C,
+    tenant_id: Uuid,
+    decision_id: Uuid,
+) -> ModerationResult<Option<moderation_application_operation::Model>>
+where
+    C: ConnectionTrait,
+{
+    moderation_application_operation::Entity::find_by_id(decision_id)
+        .filter(moderation_application_operation::Column::TenantId.eq(tenant_id))
+        .one(connection)
+        .await
+        .map_err(Into::into)
+}
+
+async fn transition_case_status_in_transaction(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    case: &moderation_case::Model,
+    from: ModerationCaseStatus,
+    to: ModerationCaseStatus,
+    now: chrono::DateTime<chrono::FixedOffset>,
+) -> ModerationResult<i64> {
+    require_case_status(case, from)?;
+    let next_revision = case
+        .revision
+        .checked_add(1)
+        .ok_or(ModerationError::RevisionConflict)?;
+    let mut update = moderation_case::Entity::update_many()
+        .col_expr(moderation_case::Column::Status, Expr::value(to.as_str()))
+        .col_expr(
+            moderation_case::Column::Revision,
+            Expr::value(next_revision),
+        )
+        .col_expr(
+            moderation_case::Column::UpdatedAt,
+            Expr::value(now),
+        )
+        .filter(moderation_case::Column::TenantId.eq(tenant_id))
+        .filter(moderation_case::Column::Id.eq(case.id))
+        .filter(moderation_case::Column::Revision.eq(case.revision))
+        .filter(moderation_case::Column::Status.eq(from.as_str()));
+    if to == ModerationCaseStatus::Closed {
+        update = update
+            .col_expr(
+                moderation_case::Column::ClosedAt,
+                Expr::value(Some(now)),
+            )
+            .col_expr(
+                moderation_case::Column::ActiveDeduplicationKey,
+                Expr::value(Option::<String>::None),
+            );
+    }
+    let result = update.exec(transaction).await?;
+    if result.rows_affected != 1 {
+        return Err(ModerationError::RevisionConflict);
+    }
+    Ok(next_revision)
+}
+
+fn require_case_status(
+    case: &moderation_case::Model,
+    expected: ModerationCaseStatus,
+) -> ModerationResult<()> {
+    let actual = parse_case_status(case.status.as_str())?;
+    if actual != expected {
+        return Err(ModerationError::LifecycleConflict {
+            from: case.status.clone(),
+            to: expected.as_str().to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn parse_case_status(value: &str) -> ModerationResult<ModerationCaseStatus> {
+    ModerationCaseStatus::parse(value)
+        .ok_or_else(|| ModerationError::Invariant("unknown stored case status".to_string()))
 }
 
 fn due_condition(now: chrono::DateTime<chrono::FixedOffset>) -> Condition {
@@ -496,4 +775,44 @@ fn normalize_text(value: String, field: &str, max_bytes: usize) -> ModerationRes
         )));
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminal_application_case_statuses_are_fail_closed() {
+        assert_eq!(
+            terminal_case_status(ModerationApplicationOperationStatus::Applied),
+            Some(ModerationCaseStatus::Closed)
+        );
+        assert_eq!(
+            terminal_case_status(ModerationApplicationOperationStatus::Rejected),
+            Some(ModerationCaseStatus::Escalated)
+        );
+        assert_eq!(
+            terminal_case_status(ModerationApplicationOperationStatus::OperatorReview),
+            Some(ModerationCaseStatus::Escalated)
+        );
+        assert_eq!(
+            terminal_case_status(ModerationApplicationOperationStatus::Retryable),
+            None
+        );
+    }
+}
+
+fn terminal_case_status(
+    status: ModerationApplicationOperationStatus,
+) -> Option<ModerationCaseStatus> {
+    match status {
+        ModerationApplicationOperationStatus::Applied => Some(ModerationCaseStatus::Closed),
+        ModerationApplicationOperationStatus::Rejected
+        | ModerationApplicationOperationStatus::OperatorReview => {
+            Some(ModerationCaseStatus::Escalated)
+        }
+        ModerationApplicationOperationStatus::Pending
+        | ModerationApplicationOperationStatus::Applying
+        | ModerationApplicationOperationStatus::Retryable => None,
+    }
 }
