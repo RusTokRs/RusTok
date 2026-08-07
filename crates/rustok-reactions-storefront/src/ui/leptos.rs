@@ -72,7 +72,7 @@ pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
         <section class="space-y-2" aria-label=label.clone()>
             <div class="flex flex-wrap items-center gap-2">
                 <span class="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {label}
+                    {label.clone()}
                 </span>
                 {move || mutation_error.get().then(|| view! {
                     <span class="text-xs text-destructive" role="status" aria-live="polite">
