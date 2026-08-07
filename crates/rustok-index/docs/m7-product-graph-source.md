@@ -1,146 +1,94 @@
-# M7 versioned Product graph source
+# M7 canonical Product graph source
 
-Status: `source_complete_owner_execution_pending`
+Status: `canonical_source_complete_runtime_evidence_pending`
 
-This slice preserves the published `rustok-product::product@1` and
-`rustok-product::product_variant@1` contracts while adding versioned graph-ready schemas:
+The selected distribution now publishes exactly one current Product Index contract and one current
+ProductVariant contract. The old parallel Product/ProductVariant compatibility implementations have
+been removed from runtime code.
 
-- `rustok-product::product@2`
-- `rustok-product::product_variant@2`
+The generic Index `SchemaRef` still contains a positive numeric `SchemaVersion` because it is part of
+the storage and routing key for every module. That implementation detail no longer represents a set of
+coexisting Product contracts: only one Product and one ProductVariant schema are registered.
 
-The v1 schema fingerprints, source names, cursor shapes, and replay event domains remain unchanged.
-Each schema identity continues to use exactly one stable replay source across all versions:
+## Canonical Product
 
-- `product-postgres-primary` serves Product v1 and v2;
-- `product-variant-postgres-primary` serves ProductVariant v1 and v2.
+`product-postgres-primary` emits one locale-required Product record containing:
 
-This is required by `IndexSourceCatalog`, which intentionally rejects a replay-source change within
-one schema identity.
+- `id`;
+- `status`;
+- `title`;
+- `handle`;
+- `description`;
+- `vendor`;
+- `product_type`;
+- `primary_category_id`;
+- `variant_ids`;
+- `sales_channel_ids`.
 
-## Product v2
+It materializes two many-cardinality links:
 
-Product v2 remains locale-required and carries every v1 scalar plus:
+- `variants` to the current ProductVariant identity;
+- `sales_channels` to the current SalesChannel identity.
 
-- `id: uuid`;
-- `channel_restricted: boolean`;
-- `allowed_channel_slugs: many<string>`;
-- `variant_ids: many<uuid>`;
-- a many-cardinality `variants` link to `product_variant@2.id`.
+Product visibility slugs remain Product-owner input for the cross-owner resolver. Transitional
+`channel_restricted` and `allowed_channel_slugs` fields are no longer part of the Index schema because
+resolved SalesChannel UUID membership is now the graph contract.
 
-`allowed_channel_slugs` follows the existing Storefront metadata contract at
-`metadata.channel_visibility.allowed_channel_slugs`: values are trimmed, lowercased, deduplicated,
-and sorted. An absent or empty allowlist means unrestricted visibility, represented as
-`channel_restricted = false` and an empty list. A restricted Product is represented as
-`channel_restricted = true` with the canonical explicit allowlist.
+The source scans stable `(product_id, locale)` identities and requires exact locale-bearing targeted
+loads. Physical deletes are retained through `product_index_tombstones` and emit the same canonical
+Product `IndexMutation::Delete` contract.
 
-A Storefront channel predicate can therefore preserve the current behavior without runtime
-source-table fan-out:
+## Canonical ProductVariant
 
-```text
-channel_restricted == false
-OR allowed_channel_slugs CONTAINS canonical_request_channel_slug
-```
+`product-variant-postgres-primary` publishes one non-localized ProductVariant schema including its
+stable `id` and current scalar fields. It scans by stable `variant_id`, supports exact targeted loads,
+and uses `product_variant_index_tombstones` for retained deletes.
 
-Product v2 scans in stable `(product_id, locale)` order with one-row lookahead. Targeted loads require
-exact locale-bearing Product keys. `index_revision` remains only the mutation `source_version`; it is
-never part of enumeration cursor ordering.
+There is no reverse ProductVariant-to-Product link because Product is locale-required while
+ProductVariant is not. Product owns the forward `variants` graph link.
 
-## ProductVariant v2
+## Complete Product mutation clock
 
-ProductVariant v2 remains non-localized and adds only the stable `id: uuid` identity field to the v1
-scalar set. It keeps the stable `variant_id` scan cursor and exact non-localized targeted loads.
+Product scalar/translation/Variant-membership state advances under `products.index_revision`, while
+resolved Product-to-SalesChannel membership advances under the Product-owned `relation_epoch`. A full
+Product record cannot safely use either independent counter directly.
 
-There is no reverse Variant-to-Product link. A locale-free Variant cannot target one exact
-locale-required Product record without inventing locale semantics, and Product translation changes do
-not advance Variant revision. Queries traverse Product v2 to its Variants instead.
+`product_index_graph_projection_snapshots` therefore owns `projection_epoch`, the only complete Product
+record mutation `source_version`. The canonical Product source requires projection state, joins the
+exact retained SalesChannel relation referenced by that projection, and fails closed when the live
+Product revision is newer than the retained Product projection watermark.
 
-## Membership revision
+The Product locale absence provider uses the same projection epoch and likewise refuses to manufacture
+an absence watermark from a newer unprojected Product revision.
 
-Product v2 records contain the complete ordered set of current Variant IDs. A Product-owned
-PostgreSQL trigger therefore advances the parent Product `index_revision` when a Variant is inserted,
-deleted, or moved between Product/tenant identities. Ordinary Variant field updates do not advance
-Product revision because they do not change Product link membership.
-
-The existing Product row trigger still enforces exactly `OLD.index_revision + 1` and fails on revision
-exhaustion.
-
-## Durable hard-delete continuation
-
-The follow-up [Product tombstone replay contract](m7-product-tombstone-source.md) retains exact Product
-translation and ProductVariant identities after physical deletion. The same two stable sources now
-emit versioned `IndexMutation::Delete` values without changing any v1/v2 schema fingerprint, source
-name, cursor shape, or event domain.
-
-## Why Product v2 still has no Product-to-SalesChannel link
-
-The original blocker was that Product metadata owned Channel slugs while Channel identity changes
-could alter resolved UUID targets without advancing `products.index_revision`. Resolving `channels.id`
-inside the Product v2 source would therefore violate monotonic mutation ordering.
-
-That relation-owner gap is now source-complete outside Product v2:
-
-- `rustok-product` owns an append-only Product-to-SalesChannel relation ledger with a dedicated
-  monotonic `relation_epoch` independent from Product and Channel revisions;
-- `rustok-distribution` owns a bounded cross-owner resolver that preserves unrestricted Product
-  visibility, resolves current Channel UUID membership, writes through the Product owner, and
-  re-observes membership with bounded stabilization.
-
-A second versioning gap was found when Product v3 was rechecked against the actual Index mutation
-store. Product v3 will be one **full** record combining Product scalar/Variant state and relation
-membership. Index stale-ignores a full mutation whose `source_version` is not greater than the current
-materialized version, so neither `products.index_revision` nor `relation_epoch` can safely serve as the
-full Product v3 source version on its own.
-
-`rustok-product` therefore now owns a separate append-only
-`product_index_graph_v3_projection_snapshots` ledger. Its `projection_epoch` advances whenever either
-the retained Product source-version watermark or relation epoch advances. The two component counters
-remain explicit evidence; they are not collapsed into `max`, a hash, timestamp, or pairing-derived
-Index version.
-
-Those additions do **not** permit Product v2 to be mutated in place. Its published schema fingerprint
-and replay source contract remain immutable. A real Product-to-SalesChannel `IndexLink` must therefore
-be introduced in Product v3 (or the next reviewed Product schema version) on the same stable
-`product-postgres-primary` source identity, using the dedicated `projection_epoch` as the full-record
-source version and the relation ledger only as resolved membership input.
-
-The Product v1/v2 source continues to avoid `channels` SQL and has no `rustok-channel` dependency.
-
-Detailed relation/projection contracts:
-
-- [Product-to-SalesChannel relation admission](m7-product-sales-channel-relation-admission.md)
-- [Cross-owner resolver](m7-product-sales-channel-resolver.md)
-- [Product owner relation ledger](../../rustok-product/docs/index-sales-channel-relation-ledger.md)
-- [Product v3 projection epoch ledger](../../rustok-product/docs/index-graph-v3-projection-ledger.md)
+Detailed owner contract:
+[Product graph projection ledger](../../rustok-product/docs/index-graph-projection-ledger.md).
 
 ## Ownership
 
-`rustok-product` owns Product/Variant storage, normalized metadata, monotonic revisions,
-Variant-membership revision, retained hard-delete identities, durable relation epoch/storage, and the
-future Product v3 graph projection epoch. It still has no dependency on `rustok-index` or
-`rustok-channel`.
+`rustok-product` owns Product/Variant persistence, revisions, tombstones, relation snapshots, and graph
+projection epochs. It has no `rustok-index` or `rustok-channel` dependency.
 
-`rustok-distribution` owns selected cross-module composition: Product/Variant conversion and the
-Product-visibility-to-Channel-identity resolver. Index core and server remain Product-agnostic.
+`rustok-distribution` owns selected cross-module conversion and Product visibility to Channel identity
+resolution. It reads the Product-owned projection/relation state but never moves Channel SQL into the
+Product crate.
 
-## Explicitly open
+## Freshness boundary
 
-- incremental Product/relation event ingestion and broker acknowledgement;
-- tombstone retention/purge admission after consumer checkpoints are proven newer;
-- Product v3 plus Product-to-SalesChannel replay/materialization using `projection_epoch`;
-- Product v3 projection-aware absence semantics;
-- durable Product/Channel convergence triggering or an admitted relation freshness
-  watermark/checkpoint;
-- persisted per-tenant schema application/readiness evidence;
-- retained cross-owner resolver/projection concurrency/restart/delete-recreate evidence;
-- authoritative Storefront query cutover;
-- retained PostgreSQL replay, freshness, drift, and equivalence evidence;
-- retry/backoff/dead-letter scheduling and graceful host task ownership.
+A correct monotonic projection clock does not by itself prove that SalesChannel relation membership is
+fresh after Product visibility or Channel identity changes. The bounded resolver exists, but durable
+convergence triggering or an admitted freshness watermark remains required before this graph becomes
+authoritative.
 
-Runtime schema/source presence does not establish persisted schema readiness. Consumers must not query
-Product graph schemas authoritatively until exact tenant schemas are applied and replay/evidence
-admission is complete.
+Also still open:
+
+- retained PostgreSQL replay/concurrency/restart/delete-recreate evidence;
+- persisted tenant schema readiness evidence for the one current contract set;
+- Product typed event family and concrete consumer routes after event-contract digest admission;
+- tombstone retention/purge admission;
+- Storefront cutover and full query equivalence evidence.
 
 ## Validation ownership
 
-Formatting, Cargo checks/tests, JavaScript guards, PostgreSQL execution, and CI are maintainer-run.
-The implementation agent did not execute them.
+Formatting, Cargo checks/tests, JavaScript guards, PostgreSQL execution, migrations, workflows, and CI
+are maintainer-run. The implementation agent did not execute them.
