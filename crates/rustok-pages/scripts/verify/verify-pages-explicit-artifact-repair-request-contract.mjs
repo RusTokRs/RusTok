@@ -11,7 +11,13 @@ const files = {
   evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-request-contract-source.json",
   continuation: "docs/modules/pages-page-builder-repair-request-contract-continuation-2026-08-07.md",
   transportDoc: "crates/rustok-pages/docs/explicit-artifact-repair-transports.md",
+  auditDoc: "crates/rustok-pages/docs/immutable-artifact-integrity-audit.md",
+  auditTransportDoc: "crates/rustok-pages/docs/immutable-artifact-integrity-audit-transport.md",
+  rebuildDoc: "crates/rustok-pages/docs/explicit-immutable-artifact-rebuild.md",
+  activationDoc: "crates/rustok-pages/docs/explicit-immutable-artifact-binding-replacement.md",
   priorContinuation: "docs/modules/pages-page-builder-repair-transport-contract-continuation-2026-08-07.md",
+  rebuildContinuation: "docs/modules/pages-page-builder-rebuild-provenance-continuation-2026-08-06.md",
+  actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",
 };
 const absolute = (relative) => path.join(repoRoot, relative);
 const read = (relative) => fs.readFileSync(absolute(relative), "utf8");
@@ -134,13 +140,55 @@ for (const marker of [
   "intentionally not run",
 ]) need(sources.continuation, marker, "request continuation");
 
-for (const source of [sources.transportDoc, sources.priorContinuation]) {
-  forbid(
-    source,
-    "An owner-scoped Manage grant may pass the adapter's coarse permission check but is rejected by the owner command before writes.",
-    "actualized repair documentation",
-  );
+for (const [label, source] of [
+  ["transport doc", sources.transportDoc],
+  ["audit doc", sources.auditDoc],
+  ["audit transport doc", sources.auditTransportDoc],
+  ["rebuild doc", sources.rebuildDoc],
+  ["activation doc", sources.activationDoc],
+  ["prior continuation", sources.priorContinuation],
+  ["rebuild continuation", sources.rebuildContinuation],
+  ["parity actualization", sources.actualization],
+]) {
+  need(source, "PermissionScope::All", label);
+  need(source, "PermissionScope::None", label);
 }
+
+for (const [label, source, marker] of [
+  [
+    "transport doc",
+    sources.transportDoc,
+    "An owner-scoped Manage grant may pass the adapter's coarse permission check but is rejected by the owner command before writes.",
+  ],
+  [
+    "audit doc",
+    sources.auditDoc,
+    "An owner-scoped `pages:manage` permission does not authorize reading retained page-wide artifacts.",
+  ],
+  [
+    "audit transport doc",
+    sources.auditTransportDoc,
+    "owner-scoped Manage rejection by the service",
+  ],
+  ["rebuild doc", sources.rebuildDoc, "Owner-scoped Manage is insufficient."],
+  ["activation doc", sources.activationDoc, "Owner-scoped Manage is insufficient."],
+  [
+    "rebuild continuation",
+    sources.rebuildContinuation,
+    "tenant-wide Manage succeeds and owner-scoped Manage rejects",
+  ],
+  [
+    "parity actualization",
+    sources.actualization,
+    "tenant-wide versus owner-scoped Manage",
+  ],
+]) forbid(source, marker, label);
+
+for (const marker of [
+  "explicit-artifact-repair-pages-manage-all-none-actualized",
+  "explicit-artifact-repair-request-contract-harness-source-ready",
+  "Pages Manage `All`/`None` semantics",
+]) need(sources.actualization, marker, "parity actualization");
 
 if (failures.length > 0) {
   console.error("[verify-pages-explicit-artifact-repair-request-contract] FAIL");
