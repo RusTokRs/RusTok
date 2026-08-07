@@ -50,6 +50,9 @@ const harness = requireMarkers(harnessPath, [
   'let delayed = load_product_mutation',
   'let delayed_source_version = delayed.source_version()',
   'bump_stale_product_owner_revision(&database.writer).await?',
+  'assert_owner_projection_advanced(',
+  'FROM product_index_graph_projection_snapshots',
+  'projection_epoch > delayed_source_version',
   'apply_product_mutation(&runtime, delayed).await?',
   'assert_materialized_source_version(',
   'FROM index_entities',
@@ -75,7 +78,6 @@ const harness = requireMarkers(harnessPath, [
   'assert_eq!(deleted_locale.exact_count, Some(0))',
   'UPDATE products SET vendor =',
   'DELETE FROM product_translations',
-  'product_index_graph_projection_snapshots',
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',
 ]);
