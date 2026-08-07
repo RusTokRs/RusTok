@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+const fail = (message) => {
+  console.error(`[verify-index-product-attribute-term-contract] ${message}`);
+  process.exit(1);
+};
+const requireMarkers = (relative, markers) => {
+  const source = read(relative);
+  for (const marker of markers) {
+    if (!source.includes(marker)) fail(`${relative} is missing ${marker}`);
+  }
+  return source;
+};
+
+const modulePath = 'crates/rustok-distribution/src/product_index/attribute_terms.rs';
+const source = requireMarkers(modulePath, [
+  'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";',
+  'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_CTE: &str',
+  "pa.archived_at IS NULL",
+  'pa.is_filterable = TRUE',
+  "pa.scope IN ('product', 'both')",
+  'pav.detached_at IS NULL',
+  "value.value_type IN ('text', 'textarea', 'richtext')",
+  "value.attribute_id::text || '|text||'",
+  "value.attribute_id::text || '|localized_text|'",
+  "value.attribute_id::text || '|localized_present|'",
+  "value.attribute_id::text || '|integer||'",
+  "value.attribute_id::text || '|decimal||'",
+  'trim_scale(value.value_decimal)::text',
+  "value.attribute_id::text || '|boolean||'",
+  "value.attribute_id::text || '|date||'",
+  "value.attribute_id::text || '|datetime||'",
+  'extract(epoch FROM value.value_datetime) * 1000000',
+  "value.attribute_id::text || '|option||'",
+  'product_attribute_value_options option_value',
+  'SELECT DISTINCT product_id, term',
+  'jsonb_agg(term ORDER BY term)',
+  'hex::encode(locale.as_str().as_bytes())',
+  'hex::encode(value.as_bytes())',
+  'value.normalize().to_string()',
+  'value.timestamp_micros().to_string()',
+  'pub(crate) fn localized_text_filter(',
+  'FilterExpr::Or(vec![',
+  'FilterExpr::Not(Box::new(requested_present))',
+]);
+if (source.includes('attribute code')) {
+  fail(`${modulePath} must key persisted terms by stable attribute UUID rather than mutable public code`);
+}
+
+requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+  'mod attribute_terms;',
+]);
+requireMarkers('crates/rustok-distribution/Cargo.toml', [
+  'chrono.workspace = true',
+  'hex.workspace = true',
+  'rust_decimal.workspace = true',
+]);
+
+requireMarkers('crates/rustok-product/src/services/catalog/attribute_filters.rs', [
+  'AND archived_at IS NULL',
+  'AND is_filterable = TRUE',
+  "AND scope IN ('product', 'both')",
+  'AND pav.detached_at IS NULL',
+  'AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext',
+  'AttributeValueType::Integer',
+  'AttributeValueType::Decimal',
+  'AttributeValueType::Boolean',
+  'AttributeValueType::Date',
+  'AttributeValueType::Datetime',
+  'AttributeValueType::Select | AttributeValueType::Multiselect',
+  'AttributeValueType::Json',
+  'NOT EXISTS (',
+  'requested_any',
+  'pao.archived_at IS NULL',
+]);
+
+requireMarkers('crates/rustok-product/src/services/write_transaction.rs', [
+  'DomainEvent::ProductAttributeValuesChanged { product_id } => Some(*product_id)',
+  'UPDATE products SET index_revision = index_revision',
+]);
+
+const productSourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
+const productSource = read(productSourcePath);
+if (productSource.includes('many_field("attribute_terms"')) {
+  fail(`${productSourcePath} already materializes attribute_terms; update this source-complete/materialization-pending gate in the same replacement PR`);
+}
+
+requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
+  'Status: `source_complete_materialization_pending`',
+  '`attribute_terms: Many<String>`',
+  '`<attribute_uuid>|<kind>|<locale_hex>|<value_hex>`',
+  'There is deliberately no format-version prefix.',
+  '`localized_present`',
+  '`requested-value OR (NOT requested-present AND fallback-value)`',
+  '`derive_index_schema_source_event_id`',
+  'use one monotonically higher internal Product routing key',
+  'numeric key is an internal storage/replay identity',
+]);
+
+console.log('[verify-index-product-attribute-term-contract] canonical Product typed EAV term contract is source complete and materialization pending');
