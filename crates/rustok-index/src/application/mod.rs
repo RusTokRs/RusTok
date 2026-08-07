@@ -77,9 +77,9 @@ pub use drift_finding_lifecycle::{
     IndexDriftFindingLifecycleFailure, IndexDriftFindingLifecycleFailureError,
     IndexDriftFindingLifecycleFailureKind, IndexDriftFindingLifecycleNotAppliedReason,
     IndexDriftFindingLifecycleOutcome, IndexDriftFindingLifecycleReceipt,
-    IndexDriftFindingLifecycleService, IndexDriftFindingLifecycleStore,
-    IndexDriftFindingLifecycleStoreOutcome, IndexDriftFindingLifecycleValidationError,
-    IndexDriftFindingState,
+    IndexDriftFindingLifecycleService, IndexDriftFindingLifecycleState,
+    IndexDriftFindingLifecycleStore, IndexDriftFindingLifecycleStoreOutcome,
+    IndexDriftFindingLifecycleValidationError, IndexDriftFindingState,
 };
 pub use drift_repair::{
     IndexDriftAuthorizedRepairCommand, IndexDriftRepairAuthorization,
@@ -143,7 +143,9 @@ pub use source_continuation::{
     IndexSourceContinuationCodec, IndexSourceContinuationError, IndexSourceContinuationScope,
     IndexSourceContinuationToken,
 };
-pub use source_event_id::{IndexSourceEventIdError, derive_index_source_event_id};
+pub use source_event_id::{
+    IndexSourceEventIdError, derive_index_schema_source_event_id, derive_index_source_event_id,
+};
 pub use source_refresh_event::{
     IndexSourceRefreshEventDelivery, IndexSourceRefreshEventError,
     IndexSourceRefreshEventProcessError, IndexSourceRefreshEventProcessOutcome,
