@@ -4,14 +4,16 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::StorefrontProductList;
+use crate::{AdminProductList, AdminProductListQuery, StorefrontProductList};
 use crate::dto::ProductResponse;
 use crate::entities::product_variant;
 
 const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;
+const MAX_ADMIN_PRODUCTS_PER_PAGE: u64 = 100;
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
 const READ_VARIANT_PRODUCT_PROJECTION_OPERATION: &str = "read_variant_product_projection";
 const LIST_PUBLISHED_PRODUCTS_OPERATION: &str = "list_published_products";
+const LIST_ADMIN_PRODUCTS_OPERATION: &str = "list_admin_products";
 
 /// Transport-neutral owner boundary for product catalog read projections.
 #[async_trait]
@@ -38,6 +40,12 @@ pub trait ProductCatalogReadPort: Send + Sync {
         context: PortContext,
         request: PublishedProductsRequest,
     ) -> Result<StorefrontProductList, PortError>;
+
+    async fn list_admin_products(
+        &self,
+        context: PortContext,
+        request: AdminProductsRequest,
+    ) -> Result<AdminProductList, PortError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -59,6 +67,15 @@ pub struct PublishedProductsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
     pub public_channel_slug: Option<String>,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminProductsRequest {
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub query: AdminProductListQuery,
     pub page: u64,
     pub per_page: u64,
 }
@@ -139,6 +156,30 @@ impl ProductCatalogReadPort for crate::CatalogService {
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
     }
+
+    async fn list_admin_products(
+        &self,
+        context: PortContext,
+        request: AdminProductsRequest,
+    ) -> Result<AdminProductList, PortError> {
+        let owner_operation = LIST_ADMIN_PRODUCTS_OPERATION;
+        context
+            .require_policy(PortCallPolicy::read())
+            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        validate_admin_products_request(&context, owner_operation, &request)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
+        self.list_admin_products_with_query(
+            tenant_id,
+            locale,
+            request.fallback_locale.as_deref(),
+            request.query,
+            request.page,
+            request.per_page,
+        )
+        .await
+        .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
+    }
 }
 
 fn validate_published_products_request(
@@ -175,6 +216,45 @@ fn validate_published_products_request(
         return Err(PortError::validation(
             "product.per_page_invalid",
             "published products page size is invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_admin_products_request(
+    context: &PortContext,
+    owner_operation: &'static str,
+    request: &AdminProductsRequest,
+) -> Result<(), PortError> {
+    if request.page == 0 {
+        tracing::warn!(
+            page = request.page,
+            per_page = request.per_page,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "product.page_invalid",
+            "admin product page validation failed"
+        );
+        return Err(PortError::validation(
+            "product.page_invalid",
+            "admin products page is invalid",
+        ));
+    }
+    if !(1..=MAX_ADMIN_PRODUCTS_PER_PAGE).contains(&request.per_page) {
+        tracing::warn!(
+            page = request.page,
+            per_page = request.per_page,
+            max_per_page = MAX_ADMIN_PRODUCTS_PER_PAGE,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "product.per_page_invalid",
+            "admin product page-size validation failed"
+        );
+        return Err(PortError::validation(
+            "product.per_page_invalid",
+            "admin products page size is invalid",
         ));
     }
     Ok(())
