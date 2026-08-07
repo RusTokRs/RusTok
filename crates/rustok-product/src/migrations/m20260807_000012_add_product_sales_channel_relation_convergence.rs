@@ -198,12 +198,22 @@ BEGIN
         END IF;
     END IF;
     IF NEW.sweep_after_product_id IS DISTINCT FROM OLD.sweep_after_product_id THEN
-        IF OLD.sweep_generation IS NULL
-           OR NEW.sweep_generation IS DISTINCT FROM OLD.sweep_generation
-           OR OLD.lease_token IS NULL
-           OR NEW.lease_token IS NOT NULL
-        THEN
-            RAISE EXCEPTION 'Product-SalesChannel convergence sweep cursor may advance only by completing a leased page';
+        IF NEW.sweep_generation IS NULL THEN
+            IF NEW.sweep_after_product_id IS NOT NULL THEN
+                RAISE EXCEPTION 'Product-SalesChannel convergence completed sweep cursor must clear';
+            END IF;
+        ELSE
+            IF OLD.sweep_generation IS NULL
+               OR NEW.sweep_generation <> OLD.sweep_generation
+               OR OLD.lease_token IS NULL
+               OR NEW.lease_token IS NOT NULL
+               OR (
+                   OLD.sweep_after_product_id IS NOT NULL
+                   AND NEW.sweep_after_product_id <= OLD.sweep_after_product_id
+               )
+            THEN
+                RAISE EXCEPTION 'Product-SalesChannel convergence sweep cursor must advance strictly while completing a leased page';
+            END IF;
         END IF;
     END IF;
     IF OLD.sweep_generation IS NOT NULL AND NEW.sweep_generation IS NULL THEN
@@ -226,6 +236,11 @@ BEGIN
         END IF;
     ELSIF NEW.attempt_count <> OLD.attempt_count THEN
         RAISE EXCEPTION 'Product-SalesChannel convergence attempt count may change only with lease acquisition';
+    END IF;
+    IF NEW.lease_expires_at IS DISTINCT FROM OLD.lease_expires_at
+       AND NEW.lease_token IS NOT DISTINCT FROM OLD.lease_token
+    THEN
+        RAISE EXCEPTION 'Product-SalesChannel convergence lease expiry may change only with lease ownership';
     END IF;
     IF NEW.attempt_count < OLD.attempt_count THEN
         RAISE EXCEPTION 'Product-SalesChannel convergence attempt count cannot regress';
