@@ -83,18 +83,18 @@ requireContains(
 );
 requireContains(
   composition,
-  'ReactionSubjectUiRef::new("forum", "topic"',
-  "Only the storefront host may combine Forum identity/revision with the neutral Reactions subject UI ref",
+  "let Ok(Some(revision)) = revision_resource.await else",
+  "The async resource must carry only the Forum-owned current revision fact",
+);
+requireContains(
+  composition,
+  'ReactionSubjectUiRef::new(\n                            "forum",\n                            "topic"',
+  "Only the final host render may combine Forum identity/revision with the neutral Reactions subject UI ref",
 );
 requireContains(
   composition,
   "<ReactionBar subject />",
   "Host composition must render the separate module-owned Reactions control",
-);
-requireContains(
-  composition,
-  "Ok(None) | Err(_) => ().into_any()",
-  "Optional Reactions composition failures must degrade without replacing Forum-owned UI",
 );
 
 for (const forbidden of [
