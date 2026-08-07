@@ -30,6 +30,16 @@ requireText(
   'mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]',
   "Forum server feature must remain independent from Moderation owner selection",
 );
+const defaultFeatures = serverCargo.match(/default = \[([\s\S]*?)\]\nredis-cache =/u)?.[1];
+if (!defaultFeatures) {
+  throw new Error("server default feature block could not be located");
+}
+forbidText(
+  defaultFeatures,
+  '"mod-moderation"',
+  "Moderation owner must remain outside server default features",
+);
+
 requireText(
   dispatcher,
   '#[cfg(feature = "mod-moderation")]',
@@ -94,10 +104,10 @@ requireText(
   "ForumModerationSubjectAdapterFactory::reply()",
   "Forum must continue registering the reply adapter factory",
 );
-forbidText(
+requireText(
   forumLib,
-  '"moderation"',
-  "Forum module dependencies must not make Moderation owner mandatory",
+  '&["content", "taxonomy"]',
+  "Forum module dependencies must remain owner-neutral and exclude Moderation",
 );
 
 for (const forbidden of [
