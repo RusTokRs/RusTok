@@ -178,12 +178,14 @@ const absence = requireMarkers(absencePath, [
 forbidMarkers(absencePath, absence, ['INSERT ', 'UPDATE ', 'DELETE FROM']);
 
 requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-freshness.md', [
-  'Status: `source_complete_materialized_convergence_and_runtime_evidence_pending`',
+  'Status: `source_and_automatic_convergence_complete_materialized_fence_and_runtime_evidence_pending`',
   'freshness-only change does not pretend that the graph membership changed',
   '`channel_index_identity_generations`',
   'fails closed at source observation',
-  'does **not** make source observation and Index mutation application one cross-owner atomic',
-  'stale source admission, not the remaining materialized convergence problem',
+  '## Automatic convergence',
+  'generic ModuleWork scheduler',
+  'still do **not** make source observation and Index mutation application one cross-owner atomic',
+  'materialized/query freshness fence',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
   'Status: `automatic_convergence_source_complete_runtime_evidence_pending`',
