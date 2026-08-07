@@ -1,6 +1,7 @@
 mod commands;
 pub mod application;
 pub mod application_dispatch;
+mod application_scheduler;
 pub mod domain;
 pub mod entities;
 pub mod error;
@@ -55,6 +56,18 @@ impl RusToKModule for ModerationModule {
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut rustok_core::ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        extensions
+            .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default)
+            .register(std::sync::Arc::new(
+                application_scheduler::ModerationApplicationWorkRegistration,
+            ));
+        Ok(())
+    }
 }
 
 impl MigrationSource for ModerationModule {
@@ -79,5 +92,14 @@ mod tests {
         assert_eq!(module.migrations().len(), 4);
         assert_eq!(module.migration_dependencies().len(), 4);
         assert!(module.permissions().is_empty());
+
+        let mut extensions = rustok_core::ModuleRuntimeExtensions::default();
+        module.register_runtime_extensions(&mut extensions).unwrap();
+        assert!(
+            !extensions
+                .get::<rustok_runtime::ModuleWorkRegistrations>()
+                .unwrap()
+                .is_empty()
+        );
     }
 }
