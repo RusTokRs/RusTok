@@ -77,16 +77,18 @@ Retry delay uses a deterministic bounded exponential schedule based on the **pos
 
 No jitter or host clock policy is hidden in the domain adapter. A future scheduler may decide when to invoke one-attempt dispatch, but it must not bypass `next_attempt_at` / CAS claim semantics.
 
-## Success
+## Success and applied evidence
 
-A successful adapter return is passed unchanged to `mark_application_applied`. The existing owner guard verifies:
+A successful adapter return is passed to `mark_application_applied`. The existing owner guard verifies:
 
 - matching decision UUID;
 - exact reviewed subject module/kind/UUID/revision;
 - `applied_revision >= reviewed_revision`;
 - exact live, unexpired lease token.
 
-Only then does Moderation record `applied_revision` and `applied_at`.
+Only then does Moderation record `applied_revision` and `applied_at`. If the adapter returned `Ok(...)` but the application evidence does not match the immutable operation, the dispatcher moves the still-live attempt to `operator_review` under `moderation.application_evidence_invalid`; it does not let deterministic bad evidence expire and retry forever.
+
+Database failures, operation disappearance and lease conflicts while recording success are not rewritten as operator outcomes. They are returned to the caller so database recovery or lease reclaim can resolve them without fabricating a domain result.
 
 ## Explicitly not claimed
 
@@ -121,6 +123,6 @@ cargo xtask module validate moderation
 git diff --check
 ```
 
-Retained evidence should cover: not-due no claim/no adapter call; exact command reconstruction; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable rejection; invariant operator-review; successful applied evidence; lost-response replay with the same decision UUID idempotency key; adapter runtime exceeding lease; stale-token finish rejection after reclaim; owner DB failure after claim followed by lease reclaim; and both PostgreSQL/SQLite operation semantics.
+Retained evidence should cover: not-due no claim/no adapter call; exact command reconstruction; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable rejection; invariant operator-review; successful applied evidence; mismatched successful evidence -> operator-review; lost-response replay with the same decision UUID idempotency key; adapter runtime exceeding lease; stale-token finish rejection after reclaim; owner DB failure after claim followed by lease reclaim; and both PostgreSQL/SQLite operation semantics.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
