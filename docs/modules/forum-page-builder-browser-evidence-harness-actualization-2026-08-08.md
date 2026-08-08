@@ -31,12 +31,13 @@ The runner lives with the repository's existing pinned Playwright dependency:
 
 ```text
 apps/next-admin/playwright.forum-page-builder.config.ts
+apps/next-admin/tests/forum-page-builder/global-setup.ts
 apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts
 ```
 
 `apps/next-admin` is only the evidence runner package. The browser target is the maintainer-supplied real Leptos Pages admin route. The harness does not add a Next-admin Forum/Page Builder serving path.
 
-The configuration fixes Chromium to one worker, disables retries, trace, screenshots and video, and writes no Playwright artifact containing cookies, owner payloads or rendered Forum data.
+The configuration fixes Chromium to one worker, disables retries, trace, screenshots and video, and writes no Playwright artifact containing cookies, owner payloads or rendered Forum data. Global setup removes only the bounded evidence output inside repository `target/` before execution so a failed run cannot leave a stale prior success packet behind.
 
 ## Required maintainer fixtures
 
@@ -47,6 +48,8 @@ Maintainers provide reviewed external storage-state files and five real Pages ad
 - `properties_off`: Forum enabled but the authoring/property contribution is filtered;
 - `Forum-disabled`: Pages remains available but Forum is not tenant-enabled;
 - `no_read`: Forum is enabled but the authenticated user lacks effective `forum_topics:read`.
+
+The full profile must point to a reviewed disposable unpublished draft because the evidence deliberately inserts and saves one Forum block. The remaining profile URLs must also be dedicated evidence fixtures so capability/module state is not inferred from production editorial content.
 
 The harness never seeds tenants, sessions, pages or provider profiles. It observes the reviewed environment only.
 
@@ -91,7 +94,7 @@ The output retains only:
 
 It does not retain raw URLs, cookies, Authorization headers, storage-state contents, owner preview payloads, raw DOM/HTML, tenant/actor identifiers or Forum topic/reply content.
 
-If any profile fails, the success evidence packet is not written.
+The previous output is removed before execution. If any profile fails, a new success evidence packet is not written.
 
 ## Source guard
 
@@ -101,7 +104,7 @@ The source-only guard is:
 node scripts/verify/verify-forum-page-builder-browser-evidence-harness.mjs
 ```
 
-It verifies the evidence contract, profile matrix, retention boundary, stable production browser selectors, existing Forum host composition and the no-execution status.
+It verifies the evidence contract, profile matrix, retention boundary, stale-output cleanup, stable production browser selectors, existing Forum host composition and the no-execution status.
 
 ## Maintainer browser command
 
