@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product key-4 promotion contract merge
-`d905c25a4d0ffd63682bf2aea9779ded190a255e` and continued on
-`agent/product-key4-promotion-postgres-evidence-20260808`.
+Status overlay rechecked after Product graph-source actualization merge
+`832f4946245ef6bc82b7eb50e202b47d0426a569` and continued on
+`agent/index-replay-graphql-transport-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -107,6 +107,24 @@ The lower-key contract is deliberately a test-only storage/probe fixture derived
 contract with a lower routing key. It does not reconstruct the historical key3 Product fingerprint and does not
 register a key3 Product source/factory. Runtime dual-read compatibility remains forbidden.
 
+## M6 replay command transport
+
+`IndexReplayOperatorRuntime` remains the only server-owned replay invocation authority. It requires exact
+request-bound tenant/actor context and effective `modules:manage`, rejects cross-tenant run requests and derives
+cancel tenant from that context.
+
+The GraphQL layer now exposes source-complete schema-wide `runIndexReplay` / `cancelIndexReplay` commands without
+calling `SharedIndexReplayRuntime`, source adapters or PostgreSQL directly. Authorization occurs before parsing
+untrusted schema/job input.
+
+Caller input contains no tenant, actor, worker ID, source name, locale/partition, scheduler handle or replay
+resource budget. Each run creates a server-owned worker identity and applies fixed transport caps: 100 mutations
+per page, at most 8 pages, heartbeat every page and a 60-second lease. Yielded work remains resumable through the
+existing durable job/checkpoint mechanism.
+
+This source slice does not establish GraphQL runtime execution evidence and does not solve graceful host shutdown
+inside an active replay page. Those remain separate boundaries.
+
 ## Remaining Storefront parity/evidence blockers
 
 - execute/admit the deterministic budgeted timeout packet and retain acceptable runtime latency/cancellation
@@ -134,8 +152,12 @@ register a key3 Product source/factory. Runtime dual-read compatibility remains 
 - [x] Bounded replay, durable jobs/leases/checkpoints and cancellation.
 - [x] Reconciliation, drift diagnosis and targeted repair source.
 - [x] Real-migration repair PostgreSQL harness and retained-evidence admission tooling.
+- [x] Guarded schema-wide replay run/cancel GraphQL command transport with server-owned bounded run policy.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
-- [ ] Complete remaining multi-host/restart/shutdown/command-transport evidence.
+- [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
+- [ ] Bind graceful host shutdown to in-page replay interruption safe points and retain restart/redelivery evidence.
+- [ ] Complete remaining multi-host/restart evidence beyond existing convergence/replay packets.
+- [ ] Add locale/partition replay checkpoint dimensions and explicit rebuild modes under separate contracts.
 
 ## M7 Product Storefront graph
 
@@ -167,11 +189,14 @@ register a key3 Product source/factory. Runtime dual-read compatibility remains 
 
 ## Next source-code boundary
 
-The Storefront request-shape, projection/hydration, timeout, promotion contract and focused promotion/restart
-packet are source-complete. Do not add a traffic-switch adapter from source inspection alone. The remaining
-blocking work is maintainer execution/admission plus any source fix revealed by those runs. Independent source
-cleanup may actualize stale documentation/guards, but it must not convert source-only evidence into a serving
-claim.
+M7 Storefront remains execution/admission-gated and must not gain a traffic switch from source inspection alone.
+The next independent M6 source slice is graceful replay shutdown: bind a host-owned stop probe to the existing
+`IndexReplayWorker::run_next_page_interruptible` safe points, yield the active job back to durable `pending`
+without marking it failed/cancelled, and retain restart evidence that stable deliveries become duplicates when a
+shutdown occurs after mutation durability but before checkpoint commit.
+
+Do not conflate that shutdown contract with user-requested cancellation. Locale/partition checkpoint scope and
+explicit rebuild modes remain later, separate contracts.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
