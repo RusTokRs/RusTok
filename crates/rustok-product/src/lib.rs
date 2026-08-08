@@ -16,6 +16,7 @@ use sea_orm_migration::MigrationTrait;
 
 mod catalog_command_port;
 mod catalog_schema_read_port;
+mod catalog_schema_write_port;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -34,6 +35,7 @@ pub use catalog_schema_read_port::{
     ProductEffectiveFormRequest, ProductEffectiveFormSubject,
     ProductStorefrontAttributeFilterResolutionRequest,
 };
+pub use catalog_schema_write_port::ProductCatalogSchemaWritePort;
 pub use error::{CommerceError, CommerceResult};
 pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};

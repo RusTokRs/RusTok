@@ -1,6 +1,6 @@
 # Groups membership enforcement GraphQL contract
 
-Status: **source-ready / maintainer execution pending**
+Status: **source-ready with executable SQLite/PostgreSQL parity sources / maintainer execution pending**
 
 ## Scope
 
@@ -92,7 +92,35 @@ The enforcement transport additionally preserves the stable owner error identity
 
 This avoids forcing clients to parse messages or collapse distinct owner conflicts such as `groups.membership_enforcement_revision_conflict`, while keeping unavailable/invariant diagnostics sanitized by the neutral port contract. The transport does not replace the common GraphQL `code` field with a domain-specific value.
 
-Source-level tests retain conflict and unavailable extension mapping. Runtime schema/error-extension parity still requires executable evidence; source presence alone does not promote that gate.
+Source-level tests retain conflict and unavailable extension mapping.
+
+## Executable SQLite native/GraphQL parity source
+
+`apps/server/tests/groups_membership_enforcement_graphql_sqlite.rs` retains an executable parity packet over a real temporary SQLite file, all production Groups migrations, the production native command service and the stable final Groups GraphQL root.
+
+The packet seeds one local owner and two equivalent lifecycle-active member targets. One target is mutated through `GroupMembershipEnforcementCommandPort`; the other is mutated through `graphql_application_cas::GroupsMutationRoot`. It requires semantic parity for:
+
+- suspend result membership revision, lifecycle member count, effective status and enforcement revision;
+- GraphQL receipt replay with the same idempotency key and immutable owner result, changing only `replayed=true`;
+- stale expected-revision failure with GraphQL `code=BAD_USER_INPUT`, exact owner `domainCode=groups.membership_enforcement_revision_conflict`, and `retryable=false`;
+- revoke result membership revision, lifecycle member count, effective status, enforcement revision and revocation presence;
+- monotonic owner `groupVersion` across the sequential native/GraphQL commands rather than pretending two sequential mutations share the same aggregate version.
+
+No synthetic owner result or direct enforcement-table mutation is used. The GraphQL request carries the exact tenant-bound local owner principal with no platform moderation permission, proving that local owner hierarchy remains an owner-domain decision.
+
+This packet is **execution pending**. Its source does not populate `membership_enforcement_command_transport_parity` or promote any runtime gate until a maintainer runs it.
+
+## Executable PostgreSQL native/GraphQL parity source
+
+`apps/server/tests/groups_membership_enforcement_graphql_postgres.rs` mirrors the SQLite packet against PostgreSQL using a unique schema per execution. Every SeaORM pool connection receives the schema through startup options:
+
+```text
+options=-csearch_path=<schema>,public
+```
+
+The packet intentionally does not rely on session-local `SET search_path`. It applies the same production Groups migrations and repeats native-vs-final-GraphQL suspend, immutable replay, stale revision error extensions and revoke semantics for a local owner with no platform moderation permission.
+
+The PostgreSQL test is ignored unless `RUSTOK_GROUPS_TEST_POSTGRES_URL` is configured. Its source is **execution pending** and does not populate transport parity evidence before a maintainer runs it.
 
 ## No fallback
 
@@ -106,7 +134,9 @@ Intentionally not run while preparing this slice:
 cargo check -p rustok-groups --features graphql
 cargo test -p rustok-groups --features graphql graphql_conflict_preserves_transport_and_owner_codes
 cargo test -p rustok-groups --features graphql graphql_unavailable_keeps_owner_code_and_retryability
+cargo test -p rustok-server --features mod-groups --test groups_membership_enforcement_graphql_sqlite -- --nocapture
+RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://...' cargo test -p rustok-server --features mod-groups --test groups_membership_enforcement_graphql_postgres -- --ignored --nocapture
 node scripts/verify/verify-groups-membership-enforcement-graphql.mjs
 ```
 
-No Cargo command, test, Node verifier, browser/schema execution, formatter, workflow or CI job was executed. Runtime replay/CAS/authorization/schema/error parity remains open.
+No Cargo command, test, Node verifier, browser/schema execution, formatter, workflow or CI job was executed. Executed SQLite/PostgreSQL replay/CAS/authorization/schema/error parity remains open.

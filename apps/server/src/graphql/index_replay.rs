@@ -11,6 +11,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};
+use crate::services::app_lifecycle::StopHandle;
 use crate::services::index_replay_runtime_composition::{
     IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
 };
@@ -159,8 +160,9 @@ impl IndexReplayMutation {
         let (operator_context, request) =
             prepare_authorized_run(tenant.id, auth.user_id, input).map_err(map_preparation_error)?;
         let runtime = replay_runtime(ctx)?;
+        let stop_handle = ctx.data::<StopHandle>()?.clone();
         runtime
-            .run(operator_context, request)
+            .run_interruptible(operator_context, request, || stop_handle.is_stopping())
             .await
             .map_err(map_operator_error)?
             .try_into()

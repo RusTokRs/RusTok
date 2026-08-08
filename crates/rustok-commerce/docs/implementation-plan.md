@@ -264,12 +264,12 @@ These are source-contract defects, not verification-only tasks.
   errors.
 - [x] Cut mounted GraphQL Product create/update/publish/delete lifecycle execution to
   the host-selected `ProductCatalogCommandRuntime` / `ProductCatalogCommandPort`, keep
-  create/update compatibility validation and public error identities, and publish an
-  optional explicit `idempotencyKey`; omitted keys use a logged one-request compatibility
-  identity and do not claim replay semantics.
-- [ ] Teach Product Admin FFA lifecycle commands to retain one GraphQL caller
+  create/update compatibility validation and public error identities, and require an
+  explicit caller `idempotencyKey` for every lifecycle execution with scoped command
+  identity and no compatibility-generated caller identity.
+- [x] Teach Product Admin FFA lifecycle commands to retain one GraphQL caller
   idempotency key across explicit retries, then make mounted GraphQL `idempotencyKey`
-  mandatory without breaking current UI callers.
+  non-null/mandatory after updating current regression callers to supply explicit keys.
 - [ ] Cut remaining Product schema writes away from direct
   `ProductCatalogSchemaService` construction through typed Product owner write
   capabilities with explicit write idempotency semantics.
@@ -672,6 +672,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-commerce-product-command-port.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-rest-lifecycle-command-cutover.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-graphql-lifecycle-command-cutover.mjs`
+- [ ] `node scripts/verify/verify-product-admin-lifecycle-retry-consumer.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-detail-read.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-list-read.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-graphql-read.mjs`
@@ -923,8 +924,8 @@ Source inspection is not execution evidence.
   host-composed Product command runtime with required caller idempotency identity.
 - [x] Cut mounted GraphQL Product create/update/publish/delete execution to the
   host-selected Product command runtime, preserve lifecycle public-error identities,
-  and expose optional explicit caller idempotency while retaining a logged one-request
-  compatibility path for current callers; mandatory FFA retry identity remains open.
+  complete Product Admin retry identity retention, and require non-null explicit caller
+  idempotency with no compatibility-generated lifecycle identity.
 
 ## Change rules
 

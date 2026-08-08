@@ -69,26 +69,22 @@ for (const required of [
 forbidText(adapter, "compatibility-", "Product Admin explicit retry caller");
 forbidText(adapter, "Option<String>\n    idempotency_key", "Product Admin explicit retry caller");
 
-// Product Admin already sends a non-null caller key. Mounted Commerce now rejects an omitted key
-// instead of manufacturing a compatibility identity, but the resolver argument remains nullable so
-// tenant/profile admission regression fixtures preserve their existing ordering until the dedicated
-// non-null SDL cutover updates those callers explicitly.
-requireText(
-  commerce,
-  "idempotency_key: Option<String>",
-  "mounted GraphQL non-null SDL follow-up remains explicit",
-);
-requireText(
-  commerce,
-  "Product mutation idempotency key is required",
-  "mounted GraphQL execution requires caller identity",
-);
+for (const required of [
+  "idempotency_key: String",
+  "Product mutation idempotency key must not be empty",
+  "MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH: usize = 191",
+  ".with_idempotency_key(scoped_key)",
+]) {
+  requireText(commerce, required, "mounted GraphQL mandatory idempotency contract");
+}
 for (const forbidden of [
+  "idempotency_key: Option<String>",
+  "Product mutation idempotency key is required",
   "using one-request compatibility identity",
   "compatibility-{}",
   "Product GraphQL lifecycle caller omitted idempotency key",
 ]) {
-  forbidText(commerce, forbidden, "mounted GraphQL compatibility identity must stay removed");
+  forbidText(commerce, forbidden, "mounted GraphQL mandatory idempotency contract");
 }
 
 if (failures.length) {
@@ -97,4 +93,4 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Product Admin lifecycle callers retain explicit retry identity and mounted Commerce rejects omission; non-null server SDL remains follow-up debt");
+console.log("✔ Product Admin lifecycle callers retain retry identity and mounted Commerce exposes non-null Product lifecycle idempotency with no compatibility path");

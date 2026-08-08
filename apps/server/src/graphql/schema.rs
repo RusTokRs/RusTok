@@ -39,6 +39,7 @@ use super::storefront_principal_security::StorefrontPrincipalPolicy;
 use super::subscriptions::BuildSubscription;
 use super::system::SystemQuery;
 use super::tenant_security::GraphqlTenantPolicy;
+use crate::services::app_lifecycle::StopHandle;
 use crate::services::build_event_hub::BuildEventHub;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry_bootstrap::build_field_def_registry;
@@ -127,6 +128,7 @@ pub struct GraphqlSchemaDependencies {
     pub build_event_hub: Arc<BuildEventHub>,
     pub field_definition_cache: FieldDefinitionCache,
     pub runtime_extensions: Arc<ModuleRuntimeExtensions>,
+    pub stop_handle: StopHandle,
     pub rbac_role_writer: RbacGraphqlRoleWriterHandle,
     pub search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-blog")]
@@ -155,6 +157,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         build_event_hub,
         field_definition_cache,
         runtime_extensions,
+        stop_handle,
         rbac_role_writer,
         search_rate_limiter,
         #[cfg(feature = "mod-blog")]
@@ -249,6 +252,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         .data(flex_runtime)
         .data(marketplace_catalog)
         .data(runtime_extensions)
+        .data(stop_handle)
         .data(rbac_role_writer);
 
     let builder = if let Some(search_rate_limiter) = search_rate_limiter {

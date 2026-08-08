@@ -5,6 +5,7 @@ use crate::graphql::blog_rate_limit::blog_graphql_rate_limiter_from_context;
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
 use crate::graphql::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};
+use crate::services::app_lifecycle::StopHandle;
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
@@ -14,6 +15,13 @@ use crate::services::profile_media_public_image_runtime::attach_profile_media_pu
 #[cfg(feature = "mod-seo")]
 use crate::services::seo_redirect_cache_reconciliation::start_seo_redirect_cache_reconciliation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+
+/// Keeps at least one watch receiver alive for API-only hosts so `StopHandle::stop()` can publish
+/// the terminal value even when no background worker has subscribed yet.
+#[derive(Clone)]
+struct IndexReplayStopKeepalive {
+    _receiver: tokio::sync::watch::Receiver<bool>,
+}
 
 pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     #[cfg(feature = "mod-seo")]
@@ -30,6 +38,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         attach_profile_media_public_image_provider(ctx, module_runtime_extensions_from_ctx(ctx));
     let event_bus = event_bus_from_context(ctx);
     let transactional_event_bus = transactional_event_bus_from_context(ctx);
+    let stop_handle = stop_handle_from_context(ctx);
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
         .expect("ModuleRegistry not initialized; bootstrap_app_runtime must run first");
@@ -68,6 +77,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         build_event_hub: build_event_hub_from_context(ctx),
         field_definition_cache: field_definition_cache_from_context(ctx, event_bus),
         runtime_extensions,
+        stop_handle,
         rbac_role_writer: rbac_graphql_role_writer_from_context(ctx),
         search_rate_limiter: search_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-blog")]
@@ -90,6 +100,27 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
 
     schema
+}
+
+fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
+    if let Some(handle) = ctx.shared_get::<StopHandle>() {
+        ctx.shared_insert_if_absent(IndexReplayStopKeepalive {
+            _receiver: handle.subscribe(),
+        });
+        return handle;
+    }
+
+    // Keep the candidate's initial receiver alive until a receiver for the actually published
+    // handle has been installed. This avoids a zero-receiver window if shutdown races schema init.
+    let (candidate, _initial_receiver) = StopHandle::new();
+    ctx.shared_insert_if_absent(candidate);
+    let handle = ctx
+        .shared_get::<StopHandle>()
+        .expect("StopHandle reservation must publish one shared lifecycle handle");
+    ctx.shared_insert_if_absent(IndexReplayStopKeepalive {
+        _receiver: handle.subscribe(),
+    });
+    handle
 }
 
 #[cfg(feature = "mod-alloy")]

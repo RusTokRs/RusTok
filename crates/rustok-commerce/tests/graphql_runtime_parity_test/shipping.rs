@@ -574,6 +574,7 @@ async fn admin_graphql_rejects_unknown_shipping_profile_references() {
             r#"
             mutation {{
               createProduct(
+                idempotencyKey: "unknown-shipping-profile-product"
                 input: {{
                   translations: [{{
                     locale: "en"
