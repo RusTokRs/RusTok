@@ -245,10 +245,12 @@ async fn dispatch_pages_page_builder_capability(
 
     let token = required_snapshot_value(snapshot.token, "access token")?;
     let tenant_slug = required_snapshot_value(snapshot.tenant_slug, "tenant")?;
-    let trusted_rollout =
-        crate::builder_rollout_settings::load_trusted_pages_builder_rollout_snapshot()
-            .await
-            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    let trusted_rollout = crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
+        Some(token.clone()),
+        Some(tenant_slug.clone()),
+    )
+    .await
+    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
     if tenant_slug != trusted_rollout.tenant_slug {
         return Err(PageBuilderAdminFacadeError::new(format!(
             "Pages tenant `{tenant_slug}` does not match routed tenant `{}`",

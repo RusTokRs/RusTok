@@ -18,9 +18,8 @@ ssr = [
   "leptos-auth/ssr",
   "rustok-page-builder/server",
   "rustok-page-builder-admin/ssr",
-  "rustok-api/server",
   "dep:async-trait",
-  "dep:leptos_axum",
+  "dep:rustok-api",
 ]
 
 [dependencies]
@@ -29,7 +28,6 @@ fly-browser = { path = "../../fly-browser" }
 fly-ui = { path = "../../fly-ui" }
 rustok-ui-core.workspace = true
 leptos.workspace = true
-leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 rustok-graphql.workspace = true
 rustok-page-builder = { path = "../../rustok-page-builder", default-features = false }

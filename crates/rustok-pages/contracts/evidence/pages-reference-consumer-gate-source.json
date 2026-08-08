@@ -9,12 +9,14 @@
   "prepared_on": "2026-08-08",
   "source_recheck": {
     "main_base": "0f64eb62f9521e0c08027ab04433256429321c62",
+    "rollout_owner_correction_base": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
     "pages_source_boundary": "complete_execution_pending",
     "page_builder_provider_status": "source_ready_health_unobserved",
     "plan_parity": "source_ready",
     "candidate_harness": "source_ready_maintainer_execution_pending",
-    "tenant_rollout_settings": "platform_read_seam_and_pages_binding_source_ready",
-    "trusted_rollout_server_snapshot": "source_ready_ui_and_ssr_binding_complete",
+    "tenant_rollout_settings": "platform_read_seam_server_owner_graphql_all_bindings_source_ready",
+    "trusted_rollout_server_snapshot": "pages_graphql_owner_ui_ssr_browser_intent_bindings_source_ready",
+    "browser_intent_rollout_preflight": "source_ready_server_owned_flags",
     "four_profile_runtime_matrix": "source_executable_evidence_pending",
     "forum_second_consumer": {
       "contribution_metadata": "source_ready",
@@ -86,6 +88,7 @@
       "accepted authenticated inline authoring HTTP/browser evidence",
       "accepted anonymous storefront authoring-exclusion evidence",
       "accepted provider degraded-profile behavior without fabricated health",
+      "accepted four-profile standalone browser-intent preflight behavior using server-owned rollout flags",
       "maintainer owner sign-off and explicit rollback decision"
     ],
     "acceptance": {
@@ -113,8 +116,9 @@
     "source_gate": "ready",
     "execution_gate": "pending",
     "candidate_harness": "source_ready_maintainer_execution_pending",
-    "tenant_rollout_settings": "platform_read_seam_and_pages_binding_source_ready",
-    "trusted_rollout_server_snapshot": "source_ready_ui_and_ssr_binding_complete",
+    "tenant_rollout_settings": "platform_read_seam_server_owner_graphql_all_bindings_source_ready",
+    "trusted_rollout_server_snapshot": "pages_graphql_owner_ui_ssr_browser_intent_bindings_source_ready",
+    "browser_intent_rollout_preflight": "source_ready_server_owned_flags",
     "four_profile_runtime_matrix": "source_executable_evidence_pending",
     "forum_wave_blocker": "pages_reference_consumer_gate",
     "provider_health": "unobserved",

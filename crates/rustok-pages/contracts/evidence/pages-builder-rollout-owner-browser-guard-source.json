@@ -1,0 +1,40 @@
+{
+  "format": "pages_builder_rollout_owner_browser_guard_source_v1",
+  "status": "source_review_complete_runtime_evidence_pending",
+  "prepared_on": "2026-08-08",
+  "source_base": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
+  "source_contract": {
+    "pages_server_owns_rollout_settings_read": true,
+    "graphql_snapshot_is_tenant_bound": true,
+    "graphql_snapshot_requires_pages_read": true,
+    "raw_module_settings_returned": false,
+    "database_error_details_returned": false,
+    "shared_module_settings_normalizer_added": true,
+    "standalone_admin_db_runtime_required": false,
+    "workspace_uses_server_owned_snapshot": true,
+    "ssr_preview_publish_refetch_server_owned_snapshot": true,
+    "browser_intent_refetches_server_owned_snapshot": true,
+    "browser_intent_narrows_role_capabilities_before_draft_dispatch": true,
+    "browser_supplied_rollout_flags_accepted": false,
+    "settings_mutation_added": false,
+    "parallel_settings_store_added": false,
+    "provider_health_observed": false,
+    "four_profile_runtime_evidence_retained": false,
+    "gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "validation": {
+    "tests_run": false,
+    "node_verifiers_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "database_run": false,
+    "http_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false,
+    "git_diff_check_run": false
+  },
+  "next_cursor": "retain and maintainer-execute a production-authority four-profile runtime matrix with mandatory settings restoration"
+}

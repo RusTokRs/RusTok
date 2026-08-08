@@ -38,6 +38,10 @@ pub use browser_intent::{
 };
 pub use browser_problem::PagesBrowserIntentProblem;
 pub use builder::PagesBuilderSaveSnapshot;
+pub use builder_rollout_settings::{
+    PagesBuilderRolloutSnapshot, PagesBuilderRolloutSnapshotError,
+    fetch_pages_builder_rollout_snapshot, pages_editor_capabilities_for_rollout,
+};
 pub use contribution_browser_intent::{
     PagesBrowserIntentAccessError, dispatch_pages_browser_intent,
     dispatch_pages_browser_intent_with_capabilities, dispatch_pages_browser_intent_with_store,

@@ -29,7 +29,8 @@ async fn main() {
     use rustok_pages_admin::{
         BrowserIntentEnvelope, PagesBrowserIntentAccessError, PagesBrowserIntentProblem,
         PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
-        dispatch_pages_browser_intent_with_capabilities, pages_editor_capability_policy_for_role,
+        dispatch_pages_browser_intent_with_capabilities, fetch_pages_builder_rollout_snapshot,
+        pages_editor_capabilities_for_rollout, pages_editor_capability_policy_for_role,
     };
     use serde_json::{Value, json};
 
@@ -58,8 +59,21 @@ async fn main() {
                 .ok_or_else(|| {
                     auth_error(StatusCode::UNAUTHORIZED, "Authenticated user was not found")
                 })?;
-        let editor_capabilities =
+        let role_capabilities =
             pages_editor_capability_policy_for_role(Some(verified_user.role.as_str())).evaluate();
+        let rollout = fetch_pages_builder_rollout_snapshot(
+            Some(token.clone()),
+            Some(tenant_slug.clone()),
+        )
+        .await
+        .map_err(|error| {
+            auth_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("Pages Page Builder rollout snapshot unavailable: {error}"),
+            )
+        })?;
+        let editor_capabilities =
+            pages_editor_capabilities_for_rollout(role_capabilities, &rollout.flags);
         let default_locale = header_value(&headers, "accept-language")
             .and_then(|language| language.split(',').next().map(str::to_string))
             .unwrap_or_else(|| "en".to_string());
