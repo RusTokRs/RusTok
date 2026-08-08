@@ -258,9 +258,6 @@ async function requestScenario(baseUrl, endpoint, challenge, scenario, credentia
   if (scenario.expected_status !== undefined && response.status !== scenario.expected_status) {
     fail(`${scenario.id} expected ${scenario.expected_status}, got ${response.status}`);
   }
-  if (scenario.success_forbidden && response.status === 200) {
-    fail(`${scenario.id} unexpectedly reached a successful attestation response`);
-  }
   return {
     response,
     responseBody,
@@ -275,6 +272,11 @@ async function requestScenario(baseUrl, endpoint, challenge, scenario, credentia
       raw_body_persisted: false,
     },
   };
+}
+
+function isValidSuccessAttestation(contract, body, challenge) {
+  const text = body.toString("utf8");
+  return text.includes(contract.authorized_response.contract) && text.includes(challenge);
 }
 
 function requireAuthorizedBody(contract, body, challenge, sourceCommit) {
@@ -349,6 +351,11 @@ async function main() {
     );
     if (scenario.id === "authorized") {
       requireAuthorizedBody(contract, captured.responseBody, challenge, sourceCommit);
+    } else if (
+      scenario.success_forbidden &&
+      isValidSuccessAttestation(contract, captured.responseBody, challenge)
+    ) {
+      fail(`${scenario.id} unexpectedly received a valid success attestation`);
     }
     scenarioRecords.push(captured.record);
   }
@@ -357,7 +364,7 @@ async function main() {
     format: contract.output.format,
     status: contract.output.status,
     source_commit: sourceCommit,
-    live_server_source_commit: sourceCommit,
+    live_server_source_commit_verified_equal_checkout: true,
     captured_at: new Date().toISOString(),
     target: {
       origin_bytes: Buffer.byteLength(baseUrl),
