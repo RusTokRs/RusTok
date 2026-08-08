@@ -481,6 +481,7 @@
       "pending"
     ],
     "candidate_cancel_membership_state": "left",
+    "candidate_cancel_snapshot": "preserve",
     "candidate_cancel_query_clear": "never",
     "manager_reopen_from": [
       "rejected",
