@@ -30,6 +30,8 @@ pub struct GqlForumCounterReconciliationReport {
     pub inspected_categories: i32,
     pub has_more_topics: bool,
     pub has_more_categories: bool,
+    pub topic_cursor: Option<Uuid>,
+    pub category_cursor: Option<Uuid>,
     pub drift_count: i32,
     pub clean: bool,
     pub drifts: Vec<GqlForumCounterDrift>,
@@ -42,12 +44,17 @@ pub struct ForumReconciliationQuery;
 impl ForumReconciliationQuery {
     /// Read-only FORUM-33 owner counter drift report for the current tenant.
     ///
+    /// `topic_after` and `category_after` are independent keyset cursors. Callers should echo each
+    /// returned cursor into the corresponding `*_after` argument on the next page, including the
+    /// cursor for a shape whose `has_more_*` flag is already false, so that shape is not rescanned.
     /// This is intentionally not a repair mutation. Repair remains closed until a write path can
     /// provide operator RBAC, dry-run, audit and durable idempotent job state.
     async fn forum_counter_reconciliation_report(
         &self,
         ctx: &Context<'_>,
         limit: Option<i32>,
+        topic_after: Option<Uuid>,
+        category_after: Option<Uuid>,
     ) -> Result<GqlForumCounterReconciliationReport> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let auth = ctx
@@ -65,7 +72,13 @@ impl ForumReconciliationQuery {
         let security =
             SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
         let report = ForumCounterReconciliationService::new(db.clone())
-            .report(tenant.id, &security, requested_limit)
+            .report_page(
+                tenant.id,
+                &security,
+                requested_limit,
+                topic_after,
+                category_after,
+            )
             .await?;
         Ok(map_report(report))
     }
@@ -106,6 +119,8 @@ fn map_report(report: ForumCounterReconciliationReport) -> GqlForumCounterReconc
         inspected_categories: saturating_i32(report.inspected_categories),
         has_more_topics: report.has_more_topics,
         has_more_categories: report.has_more_categories,
+        topic_cursor: report.topic_cursor,
+        category_cursor: report.category_cursor,
         drift_count: saturating_i32(report.drift_count() as u64),
         clean: report.is_clean(),
         drifts: report.drifts.into_iter().map(map_drift).collect(),
@@ -167,5 +182,24 @@ mod tests {
         assert_eq!(normalize_limit(Some(25)).unwrap(), Some(25));
         assert!(normalize_limit(Some(0)).is_err());
         assert!(normalize_limit(Some(-1)).is_err());
+    }
+
+    #[test]
+    fn mapped_report_preserves_independent_cursors() {
+        let topic_cursor = Uuid::new_v4();
+        let category_cursor = Uuid::new_v4();
+        let mapped = map_report(ForumCounterReconciliationReport {
+            requested_limit: Some(25),
+            effective_limit: 25,
+            inspected_topics: 25,
+            inspected_categories: 4,
+            has_more_topics: true,
+            has_more_categories: false,
+            topic_cursor: Some(topic_cursor),
+            category_cursor: Some(category_cursor),
+            drifts: Vec::new(),
+        });
+        assert_eq!(mapped.topic_cursor, Some(topic_cursor));
+        assert_eq!(mapped.category_cursor, Some(category_cursor));
     }
 }
