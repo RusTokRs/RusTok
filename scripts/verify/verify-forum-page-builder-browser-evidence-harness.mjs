@@ -20,7 +20,8 @@ const configPath = "apps/next-admin/playwright.forum-page-builder.config.ts";
 const runnerPath = "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts";
 const packetPath =
   "docs/modules/forum-page-builder-browser-evidence-harness-actualization-2026-08-08.md";
-const contract = JSON.parse(read(contractPath));
+const contractSource = read(contractPath);
+const contract = JSON.parse(contractSource);
 const config = read(configPath);
 const runner = read(runnerPath);
 const packet = read(packetPath);
@@ -72,6 +73,20 @@ for (const pending of [
 }
 
 for (const marker of [
+  "RUSTOK_FORUM_PAGE_BUILDER_BROWSER_SOURCE_COMMIT",
+  "RUSTOK_FORUM_PAGE_BUILDER_DEPLOYMENT_DIGEST",
+  "RUSTOK_FORUM_PAGE_BUILDER_EDITOR_STORAGE_STATE",
+  "RUSTOK_FORUM_PAGE_BUILDER_NO_READ_STORAGE_STATE",
+  "RUSTOK_FORUM_PAGE_BUILDER_FULL_URL",
+  "RUSTOK_FORUM_PAGE_BUILDER_PREVIEW_OFF_URL",
+  "RUSTOK_FORUM_PAGE_BUILDER_PROPERTIES_OFF_URL",
+  "RUSTOK_FORUM_PAGE_BUILDER_FORUM_DISABLED_URL",
+  "RUSTOK_FORUM_PAGE_BUILDER_NO_READ_URL",
+]) {
+  requireContains(contractSource, marker, `browser contract missing environment: ${marker}`);
+}
+
+for (const marker of [
   "fullyParallel: false",
   "retries: 0",
   "workers: 1",
@@ -84,15 +99,6 @@ for (const marker of [
 }
 
 for (const marker of [
-  "RUSTOK_FORUM_PAGE_BUILDER_BROWSER_SOURCE_COMMIT",
-  "RUSTOK_FORUM_PAGE_BUILDER_DEPLOYMENT_DIGEST",
-  "RUSTOK_FORUM_PAGE_BUILDER_EDITOR_STORAGE_STATE",
-  "RUSTOK_FORUM_PAGE_BUILDER_NO_READ_STORAGE_STATE",
-  "RUSTOK_FORUM_PAGE_BUILDER_FULL_URL",
-  "RUSTOK_FORUM_PAGE_BUILDER_PREVIEW_OFF_URL",
-  "RUSTOK_FORUM_PAGE_BUILDER_PROPERTIES_OFF_URL",
-  "RUSTOK_FORUM_PAGE_BUILDER_FORUM_DISABLED_URL",
-  "RUSTOK_FORUM_PAGE_BUILDER_NO_READ_URL",
   "forum.topic_list",
   "forum.topic_list.v1",
   "fly-owner-property-per_page",
