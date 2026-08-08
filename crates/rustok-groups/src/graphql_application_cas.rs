@@ -22,6 +22,7 @@ use crate::graphql_applications::{
     UpsertGroupApplicationPolicyInputGql, UpsertGroupApplicationPolicyResultGql,
 };
 use crate::graphql_invitations::GroupsMutationRoot as GroupsPreApplicationMutationRoot;
+use crate::graphql_membership_enforcement::GroupsMembershipEnforcementMutation;
 use crate::graphql_policy_history::GroupsQueryRoot as GroupsBaseQueryRoot;
 use crate::{
     GROUP_APPLICATION_POLICY_CHANGED_CODE, GroupApplicationCasCommandPort,
@@ -48,6 +49,7 @@ pub struct GroupsMutationRoot(
     GroupsApplicationCasMutation,
     GroupsApplicationBulkReviewMutation,
     GroupsApplicationLifecycleMutation,
+    GroupsMembershipEnforcementMutation,
 );
 
 #[derive(Default)]
