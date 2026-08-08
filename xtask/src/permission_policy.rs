@@ -59,6 +59,7 @@ pub(crate) fn expected_minimum_module_permissions(slug: &str) -> &'static [&'sta
         "rbac" => &["settings:manage", "logs:read"],
         "blog" => &["blog_posts:manage", "blog_categories:manage"],
         "forum" => &["forum_topics:manage"],
+        "moderation" => &["moderation_cases:manage"],
         "customer" => &["customers:manage"],
         "product" => &["products:manage"],
         "profiles" => &["profiles:manage"],

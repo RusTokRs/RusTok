@@ -70,6 +70,7 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::ForumCategories,
         Resource::ForumTopics,
         Resource::ForumReplies,
+        Resource::ModerationCases,
         Resource::Workflows,
         Resource::WorkflowExecutions,
         Resource::Translations,
@@ -104,6 +105,7 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::ForumCategories,
         Resource::ForumTopics,
         Resource::ForumReplies,
+        Resource::ModerationCases,
         Resource::Workflows,
         Resource::WorkflowExecutions,
         Resource::Translations,
@@ -605,6 +607,26 @@ mod tests {
         assert!(Rbac::has_permission(
             &UserRole::Admin,
             &Permission::WORKFLOW_EXECUTIONS_LIST
+        ));
+    }
+
+    #[test]
+    fn moderation_recovery_is_reserved_for_admin_roles() {
+        assert!(Rbac::has_permission(
+            &UserRole::SuperAdmin,
+            &Permission::MODERATION_CASES_OVERRIDE
+        ));
+        assert!(Rbac::has_permission(
+            &UserRole::Admin,
+            &Permission::MODERATION_CASES_OVERRIDE
+        ));
+        assert!(!Rbac::has_permission(
+            &UserRole::Manager,
+            &Permission::MODERATION_CASES_OVERRIDE
+        ));
+        assert!(!Rbac::has_permission(
+            &UserRole::Customer,
+            &Permission::MODERATION_CASES_OVERRIDE
         ));
     }
 
