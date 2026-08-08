@@ -36,11 +36,25 @@ requireMarkers("crates/rustok-groups/src/localization.rs", [
   "lock_exclusive()",
   "PortCallPolicy::read()",
   "PortCallPolicy::write()",
+  "require_effective_manager_direct_owned",
+  "require_effective_manager_owned",
+  "GroupManagerCapability::ManageSettings",
 ]);
 forbidMarkers("crates/rustok-groups/src/localization.rs", [
   "PLATFORM_FALLBACK_LOCALE",
   "build_locale_candidates",
   "rows.first()",
+  "GroupMembershipStatus::Active.as_str()",
+  "fn require_local_manager(",
+]);
+
+requireMarkers("crates/rustok-groups/src/effective_membership_guard.rs", [
+  "require_effective_manager_direct_owned",
+  "require_effective_manager_owned",
+  "resolve_group_membership_enforcement_now_for_update",
+  "GroupMembershipEffectiveStatus::Suspended",
+  "GroupMembershipEffectiveStatus::LegacyBanned",
+  "GroupManagerCapability::ManageSettings",
 ]);
 
 requireMarkers("crates/rustok-groups/src/graphql_localization.rs", [
@@ -130,11 +144,23 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   if (!commandPort?.operations?.includes("upsert_group_translation") || !commandPort?.operations?.includes("delete_group_translation")) {
     failures.push("Groups registry is missing localization command operations");
   }
+  if (readPort?.authorization !== "effective_active_owner_or_admin_or_platform_manage") {
+    failures.push("Groups localization read authorization must use effective manager state");
+  }
+  if (commandPort?.authorization !== "effective_active_owner_or_admin_or_platform_manage") {
+    failures.push("Groups localization command authorization must use effective manager state");
+  }
+  if (commandPort?.authorization_lock_order !== "group_then_membership_then_enforcement") {
+    failures.push("Groups localization command must retain canonical enforcement lock order");
+  }
   if (commandPort?.exact_locale_only !== true || commandPort?.last_translation_delete !== "deny") {
     failures.push("Groups localization command invariants are not locked");
   }
   if (registry?.localization?.module_local_fallback !== false) {
     failures.push("Groups localization must reject module-local fallback");
+  }
+  if (registry?.localization?.effective_authorization !== "implemented_source") {
+    failures.push("Groups localization effective authorization must be source-complete");
   }
   if (registry?.evidence?.localization_transport_parity !== null || registry?.evidence?.localization_concurrency !== null) {
     failures.push("unexecuted localization runtime evidence must remain null");
@@ -147,4 +173,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups exact-locale localization, no-bypass CAS composition, FBA, FFA, last-row, and no-fallback boundary checks passed.");
+console.log("Groups exact-locale localization, effective owner-clock authorization, no-bypass CAS composition, FBA, FFA, last-row, and no-fallback boundary checks passed.");
