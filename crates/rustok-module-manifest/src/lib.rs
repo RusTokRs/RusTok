@@ -152,6 +152,10 @@ pub fn normalize_module_contribution_manifest(
     if builder_capabilities.is_empty() {
         return fail("fba.builder_consumer.capabilities must not be empty when contribution_manifest is declared");
     }
+    let builder_capability_set = builder_capabilities
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
 
     let target_providers = normalize_targets(
         manifest.target_providers,
@@ -174,6 +178,7 @@ pub fn normalize_module_contribution_manifest(
         &owner_provider,
         &owner_version,
         &target_providers,
+        &builder_capability_set,
         &mut roles,
     )?;
     let storefront = normalize_contributions(
@@ -182,6 +187,7 @@ pub fn normalize_module_contribution_manifest(
         &owner_provider,
         &owner_version,
         &target_providers,
+        &builder_capability_set,
         &mut roles,
     )?;
 
@@ -235,6 +241,7 @@ fn normalize_contributions(
     owner_provider: &str,
     owner_version: &str,
     target_providers: &BTreeMap<String, String>,
+    builder_capabilities: &BTreeSet<String>,
     roles: &mut BTreeMap<String, ContributionRoleExport>,
 ) -> Result<Vec<serde_json::Value>> {
     values
@@ -263,6 +270,13 @@ fn normalize_contributions(
                 "required_capabilities",
                 &id,
             )?;
+            for capability in &required_capabilities {
+                if !builder_capabilities.contains(capability) {
+                    return fail(format!(
+                        "contribution '{id}' requires capability '{capability}' outside fba.builder_consumer.capabilities"
+                    ));
+                }
+            }
             let blocks = normalize_table_string_array(table, "blocks", &id)?;
             validate_nested_provider_array(table, "renderers", &provider, &id)?;
             validate_nested_provider_array(table, "property_editors", &provider, &id)?;
@@ -514,7 +528,10 @@ provider = "fly.builtin"
             .expect("contribution manifest");
         assert_eq!(normalized.module_id, "pages");
         assert_eq!(normalized.owner_version, "0.1.0");
-        assert_eq!(normalized.target_providers.get("fly.builtin"), Some(&"1".to_string()));
+        assert_eq!(
+            normalized.target_providers.get("fly.builtin"),
+            Some(&"1".to_string())
+        );
         assert_eq!(normalized.role("landing").expect("role").surface, "admin");
         let metadata = normalized.admin[0]
             .get("metadata")
@@ -535,9 +552,23 @@ provider = "fly.builtin"
     }
 
     #[test]
+    fn rejects_contribution_capability_outside_builder_contract() {
+        let invalid = VALID.replace(
+            "required_capabilities = [\"properties\"]",
+            "required_capabilities = [\"properties\", \"publish\"]",
+        );
+        let error = normalize_module_contribution_manifest(&invalid).expect_err("must fail");
+        assert!(error
+            .to_string()
+            .contains("outside fba.builder_consumer.capabilities"));
+    }
+
+    #[test]
     fn modules_without_contribution_metadata_are_accepted() {
-        assert!(normalize_module_contribution_manifest("[module]\nslug='plain'\nversion='0.1.0'")
-            .expect("plain module")
-            .is_none());
+        assert!(
+            normalize_module_contribution_manifest("[module]\nslug='plain'\nversion='0.1.0'")
+                .expect("plain module")
+                .is_none()
+        );
     }
 }
