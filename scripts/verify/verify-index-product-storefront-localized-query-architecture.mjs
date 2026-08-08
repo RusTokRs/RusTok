@@ -57,30 +57,27 @@ if (productSource.includes('SchemaVersion::new(3)')) {
 
 const architecturePath = 'crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md';
 requireMarkers(architecturePath, [
-  'Status: `compiler_decoder_source_complete_runtime_and_evidence_pending`',
+  'Status: `runtime_source_complete_text_pattern_and_evidence_pending`',
   '`localized_projection_fields`',
   '`SchemaRegistry::compile_postgres_localized_page_query`',
-  '`t0` — deterministic admitted identity anchor',
-  '`t1` — requested-locale projection row',
-  '`t2` — fallback-locale projection row',
-  '`t3` — any-locale existential predicate row',
-  '`t4` — lower-locale anti-duplicate anchor candidate',
   '`SchemaRegistry::decode_postgres_localized_query_page`',
-  '`LocalizedCursorCodec` uses scoped wire version `3`',
-  'The public query runtime still has no `execute_localized_query` method.',
-  'Wire `CompiledPostgresLocalizedPageQuery` into the PostgreSQL query port',
+  '`IndexQueryPort` now publishes an explicit `execute_localized_query` method.',
+  '`SharedIndexQueryRuntime` forwards the localized capability',
+  '`PostgresIndexQueryPort::execute_localized_query` implements the canonical execution boundary',
+  '`REPEATABLE READ, READ ONLY`',
+  '`PostgresQueryEntityAdmission`',
+  'The next source slice must add one generic bounded scalar string text-pattern primitive',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `localized_compiler_decoder_source_complete_runtime_and_evidence_pending`',
+  'Status: `localized_runtime_source_complete_text_pattern_adapter_and_evidence_pending`',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  'Status overlay rechecked from `main@678606a78916ed631669e40c617c60a031097138` (#3208)',
-  'Compile the root-only localized-entity fold to one PostgreSQL page/exact-count contract.',
-  'Add the localized page decoder with explicit requested/fallback-null semantics and dedicated cursor.',
-  'wire explicit localized execution into the PostgreSQL Index query port',
+  'Status overlay rechecked from `main@6044dbd5110a65e2ebeee0a6a3a0053d9971b250` (#3210)',
+  'Wire localized execution through the canonical PostgreSQL query runtime with persisted readiness,',
+  'Add generic scalar string text-pattern matching inside folded `any_locale_filter`.',
   'Do not add a runtime alias for key `3`',
 ]);
 
-console.log('[verify-index-product-storefront-localized-query-architecture] localized Product compiler/decoder architecture is locked; runtime and evidence remain pending');
+console.log('[verify-index-product-storefront-localized-query-architecture] localized Product runtime architecture is locked; text pattern, adapter and evidence remain pending');
