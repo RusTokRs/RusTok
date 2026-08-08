@@ -1,6 +1,9 @@
 use std::time::Instant;
 
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{
+    AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    IsolationLevel, Statement, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -63,6 +66,9 @@ impl ForumCounterReconciliationReport {
 /// requirements for operator RBAC, dry-run, audit and durable idempotent job state before it can
 /// mutate any owner counter. This service is tenant-scoped and bounded independently for topics and
 /// categories so an operator request cannot turn into an unbounded table scan.
+///
+/// Both aggregate reads are fenced by one database snapshot. PostgreSQL uses `REPEATABLE READ`
+/// with `READ ONLY`; SQLite uses one ordinary transaction whose first read establishes the snapshot.
 pub struct ForumCounterReconciliationService {
     db: DatabaseConnection,
 }
@@ -91,9 +97,13 @@ impl ForumCounterReconciliationService {
         if result.is_err() {
             rustok_telemetry::metrics::record_span_error(
                 FORUM_COUNTER_RECONCILIATION_OPERATION,
-                "database",
+                "owner_report",
             );
-            rustok_telemetry::metrics::record_module_error("forum", "database", "error");
+            rustok_telemetry::metrics::record_module_error(
+                "forum",
+                "counter_reconciliation",
+                "error",
+            );
         }
         result
     }
@@ -103,13 +113,51 @@ impl ForumCounterReconciliationService {
         tenant_id: Uuid,
         requested_limit: Option<u64>,
     ) -> ForumResult<ForumCounterReconciliationReport> {
+        let backend = self.db.get_database_backend();
+        let transaction = match backend {
+            DatabaseBackend::Postgres => {
+                self.db
+                    .begin_with_config(
+                        Some(IsolationLevel::RepeatableRead),
+                        Some(AccessMode::ReadOnly),
+                    )
+                    .await?
+            }
+            DatabaseBackend::Sqlite => self.db.begin().await?,
+            other => {
+                return Err(ForumError::Validation(format!(
+                    "Forum counter reconciliation does not support database backend {other:?}"
+                )));
+            }
+        };
+
+        let report = self
+            .report_in_transaction(&transaction, backend, tenant_id, requested_limit)
+            .await;
+        match report {
+            Ok(report) => {
+                transaction.commit().await?;
+                Ok(report)
+            }
+            Err(error) => {
+                let _ = transaction.rollback().await;
+                Err(error)
+            }
+        }
+    }
+
+    async fn report_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        backend: DatabaseBackend,
+        tenant_id: Uuid,
+        requested_limit: Option<u64>,
+    ) -> ForumResult<ForumCounterReconciliationReport> {
         let effective_limit = requested_limit
             .unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
             .clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT);
         let fetch_limit = effective_limit.saturating_add(1);
-        let backend = self.db.get_database_backend();
-        let topic_rows = self
-            .db
+        let topic_rows = transaction
             .query_all(counter_statement(
                 backend,
                 TOPIC_COUNTER_SQLITE,
@@ -118,8 +166,7 @@ impl ForumCounterReconciliationService {
                 fetch_limit,
             )?)
             .await?;
-        let category_rows = self
-            .db
+        let category_rows = transaction
             .query_all(counter_statement(
                 backend,
                 CATEGORY_COUNTER_SQLITE,
