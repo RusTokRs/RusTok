@@ -655,7 +655,7 @@ pub enum IndexSourceError {
     #[error("Index source targeted load requires at least one entity key")]
     EmptyLoadKeys,
     #[error("Index source targeted load has too many keys: actual={actual}, max={max}")]
-    TooManyLoadKeys { actual: usize, max: usize },
+    TooManyLoadKeys { actual: usize, max: MAX_LOAD_KEYS },
     #[error("Index source targeted load key at position {position} has another tenant or schema")]
     MixedLoadScope { position: usize },
     #[error("Index source targeted load key at position {position} is duplicated")]
@@ -928,7 +928,7 @@ mod tests {
 
     #[test]
     fn locale_scan_request_preserves_exact_canonical_scope() {
-        let locale = LocaleKey::new("EN_us").unwrap();
+        let locale = LocaleKey::new("EN-us").unwrap();
         let request = IndexSourceScanRequest::for_locale(
             Uuid::new_v4(),
             schema_ref(1),
