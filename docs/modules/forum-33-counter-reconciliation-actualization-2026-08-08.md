@@ -35,16 +35,18 @@ The owner report checks the existing publication-accounting invariants without m
 
 These are the same public-accounting semantics used by topic creation/deletion, reply publication transitions and reply removal. Pending, rejected, hidden, flagged and deleted reply rows do not contribute to public reply counters.
 
-## Bounded database shape
+## Bounded snapshot database shape
 
-The report executes exactly two tenant-scoped aggregate queries:
+The report executes exactly two tenant-scoped aggregate queries inside one database snapshot:
 
 - one grouped topic/reply query;
 - one grouped category/topic/reply query.
 
+PostgreSQL uses one `REPEATABLE READ READ ONLY` transaction so concurrent Forum writes cannot make the topic and category observations come from different database snapshots. SQLite uses one transaction for both reads; the first read establishes the consistent SQLite snapshot. Failed report construction explicitly rolls the transaction back, while a completed report commits the read-only snapshot.
+
 Each query requests at most `effective_limit + 1` rows so the service can return `has_more_topics` / `has_more_categories` without an unbounded count. The default limit is 100 and the hard maximum is 500. The service therefore avoids per-subject N+1 queries and never scans another tenant through this API.
 
-The implementation contains explicit PostgreSQL and SQLite statements because those are the Forum-supported production/test backends. Other backends fail closed rather than approximating SQL semantics.
+The implementation contains explicit PostgreSQL and SQLite statements because those are the Forum-supported production/test backends. Other backends fail closed rather than approximating SQL or snapshot semantics.
 
 ## Observability
 
@@ -71,7 +73,8 @@ A separate `rustok-forum-cli` adapter was considered but not added here because 
 
 ## Remaining FORUM-33 scope
 
-- retain SQLite and PostgreSQL execution evidence for clean and intentionally drifted counter fixtures;
+- retain SQLite and PostgreSQL execution evidence for clean and intentionally drifted counter fixtures plus snapshot behavior;
+- add bounded continuation/cursor semantics beyond the first bounded topic/category page before treating this report as a complete whole-tenant scanner;
 - add bounded reconciliation for accepted-solution state, subscriptions, mentions, attachments and shared-owner projections where authoritative owner contracts permit it;
 - add the audited/idempotent repair job boundary before any write repair;
 - decide the platform CLI adapter together with its synchronized dependency/lock update;
