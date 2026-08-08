@@ -51,7 +51,7 @@ impl SharedIndexReplayRuntime {
         should_interrupt: Check,
     ) -> Result<IndexReplayRunOutcome, IndexReplayRunError>
     where
-        Check: FnMut() -> bool,
+        Check: FnMut() -> bool + Send,
     {
         self.runner
             .run_interruptible(request, should_interrupt)
