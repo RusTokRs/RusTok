@@ -428,7 +428,7 @@ observe independent databases and provide false concurrency evidence.
 
 Status is **maintainer execution pending**. SQLite concurrency/replay/recovery is not runtime evidence
 until this test is actually executed. The handoff is documented in
-docs/governance-enforcement-sqlite-contract.md` and guarded by
+`docs/governance-enforcement-sqlite-contract.md` and guarded by
 `scripts/verify/verify-groups-governance-enforcement-sqlite.mjs`.
 
 ### Planned moderation adapter
@@ -466,8 +466,8 @@ above rather than introduce a second Groups enforcement state path.
 1. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
 2. Convert provider ACL consumers and remote/degraded profiles.
 3. Execute and retain the PostgreSQL/SQLite governance-enforcement evidence sources, then produce
-   remaining direct-enforcement, localization, governance and adapter runtime, parity, concurrency,
-   security, migration and accessibility evidence.
+   remaining direct-enforcement, feature-settings, localization, governance and adapter runtime,
+   parity, concurrency, security, migration and accessibility evidence.
 
 ## Degraded modes
 
@@ -498,6 +498,7 @@ cargo test -p rustok-groups
 RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://...' cargo test -p rustok-server --features mod-groups --test groups_governance_enforcement_postgres -- --ignored --nocapture
 cargo test -p rustok-server --features mod-groups --test groups_governance_enforcement_sqlite -- --nocapture
 node scripts/verify/verify-groups-boundary.mjs
+node scripts/verify/verify-groups-feature-enforcement-authorization.mjs
 node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-governance-effective-authorization.mjs
 node scripts/verify/verify-groups-governance-enforcement-postgres.mjs
