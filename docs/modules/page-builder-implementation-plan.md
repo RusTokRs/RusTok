@@ -23,8 +23,8 @@ where they are more specific. Older open checkboxes for Pages metadata
 contributions, immutable rollback, artifact audit/repair, reviewed static resource
 limits, authenticated real-DOM authoring, anonymous authoring exclusion,
 generated contribution-registry foundations, shared contribution metadata
-tooling and the Forum Fly adapter/owner-preview source were stale and are
-corrected below.
+tooling and the Forum Fly adapter/owner-preview/property-editor source were stale
+and are corrected below.
 
 Current source markers for this slice:
 
@@ -35,7 +35,7 @@ Shared module contribution tooling: source-ready
 Forum second-consumer contribution discovery: source-ready
 Forum Fly adapter/component registry: source-ready
 Forum owner preview transport/Pages host composition: source-ready
-Forum owner-backed property editing: open
+Forum owner-backed property editing: source-ready
 ```
 
 Observed provider-health evidence remains an execution/composition cursor; an
@@ -50,7 +50,7 @@ same normalizer for publish readiness. Admin/WASM runtime still does not parse T
 and no handwritten Pages `ContributionDescriptor` tree remains.
 
 Forum is the second production consumer on the shared contribution boundary.
-Canonical `rustok-module.toml` now declares two complementary owner-provider admin
+Canonical `rustok-module.toml` declares two complementary owner-provider admin
 contributions for the existing `forum.topic_list`, `forum.topic_detail` and
 `forum.reply_stream` widget contracts. `rustok.forum.widget-catalog` owns blocks
 and owner-schema-reference property contracts under `tree + properties`;
@@ -59,15 +59,19 @@ Forum admin build generation consumes the shared normalizer, registers real Fly
 component/block identities and exposes a `ContributionAdapter` without importing
 Forum persistence or owner services.
 
-Forum owner preview is also source-ready. `ForumWidgetPreviewService` normalizes
-props through the existing Forum contract, applies Forum visibility/RBAC and
-executes bounded owner reads, including true pre-pagination `activity/newest/top`
-sort semantics. The owner HTTP route and SSR-only Forum admin transport are
-composed by a provider-neutral Page Builder host extension on the real Pages
-admin route only when Forum is tenant-enabled and its manifest permission is
+Forum owner preview and owner-backed property editing are source-ready.
+`ForumWidgetPreviewService` normalizes props through the existing Forum contract,
+applies Forum visibility/RBAC and executes bounded owner reads, including true
+pre-pagination `activity/newest/top` sort semantics. The property path keeps only
+schema references in contribution metadata, loads current schema bodies from
+`ForumWidgetContractService::catalog`, validates candidate configuration through
+`ForumWidgetContractService::validate_props`, and patches only valid object-shaped
+owner `normalized_props` through the ordinary Fly command/history path. The owner
+transports are composed by provider-neutral Page Builder host ports on the real
+Pages admin route only when Forum is tenant-enabled and its manifest permission is
 effectively granted. The Page Builder package itself has no Forum dependency.
-Owner-backed property editor schema/form/save UI plus runtime/browser/Wave
-evidence remain open. Live SLO health remains a separate open cursor.
+Runtime/browser/Wave evidence remains open. Live SLO health remains a separate
+open cursor.
 
 ## Current-only policy
 
@@ -254,8 +258,10 @@ persistence. Rich text remains an external dedicated capability.
   contributions into the Pages consumer registry, installs the Forum Fly registry,
   resolves effective manifest permissions server-side and exposes explicit bounded
   selected-component preview without persisting owner data into Fly.
-- [ ] Implement owner-backed Forum property-editor schema/form/save UI that writes
-  only normalized configuration into Fly `props`.
+- [x] Forum owner-backed property editing resolves the admitted property descriptor,
+  loads the current schema through Forum owner catalog transport, validates through
+  Forum owner normalization and patches only normalized Fly `props` through the
+  ordinary command/history path.
 - [ ] Retain Forum Page Builder runtime/browser and observed Wave evidence.
 
 ## Target architecture
@@ -302,6 +308,7 @@ persistence. Rich text remains an external dedicated capability.
     -> canonical contribution metadata is shared-tooling validated
     -> Fly identity/configuration only; no copied owner data
     -> owner preview service/HTTP/native transport reauthorize and read Forum state
+    -> owner schema/validation transport returns schema + normalized configuration only
 
   application composition root
     -> tenant-enabled contribution extensions
@@ -391,6 +398,8 @@ Rules:
 - dynamic widgets store versioned configuration only;
 - contribution preview data is fetched explicitly through an owner port and is
   never persisted into the Fly document by the generic Page Builder UI;
+- owner-backed property forms load schema through the owner port and may write only
+  the owner's valid normalized configuration into Fly `props`;
 - consumer list/create/lifecycle UI remains consumer-owned;
 - provider status may only narrow host tenant/RBAC capabilities;
 - missing provider-health observation remains `unobserved` rather than healthy;
@@ -434,7 +443,8 @@ Rules:
 - Contribution owner transports reauthorize tenant/actor access even when host
   discovery has already admitted the manifest permission.
 - Provider-neutral Page Builder host code may merge descriptors/install registries
-  but must not import domain owners such as Forum or duplicate their schemas/data.
+  and request schema/validation/preview through neutral ports, but must not import
+  domain owners such as Forum or duplicate their schemas/data.
 
 ## Implementation phases
 
@@ -533,8 +543,9 @@ of the verification programme.
   health, fail-closed capability narrowing, preview gate and explicit unobserved
   state.
 - [x] Provider-neutral optional contribution host source: external manifest
-  assembly, Fly registry installation, effective-permission admission and explicit
-  owner-preview port/panel without domain imports in Page Builder.
+  assembly, Fly registry installation, effective-permission admission, explicit
+  owner-preview and owner-property ports/panels without domain imports in Page
+  Builder.
 - [ ] Complete remaining generic typed asset/control surfaces and accessibility
   evidence.
 - [ ] Retain observed provider-health/degraded browser evidence.
@@ -567,8 +578,8 @@ of the verification programme.
   contribution assembly and Pages host registry composition.
 - [x] Connect Forum owner preview transport through a provider-neutral host port
   while preserving Forum validation/visibility/RBAC ownership.
-- [ ] Connect Forum owner-backed property editor runtime through the same neutral
-  host boundary.
+- [x] Connect Forum owner-backed property editor runtime through the same neutral
+  host boundary, retaining Forum catalog/validation as schema/config authority.
 
 ### Phase 10 — rollout
 
@@ -577,6 +588,7 @@ of the verification programme.
 - [x] Forum canonical contribution metadata through shared tooling.
 - [x] Forum Fly adapter/component registry and runtime contribution assembly source.
 - [x] Forum owner-preview host composition source.
+- [x] Forum owner-property host composition source.
 - [ ] Forum retained runtime/browser and observed Wave evidence.
 - [ ] Media/Pages reusable sections.
 - [ ] Blog, Product, Pricing, Taxonomy and SEO contributions.
@@ -584,12 +596,12 @@ of the verification programme.
 
 ## Immediate implementation order
 
-1. Implement the Forum owner-backed property editor schema/form/save path through
-   the existing Forum catalog/validation contracts and persist only normalized
-   configuration into Fly `props`.
-2. Retain Forum-enabled/disabled Pages browser evidence plus all-on/preview-off,
-   hidden-category/moderator-preview and effective `manage -> read` authorization
-   evidence for the new owner-preview host composition.
+1. Retain Forum-enabled/disabled Pages browser evidence for block insertion, owner
+   schema loading, invalid diagnostics, owner-normalized `props`, undo/redo and
+   all-on/preview-off/properties-off behavior.
+2. Retain Forum runtime authorization evidence for property/preview transports,
+   hidden-category/moderator-preview behavior and effective `manage -> read`
+   admission.
 3. Connect a real provider-health observation source to the admin status seam and
    retain observed provider-health evidence for degraded/unavailable behavior.
 4. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
@@ -646,8 +658,8 @@ authoritative sanitization/resource budgets, deterministic artifact and receipt
 integrity, preview/static materialization parity, idempotent replay, repair/
 rollback continuity, event-driven cache generation rotation and public miss/
 refill, anonymous authoring exclusion, provider degradation, generated module
-metadata authority, shared publish validation, Forum owner-preview host continuity,
-property editing once implemented and observed tenant rollout.
+metadata authority, shared publish validation, Forum owner-preview/property host
+continuity and observed tenant rollout.
 
 ## Update rules
 
