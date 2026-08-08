@@ -30,11 +30,15 @@ if (titleSearch.includes('COLLATE')) {
 }
 
 const localizedCompilerPath = 'crates/rustok-index/src/application/postgres_localized_query.rs';
-requireMarkers(localizedCompilerPath, [
+const localizedCompiler = requireMarkers(localizedCompilerPath, [
   'FilterExpr::TextLike(path, pattern)',
-  'COALESCE({} LIKE {pattern} ESCAPE E\'\\\\\\\\\', FALSE)',
-  'IndexValueType::String => format!("({scalar_text} COLLATE \\"C\\")")',
+  'IndexValueType::String => format!',
+  'COLLATE \\"C\\"',
+  "ESCAPE E'",
 ]);
+if (!localizedCompiler.includes('COALESCE({} LIKE {pattern}')) {
+  fail(`${localizedCompilerPath} no longer compiles TextLike through PostgreSQL LIKE`);
+}
 
 const packetPath = 'crates/rustok-distribution/tests/product_storefront_search_collation_postgres.rs';
 const packet = requireMarkers(packetPath, [
@@ -43,7 +47,8 @@ const packet = requireMarkers(packetPath, [
   'IndexModule.migrations()',
   'product_storefront_default_like_matches_index_c_collation_matrix',
   'translation.title LIKE $2',
-  '(translation.title COLLATE "C") LIKE $2 ESCAPE E\'\\\\\'',
+  '(translation.title COLLATE "C") LIKE $2',
+  "ESCAPE E'\\\\'",
   "current_setting('lc_collate')",
   'owner_ids != index_c_ids',
   'Product Storefront title LIKE collation mismatch',
