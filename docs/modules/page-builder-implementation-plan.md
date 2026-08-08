@@ -31,6 +31,8 @@ Current source markers for this slice:
 Provider status/degraded controls: source-ready
 Pages module-metadata contribution generation: source-ready
 Shared module contribution tooling: source-ready
+Forum second-consumer contribution discovery: source-ready
+Forum Fly adapter/component registry: open
 ```
 
 Observed provider-health evidence remains an execution/composition cursor; an
@@ -44,9 +46,15 @@ only Pages-specific role/constant assertions. `xtask module validate` consumes t
 same normalizer for publish readiness. Admin/WASM runtime still does not parse TOML
 and no handwritten Pages `ContributionDescriptor` tree remains.
 
-The next contribution source cursor is a second production consumer, selected only
-after its persistence, authorization and preview ownership are explicit. Live SLO
-health remains a separate open cursor.
+Forum is now the second production consumer selected for the shared metadata
+boundary. Its canonical `rustok-module.toml` declares a versioned owner-provider
+`rustok.forum.widget-catalog` discovery contribution guarded by `forum_topics:read`
+and `preview`, while preserving Forum as widget persistence/authorization owner.
+The entry deliberately has no Fly blocks, renderers, property editors or storefront
+surface: Forum does not yet have a real Fly component registry/adapter, so the
+metadata records that adapter state as pending instead of fabricating runtime
+capability. The next source cursor is that real Forum adapter/component-registry
+slice. Live SLO health remains a separate open cursor.
 
 ## Current-only policy
 
@@ -208,6 +216,21 @@ persistence. Rich text remains an external dedicated capability.
 - [ ] Accepted evidence must correlate outbox delivery, repair/rollback receipts,
   generation rotation, cache miss/refill, browser authoring and provider status.
 
+### Forum second contribution consumer
+
+- [x] Forum already owns versioned `topic_list`, `topic_detail` and `reply_stream`
+  widget contracts plus catalog/validation HTTP routes guarded by
+  `forum_topics:read`.
+- [x] Canonical `rustok-module.toml` now declares the Forum owner-provider
+  contribution discovery entry through the shared module metadata boundary.
+- [x] The topic-detail manifest schema id is distinct (`forum.topic_detail.v1`)
+  instead of incorrectly reusing the topic-list schema id.
+- [x] Contribution discovery remains fail-closed with `blocks = []`, no renderers,
+  no property editors and no storefront claim while the adapter is pending.
+- [ ] Define actual Forum Fly component/block identities and a real adapter before
+  exposing authoring or rendering contributions.
+- [ ] Retain Forum Page Builder runtime/browser and observed Wave evidence.
+
 ## Target architecture
 
 ```text
@@ -246,6 +269,12 @@ persistence. Rich text remains an external dedicated capability.
     -> module-owned route/page/artifact generation rotation
     -> generation-aware storefront/artifact cache reads
 
+  consumer domain (Forum)
+    -> topic/reply lifecycle, revisions and visibility remain Forum-owned
+    -> versioned widget catalog and props validation remain Forum-owned
+    -> canonical contribution discovery metadata is shared-tooling validated
+    -> Fly component/block/adapter runtime remains pending
+
   rustok-page-builder
     -> capability policy / health / rollout
     -> provider adapter seams
@@ -254,7 +283,7 @@ persistence. Rich text remains an external dedicated capability.
 ```
 
 Hosts are composition roots only. They supply route, locale, auth, tenant context
-and neutral shared capabilities; they do not own Fly state, Pages policy,
+and neutral shared capabilities; they do not own Fly state, Pages/Forum policy,
 persistence or cache-key semantics.
 
 ## Dependency rules
@@ -361,10 +390,12 @@ Rules:
   remain retryable. A retry may safely advance a generation more than once.
 - Provider rollout flags and observed health are separate evidence. Lack of an
   observed SLO snapshot is never converted to a healthy claim.
-- Consumer contribution metadata is build-generated from canonical module
-  metadata; runtime source must not retain a parallel handwritten descriptor tree.
+- Consumer contribution metadata is canonical module metadata; runtime source must
+  not retain a parallel handwritten descriptor tree.
 - Shared contribution parsing/normalization is platform build tooling and publish
   validation only; it must not become runtime registry, tenant or persistence policy.
+- A discovery contribution with no real adapter must not claim blocks, renderers,
+  property editors or storefront runtime surfaces.
 
 ## Implementation phases
 
@@ -488,20 +519,25 @@ of the verification programme.
 - [x] Duplicate, cycle, version and missing-provider diagnostics.
 - [x] Generalize canonical contribution metadata parsing/normalization into shared
   platform build tooling and `xtask` module publish validation.
+- [x] Onboard Forum as the second production consumer to canonical contribution
+  discovery metadata without a consumer-local parser or schema authority.
+- [ ] Connect Forum to runtime Fly component/block/adapter contribution assembly.
 
 ### Phase 10 — rollout
 
 - [ ] Internal tenant Wave 0 with observed evidence.
 - [ ] Pages Wave 1 after accepted publication/cache/rollback/repair/browser gates.
+- [x] Forum canonical contribution discovery metadata through shared tooling.
+- [ ] Forum Fly adapter/component registry and runtime contribution assembly.
 - [ ] Media/Pages reusable sections.
-- [ ] Blog, Forum, Product, Pricing, Taxonomy and SEO contributions.
+- [ ] Blog, Product, Pricing, Taxonomy and SEO contributions.
 - [ ] Additional modules only after renderer/property/cache ownership is proven.
 
 ## Immediate implementation order
 
-1. Select a second production contribution consumer only after its tenant-scoped
-   persistence, authorization and preview ownership are explicit, then adopt the
-   shared canonical metadata/tooling boundary without a local schema/parser.
+1. Define the real Forum Fly component/block identities and adapter behavior against
+   the existing Forum-owned widget catalog; only then make Forum contribution
+   blocks/renderers/property editors non-empty and mount runtime assembly.
 2. Connect a real provider-health observation source to the admin status seam and
    retain observed provider-health evidence for degraded/unavailable behavior.
 3. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
@@ -526,10 +562,12 @@ cargo test -p rustok-pages-admin
 cargo test -p rustok-pages-storefront
 cargo xtask module validate page_builder
 cargo xtask module validate pages
+cargo xtask module validate forum
 node scripts/verify/verify-pages-ui-boundary.mjs
 node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
 node scripts/verify/verify-fly-ui-contributions.mjs
+node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
@@ -540,6 +578,7 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runti
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs
 npm run verify:page-builder:fba:baseline
 npm run verify:page-builder:consumer:pages
+npm run verify:page-builder:consumer:forum
 npm run verify:i18n:ui
 npm run verify:i18n:contract
 cargo deny check
@@ -555,7 +594,8 @@ authoritative sanitization/resource budgets, deterministic artifact and receipt
 integrity, preview/static materialization parity, idempotent replay, repair/
 rollback continuity, event-driven cache generation rotation and public miss/
 refill, anonymous authoring exclusion, provider degradation, generated module
-metadata authority, shared publish validation and observed tenant rollout.
+metadata authority, shared publish validation, Forum discovery-to-real-adapter
+continuity and observed tenant rollout.
 
 ## Update rules
 
