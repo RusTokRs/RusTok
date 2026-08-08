@@ -67,22 +67,27 @@ const server = requireMarkers(serverPath, [
   'context.authorize_for(request.tenant_id())?;',
   'self.shadow.run(request).await.map_err(Into::into)',
   'pub async fn run_interruptible<Check>(',
-  'self.inner',
   '.run_interruptible(request, should_interrupt)',
   'Permission::MODULES_MANAGE',
   'permissions_for(&self.tenant_id, &self.actor_id)',
-  'context.authorize_for(request.page_request().tenant_id())?;',
   'materialize_postgres_index_sources(extensions, db.clone())',
   'materialize_index_source_registry(extensions)',
   'materialize_postgres_index_replay_runtime(extensions, db.clone())',
   '.get::<rustok_index::SharedIndexReplayDryRunRuntime>()',
   'IndexReplayOperatorRuntime::new(runtime, shadow)',
+  'materialize_index_replay_shadow_transport(',
+  'continuation.clone()',
   'reconciliation_operator::materialize_index_reconciliation_operator(extensions, db.clone())?;',
 ]);
 for (const forbidden of ['tokio::spawn', 'tokio::time::sleep', 'loop {', 'StopHandle']) {
   if (server.includes(forbidden)) fail(`${serverPath} contains lifecycle marker ${forbidden}`);
 }
 
+requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
+  'pub struct IndexReplayShadowTransportRuntime',
+  'IndexSourceContinuationScope::from_registry(',
+  'self.operator.run_shadow(context, request).await?',
+]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs', [
   'impl ModuleWorkRegistration for IndexReconciliationWorkRegistration',
   'impl ModuleWorkSource for PostgresIndexReconciliationWorkAdapter',
@@ -103,10 +108,11 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
 requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   'Status: `source_complete_owner_execution_pending`',
   'one module-work registration for due reconciliation execution',
-  'publishes no replay runtime, no dry-run runtime, and no empty Index work registration',
-  'The materializer performs no SQL',
+  'publishes no replay runtime, no dry-run runtime, no Shadow transport runtime and no empty Index work registration',
+  'The Index materializer performs no SQL',
   'starts the single generic `ModuleWorkScheduler` only when registrations exist',
   '`SharedIndexReplayRuntime::run_interruptible`',
+  '`IndexReplayShadowTransportRuntime`',
   'The work registration added here is reconciliation-only',
   'maintainer-run',
 ]);
@@ -117,7 +123,8 @@ requireMarkers('crates/rustok-index/docs/m6-reconciliation-host-scheduler.md', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-runtime-composition.mjs'",
   "'verify-index-replay-shadow-host-dispatch.mjs'",
+  "'verify-index-replay-shadow-graphql-transport.mjs'",
   "'verify-index-reconciliation-host-scheduler.mjs'",
 ]);
 
-console.log('[verify-index-replay-runtime-composition] shared replay runtime/operator retain lifecycle-neutral Full execution and a guarded no-write Shadow route while scheduler composition remains unchanged');
+console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Shadow no-write/sealed, and reconciliation under the single generic scheduler boundary');
