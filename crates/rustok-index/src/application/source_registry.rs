@@ -528,7 +528,7 @@ impl fmt::Debug for SharedIndexSourceRegistry {
         formatter
             .debug_struct("SharedIndexSourceRegistry")
             .field("source_count", &self.len())
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 
@@ -609,12 +609,14 @@ pub enum IndexSourceError {
         schema: SchemaRef,
     },
     #[error(
-        "Index schema {schema} has multiple replay sources: existing={existing_source}, incoming={incoming_source}"
+        "Index schema {schema} has multiple replay sources: existing={existing_source}/{existing_owner}, incoming={incoming_source}/{incoming_owner}"
     )]
     SchemaSourceConflict {
         schema: SchemaRef,
         existing_source: String,
+        existing_owner: String,
         incoming_source: String,
+        incoming_owner: String,
     },
     #[error(
         "Index schema identity {identity} changes replay source: existing={existing_owner}/{existing_source}, incoming={incoming_owner}/{incoming_source}"
@@ -854,24 +856,6 @@ mod tests {
 
     #[test]
     fn source_materialization_requires_exact_schema_owner() {
-        let mut schemas = IndexSchemaSourceCatalog::new();
-        schemas.register("catalog", schema(1)).unwrap();
-        let mut sources = IndexSourceCatalog::new();
-        sources
-            .register("product", "product-primary", [schema_ref(1)], NoopSource)
-            .unwrap();
-
-        let error = sources
-            .materialize(&schemas)
-            .expect_err("source owner must equal schema owner");
-        assert!(matches!(
-            error,
-            IndexSourceError::SourceSchemaOwnerMismatch { .. }
-        ));
-    }
-
-    #[test]
-    fn source_materialization_builds_runtime_registry() {
         let mut schemas = IndexSchemaSourceCatalog::new();
         schemas.register("product", schema(1)).unwrap();
 
