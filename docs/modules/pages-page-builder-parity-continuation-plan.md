@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
-Date: 2026-08-06  
-Status: source-parity-current / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / execution-browser-rollout-pending
+Date: 2026-08-08  
+Status: source-parity-current / pages-repeated-artifact-loss-recovery-source-ready / provider-degraded-controls-source-ready / contribution-registry-version-parity-source-ready / observed-health-open / module-metadata-generation-open / execution-browser-rollout-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` document, publication, artifact, routing, cache, authenticated inline-authoring and deterministic deployment boundaries
 
 ## Source-of-truth policy
@@ -21,7 +21,39 @@ Pages and Page Builder remain one vertical pipeline with explicit owners:
 
 Optional external event and delivery infrastructure remain outside the active Pages cursor.
 
+## 2026-08-08 current source reconciliation
+
+This section overrides older source-state/cursor wording retained below for compatibility with historical static guards.
+
+The recheck includes all relevant merged source after the former PR #3063 cursor, especially:
+
+- PR #3191 — repeated physical loss of rebuilt immutable Pages artifacts can recover again from the latest accepted repair state per locale while preserving bounded repair/rollback lineage; execution remains open;
+- PR #3196 — Page Builder admin provider rollout/degraded controls are connected through the Pages consumer; absent live SLO evidence remains explicitly `unobserved` and no health state is fabricated;
+- the existing `fly-ui` contribution path already has separate admin/storefront factories, tenant/permission/capability/provider-policy/provider-health filtering, and duplicate/missing-provider/missing-dependency/cycle diagnostics;
+- the contribution static guard still required owner/target version parity while the live Rust manifest model had regressed to an unversioned provider set.
+
+The current source slice restores that version boundary without changing Pages persistence or publication ownership:
+
+- `ModuleContributionManifest` carries an exact `owner_version` and exact target-provider version map;
+- manifest-routed contributions must declare `metadata.providerVersion`;
+- missing/invalid provider versions fail closed;
+- allowed provider names with the wrong version fail with `contribution_target_provider_version_mismatch`;
+- Pages pins `rustok.pages@<crate version>` and `fly.builtin@1` while retaining its existing landing-block and executable metadata-property contributions.
+
+Rechecked Page Builder Phase 9 source state:
+
+- [x] Separate admin/storefront factories.
+- [ ] Generate complete contribution manifests directly from canonical module metadata; Pages still builds its contribution manifest in module-owned Rust and only cross-checks selected capability metadata against `rustok-module.toml`.
+- [x] Filter by tenant, permission, capability, provider policy and health.
+- [x] Duplicate, missing-provider, missing-dependency, cycle and provider-version diagnostics.
+
+The next source cursor is therefore module-metadata generation for contribution manifests. Real provider health remains a separate open composition/runtime cursor because the repository still has no authoritative live Page Builder SLO observation source. Execution evidence remains maintainer-owned.
+
+Detailed evidence for this reconciliation is retained in `docs/modules/pages-page-builder-contribution-parity-actualization-2026-08-08.md`.
+
 ## Rechecked merged cursor
+
+The following #2955–#3063 list is a retained historical snapshot; the 2026-08-08 reconciliation above is authoritative for current source state.
 
 Current `main` through PR #3063 contains the retained Pages/Page Builder sequence:
 
@@ -66,6 +98,9 @@ No build, workflow, Docker, HTTP or browser execution is claimed.
 - `inline-edit-asset-delivery-source-ready` — dedicated binary-embedded authoring assets source-ready.
 - `inline-edit-admin-launch-source-ready` — admin launch source-ready.
 - `inline-edit-release-composition-source-ready` — release/rebuild/Docker composition source-ready.
+- `pages-repeated-artifact-loss-recovery-source-ready` — repeated physical loss of a rebuilt immutable artifact can recover from the latest accepted repair lineage.
+- `provider-degraded-controls-source-ready` — rollout/degraded provider controls are connected without fabricating observed health.
+- `contribution-registry-version-parity-source-ready` — contribution owner/target provider versions are pinned and fail closed on missing/mismatched versions.
 
 ## Current parity state
 
@@ -202,12 +237,25 @@ Anonymous default/CSR/hydrate/SSR profiles do not enable inline edit, authoring 
 
 Graph and built-artifact execution evidence remain pending.
 
+### Repeated immutable-artifact loss recovery: source-ready
+
+Pages keeps repair identity and latest accepted repair state per locale bounded. A previously rebuilt immutable artifact that is physically lost again can be reconstructed from the latest accepted repair lineage, and rollback continuity uses the same authority. This remains source-ready only until maintainer execution evidence is produced.
+
+### Provider degraded controls and observed health: source-ready / observation-open
+
+Page Builder provider flags can only narrow an already authorized capability set. Invalid/disabled builder state is unavailable, partial rollout or degraded health suppresses publish, and Pages exposes the same flags used by server composition. No live SLO source exists yet, so Pages health remains explicitly `unobserved`.
+
+### Contribution registry version parity: source-ready / metadata-generation-open
+
+Admin/storefront assembly, policy filters and structural diagnostics are source-ready. Owner and target provider versions are exact and fail closed on missing/mismatched contribution metadata. Complete generation from canonical module metadata remains open; handwritten module-owned contribution manifests are not treated as generated authority.
+
 ## Parity matrix
 
 | Capability | Source state | Execution state |
 | --- | --- | --- |
 | Registered metadata and owner port | Complete | Browser/conflict execution pending |
 | Reviewed publish and immutable rollback | Complete | DB/runtime execution pending |
+| Repeated immutable-artifact loss recovery | Source-ready | Repair/rollback execution pending |
 | Public locale fallback | Source-ready | Native/GraphQL execution pending |
 | Published aliases, tombstones and history import | Source-ready | SQLite/PostgreSQL/host execution pending |
 | Host canonical/redirect/gone response | Source-ready | HTTP/SSR execution pending |
@@ -224,6 +272,8 @@ Graph and built-artifact execution evidence remain pending.
 | Runtime-only release image | Unchanged/source-ready | Image execution pending |
 | Anonymous dependency graph | Source-ready | `cargo metadata` execution pending |
 | Anonymous SSR built artifact | Inspector source-ready | Build/inspection pending |
+| Provider degraded controls | Source-ready | Live observed-health evidence pending |
+| Version-pinned contribution registry | Source-ready | Metadata generation / execution pending |
 | Tenant rollout and FFA/FBA | Open | Not promoted |
 
 ## Historical compatibility markers
@@ -244,7 +294,7 @@ These exact phrases are retained only because earlier static guards consume the 
 
 ## Boundaries
 
-This slice changes deterministic build and release composition source only.
+The historical deployment slice below remains unchanged; the 2026-08-08 reconciliation additionally restores contribution version parity and updates the source cursor.
 
 It does not:
 
@@ -256,30 +306,25 @@ It does not:
 - enable same-origin launch in standalone admin builds;
 - add runtime build tooling to `apps/server/Dockerfile.release`;
 - claim verifier, Cargo, npm, Trunk, WASM, server, Docker, workflow, HTTP, browser or rollout execution;
+- fabricate Page Builder provider-health observations;
 - promote FFA or FBA.
 
-## Next cursor: execution evidence
+## Next cursor
 
-1. Apply and review `release-infra-approved` for the protected source changes.
-2. Run Pages consumer, route, asset, launch and release-composition static guards.
-3. Run release infrastructure, supply-chain and readiness guards.
-4. Run focused Cargo/tests for opt-in admin/storefront/server profiles.
-5. Build the full composition twice in isolated target directories.
-6. Retain embedded admin JS/WASM, authoring JS/WASM, server binary and archive hashes/sizes.
-7. Confirm identical archive digest across build and reproducibility jobs.
-8. Build production Docker and retain image digest.
-9. Prove authoring asset `200`/`304`, MIME, ETag, cache, CORP and CSP behavior.
-10. Prove launch visible/hidden states and exact-locale same-origin navigation.
-11. Execute direct-user allowed and anonymous/service/delegated/permission-denied cases.
-12. Observe edit/save/replacement grant/stale revision/replay/expiry behavior.
-13. Re-run anonymous graph and built-artifact exclusion evidence.
-14. Record tenant rollout and rollback evidence before promotion.
+Source continuation:
+
+1. Generate complete Fly contribution manifests from canonical module metadata instead of maintaining a parallel handwritten declaration.
+2. Keep current Pages repair/recovery and Page Builder degraded-control source boundaries unchanged while that registry authority is centralized.
+3. Connect real provider-health observation only after an authoritative Page Builder SLO source exists.
+
+Maintainer-owned execution evidence remains pending for the earlier release, browser, database and recovery slices.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node scripts/verify/verify-fly-ui-contributions.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
