@@ -15,9 +15,13 @@ use crate::domain::{
     GroupMembershipStatus, GroupRole, GroupStatus, GroupVisibility, normalize_feature_key,
 };
 use crate::dto::*;
+use crate::effective_membership_guard::{
+    GroupManagerCapability, require_effective_manager_owned,
+};
 use crate::entities::{feature_binding, group, membership};
 use crate::error::{GroupsError, GroupsResult};
 use crate::membership_enforcement::resolve_group_membership_enforcement;
+use crate::membership_enforcement_transaction::reserve_group_write_for_update;
 use crate::ports::{
     GroupAccessReadPort, GroupCommandPort, GroupMembershipReadPort, GroupSummaryReadPort,
 };
@@ -219,23 +223,28 @@ impl GroupsService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_id = actor_user_id(context)?;
-        self.group_model(tenant_id, request.group_id).await?;
+        let transaction = self.db.begin().await?;
 
-        let effective = resolve_group_membership_enforcement(
-            &self.db,
+        // Feature settings are Groups owner state. Serialize the aggregate before evaluating
+        // effective manager authority so a concurrent suspension cannot commit between auth and
+        // the feature write. SQLite receives the same writer reservation through the shared no-op
+        // group update used by the rest of the enforcement-aware owner boundary.
+        reserve_group_write_for_update(&transaction, tenant_id, request.group_id).await?;
+        let group_model = group::Entity::find()
+            .filter(group::Column::TenantId.eq(tenant_id))
+            .filter(group::Column::Id.eq(request.group_id))
+            .one(&transaction)
+            .await?
+            .ok_or(GroupsError::NotFound)?;
+        require_effective_manager_owned(
+            &transaction,
+            context,
             tenant_id,
             request.group_id,
             actor_id,
-            Utc::now(),
+            GroupManagerCapability::ManageSettings,
         )
         .await?;
-        let local_allowed =
-            effective.active_member && effective.role.is_some_and(GroupRole::can_manage_settings);
-        if !local_allowed && !has_platform_manage(context) {
-            return Err(GroupsError::Forbidden(
-                "active group owner or administrator role is required".to_string(),
-            ));
-        }
 
         let feature_key =
             normalize_feature_key(&request.feature_key).map_err(GroupsError::Validation)?;
@@ -253,7 +262,7 @@ impl GroupsService {
             .filter(feature_binding::Column::TenantId.eq(tenant_id))
             .filter(feature_binding::Column::GroupId.eq(request.group_id))
             .filter(feature_binding::Column::FeatureKey.eq(feature_key.clone()))
-            .one(&self.db)
+            .one(&transaction)
             .await?;
 
         let model = if let Some(existing) = existing {
@@ -263,7 +272,7 @@ impl GroupsService {
             active.sort_order = Set(request.sort_order);
             active.configuration = Set(request.configuration);
             active.updated_at = Set(now);
-            active.update(&self.db).await?
+            active.update(&transaction).await?
         } else {
             feature_binding::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -278,9 +287,16 @@ impl GroupsService {
                 created_at: Set(now),
                 updated_at: Set(now),
             }
-            .insert(&self.db)
+            .insert(&transaction)
             .await?
         };
+
+        let mut group_active: group::ActiveModel = group_model.into();
+        group_active.version = Set(group_active.version.take().unwrap_or_default().saturating_add(1));
+        group_active.updated_at = Set(now);
+        group_active.update(&transaction).await?;
+
+        transaction.commit().await?;
         map_feature(model)
     }
 }
