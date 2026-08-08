@@ -87,7 +87,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', 
 ]);
 
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  '`main@5f9e2fe4783d8bb5e6dad29adeff2dffc8296990`',
+  'Status overlay rechecked from `main@dfddce9f57916a712d531db38e75c87e7c45e8cf` (#3202)',
   'one current Product schema on internal routing key `4`',
   'Choose one generic localized Product query identity/fallback architecture',
   'implement the generic localized-entity fold in `rustok-index`',
