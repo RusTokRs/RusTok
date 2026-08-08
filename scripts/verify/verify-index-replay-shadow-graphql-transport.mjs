@@ -184,14 +184,16 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   '`runIndexReplayShadow`',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_locale_transport_execution_pending`.',
+  'Status: `source_complete_targeted_host_guard_transport_pending`.',
   '`runIndexReplayShadow`',
   'Locale-safe continuation and dry-run execution',
-  'bounded mutation-application',
+  '## Targeted PostgreSQL composition and host dispatch',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
+  'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
+  'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
 ]);
 
-console.log('[verify-index-replay-shadow-graphql-transport] Shadow GraphQL is authorization-first, locale-scoped, sealed and no-write without a parallel transport or token format');
+console.log('[verify-index-replay-shadow-graphql-transport] Shadow GraphQL remains authorization-first/locale-scoped/sealed while Targeted now has separate guarded host dispatch and no public transport overlap');

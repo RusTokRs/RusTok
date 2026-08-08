@@ -56,6 +56,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Sealed Source-page GraphQL Transport](../../../apps/server/docs/index-drift-source-page-graphql-transport.md)
 - [M6 Bounded Source-call Timeout](./m6-source-call-timeout.md)
 - [M6 Bounded Replay Dry-run](./m6-bounded-replay-dry-run.md)
+- [M6 Targeted Replay Mutation Application](./m6-targeted-replay-mutation-application.md)
 - [M6 Cooperative Replay-page Interruption](./m6-cooperative-page-interruption.md)
 - [M6 Replay Retry Transition Store](./m6-replay-retry-transition-store.md)
 - [M6 Replay Dead-letter Admission](./m6-replay-dead-letter-admission.md)

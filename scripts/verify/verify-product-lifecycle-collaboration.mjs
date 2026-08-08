@@ -28,6 +28,11 @@ const ownerPolicy = read('crates/rustok-modules/src/policy.rs');
 const lifecycleWriter = read('crates/rustok-modules/src/lifecycle_writer.rs');
 const lifecycleExecutor = read('crates/rustok-modules/src/executor.rs');
 const recovery = read('crates/rustok-modules/src/recovery.rs');
+const recoveryMigration = read(
+  'crates/rustok-migrations/src/m20260808_000099_create_module_operation_override_states.rs',
+);
+const platformMigrator = read('crates/rustok-migrations/src/lib.rs');
+const runbook = read('apps/server/docs/module-lifecycle-retry-compensation-runbook.md');
 const note = read('crates/rustok-product/docs/product-lifecycle-collaboration.md');
 const evidence = JSON.parse(
   read('crates/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json'),
@@ -93,11 +98,11 @@ const registryValidationBlock = between(
 const startupValidationBlock = manifestManager.slice(
   manifestManager.indexOf('pub fn validate_registry_vs_manifest'),
 );
-const lifecycleToggleBlock = between(
-  tenantLifecycle,
-  'pub async fn toggle_module_with_actor(',
-  '\n    pub async fn module_operation_recovery_plan(',
-  'tenant lifecycle toggle block',
+const compensationBlock = between(
+  lifecycleWriter,
+  'pub async fn compensate_failed_operation(',
+  '\n    /// Persists a static module settings value',
+  'owner compensation block',
 );
 
 for (const [source, value, label] of [
@@ -123,51 +128,62 @@ for (const [source, value, label] of [
   [commands, 'BootstrapService::delete_records_for_variants_in_tx(&txn, &variant_ids)', 'inventory cleanup collaboration'],
   [commands, 'PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &variant_ids)', 'price cleanup collaboration'],
   [inventoryBootstrap, 'Owner-owned, transaction-aware inventory bootstrap operations.', 'Inventory owner contract'],
-  [inventoryBootstrap, 'C: ConnectionTrait', 'Inventory transaction connection'],
   [pricingBootstrap, 'Pricing-owned transaction-aware operations required by Product lifecycle writes.', 'Pricing owner contract'],
-  [pricingBootstrap, 'C: ConnectionTrait', 'Pricing transaction connection'],
 
-  [manifestCorequisites, 'co_requisites: BTreeMap<String, PackageCoRequisiteSpec>', 'typed package co-requisite parser'],
   [manifestCorequisites, 'pub(crate) fn module_policy_corequisites', 'owner co-requisite input entrypoint'],
   [manifestCorequisites, 'pub(super) fn validate_default_corequisite_selection', 'deployment selection preflight'],
   [manifestCorequisites, 'module.ordinary_dependencies.contains(co_requisite)', 'dependency/co-requisite separation'],
-  [manifestCorequisites, '!selected.contains(co_requisite)', 'missing selected co-requisite rejection'],
-  [manifestCorequisites, 'VersionReq::parse(requirement)', 'deployment co-requisite version validation'],
-  [manifestCorequisites, 'requirement.matches(&installed_version)', 'deployment selected version validation'],
   [manifestManager, 'pub fn validate_deployment_selection(', 'manifest deployment selection API'],
   [startupValidationBlock, '.and_then(|_| ManifestManager::validate_deployment_selection(&manifest))', 'startup co-requisite preflight'],
   [registryValidationBlock, 'dependencies: resolved_spec.depends_on.iter().cloned().collect()', 'ordinary registry dependency source'],
   [installBuiltinBlock, 'Self::validate(manifest)?;', 'ordinary install validation'],
 
   [ownerPolicy, 'pub struct ModuleEffectivePolicyCoRequisite', 'owner co-requisite input'],
-  [ownerPolicy, 'CoRequisite {', 'owner co-requisite decision fact'],
   [ownerPolicy, 'CoRequisiteUnavailable { module_slug: String }', 'owner unavailable denial'],
   [ownerPolicy, 'CoRequisiteVersionMismatch { module_slug: String }', 'owner version denial'],
-  [ownerPolicy, 'co_requisites: Vec<ModuleEffectivePolicyCoRequisite>', 'owner query co-requisite state'],
-  [ownerPolicy, 'co_requisites: &\'a [ModuleEffectivePolicyCoRequisite]', 'revisioned co-requisite input'],
   [ownerPolicy, 'contract: "rustok.module_effective_policy.v2"', 'effective policy v2 identity'],
   [ownerPolicy, 'normalize_corequisites(self.catalog, self.co_requisites)', 'owner co-requisite normalization'],
-  [ownerPolicy, 'corequisite_version_compatible(self.catalog, co_requisite)', 'owner version decision'],
-  [ownerPolicy, 'corequisites_are_revisioned_explainable_availability_not_dependency_edges', 'owner policy source test'],
-
-  [lifecycleWriter, 'pub fn with_corequisites(', 'lifecycle writer co-requisite input'],
-  [lifecycleWriter, '.with_corequisites(self.co_requisites.iter().cloned())', 'canonical lifecycle policy co-requisites'],
   [lifecycleWriter, 'ordering_policy_from_overrides', 'ordinary ordering projection'],
-  [lifecycleWriter, 'ordering_policy.into_enabled_modules()', 'ordinary ordering selection output'],
-  [lifecycleExecutor, 'pub ordering_enabled_modules: HashSet<String>', 'lifecycle ordering input'],
   [lifecycleExecutor, '&request.ordering_enabled_modules', 'ordinary toggle validation input'],
-  [recovery, 'previous_effective_enabled', 'legacy recovery predecessor debt'],
-
-  [lifecycleToggleBlock, 'ManifestManager::module_policy_corequisites(&manifest)', 'lifecycle package contract load'],
-  [lifecycleToggleBlock, '.with_corequisites(co_requisites)', 'lifecycle owner policy binding'],
-  [effectivePolicy, 'ManifestManager::module_policy_corequisites(&manifest)', 'effective-policy package contract load'],
   [effectivePolicy, '.with_corequisites(co_requisites)', 'effective-policy owner binding'],
   [effectivePolicy, '.cache_identity(tenant_id)', 'canonical cache identity'],
 
-  [note, 'canonical owner effective-policy co-requisite identity source-complete', 'focused note status'],
-  [note, 'rustok.module_effective_policy.v2', 'focused note revision identity'],
-  [note, '**ordinary ordering selection**', 'focused note ordering split'],
-  [note, 'previous_effective_enabled', 'focused note staged recovery debt'],
+  [recovery, 'pub override_state_recorded: bool', 'recorded selected-intent marker'],
+  [recovery, 'pub previous_override_enabled: Option<bool>', 'nullable override predecessor'],
+  [recovery, 'pub requested_override_enabled: Option<bool>', 'nullable override target'],
+  [recovery, 'FROM module_operation_override_states', 'selected-intent recovery read'],
+  [recovery, 'INSERT INTO module_operation_override_states', 'selected-intent recovery write'],
+  [recovery, 'selected_intent_state_unavailable', 'legacy recovery fail-closed reason'],
+  [recovery, 'request.current_override_enabled != plan.requested_override_enabled', 'retry exact override state match'],
+  [recovery, 'plan.previous_override_enabled,\n                plan.requested_override_enabled', 'retry predecessor retention'],
+  [recovery, 'DELETE FROM tenant_modules', 'inherited override restoration'],
+  [lifecycleExecutor, 'pub previous_override_enabled: Option<bool>', 'executor exact override predecessor'],
+  [lifecycleExecutor, 'pub requested_override_enabled: Option<bool>', 'executor exact override target'],
+  [lifecycleExecutor, 'record_operation_override_state(', 'executor recovery-state retention'],
+  [lifecycleExecutor, 'apply_tenant_override_enabled(', 'executor tri-state persistence'],
+  [lifecycleWriter, 'Some(enabled),', 'normal toggle explicit override target'],
+  [lifecycleWriter, 'None => next_overrides.retain(|value| value.module_slug != module_slug)', 'policy inherited override projection'],
+  [compensationBlock, 'let reverse_enabled = !plan.requested_enabled;', 'inverse compensation lifecycle direction'],
+  [compensationBlock, 'plan.previous_override_enabled', 'exact compensation target'],
+  [compensationBlock, 'current_override_enabled != plan.requested_override_enabled', 'compensation exact current-state match'],
+  [tenantLifecycle, 'explicit module toggle did not persist a tenant override row', 'normal explicit-row server assertion'],
+  [tenantLifecycle, '(state.enabled, state.settings)', 'explicit compensation response state'],
+  [tenantLifecycle, 'None => (policy.contains(&plan.module_slug), serde_json::json!({}))', 'inherited compensation availability fallback'],
+
+  [recoveryMigration, 'module_operation_override_states', 'recovery side-table migration'],
+  [recoveryMigration, 'PreviousOverrideEnabled', 'nullable predecessor migration column'],
+  [recoveryMigration, 'RequestedOverrideEnabled', 'nullable target migration column'],
+  [recoveryMigration, 'ForeignKeyAction::Cascade', 'recovery side-table operation ownership'],
+  [platformMigrator, 'mod m20260808_000099_create_module_operation_override_states;', 'migration module registration'],
+  [platformMigrator, '"m20260808_000099_create_module_operation_override_states",', 'append-only migration tail registration'],
+  [platformMigrator, 'Box::new(m20260808_000099_create_module_operation_override_states::Migration)', 'migration execution registration'],
+
+  [runbook, '`inherit`', 'operational inherited-state contract'],
+  [runbook, 'selected_intent_state_unavailable', 'operational legacy fail-closed contract'],
+  [runbook, 'Do **not** use `previous_effective_enabled` as the compensation target.', 'operational availability/predecessor separation'],
+  [note, 'staged lifecycle recovery source-complete', 'focused note status'],
+  [note, '`module_operation_override_states`', 'focused recovery evidence'],
+  [note, '`previous_effective_enabled` remains in the journal as historical availability evidence', 'focused legacy fact role'],
 ]) requireText(source, value, label);
 
 for (const [source, value, label] of [
@@ -183,8 +199,8 @@ for (const [source, value, label] of [
   [manifestCorequisites, 'validate_corequisite_toggle', 'duplicate host lifecycle guard'],
   [tenantLifecycle, 'validate_corequisite_toggle', 'server lifecycle duplicate guard'],
   [effectivePolicy, 'validate_effective_policy_corequisites', 'server effective-policy duplicate guard'],
+  [compensationBlock, 'plan.previous_effective_enabled,', 'effective availability reused as compensation target'],
   [catalog, 'rustok_commerce_foundation::entities', 'foreign foundation entity import'],
-  [commands, 'rustok_commerce_foundation::entities', 'foreign foundation entity import in commands'],
   [commands, 'inventory_item::Entity', 'direct Inventory entity access'],
   [commands, 'inventory_level::Entity', 'direct Inventory level access'],
   [commands, 'stock_location::Entity', 'direct stock location access'],
@@ -196,7 +212,7 @@ for (const [source, value, label] of [
   [commands, 'INTO prices', 'direct Pricing SQL write'],
 ]) forbidText(source, value, label);
 
-if (evidence.status !== 'product_lifecycle_owner_corequisite_policy_identity_source_complete_unvalidated') {
+if (evidence.status !== 'product_lifecycle_staged_recovery_source_complete_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 const coRequisites = [...(evidence.module_topology?.product_co_requisites ?? [])].sort();
@@ -212,7 +228,9 @@ for (const [key, expected] of [
   ['canonical_policy_revision_corequisite_identity_source_complete', true],
   ['owner_corequisite_decision_explanation_source_complete', true],
   ['lifecycle_ordering_separated_from_corequisite_availability_source_complete', true],
-  ['staged_intent_recovery_semantics_source_complete', false],
+  ['staged_intent_recovery_semantics_source_complete', true],
+  ['inherited_override_recovery_source_complete', true],
+  ['legacy_recovery_without_selected_state_fails_closed', true],
   ['co_requisite_control_plane_execution_proven', false],
   ['tenant_lifecycle_corequisite_execution_proven', false],
   ['standalone_product_write_activation_proven', false],
@@ -233,13 +251,14 @@ for (const key of [
   'canonical_policy_revision_corequisite_identity_source_complete',
   'owner_corequisite_decision_explanation_source_complete',
   'lifecycle_ordering_separated_from_corequisite_availability_source_complete',
+  'staged_intent_recovery_semantics_source_complete',
 ]) {
   if (evidence.decision?.[key] !== true) failures.push(`evidence decision.${key} must be true`);
 }
 if (evidence.decision?.containment_complete !== true ||
     evidence.decision?.corequisite_contract_declared !== true ||
-    evidence.decision?.dependency_contract_resolved !== false) {
-  failures.push('evidence decision must close owner policy identity while keeping staged recovery open');
+    evidence.decision?.dependency_contract_resolved !== true) {
+  failures.push('evidence decision must mark the Product dependency/collaboration source contract resolved');
 }
 for (const key of [
   'tests_run',
@@ -253,6 +272,7 @@ for (const key of [
   'effective_policy_guard_execution_proven',
   'policy_cache_identity_execution_proven',
   'staged_intent_recovery_execution_proven',
+  'migration_execution_proven',
   'standalone_activation_proven',
   'non_default_deployment_selection_proven',
   'transaction_rollback_proven',
@@ -269,5 +289,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Product co-requisites are canonical owner effective-policy identity/explanation inputs and remain separate from ordinary lifecycle ordering; staged recovery and execution evidence remain open',
+  '✔ Product co-requisite policy identity, ordinary ordering separation, and exact staged tenant-intent recovery are source-locked; maintainer execution evidence remains open',
 );

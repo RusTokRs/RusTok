@@ -7,29 +7,36 @@ use uuid::Uuid;
 
 use crate::{
     IndexReplayCancelOutcome, IndexReplayDryRunRuntimeCompositionError, IndexReplayRunError,
-    IndexReplayRunOutcome, IndexReplayRunRequest, SharedIndexSchemaRegistry,
-    SharedIndexSourceRegistry, materialize_index_replay_dry_run_runtime,
+    IndexReplayRunOutcome, IndexReplayRunRequest, IndexReplayTargetedError,
+    IndexReplayTargetedExecutor, IndexReplayTargetedOutcome, IndexSourceLoadRequest,
+    SharedIndexSchemaRegistry, SharedIndexSourceRegistry, materialize_index_replay_dry_run_runtime,
 };
 
 use super::{
-    IndexReconciliationSchedulerCompositionError, PostgresIndexReplayRunner,
+    IndexReconciliationSchedulerCompositionError, PostgresIndexReplayRunner, PostgresMutationStore,
     register_postgres_index_reconciliation_work,
 };
 
 /// Cloneable operator capability for bounded Index replay execution.
 ///
-/// Construction is Index-owned so executable hosts publish one canonical runner assembled from
-/// the complete immutable schema/source registries. Consumers receive only bounded run, cooperative
-/// interruptible run, and cancel operations; the database connection and registry internals remain private.
+/// Construction is Index-owned so executable hosts publish one canonical runtime assembled from
+/// the complete immutable schema/source registries and the host database. Consumers receive only
+/// dedicated Full, Targeted, interruption, and cancel operations; database and registry internals
+/// remain private. Targeted shares the canonical mutation sink but owns no Full job/checkpoint state.
 #[derive(Clone)]
 pub struct SharedIndexReplayRuntime {
     runner: Arc<PostgresIndexReplayRunner>,
+    targeted: Arc<IndexReplayTargetedExecutor<PostgresMutationStore>>,
 }
 
 impl SharedIndexReplayRuntime {
-    fn new(runner: PostgresIndexReplayRunner) -> Self {
+    fn new(
+        runner: PostgresIndexReplayRunner,
+        targeted: IndexReplayTargetedExecutor<PostgresMutationStore>,
+    ) -> Self {
         Self {
             runner: Arc::new(runner),
+            targeted: Arc::new(targeted),
         }
     }
 
@@ -38,6 +45,19 @@ impl SharedIndexReplayRuntime {
         request: IndexReplayRunRequest,
     ) -> Result<IndexReplayRunOutcome, IndexReplayRunError> {
         self.runner.run(request).await
+    }
+
+    /// Executes one canonical bounded exact-key Targeted load/application invocation.
+    ///
+    /// This path reuses `PostgresMutationStore` for stable source-event delivery identity but does
+    /// not create a replay job, checkpoint, lease, cancellation state, scheduler or retry owner.
+    pub async fn run_targeted(
+        &self,
+        request: IndexSourceLoadRequest,
+    ) -> Result<IndexReplayTargetedOutcome, IndexReplayTargetedError> {
+        self.targeted
+            .run(crate::IndexReplayModeSelection::Targeted(request))
+            .await
     }
 
     /// Runs one bounded replay invocation with a host-owned cooperative stop probe.
@@ -91,9 +111,10 @@ pub enum IndexReplayRuntimeCompositionError {
 ///
 /// An absent source registry returns `Ok(None)` and publishes neither a false replay capability
 /// nor an empty Index module-work registration. Complete immutable registries publish the dry-run
-/// capability, one module-owned reconciliation work registration, and the replay runtime. This
-/// function performs no database I/O and starts no task; the generic host module-work lifecycle
-/// owns polling and graceful shutdown after all registrations are collected.
+/// capability, one module-owned reconciliation work registration, and one replay runtime containing
+/// the durable Full runner plus the bounded Targeted executor backed by the existing PostgreSQL
+/// mutation sink. This function performs no database I/O and starts no task; the generic host
+/// module-work lifecycle owns polling and graceful shutdown after all registrations are collected.
 pub fn materialize_postgres_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -112,11 +133,16 @@ pub fn materialize_postgres_index_replay_runtime(
 
     materialize_index_replay_dry_run_runtime(extensions)?;
     register_postgres_index_reconciliation_work(extensions)?;
-    let runtime = SharedIndexReplayRuntime::new(PostgresIndexReplayRunner::new(
-        db,
-        sources,
-        schemas.shared(),
-    ));
+    let schema_registry = schemas.shared();
+    let targeted = IndexReplayTargetedExecutor::new(
+        sources.clone(),
+        schema_registry.clone(),
+        PostgresMutationStore::new(db.clone()),
+    );
+    let runtime = SharedIndexReplayRuntime::new(
+        PostgresIndexReplayRunner::new(db, sources, schema_registry),
+        targeted,
+    );
     extensions.insert(runtime.clone());
     Ok(Some(runtime))
 }

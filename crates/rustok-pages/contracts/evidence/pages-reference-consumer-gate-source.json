@@ -11,14 +11,18 @@
     "main_base": "0f64eb62f9521e0c08027ab04433256429321c62",
     "rollout_owner_correction_base": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
     "rollout_matrix_harness_base": "edd68d44d726085252a0c0b9ae426a3ec016032f",
+    "reference_candidate_matrix_input_base": "a08337a73bba49ee57dc932d7e0128ac545e2071",
     "pages_source_boundary": "complete_execution_pending",
     "page_builder_provider_status": "source_ready_health_unobserved",
     "plan_parity": "source_ready",
     "candidate_harness": "source_ready_maintainer_execution_pending",
     "tenant_rollout_settings": "platform_read_seam_server_owner_graphql_all_bindings_source_ready",
     "trusted_rollout_server_snapshot": "pages_graphql_owner_ui_ssr_browser_intent_bindings_source_ready",
-    "browser_intent_rollout_preflight": "source_ready_server_owned_flags",
+    "browser_intent_rollout_preflight": "source_ready_server_owned_flags_FLY_CAPABILITY_DENIED",
     "four_profile_runtime_matrix": "harness_source_ready_maintainer_execution_pending",
+    "canonical_feature_preflight": "harness_source_ready_maintainer_execution_pending_FEATURE_DISABLED",
+    "reference_candidate_rollout_matrix_input": "source_ready_required_before_candidate",
+    "reference_candidate_feature_preflight_input": "source_ready_required_before_candidate",
     "forum_second_consumer": {
       "contribution_metadata": "source_ready",
       "fly_adapter": "source_ready",
@@ -33,37 +37,12 @@
     "id": "pages_reference_consumer_gate",
     "purpose": "Require accepted exact-source Pages Page Builder reference-consumer evidence before a downstream consumer can treat the Pages gate as satisfied.",
     "contract_version": "1.1",
-    "required_profiles": [
-      "all_on",
-      "publish_off",
-      "preview_off",
-      "builder_off"
-    ],
+    "required_profiles": ["all_on", "publish_off", "preview_off", "builder_off"],
     "required_profile_outcomes": {
-      "all_on": {
-        "preview": "pass",
-        "properties": "pass",
-        "publish_dry": "pass",
-        "pages_owned_reads": "pass"
-      },
-      "publish_off": {
-        "preview": "pass",
-        "properties": "pass",
-        "publish_dry": "typed_feature_disabled",
-        "pages_owned_reads": "pass"
-      },
-      "preview_off": {
-        "preview": "typed_feature_disabled",
-        "properties": "pass",
-        "publish_dry": "typed_feature_disabled",
-        "pages_owned_reads": "pass"
-      },
-      "builder_off": {
-        "preview": "typed_feature_disabled",
-        "properties": "readonly_or_hidden",
-        "publish_dry": "typed_feature_disabled",
-        "pages_owned_reads": "pass"
-      }
+      "all_on": {"preview":"pass","properties":"pass","publish_dry":"pass","pages_owned_reads":"pass"},
+      "publish_off": {"preview":"pass","properties":"pass","publish_dry":"typed_feature_disabled","pages_owned_reads":"pass"},
+      "preview_off": {"preview":"typed_feature_disabled","properties":"pass","publish_dry":"typed_feature_disabled","pages_owned_reads":"pass"},
+      "builder_off": {"preview":"typed_feature_disabled","properties":"readonly_or_hidden","publish_dry":"typed_feature_disabled","pages_owned_reads":"pass"}
     },
     "required_source_guards": [
       "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs",
@@ -79,6 +58,8 @@
       "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
       "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
       "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs",
       "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs"
     ],
     "required_execution_evidence": [
@@ -90,7 +71,8 @@
       "accepted anonymous storefront authoring-exclusion evidence",
       "accepted provider degraded-profile behavior without fabricated health",
       "accepted four-profile rollout runtime matrix bound to the exact browser predecessor source, API deployment RepoDigest and standalone-admin origin hash with verified settings restoration",
-      "accepted four-profile standalone browser-intent preflight behavior using server-owned rollout flags",
+      "accepted standalone browser-intent bypass resistance using FLY_CAPABILITY_DENIED without treating it as the provider error catalog",
+      "accepted canonical non-mutating capability preflight proving feature-disabled / FEATURE_DISABLED for the required degraded profile outcomes and pass for all_on",
       "maintainer owner sign-off and explicit rollback decision"
     ],
     "acceptance": {
@@ -111,6 +93,20 @@
     "candidate_format": "pages_reference_consumer_gate_candidate_v1",
     "candidate_status": "component_execution_passed_owner_review_pending",
     "automatic_acceptance": false,
+    "required_inputs": {
+      "artifact_http": "pages_inline_edit_artifact_http_execution_v1",
+      "browser": "pages_inline_edit_browser_execution_v1",
+      "rollout_matrix": "pages_builder_rollout_runtime_matrix_v1",
+      "rollout_feature_preflight": "pages_builder_rollout_feature_preflight_v1"
+    },
+    "rollout_matrix_status_required": "four_profile_runtime_matrix_passed_owner_review_pending",
+    "rollout_matrix_browser_predecessor_hash_required": true,
+    "rollout_matrix_settings_restore_required": true,
+    "rollout_feature_preflight_status_required": "four_profile_feature_preflight_passed_candidate_pending",
+    "rollout_feature_preflight_browser_predecessor_hash_required": true,
+    "rollout_feature_preflight_matrix_predecessor_hash_required": true,
+    "rollout_feature_preflight_settings_restore_required": true,
+    "canonical_feature_disabled_code_required": "FEATURE_DISABLED",
     "owner_signoff_after_candidate": true,
     "rollback_decision_after_candidate": true
   },
@@ -126,7 +122,23 @@
     "automatic_acceptance": false,
     "settings_restore_required": true,
     "provider_health_claim": "unobserved",
+    "browser_intent_denial_code": "FLY_CAPABILITY_DENIED",
     "provenance_binding": "browser_predecessor_source_plus_api_repo_digest_plus_standalone_admin_origin_hash"
+  },
+  "rollout_feature_preflight_harness": {
+    "status": "source_ready_maintainer_execution_pending",
+    "contract": "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
+    "config": "apps/next-admin/playwright.pages-builder-rollout-feature-preflight.config.ts",
+    "spec": "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
+    "source_evidence": "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
+    "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs",
+    "output_format": "pages_builder_rollout_feature_preflight_v1",
+    "output_status": "four_profile_feature_preflight_passed_candidate_pending",
+    "automatic_acceptance": false,
+    "non_mutating": true,
+    "settings_restore_required": true,
+    "feature_disabled_kind": "feature-disabled",
+    "feature_disabled_code": "FEATURE_DISABLED"
   },
   "current_boundary": {
     "source_gate": "ready",
@@ -134,8 +146,11 @@
     "candidate_harness": "source_ready_maintainer_execution_pending",
     "tenant_rollout_settings": "platform_read_seam_server_owner_graphql_all_bindings_source_ready",
     "trusted_rollout_server_snapshot": "pages_graphql_owner_ui_ssr_browser_intent_bindings_source_ready",
-    "browser_intent_rollout_preflight": "source_ready_server_owned_flags",
+    "browser_intent_rollout_preflight": "source_ready_server_owned_flags_FLY_CAPABILITY_DENIED",
     "four_profile_runtime_matrix": "harness_source_ready_maintainer_execution_pending",
+    "canonical_feature_preflight": "harness_source_ready_maintainer_execution_pending_FEATURE_DISABLED",
+    "reference_candidate_rollout_matrix_input": "source_ready_required_before_candidate",
+    "reference_candidate_feature_preflight_input": "source_ready_required_before_candidate",
     "forum_wave_blocker": "pages_reference_consumer_gate",
     "provider_health": "unobserved",
     "ffa_fba_promotion": "not_claimed"
@@ -148,14 +163,8 @@
     "trusted_rollout_server_snapshot_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-server-snapshot.mjs",
     "rollout_binding_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs",
     "rollout_matrix_harness_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
+    "rollout_feature_preflight_harness_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
-  "forbidden_claims": [
-    "maintainer_verified",
-    "gate accepted",
-    "observed provider health",
-    "Forum Wave accepted",
-    "FFA promoted",
-    "FBA promoted"
-  ]
+  "forbidden_claims": ["maintainer_verified","gate accepted","observed provider health","Forum Wave accepted","FFA promoted","FBA promoted"]
 }

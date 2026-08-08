@@ -27,6 +27,8 @@ pub struct CommerceHttpRuntime {
     fulfillment_lifecycle_read_runtime:
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
+    order_admin_command_runtime: rustok_order::OrderAdminCommandRuntime,
+    payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
     product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     product_catalog_command_runtime: rustok_product::ProductCatalogCommandRuntime,
     #[cfg(feature = "marketplace-financial")]
@@ -75,6 +77,14 @@ impl CommerceHttpRuntime {
 
     fn order_read_port(&self) -> std::sync::Arc<dyn rustok_order::OrderReadPort> {
         self.order_read_runtime.order_read_port()
+    }
+
+    fn order_admin_command_port(&self) -> std::sync::Arc<dyn rustok_order::OrderAdminCommandPort> {
+        self.order_admin_command_runtime.command_port()
+    }
+
+    fn payment_order_read_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentOrderReadPort> {
+        self.payment_order_read_runtime.read_port()
     }
 
     fn product_catalog_read_port(
@@ -132,6 +142,20 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require CommerceOrderReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let order_admin_command_runtime = runtime
+            .shared_get::<rustok_order::OrderAdminCommandRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require OrderAdminCommandRuntime in HostRuntimeContext"
+                )
+            })?;
+        let payment_order_read_runtime = runtime
+            .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require PaymentOrderReadRuntime in HostRuntimeContext"
+                )
+            })?;
         let product_catalog_read_runtime = runtime
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
             .ok_or_else(|| {
@@ -166,6 +190,8 @@ impl CommerceHttpRuntime {
             shipping_option_read_runtime,
             fulfillment_lifecycle_read_runtime,
             order_read_runtime,
+            order_admin_command_runtime,
+            payment_order_read_runtime,
             product_catalog_read_runtime,
             product_catalog_command_runtime,
             #[cfg(feature = "marketplace-financial")]

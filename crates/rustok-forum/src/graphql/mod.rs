@@ -6,6 +6,7 @@ mod category_tree_query;
 mod connection;
 mod content_commands;
 mod error_extension;
+mod mention_reconciliation_query;
 mod mutation;
 #[path = "query_runtime.rs"]
 mod query;
@@ -17,6 +18,7 @@ mod runtime_data;
 mod storefront_audience_topic;
 mod storefront_audience_topics;
 mod storefront_read_state;
+mod subscription_reconciliation_query;
 mod topic_fork_mutation;
 mod topic_merge_mutation;
 mod topic_reply_range_move_mutation;
@@ -46,6 +48,9 @@ pub use content_commands::{
     UpdateForumReplyWithQuotesInput, UpdateForumTopicWithQuotesInput,
 };
 pub use error_extension::ForumGraphqlErrorExtension;
+pub use mention_reconciliation_query::{
+    GqlForumMentionDrift, GqlForumMentionReconciliationReport,
+};
 pub use quote_commands::{
     GqlForumQuoteReferenceInput, GqlForumQuoteTargetKind, GqlForumRelationQuote,
     GqlForumRelationSnapshot, SetForumQuoteRelationsInput,
@@ -57,6 +62,10 @@ pub use reconciliation_query::{
 };
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
+pub use subscription_reconciliation_query::{
+    GqlForumSubscriptionCursor, GqlForumSubscriptionDrift,
+    GqlForumSubscriptionReconciliationReport,
+};
 pub use topic_fork_mutation::{
     ForkForumTopicReplyBranchGraphqlInput, GqlForumTopicFork,
 };
@@ -85,6 +94,8 @@ pub struct ForumQuery(
     category_route_query::ForumCategoryRouteQuery,
     read_state::ForumReadStateQuery,
     reconciliation_query::ForumReconciliationQuery,
+    subscription_reconciliation_query::ForumSubscriptionReconciliationQuery,
+    mention_reconciliation_query::ForumMentionReconciliationQuery,
     reply_audience_query::ForumReplyAudienceQuery,
     storefront_read_state::ForumStorefrontReadStateQuery,
     storefront_audience_topic::ForumStorefrontAudienceTopicQuery,

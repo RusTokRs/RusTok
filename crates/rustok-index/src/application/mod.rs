@@ -28,6 +28,7 @@ mod source_registry;
 mod source_replay;
 mod source_schema_registry;
 mod source_timeout;
+mod targeted_replay;
 mod validation;
 
 #[cfg(test)]
@@ -185,4 +186,7 @@ pub use source_schema_registry::{
     SharedIndexSchemaRegistry, materialize_index_schema_registry, register_index_schema_source,
 };
 pub use source_timeout::register_index_source;
+pub use targeted_replay::{
+    IndexReplayTargetedError, IndexReplayTargetedExecutor, IndexReplayTargetedOutcome,
+};
 pub use validation::{QueryValidationError, RecordValidationError};

@@ -1,23 +1,14 @@
 {
   "schema_version": 1,
   "generated_at": "2026-08-08",
-  "status": "product_lifecycle_owner_corequisite_policy_identity_source_complete_unvalidated",
-  "source_base_revision": "d7eb11aa73e41bd7ada51c03cb798dc332a10a2b",
+  "status": "product_lifecycle_staged_recovery_source_complete_unvalidated",
+  "source_base_revision": "457edd0861710daea39ea28652b167926b1fdd82",
   "scope": "Product create/delete transaction collaboration with Inventory and Pricing owners",
   "module_topology": {
-    "product_dependencies": [
-      "taxonomy"
-    ],
-    "product_co_requisites": [
-      "inventory",
-      "pricing"
-    ],
-    "inventory_dependencies": [
-      "product"
-    ],
-    "pricing_dependencies": [
-      "product"
-    ],
+    "product_dependencies": ["taxonomy"],
+    "product_co_requisites": ["inventory", "pricing"],
+    "inventory_dependencies": ["product"],
+    "pricing_dependencies": ["product"],
     "ordinary_reverse_dependencies_forbidden": true,
     "co_requisites_are_ordering_dependencies": false,
     "static_default_selection_enforcement_source_complete": true,
@@ -26,15 +17,13 @@
     "canonical_policy_revision_corequisite_identity_source_complete": true,
     "owner_corequisite_decision_explanation_source_complete": true,
     "lifecycle_ordering_separated_from_corequisite_availability_source_complete": true,
-    "staged_intent_recovery_semantics_source_complete": false,
+    "staged_intent_recovery_semantics_source_complete": true,
+    "inherited_override_recovery_source_complete": true,
+    "legacy_recovery_without_selected_state_fails_closed": true,
     "co_requisite_control_plane_execution_proven": false,
     "tenant_lifecycle_corequisite_execution_proven": false,
-    "reason": "The modules owner now hashes normalized Product co-requisites into canonical effective-policy revision/cache identity and explains availability separately from ordinary lifecycle ordering; staged retry/compensation predecessor semantics remain open",
-    "default_enabled_bundle": [
-      "product",
-      "pricing",
-      "inventory"
-    ],
+    "reason": "The modules owner keeps Product co-requisite availability in canonical policy identity while lifecycle recovery now persists exact tri-state tenant override predecessor/target evidence, restores inherited no-row state exactly, and rejects legacy recovery without selected-intent evidence; execution remains open",
+    "default_enabled_bundle": ["product", "pricing", "inventory"],
     "standalone_product_write_activation_proven": false
   },
   "inventory_collaboration": {
@@ -79,14 +68,16 @@
     "canonical_policy_revision_corequisite_identity_source_complete": true,
     "owner_corequisite_decision_explanation_source_complete": true,
     "lifecycle_ordering_separated_from_corequisite_availability_source_complete": true,
-    "dependency_contract_resolved": false,
-    "next_slice": "Separate persisted tenant selected-intent predecessor/current state from effective availability in post-hook retry and compensation while retaining canonical co-requisite-aware policy revision identity",
+    "staged_intent_recovery_semantics_source_complete": true,
+    "dependency_contract_resolved": true,
+    "next_slice": "Retain maintainer-run execution evidence for staged Product/Inventory/Pricing activation and teardown, co-requisite policy/cache revisions, exact post-hook retry/compensation across enabled/disabled/inherited overrides, append-only migration execution, and Product cross-owner transaction rollback",
     "do_not": [
       "add inventory or pricing to Product ordinary module dependencies",
       "move Inventory or Pricing ORM entities into Product",
       "replace atomic owner collaboration with unproven best-effort post-commit writes",
       "claim standalone Product write activation",
-      "reuse effective availability as the staged tenant-intent recovery predecessor"
+      "reuse effective availability as the staged tenant-intent recovery predecessor",
+      "infer legacy recovery predecessor state when module_operation_override_states evidence is absent"
     ]
   },
   "validation": {
@@ -101,6 +92,7 @@
     "effective_policy_guard_execution_proven": false,
     "policy_cache_identity_execution_proven": false,
     "staged_intent_recovery_execution_proven": false,
+    "migration_execution_proven": false,
     "standalone_activation_proven": false,
     "non_default_deployment_selection_proven": false,
     "transaction_rollback_proven": false

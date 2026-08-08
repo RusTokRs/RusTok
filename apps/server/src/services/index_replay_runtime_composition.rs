@@ -89,6 +89,14 @@ pub enum IndexReplayOperatorError {
 }
 
 #[derive(Debug, Error)]
+pub enum IndexReplayTargetedOperatorError {
+    #[error(transparent)]
+    Authorization(#[from] IndexReplayOperatorError),
+    #[error(transparent)]
+    Targeted(#[from] rustok_index::IndexReplayTargetedError),
+}
+
+#[derive(Debug, Error)]
 pub enum IndexReplayShadowOperatorError {
     #[error(transparent)]
     Authorization(#[from] IndexReplayOperatorError),
@@ -100,8 +108,9 @@ pub enum IndexReplayShadowOperatorError {
 ///
 /// Transport adapters must provide an exact request-bound tenant/actor context. The boundary
 /// accepts only `modules:manage`, rejects cross-tenant requests before execution, and exposes no
-/// connection, source registry, scheduler, or worker-spawn handle. Durable full replay and
-/// side-effect-free shadow replay remain separate execution surfaces behind the same guard.
+/// connection, source registry, scheduler, or worker-spawn handle. Durable Full replay, bounded
+/// Targeted mutation application, and side-effect-free Shadow replay remain separate dedicated
+/// execution surfaces behind the same guard.
 #[derive(Clone)]
 pub struct IndexReplayOperatorRuntime {
     inner: rustok_index::SharedIndexReplayRuntime,
@@ -125,8 +134,20 @@ impl IndexReplayOperatorRuntime {
         self.inner.run(request).await.map_err(Into::into)
     }
 
+    /// Runs one bounded exact-key Targeted invocation through the same exact request-bound
+    /// authorization boundary as durable Full replay. The request is already the canonical
+    /// `IndexSourceLoadRequest`; no generic mode selector or durable Targeted ownership is exposed.
+    pub async fn run_targeted(
+        &self,
+        context: IndexReplayOperatorContext,
+        request: rustok_index::IndexSourceLoadRequest,
+    ) -> Result<rustok_index::IndexReplayTargetedOutcome, IndexReplayTargetedOperatorError> {
+        context.authorize_for(request.tenant_id())?;
+        self.inner.run_targeted(request).await.map_err(Into::into)
+    }
+
     /// Runs the existing side-effect-free replay dry-run capability through the same exact
-    /// request-bound authorization boundary as durable full replay.
+    /// request-bound authorization boundary as durable Full replay.
     pub async fn run_shadow(
         &self,
         context: IndexReplayOperatorContext,
@@ -179,9 +200,9 @@ impl fmt::Debug for IndexReplayOperatorRuntime {
 ///
 /// This function performs no database I/O and starts no worker. It invokes selected source
 /// factories only to construct adapters, freezes the complete source catalog, binds the immutable
-/// schema/source registries to the host database, and publishes the guarded bounded full/shadow
-/// replay, reconciliation, exact-entity drift diagnosis, one-page source-candidate diagnosis, and
-/// sealed schema-wide Shadow transport capabilities through `ModuleRuntimeExtensions`.
+/// schema/source registries to the host database, and publishes the guarded bounded Full/Targeted/
+/// Shadow replay, reconciliation, exact-entity drift diagnosis, one-page source-candidate diagnosis,
+/// and sealed Shadow transport capabilities through `ModuleRuntimeExtensions`.
 pub(crate) fn materialize_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -255,7 +276,7 @@ mod tests {
         MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule, UserRole,
     };
     use rustok_index::{
-        EntityName, FieldCardinality, FieldName, IndexField, IndexModule,
+        EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexModule,
         IndexReplayDryRunRequest, IndexReplayDryRunStatus, IndexSchema, IndexSource,
         IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
         IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
@@ -270,7 +291,7 @@ mod tests {
         IndexDriftDiagnosisOperatorRuntime, IndexDriftSourcePageDiagnosisRuntime,
         IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
         IndexReplayShadowOperatorError, IndexReplayShadowTransportRuntime,
-        materialize_index_replay_runtime,
+        IndexReplayTargetedOperatorError, materialize_index_replay_runtime,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
@@ -420,6 +441,66 @@ mod tests {
         assert!(host
             .shared_get::<IndexDriftSourcePageDiagnosisRuntime>()
             .is_some());
+    }
+
+    #[tokio::test]
+    async fn targeted_dispatch_reuses_request_bound_modules_manage_guard() {
+        let registry = ModuleRegistry::new()
+            .register(IndexModule)
+            .register(DemoReplayModule);
+        let mut extensions = rustok_distribution::build_runtime_extensions(&registry)
+            .expect("source schema composition should build");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+        materialize_index_replay_runtime(&mut extensions, db)
+            .expect("complete replay runtime should compose");
+        let runtime = extensions
+            .get::<IndexReplayOperatorRuntime>()
+            .cloned()
+            .expect("guarded replay operator runtime");
+
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReplayOperatorContext::new(tenant_id, actor_id).unwrap();
+        let request = IndexSourceLoadRequest::new(vec![EntityKey {
+            tenant_id,
+            schema: demo_schema().reference,
+            entity_id: Uuid::new_v4(),
+            locale: None,
+        }])
+        .unwrap();
+
+        let forbidden = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            runtime.run_targeted(context, request.clone()),
+        )
+        .await
+        .expect_err("modules:read must not invoke Targeted replay");
+        assert!(matches!(
+            forbidden,
+            IndexReplayTargetedOperatorError::Authorization(IndexReplayOperatorError::Forbidden)
+        ));
+
+        let outcome = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            runtime.run_targeted(context, request),
+        )
+        .await
+        .expect("modules:manage should invoke bounded Targeted replay");
+        assert_eq!(outcome.requested_count(), 1);
+        assert_eq!(outcome.mutation_count(), 0);
+        assert_eq!(outcome.missing_count(), 1);
     }
 
     #[tokio::test]

@@ -51,6 +51,7 @@ mod m20260718_000001_add_module_operation_idempotency_key;
 mod m20260718_000002_add_registry_publication_idempotency;
 mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
+mod m20260808_000099_create_module_operation_override_states;
 
 #[cfg(test)]
 mod rbac_system_role_repair_tests;
@@ -77,6 +78,7 @@ const APPEND_ONLY_MIGRATION_TAIL: &[&str] = &[
     "m20260803_000017_add_translation_target_support",
     "m20260803_000001_canonicalize_artifact_permissions",
     "m20260806_000014_add_translation_target_support",
+    "m20260808_000099_create_module_operation_override_states",
 ];
 
 struct ModuleMigrationSource {
@@ -353,6 +355,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260717_000003_add_registry_artifact_origin_and_external_staging::Migration),
             Box::new(m20260723_000001_create_event_delivery_settings::Migration),
             Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
+            Box::new(m20260808_000099_create_module_operation_override_states::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into

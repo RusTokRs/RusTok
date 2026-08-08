@@ -31,7 +31,9 @@ pub use artifact_repair::{
     ActivateGqlRebuiltPageArtifactInput, GqlActivateRebuiltPageArtifactResult,
     GqlRebuildPageArtifactResult, RebuildGqlPageArtifactInput,
 };
-pub use builder_rollout::GqlPageBuilderRolloutSnapshot;
+pub use builder_rollout::{
+    GqlPageBuilderCapability, GqlPageBuilderCapabilityPreflight, GqlPageBuilderRolloutSnapshot,
+};
 pub use scenario_baseline::{
     GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioReleaseStatus,
     SaveGqlPageBuilderScenarioBaselineInput,

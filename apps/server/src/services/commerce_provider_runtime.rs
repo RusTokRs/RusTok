@@ -94,6 +94,40 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
+    #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_order::OrderAdminCommandRuntime>()
+            .or_else(|| server.shared_get::<rustok_order::OrderAdminCommandRuntime>())
+            .or_else(|| {
+                server
+                    .shared_get::<rustok_outbox::TransactionalEventBus>()
+                    .map(|event_bus| {
+                        rustok_order::OrderAdminCommandRuntime::in_process(
+                            server.db_clone(),
+                            event_bus,
+                        )
+                    })
+            });
+        match runtime {
+            Some(runtime) => {
+                server.shared_insert(runtime.clone());
+                host.with_shared_value(runtime)
+            }
+            None => host,
+        }
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
+            .or_else(|| server.shared_get::<rustok_payment::PaymentOrderReadRuntime>())
+            .unwrap_or_else(|| rustok_payment::PaymentOrderReadRuntime::in_process(server.db_clone()));
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
     #[cfg(feature = "commerce-marketplace-financial")]
     let host = {
         let runtime = server
