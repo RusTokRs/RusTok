@@ -69,6 +69,7 @@ const scripts = [
   'verify-index-reconciliation-dead-letter-inspection.mjs',
   'verify-index-reconciliation-dead-letter-requeue.mjs',
   'verify-index-replay-dry-run.mjs',
+  'verify-index-replay-mode-contract.mjs',
   'verify-index-replay-page-interruption.mjs',
   'verify-index-replay-retry-store.mjs',
   'verify-index-replay-dead-letter-admission.mjs',
