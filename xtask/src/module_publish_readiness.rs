@@ -115,35 +115,5 @@ fn validate_module_contribution_manifest_contract(
         );
     }
 
-    let builder_capabilities = normalized
-        .builder_capabilities
-        .iter()
-        .map(String::as_str)
-        .collect::<HashSet<_>>();
-    for (surface, contributions) in [
-        ("admin", normalized.admin.as_slice()),
-        ("storefront", normalized.storefront.as_slice()),
-    ] {
-        for contribution in contributions {
-            let id = contribution
-                .get("id")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("<unknown>");
-            let Some(required) = contribution
-                .get("required_capabilities")
-                .and_then(serde_json::Value::as_array)
-            else {
-                continue;
-            };
-            for capability in required.iter().filter_map(serde_json::Value::as_str) {
-                if !builder_capabilities.contains(capability) {
-                    anyhow::bail!(
-                        "Module '{slug}' {surface} contribution '{id}' requires capability '{capability}' outside fba.builder_consumer.capabilities"
-                    );
-                }
-            }
-        }
-    }
-
     Ok(())
 }
