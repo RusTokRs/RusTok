@@ -42,8 +42,10 @@ if (failures.length === 0) {
     "details.body = None",
     "details.features.clear()",
     "GroupAction::ViewMembers",
-    "effective.denied_reentry",
-    "group membership is suspended or banned",
+    "reserve_group_write_for_update(&transaction, tenant_id, request.group_id).await?",
+    "resolve_group_membership_enforcement_for_update(",
+    "GroupsError::MembershipSuspended",
+    "GroupsError::MembershipBanned",
     "effective.active_member",
     "GroupRole::can_manage_settings",
     "groups.access.membership_suspended",
@@ -96,7 +98,8 @@ if (failures.length === 0) {
     '"legacy_delegate_visibility": "crate_private"',
     '"external_legacy_delegate_bypass": "sealed"',
     '"group_access_decision": "effective_membership_resolver"',
-    '"join_and_rejoin": "effective_membership_resolver"',
+    '"join_and_rejoin": "transaction_aware_effective_membership"',
+    '"join_rejoin_sqlite_source": "apps/server/tests/groups_join_enforcement_sqlite.rs"',
     '"feature_settings_authorization": "effective_membership_resolver"',
     '"invitation_management_and_acceptance"',
     '"direct_suspend_revoke_commands"',
@@ -124,5 +127,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Groups sealed crate-root effective membership facade, private redaction, join/re-entry denial, settings authorization, terminology, and remaining gates passed source verification.",
+  "Groups sealed crate-root effective membership facade, private redaction, transactional join/re-entry denial, settings authorization, terminology, and remaining gates passed source verification.",
 );
