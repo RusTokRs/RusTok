@@ -324,7 +324,7 @@ async fn seed_blog_audit(
         candidate_generation: 2,
     };
     let txn = db.begin().await?;
-    let written = TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id(
+    let written = match TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id(
         &txn,
         request_id,
         tenant_id,
@@ -332,7 +332,10 @@ async fn seed_blog_audit(
         event,
     )
     .await
-    .map_err(|error| format!("canonical Blog audit write failed: {error:?}"))?;
+    {
+        Ok(written) => written,
+        Err(error) => panic!("canonical Blog audit write failed: {error:?}"),
+    };
     assert_eq!(written, request_id);
     txn.commit().await?;
     Ok(())
