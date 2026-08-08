@@ -21,6 +21,7 @@ use crate::services::{ReplyService, TopicService};
 use crate::state_machine::ReplyStatus;
 
 const TOPIC_DETAIL_PREVIEW_REPLIES: u64 = 20;
+const APPROVED_PREVIEW_REPLY_STATUSES: [ReplyStatus; 1] = [ReplyStatus::Approved];
 const MODERATOR_PREVIEW_REPLY_STATUSES: [ReplyStatus; 5] = [
     ReplyStatus::Pending,
     ReplyStatus::Approved,
@@ -198,7 +199,7 @@ impl ForumWidgetPreviewService {
                         per_page: TOPIC_DETAIL_PREVIEW_REPLIES,
                     },
                     fallback_locale,
-                    Some(&[ReplyStatus::Approved]),
+                    Some(&APPROVED_PREVIEW_REPLY_STATUSES),
                 )
                 .await?
         } else {
@@ -225,19 +226,7 @@ impl ForumWidgetPreviewService {
         let page = required_u64(props, "page")?;
         let per_page = required_u64(props, "per_page")?;
         let approved_only = required_bool(props, "approved_only")?;
-        if !approved_only
-            && security.get_scope(Resource::ForumReplies, Action::Moderate) == PermissionScope::None
-        {
-            return Err(ForumError::forbidden(
-                "Forum widget preview requires forum_replies:moderate when approved_only=false",
-            ));
-        }
-
-        let statuses: &[ReplyStatus] = if approved_only {
-            &[ReplyStatus::Approved]
-        } else {
-            &MODERATOR_PREVIEW_REPLY_STATUSES
-        };
+        let statuses = reply_stream_preview_statuses(approved_only, &security)?;
         let (items, total) = ReplyService::new(self.db.clone(), self.event_bus.clone())
             .list_response_for_topic_by_statuses_with_locale_fallback(
                 tenant_id,
@@ -262,6 +251,21 @@ impl ForumWidgetPreviewService {
             approved_only,
         })
     }
+}
+
+fn reply_stream_preview_statuses(
+    approved_only: bool,
+    security: &SecurityContext,
+) -> ForumResult<&'static [ReplyStatus]> {
+    if approved_only {
+        return Ok(&APPROVED_PREVIEW_REPLY_STATUSES);
+    }
+    if security.get_scope(Resource::ForumReplies, Action::Moderate) == PermissionScope::None {
+        return Err(ForumError::forbidden(
+            "Forum widget preview requires forum_replies:moderate when approved_only=false",
+        ));
+    }
+    Ok(&MODERATOR_PREVIEW_REPLY_STATUSES)
 }
 
 fn required_string<'a>(props: &'a Value, field: &str) -> ForumResult<&'a str> {
@@ -304,4 +308,45 @@ fn optional_uuid(props: &Value, field: &str) -> ForumResult<Option<Uuid>> {
             })
         })
         .transpose()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{Action, Permission, Resource};
+
+    fn security(permissions: Vec<Permission>) -> SecurityContext {
+        SecurityContext::from_permission_snapshot(Some(Uuid::new_v4()), &permissions)
+    }
+
+    #[test]
+    fn approved_reply_stream_never_requires_moderation_scope() {
+        let statuses = reply_stream_preview_statuses(
+            true,
+            &security(vec![Permission::FORUM_TOPICS_READ]),
+        )
+        .expect("approved-only widget preview should not require moderation");
+        assert_eq!(statuses, &[ReplyStatus::Approved]);
+    }
+
+    #[test]
+    fn non_approved_reply_stream_requires_effective_moderation_scope() {
+        let denied = reply_stream_preview_statuses(
+            false,
+            &security(vec![Permission::FORUM_TOPICS_READ]),
+        )
+        .expect_err("non-approved preview must require reply moderation");
+        assert!(denied.to_string().contains("forum_replies:moderate"));
+
+        let statuses = reply_stream_preview_statuses(
+            false,
+            &security(vec![Permission::new(Resource::ForumReplies, Action::Manage)]),
+        )
+        .expect("manage should satisfy the effective moderation scope");
+        assert_eq!(statuses, &MODERATOR_PREVIEW_REPLY_STATUSES);
+        assert!(statuses.contains(&ReplyStatus::Pending));
+        assert!(statuses.contains(&ReplyStatus::Hidden));
+        assert!(statuses.contains(&ReplyStatus::Flagged));
+        assert!(!statuses.contains(&ReplyStatus::Deleted));
+    }
 }
