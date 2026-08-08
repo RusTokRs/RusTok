@@ -64,11 +64,16 @@ type MatrixContract = {
   module: string;
   packet: string;
   status: string;
-  predecessor: { environment: string; format: string; status: string };
+  predecessor: {
+    environment: string;
+    format: string;
+    status: string;
+  };
   fixtures: {
     api_origin_environment: string;
     admin_origin_environment: string;
-    operator_storage_state_environment: string;
+    api_storage_state_environment: string;
+    admin_storage_state_environment: string;
     tenant_slug_environment: string;
     page_id_environment: string;
     admin_route_environment: string;
@@ -84,19 +89,26 @@ type MatrixContract = {
   required_source_files: string[];
 };
 
-type FileRecord = { path: string; bytes: number; sha256: string };
+type FileRecord = {
+  path: string;
+  bytes: number;
+  sha256: string;
+};
+
 type GraphqlResult = {
   status: number;
   responseBytes: number;
   responseSha256: string;
   data: Record<string, unknown>;
 };
+
 type PreviewTemplate = {
   url: string;
   method: string;
   body: Buffer;
   headers: Record<string, string>;
 };
+
 type PreviewObservation = {
   status: number;
   body_bytes: number;
@@ -418,12 +430,11 @@ function withProfile(
 
 async function graphql(
   context: BrowserContext,
-  apiOrigin: string,
   query: string,
   variables: Record<string, unknown>,
   label: string,
 ): Promise<GraphqlResult> {
-  const response = await context.request.post(`${apiOrigin}${graphqlPath}`, {
+  const response = await context.request.post(graphqlPath, {
     data: { query, variables },
     failOnStatusCode: false,
   });
@@ -448,12 +459,10 @@ async function graphql(
 }
 
 async function loadPagesModule(
-  context: BrowserContext,
-  apiOrigin: string,
+  apiContext: BrowserContext,
 ): Promise<{ settings: Record<string, unknown>; read: GraphqlResult }> {
   const read = await graphql(
-    context,
-    apiOrigin,
+    apiContext,
     tenantModulesQuery,
     { limit: 100 },
     "tenantModules rollout snapshot",
@@ -476,13 +485,11 @@ async function loadPagesModule(
 }
 
 async function writePagesSettings(
-  context: BrowserContext,
-  apiOrigin: string,
+  apiContext: BrowserContext,
   settings: Record<string, unknown>,
 ): Promise<GraphqlResult> {
   const result = await graphql(
-    context,
-    apiOrigin,
+    apiContext,
     updateSettingsMutation,
     { moduleSlug: "pages", settings: JSON.stringify(settings) },
     "updateModuleSettings pages",
@@ -499,14 +506,12 @@ async function writePagesSettings(
 }
 
 async function readRolloutSnapshot(
-  context: BrowserContext,
-  apiOrigin: string,
+  apiContext: BrowserContext,
   tenantSlug: string,
   profile: MatrixProfile,
 ): Promise<GraphqlResult> {
   const result = await graphql(
-    context,
-    apiOrigin,
+    apiContext,
     rolloutSnapshotQuery,
     {},
     "pageBuilderRolloutSnapshot",
@@ -530,13 +535,11 @@ async function readRolloutSnapshot(
 }
 
 async function assertPagesReads(
-  context: BrowserContext,
-  apiOrigin: string,
+  apiContext: BrowserContext,
   pageId: string,
 ): Promise<GraphqlResult> {
   const result = await graphql(
-    context,
-    apiOrigin,
+    apiContext,
     pagesReadsQuery,
     { id: pageId },
     "Pages owned reads",
@@ -648,8 +651,10 @@ async function allowedPreview(
   const response = await request.response();
   if (response === null) fail("server preview request produced no response");
   const responseBody = await response.body();
-  const responseText = responseBody.toString("utf8");
-  if (response.status() >= 400 || /capability disabled: preview/iu.test(responseText)) {
+  if (
+    response.status() >= 400 ||
+    /capability disabled: preview/iu.test(responseBody.toString("utf8"))
+  ) {
     fail("allowed preview profile was rejected by authoritative SSR dispatch");
   }
   await page
@@ -680,10 +685,10 @@ async function allowedPreview(
 }
 
 async function deniedPreview(
-  context: BrowserContext,
+  adminContext: BrowserContext,
   template: PreviewTemplate,
 ): Promise<PreviewObservation> {
-  const response = await context.request.fetch(template.url, {
+  const response = await adminContext.request.fetch(template.url, {
     method: template.method,
     data: template.body,
     headers: template.headers,
@@ -702,7 +707,7 @@ async function deniedPreview(
 }
 
 async function deniedBrowserIntent(
-  context: BrowserContext,
+  adminContext: BrowserContext,
   pageId: string,
   intent: "save" | "rename_page",
   expectedCapability: "publish" | "properties",
@@ -718,7 +723,7 @@ async function deniedBrowserIntent(
     intent === "rename_page"
       ? { page_id: pageId, new_page_id: "rollout-matrix-denied-probe" }
       : {};
-  const response = await context.request.post(
+  const response = await adminContext.request.post(
     `/api/admin/pages/${encodeURIComponent(pageId)}/builder/intents`,
     {
       data: {
@@ -814,6 +819,7 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
     "matrix standalone admin origin",
   );
   if (apiOrigin === adminOrigin) fail("matrix API and standalone admin origins must be distinct");
+
   const tenantSlug = requireTenantSlug(
     requiredEnvironment(contract.fixtures.tenant_slug_environment),
   );
@@ -822,9 +828,13 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
     requiredEnvironment(contract.fixtures.admin_route_environment),
     "matrix admin route",
   );
-  const storage = regularFileRecord(
-    requiredEnvironment(contract.fixtures.operator_storage_state_environment),
-    "matrix operator storage state",
+  const apiStorage = regularFileRecord(
+    requiredEnvironment(contract.fixtures.api_storage_state_environment),
+    "matrix API operator storage state",
+  );
+  const adminStorage = regularFileRecord(
+    requiredEnvironment(contract.fixtures.admin_storage_state_environment),
+    "matrix standalone admin operator storage state",
   );
   const predecessor = readJsonInput(
     requiredEnvironment(contract.predecessor.environment),
@@ -840,9 +850,14 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
   const output = outputPath();
   rmSync(output, { force: true });
 
-  const context = await browser.newContext({
+  const apiContext = await browser.newContext({
+    baseURL: apiOrigin,
+    storageState: apiStorage.path,
+    extraHTTPHeaders: shared.headers,
+  });
+  const adminContext = await browser.newContext({
     baseURL: adminOrigin,
-    storageState: storage.path,
+    storageState: adminStorage.path,
     extraHTTPHeaders: shared.headers,
   });
 
@@ -853,22 +868,17 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
   let restoreVerified = false;
 
   try {
-    const original = await loadPagesModule(context, apiOrigin);
+    const original = await loadPagesModule(apiContext);
     originalSettings = original.settings;
     originalSettingsHash = sha256(canonicalJson(original.settings));
 
     for (const profile of profiles) {
       const profileSettings = withProfile(original.settings, profile.flags);
-      const settingsWrite = await writePagesSettings(context, apiOrigin, profileSettings);
-      const serverSnapshot = await readRolloutSnapshot(
-        context,
-        apiOrigin,
-        tenantSlug,
-        profile,
-      );
-      const reads = await assertPagesReads(context, apiOrigin, pageId);
+      const settingsWrite = await writePagesSettings(apiContext, profileSettings);
+      const serverSnapshot = await readRolloutSnapshot(apiContext, tenantSlug, profile);
+      const reads = await assertPagesReads(apiContext, pageId);
 
-      const page = await context.newPage();
+      const page = await adminContext.newPage();
       try {
         await settleAdminPage(page, adminRoute);
         const ui = await assertUiProfile(page, profile);
@@ -882,20 +892,33 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
           if (previewTemplate === null) {
             fail("disabled preview profile has no captured all_on request template");
           }
-          preview = await deniedPreview(context, previewTemplate);
+          preview = await deniedPreview(adminContext, previewTemplate);
         }
 
         let publishDry: Record<string, unknown>;
         if (profile.id === "all_on") {
           if (ui.publish !== "enabled") fail("all_on publish capability is not enabled in UI");
-          publishDry = { ui_capability_enabled: true, mutating_save_request_sent: false };
+          publishDry = {
+            ui_capability_enabled: true,
+            mutating_save_request_sent: false,
+          };
         } else {
-          publishDry = await deniedBrowserIntent(context, pageId, "save", "publish");
+          publishDry = await deniedBrowserIntent(
+            adminContext,
+            pageId,
+            "save",
+            "publish",
+          );
         }
 
         const propertiesDenial =
           profile.id === "builder_off"
-            ? await deniedBrowserIntent(context, pageId, "rename_page", "properties")
+            ? await deniedBrowserIntent(
+                adminContext,
+                pageId,
+                "rename_page",
+                "properties",
+              )
             : null;
 
         profileObservations[profile.id] = {
@@ -924,8 +947,8 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
   } finally {
     try {
       if (originalSettings !== null) {
-        await writePagesSettings(context, apiOrigin, originalSettings);
-        const restored = await loadPagesModule(context, apiOrigin);
+        await writePagesSettings(apiContext, originalSettings);
+        const restored = await loadPagesModule(apiContext);
         if (canonicalJson(restored.settings) !== canonicalJson(originalSettings)) {
           fail("Pages module settings were not semantically restored after matrix execution");
         }
@@ -935,7 +958,7 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
         restoreVerified = true;
       }
     } finally {
-      await context.close();
+      await Promise.all([apiContext.close(), adminContext.close()]);
     }
   }
 
@@ -959,9 +982,15 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
         bytes: predecessor.record.bytes,
         sha256: predecessor.record.sha256,
       },
-      operator_storage_state: {
-        bytes: storage.bytes,
-        sha256: storage.sha256,
+      storage_states: {
+        api: {
+          bytes: apiStorage.bytes,
+          sha256: apiStorage.sha256,
+        },
+        admin: {
+          bytes: adminStorage.bytes,
+          sha256: adminStorage.sha256,
+        },
       },
       common_header_environment_names: shared.environmentNames,
     },
