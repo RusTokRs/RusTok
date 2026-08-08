@@ -48,7 +48,6 @@ requireMarkers(compilerPath, [
   '__exact_count',
   'compiled_mut(&mut self) -> &mut CompiledPostgresQuery',
 ]);
-
 requireMarkers('crates/rustok-index/src/application/postgres_localized_query_result.rs', [
   'pub enum PostgresLocalizedQueryDecodeError',
   'pub fn decode_postgres_localized_query_page(',
@@ -79,9 +78,5 @@ const ordinaryCompiler = read('crates/rustok-index/src/application/postgres_quer
 if (ordinaryCompiler.includes('localized_entity_fold_plan_v1')) {
   fail('ordinary exact-locale SQL compiler must not absorb localized fold semantics');
 }
-const port = read('crates/rustok-index/src/application/query_port.rs');
-if (port.includes('execute_localized_query')) {
-  fail('compiler/decoder slice must not publish runtime localized execution yet');
-}
 
-console.log('[verify-index-localized-query-postgres-fold] localized root identity fold page/count compiler and decoder are source-locked; runtime admission remains pending');
+console.log('[verify-index-localized-query-postgres-fold] localized root identity fold page/count compiler and decoder remain source-locked');
