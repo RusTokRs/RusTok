@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "module": "forum",
+  "packet": "page_builder_serverfn_deployment_attestation",
+  "status": "source_ready_maintainer_execution_pending",
+  "runner": "scripts/evidence/capture-forum-page-builder-serverfn-attestation.mjs",
+  "endpoint": "/api/fn/forum/page-builder-transport-attestation",
+  "request": {
+    "method": "POST",
+    "content_type": "application/x-www-form-urlencoded",
+    "challenge_field": "challenge",
+    "challenge_format": "forum-attest-<uuid>"
+  },
+  "environment": {
+    "common_headers_json": "RUSTOK_FORUM_PAGE_BUILDER_ATTESTATION_COMMON_HEADERS_JSON",
+    "authorized_authorization": "RUSTOK_FORUM_PAGE_BUILDER_ATTESTATION_AUTHORIZATION",
+    "authorized_cookie": "RUSTOK_FORUM_PAGE_BUILDER_ATTESTATION_COOKIE",
+    "no_read_authorization": "RUSTOK_FORUM_PAGE_BUILDER_ATTESTATION_NO_READ_AUTHORIZATION",
+    "no_read_cookie": "RUSTOK_FORUM_PAGE_BUILDER_ATTESTATION_NO_READ_COOKIE"
+  },
+  "scenarios": [
+    {
+      "id": "anonymous",
+      "credential_profile": "none",
+      "success_forbidden": true
+    },
+    {
+      "id": "authorized",
+      "credential_profile": "authorized",
+      "expected_status": 200
+    },
+    {
+      "id": "no_read",
+      "credential_profile": "no_read",
+      "success_forbidden": true
+    }
+  ],
+  "authorized_response": {
+    "contract": "forum_page_builder_server_fn_attestation_v1",
+    "required_markers": [
+      "forum_page_builder_server_fn_attestation_v1",
+      "rustok.forum",
+      "forum.topic_list",
+      "forum.topic_detail",
+      "forum.reply_stream",
+      "/api/fn/forum/page-builder-widget-preview",
+      "/api/fn/forum/page-builder-widget-property-schema",
+      "/api/fn/forum/page-builder-widget-property-validate"
+    ],
+    "source_commit_must_equal_checkout_head": true,
+    "challenge_must_round_trip": true
+  },
+  "deployment_identity": {
+    "immutable_repo_digest_argument_required": true,
+    "live_transport_source_commit_required": true,
+    "source_commit_is_exported_from_oci_revision": true,
+    "origin_to_repo_digest_binding_is_maintainer_reviewed_external_fact": true,
+    "cryptographic_origin_to_repo_digest_binding_claimed": false
+  },
+  "output": {
+    "format": "forum_page_builder_server_fn_deployment_attestation_v1",
+    "status": "server_fn_deployment_attestation_passed_wave_pending",
+    "default_path": "target/forum-page-builder-serverfn-deployment-attestation.json",
+    "atomic_replace": true
+  },
+  "required_source_files": [
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json",
+    "scripts/evidence/capture-forum-page-builder-serverfn-attestation.mjs",
+    "scripts/verify/verify-forum-page-builder-serverfn-deployment-attestation.mjs",
+    "crates/rustok-forum/admin/src/widget_preview_transport.rs",
+    "crates/rustok-forum/admin/src/widget_property_transport.rs",
+    "crates/rustok-forum/admin/src/lib.rs",
+    "apps/server/src/services/app_router.rs",
+    "apps/server/Dockerfile",
+    "apps/server/Dockerfile.release",
+    "docs/modules/forum-page-builder-serverfn-deployment-attestation-actualization-2026-08-08.md"
+  ],
+  "retained_data": [
+    "exact checkout source commit",
+    "live server-reported source commit",
+    "maintainer-supplied immutable deployment RepoDigest",
+    "target origin SHA-256 and byte length",
+    "challenge SHA-256 and byte length",
+    "required-source SHA-256 hashes",
+    "scenario status, selected response headers, response byte length and SHA-256",
+    "credential environment names only"
+  ],
+  "forbidden_retained_data": [
+    "raw target origin or URL",
+    "authorization header values",
+    "cookie header values",
+    "common header values",
+    "raw challenge",
+    "raw response bodies",
+    "tenant ids",
+    "actor ids",
+    "Forum topic or reply content"
+  ],
+  "not_claimed": [
+    "server-function deployment attestation execution",
+    "cryptographic origin-to-RepoDigest binding",
+    "browser execution",
+    "runtime authorization execution",
+    "observed Page Builder Wave",
+    "provider SLO health"
+  ]
+}
