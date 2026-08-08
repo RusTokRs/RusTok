@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/forum-page-builder",
+  globalSetup: "./tests/forum-page-builder/global-setup.ts",
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,
