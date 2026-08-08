@@ -1,5 +1,9 @@
 use fly::RegistrySet;
-use fly_ui::{ModuleContributionManifest, Presentation};
+use fly_ui::{
+    ContributionAssemblyDiagnostic, ContributionAssemblyPolicy, ContributionAssemblyResult,
+    ContributionAssemblySeverity, ModuleContributionManifest, Presentation,
+    build_admin_contribution_registry_from_manifests,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -124,10 +128,14 @@ impl PageBuilderContributionHostExtension {
     }
 }
 
-/// Host-owned extension set shared with the concrete Page Builder consumer surface.
+/// Host-owned extension set shared with a concrete Page Builder consumer surface.
+///
+/// `granted_permissions` must come from the authenticated host permission snapshot. It is used for
+/// contribution discovery only; every owner transport must still enforce authorization itself.
 #[derive(Clone, Default)]
 pub struct PageBuilderContributionHostContext {
     extensions: Arc<Vec<PageBuilderContributionHostExtension>>,
+    granted_permissions: Arc<BTreeSet<String>>,
 }
 
 impl PageBuilderContributionHostContext {
@@ -155,7 +163,22 @@ impl PageBuilderContributionHostContext {
         }
         Ok(Self {
             extensions: Arc::new(extensions),
+            granted_permissions: Arc::new(BTreeSet::new()),
         })
+    }
+
+    pub fn with_granted_permissions(
+        mut self,
+        permissions: impl IntoIterator<Item = String>,
+    ) -> Self {
+        self.granted_permissions = Arc::new(
+            permissions
+                .into_iter()
+                .map(|permission| permission.trim().to_string())
+                .filter(|permission| !permission.is_empty())
+                .collect(),
+        );
+        self
     }
 
     pub fn manifests(&self) -> Vec<ModuleContributionManifest> {
@@ -179,11 +202,72 @@ impl PageBuilderContributionHostContext {
             .collect()
     }
 
+    pub fn granted_permissions(&self) -> BTreeSet<String> {
+        self.granted_permissions.as_ref().clone()
+    }
+
     pub fn install_registries(&self, registries: &mut RegistrySet) -> Result<(), String> {
         for extension in self.extensions.iter() {
             extension.install(registries)?;
         }
         Ok(())
+    }
+
+    /// Merge host extensions into an existing consumer-owned contribution assembly.
+    ///
+    /// Consumer contributions stay authoritative in `base`. External manifests pass their own
+    /// module/provider/capability/permission filters, and registry conflicts fail closed as
+    /// assembly diagnostics rather than silently replacing consumer contracts.
+    pub fn merge_admin_assembly(
+        &self,
+        base: Option<Arc<ContributionAssemblyResult>>,
+        capabilities: BTreeSet<String>,
+    ) -> Arc<ContributionAssemblyResult> {
+        let mut result = base
+            .as_deref()
+            .cloned()
+            .unwrap_or_else(ContributionAssemblyResult::default);
+        if self.extensions.is_empty() {
+            return Arc::new(result);
+        }
+
+        let extension_result = build_admin_contribution_registry_from_manifests(
+            self.manifests(),
+            &ContributionAssemblyPolicy {
+                enabled_modules: self.module_ids(),
+                enabled_providers: self.owner_providers(),
+                capabilities,
+                permissions: self.granted_permissions(),
+                ..ContributionAssemblyPolicy::default()
+            },
+        );
+        result
+            .diagnostics
+            .extend(extension_result.diagnostics.iter().cloned());
+        result.skipped_contributions = result
+            .skipped_contributions
+            .saturating_add(extension_result.skipped_contributions);
+
+        for (_, contribution) in extension_result.registry.iter() {
+            match result.registry.register(contribution.clone()) {
+                Ok(()) => {
+                    result.registered_contributions =
+                        result.registered_contributions.saturating_add(1);
+                }
+                Err(error) => {
+                    result.skipped_contributions = result.skipped_contributions.saturating_add(1);
+                    result.diagnostics.push(ContributionAssemblyDiagnostic {
+                        severity: ContributionAssemblySeverity::Error,
+                        code: "contribution_host_registry_conflict".to_string(),
+                        module_id: None,
+                        contribution_id: Some(contribution.id.clone()),
+                        message: error.to_string(),
+                    });
+                }
+            }
+        }
+
+        Arc::new(result)
     }
 
     pub fn preview_port(
