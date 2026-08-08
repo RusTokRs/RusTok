@@ -11,11 +11,19 @@ const MAX_LOCALIZED_FILTER_NODES: usize = 128;
 /// query filter keeps its exact planned semantics, while `any_locale_filter` is reserved for the
 /// identity-level existential predicate evaluated across admitted physical locale rows by the folded
 /// PostgreSQL compiler.
+///
+/// `localized_projection_fields` is explicit because generic Index schema fields intentionally do not
+/// encode owner-specific localization semantics. A listed root field is projected only from the
+/// requested row, then fallback row, then SQL null. Unlisted root fields are read from the deterministic
+/// admitted identity anchor. This prevents a third-locale anchor from becoming visible localized
+/// content when requested/fallback rows are absent without changing the immutable schema fingerprint.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalizedEntityQuery {
     pub query: IndexQuery,
     pub fallback_locale: Option<LocaleKey>,
     pub any_locale_filter: Option<FilterExpr>,
+    #[serde(default)]
+    pub localized_projection_fields: Vec<FieldPath>,
 }
 
 impl LocalizedEntityQuery {
@@ -28,7 +36,16 @@ impl LocalizedEntityQuery {
             query,
             fallback_locale,
             any_locale_filter,
+            localized_projection_fields: Vec::new(),
         }
+    }
+
+    pub fn with_localized_projection_fields(
+        mut self,
+        fields: impl IntoIterator<Item = FieldPath>,
+    ) -> Self {
+        self.localized_projection_fields = fields.into_iter().collect();
+        self
     }
 
     pub fn requested_locale(&self) -> Option<&LocaleKey> {
@@ -43,6 +60,12 @@ impl LocalizedEntityQuery {
         self.fallback_locale
             .as_ref()
             .filter(|fallback| Some(*fallback) != self.requested_locale())
+    }
+
+    pub fn is_localized_projection_path(&self, path: &FieldPath) -> bool {
+        self.localized_projection_fields
+            .iter()
+            .any(|localized| localized == path)
     }
 
     pub fn validate_shape(&self) -> Result<(), DomainError> {
@@ -125,5 +148,14 @@ mod tests {
             )),
         );
         assert_eq!(query.any_locale_referenced_paths(), vec![&title]);
+    }
+
+    #[test]
+    fn localized_projection_roles_are_explicit_and_default_empty() {
+        let title = FieldPath::new(FieldName::new("title").unwrap());
+        let plain = LocalizedEntityQuery::new(base_query("en-US"), None, None);
+        assert!(!plain.is_localized_projection_path(&title));
+        let localized = plain.with_localized_projection_fields([title.clone()]);
+        assert!(localized.is_localized_projection_path(&title));
     }
 }
