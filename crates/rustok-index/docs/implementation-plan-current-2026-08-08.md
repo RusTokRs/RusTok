@@ -1,6 +1,6 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked from `main@1ddbc6b5457d2f9263b842c6e5b1942598a26ff7` (#3215) and continued on
+Status overlay rechecked from `main@eab3b1b925e5cbfa65d2fe3f938b63be7a067846` (#3218) and continued on
 `agent/index-text-like-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution
@@ -25,9 +25,11 @@ The Product/Index sequence relevant to this cursor includes:
 - #3212 wired localized execution through the canonical PostgreSQL query runtime with persisted readiness,
   generic admission and one read-only repeatable-read snapshot.
 
-Later #3213, #3214 and #3215 are respectively Moderation recovery evidence, Commerce Product
-attribute-values owner-port cutover, and Pages contribution generation. They do not change the Product
-Storefront list owner contract or the `rustok-index` localized query semantics in this slice.
+Later #3213/#3216/#3217 are Moderation evidence slices, #3214 cut Product attribute-values reads to the
+owner schema port, #3215 generated Pages contributions, and #3218 cut mounted Storefront search-option
+metadata to the Product schema read port. Rechecking current `main` after #3218 confirms those changes do
+not alter `StorefrontProductListQuery`, `CatalogService::list_published_products_with_query`, owner title
+`LIKE`, or the `rustok-index` localized query algebra in this slice.
 
 This branch closes the remaining generic scalar title-pattern capability with bounded `TextLike` while
 keeping Storefront traffic owner-native and all execution/equivalence gates unchanged.
