@@ -27,13 +27,7 @@ impl PostgresIndexReplayRunner {
             })?
             .source_name()
             .to_owned();
-        let lease_request = IndexReplayJobLeaseRequest::new(
-            request.page_request().tenant_id(),
-            request.page_request().schema().clone(),
-            source_name,
-            request.worker_id().to_owned(),
-            request.lease_duration(),
-        )?;
+        let lease_request = lease_request_for_run(&request, source_name)?;
         let job_store = PostgresIndexReplayJobStore::new(self.db.clone());
         let lease = match job_store.acquire(&lease_request).await? {
             IndexReplayJobAcquireOutcome::Busy => {
