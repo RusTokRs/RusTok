@@ -242,7 +242,7 @@ remain pending.
 | `FORUM-30` | `planned` | Complete Forum admin by composing Forum and shared owners. |
 | `FORUM-31` | `planned` | Complete Forum storefront by composing Profiles, Media, Reactions, Notifications and Search. |
 | `FORUM-32` | `in_progress` | Generated Forum Fly blocks/renderers/property contracts, Forum-owned preview service/HTTP/native transport, provider-neutral Pages host composition and owner-backed schema/validation property editing are source-ready. Retained runtime/browser evidence and observed Page Builder Wave evidence remain. |
-| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter reconciliation report, strict operator GraphQL admission and baseline platform telemetry are source-ready. Retain SQLite/PostgreSQL execution evidence, add bounded continuation and remaining reconciliation/metrics. Repair remains blocked on dry-run/audit/idempotent job state; CLI integration awaits a synchronized dependency/lock update. |
+| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter reconciliation report with independent topic/category keyset cursors, strict operator GraphQL/owner admission and baseline platform telemetry are source-ready. Retain SQLite/PostgreSQL execution evidence and remaining reconciliation/metrics. Multi-page scans use page-local snapshots; repair remains blocked on dry-run/audit/idempotent job state and CLI integration awaits a synchronized dependency/lock update. |
 | `FORUM-34` | `planned` | Forum import/export adapter and NodeBB mapping over a shared runner. |
 | `NOTIFY-00` | `in_progress` | Neutral API/runtime composition and Forum providers exist; executable distribution evidence remains. |
 | `NOTIFY-01` | `in_progress` | Persistence/source inbox exist; final commands, migrations, retention and reconciliation remain. |
@@ -631,33 +631,58 @@ These commands remain maintainer-run in this source slice.
 
 **Status:** `in_progress`
 
-FORUM-33A now provides a read-only `ForumCounterReconciliationService` and the
-operator GraphQL field `forumCounterReconciliationReport(limit: Int)`. Tenant
-identity comes only from the trusted request `TenantContext`; the transport
-rejects auth/tenant mismatch and requires both effective
-`forum_categories:manage` and `forum_topics:manage` permissions.
+FORUM-33A/B provide a read-only `ForumCounterReconciliationService` and the
+operator GraphQL field:
 
-The first owner report reconciles three existing publication-accounting
-invariants without mutating owner state: `forum_topics.reply_count` against
-approved replies, `forum_categories.topic_count` against current topic rows, and
+```text
+forumCounterReconciliationReport(
+  limit: Int,
+  topicAfter: UUID,
+  categoryAfter: UUID
+)
+```
+
+Tenant identity comes only from the trusted request `TenantContext`; the
+transport rejects auth/tenant mismatch and requires both effective
+`forum_categories:manage` and `forum_topics:manage` permissions. The owner service
+independently reauthorizes the same two Manage scopes through the canonical Forum
+RBAC helper before opening a database transaction.
+
+The report reconciles three existing publication-accounting invariants without
+mutating owner state: `forum_topics.reply_count` against approved replies,
+`forum_categories.topic_count` against current topic rows, and
 `forum_categories.reply_count` against approved replies across category topics.
-It executes two bounded aggregate queries inside one database snapshot.
+Every page executes two bounded aggregate queries inside one database snapshot.
 PostgreSQL uses `REPEATABLE READ READ ONLY`; SQLite keeps both reads in one
-transaction. The default per-shape limit is 100 and the hard cap is 500, with
-`has_more_topics`/`has_more_categories` signalling that continuation is required.
+transaction. The default per-shape limit is 100 and the hard cap is 500.
+
+Topic/category continuation is independent and keyset-based. Each shape orders by
+its owner UUID and uses a strict `id > cursor` predicate, never OFFSET. The
+response returns `topicCursor` / `categoryCursor` plus the existing
+`hasMoreTopics` / `hasMoreCategories` flags. A cursor remains stable when its
+shape returns no rows, so a caller can keep an exhausted category cursor while
+advancing topics, or vice versa, without rescanning the exhausted side. Omitting
+both cursors preserves the original first-page behavior through the compatibility
+`report(...)` wrapper.
+
+Snapshot consistency is page-local. A multi-page operator scan intentionally does
+not hold one database transaction across requests; rows created or changed behind
+an already-returned cursor are observed by a later full reconciliation scan. This
+is a bounded diagnostic source, not a serializable repair fence.
 
 The service reuses the platform module-entrypoint/span/error metrics rather than
 adding duplicate Forum metric families. Source-ready reporting does not claim
 runtime observability evidence.
 
 FORUM-33 remains `in_progress`. Retain clean/drift/snapshot SQLite and PostgreSQL
-execution evidence; add bounded continuation beyond the first page; reconcile
-accepted solutions, subscriptions, mentions, attachments and permitted
-shared-owner projections; and add only non-duplicative operational metrics for
-moderation, notification/search lag, unread/activity, locale fallback and spam
-outcomes. Any write repair remains blocked until it has explicit operator RBAC,
-dry-run behavior, durable audit, idempotent job/receipt state and bounded
-recovery. A platform CLI adapter must be added only with its synchronized
+execution evidence for first-page and multi-page traversal, exhausted-one-side
+continuation and page-local snapshot behavior. The next source reconciliation
+work is accepted-solution state, subscriptions, mentions, attachments and
+permitted shared-owner projections, followed by non-duplicative operational
+metrics for moderation, notification/search lag, unread/activity, locale fallback
+and spam outcomes. Any write repair remains blocked until it has explicit
+operator RBAC, dry-run behavior, durable audit, idempotent job/receipt state and
+bounded recovery. A platform CLI adapter must be added only with its synchronized
 workspace dependency and `Cargo.lock` update.
 
 ### `FORUM-30`/`FORUM-31`: UI composition
@@ -708,11 +733,13 @@ Hosts register/mount packages and do not absorb policy.
 - Existing Forum votes remain source-compatible. Do not reinterpret them as
   reactions without explicit semantic mapping and migration.
 - Forum statistics are projections, not a reputation ledger.
-- Forum counter reconciliation is read-only in FORUM-33A. No transport may repair
-  owner counters until the write path has explicit RBAC, dry-run, audit,
-  idempotent job/receipt state and bounded recovery. Shared-owner reconciliation
-  must use public owner contracts and must not read another module's private
-  tables.
+- Forum counter reconciliation is read-only in FORUM-33A/B. Topic/category
+  continuation uses independent strict UUID keyset cursors and page-local
+  snapshots; it must not be treated as a cross-request serializable repair fence.
+  No transport may repair owner counters until the write path has explicit RBAC,
+  dry-run, audit, idempotent job/receipt state and bounded recovery. Shared-owner
+  reconciliation must use public owner contracts and must not read another
+  module's private tables.
 - Forum moderation state remains authoritative Forum state while Moderation
   decisions are applied idempotently through an adapter.
 - Forum depends only on `rustok-moderation-api`, not the Moderation owner crate;
@@ -928,14 +955,14 @@ add another Forum-local schema/data authority. Replace synthetic Wave evidence
 only after the existing Pages reference-consumer execution gate and the Forum
 executable packet are accepted.
 
-For FORUM-33, retain SQLite and PostgreSQL execution evidence for a clean counter
-snapshot and intentionally drifted `topic.reply_count`, `category.topic_count`
-and `category.reply_count` fixtures, including one concurrent-write snapshot
-case. Then add independent bounded topic/category continuation so a large tenant
-can scan past the first 500 rows without unbounded work. Do not add write repair
-until operator RBAC, dry-run, durable audit, idempotent job/receipt state and
-bounded recovery are designed together. Add a Forum CLI adapter only with the
-synchronized workspace dependency and `Cargo.lock` update.
+For FORUM-33, retain SQLite and PostgreSQL execution evidence for clean and
+drifted first pages plus multi-page topic/category keyset traversal,
+exhausted-one-side continuation and one concurrent-write page-local snapshot
+case. The next source reconciliation slice is accepted-solution state, followed
+by subscriptions, mentions, attachments and permitted shared-owner projections.
+Do not add write repair until operator RBAC, dry-run, durable audit, idempotent
+job/receipt state and bounded recovery are designed together. Add a Forum CLI
+adapter only with the synchronized workspace dependency and `Cargo.lock` update.
 
 Regenerate the event-contract digests and retain release verification for the
 current `Cargo.lock`, then retain SQLite and PostgreSQL evidence for changed/

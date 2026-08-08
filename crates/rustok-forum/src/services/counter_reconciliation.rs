@@ -50,6 +50,12 @@ pub struct ForumCounterReconciliationReport {
     pub inspected_categories: u64,
     pub has_more_topics: bool,
     pub has_more_categories: bool,
+    /// Stable topic scan position after this page. Callers should echo this value into
+    /// `topic_after` on the next page even when the category scan is already exhausted.
+    pub topic_cursor: Option<Uuid>,
+    /// Stable category scan position after this page. Callers should echo this value into
+    /// `category_after` on the next page even when the topic scan is already exhausted.
+    pub category_cursor: Option<Uuid>,
     pub drifts: Vec<ForumCounterDrift>,
 }
 
@@ -72,8 +78,12 @@ impl ForumCounterReconciliationReport {
 /// itself requires both category and topic `Manage` scopes so future non-GraphQL adapters cannot
 /// bypass the operator boundary.
 ///
-/// Both aggregate reads are fenced by one database snapshot. PostgreSQL uses `REPEATABLE READ`
-/// with `READ ONLY`; SQLite uses one ordinary transaction whose first read establishes the snapshot.
+/// Both aggregate reads are fenced by one database snapshot per page. PostgreSQL uses
+/// `REPEATABLE READ` with `READ ONLY`; SQLite uses one ordinary transaction whose first read
+/// establishes the snapshot. Continuation is keyset-based and independent for topics/categories.
+/// A multi-page scan intentionally does not hold one database transaction across requests; rows
+/// created or changed behind an already-returned cursor are observed by the next full scan rather
+/// than making the operator API retain a long-lived snapshot.
 pub struct ForumCounterReconciliationService {
     db: DatabaseConnection,
 }
@@ -83,11 +93,29 @@ impl ForumCounterReconciliationService {
         Self { db }
     }
 
+    /// Compatibility first-page entrypoint.
     pub async fn report(
         &self,
         tenant_id: Uuid,
         security: &SecurityContext,
         requested_limit: Option<u64>,
+    ) -> ForumResult<ForumCounterReconciliationReport> {
+        self.report_page(tenant_id, security, requested_limit, None, None)
+            .await
+    }
+
+    /// Bounded independent keyset page for topic and category counter reconciliation.
+    ///
+    /// `topic_after` and `category_after` are independent. A caller that has exhausted one shape
+    /// should continue echoing that shape's returned cursor while advancing the other shape so the
+    /// exhausted side is not rescanned from the beginning.
+    pub async fn report_page(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        requested_limit: Option<u64>,
+        topic_after: Option<Uuid>,
+        category_after: Option<Uuid>,
     ) -> ForumResult<ForumCounterReconciliationReport> {
         rustok_telemetry::metrics::record_module_entrypoint_call(
             "forum",
@@ -96,7 +124,15 @@ impl ForumCounterReconciliationService {
         );
         let started_at = Instant::now();
         let result = match enforce_operations_scope(security) {
-            Ok(()) => self.report_inner(tenant_id, requested_limit).await,
+            Ok(()) => {
+                self.report_inner(
+                    tenant_id,
+                    requested_limit,
+                    topic_after,
+                    category_after,
+                )
+                .await
+            }
             Err(error) => Err(error),
         };
         rustok_telemetry::metrics::record_span_duration(
@@ -121,6 +157,8 @@ impl ForumCounterReconciliationService {
         &self,
         tenant_id: Uuid,
         requested_limit: Option<u64>,
+        topic_after: Option<Uuid>,
+        category_after: Option<Uuid>,
     ) -> ForumResult<ForumCounterReconciliationReport> {
         let backend = self.db.get_database_backend();
         let transaction = match backend {
@@ -141,7 +179,14 @@ impl ForumCounterReconciliationService {
         };
 
         let report = self
-            .report_in_transaction(&transaction, backend, tenant_id, requested_limit)
+            .report_in_transaction(
+                &transaction,
+                backend,
+                tenant_id,
+                requested_limit,
+                topic_after,
+                category_after,
+            )
             .await;
         match report {
             Ok(report) => {
@@ -161,6 +206,8 @@ impl ForumCounterReconciliationService {
         backend: DatabaseBackend,
         tenant_id: Uuid,
         requested_limit: Option<u64>,
+        topic_after: Option<Uuid>,
+        category_after: Option<Uuid>,
     ) -> ForumResult<ForumCounterReconciliationReport> {
         let effective_limit = requested_limit
             .unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
@@ -170,8 +217,11 @@ impl ForumCounterReconciliationService {
             .query_all(counter_statement(
                 backend,
                 TOPIC_COUNTER_SQLITE,
+                TOPIC_COUNTER_AFTER_SQLITE,
                 TOPIC_COUNTER_POSTGRES,
+                TOPIC_COUNTER_AFTER_POSTGRES,
                 tenant_id,
+                topic_after,
                 fetch_limit,
             )?)
             .await?;
@@ -179,18 +229,24 @@ impl ForumCounterReconciliationService {
             .query_all(counter_statement(
                 backend,
                 CATEGORY_COUNTER_SQLITE,
+                CATEGORY_COUNTER_AFTER_SQLITE,
                 CATEGORY_COUNTER_POSTGRES,
+                CATEGORY_COUNTER_AFTER_POSTGRES,
                 tenant_id,
+                category_after,
                 fetch_limit,
             )?)
             .await?;
 
         let has_more_topics = topic_rows.len() > effective_limit as usize;
         let has_more_categories = category_rows.len() > effective_limit as usize;
+        let mut topic_cursor = topic_after;
+        let mut category_cursor = category_after;
         let mut drifts = Vec::new();
 
         for row in topic_rows.iter().take(effective_limit as usize) {
             let subject_id: Uuid = row.try_get("", "id")?;
+            topic_cursor = Some(subject_id);
             let stored: i64 = row.try_get("", "stored_reply_count")?;
             let expected: i64 = row.try_get("", "expected_reply_count")?;
             if stored != expected {
@@ -205,6 +261,7 @@ impl ForumCounterReconciliationService {
 
         for row in category_rows.iter().take(effective_limit as usize) {
             let subject_id: Uuid = row.try_get("", "id")?;
+            category_cursor = Some(subject_id);
             let stored_topics: i64 = row.try_get("", "stored_topic_count")?;
             let expected_topics: i64 = row.try_get("", "expected_topic_count")?;
             let stored_replies: i64 = row.try_get("", "stored_reply_count")?;
@@ -234,6 +291,8 @@ impl ForumCounterReconciliationService {
             inspected_categories: category_rows.len().min(effective_limit as usize) as u64,
             has_more_topics,
             has_more_categories,
+            topic_cursor,
+            category_cursor,
             drifts,
         })
     }
@@ -244,26 +303,39 @@ fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
     enforce_scope(security, Resource::ForumTopics, Action::Manage)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn counter_statement(
     backend: DatabaseBackend,
-    sqlite_sql: &str,
-    postgres_sql: &str,
+    initial_sqlite: &str,
+    after_sqlite: &str,
+    initial_postgres: &str,
+    after_postgres: &str,
     tenant_id: Uuid,
+    after: Option<Uuid>,
     limit: u64,
 ) -> ForumResult<Statement> {
-    let values = vec![tenant_id.into(), (limit as i64).into()];
-    match backend {
-        DatabaseBackend::Sqlite => Ok(Statement::from_sql_and_values(
+    match (backend, after) {
+        (DatabaseBackend::Sqlite, None) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            sqlite_sql,
-            values,
+            initial_sqlite,
+            vec![tenant_id.into(), (limit as i64).into()],
         )),
-        DatabaseBackend::Postgres => Ok(Statement::from_sql_and_values(
+        (DatabaseBackend::Sqlite, Some(after)) => Ok(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            after_sqlite,
+            vec![tenant_id.into(), after.into(), (limit as i64).into()],
+        )),
+        (DatabaseBackend::Postgres, None) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            postgres_sql,
-            values,
+            initial_postgres,
+            vec![tenant_id.into(), (limit as i64).into()],
         )),
-        other => Err(ForumError::Validation(format!(
+        (DatabaseBackend::Postgres, Some(after)) => Ok(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            after_postgres,
+            vec![tenant_id.into(), after.into(), (limit as i64).into()],
+        )),
+        (other, _) => Err(ForumError::Validation(format!(
             "Forum counter reconciliation does not support database backend {other:?}"
         ))),
     }
@@ -285,6 +357,23 @@ ORDER BY t.id
 LIMIT ?2
 "#;
 
+const TOPIC_COUNTER_AFTER_SQLITE: &str = r#"
+SELECT
+    t.id AS id,
+    CAST(t.reply_count AS INTEGER) AS stored_reply_count,
+    CAST(COUNT(r.id) AS INTEGER) AS expected_reply_count
+FROM forum_topics t
+LEFT JOIN forum_replies r
+    ON r.tenant_id = t.tenant_id
+   AND r.topic_id = t.id
+   AND r.status = 'approved'
+WHERE t.tenant_id = ?1
+  AND t.id > ?2
+GROUP BY t.id, t.reply_count
+ORDER BY t.id
+LIMIT ?3
+"#;
+
 const TOPIC_COUNTER_POSTGRES: &str = r#"
 SELECT
     t.id AS id,
@@ -299,6 +388,23 @@ WHERE t.tenant_id = $1
 GROUP BY t.id, t.reply_count
 ORDER BY t.id
 LIMIT $2
+"#;
+
+const TOPIC_COUNTER_AFTER_POSTGRES: &str = r#"
+SELECT
+    t.id AS id,
+    t.reply_count::BIGINT AS stored_reply_count,
+    COUNT(r.id)::BIGINT AS expected_reply_count
+FROM forum_topics t
+LEFT JOIN forum_replies r
+    ON r.tenant_id = t.tenant_id
+   AND r.topic_id = t.id
+   AND r.status = 'approved'
+WHERE t.tenant_id = $1
+  AND t.id > $2
+GROUP BY t.id, t.reply_count
+ORDER BY t.id
+LIMIT $3
 "#;
 
 const CATEGORY_COUNTER_SQLITE: &str = r#"
@@ -322,6 +428,28 @@ ORDER BY c.id
 LIMIT ?2
 "#;
 
+const CATEGORY_COUNTER_AFTER_SQLITE: &str = r#"
+SELECT
+    c.id AS id,
+    CAST(c.topic_count AS INTEGER) AS stored_topic_count,
+    CAST(c.reply_count AS INTEGER) AS stored_reply_count,
+    CAST(COUNT(DISTINCT t.id) AS INTEGER) AS expected_topic_count,
+    CAST(COALESCE(SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END), 0) AS INTEGER)
+        AS expected_reply_count
+FROM forum_categories c
+LEFT JOIN forum_topics t
+    ON t.tenant_id = c.tenant_id
+   AND t.category_id = c.id
+LEFT JOIN forum_replies r
+    ON r.tenant_id = t.tenant_id
+   AND r.topic_id = t.id
+WHERE c.tenant_id = ?1
+  AND c.id > ?2
+GROUP BY c.id, c.topic_count, c.reply_count
+ORDER BY c.id
+LIMIT ?3
+"#;
+
 const CATEGORY_COUNTER_POSTGRES: &str = r#"
 SELECT
     c.id AS id,
@@ -341,6 +469,28 @@ WHERE c.tenant_id = $1
 GROUP BY c.id, c.topic_count, c.reply_count
 ORDER BY c.id
 LIMIT $2
+"#;
+
+const CATEGORY_COUNTER_AFTER_POSTGRES: &str = r#"
+SELECT
+    c.id AS id,
+    c.topic_count::BIGINT AS stored_topic_count,
+    c.reply_count::BIGINT AS stored_reply_count,
+    COUNT(DISTINCT t.id)::BIGINT AS expected_topic_count,
+    COALESCE(SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END), 0)::BIGINT
+        AS expected_reply_count
+FROM forum_categories c
+LEFT JOIN forum_topics t
+    ON t.tenant_id = c.tenant_id
+   AND t.category_id = c.id
+LEFT JOIN forum_replies r
+    ON r.tenant_id = t.tenant_id
+   AND r.topic_id = t.id
+WHERE c.tenant_id = $1
+  AND c.id > $2
+GROUP BY c.id, c.topic_count, c.reply_count
+ORDER BY c.id
+LIMIT $3
 "#;
 
 #[cfg(test)]
@@ -394,5 +544,13 @@ mod tests {
             &[Permission::FORUM_TOPICS_MANAGE],
         );
         assert!(enforce_operations_scope(&topics_only).is_err());
+    }
+
+    #[test]
+    fn keyset_sql_is_independent_and_strictly_forward() {
+        assert!(TOPIC_COUNTER_AFTER_SQLITE.contains("t.id > ?2"));
+        assert!(TOPIC_COUNTER_AFTER_POSTGRES.contains("t.id > $2"));
+        assert!(CATEGORY_COUNTER_AFTER_SQLITE.contains("c.id > ?2"));
+        assert!(CATEGORY_COUNTER_AFTER_POSTGRES.contains("c.id > $2"));
     }
 }
