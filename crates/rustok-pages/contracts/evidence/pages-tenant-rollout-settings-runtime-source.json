@@ -1,11 +1,11 @@
 {
   "format": "pages_tenant_rollout_settings_runtime_source_v1",
-  "status": "platform_settings_read_seam_and_pages_binding_source_ready_runtime_evidence_pending",
+  "status": "platform_read_seam_server_owner_graphql_and_all_pages_bindings_source_ready_runtime_evidence_pending",
   "prepared_on": "2026-08-08",
-  "source_base": "488803a831e725ef0fbeaa8540f09458ee461b85",
+  "source_base": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
   "source_contract": {
     "platform_runtime_helper": "rustok_api::tenant_module_settings",
-    "trusted_tenant_id_must_be_supplied_by_caller": true,
+    "trusted_tenant_id_must_be_supplied_by_server_owner": true,
     "exact_tenant_id_required": true,
     "exact_module_slug_required": true,
     "enabled_row_required": true,
@@ -15,13 +15,16 @@
     "sqlite_supported": true,
     "postgres_supported": true,
     "mysql_supported": true,
-    "tenant_persistence_entity_import_required": false,
+    "tenant_persistence_entity_import_required_in_admin": false,
     "settings_mutation_added": false,
     "parallel_settings_store_added": false,
+    "server_owner_graphql_snapshot_complete": true,
+    "shared_rollout_normalizer_complete": true,
     "pages_consumer_binding_complete": true,
-    "pages_ui_provider_status_uses_trusted_flags": true,
-    "pages_ssr_capability_dispatch_rereads_trusted_flags": true,
+    "pages_ui_provider_status_uses_server_owned_flags": true,
+    "pages_ssr_capability_dispatch_rereads_server_owned_flags": true,
     "pages_ssr_snapshot_tenant_slug_is_verified": true,
+    "standalone_browser_intent_preflight_uses_server_owned_flags": true,
     "browser_supplied_flags_accepted": false,
     "pages_runtime_profile_matrix_executable": true,
     "pages_runtime_profile_matrix_evidence_retained": false,
@@ -40,5 +43,5 @@
     "browser_run": false,
     "workflow_or_ci_run": false
   },
-  "next_cursor": "retain and maintainer-execute a four-profile Pages runtime matrix for all_on, publish_off, preview_off and builder_off on one exact source/deployment, including Pages-owned read guarantees"
+  "next_cursor": "retain and maintainer-execute a four-profile Pages runtime matrix for all_on, publish_off, preview_off and builder_off on one exact source/deployment, including browser-intent denial and Pages-owned read guarantees"
 }
