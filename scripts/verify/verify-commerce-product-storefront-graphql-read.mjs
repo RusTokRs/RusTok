@@ -133,29 +133,90 @@ forbidText(source, "CatalogService::new", "Product GraphQL catalog module must n
 
 const legacySource = read("crates/rustok-commerce/src/graphql/query.rs");
 const legacyDetail = resolverSlice(legacySource, "storefront_product", "storefront_products");
-const legacyList = resolverSlice(legacySource, "storefront_products", null);
+const legacyList = resolverSlice(
+  legacySource,
+  "storefront_products",
+  "load_storefront_customer_order",
+);
+
 for (const required of [
-  "CatalogService::new",
-  ".get_published_product_by_handle_with_locale_fallback(",
-  ".get_product_with_locale_fallback(",
-  "apply_public_channel_inventory_to_product(",
+  "super::require_storefront_channel_enabled(ctx)",
+  "Storefront catalog reads must use the current tenant",
+  "resolve_commerce_graphql_locale(",
+  "request_public_channel_slug(ctx)",
+  "StorefrontProductProjectionSubject::ProductId",
+  "StorefrontProductProjectionSubject::Handle",
+  "PortActor::service(\"commerce-storefront-graphql\")",
+  ".with_deadline(std::time::Duration::from_secs(2))",
+  "product_catalog_read_runtime_for_current_graphql_scope(",
+  ".read_port()",
+  ".read_storefront_product_projection(",
+  "rustok_product::StorefrontProductProjectionRequest",
+  "fallback_locale: Some(tenant.default_locale.clone())",
+  "public_channel_slug,",
+  "product_catalog_port_error(",
+  "legacy_storefront_product",
+  "Either `id` or non-empty `handle` is required",
 ]) {
   requireText(
     legacyDetail,
     required,
-    `legacy storefront Product detail must remain explicit consumer cutover debt: ${required}`,
+    `legacy storefront Product detail owner cutover must contain ${required}`,
   );
 }
+for (const forbidden of [
+  "CatalogService::new",
+  ".get_published_product_by_handle_with_locale_fallback(",
+  ".get_product_with_locale_fallback(",
+  "apply_public_channel_inventory_to_product(",
+  "product::Entity::find",
+]) {
+  forbidText(
+    legacyDetail,
+    forbidden,
+    `legacy storefront Product detail owner cutover must not contain ${forbidden}`,
+  );
+}
+
 for (const required of [
-  "product::Entity::find()",
-  "product_channel_visibility_condition(",
-  "product_translation_title_search_condition(",
-  "load_product_list_items(",
+  "super::require_storefront_channel_enabled(ctx)",
+  "Storefront catalog reads must use the current tenant",
+  "resolve_commerce_graphql_locale(",
+  "page must be at least 1 and per_page must be between 1 and 48",
+  "request_public_channel_slug(ctx)",
+  "PortActor::service(\"commerce-storefront-graphql\")",
+  ".with_deadline(std::time::Duration::from_secs(2))",
+  "product_catalog_read_runtime_for_current_graphql_scope(",
+  ".read_port()",
+  ".list_legacy_storefront_products(",
+  "rustok_product::LegacyStorefrontProductsRequest",
+  "fallback_locale: Some(tenant.default_locale.clone())",
+  "public_channel_slug,",
+  "vendor: filter.vendor",
+  "product_type: filter.product_type",
+  "search: filter.search",
+  "product_catalog_port_error(",
+  "legacy_storefront_products",
+  "shipping_profile_slug: Some(item.shipping_profile_slug)",
+  "commerce.storefront_products",
 ]) {
   requireText(
     legacyList,
     required,
-    `legacy storefront Product list must remain explicit consumer cutover debt: ${required}`,
+    `legacy storefront Product list owner cutover must contain ${required}`,
+  );
+}
+for (const forbidden of [
+  "product::Entity::find()",
+  "product_channel_visibility_condition(",
+  "product_translation_title_search_condition(",
+  "load_product_list_items(",
+  "CatalogService::new",
+]) {
+  forbidText(
+    legacyList,
+    forbidden,
+    `legacy storefront Product list owner cutover must not contain ${forbidden}`,
   );
 }
 
