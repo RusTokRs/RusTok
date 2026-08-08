@@ -88,6 +88,16 @@ requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
   'IndexSourceContinuationScope::from_registry(',
   'self.operator.run_shadow(context, request).await?',
 ]);
+const continuation = requireMarkers('crates/rustok-index/src/application/source_continuation.rs', [
+  'pub fn for_locale(',
+  'claims.locale != expected_scope.locale',
+  'IndexSourceContinuationError::LocaleScopeMismatch',
+]);
+for (const forbidden of ['CONTINUATION_VERSION', 'ContinuationClaimsV1', 'ContinuationClaimsV2']) {
+  if (continuation.includes(forbidden)) {
+    fail(`source continuation must remain one canonical unversioned envelope: ${forbidden}`);
+  }
+}
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs', [
   'impl ModuleWorkRegistration for IndexReconciliationWorkRegistration',
   'impl ModuleWorkSource for PostgresIndexReconciliationWorkAdapter',
@@ -113,6 +123,9 @@ requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   'starts the single generic `ModuleWorkScheduler` only when registrations exist',
   '`SharedIndexReplayRuntime::run_interruptible`',
   '`IndexReplayShadowTransportRuntime`',
+  'one current unversioned envelope',
+  '`IndexSourceContinuationScope` can now also derive an exact-locale identity through `for_locale`',
+  'exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation identity',
   'The work registration added here is reconciliation-only',
   'maintainer-run',
 ]);
@@ -127,4 +140,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-reconciliation-host-scheduler.mjs'",
 ]);
 
-console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Shadow no-write/sealed, and reconciliation under the single generic scheduler boundary');
+console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Shadow no-write/sealed, one unversioned locale-safe continuation format, and reconciliation under the single generic scheduler boundary');
