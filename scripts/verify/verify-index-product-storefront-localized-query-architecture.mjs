@@ -73,8 +73,8 @@ requireMarkers(architecturePath, [
   'Grouping happens **before** pagination and exact count.',
   'exact count is the number of distinct admitted Product identities',
   'a cursor from an ordinary exact-locale query must not be accepted by the folded query path',
-  'A consumer must not emulate this contract by issuing independent locale queries and merging pages in\n memory.',
-  'Existing schema readiness, Product entity freshness, and queried link-target availability remain\nmandatory.',
+  'A consumer must not emulate this contract by issuing independent locale queries',
+  'Existing schema readiness, Product entity freshness, and queried link-target availability remain',
   'Storefront remains owner-native.',
   'Implement the generic localized-entity fold in `rustok-index`',
 ]);
