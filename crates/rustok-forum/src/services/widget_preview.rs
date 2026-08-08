@@ -21,6 +21,13 @@ use crate::services::{ReplyService, TopicService};
 use crate::state_machine::ReplyStatus;
 
 const TOPIC_DETAIL_PREVIEW_REPLIES: u64 = 20;
+const MODERATOR_PREVIEW_REPLY_STATUSES: [ReplyStatus; 5] = [
+    ReplyStatus::Pending,
+    ReplyStatus::Approved,
+    ReplyStatus::Rejected,
+    ReplyStatus::Hidden,
+    ReplyStatus::Flagged,
+];
 
 /// Forum owner runtime for Page Builder widget previews.
 ///
@@ -226,7 +233,11 @@ impl ForumWidgetPreviewService {
             ));
         }
 
-        let statuses = approved_only.then_some([ReplyStatus::Approved]);
+        let statuses: &[ReplyStatus] = if approved_only {
+            &[ReplyStatus::Approved]
+        } else {
+            &MODERATOR_PREVIEW_REPLY_STATUSES
+        };
         let (items, total) = ReplyService::new(self.db.clone(), self.event_bus.clone())
             .list_response_for_topic_by_statuses_with_locale_fallback(
                 tenant_id,
@@ -238,7 +249,7 @@ impl ForumWidgetPreviewService {
                     per_page,
                 },
                 fallback_locale,
-                statuses.as_ref().map(|values| values.as_slice()),
+                Some(statuses),
             )
             .await?;
 
