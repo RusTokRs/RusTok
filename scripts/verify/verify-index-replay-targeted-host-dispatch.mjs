@@ -52,17 +52,27 @@ if (targetedBuild < 0 || runtimeBuild <= targetedBuild) {
 
 const serverPath = 'apps/server/src/services/index_replay_runtime_composition.rs';
 const server = requireMarkers(serverPath, [
+  'pub enum IndexReplayTargetedOperatorError',
+  'Authorization(#[from] IndexReplayOperatorError)',
   'Targeted(#[from] rustok_index::IndexReplayTargetedError)',
   'pub async fn run_targeted(',
   'request: rustok_index::IndexSourceLoadRequest',
+  'Result<rustok_index::IndexReplayTargetedOutcome, IndexReplayTargetedOperatorError>',
   'context.authorize_for(request.tenant_id())?;',
   'self.inner.run_targeted(request).await.map_err(Into::into)',
   'targeted_dispatch_reuses_request_bound_modules_manage_guard',
   'vec![Permission::MODULES_READ]',
+  'IndexReplayTargetedOperatorError::Authorization(IndexReplayOperatorError::Forbidden)',
   'vec![Permission::MODULES_MANAGE]',
   'assert_eq!(outcome.requested_count(), 1);',
   'assert_eq!(outcome.missing_count(), 1);',
 ]);
+const fullErrorStart = server.indexOf('pub enum IndexReplayOperatorError');
+const targetedErrorStart = server.indexOf('pub enum IndexReplayTargetedOperatorError', fullErrorStart);
+const fullError = server.slice(fullErrorStart, targetedErrorStart);
+if (fullError.includes('IndexReplayTargetedError') || fullError.includes('Targeted(')) {
+  fail('Targeted failures must not widen the existing Full/cancel IndexReplayOperatorError surface');
+}
 const targetedMethod = server.indexOf('pub async fn run_targeted(');
 const authorize = server.indexOf('context.authorize_for(request.tenant_id())?;', targetedMethod);
 const delegate = server.indexOf('self.inner.run_targeted(request).await.map_err(Into::into)', authorize);
@@ -101,9 +111,10 @@ for (const forbidden of [
   'runIndexReplayTargeted',
   '.run_targeted(',
   'IndexReplayTargetedOutcome',
+  'IndexReplayTargetedOperatorError',
 ]) {
   if (graphqlProduction.includes(forbidden)) {
-    fail(`${graphqlPath} must not expose Targeted publicly in the host-dispatch slice: ${forbidden}`);
+    fail(`${graphqlPath} must not expose or map Targeted publicly in the host-dispatch slice: ${forbidden}`);
   }
 }
 
@@ -113,6 +124,10 @@ requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application
   '`IndexReplayTargetedExecutor<PostgresMutationStore>`',
   '`IndexReplayOperatorRuntime` owns Targeted dispatch',
   'dedicated authorization-first Targeted public transport',
+]);
+requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
+  'Targeted and Shadow each keep a separate typed operator error wrapper',
+  'does not widen the existing GraphQL Full/cancel error contract',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_host_guard_transport_pending`.',
@@ -126,4 +141,4 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
 ]);
 
-console.log('[verify-index-replay-targeted-host-dispatch] Targeted uses the canonical PostgreSQL mutation sink and exact request-bound modules:manage host guard without Full durable ownership or public transport');
+console.log('[verify-index-replay-targeted-host-dispatch] Targeted uses the canonical PostgreSQL mutation sink and exact request-bound modules:manage host guard with an isolated error surface, no Full durable ownership and no public transport');
