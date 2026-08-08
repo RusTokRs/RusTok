@@ -17,12 +17,14 @@ function requireAbsent(text, needle, message) {
 const contractPath =
   "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json";
 const configPath = "apps/next-admin/playwright.forum-page-builder.config.ts";
+const setupPath = "apps/next-admin/tests/forum-page-builder/global-setup.ts";
 const runnerPath = "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts";
 const packetPath =
   "docs/modules/forum-page-builder-browser-evidence-harness-actualization-2026-08-08.md";
 const contractSource = read(contractPath);
 const contract = JSON.parse(contractSource);
 const config = read(configPath);
+const setup = read(setupPath);
 const runner = read(runnerPath);
 const packet = read(packetPath);
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
@@ -39,7 +41,11 @@ const composition = read("apps/admin/src/app/page_builder_contributions.rs");
 if (contract.status !== "source_ready_maintainer_execution_pending") {
   throw new Error("browser evidence contract must not claim execution");
 }
-if (contract.runner !== runnerPath || contract.config !== configPath) {
+if (
+  contract.runner !== runnerPath ||
+  contract.config !== configPath ||
+  contract.global_setup !== setupPath
+) {
   throw new Error("browser evidence contract must point to the retained Playwright source");
 }
 if (contract.output?.format !== "forum_page_builder_browser_execution_v1") {
@@ -87,6 +93,7 @@ for (const marker of [
 }
 
 for (const marker of [
+  'globalSetup: "./tests/forum-page-builder/global-setup.ts"',
   "fullyParallel: false",
   "retries: 0",
   "workers: 1",
@@ -97,6 +104,17 @@ for (const marker of [
 ]) {
   requireContains(config, marker, `Playwright config missing ${marker}`);
 }
+
+for (const marker of [
+  "contract.output.environment",
+  "contract.output.default_path",
+  'path.resolve(repoRoot, "target")',
+  "rmSync(resolveOutput(contract), { force: true })",
+]) {
+  requireContains(setup, marker, `browser global setup missing stale-output guard: ${marker}`);
+}
+for (const forbidden of ["readFileSync(resolveOutput", "writeFileSync", "renameSync"])
+  requireAbsent(setup, forbidden, `global setup must only clear the evidence output: ${forbidden}`);
 
 for (const marker of [
   "forum.topic_list",
