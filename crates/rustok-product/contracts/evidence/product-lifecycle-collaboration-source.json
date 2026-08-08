@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-08-08",
-  "status": "product_lifecycle_corequisites_declared_unvalidated",
-  "source_base_revision": "bb65b7f0d3b6d2663519260841097c0e0f5f6cb8",
+  "status": "product_lifecycle_static_corequisite_selection_enforced_unvalidated",
+  "source_base_revision": "0ae8f7f4382a4218107c43a4e1e6f1e5b957a84e",
   "scope": "Product create/delete transaction collaboration with Inventory and Pricing owners",
   "module_topology": {
     "product_dependencies": [
@@ -20,8 +20,10 @@
     ],
     "ordinary_reverse_dependencies_forbidden": true,
     "co_requisites_are_ordering_dependencies": false,
-    "co_requisite_control_plane_enforcement_proven": false,
-    "reason": "Inventory and Pricing remain ordinary Product dependents; Product declares them only as deployment co-requisites to avoid a dependency-order cycle",
+    "static_default_selection_enforcement_source_complete": true,
+    "co_requisite_control_plane_execution_proven": false,
+    "tenant_lifecycle_corequisite_enforcement_proven": false,
+    "reason": "Static startup validates selected Product co-requisites separately from ordinary dependencies so Inventory/Pricing remain owner modules without a dependency-order cycle",
     "default_enabled_bundle": [
       "product",
       "pricing",
@@ -65,14 +67,15 @@
   "decision": {
     "containment_complete": true,
     "corequisite_contract_declared": true,
+    "static_default_selection_enforcement_source_complete": true,
     "dependency_contract_resolved": false,
-    "next_slice": "Teach the static module control plane to consume Product co-requisites during deployment selection without adding dependency-order edges; then prove non-default Product write activation and rollback",
+    "next_slice": "Apply Product co-requisite semantics to tenant lifecycle/effective-policy selection without adding dependency-order edges, then prove non-default Product activation and rollback",
     "do_not": [
       "add inventory or pricing to Product ordinary module dependencies",
       "move Inventory or Pricing ORM entities into Product",
       "replace atomic owner collaboration with unproven best-effort post-commit writes",
       "claim standalone Product write activation",
-      "claim co-requisite enforcement before the control plane consumes the contract"
+      "claim tenant co-requisite enforcement before lifecycle/effective policy consumes the contract"
     ]
   },
   "validation": {
@@ -82,6 +85,7 @@
     "verifiers_run": false,
     "workflow_checks_run": false,
     "ci_run": false,
+    "static_default_selection_execution_proven": false,
     "standalone_activation_proven": false,
     "non_default_deployment_selection_proven": false,
     "transaction_rollback_proven": false
