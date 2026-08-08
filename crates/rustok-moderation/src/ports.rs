@@ -1,13 +1,16 @@
+use std::str::FromStr;
+
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_api::{Permission, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 pub use rustok_moderation_api::ModerationSubjectCommandPort;
 
 use crate::domain::{
-    AssignModerationCaseCommand, DecideModerationCaseCommand, ModerationCaseRecord,
-    ModerationDecisionRecord, ModerationQueueFilter, ModerationReportRecord,
-    OpenModerationCaseCommand, SubmitModerationReportCommand,
+    AssignModerationCaseCommand, DecideModerationCaseCommand, ModerationApplicationRecoveryRecord,
+    ModerationCaseRecord, ModerationDecisionRecord, ModerationQueueFilter, ModerationReportRecord,
+    OpenModerationCaseCommand, ReconcileLegacyModerationApplicationCommand,
+    RequeueModerationApplicationCommand, SubmitModerationReportCommand,
 };
 use crate::error::ModerationError;
 use crate::service::{ModerationService, parse_tenant_id};
@@ -37,6 +40,28 @@ pub trait ModerationCommandPort: Send + Sync {
         context: PortContext,
         command: DecideModerationCaseCommand,
     ) -> Result<ModerationDecisionRecord, PortError>;
+}
+
+/// Administrative recovery boundary for already-terminal moderation applications.
+///
+/// These operations are intentionally separate from ordinary moderation commands. A caller
+/// must carry the dedicated `moderation_cases:override` permission (or
+/// `moderation_cases:manage`) in its trusted `PortContext` claim snapshot before the owner
+/// command is entered. The owner still enforces human-user identity, replay safety, expected
+/// case revision and terminal-state invariants.
+#[async_trait]
+pub trait ModerationRecoveryCommandPort: Send + Sync {
+    async fn requeue_application(
+        &self,
+        context: PortContext,
+        command: RequeueModerationApplicationCommand,
+    ) -> Result<ModerationApplicationRecoveryRecord, PortError>;
+
+    async fn reconcile_legacy_application(
+        &self,
+        context: PortContext,
+        command: ReconcileLegacyModerationApplicationCommand,
+    ) -> Result<ModerationApplicationRecoveryRecord, PortError>;
 }
 
 #[async_trait]
@@ -110,6 +135,31 @@ impl ModerationCommandPort for ModerationService {
 }
 
 #[async_trait]
+impl ModerationRecoveryCommandPort for ModerationService {
+    async fn requeue_application(
+        &self,
+        context: PortContext,
+        command: RequeueModerationApplicationCommand,
+    ) -> Result<ModerationApplicationRecoveryRecord, PortError> {
+        require_recovery_override(&context)?;
+        self.operator_requeue_application_replay_safe(context, command)
+            .await
+            .map_err(map_owner_error)
+    }
+
+    async fn reconcile_legacy_application(
+        &self,
+        context: PortContext,
+        command: ReconcileLegacyModerationApplicationCommand,
+    ) -> Result<ModerationApplicationRecoveryRecord, PortError> {
+        require_recovery_override(&context)?;
+        self.operator_reconcile_legacy_application_replay_safe(context, command)
+            .await
+            .map_err(map_owner_error)
+    }
+}
+
+#[async_trait]
 impl ModerationReadPort for ModerationService {
     async fn read_report(
         &self,
@@ -160,6 +210,32 @@ impl ModerationReadPort for ModerationService {
             .await
             .map_err(map_owner_error)
     }
+}
+
+fn require_recovery_override(context: &PortContext) -> Result<(), PortError> {
+    let permissions = context
+        .claims
+        .iter()
+        .map(|claim| {
+            Permission::from_str(claim).map_err(|_| {
+                PortError::validation(
+                    "moderation.permission_claim_invalid",
+                    format!("invalid moderation permission claim: {claim}"),
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if permissions.contains(&Permission::MODERATION_CASES_OVERRIDE)
+        || permissions.contains(&Permission::MODERATION_CASES_MANAGE)
+    {
+        return Ok(());
+    }
+
+    Err(PortError::forbidden(
+        "moderation.application_recovery_forbidden",
+        "moderation application recovery requires moderation_cases:override",
+    ))
 }
 
 fn map_owner_error(error: ModerationError) -> PortError {
@@ -220,5 +296,50 @@ fn map_owner_error(error: ModerationError) -> PortError {
             "moderation storage is temporarily unavailable",
             true,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActor;
+
+    fn recovery_context() -> PortContext {
+        PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "moderation-recovery-test",
+        )
+        .with_claim(Permission::MODERATION_CASES_OVERRIDE.to_string())
+    }
+
+    #[test]
+    fn recovery_boundary_requires_dedicated_override_permission() {
+        assert!(require_recovery_override(&recovery_context()).is_ok());
+        assert!(
+            require_recovery_override(
+                &PortContext::new(
+                    Uuid::new_v4().to_string(),
+                    PortActor::user(Uuid::new_v4().to_string()),
+                    "en",
+                    "moderation-recovery-test",
+                )
+                .with_claim(Permission::FORUM_TOPICS_MODERATE.to_string()),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn recovery_boundary_accepts_resource_manage_permission() {
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "moderation-recovery-test",
+        )
+        .with_claim(Permission::MODERATION_CASES_MANAGE.to_string());
+        assert!(require_recovery_override(&context).is_ok());
     }
 }
