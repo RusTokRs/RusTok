@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     AdminProductList, AdminProductListQuery, StorefrontProductList, StorefrontProductListQuery,
+    StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 use crate::dto::ProductResponse;
 use crate::entities::product_variant;
@@ -17,6 +18,7 @@ const READ_VARIANT_PRODUCT_PROJECTION_OPERATION: &str = "read_variant_product_pr
 const LIST_PUBLISHED_PRODUCTS_OPERATION: &str = "list_published_products";
 const LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION: &str = "list_filtered_published_products";
 const LIST_ADMIN_PRODUCTS_OPERATION: &str = "list_admin_products";
+const LIST_LEGACY_ADMIN_PRODUCTS_OPERATION: &str = "list_legacy_admin_products";
 
 /// Transport-neutral owner boundary for product catalog read projections.
 #[async_trait]
@@ -69,6 +71,20 @@ pub trait ProductCatalogReadPort: Send + Sync {
             "product admin listing is unavailable",
         ))
     }
+
+    /// Optional compatibility projection for the mounted legacy admin GraphQL list.
+    /// Existing adapters remain source-compatible and fail closed until they explicitly
+    /// implement the exact legacy list semantics.
+    async fn list_legacy_admin_products(
+        &self,
+        _context: PortContext,
+        _request: LegacyAdminProductsRequest,
+    ) -> Result<AdminProductList, PortError> {
+        Err(PortError::unavailable(
+            "product.legacy_admin_list_unavailable",
+            "legacy product admin listing is unavailable",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -115,6 +131,17 @@ pub struct AdminProductsRequest {
     /// Preserve the mounted legacy REST projection: empty missing titles and normalized
     /// shipping-profile metadata fallback. Owner-native callers leave this disabled.
     pub empty_missing_title: bool,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyAdminProductsRequest {
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub search: Option<String>,
+    pub status: Option<crate::entities::product::ProductStatus>,
+    pub vendor: Option<String>,
     pub page: u64,
     pub per_page: u64,
 }
@@ -259,6 +286,52 @@ impl ProductCatalogReadPort for crate::CatalogService {
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
     }
+
+    async fn list_legacy_admin_products(
+        &self,
+        context: PortContext,
+        request: LegacyAdminProductsRequest,
+    ) -> Result<AdminProductList, PortError> {
+        let owner_operation = LIST_LEGACY_ADMIN_PRODUCTS_OPERATION;
+        context
+            .require_policy(PortCallPolicy::read())
+            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        validate_legacy_admin_products_request(&context, owner_operation, &request)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let LegacyAdminProductsRequest {
+            locale,
+            fallback_locale,
+            search,
+            status,
+            vendor,
+            page,
+            per_page,
+        } = request;
+        let locale = locale.as_deref().unwrap_or(context.locale.as_str());
+        let page = page.max(1);
+        self.list_admin_products_with_compatibility_query(
+            tenant_id,
+            locale,
+            fallback_locale.as_deref(),
+            AdminProductListQuery {
+                search,
+                status,
+                category_id: None,
+                sort_by: StorefrontProductSortBy::CreatedAt,
+                sort_direction: StorefrontProductSortDirection::Desc,
+                attribute_filters: Vec::new(),
+            },
+            page,
+            per_page,
+            None,
+            vendor.as_deref(),
+            None,
+            false,
+            true,
+        )
+        .await
+        .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
+    }
 }
 
 fn validate_published_products_request(
@@ -315,6 +388,30 @@ fn validate_admin_products_request(
             operation = owner_operation,
             code = "product.per_page_invalid",
             "admin product page-size validation failed"
+        );
+        return Err(PortError::validation(
+            "product.per_page_invalid",
+            "admin products page size is invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_legacy_admin_products_request(
+    context: &PortContext,
+    owner_operation: &'static str,
+    request: &LegacyAdminProductsRequest,
+) -> Result<(), PortError> {
+    if !(1..=MAX_ADMIN_PRODUCTS_PER_PAGE).contains(&request.per_page) {
+        tracing::warn!(
+            page = request.page,
+            per_page = request.per_page,
+            max_per_page = MAX_ADMIN_PRODUCTS_PER_PAGE,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "product.per_page_invalid",
+            "legacy admin product page-size validation failed"
         );
         return Err(PortError::validation(
             "product.per_page_invalid",

@@ -34,9 +34,13 @@ function resolverSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-const source = read("crates/rustok-commerce/src/graphql/product_catalog.rs");
-const admin = resolverSlice(source, "admin_product_catalog", null);
-const storefront = resolverSlice(source, "storefront_product_catalog", "admin_product_catalog");
+const catalogSource = read("crates/rustok-commerce/src/graphql/product_catalog.rs");
+const admin = resolverSlice(catalogSource, "admin_product_catalog", null);
+const storefront = resolverSlice(
+  catalogSource,
+  "storefront_product_catalog",
+  "admin_product_catalog",
+);
 
 for (const required of [
   "let auth = require_commerce_permission(",
@@ -54,11 +58,10 @@ for (const required of [
   "vendor: None",
   "product_type: None",
   "empty_missing_title: false",
-  "admin_product_catalog_port_error(&port_context, error)",
+  "product_catalog_port_error(&port_context, error, \"admin_product_catalog\")",
 ]) {
   requireText(admin, required, `admin Product catalog resolver must contain ${required}`);
 }
-
 for (const forbidden of [
   "CatalogService::new",
   ".list_admin_products_with_query(",
@@ -69,26 +72,103 @@ for (const forbidden of [
 }
 
 for (const required of [
+  "require_storefront_channel_enabled(ctx)",
+  "PortActor::service(\"commerce-storefront-graphql\")",
+  ".with_deadline(std::time::Duration::from_secs(2))",
+  "product_catalog_read_runtime_for_current_graphql_scope(",
+  ".list_filtered_published_products(",
+  "rustok_product::FilteredPublishedProductsRequest",
+  "product_catalog_port_error(&port_context, error, \"storefront_product_catalog\")",
+]) {
+  requireText(storefront, required, `storefront Product catalog resolver must contain ${required}`);
+}
+for (const forbidden of ["CatalogService::new", "product::Entity::find"]) {
+  forbidText(
+    storefront,
+    forbidden,
+    `storefront Product catalog resolver must not contain ${forbidden}`,
+  );
+}
+
+for (const required of [
   '"PRODUCT_VALIDATION"',
   '"PRODUCT_NOT_FOUND"',
   '"PRODUCT_TEMPORARILY_UNAVAILABLE"',
   '"PRODUCT_OPERATION_FAILED"',
   'extensions.set("correlation_id", context.correlation_id.to_string())',
 ]) {
-  requireText(source, required, `Product GraphQL PortError mapper must contain ${required}`);
+  requireText(catalogSource, required, `Product GraphQL PortError mapper must contain ${required}`);
 }
 for (const forbidden of [
   "Error::new(error.message)",
   'extensions.set("message", error.message)',
 ]) {
-  forbidText(source, forbidden, `Product GraphQL owner errors must not expose ${forbidden}`);
+  forbidText(catalogSource, forbidden, `Product GraphQL owner errors must not expose ${forbidden}`);
 }
 
-requireText(
-  storefront,
+const legacySource = read("crates/rustok-commerce/src/graphql/query.rs");
+const legacyProduct = resolverSlice(legacySource, "product", "products");
+for (const required of [
+  "let auth = require_commerce_permission(",
+  "product_query_tenant(ctx, tenant_id)",
+  "super::require_storefront_channel_enabled(ctx)",
+  "rustok_api::PortActor::user(auth.user_id.to_string())",
+  ".with_deadline(std::time::Duration::from_secs(2))",
+  "product_catalog_read_runtime_for_current_graphql_scope(",
+  ".read_port()",
+  ".read_product_projection(",
+  "rustok_product::ProductProjectionRequest",
+  "PortErrorKind::NotFound",
+  "product_catalog_port_error(",
+  "localized_product_response(",
+]) {
+  requireText(legacyProduct, required, `legacy product resolver must contain ${required}`);
+}
+for (const forbidden of ["CatalogService::new", ".get_product_with_locale_fallback("]) {
+  forbidText(legacyProduct, forbidden, `legacy product resolver must not contain ${forbidden}`);
+}
+
+const legacyProducts = resolverSlice(legacySource, "products", "product_attributes");
+for (const required of [
+  "let auth = require_commerce_permission(",
+  "product_query_tenant(ctx, tenant_id)",
+  "rustok_api::PortActor::user(auth.user_id.to_string())",
+  ".with_deadline(std::time::Duration::from_secs(2))",
+  "product_catalog_read_runtime_for_current_graphql_scope(",
+  ".list_legacy_admin_products(",
+  "rustok_product::LegacyAdminProductsRequest",
+  "status: filter.status.map(Into::into)",
+  "vendor: filter.vendor",
+  "product_catalog_port_error(",
+  "normalize_shipping_profile_slug",
+  'unwrap_or_else(|| "default".to_string())',
+  'metrics::record_read_path_budget(\n            "graphql",\n            "commerce.products"',
+]) {
+  requireText(legacyProducts, required, `legacy products resolver must contain ${required}`);
+}
+for (const forbidden of [
+  "product::Entity::find",
+  "product_translation_title_search_condition(",
+  "load_product_list_items(",
   "CatalogService::new",
-  "storefront Product catalog must remain explicit follow-up debt in this slice",
-);
+]) {
+  forbidText(legacyProducts, forbidden, `legacy products resolver must not contain ${forbidden}`);
+}
+
+const ports = read("crates/rustok-product/src/ports.rs");
+for (const required of [
+  "async fn list_legacy_admin_products(",
+  "pub struct LegacyAdminProductsRequest",
+  '"product.legacy_admin_list_unavailable"',
+  "LIST_LEGACY_ADMIN_PRODUCTS_OPERATION",
+  "validate_legacy_admin_products_request(",
+  "StorefrontProductSortBy::CreatedAt",
+  "StorefrontProductSortDirection::Desc",
+  "vendor.as_deref()",
+  "false,\n            true,",
+]) {
+  requireText(ports, required, `Product legacy admin read contract must contain ${required}`);
+}
 
 const runtime = read("crates/rustok-commerce/src/graphql_runtime.rs");
 for (const required of [
