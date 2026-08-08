@@ -59,6 +59,8 @@ for (const marker of [
   "pub async fn tenant_module_settings(",
   "tenant_id: Uuid",
   "module_slug: &str",
+  "caller must supply the",
+  "tenant id from a trusted request context",
   "enabled = 1",
   "enabled = true",
   "CAST(settings AS TEXT) AS settings_json",
@@ -76,6 +78,7 @@ for (const marker of ["INSERT ", "UPDATE ", "DELETE ", "ActiveModel", ".execute(
 for (const marker of [
   "tenant_module_settings_returns_only_the_exact_enabled_row",
   'tenant_module_settings(&db, tenant_id, "pages")',
+  'tenant_module_settings(&db, foreign_tenant_id, "pages")',
   'tenant_module_settings(&db, tenant_id, "forum")',
   'tenant_module_settings(&db, tenant_id, "missing")',
 ]) need(sources.runtime, marker, "runtime settings source test");
@@ -97,6 +100,7 @@ if (evidence.status !== "platform_settings_read_seam_source_ready_pages_binding_
   failures.push(`evidence status drifted: ${evidence.status}`);
 }
 for (const [key, expected] of Object.entries({
+  trusted_tenant_id_must_be_supplied_by_caller: true,
   exact_tenant_id_required: true,
   exact_module_slug_required: true,
   enabled_row_required: true,
@@ -150,6 +154,7 @@ if (
 for (const marker of [
   "hardcoded `BuilderCapabilityFlags::default()`",
   "platform read seam is source-ready",
+  "trusted `TenantContext`",
   "Pages consumer binding remains pending",
   "four-profile runtime matrix remains blocked",
   "No tests, Node verifiers, Cargo commands",
