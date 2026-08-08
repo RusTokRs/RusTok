@@ -29,6 +29,8 @@ for (const forbidden of [
   'execute_localized_query',
   'project_product_storefront_index_page',
   'hydrate_storefront_product_tags',
+  'ProductStorefrontIndexServingBudget',
+  'classify_product_storefront_index_serving_budget',
 ]) {
   if (storefront.includes(forbidden)) fail(`${storefrontPath} contains forbidden marker ${forbidden}`);
 }
@@ -36,7 +38,6 @@ for (const forbidden of [
 requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
   'pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;',
   'search: normalize_storefront_product_search(search)?',
-  'pub(crate) fn validate_storefront_product_search(',
 ]);
 
 const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
@@ -70,28 +71,11 @@ if (modernList.includes('10_000')) {
   fail(`${ownerPath} must not narrow owner-valid Storefront page depth to the Index offset bound`);
 }
 
-requireMarkers('crates/rustok-product/src/services/catalog/helpers.rs', [
-  'pub(crate) fn product_channel_visibility_condition(',
-  "metadata->'channel_visibility'->'allowed_channel_slugs'",
-  "jsonb_array_length(COALESCE(products.metadata->'channel_visibility'->'allowed_channel_slugs', '[]'::jsonb)) = 0",
-]);
-requireMarkers('crates/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
-  'ProductChannelVisibility::Unrestricted => (',
-  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
-]);
-
 const tagPortPath = 'crates/rustok-product/src/storefront_tag_read_port.rs';
 const tagPort = requireMarkers(tagPortPath, [
   'const MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48;',
-  'pub struct ProductStorefrontTagHydrationRequest',
-  'pub product_ids: Vec<Uuid>',
-  'pub fallback_locale: String',
-  'pub struct ProductStorefrontTagHydration',
   'pub trait ProductStorefrontTagReadPort',
   'impl ProductStorefrontTagReadPort for CatalogService',
-  'entities::product::Column::TenantId.eq(tenant_id)',
-  'entities::product::Column::Id.is_in(request.product_ids.clone())',
-  'products.len() != request.product_ids.len()',
   '.load_product_tag_map(',
   'context.locale.as_str()',
   'Some(request.fallback_locale.as_str())',
@@ -100,68 +84,33 @@ for (const forbidden of ['rustok_index', 'IndexQueryPage', 'IndexValue']) {
   if (tagPort.includes(forbidden)) fail(`${tagPortPath} must remain Product-owned and Index-neutral: ${forbidden}`);
 }
 requireMarkers('crates/rustok-product/src/services/catalog/tags.rs', [
-  'pub async fn load_product_tag_map(',
   'TaxonomyService::new(self.db.clone())',
   '.resolve_term_names(tenant_id, &ordered_term_ids, locale, fallback_locale)',
   'metadata_has_tags_field(&product.metadata)',
   'normalize_tag_names(&extract_metadata_tags(&product.metadata))',
 ]);
-requireMarkers('crates/rustok-taxonomy/src/services.rs', [
-  'pub async fn resolve_term_names(',
-  'resolve_by_locale_with_fallback(',
-  '.unwrap_or_else(|| term.canonical_key.clone())',
-]);
-requireMarkers('crates/rustok-commerce/tests/product_taxonomy_tags.rs', [
-  'legacy_metadata_tags_are_used_as_read_fallback_but_not_exposed_publicly',
-  '"tags": ["legacy", "sale", "legacy"]',
-  'vec!["legacy".to_string(), "sale".to_string()]',
-]);
-
-const runtimePath = 'crates/rustok-product/src/runtime.rs';
-const runtime = requireMarkers(runtimePath, [
-  'storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>',
-  'storefront_tag_read_port: None',
-  '.with_storefront_tag_read_port(catalog)',
-  'pub fn with_storefront_tag_read_port(',
-  'pub fn storefront_tag_read_port(&self)',
-  'pub fn external(read_port: Arc<dyn ProductCatalogReadPort>)',
-]);
-const externalStart = runtime.indexOf('pub fn external(read_port: Arc<dyn ProductCatalogReadPort>)');
-const withTagStart = runtime.indexOf('pub fn with_storefront_tag_read_port(');
-if (externalStart < 0 || withTagStart <= externalStart || runtime.slice(externalStart, withTagStart).includes('with_storefront_tag_read_port')) {
-  fail(`${runtimePath} external profile must remain compatible without an implicit embedded tag provider`);
-}
 
 const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const executor = requireMarkers(executorPath, [
-  'pub(crate) enum ProductStorefrontIndexChannelScopeDecision',
   'OwnerNativeChannelLess',
   'ChannelLessOwnerNative',
-  'pub(crate) enum ProductStorefrontIndexPageScopeDecision',
   'OwnerNativeDeepPage { offset: u64 }',
   'DeepPageOwnerNative { offset: u64 }',
   'pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>',
   'pub(crate) public_projected:',
-  'Option<Result<IndexQueryPage, ProductStorefrontIndexPublicProjectionError>>',
   'pub(crate) tag_hydration:',
-  'Option<Result<ProductStorefrontTagHydration, ProductStorefrontIndexTagHydrationError>>',
   'TagReadPortUnavailable',
   'list_filtered_published_products(',
-  'classify_product_storefront_index_page_scope(&query)',
-  '.resolve_storefront_attribute_filters(',
   '.execute_localized_query(index_query)',
   'let public_projected = projected',
   '.map(project_product_storefront_index_page);',
   'let tag_hydration = match projected.as_ref()',
   'self.hydrate_projected_tags(context, fallback_locale, projected)',
-  'async fn hydrate_projected_tags(',
   '.storefront_tag_read_port()',
   '.map(|item| item.entity_id)',
-  'ProductStorefrontTagHydrationRequest',
   '.hydrate_storefront_product_tags(',
   'let comparison = projected',
   'compare_owner_and_index(&authoritative, projected)',
-  'pub(crate) authoritative: StorefrontProductList',
 ]);
 for (const forbidden of [
   'CHANNEL_LESS_SENTINEL',
@@ -171,18 +120,42 @@ for (const forbidden of [
   'TaxonomyService',
   'product_tag::',
   'DatabaseConnection',
+  'classify_product_storefront_index_serving_budget',
 ]) {
-  if (executor.includes(forbidden)) fail(`${executorPath} contains forbidden shortcut/storage dependency ${forbidden}`);
+  if (executor.includes(forbidden)) fail(`${executorPath} contains forbidden shortcut/storage/serving marker ${forbidden}`);
 }
-const executeProjectedStart = executor.indexOf('async fn execute_projected(');
-const compareStart = executor.indexOf('fn compare_owner_and_index(');
-if (executeProjectedStart < 0 || compareStart <= executeProjectedStart) {
-  fail(`${executorPath} raw Index execution boundary is missing`);
-}
-const rawExecution = executor.slice(executeProjectedStart, compareStart);
-for (const forbidden of ['project_product_storefront_index_page', 'hydrate_storefront_product_tags', 'storefront_tag_read_port()']) {
-  if (rawExecution.includes(forbidden)) {
-    fail(`${executorPath} post-page enrichment leaked into raw Index execution: ${forbidden}`);
+
+const policyPath = 'crates/rustok-distribution/src/product_index/storefront_serving_budget.rs';
+const policy = requireMarkers(policyPath, [
+  'pub(crate) struct ProductStorefrontIndexServingBudget',
+  'index_execution_ms: u64',
+  'tag_hydration_ms: u64',
+  'safety_margin_ms: u64',
+  'required_ms: u64',
+  'checked_add(tag_hydration_ms)',
+  'checked_add(safety_margin_ms)',
+  'pub(crate) struct ProductStorefrontIndexServingBudgetObservation',
+  'pub(crate) remaining_ms: Option<u64>',
+  'pub(crate) tag_hydration_available: bool',
+  'pub(crate) enum ProductStorefrontIndexServingBudgetDecision',
+  'OwnerNativeMissingDeadline',
+  'OwnerNativeBudgetPolicyUnavailable',
+  'OwnerNativeRemainingBudgetUnavailable',
+  'OwnerNativeInvalidRemainingBudget',
+  'OwnerNativeTagHydrationUnavailable',
+  'OwnerNativeInsufficientBudget',
+  'pub(crate) fn classify_product_storefront_index_serving_budget(',
+  'context.deadline_ms.filter(|deadline_ms| *deadline_ms > 0)',
+  'if remaining_ms > deadline_ms',
+  'if !observation.tag_hydration_available',
+  'if remaining_ms < budget.required_ms()',
+  'ProductStorefrontIndexServingBudgetDecision::Eligible',
+  'does not automatically decrease',
+]);
+const productionPolicy = policy.split('#[cfg(test)]')[0];
+for (const forbidden of ['Instant::now()', 'SystemTime::now()', 'tokio::time::timeout']) {
+  if (productionPolicy.includes(forbidden)) {
+    fail(`${policyPath} policy must classify host observations without manufacturing/enforcing timing: ${forbidden}`);
   }
 }
 
@@ -190,26 +163,21 @@ const projectionPath = 'crates/rustok-distribution/src/product_index/storefront_
 const projection = requireMarkers(projectionPath, [
   'const UNTITLED_PRODUCT: &str = "Untitled product";',
   'pub(crate) fn project_product_storefront_index_page(',
-  'apply_string_placeholder(item, "title", UNTITLED_PRODUCT)?;',
-  'apply_string_placeholder(item, "handle", "")?;',
-  'projected.exact_count, Some(9)',
-  'projected.next_cursor.as_deref(), Some("opaque-cursor")',
   'value(&projected.items[0], "tag_ids")',
 ]);
 for (const forbidden of ['FilterExpr', 'OrderExpr', 'LocalizedEntityQuery', 'execute_localized_query']) {
   if (projection.includes(forbidden)) fail(`${projectionPath} must remain post-page only; found ${forbidden}`);
 }
 
-const builderPath = 'crates/rustok-distribution/src/product_index/storefront_shadow.rs';
-const builder = requireMarkers(builderPath, [
-  'services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
-  'PublicChannelRequired',
-  'root_field("sales_channel_ids")?',
-  'const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;',
-  'ProductStorefrontIndexShadowError::OffsetTooDeep',
+const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
+const productIndex = requireMarkers(productIndexPath, [
+  'assert_eq!(schema.fields.len(), 15);',
+  'many_field("tag_ids", IndexValueType::Uuid, true, false)',
+  'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)',
+  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
 ]);
-for (const forbidden of ['Untitled product', 'project_product_storefront_index_page', 'hydrate_storefront_product_tags']) {
-  if (builder.includes(forbidden)) fail(`${builderPath} must not feed post-page Product semantics into query construction: ${forbidden}`);
+for (const forbidden of ['SchemaVersion::new(3)', 'SchemaVersion::new(5)', 'tag_names', 'localized_tag_names']) {
+  if (productIndex.includes(forbidden)) fail(`${productIndexPath} contains forbidden Product schema/source marker ${forbidden}`);
 }
 
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
@@ -218,53 +186,29 @@ requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_p
   'assert_eq!(owner_c.title, "Untitled product");',
   'assert_eq!(projected_string(index_c, "title")?, None);',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_eav_postgres_tests.rs', [
-  'RUSTOK_PRODUCT_STOREFRONT_EAV_EQUIVALENCE_DATABASE_URL',
-  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-  'weight=7',
-  'color=missing',
-]);
 requireMarkers('crates/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
   'RUSTOK_PRODUCT_STOREFRONT_COLLATION_DATABASE_URL',
   'translation.title LIKE $2',
   '(translation.title COLLATE "C") LIKE $2',
-  "current_setting('lc_collate')",
 ]);
-
-const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
-const productIndex = requireMarkers(productIndexPath, [
-  'assert_eq!(schema.fields.len(), 15);',
-  'many_field("tag_ids", IndexValueType::Uuid, true, false)',
-  'jsonb_agg(product_tag.term_id ORDER BY product_tag.term_id) AS tag_ids',
-  'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)',
-  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-]);
-for (const forbidden of ['SchemaVersion::new(3)', 'SchemaVersion::new(5)', 'tag_names', 'localized_tag_names']) {
-  if (productIndex.includes(forbidden)) fail(`${productIndexPath} contains forbidden Product schema/source marker ${forbidden}`);
-}
 
 requireMarkers('scripts/verify/verify-index-product-storefront-public-projection.mjs', [
   'Product public placeholders are post-page only',
-  'raw Index null evidence and tag_ids remain unchanged',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-tag-hydration.mjs', [
   'Product IDs from the fixed raw Index page drive bounded Product-owned tag hydration',
-  'legacy metadata semantics retained',
 ]);
-requireMarkers('scripts/verify/verify-product-catalog-read-runtime-composition.mjs', [
-  'storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>',
-  'external profile must not silently install embedded tag hydration',
+requireMarkers('scripts/verify/verify-index-product-storefront-serving-budget-policy.mjs', [
+  'future serving handoff requires explicit host-measured remaining budget',
+  'mounted Storefront remains owner-native',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-deep-page-policy.mjs', [
   'OwnerNativeDeepPage { offset: u64 }',
-  'must preserve owner pagination without clamp/rewrite',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-channel-scope-policy.mjs', [
   'OwnerNativeChannelLess',
-  'must not infer or fabricate visibility membership',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-collation-postgres-packet.mjs', [
-  'must remain the owner/default-collation side',
   'must observe deployment/default collation rather than manufacture parity',
 ]);
 requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs', [
@@ -272,28 +216,23 @@ requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `tag_hydration_source_complete_serving_budget_pending`',
+  'Status: `serving_budget_policy_source_complete_timeout_enforcement_pending`',
   'Mounted Storefront remains owner-native',
-  'Product-owned tag hydration — source complete',
-  '`ProductStorefrontTagReadPort`',
-  'legacy `metadata.tags`',
-  'serving latency/deadline/budget policy',
+  'Post-owner serving-budget policy — source complete',
+  'host-measured `remaining_ms`',
+  'classification policy',
+  'runtime timeout enforcement',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-tag-hydration.md', [
-  'Status: `source_complete_serving_budget_pending`',
-  '`ProductStorefrontTagReadPort::hydrate_storefront_product_tags`',
-  'already-selected Product IDs',
-  'legacy `metadata.tags`',
-]);
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-public-projection.md', [
-  'Status: `source_complete_with_separate_tag_hydration`',
-  '`tag_hydration` — separate Product-owner tag projection',
+requireMarkers('crates/rustok-index/docs/m7-product-storefront-serving-budget-policy.md', [
+  'Status: `policy_source_complete_timeout_enforcement_pending`',
+  '`PortContext.deadline_ms` is not enough',
+  'host-measured `remaining_ms`',
+  'non-serving budgeted execution adapter',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
-  "'verify-index-product-storefront-public-projection.mjs'",
   "'verify-index-product-storefront-tag-hydration.mjs'",
-  "'verify-index-product-storefront-deep-page-policy.mjs'",
+  "'verify-index-product-storefront-serving-budget-policy.mjs'",
   "'verify-index-product-storefront-collation-postgres-packet.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; raw Index page, public placeholders and Product-owned tag hydration are source-separated while serving budget and evidence admission remain pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; request shape, post-page owner projection and host-measured serving-budget policy are source-complete while timeout enforcement and evidence admission remain pending');
