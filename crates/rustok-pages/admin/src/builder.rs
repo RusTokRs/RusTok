@@ -93,6 +93,7 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
 
     fn provider_status(&self) -> Option<PageBuilderAdminProviderStatus> {
         self.provider_flags
+            .clone()
             .map(PageBuilderAdminProviderStatus::unobserved)
     }
 }
