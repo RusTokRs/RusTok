@@ -1,5 +1,6 @@
 mod artifact_integrity_audit;
 mod artifact_repair;
+mod builder_rollout;
 mod mutation;
 mod query;
 mod scenario_baseline;
@@ -11,6 +12,7 @@ use async_graphql::MergedObject;
 pub struct PagesQuery(
     query::PagesQuery,
     scenario_baseline::PageBuilderScenarioBaselineQuery,
+    builder_rollout::PageBuilderRolloutQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -29,6 +31,7 @@ pub use artifact_repair::{
     ActivateGqlRebuiltPageArtifactInput, GqlActivateRebuiltPageArtifactResult,
     GqlRebuildPageArtifactResult, RebuildGqlPageArtifactInput,
 };
+pub use builder_rollout::GqlPageBuilderRolloutSnapshot;
 pub use scenario_baseline::{
     GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioReleaseStatus,
     SaveGqlPageBuilderScenarioBaselineInput,
