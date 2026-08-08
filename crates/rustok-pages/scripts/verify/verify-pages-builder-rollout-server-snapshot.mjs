@@ -53,6 +53,7 @@ for (const marker of [
   'nested_bool(settings, &["builder", "preview", "enabled"])',
   'nested_bool(settings, &["builder", "properties", "enabled"])',
   'nested_bool(settings, &["builder", "publish", "enabled"])',
+  "current.as_bool().ok_or_else",
   "flags.validate()?",
   "ensure_trusted_tenant(",
   "auth.tenant_id != tenant.id",
@@ -67,6 +68,7 @@ for (const marker of [
   "declared_profiles_normalize_to_their_exact_flags",
   "BuilderToggleProfile::ALL",
   "omitted_builder_settings_preserve_backward_compatible_all_on_defaults",
+  "malformed_setting_types_fail_closed",
   "invalid_flag_combinations_fail_closed",
 ]) need(sources.adapter, marker, "trusted rollout server adapter");
 
@@ -108,6 +110,7 @@ for (const [key, expected] of Object.entries({
   raw_settings_are_not_returned: true,
   only_builder_capability_flags_are_returned: true,
   omitted_builder_keys_default_to_all_on_for_backward_compatibility: true,
+  malformed_setting_types_fail_closed: true,
   invalid_flag_combinations_fail_closed: true,
   all_four_declared_profiles_have_source_tests: true,
   browser_supplied_flags_accepted: false,
