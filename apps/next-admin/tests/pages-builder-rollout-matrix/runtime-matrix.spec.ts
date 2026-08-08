@@ -1,6 +1,5 @@
 import {
   test,
-  type APIResponse,
   type BrowserContext,
   type Page,
   type Request,
@@ -26,6 +25,7 @@ const contractPath =
 const contract = JSON.parse(
   readFileSync(path.join(repoRoot, contractPath), "utf8"),
 ) as MatrixContract;
+
 const graphqlPath = "/api/graphql";
 const capabilityPath = "/api/fn/pages/page-builder-capability";
 const providerSelector = "[data-fly-provider-control-state]";
@@ -64,13 +64,10 @@ type MatrixContract = {
   module: string;
   packet: string;
   status: string;
-  predecessor: {
-    environment: string;
-    format: string;
-    status: string;
-  };
+  predecessor: { environment: string; format: string; status: string };
   fixtures: {
-    base_origin_environment: string;
+    api_origin_environment: string;
+    admin_origin_environment: string;
     operator_storage_state_environment: string;
     tenant_slug_environment: string;
     page_id_environment: string;
@@ -87,26 +84,19 @@ type MatrixContract = {
   required_source_files: string[];
 };
 
-type FileRecord = {
-  path: string;
-  bytes: number;
-  sha256: string;
-};
-
+type FileRecord = { path: string; bytes: number; sha256: string };
 type GraphqlResult = {
   status: number;
   responseBytes: number;
   responseSha256: string;
   data: Record<string, unknown>;
 };
-
 type PreviewTemplate = {
   url: string;
   method: string;
   body: Buffer;
   headers: Record<string, string>;
 };
-
 type PreviewObservation = {
   status: number;
   body_bytes: number;
@@ -144,12 +134,12 @@ function optionalEnvironment(name: string, maximumLength = 16_384): string | nul
   return value;
 }
 
-function requireOrigin(value: string): string {
+function requireOrigin(value: string, label: string): string {
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    fail("matrix base origin must be an absolute HTTP(S) origin");
+    fail(`${label} must be an absolute HTTP(S) origin`);
   }
   if (
     !["http:", "https:"].includes(parsed.protocol) ||
@@ -159,7 +149,7 @@ function requireOrigin(value: string): string {
     parsed.hash ||
     !["", "/"].includes(parsed.pathname)
   ) {
-    fail("matrix base origin must be credential-free and contain no path/query/fragment");
+    fail(`${label} must be credential-free and contain no path/query/fragment`);
   }
   return parsed.origin;
 }
@@ -331,7 +321,8 @@ function commonHeaders(tenantSlug: string): {
 function validatePredecessor(
   document: Record<string, unknown>,
   head: string,
-  origin: string,
+  apiOrigin: string,
+  adminOrigin: string,
 ): string {
   if (
     document.format !== contract.predecessor.format ||
@@ -341,8 +332,11 @@ function validatePredecessor(
     fail("browser predecessor identity/status/source commit drifted");
   }
   const target = document.target as Record<string, unknown> | undefined;
-  if (target?.origin_sha256 !== sha256(origin)) {
-    fail("matrix origin does not match browser predecessor origin hash");
+  if (target?.origin_sha256 !== sha256(apiOrigin)) {
+    fail("matrix API origin does not match browser predecessor origin hash");
+  }
+  if (target?.standalone_origin_sha256 !== sha256(adminOrigin)) {
+    fail("matrix admin origin does not match browser predecessor standalone-origin hash");
   }
   const deploymentDigest = target?.deployment_image_digest;
   if (
@@ -424,11 +418,12 @@ function withProfile(
 
 async function graphql(
   context: BrowserContext,
+  apiOrigin: string,
   query: string,
   variables: Record<string, unknown>,
   label: string,
 ): Promise<GraphqlResult> {
-  const response = await context.request.post(graphqlPath, {
+  const response = await context.request.post(`${apiOrigin}${graphqlPath}`, {
     data: { query, variables },
     failOnStatusCode: false,
   });
@@ -444,22 +439,21 @@ async function graphql(
   if (Array.isArray(envelope.errors) && envelope.errors.length > 0) {
     fail(`${label} returned GraphQL errors`);
   }
-  const data = objectValue(envelope.data, `${label} data`);
   return {
     status: response.status(),
     responseBytes: body.length,
     responseSha256: sha256(body),
-    data,
+    data: objectValue(envelope.data, `${label} data`),
   };
 }
 
-async function loadPagesModule(context: BrowserContext): Promise<{
-  settings: Record<string, unknown>;
-  rawSettings: string;
-  read: GraphqlResult;
-}> {
+async function loadPagesModule(
+  context: BrowserContext,
+  apiOrigin: string,
+): Promise<{ settings: Record<string, unknown>; read: GraphqlResult }> {
   const read = await graphql(
     context,
+    apiOrigin,
     tenantModulesQuery,
     { limit: 100 },
     "tenantModules rollout snapshot",
@@ -475,20 +469,20 @@ async function loadPagesModule(context: BrowserContext): Promise<{
   if (pages === undefined || pages.enabled !== true) {
     fail("Pages module must be enabled for rollout matrix execution");
   }
-  if (typeof pages.settings !== "string") fail("Pages module settings are missing");
   return {
     settings: parseSettings(pages.settings, "Pages module settings"),
-    rawSettings: pages.settings,
     read,
   };
 }
 
 async function writePagesSettings(
   context: BrowserContext,
+  apiOrigin: string,
   settings: Record<string, unknown>,
 ): Promise<GraphqlResult> {
   const result = await graphql(
     context,
+    apiOrigin,
     updateSettingsMutation,
     { moduleSlug: "pages", settings: JSON.stringify(settings) },
     "updateModuleSettings pages",
@@ -506,10 +500,17 @@ async function writePagesSettings(
 
 async function readRolloutSnapshot(
   context: BrowserContext,
+  apiOrigin: string,
   tenantSlug: string,
   profile: MatrixProfile,
 ): Promise<GraphqlResult> {
-  const result = await graphql(context, rolloutSnapshotQuery, {}, "pageBuilderRolloutSnapshot");
+  const result = await graphql(
+    context,
+    apiOrigin,
+    rolloutSnapshotQuery,
+    {},
+    "pageBuilderRolloutSnapshot",
+  );
   const snapshot = objectValue(
     result.data.pageBuilderRolloutSnapshot,
     "Page Builder rollout snapshot",
@@ -528,8 +529,18 @@ async function readRolloutSnapshot(
   return result;
 }
 
-async function assertPagesReads(context: BrowserContext, pageId: string): Promise<GraphqlResult> {
-  const result = await graphql(context, pagesReadsQuery, { id: pageId }, "Pages owned reads");
+async function assertPagesReads(
+  context: BrowserContext,
+  apiOrigin: string,
+  pageId: string,
+): Promise<GraphqlResult> {
+  const result = await graphql(
+    context,
+    apiOrigin,
+    pagesReadsQuery,
+    { id: pageId },
+    "Pages owned reads",
+  );
   const list = objectValue(result.data.pages, "Pages list read");
   if (typeof list.total !== "number" || !Array.isArray(list.items)) {
     fail("Pages list read did not return the expected owner shape");
@@ -571,8 +582,7 @@ async function assertUiProfile(page: Page, profile: MatrixProfile): Promise<{
   if (previewEnabled !== (profile.preview_ui === "enabled")) {
     fail(`preview UI does not match profile ${profile.id}`);
   }
-  const previewButton = preview.locator("button").first();
-  if ((await previewButton.isDisabled()) !== !previewEnabled) {
+  if ((await preview.locator("button").first().isDisabled()) !== !previewEnabled) {
     fail(`preview button disabled state does not match profile ${profile.id}`);
   }
 
@@ -593,23 +603,32 @@ async function assertUiProfile(page: Page, profile: MatrixProfile): Promise<{
     return disabled ? "disabled" : "enabled";
   };
 
-  const properties = await capabilityState(
-    propertiesFieldsetSelector,
-    profile.flags.builder_enabled && profile.flags.properties_enabled,
-    "properties",
-  );
-  const publish = await capabilityState(
-    publishFieldsetSelector,
-    profile.flags.builder_enabled && profile.flags.publish_enabled,
-    "publish",
-  );
   return {
     provider_state: providerState,
     provider_health: providerHealth,
     preview_enabled: previewEnabled,
-    properties,
-    publish,
+    properties: await capabilityState(
+      propertiesFieldsetSelector,
+      profile.flags.builder_enabled && profile.flags.properties_enabled,
+      "properties",
+    ),
+    publish: await capabilityState(
+      publishFieldsetSelector,
+      profile.flags.builder_enabled && profile.flags.publish_enabled,
+      "publish",
+    ),
   };
+}
+
+async function captureReplayHeaders(request: Request): Promise<Record<string, string>> {
+  const original = await request.allHeaders();
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(original)) {
+    const lower = name.toLowerCase();
+    if (["host", "content-length", "connection", "cookie"].includes(lower)) continue;
+    headers[lower] = value;
+  }
+  return headers;
 }
 
 async function allowedPreview(
@@ -642,16 +661,11 @@ async function allowedPreview(
   if (captureTemplate) {
     const body = request.postDataBuffer();
     if (body === null || body.length === 0) fail("server preview request body is unavailable");
-    const headers = request.headers();
-    const contentType = headers["content-type"];
-    if (typeof contentType !== "string" || contentType.length === 0) {
-      fail("server preview request content type is unavailable");
-    }
     template = {
       url: request.url(),
       method: request.method(),
       body,
-      headers: { "content-type": contentType },
+      headers: await captureReplayHeaders(request),
     };
   }
   return {
@@ -676,8 +690,7 @@ async function deniedPreview(
     failOnStatusCode: false,
   });
   const body = await response.body();
-  const text = body.toString("utf8");
-  if (!/capability disabled: preview/iu.test(text)) {
+  if (!/capability disabled: preview/iu.test(body.toString("utf8"))) {
     fail("disabled preview profile did not return the typed capability-disabled marker");
   }
   return {
@@ -720,9 +733,7 @@ async function deniedBrowserIntent(
     },
   );
   const body = await response.body();
-  if (response.status() !== 403) {
-    fail(`${intent} rollout preflight did not return HTTP 403`);
-  }
+  if (response.status() !== 403) fail(`${intent} rollout preflight did not return HTTP 403`);
   let parsed: unknown;
   try {
     parsed = JSON.parse(body.toString("utf8"));
@@ -751,10 +762,22 @@ async function deniedBrowserIntent(
 }
 
 function validateProfiles(): MatrixProfile[] {
-  const expectedIds = ["all_on", "publish_off", "preview_off", "builder_off"];
-  const ids = contract.profiles.map((profile) => profile.id);
-  if (JSON.stringify(ids) !== JSON.stringify(expectedIds)) {
-    fail("matrix contract profile order/identity drifted");
+  const expected = [
+    ["all_on", true, true, true, true, "unobserved"],
+    ["publish_off", true, true, true, false, "degraded"],
+    ["preview_off", true, false, true, false, "degraded"],
+    ["builder_off", false, false, false, false, "unavailable"],
+  ];
+  const actual = contract.profiles.map((profile) => [
+    profile.id,
+    profile.flags.builder_enabled,
+    profile.flags.preview_enabled,
+    profile.flags.properties_enabled,
+    profile.flags.publish_enabled,
+    profile.provider_state,
+  ]);
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    fail("matrix contract profile order/identity/flags drifted");
   }
   return contract.profiles;
 }
@@ -782,9 +805,15 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
 
   const head = currentCommit();
   const profiles = validateProfiles();
-  const baseOrigin = requireOrigin(
-    requiredEnvironment(contract.fixtures.base_origin_environment),
+  const apiOrigin = requireOrigin(
+    requiredEnvironment(contract.fixtures.api_origin_environment),
+    "matrix API origin",
   );
+  const adminOrigin = requireOrigin(
+    requiredEnvironment(contract.fixtures.admin_origin_environment),
+    "matrix standalone admin origin",
+  );
+  if (apiOrigin === adminOrigin) fail("matrix API and standalone admin origins must be distinct");
   const tenantSlug = requireTenantSlug(
     requiredEnvironment(contract.fixtures.tenant_slug_environment),
   );
@@ -801,13 +830,18 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
     requiredEnvironment(contract.predecessor.environment),
     "Pages inline-edit browser predecessor",
   );
-  const deploymentDigest = validatePredecessor(predecessor.document, head, baseOrigin);
+  const deploymentDigest = validatePredecessor(
+    predecessor.document,
+    head,
+    apiOrigin,
+    adminOrigin,
+  );
   const shared = commonHeaders(tenantSlug);
   const output = outputPath();
   rmSync(output, { force: true });
 
   const context = await browser.newContext({
-    baseURL: baseOrigin,
+    baseURL: adminOrigin,
     storageState: storage.path,
     extraHTTPHeaders: shared.headers,
   });
@@ -819,87 +853,90 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
   let restoreVerified = false;
 
   try {
-    const original = await loadPagesModule(context);
+    const original = await loadPagesModule(context, apiOrigin);
     originalSettings = original.settings;
     originalSettingsHash = sha256(canonicalJson(original.settings));
 
     for (const profile of profiles) {
       const profileSettings = withProfile(original.settings, profile.flags);
-      const settingsWrite = await writePagesSettings(context, profileSettings);
-      const serverSnapshot = await readRolloutSnapshot(context, tenantSlug, profile);
-      const reads = await assertPagesReads(context, pageId);
+      const settingsWrite = await writePagesSettings(context, apiOrigin, profileSettings);
+      const serverSnapshot = await readRolloutSnapshot(
+        context,
+        apiOrigin,
+        tenantSlug,
+        profile,
+      );
+      const reads = await assertPagesReads(context, apiOrigin, pageId);
 
       const page = await context.newPage();
-      await settleAdminPage(page, adminRoute);
-      const ui = await assertUiProfile(page, profile);
+      try {
+        await settleAdminPage(page, adminRoute);
+        const ui = await assertUiProfile(page, profile);
 
-      let preview: PreviewObservation;
-      if (profile.preview_ssr === "pass") {
-        const allowed = await allowedPreview(page, profile.id === "all_on");
-        preview = allowed.observation;
-        if (allowed.template !== null) previewTemplate = allowed.template;
-      } else {
-        if (previewTemplate === null) {
-          fail("disabled preview profile has no captured all_on request template");
+        let preview: PreviewObservation;
+        if (profile.preview_ssr === "pass") {
+          const allowed = await allowedPreview(page, profile.id === "all_on");
+          preview = allowed.observation;
+          if (allowed.template !== null) previewTemplate = allowed.template;
+        } else {
+          if (previewTemplate === null) {
+            fail("disabled preview profile has no captured all_on request template");
+          }
+          preview = await deniedPreview(context, previewTemplate);
         }
-        preview = await deniedPreview(context, previewTemplate);
-      }
 
-      let publishDry: Record<string, unknown>;
-      if (profile.id === "all_on") {
-        if (ui.publish !== "enabled") fail("all_on publish capability is not enabled in UI");
-        publishDry = {
-          ui_capability_enabled: true,
-          mutating_save_request_sent: false,
+        let publishDry: Record<string, unknown>;
+        if (profile.id === "all_on") {
+          if (ui.publish !== "enabled") fail("all_on publish capability is not enabled in UI");
+          publishDry = { ui_capability_enabled: true, mutating_save_request_sent: false };
+        } else {
+          publishDry = await deniedBrowserIntent(context, pageId, "save", "publish");
+        }
+
+        const propertiesDenial =
+          profile.id === "builder_off"
+            ? await deniedBrowserIntent(context, pageId, "rename_page", "properties")
+            : null;
+
+        profileObservations[profile.id] = {
+          flags: profile.flags,
+          settings_write: responseRecord(settingsWrite),
+          server_snapshot: {
+            ...responseRecord(serverSnapshot),
+            tenant_match: true,
+            flags_match: true,
+            provider_health_observed: false,
+          },
+          pages_owned_reads: {
+            ...responseRecord(reads),
+            list_read: true,
+            document_read: true,
+          },
+          ui,
+          preview_ssr: preview,
+          publish_dry: publishDry,
+          properties_denial: propertiesDenial,
         };
-      } else {
-        publishDry = await deniedBrowserIntent(context, pageId, "save", "publish");
+      } finally {
+        await page.close();
       }
-
-      let propertiesDenial: Record<string, unknown> | null = null;
-      if (profile.id === "builder_off") {
-        propertiesDenial = await deniedBrowserIntent(
-          context,
-          pageId,
-          "rename_page",
-          "properties",
-        );
-      }
-
-      profileObservations[profile.id] = {
-        flags: profile.flags,
-        settings_write: responseRecord(settingsWrite),
-        server_snapshot: {
-          ...responseRecord(serverSnapshot),
-          tenant_match: true,
-          flags_match: true,
-          provider_health_observed: false,
-        },
-        pages_owned_reads: {
-          ...responseRecord(reads),
-          list_read: true,
-          document_read: true,
-        },
-        ui,
-        preview_ssr: preview,
-        publish_dry: publishDry,
-        properties_denial: propertiesDenial,
-      };
-      await page.close();
     }
   } finally {
-    if (originalSettings !== null) {
-      await writePagesSettings(context, originalSettings);
-      const restored = await loadPagesModule(context);
-      if (canonicalJson(restored.settings) !== canonicalJson(originalSettings)) {
-        fail("Pages module settings were not semantically restored after matrix execution");
+    try {
+      if (originalSettings !== null) {
+        await writePagesSettings(context, apiOrigin, originalSettings);
+        const restored = await loadPagesModule(context, apiOrigin);
+        if (canonicalJson(restored.settings) !== canonicalJson(originalSettings)) {
+          fail("Pages module settings were not semantically restored after matrix execution");
+        }
+        if (sha256(canonicalJson(restored.settings)) !== originalSettingsHash) {
+          fail("restored Pages settings hash does not match the original snapshot");
+        }
+        restoreVerified = true;
       }
-      if (sha256(canonicalJson(restored.settings)) !== originalSettingsHash) {
-        fail("restored Pages settings hash does not match the original snapshot");
-      }
-      restoreVerified = true;
+    } finally {
+      await context.close();
     }
-    await context.close();
   }
 
   if (!restoreVerified || originalSettings === null) {
@@ -929,7 +966,8 @@ test("Pages persisted rollout profiles agree across owner, UI, SSR, intents and 
       common_header_environment_names: shared.environmentNames,
     },
     target: {
-      origin_sha256: sha256(baseOrigin),
+      api_origin_sha256: sha256(apiOrigin),
+      admin_origin_sha256: sha256(adminOrigin),
       deployment_image_digest: deploymentDigest,
     },
     identity_sha256: {
