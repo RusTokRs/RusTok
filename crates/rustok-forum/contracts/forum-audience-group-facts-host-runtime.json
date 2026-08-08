@@ -6,6 +6,7 @@
   "downstream_trust_task": "FORUM-26B",
   "scope": "Server-owned exact requested group membership facts adapter for authenticated Forum audience evaluation, wrapped downstream by authoritative Forum trust facts",
   "adapter_file": "apps/server/src/services/forum_audience_group_facts.rs",
+  "owner_backed_test_file": "apps/server/src/services/forum_audience_group_facts/owner_backed_tests.rs",
   "services_file": "apps/server/src/services/mod.rs",
   "runtime_composition_file": "apps/server/src/services/module_event_dispatcher.rs",
   "forum_audience_owner_file": "crates/rustok-forum/src/audience.rs",
@@ -57,17 +58,21 @@
     "runtime_extension_publication": true,
     "publication_before_notification_source_materialization": true,
     "notification_source_factory_consumption": true,
-    "inline_contract_tests": true
+    "inline_contract_tests": true,
+    "owner_backed_sqlite_effective_membership_source": true,
+    "owner_backed_postgres_effective_membership_source": true
   },
   "not_delivered": [
     "profile privacy and blocking policy",
     "final notification creation and delivery authorization",
     "initially non-public topic-created descriptor materialization",
     "search index SEO and deep-link migration",
-    "PostgreSQL and cross-consumer runtime evidence"
+    "executed PostgreSQL and cross-consumer runtime evidence"
   ],
   "verification": {
     "commands": [
+      "cargo test -p rustok-server --features mod-forum,mod-groups forum_group_facts_follow_groups_owner_clock_sqlite -- --nocapture",
+      "RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://...' cargo test -p rustok-server --features mod-forum,mod-groups forum_group_facts_follow_groups_owner_clock_postgres -- --ignored --nocapture",
       "cargo test -p rustok-server --features mod-forum,mod-groups,mod-notifications forum_audience_group_facts -- --nocapture",
       "cargo test -p rustok-server --features mod-forum,mod-groups,mod-notifications host_runtime_extensions_register_admin_mutation_providers -- --nocapture",
       "cargo test -p rustok-forum --test user_trust_audience_facts_sqlite -- --nocapture",
