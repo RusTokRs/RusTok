@@ -231,19 +231,27 @@ mutation {{
     let graphql_en = &graphql_en["upsertGroupTranslation"];
     assert_eq!(graphql_en["created"].as_bool(), Some(native_en.created));
     assert_eq!(graphql_en["groupVersion"].as_u64(), Some(native_en.group_version));
-    assert_eq!(graphql_en["translation"]["locale"], native_en.translation.locale);
-    assert_eq!(graphql_en["translation"]["title"], native_en.translation.title);
     assert_eq!(
-        graphql_en["translation"]["summary"],
+        graphql_en["translation"]["locale"].as_str(),
+        Some(native_en.translation.locale.as_str())
+    );
+    assert_eq!(
+        graphql_en["translation"]["title"].as_str(),
+        Some(native_en.translation.title.as_str())
+    );
+    assert_eq!(
+        graphql_en["translation"]["summary"].as_str(),
         native_en.translation.summary.as_deref()
     );
     assert_eq!(
-        graphql_en["translation"]["body"],
+        graphql_en["translation"]["body"].as_str(),
         native_en.translation.body.as_deref()
     );
     assert_eq!(
-        graphql_en["translation"]["groupId"],
-        graphql_group_id.to_string()
+        graphql_en["translation"]["groupId"]
+            .as_str()
+            .map(str::to_owned),
+        Some(graphql_group_id.to_string())
     );
 
     let native_fr = GroupLocalizationCommandPort::upsert_group_translation(
@@ -286,11 +294,17 @@ mutation {{
     let graphql_fr = &graphql_fr["upsertGroupTranslation"];
     assert_eq!(graphql_fr["created"].as_bool(), Some(native_fr.created));
     assert_eq!(graphql_fr["groupVersion"].as_u64(), Some(native_fr.group_version));
-    assert_eq!(graphql_fr["translation"]["locale"], native_fr.translation.locale);
-    assert_eq!(graphql_fr["translation"]["title"], native_fr.translation.title);
+    assert_eq!(
+        graphql_fr["translation"]["locale"].as_str(),
+        Some(native_fr.translation.locale.as_str())
+    );
+    assert_eq!(
+        graphql_fr["translation"]["title"].as_str(),
+        Some(native_fr.translation.title.as_str())
+    );
     assert!(graphql_fr["translation"]["summary"].is_null());
     assert_eq!(
-        graphql_fr["translation"]["body"],
+        graphql_fr["translation"]["body"].as_str(),
         native_fr.translation.body.as_deref()
     );
 
@@ -323,10 +337,10 @@ query {{
         .expect("GraphQL localization list should be an array");
     assert_eq!(graphql_list.len(), native_list.len());
     for (graphql_item, native_item) in graphql_list.iter().zip(native_list.iter()) {
-        assert_eq!(graphql_item["locale"], native_item.locale);
-        assert_eq!(graphql_item["title"], native_item.title);
-        assert_eq!(graphql_item["summary"], native_item.summary.as_deref());
-        assert_eq!(graphql_item["body"], native_item.body.as_deref());
+        assert_eq!(graphql_item["locale"].as_str(), Some(native_item.locale.as_str()));
+        assert_eq!(graphql_item["title"].as_str(), Some(native_item.title.as_str()));
+        assert_eq!(graphql_item["summary"].as_str(), native_item.summary.as_deref());
+        assert_eq!(graphql_item["body"].as_str(), native_item.body.as_deref());
     }
 
     let native_delete = GroupLocalizationCommandPort::delete_group_translation(
@@ -359,8 +373,14 @@ mutation {{
         .await,
     );
     let graphql_delete = &graphql_delete["deleteGroupTranslation"];
-    assert_eq!(graphql_delete["groupId"], graphql_group_id.to_string());
-    assert_eq!(graphql_delete["locale"], native_delete.locale);
+    assert_eq!(
+        graphql_delete["groupId"].as_str().map(str::to_owned),
+        Some(graphql_group_id.to_string())
+    );
+    assert_eq!(
+        graphql_delete["locale"].as_str(),
+        Some(native_delete.locale.as_str())
+    );
     assert_eq!(
         graphql_delete["groupVersion"].as_u64(),
         Some(native_delete.group_version)
@@ -435,7 +455,7 @@ query {{
         .as_array()
         .expect("final GraphQL localization list should be an array");
     assert_eq!(graphql_final.len(), 1);
-    assert_eq!(graphql_final[0]["locale"], "en");
+    assert_eq!(graphql_final[0]["locale"].as_str(), Some("en"));
 
     drop(schema);
     drop(native);
