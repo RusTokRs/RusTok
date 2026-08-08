@@ -253,12 +253,26 @@ These are source-contract defects, not verification-only tasks.
   status/vendor/search filters, created-at-desc ordering, clamped pagination,
   `Untitled product`, normalized/default shipping-profile fallback, tags, telemetry,
   response projection, and shared stable Product GraphQL public errors.
-- [ ] Cut legacy mounted storefront GraphQL `storefrontProduct` / `storefrontProducts`,
-  remaining Product schema writes, REST delete/publish/unpublish lifecycle commands,
-  and remaining GraphQL Product lifecycle operations over to host-composed Product owner
-  ports. Direct Product entities, `CatalogService`, and remaining write-side
-  `ProductCatalogSchemaService` usage remain explicit source debt; repeatable lifecycle
-  commands need an explicit caller idempotency contract before cutover.
+- [x] Cut mounted legacy storefront GraphQL `storefrontProduct` / `storefrontProducts`
+  to host-composed Product read capabilities while preserving storefront admission,
+  current tenant, id-over-handle detail semantics, locale/channel visibility, public
+  inventory, legacy filters/order/pagination, title/shipping fallback, tags, telemetry,
+  and stable public errors.
+- [x] Cut mounted admin REST Product delete/publish/unpublish lifecycle commands to the
+  host-composed Product command runtime with required caller `Idempotency-Key`, scoped
+  command identity, bounded context, unchanged permissions/responses, and stable owner
+  errors.
+- [x] Cut mounted GraphQL Product create/update/publish/delete lifecycle execution to
+  the host-selected `ProductCatalogCommandRuntime` / `ProductCatalogCommandPort`, keep
+  create/update compatibility validation and public error identities, and publish an
+  optional explicit `idempotencyKey`; omitted keys use a logged one-request compatibility
+  identity and do not claim replay semantics.
+- [ ] Teach Product Admin FFA lifecycle commands to retain one GraphQL caller
+  idempotency key across explicit retries, then make mounted GraphQL `idempotencyKey`
+  mandatory without breaking current UI callers.
+- [ ] Cut remaining Product schema writes away from direct
+  `ProductCatalogSchemaService` construction through typed Product owner write
+  capabilities with explicit write idempotency semantics.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -656,6 +670,8 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - [ ] `node scripts/verify/verify-commerce-marketplace-financial-capability.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-command-port.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-rest-lifecycle-command-cutover.mjs`
+- [ ] `node scripts/verify/verify-commerce-product-graphql-lifecycle-command-cutover.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-detail-read.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-list-read.mjs`
 - [ ] `node scripts/verify/verify-commerce-product-admin-graphql-read.mjs`
@@ -693,10 +709,11 @@ Source inspection is not execution evidence.
   mutation, payment, or fulfillment ownership; unmounted admin compatibility GET
   handlers remain explicit source debt.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, order-read,
-  marketplace-financial topology, Product command-port, Product admin-detail read,
-  Product admin-list read, Product admin-GraphQL read, Product storefront-GraphQL read,
-  and Product schema-directory read static guards against a repository checkout and
-  retain their output.
+  marketplace-financial topology, Product command-port, Product REST lifecycle,
+  Product GraphQL lifecycle, Product admin-detail read, Product admin-list read,
+  Product admin-GraphQL read, Product storefront-GraphQL read, and Product
+  schema-directory read static guards against a repository checkout and retain their
+  output.
 
 ### Compile/tests
 
@@ -868,26 +885,24 @@ Source inspection is not execution evidence.
   closed before capture when marketplace lines reach a base-only checkout.
 - [x] Publish and host-compose Product catalog command ports, then cut mounted admin
   REST product create/update away from `CatalogService` with payload-bound write
-  identity and stable public error mapping; lifecycle/read/GraphQL cutover remains open.
+  identity and stable public error mapping.
 - [x] Cut mounted admin REST Product detail over to the host-selected Product read port
-  while preserving locale fallback, request context, permissions, and public envelope;
-  admin list and GraphQL Product reads remain separate source debt.
+  while preserving locale fallback, request context, permissions, and public envelope.
 - [x] Cut mounted admin REST Product list over to the optional host-selected Product
   read-port capability while preserving legacy filters, ordering, pagination, locale
   fallback, empty-title/default-shipping envelope, and source compatibility for existing
-  Product read-port adapters; GraphQL catalog and lifecycle cutover remain open.
+  Product read-port adapters.
 - [x] Cut mounted admin GraphQL Product catalog reads to the host-selected Product read
   runtime/port with authenticated actor, request channel/locale context, bounded deadline,
   existing filter/pagination semantics, unchanged response projection, and safe stable
-  public owner errors; storefront catalog and lifecycle/schema cutover remain open.
+  public owner errors.
 - [x] Publish the optional filtered storefront Product read capability and cut mounted
   storefront GraphQL catalog reads to the host-selected Product runtime/port without
   changing the existing published-list request, filter/pagination/channel semantics, or
-  GraphQL projection; Product lifecycle/schema cutover remains open.
+  GraphQL projection.
 - [x] Publish the optional Product schema-directory read capability on the host-selected
   Product read runtime and cut `productAttributes`, `catalogCategories`, and
-  `productAttributeSchemas` away from direct `ProductCatalogSchemaService` construction;
-  Product schema writes and lifecycle operations remain open.
+  `productAttributeSchemas` away from direct `ProductCatalogSchemaService` construction.
 - [x] Cut mounted `productEffectiveForm` to the host-selected Product schema read port,
   preserving tenant/permission/actor/channel/locale/deadline context and moving aggregate
   reconstruction plus invariant handling back behind the Product owner boundary.
@@ -901,8 +916,15 @@ Source inspection is not execution evidence.
 - [x] Publish the optional legacy admin Product list compatibility capability and cut
   mounted legacy admin GraphQL `product` / `products` to the host-selected Product read
   runtime while preserving legacy detail/list admission, locale, filtering, ordering,
-  pagination, title/shipping fallback, tags, telemetry, projection, and stable errors;
-  legacy storefront Product reads remain separate source debt.
+  pagination, title/shipping fallback, tags, telemetry, projection, and stable errors.
+- [x] Cut mounted legacy storefront Product detail/list reads to host-selected Product
+  capabilities with lifecycle/channel/inventory/localization and legacy list parity.
+- [x] Cut mounted REST Product delete/publish/unpublish lifecycle commands to the
+  host-composed Product command runtime with required caller idempotency identity.
+- [x] Cut mounted GraphQL Product create/update/publish/delete execution to the
+  host-selected Product command runtime, preserve lifecycle public-error identities,
+  and expose optional explicit caller idempotency while retaining a logged one-request
+  compatibility path for current callers; mandatory FFA retry identity remains open.
 
 ## Change rules
 

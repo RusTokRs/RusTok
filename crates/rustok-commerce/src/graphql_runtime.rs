@@ -13,7 +13,7 @@ use rustok_fulfillment::{
 };
 use rustok_order::{OrderReadPort, in_process_order_read_port};
 use rustok_payment::providers::PaymentProviderRegistry;
-use rustok_product::ProductCatalogReadRuntime;
+use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogReadRuntime};
 use sea_orm::DatabaseConnection;
 
 /// Host-selected shipping-option read ports used by mounted commerce GraphQL resolvers.
@@ -185,14 +185,15 @@ tokio::task_local! {
     static CURRENT_COMMERCE_ORDER_READ_RUNTIME: CommerceOrderReadRuntime;
     static CURRENT_COMMERCE_ORDER_READ_CALL_CONTEXT: CommerceOrderReadCallContext;
     static CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME: ProductCatalogReadRuntime;
+    static CURRENT_COMMERCE_PRODUCT_CATALOG_COMMAND_RUNTIME: ProductCatalogCommandRuntime;
 }
 
 /// Resolver-scoped bridge from schema runtime data to private compatibility facades.
 ///
 /// The mounted extension carries shipping-option, fulfillment-lifecycle, order, and Product catalog
-/// owner ports plus validated order actor/channel/locale and fulfillment public-channel facts so
-/// every included Commerce resolver uses host-selected adapters and request-owned context for the
-/// current async task.
+/// owner read/command ports plus validated order actor/channel/locale and fulfillment public-channel
+/// facts so every included Commerce resolver uses host-selected adapters and request-owned context
+/// for the current async task.
 #[derive(Default)]
 pub struct CommerceShippingOptionReadScope;
 
@@ -231,7 +232,10 @@ impl Extension for CommerceShippingOptionReadScopeExtension {
                                 runtime_data.order_read_runtime(),
                                 CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME.scope(
                                     runtime_data.product_catalog_read_runtime(),
-                                    next.run(ctx, info),
+                                    CURRENT_COMMERCE_PRODUCT_CATALOG_COMMAND_RUNTIME.scope(
+                                        runtime_data.product_catalog_command_runtime(),
+                                        next.run(ctx, info),
+                                    ),
                                 ),
                             ),
                         ),
@@ -289,12 +293,21 @@ pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope(
         .unwrap_or_else(|_| ProductCatalogReadRuntime::in_process(db, event_bus))
 }
 
+pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
+    db: DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
+) -> ProductCatalogCommandRuntime {
+    CURRENT_COMMERCE_PRODUCT_CATALOG_COMMAND_RUNTIME
+        .try_with(Clone::clone)
+        .unwrap_or_else(|_| ProductCatalogCommandRuntime::in_process(db, event_bus))
+}
+
 /// Provider registries and host-selectable ports available to every commerce GraphQL resolver.
 ///
 /// Hosts supply composed capabilities through `HostRuntimeContext`. The built-in manual provider
 /// registries remain deterministic fallbacks. Mounted shipping-option, fulfillment-lifecycle,
-/// Product catalog, and order reads consume host-selected runtime data. Directly embedded
-/// compatibility schemas retain explicit in-process read fallbacks.
+/// Product catalog reads/commands, and order reads consume host-selected runtime data. Directly
+/// embedded compatibility schemas retain explicit in-process owner-runtime fallbacks.
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
@@ -305,6 +318,7 @@ pub struct CommerceGraphqlRuntimeData {
     fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: CommerceOrderReadRuntime,
     product_catalog_read_runtime: ProductCatalogReadRuntime,
+    product_catalog_command_runtime: ProductCatalogCommandRuntime,
 }
 
 impl CommerceGraphqlRuntimeData {
@@ -335,6 +349,10 @@ impl CommerceGraphqlRuntimeData {
 
     pub fn product_catalog_read_runtime(&self) -> ProductCatalogReadRuntime {
         self.product_catalog_read_runtime.clone()
+    }
+
+    pub fn product_catalog_command_runtime(&self) -> ProductCatalogCommandRuntime {
+        self.product_catalog_command_runtime.clone()
     }
 }
 
@@ -376,6 +394,12 @@ pub fn attach_schema_data(
             .shared_get::<ProductCatalogReadRuntime>()
             .ok_or_else(|| {
                 "commerce GraphQL requires ProductCatalogReadRuntime in host composition"
+                    .to_string()
+            })?,
+        product_catalog_command_runtime: inputs
+            .shared_get::<ProductCatalogCommandRuntime>()
+            .ok_or_else(|| {
+                "commerce GraphQL requires ProductCatalogCommandRuntime in host composition"
                     .to_string()
             })?,
     })
