@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked at `main@82f301231463cdce296ae4a88b0ac479c51ff9d1` and continued on
-`agent/index-source-continuation-locale-scope-20260808`.
+Status overlay rechecked at `main@92f3bec486c1c3e98b300aff0d96cf5800790971` and continued on
+`agent/index-replay-shadow-locale-execution-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -120,10 +120,10 @@ job/checkpoint and exposes no lease, cancellation, scheduler or database handle.
 The GraphQL layer exposes three source-complete command surfaces:
 
 - schema-wide or exact-locale durable `runIndexReplay`;
-- schema-wide no-write `runIndexReplayShadow`;
+- schema-wide or exact-locale no-write `runIndexReplayShadow`;
 - durable `cancelIndexReplay`.
 
-Authorization occurs before parsing untrusted schema, durable locale, Shadow continuation or job input.
+Authorization occurs before parsing untrusted schema, Full/Shadow locale, Shadow continuation or job input.
 
 Caller durable run input contains only module/entity/schema key plus one optional bounded locale. Tenant, actor,
 worker ID, source name, partition, scheduler handle, replay resource budget, stop handle and shutdown flag remain
@@ -132,27 +132,33 @@ exactly schema-wide; it is not rewritten from schema locale defaults. Each durab
 worker identity and applies fixed transport caps: 100 mutations per page, at most 8 pages, heartbeat every page
 and a 60-second lease.
 
-Caller Shadow input currently contains only module/entity/schema key plus one optional bounded sealed
-continuation. It has no locale, source name, raw source cursor, worker, page/max-page budget, job, checkpoint,
-lease, cancellation, retry or scheduler fields. The server uses the same fixed 100-page-size / 8-page invocation
-budget, repeats exact tenant authorization, opens continuation through the deployment keyring under frozen
-schema-wide tenant/schema/source scope, calls guarded `run_shadow`, and seals any outgoing cursor before GraphQL
-serialization.
+Caller Shadow input contains only module/entity/schema key plus one optional bounded locale and one optional
+bounded sealed continuation. It has no source name, raw source cursor, worker, page/max-page budget, job,
+checkpoint, lease, cancellation, retry or scheduler fields. Locale is canonicalized through the same `LocaleKey`
+contract only after request-bound authorization. The server uses the same fixed 100-page-size / 8-page invocation
+budget, repeats exact tenant authorization, and derives one exact frozen continuation/dry-run scope:
 
-The source continuation contract now includes canonical locale identity in encrypted claims. Schema-wide scope is
-`locale = None`; exact-locale scope is `Some(LocaleKey)`. `IndexSourceContinuationScope::from_registry` constructs
-the former and `IndexSourceContinuationScope::for_locale` the latter. Opening requires exact locale equality in
-addition to tenant/schema/source binding, so schema-wide and exact-locale tokens cannot cross scopes and different
-locales cannot exchange tokens.
+- schema-wide -> `IndexSourceContinuationScope::from_registry` + `IndexReplayDryRunRequest::new`;
+- exact locale -> `IndexSourceContinuationScope::for_locale` + `IndexReplayDryRunRequest::for_locale`.
+
+Incoming continuation is opened under that scope before a raw source cursor is reconstructed. The no-write runtime
+rejects exact-locale execution for `LocaleMode::None`, constructs every actual scan through the matching
+`IndexSourceScanRequest::new` or `for_locale`, calls the existing source registry, and seals any outgoing cursor
+under the same scope before GraphQL serialization.
+
+The source continuation contract includes canonical locale identity in encrypted claims. Schema-wide scope is
+`locale = None`; exact-locale scope is `Some(LocaleKey)`. Opening requires exact locale equality in addition to
+tenant/schema/source binding, so schema-wide and exact-locale tokens cannot cross scopes and different locales
+cannot exchange tokens.
 
 The continuation format is one current unversioned repository-owned envelope. The previous pre-release shape was
 replaced in place; there is no version byte, `contract_version`, `V1`/`V2` claim family, or fallback decoder.
 
 Retained durable command source evidence includes schema-wide command behavior, locale command canonicalization
-and a dedicated locale yield/isolation/fresh-runtime resume packet. Shadow source evidence retains
-authorization-first schema/continuation preparation, sealed non-durable resume routing and locale-safe core
-continuation identity. Exact-locale Shadow dry-run/runtime/GraphQL execution remains source-open. GraphQL execution
-and admission remain maintainer-owned.
+and a dedicated locale yield/isolation/fresh-runtime resume packet. Shadow source evidence now retains
+authorization-first schema/locale/continuation preparation, exact schema-wide/locale dry-run scope selection,
+`LocaleMode` fail-closed admission, sealed non-durable resume routing and locale-safe continuation identity.
+Schema-wide/exact-locale Shadow execution and admission remain maintainer-owned.
 
 ## M6 replay graceful interruption and server lifecycle binding
 
@@ -269,13 +275,12 @@ PostgreSQL/process orchestration evidence remain maintainer-owned.
 - `Shadow` -> `SideEffectFreeScan`; this matches the existing `SharedIndexReplayDryRunRuntime` no-write boundary.
 
 The server guards `Shadow` through `IndexReplayOperatorRuntime::run_shadow`, using the same exact request-bound
-`modules:manage` authorization check as Full. Schema-wide GraphQL Shadow transport sits on a separate sealed
+`modules:manage` authorization check as Full. Schema-wide/exact-locale GraphQL Shadow transport sits on one sealed
 continuation adapter and does not reinterpret the durable `runIndexReplay` command or add a mode column to jobs or
 checkpoints.
 
-The explicit mode identity, Shadow host dispatch, schema-wide Shadow GraphQL transport and locale-safe Shadow
-continuation identity are source-complete. Exact-locale Shadow dry-run/runtime/GraphQL execution remains
-source-open. Maintainer execution and admission are not claimed.
+The explicit mode identity, Shadow host dispatch, schema-wide/exact-locale Shadow GraphQL transport and
+locale-safe Shadow continuation identity are source-complete. Maintainer execution and admission are not claimed.
 
 ## Remaining Storefront parity/evidence blockers
 
@@ -320,16 +325,16 @@ source-open. Maintainer execution and admission are not claimed.
 - [x] Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.
 - [x] Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.
 - [x] Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.
-- [ ] Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.
+- [x] Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
 - [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
-- [ ] Execute/admit schema-wide Shadow GraphQL transport and continuation-key deployment evidence.
+- [ ] Execute/admit schema-wide/exact-locale Shadow GraphQL transport and continuation-key deployment evidence.
 - [ ] Execute/admit retained graceful interruption/restart and GraphQL shutdown evidence.
 - [ ] Execute/admit retained dependency pending-future timeout evidence.
 - [ ] Execute/admit retained page lease-heartbeat evidence.
 - [ ] Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.
 - [ ] Execute/admit retained multi-host reclaim evidence.
-- [ ] Targeted execution remains separate until a bounded mutation-application contract over `IndexSource::load` exists.
+- [ ] Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.
 - [ ] Add partition replay scope only after a real partition-capable source contract exists.
 
 ## M7 Product Storefront graph
@@ -366,22 +371,19 @@ M7 Storefront remains execution/admission-gated and must not gain a traffic swit
 
 The locale request/source/job/checkpoint/runner/GraphQL identity chain, dependency timeout set,
 page-duration/lease-heartbeat policy, deterministic multi-host/restart evidence, explicit Full/Targeted/Shadow
-mode identity, guarded Shadow host dispatch, schema-wide Shadow GraphQL transport and locale-safe source
-continuation identity are source-complete. Their retained packets still require maintainer execution/admission.
+mode identity, guarded Shadow host dispatch, schema-wide/exact-locale Shadow GraphQL transport and locale-safe
+source continuation identity are source-complete. Their retained packets still require maintainer
+execution/admission.
 
 Partition replay remains blocked: no real partition-capable source contract can yet filter a partition before
 pagination, so do not merely populate `partition_key`.
 
-For source-only M6 continuation, the next independent boundary is exact-locale Shadow execution through the
-existing no-write stack. Add optional canonical locale to `IndexReplayDryRunRequest`, construct every actual
-source scan through schema-wide `IndexSourceScanRequest::new` or exact-locale `IndexSourceScanRequest::for_locale`,
-derive the sealed token scope with `IndexSourceContinuationScope::from_registry` or `for_locale`, and add the
-locale field to `runIndexReplayShadow` only after request-bound `modules:manage` authorization. Keep the existing
-schema-wide behavior and fixed `100 × 8` transport budget. Do not add jobs, checkpoints, leases, cancellation,
-retry/requeue, source-name input, partition scope, or another token format.
-
-Targeted execution remains separate until the bounded mutation-application contract over `IndexSource::load` is
-defined.
+For source-only M6 continuation, the next independent boundary is the bounded Targeted mutation-application
+contract over the canonical `IndexSource::load` path. Reuse `IndexReplayModeSelection::Targeted` and its validated
+`IndexSourceLoadRequest`; define one bounded mutation-application invocation without creating or aliasing Full scan
+jobs/checkpoints, leases, cancellation, scheduler ownership, retry/requeue state, partition scope, or another mode
+selector. Authorization and tenant ownership must remain request-bound before any untrusted target parsing or
+source execution.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

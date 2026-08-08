@@ -8,9 +8,9 @@ This composition freezes the complete immutable Index source/schema registries a
 - bounded durable replay runtime;
 - one module-work registration for due reconciliation execution.
 
-The server wraps both replay execution surfaces in one request-bound operator: durable Full replay through `SharedIndexReplayRuntime` and side-effect-free Shadow replay through `SharedIndexReplayDryRunRuntime`. It also publishes a separate schema-wide Shadow transport adapter that seals caller-carried continuation state. None of these boundaries add automatic replay-job scheduling.
+The server wraps both replay execution surfaces in one request-bound operator: durable Full replay through `SharedIndexReplayRuntime` and side-effect-free Shadow replay through `SharedIndexReplayDryRunRuntime`. It also publishes a separate schema-wide/exact-locale Shadow transport adapter that seals caller-carried continuation state. None of these boundaries add automatic replay-job scheduling.
 
-The shared continuation contract now has one current unversioned envelope and binds optional canonical locale identity inside encrypted claims. Runtime composition still exposes schema-wide Shadow only; exact-locale dry-run/runtime/GraphQL execution remains a separate next slice.
+The shared continuation contract has one current unversioned envelope and binds optional canonical locale identity inside encrypted claims. Shadow dry-run and GraphQL execution now carry that same locale scope end to end.
 
 ## Composition order
 
@@ -23,7 +23,7 @@ The shared continuation contract now has one current unversioned envelope and bi
 7. the server retrieves the already-materialized `SharedIndexReplayDryRunRuntime` and wraps Full plus Shadow behind `IndexReplayOperatorRuntime`;
 8. the server materializes the deployment continuation keyring, then publishes `IndexReplayShadowTransportRuntime` and the source-page diagnosis runtime from that same keyring snapshot;
 9. the server wraps reconciliation separately in its guarded operator runtime;
-10. GraphQL exposes durable Full run/cancel plus schema-wide Shadow through the sealed transport adapter;
+10. GraphQL exposes durable Full run/cancel plus schema-wide or exact-locale Shadow through the sealed transport adapter;
 11. GraphQL schema initialization supplies the server-owned `StopHandle::is_stopping` probe only to authorized durable replay run commands without making shutdown caller-controlled.
 
 An absent source registry publishes no replay runtime, no dry-run runtime, no Shadow transport runtime and no empty Index work registration. A source registry without the shared schema registry fails closed. Duplicate replay or reconciliation-work materialization also fails closed. Server composition fails closed if a durable replay runtime exists without the dry-run runtime that the guarded Shadow route requires.
@@ -36,11 +36,13 @@ The Index materializer performs no SQL and calls neither `tokio::spawn` nor a po
 
 Durable ordinary/interruptible run rejects cross-tenant requests before delegation and cancellation derives tenant only from the authorized context. `run_shadow` applies the same exact tenant and `modules:manage` guard before delegating to the side-effect-free dry-run runtime. Shadow keeps a separate typed operator error wrapper so the existing Full/cancel error contract is not reinterpreted.
 
-`IndexReplayShadowTransportRuntime` sits above that guarded operator. It owns no database handle, scheduler, job, checkpoint, lease, cancellation or retry state. It repeats exact-tenant authorization before opening continuation, currently derives schema-wide tenant/schema/source scope from the frozen source registry, calls only `IndexReplayOperatorRuntime::run_shadow`, and seals any outgoing raw source cursor before returning a transport-safe outcome.
+`IndexReplayShadowTransportRuntime` sits above that guarded operator. It owns no database handle, scheduler, job, checkpoint, lease, cancellation or retry state. It repeats exact-tenant authorization before opening continuation, derives schema-wide or exact-locale tenant/schema/source scope from the frozen source registry, calls only `IndexReplayOperatorRuntime::run_shadow`, and seals any outgoing raw source cursor before returning a transport-safe outcome.
 
-`IndexSourceContinuationScope` can now also derive an exact-locale identity through `for_locale`. Schema-wide and exact-locale tokens cannot cross scopes, and different canonical locales cannot exchange tokens. The codec does not retain an old-format decoder or format-version family.
+`IndexSourceContinuationScope::from_registry` is schema-wide; `for_locale` binds one exact canonical `LocaleKey`. The transport constructs the matching `IndexReplayDryRunRequest::new` or `for_locale`, and the dry-run runtime builds every actual source page with the same `IndexSourceScanRequest::new` or `for_locale` scope. Exact-locale dry-run fails closed for `LocaleMode::None` before source execution.
 
-The GraphQL transport authorizes before parsing caller input. Durable Full uses a fixed 100-row × 8-page chunk, per-page heartbeat and 60-second lease. Schema-wide Shadow uses the same fixed 100-row × 8-page scan budget but no worker, heartbeat or lease. Its only resumable caller state is the authenticated confidential continuation token.
+Schema-wide and exact-locale tokens cannot cross scopes, and different canonical locales cannot exchange tokens. The codec does not retain an old-format decoder or format-version family.
+
+The GraphQL transport authorizes before parsing caller input. Durable Full uses a fixed 100-row × 8-page chunk, per-page heartbeat and 60-second lease. Shadow uses the same fixed 100-row × 8-page scan budget but no worker, heartbeat or lease. Its only resumable caller state is the authenticated confidential continuation token.
 
 Transport adapters must not call either `SharedIndexReplayRuntime` or `SharedIndexReplayDryRunRuntime` directly. See `apps/server/docs/index-replay-graphql-transport.md` and `m6-bounded-replay-dry-run.md`.
 
@@ -54,7 +56,7 @@ An interrupted page is not marked failed and does not manufacture a persisted ca
 
 GraphQL schema initialization resolves or atomically creates one `StopHandle` in shared server runtime state and retains a watch receiver even for API-only hosts. `runIndexReplay` reads only `StopHandle::is_stopping` and invokes the guarded interruptible operator. It never calls `StopHandle::stop`, and no shutdown field is accepted from GraphQL input.
 
-Schema-wide Shadow does not use this durable interruption path. It has no durable pending state; source calls retain the existing timeout boundary and a later invocation can resume only from a sealed continuation returned by a completed bounded call.
+Shadow does not use this durable interruption path. It has no durable pending state; source calls retain the existing timeout boundary and a later invocation can resume only from a sealed continuation returned by a completed bounded call under the same schema/locale scope.
 
 The retained SQLite runner packet covers interruption before source scan and interruption after one mutation is durable but before checkpoint commit. The latter resumes as `Duplicate` on attempt 2 before completing the checkpoint/job. Actual GraphQL/process-shutdown execution remains maintainer-run.
 
@@ -66,8 +68,7 @@ It does not schedule replay/rebuild jobs, create a second task, own a database l
 
 ## Explicitly open
 
-- exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation identity;
-- execute/admit schema-wide Shadow GraphQL and continuation-key deployment evidence;
+- execute/admit schema-wide and exact-locale Shadow GraphQL plus continuation-key deployment evidence;
 - execute/admit retained replay interruption/restart evidence and end-to-end process-shutdown command evidence;
 - durable GraphQL command execution/admission evidence and any separately justified HTTP/CLI/admin surfaces;
 - automatic replay/rebuild job scheduling;

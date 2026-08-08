@@ -47,7 +47,8 @@ const graphql = requireMarkers(graphqlPath, [
   '.run_interruptible(operator_context, request, || stop_handle.is_stopping())',
   'async fn run_index_replay_shadow(',
   '.get::<IndexReplayShadowTransportRuntime>()',
-  '.run_schema_wide(',
+  'pub locale: Option<String>',
+  '.run(',
   'async fn cancel_index_replay(',
 ]);
 for (const forbidden of [
@@ -60,6 +61,16 @@ for (const forbidden of [
   }
 }
 
+const shadowTransportPath = 'apps/server/src/services/index_replay_shadow_transport.rs';
+requireMarkers(shadowTransportPath, [
+  'locale: Option<rustok_index::LocaleKey>',
+  'IndexSourceContinuationScope::for_locale(',
+  'IndexSourceContinuationScope::from_registry(',
+  'IndexReplayDryRunRequest::for_locale(',
+  'IndexReplayDryRunRequest::new(',
+  'self.operator.run_shadow(context, request).await?',
+]);
+
 const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = read(runnerPath);
 for (const forbidden of ['IndexReplayMode::Shadow', 'SideEffectFreeScan', 'SharedIndexReplayDryRunRuntime']) {
@@ -69,25 +80,25 @@ for (const forbidden of ['IndexReplayMode::Shadow', 'SideEffectFreeScan', 'Share
 }
 
 requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
-  'Status: `source_complete_schema_wide_transport_locale_execution_pending`',
+  'Status: `source_complete_locale_transport_execution_pending`',
   '`IndexReplayOperatorRuntime::run_shadow`',
   'same request-bound `modules:manage` authorization boundary',
   '`runIndexReplayShadow`',
-  'Exact-locale Shadow remains source-open only because the dry-run request/runtime and GraphQL adapter',
+  'schema-wide or exact-locale invocation',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_schema_wide_transport_locale_execution_pending`.',
+  'Status: `source_complete_shadow_locale_transport_execution_pending`.',
   '`Shadow` host dispatch is source-complete',
   '`IndexReplayOperatorRuntime::run_shadow`',
   '`runIndexReplayShadow` is a dedicated transport',
-  'Locale-safe continuation identity',
+  'Locale-safe continuation and dry-run execution',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
   'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',
   'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
-  'Targeted execution remains separate until a bounded mutation-application contract over `IndexSource::load` exists.',
+  'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
 ]);
 
-console.log('[verify-index-replay-shadow-host-dispatch] Shadow host dispatch remains modules:manage-guarded/no-write; continuation is locale-safe while execution remains schema-wide until the next slice');
+console.log('[verify-index-replay-shadow-host-dispatch] Shadow host dispatch remains modules:manage-guarded/no-write while the sealed adapter carries one canonical schema-wide or exact-locale scope');

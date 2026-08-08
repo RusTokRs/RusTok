@@ -22,11 +22,17 @@ const dryRunPath = 'crates/rustok-index/src/replay_dry_run.rs';
 const dryRun = requireMarkers(dryRunPath, [
   'const MAX_DRY_RUN_PAGES: usize = 1_024;',
   'pub struct IndexReplayDryRunRequest',
+  'locale: Option<LocaleKey>',
+  'pub fn for_locale(',
+  'pub fn locale(&self) -> Option<&LocaleKey>',
   'pub enum IndexReplayDryRunStatus',
   'pub struct IndexReplayDryRunOutcome',
   'pub struct SharedIndexReplayDryRunRuntime',
   'pub async fn run(',
   'source_for_schema(request.schema())',
+  'registered.schema.locale_mode == LocaleMode::None',
+  'IndexReplayDryRunError::LocaleScopeUnsupported',
+  'IndexSourceScanRequest::for_locale(',
   '.scan(scan_request)',
   'let mut event_ids = BTreeSet::new();',
   'event_id.is_nil()',
@@ -35,6 +41,8 @@ const dryRun = requireMarkers(dryRunPath, [
   'IndexMutation::Upsert',
   'IndexMutation::Delete',
   'next_cursor: cursor',
+  'exact_locale_dry_run_uses_the_same_canonical_scope_for_every_page',
+  'exact_locale_dry_run_rejects_a_non_localized_schema_before_source_scan',
   'pub fn materialize_index_replay_dry_run_runtime(',
   'extensions.get::<SharedIndexSourceRegistry>().cloned()',
   '.get::<SharedIndexSchemaRegistry>()',
@@ -128,13 +136,15 @@ for (const forbidden of ['SharedIndexReplayDryRunRuntime', 'IndexReplayDryRunReq
 requireMarkers('apps/server/src/graphql/index_replay.rs', [
   'async fn run_index_replay_shadow(',
   '.get::<IndexReplayShadowTransportRuntime>()',
-  '.run_schema_wide(',
+  'pub locale: Option<String>',
+  '.run(',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
-  'Status: `source_complete_schema_wide_transport_locale_execution_pending`',
-  '`IndexReplayDryRunRequest` currently carries:',
+  'Status: `source_complete_locale_transport_execution_pending`',
+  '`IndexReplayDryRunRequest::for_locale`',
   '`SharedIndexReplayDryRunRuntime::run`',
+  '`LocaleScopeUnsupported`',
   'one invocation budget from 1 through 1024 pages',
   'complete `SchemaRegistry::validate_mutation` validity',
   'Product, ProductVariant, SalesChannel',
@@ -144,8 +154,7 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'Server-owned host guard',
   '`IndexReplayOperatorRuntime::run_shadow`',
   '`runIndexReplayShadow`',
-  'continuation scope now binds optional canonical locale identity',
-  'Exact-locale Shadow remains source-open only because the dry-run request/runtime and GraphQL adapter',
+  'schema-wide or exact-locale invocation',
   'maintainer-run',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
@@ -160,4 +169,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-shadow-graphql-transport.mjs'",
 ]);
 
-console.log('[verify-index-replay-dry-run] bounded no-write validation stays schema-wide today while the one canonical continuation scope is ready for exact-locale execution');
+console.log('[verify-index-replay-dry-run] bounded no-write validation carries one canonical schema-wide or exact-locale scope without durable ownership');

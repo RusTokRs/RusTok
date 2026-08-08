@@ -70,6 +70,9 @@ const dryRunPath = 'crates/rustok-index/src/replay_dry_run.rs';
 requireMarkers(dryRunPath, [
   'No mutation, inbox delivery, job, checkpoint, or reconciliation progress is persisted',
   'pub struct SharedIndexReplayDryRunRuntime',
+  'locale: Option<LocaleKey>',
+  'IndexSourceScanRequest::for_locale(',
+  'IndexReplayDryRunError::LocaleScopeUnsupported',
   '.scan(scan_request)',
 ]);
 
@@ -92,15 +95,21 @@ requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'self.shadow.run(request).await.map_err(Into::into)',
   'IndexReplayShadowTransportRuntime',
 ]);
+requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
+  'locale: Option<rustok_index::LocaleKey>',
+  'IndexSourceContinuationScope::for_locale(',
+  'IndexReplayDryRunRequest::for_locale(',
+]);
 requireMarkers('apps/server/src/graphql/index_replay.rs', [
   'pub struct IndexReplayShadowRunInput',
+  'pub locale: Option<String>',
   'async fn run_index_replay_shadow(',
   '.get::<IndexReplayShadowTransportRuntime>()',
-  '.run_schema_wide(',
+  '.run(',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_schema_wide_transport_locale_execution_pending`.',
+  'Status: `source_complete_shadow_locale_transport_execution_pending`.',
   '`Full` — cursor-based durable source scan',
   '`Targeted` — bounded exact-key source load',
   '`Shadow` — side-effect-free cursor scan',
@@ -109,9 +118,9 @@ requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   'must not alias the Full durable job/checkpoint identity',
   '`Shadow` host dispatch is source-complete',
   '`runIndexReplayShadow` is a dedicated transport',
-  'Locale-safe continuation identity',
+  'Locale-safe continuation and dry-run execution',
   'one current unversioned envelope',
-  'next independent Shadow boundary is exact-locale dry-run/runtime/GraphQL execution',
+  'bounded mutation-application',
   'Execution/admission remains maintainer-owned.',
 ]);
 
@@ -121,8 +130,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',
   'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
-  'Targeted execution remains separate until a bounded mutation-application contract over `IndexSource::load` exists.',
+  'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
   'Add partition replay scope only after a real partition-capable source contract exists.',
 ]);
 
-console.log('[verify-index-replay-mode-contract] Full stays durable, Targeted stays bounded-load-only, and Shadow has one locale-safe continuation identity while exact-locale execution remains separate');
+console.log('[verify-index-replay-mode-contract] Full stays durable, Targeted stays bounded-load-only, and Shadow executes schema-wide or exact-locale only through the no-write sealed surface');

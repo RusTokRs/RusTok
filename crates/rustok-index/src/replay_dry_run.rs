@@ -5,7 +5,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    IndexMutation, IndexSourceCursor, IndexSourceError, IndexSourceScanRequest,
+    IndexMutation, IndexSourceCursor, IndexSourceError, IndexSourceScanRequest, LocaleKey, LocaleMode,
     RecordValidationError, SchemaRef, SchemaRegistry, SharedIndexSchemaRegistry,
     SharedIndexSourceRegistry,
 };
@@ -14,12 +14,14 @@ const MAX_DRY_RUN_PAGES: usize = 1_024;
 
 /// One bounded, side-effect-free replay validation request.
 ///
-/// The request carries an optional source-owned continuation cursor so a large source can be
-/// inspected over multiple operator calls without creating a replay job or durable checkpoint.
+/// The request carries one explicit schema-wide or exact-locale source scope plus an optional
+/// source-owned continuation cursor so a large source can be inspected over multiple operator
+/// calls without creating a replay job or durable checkpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexReplayDryRunRequest {
     tenant_id: Uuid,
     schema: SchemaRef,
+    locale: Option<LocaleKey>,
     cursor: Option<IndexSourceCursor>,
     page_limit: usize,
     max_pages: usize,
@@ -33,8 +35,51 @@ impl IndexReplayDryRunRequest {
         page_limit: usize,
         max_pages: usize,
     ) -> Result<Self, IndexReplayDryRunError> {
-        IndexSourceScanRequest::new(tenant_id, schema.clone(), cursor.clone(), page_limit)
-            .map_err(IndexReplayDryRunError::InvalidRequest)?;
+        Self::new_scoped(tenant_id, schema, None, cursor, page_limit, max_pages)
+    }
+
+    pub fn for_locale(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: LocaleKey,
+        cursor: Option<IndexSourceCursor>,
+        page_limit: usize,
+        max_pages: usize,
+    ) -> Result<Self, IndexReplayDryRunError> {
+        Self::new_scoped(
+            tenant_id,
+            schema,
+            Some(locale),
+            cursor,
+            page_limit,
+            max_pages,
+        )
+    }
+
+    fn new_scoped(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: Option<LocaleKey>,
+        cursor: Option<IndexSourceCursor>,
+        page_limit: usize,
+        max_pages: usize,
+    ) -> Result<Self, IndexReplayDryRunError> {
+        match locale.as_ref() {
+            Some(locale) => IndexSourceScanRequest::for_locale(
+                tenant_id,
+                schema.clone(),
+                locale.clone(),
+                cursor.clone(),
+                page_limit,
+            ),
+            None => IndexSourceScanRequest::new(
+                tenant_id,
+                schema.clone(),
+                cursor.clone(),
+                page_limit,
+            ),
+        }
+        .map_err(IndexReplayDryRunError::InvalidRequest)?;
         if !(1..=MAX_DRY_RUN_PAGES).contains(&max_pages) {
             return Err(IndexReplayDryRunError::InvalidMaxPages {
                 actual: max_pages,
@@ -44,6 +89,7 @@ impl IndexReplayDryRunRequest {
         Ok(Self {
             tenant_id,
             schema,
+            locale,
             cursor,
             page_limit,
             max_pages,
@@ -56,6 +102,10 @@ impl IndexReplayDryRunRequest {
 
     pub fn schema(&self) -> &SchemaRef {
         &self.schema
+    }
+
+    pub fn locale(&self) -> Option<&LocaleKey> {
+        self.locale.as_ref()
     }
 
     pub fn cursor(&self) -> Option<&IndexSourceCursor> {
@@ -147,6 +197,16 @@ impl SharedIndexReplayDryRunRuntime {
             .sources
             .source_for_schema(request.schema())
             .ok_or_else(|| IndexReplayDryRunError::UnknownSchemaSource(request.schema.clone()))?;
+        let registered = self
+            .schemas
+            .get(request.schema())
+            .ok_or_else(|| IndexReplayDryRunError::SchemaNotRegistered(request.schema.clone()))?;
+        if request.locale().is_some() && registered.schema.locale_mode == LocaleMode::None {
+            return Err(IndexReplayDryRunError::LocaleScopeUnsupported(
+                request.schema.clone(),
+            ));
+        }
+
         let source_name = descriptor.source_name().to_owned();
         let mut cursor = request.cursor.clone();
         let mut pages_scanned = 0usize;
@@ -156,12 +216,21 @@ impl SharedIndexReplayDryRunRuntime {
         let mut max_source_version = None::<u64>;
 
         for page_index in 0..request.max_pages {
-            let scan_request = IndexSourceScanRequest::new(
-                request.tenant_id,
-                request.schema.clone(),
-                cursor.clone(),
-                request.page_limit,
-            )
+            let scan_request = match request.locale() {
+                Some(locale) => IndexSourceScanRequest::for_locale(
+                    request.tenant_id,
+                    request.schema.clone(),
+                    locale.clone(),
+                    cursor.clone(),
+                    request.page_limit,
+                ),
+                None => IndexSourceScanRequest::new(
+                    request.tenant_id,
+                    request.schema.clone(),
+                    cursor.clone(),
+                    request.page_limit,
+                ),
+            }
             .map_err(IndexReplayDryRunError::InvalidRequest)?;
             let page = self
                 .sources
@@ -251,6 +320,10 @@ pub enum IndexReplayDryRunError {
     InvalidMaxPages { actual: usize, max: usize },
     #[error("No Index replay source owns dry-run schema {0}")]
     UnknownSchemaSource(SchemaRef),
+    #[error("Index replay dry-run schema is not registered in the active runtime: {0}")]
+    SchemaNotRegistered(SchemaRef),
+    #[error("Index replay dry-run schema does not support locale-scoped pages: {0}")]
+    LocaleScopeUnsupported(SchemaRef),
     #[error("Index replay dry-run source failed")]
     Source(#[source] IndexSourceError),
     #[error(
@@ -354,7 +427,7 @@ mod tests {
                         tenant_id: request.tenant_id(),
                         schema: request.schema().clone(),
                         entity_id,
-                        locale: None,
+                        locale: request.locale().cloned(),
                     },
                     source_version: page_index as u64 + 1,
                     fields,
@@ -377,14 +450,14 @@ mod tests {
         }
     }
 
-    fn schema() -> IndexSchema {
+    fn schema(locale_mode: LocaleMode) -> IndexSchema {
         IndexSchema {
             reference: SchemaRef {
                 module: ModuleName::new("dry-run-owner").unwrap(),
                 entity: EntityName::new("item").unwrap(),
                 version: SchemaVersion::INITIAL,
             },
-            locale_mode: LocaleMode::None,
+            locale_mode,
             fields: vec![IndexField {
                 name: FieldName::new("id").unwrap(),
                 value_type: IndexValueType::Uuid,
@@ -398,9 +471,13 @@ mod tests {
         }
     }
 
-    fn runtime(page_count: usize, invalid_record: bool) -> SharedIndexReplayDryRunRuntime {
+    fn runtime(
+        page_count: usize,
+        invalid_record: bool,
+        locale_mode: LocaleMode,
+    ) -> SharedIndexReplayDryRunRuntime {
         let mut extensions = ModuleRuntimeExtensions::default();
-        let schema = schema();
+        let schema = schema(locale_mode);
         register_index_schema_source(&mut extensions, "dry_run_owner", schema.clone()).unwrap();
         register_index_source(
             &mut extensions,
@@ -428,12 +505,12 @@ mod tests {
 
     #[tokio::test]
     async fn bounded_dry_run_yields_a_resume_cursor_and_completes_without_state() {
-        let runtime = runtime(3, false);
+        let runtime = runtime(3, false, LocaleMode::Optional);
         let first = runtime
             .run(
                 IndexReplayDryRunRequest::new(
                     Uuid::from_u128(1),
-                    schema().reference,
+                    schema(LocaleMode::Optional).reference,
                     None,
                     10,
                     1,
@@ -453,7 +530,7 @@ mod tests {
             .run(
                 IndexReplayDryRunRequest::new(
                     Uuid::from_u128(1),
-                    schema().reference,
+                    schema(LocaleMode::Optional).reference,
                     first.next_cursor().cloned(),
                     10,
                     2,
@@ -470,12 +547,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn exact_locale_dry_run_uses_the_same_canonical_scope_for_every_page() {
+        let runtime = runtime(2, false, LocaleMode::Optional);
+        let locale = LocaleKey::new("EN-us").unwrap();
+        let first = runtime
+            .run(
+                IndexReplayDryRunRequest::for_locale(
+                    Uuid::from_u128(1),
+                    schema(LocaleMode::Optional).reference,
+                    locale.clone(),
+                    None,
+                    10,
+                    1,
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(locale.as_str(), "en-US");
+        assert_eq!(first.status(), IndexReplayDryRunStatus::Yielded);
+
+        let second = runtime
+            .run(
+                IndexReplayDryRunRequest::for_locale(
+                    Uuid::from_u128(1),
+                    schema(LocaleMode::Optional).reference,
+                    locale,
+                    first.next_cursor().cloned(),
+                    10,
+                    1,
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second.status(), IndexReplayDryRunStatus::Complete);
+        assert!(second.next_cursor().is_none());
+    }
+
+    #[tokio::test]
+    async fn exact_locale_dry_run_rejects_a_non_localized_schema_before_source_scan() {
+        let error = runtime(1, false, LocaleMode::None)
+            .run(
+                IndexReplayDryRunRequest::for_locale(
+                    Uuid::from_u128(1),
+                    schema(LocaleMode::None).reference,
+                    LocaleKey::new("en-US").unwrap(),
+                    None,
+                    10,
+                    1,
+                )
+                .unwrap(),
+            )
+            .await
+            .expect_err("non-localized schema must reject exact-locale dry-run");
+        assert!(matches!(
+            error,
+            IndexReplayDryRunError::LocaleScopeUnsupported(_)
+        ));
+    }
+
+    #[tokio::test]
     async fn dry_run_rejects_a_schema_invalid_mutation_before_any_persistence_boundary() {
-        let error = runtime(1, true)
+        let error = runtime(1, true, LocaleMode::Optional)
             .run(
                 IndexReplayDryRunRequest::new(
                     Uuid::from_u128(1),
-                    schema().reference,
+                    schema(LocaleMode::Optional).reference,
                     None,
                     10,
                     1,
@@ -495,7 +633,7 @@ mod tests {
         let tenant_id = Uuid::from_u128(1);
         assert!(IndexReplayDryRunRequest::new(
             tenant_id,
-            schema().reference,
+            schema(LocaleMode::Optional).reference,
             None,
             10,
             0,
@@ -503,7 +641,7 @@ mod tests {
         .is_err());
         assert!(IndexReplayDryRunRequest::new(
             tenant_id,
-            schema().reference,
+            schema(LocaleMode::Optional).reference,
             None,
             10,
             MAX_DRY_RUN_PAGES + 1,

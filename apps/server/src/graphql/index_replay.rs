@@ -40,16 +40,17 @@ pub struct IndexReplayRunInput {
     pub locale: Option<String>,
 }
 
-/// Untrusted input for one bounded schema-wide Shadow validation run.
+/// Untrusted input for one bounded schema-wide or exact-locale Shadow validation run.
 ///
-/// The only resumable state is an authenticated confidential continuation token. Locale, source
-/// identity, page budget, jobs, checkpoints, leases, cancellation and retry controls are not
-/// caller fields in this schema-wide transport slice.
+/// The only resumable state is an authenticated confidential continuation token. Source identity,
+/// page budget, jobs, checkpoints, leases, cancellation and retry controls are not caller fields.
+/// Omitting locale preserves the schema-wide Shadow scan identity.
 #[derive(Debug, Clone, InputObject)]
 pub struct IndexReplayShadowRunInput {
     pub module_name: String,
     pub entity_name: String,
     pub schema_version: String,
+    pub locale: Option<String>,
     pub continuation: Option<String>,
 }
 
@@ -228,7 +229,7 @@ impl IndexReplayMutation {
             .try_into()
     }
 
-    /// Run one server-bounded schema-wide side-effect-free Shadow validation chunk.
+    /// Run one server-bounded schema-wide or exact-locale side-effect-free Shadow validation chunk.
     async fn run_index_replay_shadow(
         &self,
         ctx: &Context<'_>,
@@ -239,14 +240,15 @@ impl IndexReplayMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let (operator_context, schema, continuation) =
+        let (operator_context, schema, locale, continuation) =
             prepare_authorized_shadow_run(tenant.id, auth.user_id, input)
                 .map_err(map_preparation_error)?;
         let runtime = shadow_replay_runtime(ctx)?;
         runtime
-            .run_schema_wide(
+            .run(
                 operator_context,
                 schema,
+                locale,
                 continuation.as_deref(),
                 GRAPHQL_REPLAY_PAGE_LIMIT,
                 GRAPHQL_REPLAY_MAX_PAGES,
@@ -347,12 +349,14 @@ fn prepare_authorized_shadow_run(
     (
         IndexReplayOperatorContext,
         rustok_index::SchemaRef,
+        Option<rustok_index::LocaleKey>,
         Option<String>,
     ),
     IndexReplayTransportPreparationError,
 > {
     let context = authorize(tenant_id, actor_id)?;
     let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;
+    let locale = parse_locale(input.locale)?;
     let continuation = input
         .continuation
         .map(|value| {
@@ -360,7 +364,7 @@ fn prepare_authorized_shadow_run(
             Ok(value)
         })
         .transpose()?;
-    Ok((context, schema, continuation))
+    Ok((context, schema, locale, continuation))
 }
 
 fn prepare_authorized_cancel(
@@ -565,6 +569,11 @@ fn map_shadow_dry_run_error(error: rustok_index::IndexReplayDryRunError) -> Fiel
         rustok_index::IndexReplayDryRunError::UnknownSchemaSource(_) => {
             <FieldError as GraphQLError>::bad_user_input("Unknown Index replay schema")
         }
+        rustok_index::IndexReplayDryRunError::LocaleScopeUnsupported(_) => {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Index replay Shadow schema does not support locale scope",
+            )
+        }
         _ => <FieldError as GraphQLError>::internal_error("Index replay Shadow command failed"),
     }
 }
@@ -609,6 +618,7 @@ mod tests {
             module_name: "Rustok Product".to_owned(),
             entity_name: "product".to_owned(),
             schema_version: "zero".to_owned(),
+            locale: Some("not a locale!!!".to_owned()),
             continuation: Some("not-a-token".to_owned()),
         }
     }
@@ -643,7 +653,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shadow_transport_authorizes_before_schema_and_continuation_parsing() {
+    async fn shadow_transport_authorizes_before_schema_locale_and_continuation_parsing() {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
 
@@ -674,10 +684,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shadow_transport_accepts_only_schema_and_bounded_sealed_continuation() {
+    async fn shadow_transport_accepts_schema_locale_and_bounded_sealed_continuation() {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
-        let (_, schema, continuation) = with_rbac_request_scope(
+        let (_, schema, locale, continuation) = with_rbac_request_scope(
             Some(RbacRequestScope::new(
                 tenant_id,
                 actor_id,
@@ -692,6 +702,7 @@ mod tests {
                         module_name: "rustok-product".to_owned(),
                         entity_name: "product".to_owned(),
                         schema_version: "4".to_owned(),
+                        locale: Some("EN-us".to_owned()),
                         continuation: Some("sealed-token".to_owned()),
                     },
                 )
@@ -703,6 +714,7 @@ mod tests {
         assert_eq!(schema.module.as_str(), "rustok-product");
         assert_eq!(schema.entity.as_str(), "product");
         assert_eq!(schema.version.get(), 4);
+        assert_eq!(locale.as_ref().map(|locale| locale.as_str()), Some("en-US"));
         assert_eq!(continuation.as_deref(), Some("sealed-token"));
 
         let oversized = "x".repeat(MAX_CONTINUATION_BYTES + 1);
@@ -721,6 +733,7 @@ mod tests {
                         module_name: "rustok-product".to_owned(),
                         entity_name: "product".to_owned(),
                         schema_version: "4".to_owned(),
+                        locale: None,
                         continuation: Some(oversized),
                     },
                 )

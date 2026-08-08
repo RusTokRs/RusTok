@@ -111,10 +111,13 @@ if (sealed.includes("IndexSourceCursor") || sealed.includes("next_cursor(&self)"
 
 requireMarkers("shadow", [
   "pub struct IndexReplayShadowTransportRuntime",
+  "locale: Option<rustok_index::LocaleKey>",
   "context.authorize_for(context.tenant_id())?;",
+  "IndexSourceContinuationScope::for_locale(",
   "IndexSourceContinuationScope::from_registry(",
   ".resolve_codec()",
   "codec.open_encoded(&scope, encoded, Utc::now())",
+  "IndexReplayDryRunRequest::for_locale(",
   "IndexReplayDryRunRequest::new(",
   "self.operator.run_shadow(context, request).await?;",
   "codec.seal(&scope, cursor, Utc::now(), keyring.lifetime())",
@@ -207,4 +210,4 @@ requireMarkers("aggregate", [
   "'verify-index-replay-shadow-graphql-transport.mjs'",
 ]);
 
-console.log("Index server sealed source continuation contract verified for drift-page and schema-wide Shadow consumers");
+console.log("Index server sealed source continuation contract verified for drift-page plus schema-wide/exact-locale Shadow consumers");
