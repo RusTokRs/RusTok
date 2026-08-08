@@ -625,7 +625,6 @@ struct FieldSql {
     raw: String,
     scalar: String,
     list_values: String,
-    type_text: String,
     null_predicate: String,
 }
 
@@ -661,7 +660,6 @@ fn field_sql_for_alias(
         list_values: format!(
             "jsonb_extract_path({relation_alias}.payload, {field_name}::text, 'value')"
         ),
-        type_text,
         null_predicate,
     }
 }

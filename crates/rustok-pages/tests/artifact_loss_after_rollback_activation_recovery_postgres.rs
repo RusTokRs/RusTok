@@ -85,7 +85,6 @@ impl TestDatabase {
 struct RollbackActivatedFixture {
     tenant_id: Uuid,
     page_id: Uuid,
-    first_publish_operation_id: Uuid,
     first_en_source: page_publish_rebuild_source::Model,
     first_fr_source: page_publish_rebuild_source::Model,
     rollback_operation_id: Uuid,
@@ -583,7 +582,6 @@ async fn create_rollback_activated_fixture(
     Ok(RollbackActivatedFixture {
         tenant_id,
         page_id: draft.id,
-        first_publish_operation_id: first_publish.operation_id,
         first_en_source: first_sources[0].clone(),
         first_fr_source: first_sources[1].clone(),
         rollback_operation_id: rollback.operation_id,

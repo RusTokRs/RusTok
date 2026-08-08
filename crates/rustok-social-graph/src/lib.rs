@@ -133,7 +133,7 @@ impl MigrationSource for SocialGraphModule {
 
 #[cfg(test)]
 mod tests {
-    use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+    use rustok_core::{MigrationSource, RusToKModule};
 
     use super::SocialGraphModule;
 

@@ -327,7 +327,9 @@ fn map_index_error(error: IndexQueryExecutionError) -> PortError {
         ),
         IndexQueryExecutionError::Plan(_)
         | IndexQueryExecutionError::Build(_)
+        | IndexQueryExecutionError::LocalizedBuild(_)
         | IndexQueryExecutionError::Decode(_)
+        | IndexQueryExecutionError::LocalizedDecode(_)
         | IndexQueryExecutionError::UnsupportedBackend
         | IndexQueryExecutionError::MissingExactCountRow
         | IndexQueryExecutionError::InvalidRowColumn { .. }

@@ -1,8 +1,6 @@
 use std::collections::BTreeSet;
 
-use serde_json::Value as JsonValue;
 use thiserror::Error;
-use uuid::Uuid;
 
 use crate::domain::{
     FieldCardinality, IndexValue, LocalizedEntityQuery, Pagination,
@@ -352,6 +350,7 @@ mod tests {
         Pagination, SchemaRef, SchemaVersion,
     };
     use serde_json::json;
+    use uuid::Uuid;
 
     fn schema() -> IndexSchema {
         IndexSchema {

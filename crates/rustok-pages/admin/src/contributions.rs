@@ -2,9 +2,7 @@ use fly_ui::{
     ContributionAssemblyPolicy, ContributionAssemblyResult, ContributionDescriptor,
     ModuleContributionManifest, build_admin_contribution_registry_from_manifests,
 };
-use rustok_page_builder_admin::{
-    ConsumerPropertyEditorSchema, PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT,
-};
+use rustok_page_builder_admin::ConsumerPropertyEditorSchema;
 use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
