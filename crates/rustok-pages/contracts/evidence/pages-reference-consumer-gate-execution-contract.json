@@ -33,178 +33,45 @@
       "settings_restore_required": true,
       "all_required_profiles_must_pass": true,
       "provider_health_must_remain_unobserved": true
+    },
+    "rollout_feature_preflight": {
+      "environment": "RUSTOK_PAGES_REFERENCE_GATE_ROLLOUT_FEATURE_PREFLIGHT_EVIDENCE",
+      "format": "pages_builder_rollout_feature_preflight_v1",
+      "status": "four_profile_feature_preflight_passed_candidate_pending",
+      "same_source_commit_required": true,
+      "browser_predecessor_hash_must_match": true,
+      "rollout_matrix_predecessor_hash_must_match": true,
+      "same_api_deployment_digest_required": true,
+      "api_origin_hash_must_match_browser": true,
+      "settings_restore_required": true,
+      "all_required_profiles_must_match_feature_disabled_catalog": true
     }
   },
   "source_guards": [
-    {
-      "id": "plan_parity",
-      "program": "node",
-      "args": [
-        "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
-      ]
-    },
-    {
-      "id": "consumer_readiness",
-      "program": "node",
-      "args": [
-        "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
-        "pages"
-      ]
-    },
-    {
-      "id": "provider_status_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs"
-      ]
-    },
-    {
-      "id": "metadata_properties_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
-      ]
-    },
-    {
-      "id": "metadata_revision_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
-      ]
-    },
-    {
-      "id": "inline_consumer_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs"
-      ]
-    },
-    {
-      "id": "authoring_route_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs"
-      ]
-    },
-    {
-      "id": "asset_delivery_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs"
-      ]
-    },
-    {
-      "id": "admin_launch_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs"
-      ]
-    },
-    {
-      "id": "release_composition_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs"
-      ]
-    },
-    {
-      "id": "anonymous_graph_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs"
-      ]
-    },
-    {
-      "id": "cache_invalidation_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs"
-      ]
-    },
-    {
-      "id": "artifact_rollback_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"
-      ]
-    },
-    {
-      "id": "rollout_matrix_harness_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs"
-      ]
-    },
-    {
-      "id": "reference_gate_harness_source",
-      "program": "node",
-      "args": [
-        "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs"
-      ]
-    }
+    {"id":"plan_parity","program":"node","args":["crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"]},
+    {"id":"consumer_readiness","program":"node","args":["crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs","pages"]},
+    {"id":"provider_status_source","program":"node","args":["crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs"]},
+    {"id":"metadata_properties_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"]},
+    {"id":"metadata_revision_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"]},
+    {"id":"inline_consumer_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs"]},
+    {"id":"authoring_route_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs"]},
+    {"id":"asset_delivery_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs"]},
+    {"id":"admin_launch_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs"]},
+    {"id":"release_composition_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs"]},
+    {"id":"anonymous_graph_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs"]},
+    {"id":"cache_invalidation_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs"]},
+    {"id":"artifact_rollback_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"]},
+    {"id":"rollout_matrix_harness_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs"]},
+    {"id":"rollout_feature_preflight_harness_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs"]},
+    {"id":"reference_gate_harness_source","program":"node","args":["crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs"]}
   ],
   "focused_tests": [
-    {
-      "id": "metadata_stale_revision",
-      "program": "cargo",
-      "args": [
-        "test",
-        "-p",
-        "rustok-pages-admin",
-        "stale_metadata_revision_short_circuits_before_patch_transport"
-      ]
-    },
-    {
-      "id": "metadata_dirty_fly_isolation",
-      "program": "cargo",
-      "args": [
-        "test",
-        "-p",
-        "rustok-pages-admin",
-        "metadata_save_is_document_free_and_preserves_dirty_fly_state"
-      ]
-    },
-    {
-      "id": "publish_sanitization",
-      "program": "cargo",
-      "args": [
-        "test",
-        "-p",
-        "rustok-page-builder",
-        "publish_sanitization::tests"
-      ]
-    },
-    {
-      "id": "static_publish_resource_limits",
-      "program": "cargo",
-      "args": [
-        "test",
-        "-p",
-        "rustok-page-builder",
-        "static_publish_resource_limits::tests"
-      ]
-    },
-    {
-      "id": "publish_rollback_cache_correlation",
-      "program": "cargo",
-      "args": [
-        "test",
-        "-p",
-        "rustok-pages",
-        "--test",
-        "publish_rollback_cache_correlation"
-      ]
-    },
-    {
-      "id": "provider_degraded_profiles",
-      "program": "cargo",
-      "args": [
-        "test",
-        "-p",
-        "rustok-page-builder-admin",
-        "provider_status::tests"
-      ]
-    }
+    {"id":"metadata_stale_revision","program":"cargo","args":["test","-p","rustok-pages-admin","stale_metadata_revision_short_circuits_before_patch_transport"]},
+    {"id":"metadata_dirty_fly_isolation","program":"cargo","args":["test","-p","rustok-pages-admin","metadata_save_is_document_free_and_preserves_dirty_fly_state"]},
+    {"id":"publish_sanitization","program":"cargo","args":["test","-p","rustok-page-builder","publish_sanitization::tests"]},
+    {"id":"static_publish_resource_limits","program":"cargo","args":["test","-p","rustok-page-builder","static_publish_resource_limits::tests"]},
+    {"id":"publish_rollback_cache_correlation","program":"cargo","args":["test","-p","rustok-pages","--test","publish_rollback_cache_correlation"]},
+    {"id":"provider_degraded_profiles","program":"cargo","args":["test","-p","rustok-page-builder-admin","provider_status::tests"]}
   ],
   "output": {
     "environment": "RUSTOK_PAGES_REFERENCE_GATE_OUTPUT",
@@ -228,6 +95,13 @@
     "rollout_matrix_origin_hashes_must_match_browser": true,
     "rollout_matrix_settings_restore_must_be_verified": true,
     "rollout_matrix_all_required_profiles_must_pass": true,
+    "rollout_feature_preflight_same_source_commit": true,
+    "rollout_feature_preflight_must_bind_exact_browser_hash": true,
+    "rollout_feature_preflight_must_bind_exact_matrix_hash": true,
+    "rollout_feature_preflight_api_deployment_digest_must_match": true,
+    "rollout_feature_preflight_settings_restore_must_be_verified": true,
+    "canonical_feature_disabled_catalog_must_pass": true,
+    "browser_intent_denial_remains_separate_from_feature_disabled_catalog": true,
     "provider_health_claim": "unobserved",
     "owner_signoff": "pending_after_candidate",
     "rollback_decision": "pending_after_candidate",
@@ -248,11 +122,21 @@
     "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
     "apps/next-admin/playwright.pages-builder-rollout-matrix.config.ts",
     "apps/next-admin/tests/pages-builder-rollout-matrix/runtime-matrix.spec.ts",
+    "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
+    "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
+    "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs",
+    "apps/next-admin/playwright.pages-builder-rollout-feature-preflight.config.ts",
+    "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
+    "crates/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/rustok-page-builder/src/dto.rs",
+    "crates/rustok-page-builder/src/rollout.rs",
+    "crates/rustok-page-builder/src/service.rs",
     "crates/rustok-page-builder/src/publish_sanitization.rs",
     "crates/rustok-page-builder/src/static_publish_resource_limits.rs",
     "crates/rustok-page-builder/admin/src/provider_status.rs",
     "crates/rustok-pages/admin/src/metadata_properties.rs",
     "crates/rustok-pages/tests/publish_rollback_cache_correlation.rs",
+    "docs/modules/pages-page-builder-rollout-feature-preflight-actualization-2026-08-08.md",
     "docs/modules/pages-page-builder-reference-consumer-gate-evidence-harness-actualization-2026-08-08.md"
   ],
   "retained_data": [
@@ -263,7 +147,8 @@
     "allowlisted command ids and argv",
     "command exit status",
     "stdout/stderr byte lengths and SHA-256 hashes",
-    "rollout matrix profile pass booleans and settings-restore verification"
+    "rollout matrix profile pass booleans and settings-restore verification",
+    "canonical capability preflight outcome booleans/codes and settings-restore verification"
   ],
   "forbidden_retained_data": [
     "tenant ids",
