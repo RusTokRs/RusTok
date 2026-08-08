@@ -83,6 +83,7 @@ const scripts = [
   'verify-index-product-storefront-localized-query-architecture.mjs',
   'verify-index-localized-query-contract.mjs',
   'verify-index-localized-query-postgres-fold.mjs',
+  'verify-index-localized-query-runtime.mjs',
   'verify-index-product-materialized-query-freshness-postgres-harness.mjs',
   'verify-index-product-channel-convergence-postgres-harness.mjs',
   'verify-index-product-channel-identity-transitions-postgres-harness.mjs',
