@@ -5,7 +5,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::{
     CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort, ProductCatalogSchemaReadPort,
-    ProductCatalogSchemaService,
+    ProductCatalogSchemaService, ProductStorefrontTagReadPort,
 };
 
 /// Host-selected execution profile for the Product catalog read boundary.
@@ -27,11 +27,13 @@ impl ProductCatalogReadProfile {
 /// Canonical host-composed Product catalog read capability.
 ///
 /// Consumers receive this wrapper rather than constructing `CatalogService` directly. A host can
-/// therefore replace the embedded provider with a remote adapter without changing consumer code.
+/// therefore replace the embedded provider with a remote adapter without changing consumer code. Optional
+/// owner capabilities remain explicit and fail closed when an external profile has not selected them.
 #[derive(Clone)]
 pub struct ProductCatalogReadRuntime {
     read_port: Arc<dyn ProductCatalogReadPort>,
     schema_read_port: Option<Arc<dyn ProductCatalogSchemaReadPort>>,
+    storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>,
     profile: ProductCatalogReadProfile,
 }
 
@@ -43,16 +45,16 @@ impl ProductCatalogReadRuntime {
         Self {
             read_port,
             schema_read_port: None,
+            storefront_tag_read_port: None,
             profile,
         }
     }
 
     pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self::new(
-            Arc::new(CatalogService::new(db.clone(), event_bus.clone())),
-            ProductCatalogReadProfile::EmbeddedNative,
-        )
-        .with_schema_read_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
+        let catalog = Arc::new(CatalogService::new(db.clone(), event_bus.clone()));
+        Self::new(catalog.clone(), ProductCatalogReadProfile::EmbeddedNative)
+            .with_schema_read_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
+            .with_storefront_tag_read_port(catalog)
     }
 
     pub fn external(read_port: Arc<dyn ProductCatalogReadPort>) -> Self {
@@ -67,12 +69,24 @@ impl ProductCatalogReadRuntime {
         self
     }
 
+    pub fn with_storefront_tag_read_port(
+        mut self,
+        storefront_tag_read_port: Arc<dyn ProductStorefrontTagReadPort>,
+    ) -> Self {
+        self.storefront_tag_read_port = Some(storefront_tag_read_port);
+        self
+    }
+
     pub fn read_port(&self) -> Arc<dyn ProductCatalogReadPort> {
         self.read_port.clone()
     }
 
     pub fn schema_read_port(&self) -> Option<Arc<dyn ProductCatalogSchemaReadPort>> {
         self.schema_read_port.clone()
+    }
+
+    pub fn storefront_tag_read_port(&self) -> Option<Arc<dyn ProductStorefrontTagReadPort>> {
+        self.storefront_tag_read_port.clone()
     }
 
     pub const fn profile(&self) -> ProductCatalogReadProfile {
