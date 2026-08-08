@@ -62,7 +62,7 @@ const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_repla
 const runner = read(runnerPath);
 for (const forbidden of ['IndexReplayMode::Targeted', 'IndexReplayMode::Shadow', 'TargetedLoad', 'SideEffectFreeScan']) {
   if (runner.includes(forbidden)) {
-    fail(`${runnerPath} must remain the durable full-scan runner: ${forbidden}`);
+    fail(`${runnerPath} must remain the durable Full-scan runner: ${forbidden}`);
   }
 }
 
@@ -78,29 +78,37 @@ requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'shadow: rustok_index::SharedIndexReplayDryRunRuntime',
   'context.authorize_for(request.tenant_id())?;',
   'self.shadow.run(request).await.map_err(Into::into)',
+  'IndexReplayShadowTransportRuntime',
+]);
+requireMarkers('apps/server/src/graphql/index_replay.rs', [
+  'pub struct IndexReplayShadowRunInput',
+  'async fn run_index_replay_shadow(',
+  '.get::<IndexReplayShadowTransportRuntime>()',
+  '.run_schema_wide(',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_host_dispatch_transport_pending`.',
+  'Status: `source_complete_shadow_schema_wide_transport_locale_pending`.',
   '`Full` — cursor-based durable source scan',
   '`Targeted` — bounded exact-key source load',
   '`Shadow` — side-effect-free cursor scan',
   'Mode is not locale scope and is not future partition scope.',
   'returns true only for `Full`',
-  'must not alias the full durable job/checkpoint identity',
-  '`Shadow` host dispatch is now source-complete',
-  '`IndexReplayOperatorRuntime::run_shadow`',
-  'GraphQL transport remains separate',
-  'The next source-only boundary is authorization-first GraphQL transport',
+  'must not alias the Full durable job/checkpoint identity',
+  '`Shadow` host dispatch is source-complete',
+  '`runIndexReplayShadow` is now a dedicated transport',
+  'transport is intentionally schema-wide',
+  'next independent Shadow boundary is locale-safe continuation identity',
   'Execution/admission remains maintainer-owned.',
 ]);
 
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.',
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
-  'Add authorization-first GraphQL transport for the guarded Shadow replay command.',
+  'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',
+  'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
   'Targeted execution remains separate until a bounded mutation-application contract over `IndexSource::load` exists.',
   'Add partition replay scope only after a real partition-capable source contract exists.',
 ]);
 
-console.log('[verify-index-replay-mode-contract] Full stays durable, Targeted stays bounded-load-only, and Shadow now has a guarded no-write host route without public transport');
+console.log('[verify-index-replay-mode-contract] Full stays durable, Targeted stays bounded-load-only, and Shadow is schema-wide transported without durable ownership while locale scope remains explicit debt');
