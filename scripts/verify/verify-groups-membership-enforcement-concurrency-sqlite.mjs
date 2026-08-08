@@ -56,7 +56,7 @@ for (const forbidden of [
 for (const marker of [
   "executable source added / maintainer execution pending",
   "Same-key concurrent suspension",
-  "Distict-key concurrent suspension",
+  "Distinct-key concurrent suspension",
   "Distinct-key concurrent revoke",
   "groups.membership_enforcement_revision_conflict",
   "SQLite serialization",
