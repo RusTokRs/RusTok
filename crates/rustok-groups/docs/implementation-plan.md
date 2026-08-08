@@ -121,8 +121,9 @@ Source exists for:
 - stored lifecycle active member-count semantics that remain independent from temporary owner-clock
   suspension/expiry/revocation while every enforcement mutation still advances group version;
 - append-only membership suspend/revoke semantic events beside targeted invitation events;
-- effective core `GroupsService` for access, redaction, join/rejoin, membership listing, enabled
-  features, and transaction-aware feature settings using the canonical effective-manager lock protocol;
+- effective core `GroupsService` for access, redaction, transaction-aware join/rejoin, membership
+  listing, enabled features, and transaction-aware feature settings using the canonical owner lock
+  protocol;
 - effective localization management reads plus transaction-aware translation upsert/delete using the
   same owner-clock manager semantics and `Group -> GroupMembership -> GroupMembershipEnforcement`
   write lock protocol;
@@ -146,6 +147,7 @@ Evidence still open:
 - direct enforcement replay, expected-revision contention, hierarchy, owner-protection, expiry,
   revoke, lifecycle-count invariance, audit/event atomicity and security evidence;
 - executed native/GraphQL parity and schema/error-mapping evidence for direct enforcement;
+- executed join/rejoin suspension and enforcement-vs-join serialization evidence;
 - executed feature-settings suspension/expiry and concurrent enforcement-vs-write evidence;
 - executed localization suspension/expiry, native/GraphQL parity, and concurrent enforcement-vs-write
   evidence;
@@ -167,7 +169,7 @@ Evidence still open:
 | GROUPS-04 | in_progress | typed summary/membership/access/localization/invitation/application/governance/enforcement ports | consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, invitation acceptance/delivery | parity and Notifications evidence |
 | GROUPS-06 | in_progress | localized policy, CAS, lifecycle, focused/bulk review, FFA UX | profiles/events/parity/concurrency/accessibility |
-| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, effective core/feature/localization/governance access, transactional invitation/application authorization | moderation adapter, provider cutover, runtime/concurrency/parity evidence |
+| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, effective core/join/feature/localization/governance access, transactional invitation/application authorization | moderation adapter, provider cutover, runtime/concurrency/parity evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and navigation | registry/degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum integration evidence |
 | GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner/privacy evidence |
@@ -320,6 +322,27 @@ expiry/revocation state and replay flag.
 Runtime schema execution, error-code parity, replay/CAS and authorization parity remain evidence
 gates; source composition is not promoted to `done`.
 
+### Source-complete join/rejoin effective authorization
+
+`GroupCommandPort::join_group` now treats re-entry authorization and membership lifecycle mutation as
+one Groups owner transaction. The command reserves the group writer before reading mutable aggregate
+state, confirms the group is active, and then calls the transaction-aware enforcement resolver so the
+remaining membership/enforcement locks follow the canonical
+`Group -> GroupMembership -> GroupMembershipEnforcement` order.
+
+An active suspension now returns the stable `groups.membership_suspended` identity and a legacy ban
+returns `groups.membership_banned` before invitation/join-policy lifecycle mutation. Stored `active`,
+`pending`, `invited` or `left` status never overrides current owner-clock enforcement state.
+
+If join/rejoin serializes first, its lifecycle mutation and revision effect are visible before a later
+enforcement command continues; a suspension prepared against the old membership revision must
+conflict. If suspension serializes first, the join transaction observes the suspension and writes no
+membership lifecycle, member-count or group-version state. Existing visibility, join-policy,
+invitation and active-member return semantics are otherwise unchanged.
+
+Compilation plus SQLite/PostgreSQL join-versus-enforcement evidence remains open; source completeness
+is not promoted to `done`.
+
 ### Source-complete feature-settings effective authorization
 
 `GroupCommandPort::set_group_feature` now treats feature bindings as transactionally serialized Groups
@@ -466,8 +489,8 @@ above rather than introduce a second Groups enforcement state path.
 1. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
 2. Convert provider ACL consumers and remote/degraded profiles.
 3. Execute and retain the PostgreSQL/SQLite governance-enforcement evidence sources, then produce
-   remaining direct-enforcement, feature-settings, localization, governance and adapter runtime,
-   parity, concurrency, security, migration and accessibility evidence.
+   remaining direct-enforcement, join/rejoin, feature-settings, localization, governance and adapter
+   runtime, parity, concurrency, security, migration and accessibility evidence.
 
 ## Degraded modes
 
@@ -498,6 +521,7 @@ cargo test -p rustok-groups
 RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://...' cargo test -p rustok-server --features mod-groups --test groups_governance_enforcement_postgres -- --ignored --nocapture
 cargo test -p rustok-server --features mod-groups --test groups_governance_enforcement_sqlite -- --nocapture
 node scripts/verify/verify-groups-boundary.mjs
+node scripts/verify/verify-groups-join-enforcement-authorization.mjs
 node scripts/verify/verify-groups-feature-enforcement-authorization.mjs
 node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-governance-effective-authorization.mjs
