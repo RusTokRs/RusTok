@@ -1,6 +1,7 @@
 mod category;
 mod helpers;
 mod policy;
+pub mod reconciliation;
 mod topic;
 
 use sea_orm::DatabaseConnection;
