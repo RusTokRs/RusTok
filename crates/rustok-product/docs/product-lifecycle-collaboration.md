@@ -1,6 +1,6 @@
 # Product lifecycle owner collaboration
 
-Status: deployment selection and canonical owner effective-policy co-requisite identity source-complete, staged lifecycle recovery semantics and execution evidence pending, unvalidated.
+Status: deployment selection, canonical owner co-requisite policy identity, and staged lifecycle recovery source-complete; execution evidence pending, unvalidated.
 
 ## Problem
 
@@ -29,7 +29,7 @@ Deployment co-requisite validation remains separate from `ManifestManager::valid
 
 ## Canonical tenant effective-policy identity
 
-The active composition still derives package co-requisites through `ManifestManager::module_policy_corequisites`, but the manifest layer is now only the trusted parser/translator. Availability semantics are owned by `rustok-modules`:
+The active composition derives package co-requisites through `ManifestManager::module_policy_corequisites`, but the manifest layer is only the trusted parser/translator. Availability semantics are owned by `rustok-modules`:
 
 - `ModuleLifecycleDbWriter::with_corequisites` accepts the normalized `consumer -> provider -> version requirement` map separately from the definition catalog's ordinary dependencies;
 - `ModuleEffectivePolicyQuery` normalizes the co-requisite input against the active catalog, rejects self-references, dependency/co-requisite overlap, unknown consumers/providers, conflicting duplicates, and malformed version requirements;
@@ -37,7 +37,7 @@ The active composition still derives package co-requisites through `ManifestMana
 - the owner fixed point applies ordinary dependencies and co-requisites as distinct constraints. A missing effective owner produces `CoRequisiteUnavailable`; a selected but incompatible owner version produces `CoRequisiteVersionMismatch`;
 - each Product decision carries `CoRequisite` facts with the admitted owner version, declared requirement, compatibility result, and final owner availability.
 
-The server no longer post-validates a returned `ModuleEffectivePolicy`. Base, channel, maintenance, node-readiness, lifecycle, recovery, and settings adapters supply the active package co-requisite map to the same modules-owner writer and consume its canonical policy result.
+The server does not post-validate a returned `ModuleEffectivePolicy`. Base, channel, maintenance, node-readiness, lifecycle, recovery, and settings adapters supply the active package co-requisite map to the same modules-owner writer and consume its canonical policy result.
 
 ## Tenant intent ordering
 
@@ -45,16 +45,33 @@ Canonical availability cannot also be the lifecycle ordering graph. Inventory an
 
 The modules owner therefore keeps two explicit signals during normal lifecycle toggles:
 
-- **effective availability** is co-requisite-aware and is used for serving decisions, cache identity, operation effective-state reporting, and current/next policy revision;
+- **effective availability** is co-requisite-aware and is used for serving decisions, cache identity, historical operation availability, and current/next policy revision;
 - **ordinary ordering selection** resolves the same tenant intent without co-requisites and is used only by `validate_module_toggle` for the existing dependency-order rules.
 
 This lets a tenant stage Product intent first, then Inventory/Pricing, while Product remains unavailable until the complete owner set satisfies the canonical co-requisite policy. Teardown remains governed by the ordinary dependency topology; co-requisites never become a second ordering graph.
 
-## Remaining staged recovery debt
+## Exact staged lifecycle recovery
 
-The legacy lifecycle recovery contract persists `previous_effective_enabled` in the operation journal and uses effective availability for retry/compensation state matching. Once tenant intent and serving availability are intentionally distinct, a staged Product row can be selected while Product is effectively unavailable. In that state, `previous_effective_enabled` is not a sufficient predecessor for restoring the exact tenant intent after a post-hook failure.
+Recovery now treats tenant selection and serving availability as separate owner facts. The exact explicit tenant override has three states:
 
-This slice therefore does **not** claim staged lifecycle recovery source-complete. The next source task is to give retry/compensation an explicit selected-intent predecessor/current-state contract while retaining the co-requisite-aware policy revision for serving and outbox identity. That change must not reintroduce a second dependency-order graph.
+- `None` — no `tenant_modules` row; selection inherits platform/default policy;
+- `Some(true)` — explicit enabled override;
+- `Some(false)` — explicit disabled override.
+
+A plain boolean predecessor is insufficient because `None` and `Some(false)` have different future behavior when defaults change. New lifecycle operations therefore persist an immutable `module_operation_override_states` side record keyed by `module_operations.id`. Its row presence proves that exact selected-intent recovery evidence was recorded; nullable predecessor/target booleans can then represent inherited state without conflating it with legacy operations.
+
+The recovery contract is fail-closed:
+
+- legacy operations without that side record report no recorded selected-intent state and cannot be retried/compensated by guessing from `previous_effective_enabled`;
+- post-hook retry proves the current explicit override still equals the operation's recorded requested override, then repeats only the post-hook. It does not require Product to be effectively available, so staged Product intent remains recoverable before Inventory/Pricing make the full set available;
+- a retry attempt copies the original selected-intent predecessor/target into its own journal recovery state, preserving later compensation semantics if the retried hook fails again;
+- compensation uses the inverse lifecycle hook/ordinary-order direction from the original command, but its persistence target is the exact recorded predecessor;
+- when that predecessor is `None`, compensation removes the explicit `tenant_modules` row instead of manufacturing `enabled=false`;
+- current/next policy revision for compensation is still computed from the exact resulting override set through the canonical co-requisite-aware owner policy, so serving/cache/outbox identity remains one source of truth.
+
+`previous_effective_enabled` remains in the journal as historical availability evidence. It is deliberately not used as the selected-intent predecessor.
+
+The recovery side table is introduced by a new append-only platform migration. Existing migration files and the published migration prefix are not rewritten.
 
 ## Current contained boundary
 
@@ -92,30 +109,32 @@ This is a native transaction collaboration contract, not a GraphQL, REST, gRPC, 
 - Product declares Inventory and Pricing as package co-requisites with bounded version requirements;
 - Inventory and Pricing continue to depend ordinarily on Product;
 - the default deployment bundle contains Product, Pricing, and Inventory;
-- the server owns a separate deployment co-requisite preflight and invokes it from startup manifest/registry validation;
-- built-in installation remains on ordinary `ManifestManager::validate` and does not invoke the co-requisite preflight;
-- the active manifest supplies package co-requisite metadata to the modules owner without copying it into ordinary dependency ordering;
+- static deployment selection rejects incomplete/incompatible co-requisite bundles without changing ordinary install/migration ordering;
 - canonical effective-policy revision input includes normalized co-requisites under the v2 contract;
 - Product decisions expose explicit co-requisite facts and unavailable/version-mismatch denial reasons;
 - lifecycle current/next revisions use the same co-requisite-aware owner query as policy reads;
 - normal lifecycle validation uses a separate ordinary ordering selection so Product/Inventory/Pricing activation remains sequentially orderable;
-- host-level duplicate effective-policy/toggle co-requisite validation is absent;
-- Product uses the exact owner bootstrap services and operations;
-- Product does not import foreign owner entities or query known foreign tables directly;
-- the owner services remain explicitly transaction-aware;
-- staged retry/compensation predecessor semantics and runtime rollback evidence remain unvalidated.
+- lifecycle operations persist exact nullable predecessor/target override state in a dedicated recovery side table;
+- side-table row presence distinguishes inherited `None` from legacy operations with unknown predecessor state;
+- post-hook retry compares exact current override state instead of effective availability and retains the original predecessor/target for the retry attempt;
+- compensation runs the inverse lifecycle direction but restores the exact recorded override predecessor, including row deletion for inherited state;
+- `previous_effective_enabled` is not used as the compensation target;
+- the recovery migration extends the append-only migration tail;
+- Product uses the exact owner bootstrap services and operations and does not take ownership of Inventory/Pricing persistence.
 
 ## Next implementation slice
 
-Separate persisted tenant selected-intent predecessor/current state from effective availability in module operation recovery. Post-hook retry and compensation must prove the exact committed tenant intent they are recovering while continuing to publish the canonical co-requisite-aware policy revision. Do not change ordinary dependency ordering or turn co-requisites into toggle dependencies.
+The Product dependency/collaboration contract is source-resolved. The remaining gate is maintainer-run execution and retained evidence, not another ownership/topology redesign.
 
-After that recovery source gap closes, retain maintainer-run evidence for:
+Retain execution evidence for:
 
 - default and non-default tenant module selections;
 - co-requisite-aware policy/cache revision changes;
 - staged Product -> Inventory -> Pricing activation and reverse teardown;
-- post-hook retry/compensation across staged intent;
-- clean migration ordering;
+- post-hook retry while Product intent is selected but Product availability is still false;
+- compensation restoring explicit true, explicit false, and inherited/no-row predecessors;
+- fail-closed behavior for a legacy operation without selected-intent recovery state;
+- clean append-only migration ordering;
 - Product create/delete rollback across all three owners;
 - no silent post-commit partial state;
 - no ordinary cyclic dependency;
@@ -129,4 +148,4 @@ Source evidence is stored at:
 
 `crates/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json`
 
-No tests, Cargo commands, formatting, verifier execution, workflow checks, tenant activation, non-default selection, policy-cache execution, staged recovery, or transaction rollback execution evidence are claimed by this source wave.
+No tests, Cargo commands, formatting, verifier execution, workflow checks, tenant activation, non-default selection, policy-cache execution, staged recovery execution, migration execution, or transaction rollback execution evidence are claimed by this source wave.
