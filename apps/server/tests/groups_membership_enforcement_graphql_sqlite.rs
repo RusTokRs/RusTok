@@ -3,14 +3,18 @@
 use std::time::Duration;
 
 use async_graphql::{EmptySubscription, Request, Response, Schema};
-use rustok_api::{AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext};
+use rustok_api::{
+    AuthContext, HostRuntimeContext, PortActor, PortContext, PortErrorKind, TenantContext,
+};
 use rustok_groups::graphql_application_cas::{GroupsMutationRoot, GroupsQueryRoot};
 use rustok_groups::{
-    GroupMembershipEffectiveStatus, GroupMembershipEnforcementCommandPort,
-    GroupMembershipEnforcementCommandService, RevokeGroupMembershipSuspensionRequest,
+    GroupMembershipEnforcementCommandPort, GroupMembershipEnforcementCommandService,
+    GroupMembershipEnforcementMutationResult, RevokeGroupMembershipSuspensionRequest,
     SuspendGroupMembershipRequest,
 };
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -23,7 +27,7 @@ async fn connect(url: &str) -> DatabaseConnection {
         .sqlx_logging(false);
     Database::connect(options)
         .await
-        .expect("Groups GraphQL parity SQLite connection should open")
+        .expect("Groups enforcement GraphQL parity SQLite connection should open")
 }
 
 async fn install_groups_schema(db: &DatabaseConnection) {
@@ -32,7 +36,7 @@ async fn install_groups_schema(db: &DatabaseConnection) {
         migration
             .up(&manager)
             .await
-            .expect("production Groups migration should apply for GraphQL parity evidence");
+            .expect("production Groups migration should apply for enforcement GraphQL parity evidence");
     }
 }
 
@@ -44,36 +48,40 @@ fn sqlite_fixture_url(temp: &TempDir) -> String {
 async fn seed_group_fixture(
     db: &DatabaseConnection,
     tenant_id: Uuid,
-    group_id: Uuid,
+    native_group_id: Uuid,
+    graphql_group_id: Uuid,
     owner_id: Uuid,
-    native_target_id: Uuid,
-    graphql_target_id: Uuid,
+    target_id: Uuid,
+    native_target_membership_id: Uuid,
+    graphql_target_membership_id: Uuid,
 ) {
     db.execute_unprepared(&format!(
         r#"
 INSERT INTO groups (id, tenant_id, owner_user_id, handle, member_count)
-VALUES ('{group_id}', '{tenant_id}', '{owner_id}', 'enforcement-graphql-parity', 3);
+VALUES
+    ('{native_group_id}', '{tenant_id}', '{owner_id}', 'enforcement-native-parity', 2),
+    ('{graphql_group_id}', '{tenant_id}', '{owner_id}', 'enforcement-graphql-parity', 2);
 
 INSERT INTO group_memberships
     (id, tenant_id, group_id, user_id, role, status, joined_at)
 VALUES
-    ('{}', '{tenant_id}', '{group_id}', '{owner_id}', 'owner', 'active', CURRENT_TIMESTAMP),
-    ('{}', '{tenant_id}', '{group_id}', '{native_target_id}', 'member', 'active', CURRENT_TIMESTAMP),
-    ('{}', '{tenant_id}', '{group_id}', '{graphql_target_id}', 'member', 'active', CURRENT_TIMESTAMP);
+    ('{}', '{tenant_id}', '{native_group_id}', '{owner_id}', 'owner', 'active', CURRENT_TIMESTAMP),
+    ('{native_target_membership_id}', '{tenant_id}', '{native_group_id}', '{target_id}', 'member', 'active', CURRENT_TIMESTAMP),
+    ('{}', '{tenant_id}', '{graphql_group_id}', '{owner_id}', 'owner', 'active', CURRENT_TIMESTAMP),
+    ('{graphql_target_membership_id}', '{tenant_id}', '{graphql_group_id}', '{target_id}', 'member', 'active', CURRENT_TIMESTAMP);
 "#,
-        Uuid::new_v4(),
         Uuid::new_v4(),
         Uuid::new_v4(),
     ))
     .await
-    .expect("Groups GraphQL parity fixture should seed");
+    .expect("Groups enforcement GraphQL parity fixture should seed");
 }
 
 fn tenant_context(tenant_id: Uuid) -> TenantContext {
     TenantContext {
         id: tenant_id,
-        name: "Groups GraphQL parity".to_string(),
-        slug: "groups-graphql-parity".to_string(),
+        name: "Groups enforcement GraphQL parity".to_string(),
+        slug: "groups-enforcement-graphql-parity".to_string(),
         domain: None,
         settings: serde_json::json!({}),
         default_locale: "en".to_string(),
@@ -93,7 +101,11 @@ fn auth_context(tenant_id: Uuid, owner_id: Uuid) -> AuthContext {
     }
 }
 
-fn native_context(tenant_id: Uuid, owner_id: Uuid, idempotency_key: &str) -> PortContext {
+fn native_write_context(
+    tenant_id: Uuid,
+    owner_id: Uuid,
+    idempotency_key: &str,
+) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::user(owner_id.to_string()),
@@ -134,13 +146,13 @@ async fn execute_graphql(
 fn response_json(response: Response) -> serde_json::Value {
     assert!(
         response.errors.is_empty(),
-        "GraphQL parity request should succeed: {:?}",
+        "Groups enforcement GraphQL parity request should succeed: {:?}",
         response.errors
     );
     response
         .data
         .into_json()
-        .expect("GraphQL parity response data should convert to JSON")
+        .expect("Groups enforcement GraphQL parity data should convert to JSON")
 }
 
 fn extension_json(error: &async_graphql::ServerError, key: &str) -> Option<serde_json::Value> {
@@ -152,135 +164,257 @@ fn extension_json(error: &async_graphql::ServerError, key: &str) -> Option<serde
         .and_then(|value| value.into_json().ok())
 }
 
+fn assert_graphql_result(
+    graphql: &serde_json::Value,
+    native: &GroupMembershipEnforcementMutationResult,
+    expected_group_id: Uuid,
+    expected_membership_id: Uuid,
+    expected_replayed: bool,
+) {
+    assert_eq!(
+        graphql["groupId"].as_str().map(str::to_owned),
+        Some(expected_group_id.to_string())
+    );
+    assert_eq!(
+        graphql["membershipId"].as_str().map(str::to_owned),
+        Some(expected_membership_id.to_string())
+    );
+    assert_eq!(
+        graphql["userId"].as_str().map(str::to_owned),
+        Some(native.user_id.to_string())
+    );
+    assert_eq!(
+        graphql["membershipRevision"].as_i64(),
+        Some(native.membership_revision)
+    );
+    assert_eq!(graphql["groupVersion"].as_i64(), Some(native.group_version));
+    assert_eq!(graphql["memberCount"].as_i64(), Some(native.member_count));
+    assert_eq!(
+        graphql["effectiveStatus"].as_str(),
+        Some(native.effective_status.as_str())
+    );
+    assert_eq!(
+        graphql["enforcementRevision"].as_i64(),
+        Some(native.enforcement_revision)
+    );
+    assert_eq!(
+        graphql["effectiveUntil"].is_null(),
+        native.effective_until.is_none()
+    );
+    assert_eq!(graphql["revokedAt"].is_null(), native.revoked_at.is_none());
+    assert_eq!(graphql["replayed"].as_bool(), Some(expected_replayed));
+}
+
+async fn owner_snapshot(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    target_id: Uuid,
+) -> (i64, i64, String, String, i64, i64, String, i64) {
+    let group = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!(
+                "SELECT version, member_count FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
+            ),
+        ))
+        .await
+        .expect("group snapshot query should succeed")
+        .expect("group should exist");
+    let membership = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!(
+                "SELECT role, status, revision FROM group_memberships WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{target_id}'"
+            ),
+        ))
+        .await
+        .expect("membership snapshot query should succeed")
+        .expect("target membership should exist");
+    let enforcement = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!(
+                "SELECT revision, source_kind, CASE WHEN revoked_at IS NULL THEN 0 ELSE 1 END AS revoked FROM group_membership_enforcements WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{target_id}'"
+            ),
+        ))
+        .await
+        .expect("enforcement snapshot query should succeed")
+        .expect("enforcement row should exist");
+
+    (
+        group.try_get("", "version").expect("group version should decode"),
+        group
+            .try_get("", "member_count")
+            .expect("member_count should decode"),
+        membership.try_get("", "role").expect("role should decode"),
+        membership
+            .try_get("", "status")
+            .expect("status should decode"),
+        membership
+            .try_get("", "revision")
+            .expect("membership revision should decode"),
+        enforcement
+            .try_get("", "revision")
+            .expect("enforcement revision should decode"),
+        enforcement
+            .try_get("", "source_kind")
+            .expect("enforcement source should decode"),
+        enforcement
+            .try_get("", "revoked")
+            .expect("revoked marker should decode"),
+    )
+}
+
 #[tokio::test]
-async fn direct_enforcement_native_and_graphql_share_owner_semantics_sqlite() {
-    let temp = tempfile::tempdir().expect("temporary Groups GraphQL parity directory should create");
+async fn direct_enforcement_native_and_final_graphql_share_owner_semantics_sqlite() {
+    let temp = tempfile::tempdir()
+        .expect("temporary Groups enforcement GraphQL parity directory should create");
     let url = sqlite_fixture_url(&temp);
     let db = connect(&url).await;
     install_groups_schema(&db).await;
 
     let tenant_id = Uuid::new_v4();
-    let group_id = Uuid::new_v4();
+    let native_group_id = Uuid::new_v4();
+    let graphql_group_id = Uuid::new_v4();
     let owner_id = Uuid::new_v4();
-    let native_target_id = Uuid::new_v4();
-    let graphql_target_id = Uuid::new_v4();
+    let target_id = Uuid::new_v4();
+    let native_target_membership_id = Uuid::new_v4();
+    let graphql_target_membership_id = Uuid::new_v4();
     seed_group_fixture(
         &db,
         tenant_id,
-        group_id,
+        native_group_id,
+        graphql_group_id,
         owner_id,
-        native_target_id,
-        graphql_target_id,
+        target_id,
+        native_target_membership_id,
+        graphql_target_membership_id,
     )
     .await;
 
-    let native_service = GroupMembershipEnforcementCommandService::new(db.clone());
+    let native = GroupMembershipEnforcementCommandService::new(db.clone());
+    let schema = graphql_schema(db.clone());
+
     let native_suspend = GroupMembershipEnforcementCommandPort::suspend_membership(
-        &native_service,
-        native_context(tenant_id, owner_id, "native-suspend"),
+        &native,
+        native_write_context(tenant_id, owner_id, "native-suspend"),
         SuspendGroupMembershipRequest {
-            group_id,
-            target_user_id: native_target_id,
+            group_id: native_group_id,
+            target_user_id: target_id,
             expected_membership_revision: 1,
-            reason_code: "parity_review".to_string(),
+            reason_code: "transport_parity".to_string(),
             effective_until: None,
         },
     )
     .await
-    .expect("native owner suspend should succeed");
-    assert_eq!(
-        native_suspend.effective_status,
-        GroupMembershipEffectiveStatus::Suspended
-    );
+    .expect("native direct suspension should succeed");
+    assert_eq!(native_suspend.membership_id, native_target_membership_id);
     assert_eq!(native_suspend.membership_revision, 2);
-    assert_eq!(native_suspend.enforcement_revision, 1);
-    assert_eq!(native_suspend.member_count, 3);
+    assert_eq!(native_suspend.member_count, 2);
     assert!(!native_suspend.replayed);
 
-    let schema = graphql_schema(db.clone());
-    let graphql_suspend_document = format!(
-        r#"
-mutation {{
-  suspendGroupMembership(
-    idempotencyKey: "graphql-suspend",
-    groupId: "{group_id}",
-    targetUserId: "{graphql_target_id}",
-    expectedMembershipRevision: 1,
-    reasonCode: "parity_review"
-  ) {{
-    groupId
-    membershipId
-    userId
-    membershipRevision
-    groupVersion
-    memberCount
-    effectiveStatus
-    enforcementRevision
-    effectiveUntil
-    revokedAt
-    replayed
-  }}
-}}
-"#
-    );
     let graphql_suspend = response_json(
         execute_graphql(
             &schema,
             tenant_id,
             owner_id,
-            graphql_suspend_document.clone(),
+            format!(
+                r#"
+mutation {{
+  suspendGroupMembership(
+    idempotencyKey: "graphql-suspend",
+    groupId: "{graphql_group_id}",
+    targetUserId: "{target_id}",
+    expectedMembershipRevision: 1,
+    reasonCode: "transport_parity"
+  ) {{
+    groupId membershipId userId membershipRevision groupVersion memberCount
+    effectiveStatus enforcementRevision effectiveUntil revokedAt replayed
+  }}
+}}
+"#
+            ),
         )
         .await,
     );
-    let graphql_suspend = &graphql_suspend["suspendGroupMembership"];
-    assert_eq!(graphql_suspend["groupId"], group_id.to_string());
-    assert_eq!(graphql_suspend["userId"], graphql_target_id.to_string());
-    assert_eq!(
-        graphql_suspend["membershipRevision"].as_i64(),
-        Some(native_suspend.membership_revision)
-    );
-    assert_eq!(
-        graphql_suspend["memberCount"].as_i64(),
-        Some(native_suspend.member_count)
-    );
-    assert_eq!(
-        graphql_suspend["effectiveStatus"].as_str(),
-        Some(native_suspend.effective_status.as_str())
-    );
-    assert_eq!(
-        graphql_suspend["enforcementRevision"].as_i64(),
-        Some(native_suspend.enforcement_revision)
-    );
-    assert_eq!(graphql_suspend["replayed"].as_bool(), Some(false));
-    assert!(graphql_suspend["effectiveUntil"].is_null());
-    assert!(graphql_suspend["revokedAt"].is_null());
-    assert!(
-        graphql_suspend["groupVersion"].as_i64().is_some_and(|version| version > native_suspend.group_version),
-        "sequential GraphQL mutation should return a later owner group version"
+    assert_graphql_result(
+        &graphql_suspend["suspendGroupMembership"],
+        &native_suspend,
+        graphql_group_id,
+        graphql_target_membership_id,
+        false,
     );
 
-    let replay = response_json(
+    let native_suspend_replay = GroupMembershipEnforcementCommandPort::suspend_membership(
+        &native,
+        native_write_context(tenant_id, owner_id, "native-suspend"),
+        SuspendGroupMembershipRequest {
+            group_id: native_group_id,
+            target_user_id: target_id,
+            expected_membership_revision: 1,
+            reason_code: "transport_parity".to_string(),
+            effective_until: None,
+        },
+    )
+    .await
+    .expect("native suspension receipt should replay while currently suspended");
+    assert!(native_suspend_replay.replayed);
+    assert_eq!(native_suspend_replay.group_version, native_suspend.group_version);
+
+    let graphql_suspend_replay = response_json(
         execute_graphql(
             &schema,
             tenant_id,
             owner_id,
-            graphql_suspend_document,
+            format!(
+                r#"
+mutation {{
+  suspendGroupMembership(
+    idempotencyKey: "graphql-suspend",
+    groupId: "{graphql_group_id}",
+    targetUserId: "{target_id}",
+    expectedMembershipRevision: 1,
+    reasonCode: "transport_parity"
+  ) {{
+    groupId membershipId userId membershipRevision groupVersion memberCount
+    effectiveStatus enforcementRevision effectiveUntil revokedAt replayed
+  }}
+}}
+"#
+            ),
         )
         .await,
     );
-    let replay = &replay["suspendGroupMembership"];
-    assert_eq!(replay["membershipId"], graphql_suspend["membershipId"]);
-    assert_eq!(
-        replay["membershipRevision"],
-        graphql_suspend["membershipRevision"]
+    assert_graphql_result(
+        &graphql_suspend_replay["suspendGroupMembership"],
+        &native_suspend_replay,
+        graphql_group_id,
+        graphql_target_membership_id,
+        true,
     );
-    assert_eq!(replay["groupVersion"], graphql_suspend["groupVersion"]);
-    assert_eq!(replay["memberCount"], graphql_suspend["memberCount"]);
-    assert_eq!(replay["effectiveStatus"], graphql_suspend["effectiveStatus"]);
-    assert_eq!(replay["enforcementRevision"], graphql_suspend["enforcementRevision"]);
-    assert_eq!(replay["replayed"].as_bool(), Some(true));
 
-    let stale = execute_graphql(
+    let native_stale = GroupMembershipEnforcementCommandPort::suspend_membership(
+        &native,
+        native_write_context(tenant_id, owner_id, "native-stale-suspend"),
+        SuspendGroupMembershipRequest {
+            group_id: native_group_id,
+            target_user_id: target_id,
+            expected_membership_revision: 1,
+            reason_code: "stale_transport_parity".to_string(),
+            effective_until: None,
+        },
+    )
+    .await
+    .expect_err("fresh native stale suspension must fail revision CAS");
+    assert_eq!(native_stale.kind, PortErrorKind::Conflict);
+    assert_eq!(
+        native_stale.code,
+        "groups.membership_enforcement_revision_conflict"
+    );
+    assert!(!native_stale.retryable);
+
+    let graphql_stale = execute_graphql(
         &schema,
         tenant_id,
         owner_id,
@@ -288,50 +422,52 @@ mutation {{
             r#"
 mutation {{
   suspendGroupMembership(
-    idempotencyKey: "graphql-stale",
-    groupId: "{group_id}",
-    targetUserId: "{graphql_target_id}",
+    idempotencyKey: "graphql-stale-suspend",
+    groupId: "{graphql_group_id}",
+    targetUserId: "{target_id}",
     expectedMembershipRevision: 1,
-    reasonCode: "stale_review"
-  ) {{ membershipRevision }}
+    reasonCode: "stale_transport_parity"
+  ) {{ groupVersion }}
 }}
 "#
         ),
     )
     .await;
-    assert_eq!(stale.errors.len(), 1);
-    let stale_error = &stale.errors[0];
+    assert_eq!(graphql_stale.errors.len(), 1);
+    let graphql_stale_error = &graphql_stale.errors[0];
+    assert_eq!(graphql_stale_error.message, native_stale.message);
     assert_eq!(
-        extension_json(stale_error, "code").and_then(|value| value.as_str().map(str::to_owned)),
+        extension_json(graphql_stale_error, "code")
+            .and_then(|value| value.as_str().map(str::to_owned)),
         Some("BAD_USER_INPUT".to_string())
     );
     assert_eq!(
-        extension_json(stale_error, "domainCode")
+        extension_json(graphql_stale_error, "domainCode")
             .and_then(|value| value.as_str().map(str::to_owned)),
         Some("groups.membership_enforcement_revision_conflict".to_string())
     );
     assert_eq!(
-        extension_json(stale_error, "retryable").and_then(|value| value.as_bool()),
+        extension_json(graphql_stale_error, "retryable").and_then(|value| value.as_bool()),
         Some(false)
     );
 
     let native_revoke = GroupMembershipEnforcementCommandPort::revoke_membership_suspension(
-        &native_service,
-        native_context(tenant_id, owner_id, "native-revoke"),
+        &native,
+        native_write_context(tenant_id, owner_id, "native-revoke"),
         RevokeGroupMembershipSuspensionRequest {
-            group_id,
-            target_user_id: native_target_id,
-            expected_membership_revision: native_suspend.membership_revision,
-            reason_code: "parity_complete".to_string(),
+            group_id: native_group_id,
+            target_user_id: target_id,
+            expected_membership_revision: 2,
+            reason_code: "transport_parity_release".to_string(),
         },
     )
     .await
-    .expect("native owner revoke should succeed");
-    assert_eq!(native_revoke.effective_status, GroupMembershipEffectiveStatus::Active);
+    .expect("native direct suspension revoke should succeed");
     assert_eq!(native_revoke.membership_revision, 3);
-    assert_eq!(native_revoke.enforcement_revision, 2);
-    assert_eq!(native_revoke.member_count, 3);
+    assert_eq!(native_revoke.member_count, 2);
     assert!(native_revoke.revoked_at.is_some());
+    assert_eq!(native_revoke.group_version, native_suspend.group_version + 1);
+    assert!(!native_revoke.replayed);
 
     let graphql_revoke = response_json(
         execute_graphql(
@@ -343,19 +479,13 @@ mutation {{
 mutation {{
   revokeGroupMembershipSuspension(
     idempotencyKey: "graphql-revoke",
-    groupId: "{group_id}",
-    targetUserId: "{graphql_target_id}",
+    groupId: "{graphql_group_id}",
+    targetUserId: "{target_id}",
     expectedMembershipRevision: 2,
-    reasonCode: "parity_complete"
+    reasonCode: "transport_parity_release"
   ) {{
-    membershipRevision
-    groupVersion
-    memberCount
-    effectiveStatus
-    enforcementRevision
-    effectiveUntil
-    revokedAt
-    replayed
+    groupId membershipId userId membershipRevision groupVersion memberCount
+    effectiveStatus enforcementRevision effectiveUntil revokedAt replayed
   }}
 }}
 "#
@@ -363,33 +493,128 @@ mutation {{
         )
         .await,
     );
-    let graphql_revoke = &graphql_revoke["revokeGroupMembershipSuspension"];
-    assert_eq!(
-        graphql_revoke["membershipRevision"].as_i64(),
-        Some(native_revoke.membership_revision)
-    );
-    assert_eq!(
-        graphql_revoke["memberCount"].as_i64(),
-        Some(native_revoke.member_count)
-    );
-    assert_eq!(
-        graphql_revoke["effectiveStatus"].as_str(),
-        Some(native_revoke.effective_status.as_str())
-    );
-    assert_eq!(
-        graphql_revoke["enforcementRevision"].as_i64(),
-        Some(native_revoke.enforcement_revision)
-    );
-    assert!(graphql_revoke["effectiveUntil"].is_null());
-    assert!(graphql_revoke["revokedAt"].is_string());
-    assert_eq!(graphql_revoke["replayed"].as_bool(), Some(false));
-    assert!(
-        graphql_revoke["groupVersion"].as_i64().is_some_and(|version| version > native_revoke.group_version),
-        "sequential GraphQL revoke should return a later owner group version"
+    assert_graphql_result(
+        &graphql_revoke["revokeGroupMembershipSuspension"],
+        &native_revoke,
+        graphql_group_id,
+        graphql_target_membership_id,
+        false,
     );
 
-    drop(native_service);
+    let native_revoke_replay =
+        GroupMembershipEnforcementCommandPort::revoke_membership_suspension(
+            &native,
+            native_write_context(tenant_id, owner_id, "native-revoke"),
+            RevokeGroupMembershipSuspensionRequest {
+                group_id: native_group_id,
+                target_user_id: target_id,
+                expected_membership_revision: 2,
+                reason_code: "transport_parity_release".to_string(),
+            },
+        )
+        .await
+        .expect("native revoke receipt should replay after suspension is no longer active");
+    assert!(native_revoke_replay.replayed);
+    assert_eq!(native_revoke_replay.group_version, native_revoke.group_version);
+
+    let graphql_revoke_replay = response_json(
+        execute_graphql(
+            &schema,
+            tenant_id,
+            owner_id,
+            format!(
+                r#"
+mutation {{
+  revokeGroupMembershipSuspension(
+    idempotencyKey: "graphql-revoke",
+    groupId: "{graphql_group_id}",
+    targetUserId: "{target_id}",
+    expectedMembershipRevision: 2,
+    reasonCode: "transport_parity_release"
+  ) {{
+    groupId membershipId userId membershipRevision groupVersion memberCount
+    effectiveStatus enforcementRevision effectiveUntil revokedAt replayed
+  }}
+}}
+"#
+            ),
+        )
+        .await,
+    );
+    assert_graphql_result(
+        &graphql_revoke_replay["revokeGroupMembershipSuspension"],
+        &native_revoke_replay,
+        graphql_group_id,
+        graphql_target_membership_id,
+        true,
+    );
+
+    let native_suspend_after_revoke = GroupMembershipEnforcementCommandPort::suspend_membership(
+        &native,
+        native_write_context(tenant_id, owner_id, "native-suspend"),
+        SuspendGroupMembershipRequest {
+            group_id: native_group_id,
+            target_user_id: target_id,
+            expected_membership_revision: 1,
+            reason_code: "transport_parity".to_string(),
+            effective_until: None,
+        },
+    )
+    .await
+    .expect("old native suspension receipt must replay after later revoke state");
+    assert!(native_suspend_after_revoke.replayed);
+    assert_eq!(
+        native_suspend_after_revoke.group_version,
+        native_suspend.group_version
+    );
+    assert!(native_suspend_after_revoke.revoked_at.is_none());
+
+    let graphql_suspend_after_revoke = response_json(
+        execute_graphql(
+            &schema,
+            tenant_id,
+            owner_id,
+            format!(
+                r#"
+mutation {{
+  suspendGroupMembership(
+    idempotencyKey: "graphql-suspend",
+    groupId: "{graphql_group_id}",
+    targetUserId: "{target_id}",
+    expectedMembershipRevision: 1,
+    reasonCode: "transport_parity"
+  ) {{
+    groupId membershipId userId membershipRevision groupVersion memberCount
+    effectiveStatus enforcementRevision effectiveUntil revokedAt replayed
+  }}
+}}
+"#
+            ),
+        )
+        .await,
+    );
+    assert_graphql_result(
+        &graphql_suspend_after_revoke["suspendGroupMembership"],
+        &native_suspend_after_revoke,
+        graphql_group_id,
+        graphql_target_membership_id,
+        true,
+    );
+
+    let native_final = owner_snapshot(&db, tenant_id, native_group_id, target_id).await;
+    let graphql_final = owner_snapshot(&db, tenant_id, graphql_group_id, target_id).await;
+    assert_eq!(native_final, graphql_final);
+    assert_eq!(native_final.0, native_revoke.group_version);
+    assert_eq!(native_final.1, 2);
+    assert_eq!(native_final.2, "member");
+    assert_eq!(native_final.3, "active");
+    assert_eq!(native_final.4, 3);
+    assert_eq!(native_final.5, native_revoke.enforcement_revision);
+    assert_eq!(native_final.6, "direct_local");
+    assert_eq!(native_final.7, 1);
+
     drop(schema);
+    drop(native);
     drop(db);
     drop(temp);
 }
