@@ -79,13 +79,22 @@ impl PostgresIndexReplayRunner {
                 }
             }
 
-            let page = match worker
-                .run_next_page_interruptible(request.page_request().clone(), || {
+            let page_future = worker.run_next_page_interruptible(
+                request.page_request().clone(),
+                || {
                     let interrupted = should_interrupt();
                     async move { Ok::<bool, crate::IndexReplayFailure>(interrupted) }
-                })
-                .await
-            {
+                },
+            );
+            let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(
+                &job_store,
+                &lease,
+                request.lease_duration(),
+                page_future,
+            )
+            .await?;
+            aggregate.heartbeat_count += in_page_heartbeat_count;
+            let page = match page_result {
                 Ok(page) => page,
                 Err(crate::IndexReplayError::Interrupted) => {
                     return yield_after_host_interruption(&self.db, &lease, aggregate).await;
