@@ -40,7 +40,7 @@ pub struct ForumWidgetPropertyValidationTransportResponse {
 #[cfg(feature = "ssr")]
 async fn authorize_forum_property_transport() -> Result<(), ServerFnError> {
     use crate::widget_preview_transport::{
-        require_forum_module_enabled, require_tenant_scope,
+        require_forum_module_enabled, require_forum_transport_authorization,
     };
     use leptos::prelude::expect_context;
 
@@ -50,13 +50,7 @@ async fn authorize_forum_property_transport() -> Result<(), ServerFnError> {
     let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
         .await
         .map_err(ServerFnError::new)?;
-    require_tenant_scope(&auth, &tenant)?;
-    if !rustok_api::has_any_effective_permission(
-        &auth.permissions,
-        &[rustok_api::Permission::FORUM_TOPICS_READ],
-    ) {
-        return Err(ServerFnError::new("forum_topics:read required"));
-    }
+    require_forum_transport_authorization(&auth, &tenant)?;
 
     let host = expect_context::<rustok_api::HostRuntimeContext>();
     require_forum_module_enabled(&host, tenant.id).await
