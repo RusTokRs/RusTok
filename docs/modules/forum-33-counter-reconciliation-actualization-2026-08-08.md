@@ -57,6 +57,8 @@ Each SQL shape remains ordered by its owner UUID and uses a strict keyset predic
 
 The returned cursor is the last inspected owner id for that shape. If a shape returns no new rows, its output cursor preserves the supplied input cursor instead of resetting to `None`. An operator can therefore keep echoing an exhausted category cursor while advancing topics, or vice versa, without rescanning the exhausted shape from the beginning.
 
+The `clean` field is page-local: it means only that the current bounded page contains no detected drift. Whole-tenant clean requires traversing both cursor chains to exhaustion and observing `clean = true` on every page. `clean = true` while either `has_more_topics` or `has_more_categories` is true is never whole-tenant proof.
+
 This makes tenants larger than the hard 500-row page cap traversable without unbounded work. It deliberately does not keep a database transaction open across HTTP/GraphQL requests. Snapshot consistency is page-local: writes that occur behind an already-returned cursor are observed by the next full reconciliation scan rather than by a long-lived cross-request snapshot. The report remains diagnostic/read-only, so no repair decision may treat a multi-page scan as a serializable write fence.
 
 ## Bounded snapshot database shape
