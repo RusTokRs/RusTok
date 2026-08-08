@@ -107,9 +107,11 @@ if (failures.length === 0) {
 
   requireMarkers(files.plan, [
     "Group membership is social participation",
-    "core public access facade is source-complete",
-    "status-only access-path conversion remains open",
-    "crate-private",
+    "Source-complete join/rejoin effective authorization",
+    "Source-complete feature-settings effective authorization",
+    "Source-complete localization effective authorization",
+    "Source-complete governance effective authorization",
+    "provider ACL integration and remote/degraded profiles",
     "verify-groups-effective-membership-access.mjs",
   ]);
   requireMarkers(files.readme, [
