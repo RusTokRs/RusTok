@@ -62,7 +62,8 @@ impl ForumReconciliationQuery {
         }
         let requested_limit = normalize_limit(limit)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let security = SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+        let security =
+            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
         let report = ForumCounterReconciliationService::new(db.clone())
             .report(tenant.id, &security, requested_limit)
             .await?;
