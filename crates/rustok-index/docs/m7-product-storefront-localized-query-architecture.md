@@ -1,6 +1,6 @@
 # M7 Product Storefront localized query architecture
 
-Status: `source_decision_complete_implementation_and_evidence_pending`.
+Status: `query_contract_source_complete_compiler_and_evidence_pending`.
 
 ## Decision
 
@@ -56,6 +56,50 @@ It then reasons over all current/admitted physical locale rows for each root ide
 A consumer must not emulate this contract by issuing independent locale queries and merging pages in
 memory.
 
+## Implemented query contract slice
+
+The first implementation slice is source-complete in `rustok-index` and deliberately stops before SQL
+execution:
+
+- `LocalizedEntityQuery` wraps an ordinary validated `IndexQuery` without changing its exact-locale
+  meaning;
+- `query.scope.locale` is the requested locale;
+- `fallback_locale` is a second projection role and `canonical_fallback_locale()` collapses a fallback
+  equal to requested;
+- `any_locale_filter` is a separate identity-level existential predicate and does not silently rewrite
+  the ordinary query filter;
+- ordinary filter nodes plus any-locale filter nodes share one bounded complexity budget;
+- `SchemaRegistry::validate_localized_entity_query` permits the mode only for `LocaleMode::Required`;
+- the any-locale predicate is root-only in this contract slice, so linked traversal cannot accidentally
+  acquire unspecified cross-locale semantics;
+- field/filter/operator/type validation is reused from the ordinary canonical query validator rather
+  than duplicated with a second rule set.
+
+No query port method named `execute_localized_query` exists yet. That is intentional: publishing runtime
+execution before the folded PostgreSQL compiler and decoder exist would make a partial semantic path look
+authoritative.
+
+## Dedicated cursor identity
+
+`LocalizedCursorCodec` and `LocalizedIndexCursor` provide a separate continuation identity for the fold.
+The localized scoped cursor uses wire version `3`; the ordinary exact-locale cursor wire version `2`
+remains unchanged.
+
+The localized query fingerprint binds:
+
+- explicit fold mode `localized_entity_fold_v1`;
+- tenant and exact schema;
+- requested locale;
+- canonical fallback locale;
+- ordinary filter;
+- `any_locale_filter`;
+- ordering shape.
+
+The cursor payload also retains the registered schema fingerprint, identity-level order values, and root
+entity UUID. Therefore an exact-locale cursor cannot be accepted by the folded path, a folded cursor
+cannot be accepted by the ordinary path, and changing fallback/search/order semantics invalidates the
+folded continuation.
+
 ## Search semantics
 
 Any-locale title search is an identity predicate:
@@ -96,8 +140,8 @@ Grouping happens **before** pagination and exact count.
 - page limit/lookahead is applied to grouped Product identities, not physical translation rows;
 - the Storefront ordering tuple remains the owner tuple (`published_at`/`created_at`, companion
   timestamp, Product ID) and must be evaluated from the identity-level current Product state;
-- continuation state must bind requested locale, fallback locale, localized-fold mode, schema
-  fingerprint, filter/order shape, and the same identity-level ordering tuple;
+- continuation state binds requested locale, fallback locale, localized-fold mode, schema fingerprint,
+  filter/order shape, and the same identity-level ordering tuple;
 - a cursor from an ordinary exact-locale query must not be accepted by the folded query path, and vice
   versa.
 
@@ -121,7 +165,7 @@ introduced.
 ## Storefront adapter boundary
 
 The future Storefront adapter may translate owner inputs to the generic localized fold only after the
-Index-side contract exists. It must then:
+Index-side execution contract exists. It must then:
 
 - map Active + published-only/category/channel visibility predicates;
 - resolve public Product attribute/option codes to canonical `attribute_terms`;
@@ -154,10 +198,11 @@ Until these packets are source-ready, executed, and admitted, Storefront remains
 
 ## Deliberate limits
 
-This source decision does not yet:
+This slice does not yet:
 
-- change `IndexQueryScope` or public Index query types;
-- add the generic localized fold implementation;
+- change ordinary `IndexQueryScope` or exact-locale query behavior;
+- compile the localized fold to PostgreSQL;
+- expose localized execution through `IndexQueryPort`/`SharedIndexQueryRuntime`;
 - add scalar text-pattern SQL compilation;
 - implement the Storefront Index adapter;
 - actualize the retained Product PostgreSQL packets to the current Product routing key;
@@ -169,10 +214,18 @@ This source decision does not yet:
 
 ## Next implementation slice
 
-Implement the generic localized-entity fold in `rustok-index` as a separate controlled query mode with
-identity-level page/count/cursor semantics. Keep ordinary exact-locale `IndexQuery` behavior unchanged.
-Only after that fold exists should scalar text-pattern matching be wired into its any-locale identity
-predicate and consumed by a Product Storefront adapter.
+Compile `LocalizedEntityQuery` into one PostgreSQL identity-fold statement and matching exact-count
+statement. Reuse the existing admission descriptors on every physical locale row participating in
+identity admission/projection/anchor selection, group before limit/count, and decode page cursors through
+`LocalizedCursorCodec`. Only after that execution path exists should scalar text-pattern matching be wired
+into `any_locale_filter` and consumed by a Product Storefront adapter.
+
+## Source guard
+
+`scripts/verify/verify-index-localized-query-contract.mjs` locks the explicit query type, required-locale
+validation, root-only any-locale predicate, canonical fallback de-duplication, dedicated cursor version
+and separation from ordinary cursor identity. It also fails if this source-only contract slice starts
+claiming `execute_localized_query` before the compiler exists.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
