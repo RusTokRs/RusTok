@@ -91,9 +91,8 @@ Group -> GroupMembership -> GroupMembershipEnforcement
 
 PostgreSQL/MySQL use row locks. SQLite obtains writer serialization through a no-op update of the
 already resolved group before membership/enforcement reads. Authorization runs after receipt replay
-and owner locking but before the first domain mutation. Direct enforcement commands lock actor and
-target memberships in deterministic UUID order and their enforcement rows in deterministic
-membership-ID order.
+and owner locking but before the first domain mutation. Commands that lock multiple memberships use
+deterministic user UUID order, followed by deterministic membership-ID enforcement-row order.
 
 Application CAS preserves existing application-before-group ordering where an application row
 already exists. Invitation/application identity locks do not create a cycle with enforcement because
@@ -127,6 +126,8 @@ Source exists for:
 - effective localization management reads plus transaction-aware translation upsert/delete using the
   same owner-clock manager semantics and `Group -> GroupMembership -> GroupMembershipEnforcement`
   write lock protocol;
+- effective governance role/ownership commands with group-serialized actor-bound replay,
+  deterministic membership/enforcement locks, owner-reference consistency and owner-clock authority;
 - sealed effective public invitation/application services with compatibility module paths;
 - transaction-aware invitation/application writes using the group/membership/enforcement lock
   protocol;
@@ -143,9 +144,10 @@ Evidence still open:
 - executed native/GraphQL parity and schema/error-mapping evidence for direct enforcement;
 - executed localization suspension/expiry, native/GraphQL parity, and concurrent enforcement-vs-write
   evidence;
+- governance concurrency, replay/lost-response, suspension/expiry, platform-recovery and native/GraphQL
+  parity evidence;
 - native/GraphQL parity, CAS, lifecycle, bulk-review, retry, recovery, security, and accessibility
   evidence for the broader module;
-- governance effective authorization;
 - provider ACL integration and remote/degraded profiles;
 - neutral moderation adapter and durable moderation application orchestration.
 
@@ -160,7 +162,7 @@ Evidence still open:
 | GROUPS-04 | in_progress | typed summary/membership/access/localization/invitation/application/governance/enforcement ports | consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, invitation acceptance/delivery | parity and Notifications evidence |
 | GROUPS-06 | in_progress | localized policy, CAS, lifecycle, focused/bulk review, FFA UX | profiles/events/parity/concurrency/accessibility |
-| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, effective core/localization access, transactional invitation/application authorization | moderation adapter, governance/provider cutover, runtime/concurrency/parity evidence |
+| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, effective core/localization/governance access, transactional invitation/application authorization | moderation adapter, provider cutover, runtime/concurrency/parity evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and navigation | registry/degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum integration evidence |
 | GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner/privacy evidence |
@@ -333,6 +335,33 @@ Exact-locale behavior, last-translation deletion denial, translation mutation se
 `groups.version` advancement are unchanged. Runtime PostgreSQL/SQLite contention and native/GraphQL
 parity evidence remain open.
 
+### Source-complete governance effective authorization
+
+`GroupGovernanceCommandPort` now follows the same owner serialization and effective-membership
+boundary as enforcement/localization. Both `change_group_role` and `transfer_group_ownership` lock
+the group before receipt lookup. Replay identity is bound to tenant + group + actor + command + request hash,
+so a caller cannot reuse another actor's completed governance receipt. Matching replay returns before
+current membership/enforcement authorization, preserving lost-response semantics when authority has
+changed after the original commit.
+
+After replay admission, governance locks every required membership in deterministic user UUID order,
+then every corresponding enforcement row in deterministic membership-ID order. Local role changes
+require an effective-active owner/admin actor and an effective-active non-owner target. Ownership
+transfer requires an effective-active current owner for local authority and an effective-active new owner.
+Suspended/banned local actors or targets fail with the existing effective errors instead of being
+treated as active because their stored lifecycle row still says `active`.
+
+Platform `groups:manage` remains an explicit recovery authority. It may transfer ownership away from
+a suspended current owner as long as the stored current-owner membership is still lifecycle-active
+and its role agrees with `groups.owner_user_id`; the replacement owner must still be effective-active.
+Any owner-reference/owner-role disagreement fails closed before mutation.
+
+Role/ownership writes, membership revision trigger effects, group-version advance, audit and command
+receipt remain in one Groups transaction. The existing GraphQL governance transport still calls only
+`GroupGovernanceCommandPort`; no transport fallback or second governance mutation path is introduced.
+Compilation, PostgreSQL/SQLite contention, replay/lost-response, suspension/expiry, platform recovery,
+governance concurrency and native/GraphQL parity evidence remain open.
+
 ### Planned moderation adapter
 
 Initial mapping remains:
@@ -365,10 +394,9 @@ above rather than introduce a second Groups enforcement state path.
 
 ## Remaining implementation order
 
-1. Convert governance role/ownership commands with owner protection and the same lock protocol.
-2. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
-3. Convert provider ACL consumers and remote/degraded profiles.
-4. Produce direct-enforcement, localization, governance and adapter runtime, parity, concurrency,
+1. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
+2. Convert provider ACL consumers and remote/degraded profiles.
+3. Produce direct-enforcement, localization, governance and adapter runtime, parity, concurrency,
    security, migration and accessibility evidence.
 
 ## Degraded modes
@@ -399,6 +427,7 @@ cargo check -p rustok-groups-storefront --features ssr
 cargo test -p rustok-groups
 node scripts/verify/verify-groups-boundary.mjs
 node scripts/verify/verify-groups-localization-boundary.mjs
+node scripts/verify/verify-groups-governance-effective-authorization.mjs
 node scripts/verify/verify-groups-invitations-boundary.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-application-policy-cas.mjs
