@@ -8,14 +8,7 @@
     "working_directory": "apps/next-admin",
     "config": "playwright.pages-builder-rollout-feature-preflight.config.ts",
     "spec": "tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
-    "command": [
-      "npx",
-      "--no-install",
-      "playwright",
-      "test",
-      "--config",
-      "playwright.pages-builder-rollout-feature-preflight.config.ts"
-    ]
+    "command": ["npx","--no-install","playwright","test","--config","playwright.pages-builder-rollout-feature-preflight.config.ts"]
   },
   "predecessors": {
     "browser": {
@@ -64,40 +57,24 @@
   "capability_preflight": {
     "operation": "pageBuilderCapabilityPreflight",
     "non_mutating": true,
-    "permission_mapping_owner": "PageBuilderCapabilityPermissions",
+    "permission_mapping_contract": {
+      "preview": "pages:read",
+      "tree": "pages:read",
+      "properties": "pages:update",
+      "publish": "pages:publish"
+    },
+    "permission_mapping_reference": "rustok_page_builder::service::PageBuilderCapabilityPermissions",
+    "permission_mapping_reference_is_source_locked": true,
+    "server_feature_dependency_required_in_pages": false,
     "rollout_guard_owner": "rustok_page_builder::rollout::ensure_capability",
     "feature_disabled_kind": "feature-disabled",
     "feature_disabled_code": "FEATURE_DISABLED"
   },
   "profiles": [
-    {
-      "id": "all_on",
-      "flags": [true, true, true, true],
-      "preview": "allowed",
-      "properties": "allowed",
-      "publish": "allowed"
-    },
-    {
-      "id": "publish_off",
-      "flags": [true, true, true, false],
-      "preview": "allowed",
-      "properties": "allowed",
-      "publish": "feature_disabled"
-    },
-    {
-      "id": "preview_off",
-      "flags": [true, false, true, false],
-      "preview": "feature_disabled",
-      "properties": "allowed",
-      "publish": "feature_disabled"
-    },
-    {
-      "id": "builder_off",
-      "flags": [false, false, false, false],
-      "preview": "feature_disabled",
-      "properties": "feature_disabled",
-      "publish": "feature_disabled"
-    }
+    {"id":"all_on","flags":[true,true,true,true],"preview":"allowed","properties":"allowed","publish":"allowed"},
+    {"id":"publish_off","flags":[true,true,true,false],"preview":"allowed","properties":"allowed","publish":"feature_disabled"},
+    {"id":"preview_off","flags":[true,false,true,false],"preview":"feature_disabled","properties":"allowed","publish":"feature_disabled"},
+    {"id":"builder_off","flags":[false,false,false,false],"preview":"feature_disabled","properties":"feature_disabled","publish":"feature_disabled"}
   ],
   "output": {
     "environment": "RUSTOK_PAGES_ROLLOUT_PREFLIGHT_OUTPUT",
@@ -116,9 +93,13 @@
     "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
     "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs",
     "crates/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/rustok-pages/src/graphql/mod.rs",
+    "crates/rustok-pages/Cargo.toml",
+    "crates/rustok-page-builder/Cargo.toml",
     "crates/rustok-page-builder/src/dto.rs",
     "crates/rustok-page-builder/src/rollout.rs",
     "crates/rustok-page-builder/src/service.rs",
+    "apps/server/src/graphql/queries.rs",
     "apps/server/src/graphql/mutations.rs",
     "apps/server/src/services/module_lifecycle.rs",
     "crates/rustok-modules/src/settings.rs",
@@ -127,25 +108,11 @@
     "docs/modules/pages-page-builder-rollout-feature-preflight-actualization-2026-08-08.md"
   ],
   "forbidden_retained_data": [
-    "tenant slugs",
-    "tenant ids",
-    "authorization headers",
-    "cookies",
-    "storage state contents",
-    "session ids",
-    "access tokens",
-    "refresh tokens",
-    "raw module settings",
-    "raw GraphQL request or response bodies",
-    "database urls"
+    "tenant slugs","tenant ids","authorization headers","cookies","storage state contents","session ids",
+    "access tokens","refresh tokens","raw module settings","raw GraphQL request or response bodies","database urls"
   ],
   "not_claimed": [
-    "owner sign-off",
-    "rollback keep decision",
-    "pages_reference_consumer_gate accepted",
-    "observed provider SLO health",
-    "Forum Wave accepted",
-    "FFA promoted",
-    "FBA promoted"
+    "owner sign-off","rollback keep decision","pages_reference_consumer_gate accepted",
+    "observed provider SLO health","Forum Wave accepted","FFA promoted","FBA promoted"
   ]
 }
