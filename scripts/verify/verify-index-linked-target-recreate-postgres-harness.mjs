@@ -43,6 +43,9 @@ const harness = requireMarkers(harnessPath, [
   'PRODUCT_SOURCE: &str = "product-postgres-primary"',
   'PRODUCT_VARIANT_SOURCE: &str = "product-variant-postgres-primary"',
   'SALES_CHANNEL_SOURCE: &str = "sales-channel-postgres-primary"',
+  'SchemaVersion::new(4)',
+  'SchemaVersion::new(2)',
+  'SchemaVersion::INITIAL',
   'FieldPath::linked(',
   'LinkName::new("variants")',
   'LinkName::new("sales_channels")',
@@ -53,24 +56,26 @@ const harness = requireMarkers(harnessPath, [
   'variant_tombstone_version(&database.writer).await?.is_none()',
   'assert_materialized_target_version(',
   '"product_variant"',
-  'assert_graph_payloads(&runtime.query, &[], &[OLD_CHANNEL_NAME])',
+  'old_variant_version',
+  'assert_scalar_product_visible(&runtime.query, true)',
+  'assert_graph_query_visible(&runtime.query, false)',
+  '&[NEW_VARIANT_SKU]',
+  '&[OLD_CHANNEL_NAME]',
   'delete_channel(&database.writer).await?',
   'channel_tombstone_version(&database.writer)',
   'recreate_channel(&database.writer).await?',
   'recreated_channel_version > channel_tombstone',
   'channel_tombstone_version(&database.writer).await?.is_none()',
-  'assert_product_root_visible(&runtime.query, false)',
+  'generation_after_channel_recreate',
   'run_scheduler_until_idle(&runtime.scheduler, 20)',
   'latest_relation_epoch(&database.writer)',
   'latest_projection_epoch(&database.writer)',
   'latest_freshness_generation(&database.writer)',
-  '"sales_channel"',
-  'assert_graph_payloads(&runtime.query, &[NEW_VARIANT_SKU], &[])',
-  'assert_graph_payloads(',
-  '&[NEW_VARIANT_SKU]',
+  'old_channel_version',
   '&[NEW_CHANNEL_NAME]',
 ]);
 forbidMarkers(harnessPath, harness, [
+  'SchemaVersion::new(3)',
   'tokio::spawn',
   'loop {',
   'CREATE TABLE product_variant_index_tombstones',
@@ -111,4 +116,4 @@ requireMarkers('crates/rustok-index/docs/m7-linked-target-recreate-postgres-harn
   'does not claim execution success',
 ]);
 
-console.log('[verify-index-linked-target-recreate-postgres-harness] source-ready packet verified');
+console.log('[verify-index-linked-target-recreate-postgres-harness] current-key source-ready packet verified');
