@@ -18,6 +18,8 @@ const providerModuleExport = read(contract.provider.module_export_source);
 const providerPanelExport = read(contract.provider.panel_export_source);
 const providerCanvas = read(contract.provider.composition_source);
 const pagesContributions = read(contract.pages_consumer.contribution_source);
+const pagesContributionBuild = read("crates/rustok-pages/admin/build.rs");
+const pagesModuleManifest = read("crates/rustok-pages/rustok-module.toml");
 const pagesOwnerPort = read(contract.pages_consumer.owner_port_source);
 const pagesOwnerPortProduction = pagesOwnerPort.split("#[cfg(test)]")[0];
 const pagesBoundary = read(contract.pages_consumer.composition_source);
@@ -205,26 +207,61 @@ for (const marker of [
 }
 
 for (const marker of [
-  `PAGES_METADATA_CONTRIBUTION_ID: &str = "${contract.pages_consumer.contribution_id}"`,
-  `PAGES_METADATA_PROPERTY_EDITOR_ID: &str = "${contract.pages_consumer.property_editor_id}"`,
-  `PAGES_OWNER_PROVIDER: &str = "${contract.pages_consumer.provider}"`,
-  `PAGES_METADATA_COMPONENT_TYPE: &str = "${contract.pages_consumer.component_type}"`,
+  'include!(concat!(env!("OUT_DIR"), "/pages_contribution_manifest.rs"));',
+  "GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON",
   "pub fn pages_metadata_property_schema()",
-  "PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT",
   "pub fn pages_metadata_contribution()",
-  "PropertyEditorDescriptor",
-  "property_schema: serde_json::to_value(schema)",
-  "pages_metadata_contribution(),",
+  "generated_admin_contribution(PAGES_METADATA_CONTRIBUTION_ID)",
+  "serde_json::from_value::<ConsumerPropertyEditorSchema>",
+  "schema.validate()",
   "registered_schema.validate()",
 ]) {
-  requireMarker(pagesContributions, marker, "Pages metadata contribution");
+  requireMarker(pagesContributions, marker, "Pages generated metadata contribution runtime");
+}
+for (const forbidden of [
+  "PropertyEditorDescriptor {",
+  "ConsumerPropertyFieldDescriptor {",
+  "ContributionDescriptor {",
+  "ModuleContributionManifest {",
+]) {
+  forbidMarker(
+    pagesContributions,
+    forbidden,
+    "Pages generated metadata contribution runtime",
+  );
+}
+
+for (const marker of [
+  `id = "${contract.pages_consumer.contribution_id}"`,
+  `id = "${contract.pages_consumer.property_editor_id}"`,
+  `owner_provider = "${contract.pages_consumer.provider}"`,
+  `provider = "${contract.pages_consumer.provider}"`,
+  `component_type = "${contract.pages_consumer.component_type}"`,
+  `format = "${contract.format}"`,
+  'role = "metadata"',
+  'persistence = "consumer_facade"',
+]) {
+  requireMarker(pagesModuleManifest, marker, "Pages canonical metadata contribution source");
 }
 for (const field of contract.pages_consumer.fields) {
   requireMarker(
-    pagesContributions,
-    `"${field}"`,
-    "Pages metadata contribution fields",
+    pagesModuleManifest,
+    `id = "${field}"`,
+    "Pages canonical metadata contribution fields",
   );
+}
+for (const marker of [
+  "contribution_manifest: ContributionManifestSource",
+  "OWNER_PROVIDER_METADATA_KEY",
+  "PROVIDER_VERSION_METADATA_KEY",
+  "must not hand-author ownerProvider/providerVersion",
+  "metadata contribution must declare exactly one property editor",
+  "GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON",
+  "PAGES_METADATA_CONTRIBUTION_ID",
+  "PAGES_METADATA_PROPERTY_EDITOR_ID",
+  "PAGES_METADATA_COMPONENT_TYPE",
+]) {
+  requireMarker(pagesContributionBuild, marker, "Pages contribution build generator");
 }
 
 for (const marker of [
@@ -352,5 +389,5 @@ for (const marker of [
 }
 
 console.log(
-  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true metadata_revision_isolation_source_ready=true published_metadata_surface_source_ready=true execution_evidence=pending",
+  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true metadata_revision_isolation_source_ready=true published_metadata_surface_source_ready=true generated_manifest_authority=true execution_evidence=pending",
 );
