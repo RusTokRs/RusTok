@@ -64,8 +64,14 @@ const defaultEnabled = modules.slice(modules.indexOf('[settings]'));
 const productDependencySection = between(
   productManifest,
   '[dependencies]',
-  '\n[provides.admin_ui]',
+  '\n[co_requisites]',
   'Product package dependency section',
+);
+const productCoRequisiteSection = between(
+  productManifest,
+  '[co_requisites]',
+  '\n[provides.admin_ui]',
+  'Product package co-requisite section',
 );
 const inventoryDependencySection = between(
   inventoryManifest,
@@ -88,6 +94,8 @@ for (const [source, value, label] of [
   [defaultEnabled, '"pricing"', 'default Pricing activation'],
   [defaultEnabled, '"inventory"', 'default Inventory activation'],
   [productDependencySection, 'taxonomy = { version_req = ">=0.1.0" }', 'Product Taxonomy dependency'],
+  [productCoRequisiteSection, 'inventory = { version_req = ">=0.1.0" }', 'Product Inventory co-requisite'],
+  [productCoRequisiteSection, 'pricing = { version_req = ">=0.1.0" }', 'Product Pricing co-requisite'],
   [inventoryDependencySection, 'product = { version_req = ">=0.1.0" }', 'Inventory Product dependency'],
   [pricingDependencySection, 'product = { version_req = ">=0.1.0" }', 'Pricing Product dependency'],
   [productRuntime, '&["taxonomy"]', 'Product runtime dependency'],
@@ -104,14 +112,14 @@ for (const [source, value, label] of [
   [inventoryBootstrap, 'C: ConnectionTrait', 'Inventory transaction connection'],
   [pricingBootstrap, 'Pricing-owned transaction-aware operations required by Product lifecycle writes.', 'Pricing owner contract'],
   [pricingBootstrap, 'C: ConnectionTrait', 'Pricing transaction connection'],
-  [note, 'Status: contained source boundary, unresolved activation contract, unvalidated.', 'focused note status'],
-  [note, 'control-plane co-requisite concept', 'co-requisite decision'],
-  [note, 'host-injected transaction participant ports', 'port decision'],
+  [note, 'Status: deployment co-requisite contract declared, control-plane enforcement pending, unvalidated.', 'focused note status'],
+  [note, 'deployment-selection constraint, not an ordinary dependency edge', 'co-requisite semantics'],
+  [note, 'current module control plane does not yet consume `[co_requisites]`', 'explicit enforcement debt'],
 ]) requireText(source, value, label);
 
 for (const [source, value, label] of [
-  [productModuleEntry, '"inventory"', 'cyclic Product-to-Inventory dependency'],
-  [productModuleEntry, '"pricing"', 'cyclic Product-to-Pricing dependency'],
+  [productModuleEntry, '"inventory"', 'cyclic Product-to-Inventory root dependency'],
+  [productModuleEntry, '"pricing"', 'cyclic Product-to-Pricing root dependency'],
   [productDependencySection, 'inventory =', 'cyclic Product package Inventory dependency'],
   [productDependencySection, 'pricing =', 'cyclic Product package Pricing dependency'],
   [productRuntime, '"inventory"', 'cyclic Product runtime Inventory dependency'],
@@ -129,11 +137,21 @@ for (const [source, value, label] of [
   [commands, 'INTO prices', 'direct Pricing SQL write'],
 ]) forbidText(source, value, label);
 
-if (evidence.status !== 'product_lifecycle_collaboration_contained_unvalidated') {
+if (evidence.status !== 'product_lifecycle_corequisites_declared_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
+}
+const coRequisites = [...(evidence.module_topology?.product_co_requisites ?? [])].sort();
+if (JSON.stringify(coRequisites) !== JSON.stringify(['inventory', 'pricing'])) {
+  failures.push(`evidence Product co-requisites mismatch: ${JSON.stringify(coRequisites)}`);
 }
 if (evidence.module_topology?.ordinary_reverse_dependencies_forbidden !== true) {
   failures.push('evidence must forbid ordinary reverse dependencies');
+}
+if (evidence.module_topology?.co_requisites_are_ordering_dependencies !== false) {
+  failures.push('co-requisites must not become ordering dependencies');
+}
+if (evidence.module_topology?.co_requisite_control_plane_enforcement_proven !== false) {
+  failures.push('co-requisite control-plane enforcement must remain unproven');
 }
 if (evidence.module_topology?.standalone_product_write_activation_proven !== false) {
   failures.push('standalone Product write activation must remain unproven');
@@ -144,8 +162,9 @@ if (evidence.product_boundary?.foreign_owner_entities_imported !== false ||
   failures.push('evidence Product owner boundary mismatch');
 }
 if (evidence.decision?.containment_complete !== true ||
+    evidence.decision?.corequisite_contract_declared !== true ||
     evidence.decision?.dependency_contract_resolved !== false) {
-  failures.push('evidence decision must keep dependency resolution open');
+  failures.push('evidence decision must declare co-requisites while keeping enforcement open');
 }
 for (const key of [
   'tests_run',
@@ -155,6 +174,7 @@ for (const key of [
   'workflow_checks_run',
   'ci_run',
   'standalone_activation_proven',
+  'non_default_deployment_selection_proven',
   'transaction_rollback_proven',
 ]) {
   if (evidence.validation?.[key] !== false) {
@@ -169,5 +189,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Product uses transaction-aware Inventory/Pricing owner bootstrap contracts without direct foreign entities or cyclic module dependencies; activation contract and runtime evidence remain open',
+  '✔ Product declares Inventory/Pricing deployment co-requisites while preserving owner bootstrap atomicity and acyclic ordinary dependencies; control-plane enforcement and runtime evidence remain open',
 );
