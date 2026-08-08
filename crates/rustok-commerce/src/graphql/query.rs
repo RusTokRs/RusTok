@@ -17,7 +17,7 @@ use rustok_pricing::{
     in_process_pricing_read_port,
 };
 use rustok_product::services::catalog::helpers::product_channel_visibility_condition;
-use rustok_product::{CatalogService, ProductCatalogSchemaService};
+use rustok_product::CatalogService;
 use rustok_region::{RegionListRequest, RegionReadPort, RegionService};
 use rustok_telemetry::metrics;
 use sea_orm::{
@@ -1877,30 +1877,55 @@ impl CommerceQuery {
         ctx: &Context<'_>,
         locale: String,
     ) -> Result<GqlProductCatalogSearchOptions> {
-        require_module_enabled(ctx, "product").await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         super::require_storefront_channel_enabled(ctx).await?;
-        if locale.trim().is_empty() {
+        let locale = locale.trim();
+        if locale.is_empty() {
             return Err(async_graphql::Error::new("locale is required"));
         }
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        let category_options = service
-            .list_categories(tenant.id, locale.trim())
+        let port_context = product_schema_read_port_context(
+            ctx,
+            tenant.id,
+            rustok_api::PortActor::service("commerce-storefront-graphql"),
+            locale,
+            "storefront_catalog_search_options",
+        );
+        let schema_read_port = product_schema_read_port(
+            db,
+            event_bus,
+            &port_context,
+            "storefront_catalog_search_options",
+        )?;
+        let category_options = schema_read_port
+            .list_categories(port_context.clone())
             .await
-            .map_err(|error| map_product_service_error(error, "product_query"))?
+            .map_err(|error| {
+                FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "storefront_catalog_search_options",
+                ))
+            })?
             .into_iter()
             .map(|category| GqlProductCatalogSearchOption {
                 value: category.id.to_string(),
                 label: first_non_empty([category.path, category.name, category.code]),
             })
             .collect();
-        let attribute_options = service
-            .list_attributes(tenant.id, locale.trim())
+        let attribute_options = schema_read_port
+            .list_attributes(port_context.clone())
             .await
-            .map_err(|error| map_product_service_error(error, "product_query"))?
+            .map_err(|error| {
+                FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "storefront_catalog_search_options",
+                ))
+            })?
             .into_iter()
             .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
             .map(|attribute| {

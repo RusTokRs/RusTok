@@ -167,6 +167,39 @@ requireText(
   "productAttributeValues owner-port cutover must construct ProductAttributeValuesRequest",
 );
 
+const storefrontSearchOptions = resolverSlice(
+  commerceQuery,
+  "storefront_catalog_search_options",
+  "storefront_product",
+);
+for (const required of [
+  "require_module_enabled(ctx, PRODUCT_MODULE_SLUG)",
+  "super::require_storefront_channel_enabled(ctx)",
+  "let locale = locale.trim();",
+  "if locale.is_empty()",
+  "ctx.data::<TenantContext>()",
+  'rustok_api::PortActor::service("commerce-storefront-graphql")',
+  "product_schema_read_port_context(",
+  "product_schema_read_port(",
+  ".list_categories(port_context.clone())",
+  ".list_attributes(port_context.clone())",
+  "product_catalog_port_error(",
+  "first_non_empty([category.path, category.name, category.code])",
+  "attribute.is_filterable || attribute.is_sortable",
+  'format!("{label} ({})", attribute.code)',
+]) {
+  requireText(
+    storefrontSearchOptions,
+    required,
+    `storefrontCatalogSearchOptions owner-port cutover must contain ${required}`,
+  );
+}
+forbidText(
+  storefrontSearchOptions,
+  "ProductCatalogSchemaService::new",
+  "storefrontCatalogSearchOptions must not construct ProductCatalogSchemaService",
+);
+
 if (!process.exitCode) {
   console.log("Product catalog schema read-port guard: source contract OK");
 }

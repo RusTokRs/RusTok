@@ -9,8 +9,8 @@ The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`
 ## Recheck findings
 
 1. `ProductCatalogSchemaReadPort` publishes the effective-form aggregate capability added by PR #3182, and mounted `productEffectiveForm` is now cut over to that host-selected owner capability.
-2. PR #3203 published `ProductCatalogSchemaReadPort::read_product_attribute_values`; the mounted `productAttributeValues` resolver was still constructing `ProductCatalogSchemaService` directly and is cut over in the continuation slice below.
-3. `storefrontCatalogSearchOptions` remains a direct `ProductCatalogSchemaService` consumer and still needs an owner projection/cutover.
+2. PR #3203 published `ProductCatalogSchemaReadPort::read_product_attribute_values`, and mounted `productAttributeValues` is now cut over to that owner capability.
+3. `storefrontCatalogSearchOptions` was the remaining mounted direct `ProductCatalogSchemaService` schema-read consumer. Its current projection needs only categories and filterable/sortable attributes, so the already-published `list_categories` and `list_attributes` owner capabilities preserve the existing data and ordering semantics without a new Product projection.
 4. The active `CommerceQueryRoot` mounts both `query::CommerceQuery` and `product_catalog::ProductCatalogQuery`. The newer `adminProductCatalog`/`storefrontProductCatalog` paths use `ProductCatalogReadRuntime`, while legacy mounted `product`/`products` roots in `query::CommerceQuery` still contain direct `CatalogService`/Product entity read paths. Therefore the broad ecommerce invariant requiring typed owner boundaries on every production path must remain open; source inspection does not justify a status promotion.
 
 ## PR #3203 source change
@@ -35,12 +35,18 @@ The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`
 - Preserve the existing GraphQL response shape by mapping the Product-owned `ProductAttributeValueRecord` projection through the existing `GqlProductAttributeValue` conversion.
 - Extend the schema-read source guard to require `ProductAttributeValuesRequest`, the mounted owner-port call, and no direct `ProductCatalogSchemaService` construction in this resolver.
 
+## Storefront search-options continuation
+
+- Cut mounted `storefrontCatalogSearchOptions` to the host-selected `ProductCatalogSchemaReadPort` using its existing `list_categories` and `list_attributes` capabilities; no new Product port method is required.
+- Preserve storefront-channel admission, the required non-empty trimmed locale, current-tenant scope, the `commerce-storefront-graphql` service actor, request channel, bounded deadline, and the shared correlation-aware Product GraphQL public error mapper.
+- Preserve the exact GraphQL projection: category values remain category ids with path/name/code fallback labels; attribute options remain limited to filterable or sortable attributes and keep the existing `label (code)` formatting.
+- Extend the schema-read source guard to require both owner calls and the existing option-projection semantics while forbidding direct `ProductCatalogSchemaService` construction in this resolver.
+
 ## Remaining execution order
 
-1. Publish/cut the owner projection needed by `storefrontCatalogSearchOptions`.
-2. Reconcile or retire the legacy mounted `product`/`products` GraphQL roots so direct Product service/entity reads no longer violate the every-production-path FBA invariant.
-3. Continue remaining Product schema writes and lifecycle command cutovers from the canonical ecommerce plan.
-4. Only after the source cutovers, run the plan-listed static, compile, parity, remote-profile, restart, and backend evidence before changing promotion status.
+1. Reconcile or retire the legacy mounted `product`/`products` GraphQL roots so direct Product service/entity reads no longer violate the every-production-path FBA invariant.
+2. Continue remaining Product schema writes and lifecycle command cutovers from the canonical ecommerce plan.
+3. Only after the source cutovers, run the plan-listed static, compile, parity, remote-profile, restart, and backend evidence before changing promotion status.
 
 ## Verification state
 
