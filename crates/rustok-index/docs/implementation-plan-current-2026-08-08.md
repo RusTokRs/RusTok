@@ -1,227 +1,170 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked from `main@eab3b1b925e5cbfa65d2fe3f938b63be7a067846` (#3218) and continued on
-`agent/index-text-like-20260808`.
+Status overlay continued from `main@500c6f647b5f09f617cb907a43093e4f954b3fed` (#3220) on
+`agent/index-localized-identity-order-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution
 cursor.
 
 ## Recheck result
 
-The Product/Index sequence relevant to this cursor includes:
+The Product/Index Storefront sequence now includes:
 
-- #3190 retained linked-target replay/redelivery source evidence;
-- #3192 added the fail-closed Product Storefront parity gate;
-- #3193 added staged single-current schema supersession;
-- #3194 added schema-scoped source delivery IDs;
-- #3197 advanced the canonical Product owner clock for EAV writes;
-- #3198 defined canonical typed Product `attribute_terms`;
-- #3199 replaced Product runtime code with one current 15-field Product contract on internal routing key
-  `4`, with lower keys historical only;
-- #3200 proved owner title search is all-translations while result projection is requested -> fallback;
-- #3204 selected the generic localized-entity identity-fold architecture;
-- #3208 added explicit localized query validation and dedicated cursor identity;
-- #3210 added the root-only PostgreSQL localized page/count compiler and decoder;
-- #3212 wired localized execution through the canonical PostgreSQL query runtime with persisted readiness,
-  generic admission and one read-only repeatable-read snapshot.
+- #3199: one current 15-field Product contract on internal routing key `4`;
+- #3200: owner all-translations title search and requested -> fallback projection mismatch documented;
+- #3204: generic localized-entity identity-fold architecture selected;
+- #3208: explicit localized query validation and dedicated cursor identity;
+- #3210: root-only PostgreSQL localized identity-fold page/count compiler and decoder;
+- #3212: canonical PostgreSQL localized runtime with persisted readiness, generic admission and one
+  read-only repeatable-read page/count snapshot;
+- #3220: generic bounded scalar String `TextLike` with PostgreSQL/reference wildcard semantics.
 
-Later #3213/#3216/#3217 are Moderation evidence slices, #3214 cut Product attribute-values reads to the
-owner schema port, #3215 generated Pages contributions, and #3218 cut mounted Storefront search-option
-metadata to the Product schema read port. Rechecking current `main` after #3218 confirms those changes do
-not alter `StorefrontProductListQuery`, `CatalogService::list_published_products_with_query`, owner title
-`LIKE`, or the `rustok-index` localized query algebra in this slice.
-
-This branch closes the remaining generic scalar title-pattern capability with bounded `TextLike` while
-keeping Storefront traffic owner-native and all execution/equivalence gates unchanged.
-
-## Old execution branch
-
-`agent/index-linked-target-replay-redelivery-evidence-20260807` is not a valid continuation base; its source
-was already squash-merged through #3190. Do not reuse it. Branch deletion is repository hygiene only and
-remains dependent on repository tooling that exposes ref deletion.
+The adapter recheck after #3220 found one additional query-order mismatch before Product translation can be
+claimed: owner descending Storefront order uses both timestamp DESC and Product ID DESC, while the
+localized compiler still used a fixed root entity-ID ASC tie-break. This slice closes that localized-only
+gap without changing ordinary exact-locale `IndexQuery` semantics.
 
 ## Current primary owner gate
 
 `M6 - execute and admit concrete repair PostgreSQL evidence`
 
-The concrete repair implementation, recovery policy, PostgreSQL harness and retained-evidence admission
-source remain complete. Maintainer execution/admission is still required and is not claimed by source
-inspection.
+The repair implementation/harness/admission source remains complete. Maintainer execution/admission is
+still required and is not claimed by source inspection.
 
 ## Current Product/Storefront source state
 
-The canonical Product graph keeps one current Product runtime contract plus ProductVariant and
-SalesChannel target contracts.
+Current Product facts remain:
 
-Current Product source/runtime facts:
-
-- one current Product schema on internal routing key `4`;
-- 15 fields: `id`, `status`, `title`, `handle`, `description`, `seller_id`, `vendor`, `product_type`,
-  `primary_category_id`, `tag_ids`, `created_at`, `published_at`, `attribute_terms`, `variant_ids`, and
+- one current Product schema, routing key `4`; lower keys are historical only;
+- 15 Product fields including Storefront scalars, `attribute_terms`, `variant_ids` and
   `sales_channel_ids`;
-- Product replay IDs are schema-scoped through `derive_index_schema_source_event_id`;
-- lower Product routing keys are historical persisted identities, not compatibility implementations;
-- EAV writes advance the same Product owner `index_revision` / graph `projection_epoch` clock;
-- dynamic EAV filters use stable UUID-keyed `attribute_terms`;
-- ProductVariant/SalesChannel recreate ordering remains tombstone-backed and monotonic;
-- Product root freshness and ordinary linked-target availability remain fail-closed.
+- Product replay IDs are schema-scoped;
+- EAV writes advance the canonical Product owner clock;
+- Product root freshness and ordinary linked-target availability remain fail-closed;
+- Product channel visibility convergence materializes resolved current channel UUID membership under a
+  freshness witness.
 
-## Localized Product query source state
+## Localized query/runtime state
 
-The localized fold is source-complete through runtime execution:
+Source-complete capabilities now include:
 
-- `LocalizedEntityQuery` keeps requested locale in `query.scope.locale`, canonical fallback separately,
-  `any_locale_filter` as an identity-level existential predicate, and explicit
-  `localized_projection_fields` for requested -> fallback -> null projection;
-- validation requires `LocaleMode::Required`, reuses ordinary field/operator/value rules and keeps this
-  implementation root-only;
-- `LocalizedCursorCodec` uses scoped wire version `3`; ordinary exact-locale cursor wire version `2`
-  remains unchanged;
-- page/count compilation uses `t0` admitted identity anchor, `t1` requested, `t2` fallback, `t3`
-  any-locale predicate and `t4` lower-locale anti-duplicate candidate;
-- physical row roles retain canonical `is_deleted = FALSE` anchors for generic owner admission;
-- identity de-duplication happens before ordering/lookahead/limit/exact count;
-- requested/fallback projection uses row-presence `CASE`;
-- localized decoding checks ordinary/localized plan identities and emits localized cursors only;
-- `IndexQueryPort::execute_localized_query` has a fail-closed default and is forwarded by
-  `SharedIndexQueryRuntime`;
-- `PostgresIndexQueryPort` applies availability/entity admission before storage execution, then verifies
-  persisted readiness and executes page/count inside one `REPEATABLE READ, READ ONLY` transaction.
+- `LocalizedEntityQuery` requested/fallback roles, `any_locale_filter` and
+  `localized_projection_fields`;
+- localized cursor wire version `3`, separate from ordinary wire version `2`;
+- root-only identity fold over physical locale rows;
+- requested -> fallback -> null projection;
+- group-before-order/page/count semantics;
+- generic owner admission on all participating physical row roles;
+- persisted schema readiness plus one `REPEATABLE READ, READ ONLY` page/count snapshot;
+- generic bounded scalar String `TextLike` for ordinary and folded filters;
+- explicit localized `identity_order_direction` for the final root entity-ID tie-break.
 
-## Generic scalar `TextLike` — source complete in this slice
+`identity_order_direction` defaults to `Asc`, validates only `Asc|Desc`, is bound into localized cursor and
+plan fingerprints, and changes only the localized final identity term:
 
-`FilterExpr::TextLike(FieldPath, String)` is appended after existing filter variants so previous postcard
-discriminants remain stable.
+- Asc: `entity_id ASC`, continuation `entity_id > cursor`;
+- Desc: `entity_id DESC`, continuation `entity_id < cursor`.
 
-Validation permits it only for a filterable scalar String field and enforces:
+Ordinary `IndexQuery` and its existing ascending entity-ID tie-break remain unchanged.
 
-- at most 1024 UTF-8 bytes;
-- no NUL;
-- no dangling trailing backslash escape.
+## Product adapter blockers discovered during source recheck
 
-Semantics match PostgreSQL `LIKE` with explicit backslash escape: `%` matches zero-or-more characters,
-`_` one character and `\` escapes the next wildcard/literal.
+The next Product Storefront adapter remains fail-closed on three explicit parity gaps:
 
-The ordinary PostgreSQL compiler binds the pattern and supports linked/many paths through the existing
-correlated `compile_many_exists` machinery. The localized compiler uses the same bound pattern and SQL
-operator for root `any_locale_filter`. The in-memory reference engine and PostgreSQL equivalence reference
-fixture implement the same wildcard grammar.
+1. **Search length** — owner search has no explicit length bound; `TextLike` is capped at 1024 UTF-8
+   bytes. The adapter must not silently truncate or reject owner-valid search without a reviewed owner/API
+   bound.
+2. **Search collation** — owner title `LIKE` uses deployment/default collation while Index String scalar
+   SQL uses deterministic `COLLATE "C"`; retained PostgreSQL evidence must establish the admitted contract.
+3. **Channel-less visibility** — owner list requests without a public channel admit only metadata-
+   unrestricted Products. Current `sales_channel_ids` represents unrestricted as membership in all current
+   channels and therefore cannot distinguish unrestricted from a restricted Product that currently
+   contains every channel. A channel-less authoritative adapter must fail closed until that distinction is
+   materialized or supplied by an owner capability.
 
-The current Product owner title helper is still `format!("%{search}%")` + `pt.title LIKE $1` over all
-translations, so the future Product adapter can express the same title predicate as folded
-`TextLike(title, pattern)` without Product-specific Index SQL.
+For a request carrying a trusted current public channel ID, `Contains(sales_channel_ids, channel_id)` is the
+intended root membership predicate under the existing channel resolver/freshness contract.
 
-## Search parity caveats discovered during recheck
+## Retained Product evidence debt
 
-`StorefrontProductListQuery` currently normalizes optional search text but imposes no explicit search
-length bound. Generic `TextLike` is intentionally bounded to 1024 UTF-8 bytes. Therefore the adapter must
-not claim full owner parity until one of these is proven in reviewed source/evidence:
+Historical PostgreSQL packets still need mechanical actualization to routing key `4` / the current
+15-field Product contract. Do not add a runtime alias for key `3`.
 
-1. an authoritative upstream Storefront request bound <= 1024 bytes already exists; or
-2. the owner/API contract is explicitly bounded with matching validation and compatibility review.
+The localized Storefront equivalence packet must additionally cover:
 
-Silent truncation or rejection in an Index-only adapter is forbidden.
-
-The owner title `LIKE` uses database-default collation while Index String scalar SQL uses deterministic
-`COLLATE "C"`. Retained PostgreSQL equivalence must cover the admitted deployment/input contract before
-search parity can be promoted.
-
-## Retained M7 PostgreSQL packets
-
-Several retained packets still encode historical Product routing key `3` / pre-replacement assumptions and
-must be actualized before they count as current replacement evidence:
-
-1. `product_materialized_query_freshness_postgres.rs`;
-2. `product_channel_convergence_postgres.rs`;
-3. `product_channel_identity_transitions_postgres.rs`;
-4. `product_linked_target_recreate_postgres.rs`;
-5. `product_linked_target_availability_equivalence_postgres.rs`;
-6. `product_linked_target_replay_redelivery_postgres.rs`.
-
-The Product locale-absence retained packet and related guards also require recheck. Do not add a runtime
-alias for key `3`; evidence must follow the one current Product contract.
+- requested present / fallback / neither requested nor fallback;
+- any-locale title matches, including third-locale matches;
+- `%`, `_` and escaped wildcard behavior;
+- duplicate locale matches yielding one Product identity and count;
+- equal-timestamp ordering under both ascending and descending Product-ID tie-breaks;
+- cursor continuation across those ties;
+- EAV terms, category and public channel visibility;
+- stale locale exclusion/readiness/admission/restart;
+- search-bound/collation behavior;
+- current Product routing key promotion.
 
 ## M5 incremental ingestion
 
-- [x] Source replay registry and bounded source failures.
+- [x] Source replay registry and bounded failures.
 - [x] Inbox deduplication and monotonic source versions.
-- [x] Mutation-event registry and commit-before-ack orchestration.
-- [x] Exact source-refresh worker with owner revision fence.
-- [x] Product locale/ProductVariant refresh ledgers and durable relay step.
-- [ ] Execute canonical event-contract digest admission on current reviewed `main` and commit the
-      generated canonical digest artifact through its own reviewed PR.
-- [ ] Add exactly one canonical Product Index typed event family only after the digest gate is valid.
-- [ ] Retain crash-between-commit-and-ack/redelivery evidence for the typed incremental route.
+- [x] Mutation event orchestration and exact source refresh.
+- [x] Product locale/ProductVariant refresh ledgers and durable relay.
+- [ ] Execute canonical event-contract digest admission on reviewed `main`.
+- [ ] Add canonical Product Index typed event family only after digest admission.
+- [ ] Retain commit/ack crash-redelivery evidence for that route.
 
-## M6 replay, reconciliation, diagnosis, and repair
+## M6 replay/reconciliation/repair
 
-- [x] Bounded scan/load and stable replay identities.
-- [x] Durable jobs, leases, checkpoints, multi-page replay, cancellation and reconciliation.
-- [x] Source timeout, dry-run, interruption, retry and dead-letter recovery.
-- [x] Drift discovery/confirmation/finding lifecycle and targeted repair.
-- [x] Concrete missing-entity/orphan-link repair and prepared-command recovery.
-- [x] Real-migration PostgreSQL repair harness and retained-evidence admission tooling.
+- [x] Bounded replay, durable jobs/leases/checkpoints and cancellation.
+- [x] Reconciliation, drift diagnosis and targeted repair source.
+- [x] Real-migration repair PostgreSQL harness and retained-evidence admission tooling.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
-- [ ] Retain remaining multi-host/restart/graceful-shutdown/command-transport evidence.
-- [ ] Add remaining locale/partition checkpoint dimensions and explicit rebuild modes.
+- [ ] Complete remaining multi-host/restart/shutdown/command-transport evidence.
 
-## M7 Product/ProductVariant/SalesChannel production graph
+## M7 Product Storefront graph
 
-- [x] Canonical Product, ProductVariant and SalesChannel bounded sources.
-- [x] Product `variants` and `sales_channels` links and retained delete identities.
-- [x] Product-to-SalesChannel relation membership ledger, resolver and freshness witness.
-- [x] Canonical Product graph projection epoch and projection-aware absence.
-- [x] Rejected-Product poison isolation and materialized root freshness fence.
-- [x] Entity-level stale linked-target freshness fence and recreate-safe target revisions.
-- [x] Query-path-scoped fail-closed linked-target availability for ordinary Product queries.
-- [x] One current 15-field Product Storefront-capable source contract.
-- [x] Schema-safe single-current replacement/promotion mechanism.
-- [x] Canonical typed EAV term representation and Product EAV owner clock.
-- [x] Recheck owner all-translations search + requested/fallback projection mismatch.
-- [x] Select generic localized identity/fallback architecture without another Product routing key.
-- [x] Add localized query shape/validation and dedicated cursor identity.
-- [x] Compile/decode root-only localized identity-fold page/count.
-- [x] Wire localized execution through canonical PostgreSQL runtime with readiness/admission/snapshot.
-- [x] Add generic scalar String `TextLike` usable inside folded `any_locale_filter`.
-- [ ] Implement the Product Storefront Index adapter and Taxonomy tag hydration boundary.
-- [ ] Resolve owner-search input bound and collation parity for authoritative adapter search.
-- [ ] Actualize retained Product PostgreSQL packets/guards to routing key `4` / 15-field source.
-- [ ] Retain source-ready owner-vs-Index localized PostgreSQL equivalence packets.
-- [ ] Extend folded execution to linked paths only with dedicated target-availability evidence.
-- [ ] Execute/admit current replacement Product PostgreSQL packets.
-- [ ] Stage/rebuild/promote the current Product schema for a tenant.
-- [ ] Move Storefront traffic only after readiness/equivalence/freshness/availability/restart evidence
-      passes.
+- [x] Current Product/ProductVariant/SalesChannel sources and graph freshness.
+- [x] One current 15-field Product contract and schema-safe replacement mechanism.
+- [x] Canonical typed EAV terms and Product owner clock.
+- [x] Localized identity/fallback architecture.
+- [x] Localized query/cursor contract.
+- [x] Localized PostgreSQL compiler/decoder.
+- [x] Localized production runtime with readiness/admission/snapshot semantics.
+- [x] Generic scalar String `TextLike`.
+- [x] Explicit localized entity-ID tie-break direction matching owner Asc/Desc ordering.
+- [ ] Implement Product Storefront Index shadow/evidence adapter.
+- [ ] Resolve search-length/collation parity.
+- [ ] Resolve channel-less unrestricted visibility parity.
+- [ ] Resolve Product attribute option-code metadata through an owner capability and emit canonical
+  `attribute_terms`.
+- [ ] Batch-hydrate Taxonomy tag names after the Product page is fixed.
+- [ ] Actualize retained Product PostgreSQL packets to routing key `4`.
+- [ ] Retain owner-vs-Index localized PostgreSQL equivalence packet.
+- [ ] Extend folded linked paths only with dedicated target-availability evidence.
+- [ ] Execute/admit current replacement Product PostgreSQL evidence.
+- [ ] Stage/rebuild/promote Product key `4` for a tenant.
+- [ ] Move Storefront traffic only after every parity/readiness/freshness/restart gate passes.
 
-## Next implementation step
+## Next source-code step
 
-Primary maintainer gate remains: **execute and admit the locked M6 repair PostgreSQL packet**.
+Build the Product Storefront **shadow/evidence adapter**, not a traffic switch. It should translate only
+inputs whose parity is already representable and fail closed for unresolved search/channel cases. The
+adapter must map owner sort direction to both timestamp ordering and localized identity tie-break direction,
+resolve Product EAV metadata through Product-owned capabilities, and leave Taxonomy hydration after page
+selection.
 
-Next source-code step: **implement the Product Storefront Index adapter plus retained localized-query
-PostgreSQL equivalence packet**, while leaving Storefront traffic owner-native. The adapter must map
-Active/published/category/channel/EAV/order/page/count, requested/fallback localized projection and
-`TextLike` all-translations title search, then batch-hydrate Taxonomy tag names after the Product page is
-fixed.
+In parallel, actualize historical Product PostgreSQL packets to routing key `4` / current 15-field source.
 
-The same slice must make the search-bound/collation mismatch explicit and fail closed until an
-authoritative equivalent input contract is demonstrated. Do not silently truncate owner-valid search.
-
-In parallel, actualize retained Product PostgreSQL packets to routing key `4` / current 15-field contract.
-No historical-key runtime compatibility path is allowed.
-
-Typed Product events remain separately blocked on maintainer event-digest admission.
-
-## Maintainer verification after this source slice
+## Maintainer verification after this slice
 
 The implementation agent has not run these commands. Maintainer verification should include:
 
 ```bash
-node scripts/verify/verify-index-text-like-filter.mjs
+node scripts/verify/verify-index-localized-identity-order.mjs
 node scripts/verify/verify-index-localized-query-contract.mjs
 node scripts/verify/verify-index-localized-query-postgres-fold.mjs
 node scripts/verify/verify-index-localized-query-runtime.mjs
-node scripts/verify/verify-index-product-storefront-localized-query-architecture.mjs
-node scripts/verify/verify-index-product-storefront-parity-gate.mjs
+node scripts/verify/verify-index-text-like-filter.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 git diff --check
