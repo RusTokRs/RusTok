@@ -80,7 +80,7 @@
     "join_rejoin_postgresql_source": "apps/server/tests/groups_join_enforcement_postgres.rs",
     "join_rejoin_runtime": null,
     "leave_static_guard": "scripts/verify/verify-groups-leave-enforcement-authorization.mjs",
-    "leave_sqlite_source": null,
+    "leave_sqlite_source": "apps/server/tests/groups_leave_enforcement_sqlite.rs",
     "leave_postgresql_source": null,
     "leave_runtime": null,
     "provider_acl_static_guard": "scripts/verify/verify-groups-membership-enforcement-access-path-integration.mjs",
