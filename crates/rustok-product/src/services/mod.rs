@@ -1,6 +1,7 @@
 pub mod catalog;
 pub mod catalog_schema;
 pub mod catalog_schema_service;
+mod catalog_attribute_terms;
 mod index_channel_relation;
 mod index_channel_relation_convergence;
 mod index_channel_relation_freshness;
@@ -13,6 +14,14 @@ pub use catalog::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
     ProductAttributeFilter, StorefrontProductList, StorefrontProductListItem,
     StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+};
+pub use catalog_attribute_terms::{
+    ProductAttributeTermError, ProductAttributeTermExpr, ProductResolvedAttributeFilter,
+    product_attribute_boolean_term, product_attribute_date_term, product_attribute_datetime_term,
+    product_attribute_decimal_term, product_attribute_integer_term,
+    product_attribute_localized_presence_term, product_attribute_localized_text_expr,
+    product_attribute_localized_text_term, product_attribute_option_term,
+    product_attribute_text_term,
 };
 pub use catalog_schema::*;
 pub use catalog_schema_service::*;
