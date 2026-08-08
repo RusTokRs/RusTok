@@ -38,6 +38,7 @@ impl CatalogService {
                 "page must be at least 1 and per_page must be between 1 and 48".to_owned(),
             ));
         }
+        types::validate_storefront_product_search(list_query.search.as_deref())?;
         let offset = (page.saturating_sub(1)) * per_page;
 
         let mut query = entities::product::Entity::find()
