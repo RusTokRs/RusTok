@@ -58,6 +58,13 @@ if (contract.deployment_identity?.cryptographic_origin_to_repo_digest_binding_cl
 if (contract.deployment_identity?.origin_to_repo_digest_binding_is_maintainer_reviewed_external_fact !== true) {
   throw new Error("origin-to-RepoDigest binding must stay an external reviewed fact");
 }
+if (
+  !contract.retained_data?.includes(
+    "boolean verification that the live response contained the exact checkout source commit",
+  )
+) {
+  throw new Error("retained deployment packet must describe live source revision as a verification");
+}
 
 const scenarioIds = contract.scenarios?.map((scenario) => scenario.id);
 if (JSON.stringify(scenarioIds) !== JSON.stringify(["anonymous", "authorized", "no_read"])) {
@@ -190,9 +197,13 @@ for (const marker of [
   "rmSync(output, { force: true })",
   "sourceHashes(contract)",
   'const challenge = `forum-attest-${randomUUID()}`',
+  "function isValidSuccessAttestation(contract, body, challenge)",
+  "text.includes(contract.authorized_response.contract) && text.includes(challenge)",
   "requireAuthorizedBody(contract, captured.responseBody, challenge, sourceCommit)",
-  "text.includes(challenge)",
+  "scenario.success_forbidden &&",
+  "isValidSuccessAttestation(contract, captured.responseBody, challenge)",
   "text.includes(sourceCommit)",
+  "live_server_source_commit_verified_equal_checkout: true",
   "credential_environment_names: credentials.environment_names",
   "credential_values_persisted: false",
   "origin_sha256: sha256(baseUrl)",
@@ -212,6 +223,7 @@ for (const forbidden of [
   "execSync(",
   "shell: true",
   "raw_origin: baseUrl",
+  "live_server_source_commit: sourceCommit",
   "authorization_value",
   "cookie_value",
   "raw_response_body",
