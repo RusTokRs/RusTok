@@ -1,5 +1,6 @@
 use crate::dto::BuilderCapabilityKind;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuilderCapabilityFlags {
@@ -133,6 +134,42 @@ impl Default for BuilderCapabilityFlags {
 }
 
 impl BuilderCapabilityFlags {
+    /// Normalizes the shared nested module-settings shape used by Page Builder consumers.
+    /// Missing keys preserve the backwards-compatible all-on default. Present values must be
+    /// booleans and the resulting combination must satisfy the rollout invariants.
+    pub fn from_module_settings(settings: &Value) -> Result<Self, BuilderRolloutError> {
+        fn nested_bool(settings: &Value, path: &[&str]) -> Result<bool, BuilderRolloutError> {
+            let mut current = settings;
+            for segment in path {
+                let Value::Object(values) = current else {
+                    return Err(BuilderRolloutError::InvalidFlagCombination(format!(
+                        "Page Builder rollout setting `{}` must be an object",
+                        path.join(".")
+                    )));
+                };
+                let Some(next) = values.get(*segment) else {
+                    return Ok(true);
+                };
+                current = next;
+            }
+            current.as_bool().ok_or_else(|| {
+                BuilderRolloutError::InvalidFlagCombination(format!(
+                    "Page Builder rollout setting `{}` must be a boolean",
+                    path.join(".")
+                ))
+            })
+        }
+
+        let flags = Self {
+            builder_enabled: nested_bool(settings, &["builder", "enabled"])?,
+            preview_enabled: nested_bool(settings, &["builder", "preview", "enabled"])?,
+            properties_enabled: nested_bool(settings, &["builder", "properties", "enabled"])?,
+            publish_enabled: nested_bool(settings, &["builder", "publish", "enabled"])?,
+        };
+        flags.validate()?;
+        Ok(flags)
+    }
+
     pub fn is_allowed(&self, capability: BuilderCapabilityKind) -> bool {
         if !self.builder_enabled {
             return false;
@@ -240,5 +277,43 @@ pub fn ensure_capability(
         Ok(())
     } else {
         Err(BuilderRolloutError::CapabilityDisabled(capability.as_str()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn module_settings_normalization_matches_all_declared_profiles() {
+        for profile in BuilderToggleProfile::ALL {
+            let flags = profile.flags();
+            let settings = json!({
+                "builder": {
+                    "enabled": flags.builder_enabled,
+                    "preview": { "enabled": flags.preview_enabled },
+                    "properties": { "enabled": flags.properties_enabled },
+                    "publish": { "enabled": flags.publish_enabled }
+                }
+            });
+            assert_eq!(BuilderCapabilityFlags::from_module_settings(&settings), Ok(flags));
+        }
+    }
+
+    #[test]
+    fn module_settings_normalization_defaults_missing_keys_but_rejects_bad_types() {
+        assert_eq!(
+            BuilderCapabilityFlags::from_module_settings(&json!({})),
+            Ok(BuilderCapabilityFlags::default())
+        );
+        for settings in [
+            json!({ "builder": "off" }),
+            json!({ "builder": { "enabled": "false" } }),
+            json!({ "builder": { "preview": false } }),
+            json!({ "builder": { "publish": { "enabled": 0 } } }),
+        ] {
+            assert!(BuilderCapabilityFlags::from_module_settings(&settings).is_err());
+        }
     }
 }
