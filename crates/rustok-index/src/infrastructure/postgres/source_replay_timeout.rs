@@ -57,11 +57,12 @@ where
     match timeout(call_timeout, future).await {
         Ok(result) => result,
         Err(_) => {
+            let timeout_ms = u64::try_from(call_timeout.as_millis()).unwrap_or(u64::MAX);
             tracing::error!(
                 replay_phase = phase,
                 replay_failure_code = timeout_code,
                 replay_failure_retryable = true,
-                timeout_ms = call_timeout.as_millis(),
+                timeout_ms,
                 "Index replay storage future exceeded its outer timeout"
             );
             Err(IndexReplayFailure::retryable_static(timeout_code))
