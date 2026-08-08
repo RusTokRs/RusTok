@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked at `main@5c0a50eded09efbd4f1b6437b46a94a7f2ef0989` and continued on
-`agent/index-replay-page-lease-heartbeat-20260808`.
+Status overlay rechecked at `main@bb65b7f0d3b6d2663519260841097c0e0f5f6cb8` and continued on
+`agent/index-replay-multihost-reclaim-evidence-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -206,6 +206,29 @@ Merged source-complete chain:
 The retained locale packet is source-complete but has not been executed. SQLite/PostgreSQL runtime execution and
 production admission remain maintainer-owned. See `m6-locale-replay-command-evidence.md`.
 
+## M6 multi-host/restart retained source state
+
+The replay ownership/restart chain now includes one deterministic concurrent reclaim packet in addition to the
+existing sequential and fresh-runtime restart evidence.
+
+`source_replay_multihost_restart_tests.rs` retains two distinct `PostgresIndexReplayRunner` instances over one
+durable database and one stable source. Host A acquires attempt 1 and blocks inside source scan; the fixture moves
+only that persisted lease expiry into the past; host B then reclaims the same job through the ordinary runner as
+attempt 2 and completes it before host A is released.
+
+When host A resumes, the stable delivery remains duplicate-safe but its checkpoint path is fenced by the replaced
+owner/attempt identity and returns `IndexReplayRunError::LeaseLost`. The packet requires final durable state to
+remain exactly one succeeded attempt-2 job, one complete checkpoint, one applied inbox delivery and one materialized
+entity. Host A cannot overwrite success with failure/pending/cancelled or advance a stale checkpoint.
+
+The packet uses `Notify` rather than sleeps/polling and does not directly create/claim/finish jobs or write
+checkpoints. The only clock seam is deterministic expiry of the already-running attempt-1 lease. See
+`m6-replay-multihost-reclaim-evidence.md`.
+
+Together with bounded resume, graceful duplicate-safe restart and fresh GraphQL locale runtime reconstruction,
+this closes the currently tracked source-only multi-host/restart boundary. Execution/admission and any required
+PostgreSQL/process orchestration evidence remain maintainer-owned.
+
 ## Remaining Storefront parity/evidence blockers
 
 - execute/admit the deterministic budgeted timeout packet and retain acceptable runtime latency/cancellation
@@ -244,13 +267,14 @@ production admission remain maintainer-owned. See `m6-locale-replay-command-evid
 - [x] Carry optional locale through the multi-page replay runner and GraphQL command transport.
 - [x] Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.
 - [x] Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds.
+- [x] Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
 - [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
 - [ ] Execute/admit retained graceful interruption/restart and GraphQL shutdown evidence.
 - [ ] Execute/admit retained dependency pending-future timeout evidence.
 - [ ] Execute/admit retained page lease-heartbeat evidence.
 - [ ] Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.
-- [ ] Complete remaining multi-host/restart evidence beyond existing convergence/replay packets.
+- [ ] Execute/admit retained multi-host reclaim evidence.
 - [ ] Add partition replay scope only after a real partition-capable source contract exists.
 - [ ] Add explicit targeted/full/shadow rebuild modes under a separate contract.
 
@@ -286,18 +310,17 @@ production admission remain maintainer-owned. See `m6-locale-replay-command-evid
 
 M7 Storefront remains execution/admission-gated and must not gain a traffic switch from source inspection alone.
 
-The locale request/source/job/checkpoint/runner/GraphQL identity chain, deterministic locale command/restart
-evidence, dependency timeout set and page-duration/lease-heartbeat source policy are complete. Their next actions
-are maintainer execution/admission, not additional scope abstraction.
+The locale request/source/job/checkpoint/runner/GraphQL identity chain, dependency timeout set,
+page-duration/lease-heartbeat policy and deterministic multi-host/restart source evidence are complete. Their next
+actions are maintainer execution/admission rather than further ownership abstraction.
 
-For source-only M6 continuation, the next independent boundary is the remaining multi-host/restart evidence under
-the established lease, cancellation, graceful-stop and locale identities. Any retained packet must prove existing
-fencing/reclaim behavior rather than introduce automatic retry or a second job-ownership model.
+Partition replay remains blocked: no real partition-capable source contract can yet filter a partition before
+pagination, so do not merely populate `partition_key`.
 
-Partition remains separate and blocked. Add partition replay scope only after a real partition-capable source
-contract exists and can filter before pagination; do not merely populate `partition_key`. Explicit
-targeted/full/shadow rebuild modes remain a later separate contract and must not be smuggled into timeout,
-partition or locale evidence work.
+For source-only M6 continuation, the next independent boundary is the explicit targeted/full/shadow rebuild-mode
+contract. That work must define mode identity and admission separately from locale/partition scope, preserve the
+existing fenced job/checkpoint semantics, and must not turn shadow/targeted modes into a second ownership or retry
+state machine.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
