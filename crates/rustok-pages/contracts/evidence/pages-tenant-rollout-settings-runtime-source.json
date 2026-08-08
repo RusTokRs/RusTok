@@ -1,8 +1,8 @@
 {
   "format": "pages_tenant_rollout_settings_runtime_source_v1",
-  "status": "platform_settings_read_seam_source_ready_pages_binding_pending",
+  "status": "platform_settings_read_seam_and_pages_binding_source_ready_runtime_evidence_pending",
   "prepared_on": "2026-08-08",
-  "source_base": "e91926363cfcdf6a91836358add1afdf94f65ffa",
+  "source_base": "488803a831e725ef0fbeaa8540f09458ee461b85",
   "source_contract": {
     "platform_runtime_helper": "rustok_api::tenant_module_settings",
     "trusted_tenant_id_must_be_supplied_by_caller": true,
@@ -18,8 +18,14 @@
     "tenant_persistence_entity_import_required": false,
     "settings_mutation_added": false,
     "parallel_settings_store_added": false,
-    "pages_consumer_binding_complete": false,
-    "pages_runtime_profile_matrix_executable": false,
+    "pages_consumer_binding_complete": true,
+    "pages_ui_provider_status_uses_trusted_flags": true,
+    "pages_ssr_capability_dispatch_rereads_trusted_flags": true,
+    "pages_ssr_snapshot_tenant_slug_is_verified": true,
+    "browser_supplied_flags_accepted": false,
+    "pages_runtime_profile_matrix_executable": true,
+    "pages_runtime_profile_matrix_evidence_retained": false,
+    "provider_health_observed": false,
     "gate_accepted": false,
     "forum_wave_accepted": false,
     "ffa_promoted": false,
@@ -34,5 +40,5 @@
     "browser_run": false,
     "workflow_or_ci_run": false
   },
-  "next_cursor": "bind a trusted routed-tenant Pages settings snapshot into PagesBuilderFacade provider status and authoritative SSR Page Builder capability composition, then retain the four-profile runtime matrix"
+  "next_cursor": "retain and maintainer-execute a four-profile Pages runtime matrix for all_on, publish_off, preview_off and builder_off on one exact source/deployment, including Pages-owned read guarantees"
 }
