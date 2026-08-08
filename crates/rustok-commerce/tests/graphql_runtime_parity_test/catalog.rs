@@ -122,7 +122,7 @@ async fn admin_graphql_rejects_foreign_actor_for_every_product_mutation() {
               update: updateProduct(idempotencyKey: "foreign-actor-update-all", id: "{id}", input: {{}}) {{ id }}
               publish: publishProduct(idempotencyKey: "foreign-actor-publish-all", id: "{id}") {{ id }}
               delete: deleteProduct(idempotencyKey: "foreign-actor-delete-all", id: "{id}")
-              createAttribute: createProductAttribute(locale: "en", input: {{
+              createAttribute: createProductAttribute(idempotencyKey: "foreign-actor-create-attribute-all", locale: "en", input: {{
                 code: "blocked"
                 valueType: "text"
                 label: "Blocked"
@@ -132,57 +132,59 @@ async fn admin_graphql_rejects_foreign_actor_for_every_product_mutation() {
                 isSortable: false
                 showOnStorefront: false
               }})
-              createOption: createProductAttributeOption(locale: "en", input: {{
+              createOption: createProductAttributeOption(idempotencyKey: "foreign-actor-create-option-all", locale: "en", input: {{
                 attributeId: "{id}"
                 code: "blocked"
                 label: "Blocked"
                 position: 0
               }})
-              createCategory: createCatalogCategory(locale: "en", input: {{
+              createCategory: createCatalogCategory(idempotencyKey: "foreign-actor-create-category-all", locale: "en", input: {{
                 code: "blocked"
                 slug: "blocked"
                 kind: "structural"
                 name: "Blocked"
               }})
-              createSchema: createProductAttributeSchema(locale: "en", input: {{
+              createSchema: createProductAttributeSchema(idempotencyKey: "foreign-actor-create-schema-all", locale: "en", input: {{
                 code: "blocked"
                 name: "Blocked"
               }})
-              createSchemaGroup: createProductAttributeSchemaGroup(locale: "en", input: {{
+              createSchemaGroup: createProductAttributeSchemaGroup(idempotencyKey: "foreign-actor-create-schema-group-all", locale: "en", input: {{
                 schemaId: "{id}"
                 code: "blocked"
                 label: "Blocked"
                 position: 0
               }})
-              createCategoryGroup: createCatalogCategoryAttributeGroup(locale: "en", input: {{
+              createCategoryGroup: createCatalogCategoryAttributeGroup(idempotencyKey: "foreign-actor-create-category-group-all", locale: "en", input: {{
                 categoryId: "{id}"
                 code: "blocked"
                 label: "Blocked"
                 position: 0
               }})
-              setSchemaMode: setCatalogCategorySchemaMode(input: {{
+              setSchemaMode: setCatalogCategorySchemaMode(idempotencyKey: "foreign-actor-set-schema-mode-all", input: {{
                 categoryId: "{id}"
                 mode: "inherit"
               }})
-              bindSchemaAttribute: bindProductAttributeSchemaAttribute(input: {{
+              bindSchemaAttribute: bindProductAttributeSchemaAttribute(idempotencyKey: "foreign-actor-bind-schema-attribute-all", input: {{
                 schemaId: "{id}"
                 attributeId: "{id}"
                 isRequired: false
                 isDisabled: false
                 position: 0
               }})
-              bindCategoryAttribute: bindCatalogCategoryAttribute(input: {{
+              bindCategoryAttribute: bindCatalogCategoryAttribute(idempotencyKey: "foreign-actor-bind-category-attribute-all", input: {{
                 categoryId: "{id}"
                 attributeId: "{id}"
                 bindingKind: "addition"
                 isDisabled: false
               }})
               saveValues: saveProductAttributeValues(
+                idempotencyKey: "foreign-actor-save-values-all"
                 productId: "{id}"
                 locale: "en"
                 patches: []
               ) {{ attributeId }}
               clearValues: clearDetachedProductAttributeValues(
+                idempotencyKey: "foreign-actor-clear-values-all"
                 productId: "{id}"
                 locale: "en"
                 attributeIds: []
