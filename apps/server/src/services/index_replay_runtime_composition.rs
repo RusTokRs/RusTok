@@ -6,6 +6,8 @@ mod drift_diagnosis_operator;
 mod source_continuation_runtime;
 #[path = "index_drift_source_page_diagnosis.rs"]
 mod drift_source_page_diagnosis;
+#[path = "index_replay_shadow_transport.rs"]
+mod replay_shadow_transport;
 
 pub use drift_diagnosis_operator::{
     IndexDriftDiagnosisOperatorError, IndexDriftDiagnosisOperatorRuntime,
@@ -17,6 +19,10 @@ pub use drift_source_page_diagnosis::{
 pub use reconciliation_operator::{
     IndexReconciliationOperatorContext, IndexReconciliationOperatorError,
     IndexReconciliationOperatorRuntime,
+};
+pub use replay_shadow_transport::{
+    IndexReplayShadowTransportError, IndexReplayShadowTransportOutcome,
+    IndexReplayShadowTransportRuntime,
 };
 
 use std::fmt;
@@ -174,8 +180,8 @@ impl fmt::Debug for IndexReplayOperatorRuntime {
 /// This function performs no database I/O and starts no worker. It invokes selected source
 /// factories only to construct adapters, freezes the complete source catalog, binds the immutable
 /// schema/source registries to the host database, and publishes the guarded bounded full/shadow
-/// replay, reconciliation, exact-entity drift diagnosis, and one-page source-candidate diagnosis
-/// capabilities through `ModuleRuntimeExtensions`.
+/// replay, reconciliation, exact-entity drift diagnosis, one-page source-candidate diagnosis, and
+/// sealed schema-wide Shadow transport capabilities through `ModuleRuntimeExtensions`.
 pub(crate) fn materialize_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -230,6 +236,10 @@ pub(crate) fn materialize_index_replay_runtime(
     } else {
         None
     };
+    replay_shadow_transport::materialize_index_replay_shadow_transport(
+        extensions,
+        continuation.clone(),
+    )?;
     drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(
         extensions,
         continuation,
@@ -259,7 +269,8 @@ mod tests {
     use super::{
         IndexDriftDiagnosisOperatorRuntime, IndexDriftSourcePageDiagnosisRuntime,
         IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
-        IndexReplayShadowOperatorError, materialize_index_replay_runtime,
+        IndexReplayShadowOperatorError, IndexReplayShadowTransportRuntime,
+        materialize_index_replay_runtime,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
@@ -372,6 +383,7 @@ mod tests {
         assert!(!extensions.contains::<SharedIndexReplayRuntime>());
         assert!(!extensions.contains::<SharedIndexReplayDryRunRuntime>());
         assert!(!extensions.contains::<IndexReplayOperatorRuntime>());
+        assert!(!extensions.contains::<IndexReplayShadowTransportRuntime>());
         assert!(!extensions.contains::<IndexDriftDiagnosisOperatorRuntime>());
         assert!(!extensions.contains::<IndexDriftSourcePageDiagnosisRuntime>());
     }
@@ -395,11 +407,13 @@ mod tests {
         assert!(extensions.contains::<SharedIndexReplayRuntime>());
         assert!(extensions.contains::<SharedIndexReplayDryRunRuntime>());
         assert!(extensions.contains::<IndexReplayOperatorRuntime>());
+        assert!(extensions.contains::<IndexReplayShadowTransportRuntime>());
         assert!(extensions.contains::<IndexDriftDiagnosisOperatorRuntime>());
         assert!(extensions.contains::<IndexDriftSourcePageDiagnosisRuntime>());
 
         let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
         assert!(host.shared_get::<IndexReplayOperatorRuntime>().is_some());
+        assert!(host.shared_get::<IndexReplayShadowTransportRuntime>().is_some());
         assert!(host
             .shared_get::<IndexDriftDiagnosisOperatorRuntime>()
             .is_some());
