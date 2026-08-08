@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product Storefront public projection merge
-`f949c7c3ee25dcabbf33ff2b7627fae1ea3b9e3b` and continued on
-`agent/product-storefront-tag-hydration-20260808`.
+Status overlay rechecked after Product Storefront tag hydration merge
+`5a37e78d50b37785a2a5c119689887f441a94cf9` and continued on
+`agent/product-storefront-serving-budget-policy-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -33,7 +33,9 @@ Source-complete:
   remain typed owner-native without clamp or cursor rewriting;
 - Product Storefront post-page public placeholder projection that keeps raw Index null evidence intact;
 - Product-owned bounded post-page tag hydration keyed by already-selected Product IDs, preserving Taxonomy
-  requested->fallback/canonical-key semantics **and** legacy metadata-only tag fallback;
+  requested->fallback/canonical-key semantics and legacy metadata-only tag fallback;
+- explicit **post-owner serving-budget policy** that requires host-measured remaining budget, positive bounded
+  Index/tag phases, safety margin and selected tag-hydration capability before a future serving path is eligible;
 - current-key core/EAV Storefront PostgreSQL packet source;
 - historical retained Product PostgreSQL fixtures actualized to current Product routing key `4`.
 
@@ -57,48 +59,46 @@ offsets above that bound remain typed owner-native after owner success; no clamp
 The raw generic `IndexQueryPage` remains Product-neutral. When requested/fallback localized rows are absent,
 root `title`/`handle` remain `IndexValue::Null` in `projected` and in raw PostgreSQL evidence.
 
-`public_projected` is derived from a clone of successful raw `projected` and maps only:
-
-- `title: Null` -> `"Untitled product"`;
-- `handle: Null` -> `""`.
-
-It preserves item identity/order, count, page boundary, cursor, unrelated fields and `tag_ids`; missing,
-duplicate or wrong-typed title/handle fields fail closed. Raw comparison still uses `projected`.
+`public_projected` is derived from a clone of successful raw `projected` and maps only `title: Null` to
+`"Untitled product"` and `handle: Null` to `""`. It preserves item identity/order, count, page boundary,
+cursor, unrelated fields and `tag_ids`; raw comparison still uses `projected`.
 
 ### Product-owned tag hydration
 
-A naive `tag_ids -> Taxonomy names` adapter is insufficient. Current Product Index `tag_ids` are materialized
-only from `product_tags`, while Product owner read semantics still support legacy `metadata.tags` when a Product
-has no tag relations.
+`ProductStorefrontTagReadPort` accepts only already-selected Product IDs plus fallback locale. The embedded
+Product runtime wires `CatalogService` as this optional capability; external runtimes do not gain an implicit
+embedded fallback.
 
-`ProductStorefrontTagReadPort` therefore accepts only the **already-selected Product IDs** plus fallback locale.
-The embedded Product runtime wires `CatalogService` as this optional capability; external runtimes do not gain
-an implicit embedded fallback.
+It preserves relation ordering, Taxonomy requested->fallback/canonical-key resolution and legacy normalized
+`metadata.tags` when relation-backed tags are absent. `tag_hydration` runs only after raw `projected` succeeds
+and cannot mutate or replace the raw/public page.
 
-The Product owner capability:
+## Post-owner serving-budget policy
 
-- accepts at most 48 unique, non-nil Product IDs;
-- tenant-scopes and verifies every requested Product identity;
-- reuses `CatalogService::load_product_tag_map` rather than reimplementing storage rules;
-- preserves product-tag relation ordering;
-- uses existing `TaxonomyService::resolve_term_names` requested->fallback resolution and canonical-key fallback;
-- preserves legacy normalized `metadata.tags` when no relations exist;
-- returns results in the same Product-ID order supplied by the fixed raw Index page.
+`PortContext.deadline_ms` is the original duration budget, not an automatically decreasing remaining deadline.
+A future serving router must provide a monotonic host-measured `remaining_ms` at the handoff **after** the
+authoritative Product owner call.
 
-`ProductStorefrontIndexShadowExecution.tag_hydration` is populated only after raw `projected` succeeds. The
-executor extracts Product IDs from `projected.items`; distribution never reads Product/Taxonomy storage or
-constructs `TaxonomyService`. Missing external capability or owner hydration error is retained separately and
-cannot mutate/replace raw or public projected pages.
+`ProductStorefrontIndexServingBudget` contains host-selected:
 
-This closes the Storefront tag **source hydration boundary** without copying localized tag names into Product
-Index schema and without pretending `tag_ids` represent legacy metadata-only tags.
+- positive `index_execution_ms`;
+- positive `tag_hydration_ms`;
+- `safety_margin_ms`;
+- checked `required_ms` sum.
+
+No production SLO numbers are hard-coded by this slice. `classify_product_storefront_index_serving_budget`
+keeps the request owner-native when deadline semantics, configured budget, measured remaining time or tag
+capability are missing/inconsistent, or when remaining time is below the required bounded phases. Only an
+internally consistent observation with sufficient budget returns `Eligible`.
+
+This is a **policy only**. It does not run timers and is deliberately not called by the current shadow executor
+or mounted Storefront. Real phase timeout enforcement remains the next source step.
 
 ## Remaining Storefront parity/evidence blockers
 
 - execute/review current-key Storefront, collation and actualized retained Product PostgreSQL packets;
 - admit collation parity only where the retained deployment matrix agrees;
-- define serving latency/deadline/budget policy for owner-first Index + post-page Product tag hydration before
-  any shadow-to-serving transition;
+- add non-serving enforcement of admitted Index/tag-hydration phase timeouts and retain timeout behavior;
 - preserve channel-less and deep-page owner-native routing in any future serving composition;
 - complete maintainer-executed stale locale/readiness/admission/restart evidence.
 
@@ -109,7 +109,7 @@ query freshness, Product/Channel convergence, Channel identity transitions, link
 linked-target availability equivalence and linked-target replay/redelivery. ProductVariant remains key `2`
 and SalesChannel remains key `1`.
 
-Existing Product taxonomy source evidence also retains normalized legacy metadata-tag read fallback. It is not
+Existing Product taxonomy source evidence retains normalized legacy metadata-tag read fallback. It is not
 reinterpreted as Index tag identity evidence.
 
 ## M5 incremental ingestion
@@ -149,9 +149,11 @@ reinterpreted as Index tag identity evidence.
 - [x] Map raw no-localized-row title/handle nulls to Product public placeholders in a post-page derived layer.
 - [x] Batch-hydrate Product tags after raw page selection through a Product-owned capability, including legacy
       metadata-only fallback rather than relying solely on Index `tag_ids`.
+- [x] Define post-owner serving-budget eligibility using host-measured remaining time and explicit bounded
+      Index/tag phases without choosing unevidenced global SLO values.
+- [ ] Enforce admitted Index/tag phase timeouts in a non-serving execution adapter.
 - [ ] Execute/review retained Product/Storefront/collation PostgreSQL packets.
 - [ ] Admit owner/default vs Index `COLLATE "C"` title-search parity for a deployment.
-- [ ] Define/admit serving latency and deadline policy for eligible Storefront Index + owner hydration.
 - [ ] Extend folded linked paths only with dedicated target-availability evidence.
 - [ ] Execute/admit current replacement Product PostgreSQL evidence.
 - [ ] Stage/rebuild/promote Product key `4` for a tenant.
@@ -160,10 +162,9 @@ reinterpreted as Index tag identity evidence.
 
 ## Next source-code step
 
-Define a non-serving Storefront Index serving-budget contract before any traffic-switch adapter. It must bound
-Index execution plus Product post-page owner hydration, preserve owner success/fail-closed behavior, and make
-an exceeded/missing deadline a reason to keep the request owner-native rather than introducing unbounded tail
-latency. Do not switch mounted Storefront traffic in that slice.
+Add a **non-serving budgeted execution adapter** that accepts only an `Eligible` budget decision and actually
+applies the admitted Index and Product-tag phase timeouts. Timeout/unavailable/error outcomes must remain
+separate from the already-successful Product owner result. Do not mount that adapter into Storefront traffic.
 
-No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
+No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

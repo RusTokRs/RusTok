@@ -1,6 +1,6 @@
 # M7 Product Storefront Index parity gate
 
-Status: `tag_hydration_source_complete_serving_budget_pending`.
+Status: `serving_budget_policy_source_complete_timeout_enforcement_pending`.
 
 ## Current boundary
 
@@ -19,45 +19,44 @@ maintainer execution/admission is not claimed.
 - deeper owner-valid pages remain typed owner-native;
 - no visibility sentinel, page clamp, cursor rewrite or Product key-5 approximation is used.
 
-## Product public placeholder projection — source complete
+## Product public projection and tags — source complete
 
-Raw localized Index results remain Product-neutral. No requested/fallback row means raw root `title`/`handle`
-are `IndexValue::Null` and retained PostgreSQL evidence continues to observe that state.
+Raw localized Index results remain Product-neutral. `public_projected` maps no-requested/fallback `title` and
+`handle` nulls to Product public placeholders only after the raw page is fixed.
 
-`public_projected` is derived only from a clone of a successful raw page and maps:
+`ProductStorefrontTagReadPort` performs bounded post-page Product tag hydration keyed by already-selected
+Product IDs, preserving Taxonomy requested->fallback/canonical-key semantics and legacy normalized
+`metadata.tags` fallback. Embedded Product runtime selects the capability; external profiles do not receive an
+implicit embedded fallback.
 
-- `title: Null` -> `"Untitled product"`;
-- `handle: Null` -> `""`.
+Raw `projected`, `public_projected` and `tag_hydration` remain separate results. Tag/public failures cannot
+replace the authoritative owner result or change identity/order/count/page/cursor evidence.
 
-Identity/order/count/page/cursor and unrelated fields, including `tag_ids`, remain unchanged. Raw comparison
-continues to use `projected`, not the public layer.
+## Post-owner serving-budget policy — source complete
 
-## Product-owned tag hydration — source complete
+`PortContext.deadline_ms` carries the original duration budget; it is not a decreasing remaining deadline. A
+future serving router must supply a host-measured `remaining_ms` at the handoff after authoritative Product
+owner success.
 
-Current Product Index `tag_ids` are relation-backed UUIDs from `product_tags`. Product owner semantics are
-broader: when no relations exist, legacy normalized `metadata.tags` remain a read fallback. Therefore a
-`tag_ids -> names` adapter would lose valid owner-visible tags.
+`ProductStorefrontIndexServingBudget` contains host-selected positive Index-execution and Product-tag-hydration
+phase budgets plus a safety margin. The source constructor checked-adds the phases and rejects zero required
+phases/overflow. This slice deliberately does **not** hard-code an unevidenced production SLO value.
 
-Product now publishes optional `ProductStorefrontTagReadPort` with a bounded page request:
+`classify_product_storefront_index_serving_budget` returns owner-native decisions for:
 
-- at most 48 unique, non-nil already-selected Product IDs;
-- tenant-scoped verification of every Product identity;
-- requested locale from `PortContext`, explicit fallback locale from the request;
-- reuse of `CatalogService::load_product_tag_map`;
-- existing Taxonomy requested->fallback name resolution and canonical-key fallback;
-- existing legacy metadata-only tag fallback;
-- response order matching the supplied Product-ID order.
+- absent/zero original request deadline;
+- absent configured budget policy;
+- absent host-measured remaining budget;
+- remaining budget greater than the original deadline (inconsistent observation);
+- unavailable Product tag-hydration capability;
+- remaining budget below the checked required Index + tag + safety budget.
 
-`ProductCatalogReadRuntime::in_process` selects this capability from the same `CatalogService` owner. External
-runtime profiles remain source-compatible and do **not** silently gain an embedded tag provider.
+Only an internally consistent observation with enough remaining time returns `Eligible` and carries the phase
+budgets forward.
 
-`ProductStorefrontIndexShadowExecutor.tag_hydration` is created only after raw `projected` succeeds. Product
-IDs come from `projected.items`; distribution does not construct `TaxonomyService`, query `product_tags`, or
-read Product storage directly. Missing capability/owner error is retained separately and cannot replace or
-mutate the authoritative owner result, raw Index page, or `public_projected` page.
-
-This closes the tag-hydration **source boundary** without adding localized tag names to Product Index schema and
-without pretending relation-backed `tag_ids` cover legacy metadata-only tags.
+This is a **classification policy**, not runtime timeout enforcement. It does not start timers, execute Index,
+call tag hydration or alter the current non-serving shadow executor. Mounted Storefront does not reference the
+policy.
 
 ## Search/collation/EAV source state
 
@@ -71,28 +70,29 @@ evidence.
 
 ## Remaining fail-closed parity/evidence gates
 
-1. Maintainer execution/review of Storefront core/EAV/collation and actualized retained Product packets.
-2. Collation admission per deployment: any owner/default-vs-`C` mismatch keeps eligible Index cutover closed.
-3. Define/admit serving latency/deadline/budget policy for Index execution plus post-page Product hydration.
-4. Stale locale/readiness/admission/restart cases still require maintainer-executed retained evidence.
-5. Any future serving router must preserve typed channel-less and deep-page owner-native branches.
+1. Add non-serving execution that actually enforces an admitted Index phase timeout and Product tag-hydration
+   phase timeout while preserving the successful owner result.
+2. Maintainer execution/review of Storefront core/EAV/collation and actualized retained Product packets.
+3. Collation admission per deployment: any owner/default-vs-`C` mismatch keeps eligible Index cutover closed.
+4. Retain serving-budget/timeout latency evidence before any mounted traffic switch.
+5. Stale locale/readiness/admission/restart cases still require maintainer-executed retained evidence.
+6. Any future serving router must preserve typed channel-less and deep-page owner-native branches.
 
 ## Next source slice
 
-Define a **non-serving serving-budget policy** before any traffic-switch adapter. It must place explicit bounds
-on Index work and post-page Product owner hydration, honor request deadlines, and retain owner-native behavior
-when the required budget/capability is unavailable. Do not switch mounted Storefront traffic in that slice.
+Add a **non-serving budgeted execution adapter** that accepts only an `Eligible` budget decision and applies the
+admitted Index and Product-tag phase timeouts. Timeout/unavailable/error results must remain separate from the
+already-successful Product owner result. Do not mount that adapter into Storefront traffic.
 
 ## Source guards
 
 - `verify-index-product-storefront-channel-scope-policy.mjs` locks channel-less owner-native policy;
 - `verify-index-product-storefront-deep-page-policy.mjs` locks deep-page owner-native policy;
 - `verify-index-product-storefront-public-projection.mjs` locks raw/public placeholder separation;
-- `verify-index-product-storefront-tag-hydration.mjs` locks bounded Product-owned tag hydration including
-  Taxonomy and legacy metadata fallback semantics;
-- `verify-index-product-storefront-shadow-executor.mjs` locks post-page enrichment after raw Index execution;
-- `verify-product-catalog-read-runtime-composition.mjs` locks optional embedded tag capability without external
-  implicit fallback;
+- `verify-index-product-storefront-tag-hydration.mjs` locks bounded Product-owned tag hydration;
+- `verify-index-product-storefront-serving-budget-policy.mjs` locks the host-measured remaining-budget contract
+  and keeps policy distinct from timeout enforcement/serving;
+- `verify-index-product-storefront-shadow-executor.mjs` locks current owner-first evidence execution;
 - current Storefront equivalence/EAV/collation/key-4 guards remain retained;
 - `verify-index-product-storefront-parity-gate.mjs` keeps mounted Storefront owner-native.
 

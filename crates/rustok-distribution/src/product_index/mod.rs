@@ -14,6 +14,12 @@ mod storefront_projection;
 pub(crate) use storefront_projection::{
     ProductStorefrontIndexPublicProjectionError, project_product_storefront_index_page,
 };
+mod storefront_serving_budget;
+pub(crate) use storefront_serving_budget::{
+    ProductStorefrontIndexServingBudget, ProductStorefrontIndexServingBudgetDecision,
+    ProductStorefrontIndexServingBudgetError, ProductStorefrontIndexServingBudgetObservation,
+    classify_product_storefront_index_serving_budget,
+};
 mod storefront_shadow;
 pub(crate) use storefront_shadow::{
     ProductStorefrontIndexShadowError, build_product_storefront_index_shadow_query,
