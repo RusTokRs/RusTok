@@ -1,66 +1,55 @@
 # Pages / Page Builder trusted rollout server snapshot actualization — 2026-08-08
 
-Status: `trusted-server-snapshot-source-ready / ui-facade-binding-pending / ssr-dispatch-binding-pending / four-profile-runtime-evidence-blocked`.
+Status: `trusted-server-snapshot-source-ready / ui-facade-binding-source-ready / ssr-dispatch-binding-source-ready / four-profile-runtime-evidence-pending`.
 
-Base rechecked: `main@0ae8f7f4382a4218107c43a4e1e6f1e5b957a84e`.
-
-## Why this slice exists
-
-The previous slice added the neutral `rustok_api::tenant_module_settings` read seam. It deliberately did not decide tenant authority or expose a Pages-specific transport.
-
-The Pages reference consumer still needs a trusted way to turn the routed tenant's persisted module settings into `BuilderCapabilityFlags` without accepting rollout state from browser input. That trusted snapshot must be reusable by the admin facade and the authoritative SSR Page Builder capability dispatch before the four gate profiles can be exercised honestly.
+Current binding rechecked at `main@488803a831e725ef0fbeaa8540f09458ee461b85` and continued on `agent/pages-builder-rollout-ssr-binding-20260808`.
 
 ## Trusted server snapshot
 
-The trusted server snapshot is source-ready in `crates/rustok-pages/admin/src/builder_rollout_settings.rs`.
+`crates/rustok-pages/admin/src/builder_rollout_settings.rs` owns the Pages-specific trusted normalization boundary.
 
-`pages_builder_rollout_flags` is a native server-function endpoint. On the server it:
+The server:
 
-1. resolves the host `HostRuntimeContext`;
+1. resolves `HostRuntimeContext`;
 2. extracts `AuthContext` and routed `TenantContext`;
 3. rejects an auth/routed-tenant mismatch;
 4. requires effective `Pages:Read` authority;
 5. reads the exact enabled `pages` row through `rustok_api::tenant_module_settings`;
-6. normalizes only the declared nested builder flags;
-7. validates the resulting `BuilderCapabilityFlags` combination before returning it.
+6. normalizes only the declared builder flags;
+7. rejects malformed setting types and invalid flag combinations;
+8. returns a trusted snapshot containing normalized flags plus the routed tenant slug.
 
-The raw tenant-module settings document is never returned. The client-visible result is only the normalized Page Builder capability flag structure.
+The client-visible server function still returns only `BuilderCapabilityFlags`; raw tenant-module settings and tenant authority are not exposed.
 
-Omitted builder keys preserve the existing backward-compatible all-on defaults. Invalid persisted combinations fail closed instead of being repaired silently. Source tests retain all four declared profiles plus default and invalid-combination behavior.
+## UI facade binding
 
-The browser never supplies rollout flags to this endpoint; it can only request the server-owned snapshot.
+The Pages workspace loads the server-owned rollout flags before mounting Page Builder. It supplies those flags to `PagesBuilderFacade::with_provider_flags(...)` and the facade reports them through `PageBuilderAdminProviderStatus::unobserved(...)`.
 
-## Authority boundary
+No provider-health observation is invented. Failure to load or validate the trusted rollout state fails the selected workspace instead of falling back to a hardcoded all-on provider status.
 
-The low-level `rustok_api::tenant_module_settings` helper remains authority-neutral. This Pages adapter supplies the tenant id from `TenantContext` and explicitly checks that the authenticated tenant matches the routed tenant before reading settings.
+## Authoritative SSR dispatch binding
 
-This follows the same transport boundary used elsewhere by native admin adapters: tenant routing establishes scope, authenticated authority is bound to that scope, and only then is tenant-owned state read.
+Every Preview/Publish capability dispatch independently calls `load_trusted_pages_builder_rollout_snapshot()` on the server. Before Page Builder composition, the request snapshot tenant slug must match the routed trusted tenant slug.
+
+`compose_fly_page_builder_handlers(...)` receives the freshly reread trusted flags, not the UI copy. Browser-intent persistence reaches this same dispatch path, so browser-controlled rollout flags are never an authority source.
+
+The prior hardcoded `pages_builder_capability_flags() -> BuilderCapabilityFlags::default()` binding has been removed from `builder.rs`.
 
 ## Current boundary
 
-The trusted server snapshot is source-ready.
+Both UI facade and authoritative SSR rollout bindings are source-ready. The four declared profiles can now be exercised through the real Pages reference consumer.
 
-UI facade binding remains pending: `PagesBuilderFacade::provider_status()` still reads the hardcoded default provider flags.
+Execution is still pending: no four-profile runtime packet was produced, no provider SLO health was observed, and `pages_reference_consumer_gate` remains `accepted=false`. This is the four-profile runtime-evidence-pending boundary. Forum Wave and FFA/FBA remain blocked.
 
-SSR capability dispatch binding remains pending: the Page Builder handler dispatch still composes handlers from the hardcoded default provider flags.
+## Next exact cursor
 
-Therefore the four-profile runtime matrix is still blocked and `pages_reference_consumer_gate` remains unaccepted. Provider health remains `unobserved`; Forum Wave and FFA/FBA remain blocked.
-
-## Next exact source cursor
-
-Wire the server-owned snapshot into both remaining consumer seams without creating a browser-controlled authority path:
-
-- load `pages_builder_rollout_flags()` as part of the Pages workspace data needed to construct `PagesBuilderFacade` and pass the returned flags into provider status;
-- make authoritative SSR Page Builder capability dispatch independently read the same routed-tenant settings snapshot on every request rather than trusting the UI copy;
-- remove the hardcoded `BuilderCapabilityFlags::default()` source once both paths use equivalent normalization;
-- retain source tests proving all four profiles map to the exact expected admin/provider and SSR handler capability outcomes.
-
-Only after that binding is complete should a four-profile runtime evidence harness be admitted to the Pages reference-consumer candidate packet.
+Retain a bounded source harness for the four persisted profiles and Pages-owned read guarantees, then let the maintainer execute it on one exact source revision and immutable deployment. Owner sign-off and rollback disposition remain after accepted runtime evidence.
 
 ## Source evidence
 
 - `crates/rustok-pages/contracts/evidence/pages-builder-rollout-server-snapshot-source.json`
+- `crates/rustok-pages/contracts/evidence/pages-tenant-rollout-settings-runtime-source.json`
 - `crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-server-snapshot.mjs`
-- `crates/rustok-pages/admin/src/builder_rollout_settings.rs`
+- `crates/rustok-pages/scripts/verify/verify-pages-tenant-rollout-settings-runtime.mjs`
 
 No tests, Node verifiers, Cargo commands, formatting, database scenarios, HTTP requests, browser runs, workflows, or CI were executed by this implementation slice.

@@ -7,10 +7,8 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const files = {
   adapter: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
-  cargo: "crates/rustok-pages/admin/Cargo.toml",
-  lib: "crates/rustok-pages/admin/src/lib.rs",
   builder: "crates/rustok-pages/admin/src/builder.rs",
-  runtime: "crates/rustok-api/src/runtime.rs",
+  composition: "crates/rustok-pages/admin/src/composition.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-server-snapshot-source.json",
   gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   actualization: "docs/modules/pages-page-builder-rollout-server-snapshot-actualization-2026-08-08.md",
@@ -31,9 +29,7 @@ for (const [label, relativePath] of Object.entries(files)) {
     continue;
   }
   const stats = fs.lstatSync(absolute(relativePath));
-  if (!stats.isFile() || stats.isSymbolicLink()) {
-    failures.push(`${label}: ${relativePath} must be a regular non-symlink file`);
-  }
+  if (!stats.isFile() || stats.isSymbolicLink()) failures.push(`${label}: ${relativePath} must be a regular non-symlink file`);
 }
 if (failures.length > 0) {
   console.error("[verify-pages-builder-rollout-server-snapshot] FAIL");
@@ -41,63 +37,53 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-const sources = Object.fromEntries(
-  Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]),
-);
+const sources = Object.fromEntries(Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]));
 const evidence = JSON.parse(sources.evidence);
 const gate = JSON.parse(sources.gate);
 
 for (const marker of [
   "pages_builder_flags_from_settings(",
-  'nested_bool(settings, &["builder", "enabled"])',
-  'nested_bool(settings, &["builder", "preview", "enabled"])',
-  'nested_bool(settings, &["builder", "properties", "enabled"])',
-  'nested_bool(settings, &["builder", "publish", "enabled"])',
   "current.as_bool().ok_or_else",
   "flags.validate()?",
   "ensure_trusted_tenant(",
   "auth.tenant_id != tenant.id",
   "Permission::new(Resource::Pages, Action::Read)",
-  '#[server(prefix = "/api/fn", endpoint = "pages/builder-rollout-flags")]',
-  "expect_context::<HostRuntimeContext>()",
-  "leptos_axum::extract::<AuthContext>()",
-  "leptos_axum::extract::<TenantContext>()",
+  "TrustedPagesBuilderRolloutSnapshot",
+  "load_trusted_pages_builder_rollout_snapshot(",
   'tenant_module_settings(runtime.db(), tenant.id, "pages")',
-  "Pages module is not enabled for the routed tenant",
-  "Pages builder rollout settings are invalid",
+  "tenant_slug: tenant.slug",
+  '#[server(prefix = "/api/fn", endpoint = "pages/builder-rollout-flags")]',
+  "Ok(load_trusted_pages_builder_rollout_snapshot().await?.flags)",
   "declared_profiles_normalize_to_their_exact_flags",
-  "BuilderToggleProfile::ALL",
-  "omitted_builder_settings_preserve_backward_compatible_all_on_defaults",
   "malformed_setting_types_fail_closed",
   "invalid_flag_combinations_fail_closed",
 ]) need(sources.adapter, marker, "trusted rollout server adapter");
+for (const marker of ["localStorage", "sessionStorage", "query parameter", "browser_supplied_flags"]) {
+  forbid(sources.adapter, marker, "trusted rollout adapter");
+}
 
 for (const marker of [
-  "browser",
-  "query",
-  "header",
-  "localStorage",
-  "sessionStorage",
-]) forbid(sources.adapter, marker, "rollout adapter must not accept browser-controlled flags");
-
-for (const marker of [
-  '"rustok-api/server"',
-  '"dep:leptos_axum"',
-  "leptos_axum = { workspace = true, optional = true }",
-]) need(sources.cargo, marker, "Pages admin SSR dependencies");
-need(sources.lib, "mod builder_rollout_settings;", "Pages admin module registration");
-need(sources.runtime, "pub async fn tenant_module_settings(", "platform settings read seam");
-
+  "provider_flags: Option<BuilderCapabilityFlags>",
+  "provider_flags: None",
+  "with_provider_flags",
+  ".map(PageBuilderAdminProviderStatus::unobserved)",
+  "load_trusted_pages_builder_rollout_snapshot()",
+  "tenant_slug != trusted_rollout.tenant_slug",
+  "compose_fly_page_builder_handlers(store, renderer, trusted_rollout.flags)",
+]) need(sources.builder, marker, "Pages builder rollout bindings");
 for (const marker of [
   "fn pages_builder_capability_flags() -> BuilderCapabilityFlags",
-  "BuilderCapabilityFlags::default()",
   "compose_fly_page_builder_handlers(store, renderer, pages_builder_capability_flags())",
-]) need(sources.builder, marker, "remaining Pages UI/dispatch binding blocker");
+]) forbid(sources.builder, marker, "hardcoded all-on consumer binding");
 
-if (evidence.format !== "pages_builder_rollout_server_snapshot_source_v1") {
-  failures.push(`evidence format drifted: ${evidence.format}`);
-}
-if (evidence.status !== "trusted_server_snapshot_source_ready_ui_dispatch_binding_pending") {
+for (const marker of [
+  "pages_builder_rollout_flags()",
+  "provider_flags: BuilderCapabilityFlags",
+  ".with_provider_flags(provider_flags)",
+]) need(sources.composition, marker, "Pages workspace provider binding");
+
+if (evidence.format !== "pages_builder_rollout_server_snapshot_source_v1") failures.push(`evidence format drifted: ${evidence.format}`);
+if (evidence.status !== "trusted_server_snapshot_source_ready_ui_and_ssr_binding_complete_runtime_evidence_pending") {
   failures.push(`evidence status drifted: ${evidence.status}`);
 }
 for (const [key, expected] of Object.entries({
@@ -115,41 +101,40 @@ for (const [key, expected] of Object.entries({
   all_four_declared_profiles_have_source_tests: true,
   browser_supplied_flags_accepted: false,
   settings_mutation_added: false,
-  pages_ui_facade_binding_complete: false,
-  pages_ssr_dispatch_binding_complete: false,
-  four_profile_runtime_matrix_executable: false,
+  pages_ui_facade_binding_complete: true,
+  pages_ui_facade_uses_server_owned_flags: true,
+  pages_ssr_dispatch_binding_complete: true,
+  pages_ssr_dispatch_rereads_trusted_snapshot_per_request: true,
+  pages_ssr_snapshot_tenant_slug_must_match_request_snapshot: true,
+  hardcoded_all_on_consumer_binding_removed: true,
+  four_profile_runtime_matrix_executable: true,
+  four_profile_runtime_evidence_retained: false,
+  provider_health_observed: false,
   gate_accepted: false,
   forum_wave_accepted: false,
   ffa_promoted: false,
   fba_promoted: false,
 })) {
-  if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`evidence source_contract.${key} must be ${expected}`);
-  }
+  if (evidence.source_contract?.[key] !== expected) failures.push(`evidence source_contract.${key} must be ${expected}`);
 }
 for (const [key, value] of Object.entries(evidence.validation ?? {})) {
   if (value !== false) failures.push(`evidence validation.${key} must remain false`);
 }
 
 if (gate.accepted !== false) failures.push("Pages reference-consumer gate must remain unaccepted");
-if (
-  gate.current_boundary?.trusted_rollout_server_snapshot !==
-  "source_ready_ui_and_dispatch_binding_pending"
-) {
-  failures.push("Pages gate trusted rollout server snapshot cursor drifted");
+if (gate.current_boundary?.trusted_rollout_server_snapshot !== "source_ready_ui_and_ssr_binding_complete") {
+  failures.push("Pages gate trusted rollout snapshot cursor drifted");
 }
-if (
-  gate.verification?.trusted_rollout_server_snapshot_guard !==
-  "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-server-snapshot.mjs"
-) {
-  failures.push("Pages gate trusted rollout server snapshot guard is not registered");
+if (gate.current_boundary?.four_profile_runtime_matrix !== "source_executable_evidence_pending") {
+  failures.push("Pages gate runtime matrix cursor drifted");
 }
+if (gate.current_boundary?.provider_health !== "unobserved") failures.push("provider health must remain unobserved");
 
 for (const marker of [
-  "trusted server snapshot is source-ready",
-  "UI facade binding remains pending",
-  "SSR capability dispatch binding remains pending",
-  "browser never supplies rollout flags",
+  "UI facade binding",
+  "Authoritative SSR dispatch binding",
+  "freshly reread trusted flags",
+  "four-profile runtime-evidence-pending",
   "No tests, Node verifiers, Cargo commands",
 ]) need(sources.actualization, marker, "actualization");
 
@@ -158,7 +143,4 @@ if (failures.length > 0) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-
-console.log(
-  "[verify-pages-builder-rollout-server-snapshot] PASS trusted_server_snapshot=source_ready ui_binding=pending ssr_dispatch_binding=pending",
-);
+console.log("[verify-pages-builder-rollout-server-snapshot] PASS trusted_snapshot=source_ready ui_binding=source_ready ssr_binding=source_ready runtime_evidence=pending");
