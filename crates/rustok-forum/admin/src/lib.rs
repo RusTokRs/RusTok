@@ -22,7 +22,8 @@ pub use page_builder::{
 };
 pub use ui::root::ForumAdmin;
 pub use widget_preview_transport::{
-    ForumWidgetPreviewTransportRequest, preview_forum_page_builder_widget,
+    ForumPageBuilderTransportAttestationResponse, ForumWidgetPreviewTransportRequest,
+    attest_forum_page_builder_transport, preview_forum_page_builder_widget,
 };
 pub use widget_property_transport::{
     ForumWidgetPropertySchemaTransportRequest, ForumWidgetPropertySchemaTransportResponse,
