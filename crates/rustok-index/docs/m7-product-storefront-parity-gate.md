@@ -68,20 +68,26 @@ Never-completing phases use `std::future::pending`; timeout cancellation is stil
 `tokio::time::timeout` wrapper. The packet has not been executed by the implementation agent and therefore is
 not admitted runtime/latency evidence yet.
 
-## Current Product key-4 promotion — source contract complete, execution pending
+## Current Product key-4 promotion — PostgreSQL packet source complete, execution pending
 
 Current Product runtime code publishes one 15-field schema on routing key `4` and derives replay delivery IDs
 with `derive_index_schema_source_event_id`. Lower Product keys are historical persisted identities, not runtime
 compatibility implementations.
 
-Tenant promotion must remain staged: ordinary-register key `4`, rebuild/evidence it while lower persisted keys
-may still be active, then call `PostgresSchemaRegistrationStore::register_current` with the same staged key `4`
-contract. Final supersession retires lower active Product schemas atomically; old-key readiness/query execution
-must then fail closed as inactive.
+The retained PostgreSQL packet now exercises the staged authority transition with production Product/Index
+migrations and current distribution composition: ordinary-register lower storage fixture plus real key4,
+materialize/query one real key4 Product mutation, call `register_current`, require typed `Inactive` for the
+lower key, and rebuild current runtime composition on a separate connection where only Product key4 is
+published and the existing key4 materialization remains readable.
 
-The focused source contract is retained in `m7-product-current-schema-promotion.md` and
-`verify-index-product-current-schema-promotion.mjs`. It does not claim that any tenant has completed the
-stage/rebuild/promote sequence.
+The lower key3 contract in this packet is explicitly storage/probe-only: it is derived from the current
+immutable Product contract with a lower routing key and does not reconstruct or select the deleted historical
+Product key3 implementation. No key3 source/factory or runtime dual-read path is added.
+
+The focused contract/packet is retained in `m7-product-current-schema-promotion.md`,
+`verify-index-product-current-schema-promotion.mjs`, and
+`verify-index-product-current-schema-promotion-postgres-packet.mjs`. The packet has not been executed by the
+implementation agent and does not claim a real tenant promotion.
 
 ## Search/collation/EAV source state
 
@@ -96,18 +102,18 @@ bind-free `Never`. Current Product Index remains one 15-field schema on routing 
 
 1. Maintainer-execute/admit the deterministic budgeted timeout packet and record acceptable latency/cancellation
    behavior for the selected runtime profile.
-2. Maintainer execution/review of Storefront core/EAV/collation and actualized retained Product packets.
-3. Collation admission per deployment: any owner/default-vs-`C` mismatch keeps eligible cutover closed.
-4. Stale locale/readiness/admission/restart evidence remains maintainer-run.
-5. Execute/admit Product key-4 promotion evidence and perform tenant stage/rebuild/`register_current`.
+2. Maintainer-execute/admit the Product key4 promotion/restart PostgreSQL packet.
+3. Maintainer execution/review of Storefront core/EAV/collation and actualized retained Product packets.
+4. Collation admission per deployment: any owner/default-vs-`C` mismatch keeps eligible cutover closed.
+5. Stale locale/readiness/admission/restart evidence outside the focused promotion packet remains maintainer-run.
 6. Any serving router must preserve channel-less/deep-page owner-native branches and traffic switch remains last.
 
 ## Next source boundary
 
-Do not move mounted Storefront traffic from source inspection alone. Further serving composition depends on
-maintainer execution/admission of timeout, Storefront parity/collation, stale-readiness and key-4 promotion
-evidence. Independent source work may continue only on one of those retained evidence boundaries without
-weakening this gate.
+Do not move mounted Storefront traffic from source inspection alone. The focused promotion/restart packet is now
+retained in source; further authoritative serving composition depends on maintainer execution/admission of that
+packet, timeout evidence, Storefront parity/collation and stale-readiness evidence. Source fixes should respond
+to those runs rather than weakening the gate.
 
 ## Source guards
 
@@ -116,9 +122,11 @@ weakening this gate.
 - `verify-index-product-storefront-budgeted-execution.mjs` locks post-owner phase timeout enforcement;
 - `verify-index-product-storefront-budgeted-execution-evidence.mjs` locks the deterministic retained timeout
   packet and test-only phase seam;
-- `verify-index-product-current-schema-promotion.mjs` locks the single-current key-4 staged-promotion contract;
+- `verify-index-product-current-schema-promotion.mjs` locks the single-current key4 promotion contract;
+- `verify-index-product-current-schema-promotion-postgres-packet.mjs` locks the staged key4 promotion/restart
+  PostgreSQL packet source;
 - `verify-index-product-storefront-shadow-executor.mjs` keeps the ordinary evidence executor separate;
-- request-shape, public-projection, tag-hydration, collation and key-4 guards remain retained;
+- request-shape, public-projection, tag-hydration, collation and key4 guards remain retained;
 - `verify-index-product-storefront-parity-gate.mjs` keeps mounted Storefront owner-native.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or

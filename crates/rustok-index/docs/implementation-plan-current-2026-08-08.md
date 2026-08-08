@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Storefront budgeted timeout evidence merge
-`e0bbcc885d7670990fdf0c21d5f2ef01f5015a99` and continued on
-`agent/product-key4-promotion-contract-20260808`.
+Status overlay rechecked after Product key-4 promotion contract merge
+`d905c25a4d0ffd63682bf2aea9779ded190a255e` and continued on
+`agent/product-key4-promotion-postgres-evidence-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -38,6 +38,9 @@ Source-complete:
   post-owner phase seam implemented in production by `ProductStorefrontIndexShadowExecutor`;
 - explicit current Product key-4 tenant promotion contract: ordinary-register/stage, schema-scoped rebuild,
   evidence admission, `register_current`, lower-key retirement and old-key fail-closed readiness/query behavior;
+- retained Product key-4 PostgreSQL promotion/restart packet source using production migrations, current
+  distribution schema/source/query composition, mutation storage, `register_current`, typed inactive probes and
+  fresh restart composition;
 - current-key core/EAV Storefront PostgreSQL packet source;
 - historical retained Product PostgreSQL fixtures actualized to current Product routing key `4`.
 
@@ -86,28 +89,34 @@ Current Product code has already completed the source-code replacement from lowe
 key `4`. `product-postgres-primary` uses `derive_index_schema_source_event_id`; Product source, absence and query
 admission do not select key `3`.
 
-Persisted tenant authority remains a separate execution boundary. For a tenant with a lower Product key still
-active, the required sequence is:
+The retained PostgreSQL packet now covers the staged authority-transition path in source:
 
-1. ordinary-register the exact current Product key `4` immutable contract;
-2. rebuild key `4` while lower persisted Product keys remain historical/staging state;
-3. execute/admit exact key-4 readiness, freshness, parity, inbox-isolation and restart evidence;
-4. call `PostgresSchemaRegistrationStore::register_current` with that already-staged key `4` contract;
-5. require all lower active Product schemas for that tenant to retire atomically;
-6. require lower-key readiness/query execution to fail closed as inactive;
-7. only then admit an authoritative Product Index consumer.
+1. obtain the exact current Product schema from `SharedIndexSchemaRegistry` and assert key `4`;
+2. ordinary-register a storage-only lower-key fixture plus the actual current runtime schemas, leaving both
+   Product keys active during staging;
+3. load one real current Product mutation through `product-postgres-primary` and prove its schema-scoped event ID
+   differs from the same owner coordinates under key `3`;
+4. materialize/query key `4` through production mutation/query paths;
+5. call `PostgresSchemaRegistrationStore::register_current` on the already-staged key `4` contract;
+6. require one lower active Product key to retire and repeated promotion to retire zero more;
+7. require typed `Inactive` from readiness and query verification for the lower storage contract;
+8. rebuild distribution/query composition on a separate connection and require exactly one runtime Product
+   schema, key `4`, to read the retained current materialization.
 
-No runtime dual-read compatibility branch is allowed. Historical lower-key rows are retained storage history,
-not a Product v3/v4 compatibility surface.
+The lower-key contract is deliberately a test-only storage/probe fixture derived from the current immutable
+contract with a lower routing key. It does not reconstruct the historical key3 Product fingerprint and does not
+register a key3 Product source/factory. Runtime dual-read compatibility remains forbidden.
 
 ## Remaining Storefront parity/evidence blockers
 
 - execute/admit the deterministic budgeted timeout packet and retain acceptable runtime latency/cancellation
   evidence for the selected deployment profile;
+- execute/admit the retained Product key-4 promotion/restart PostgreSQL packet;
 - execute/review current-key Storefront core/EAV/collation and actualized retained Product PostgreSQL packets;
 - admit collation parity only where the deployment default-vs-`C` packet agrees;
-- complete maintainer-executed stale locale/readiness/admission/restart evidence;
-- execute/admit Product key-4 staged promotion evidence and perform tenant stage/rebuild/`register_current`;
+- complete maintainer-executed stale locale/readiness/admission/restart evidence beyond the focused promotion
+  packet;
+- perform a real tenant stage/rebuild/`register_current` only after the relevant packets are admitted;
 - move only eligible Storefront traffic after every evidence/latency gate; channel-less/deep pages stay owner-native.
 
 ## M5 incremental ingestion
@@ -148,19 +157,21 @@ not a Product v3/v4 compatibility surface.
 - [x] Enforce admitted Index/tag phase timeouts in a separate non-serving post-owner adapter.
 - [x] Retain deterministic timeout/error/deadline/fast-path evidence source for the budgeted adapter.
 - [x] Define/guard the current Product key-4 tenant staging/rebuild/final-supersession contract.
+- [x] Retain a focused Product key-4 stage/replay/promote/inactive-old-key/restart PostgreSQL packet source.
 - [ ] Execute/admit the retained budgeted timeout evidence.
+- [ ] Execute/admit the Product key-4 promotion/restart PostgreSQL packet.
 - [ ] Execute/review retained Product/Storefront/collation PostgreSQL packets.
 - [ ] Admit owner/default vs Index `COLLATE "C"` title-search parity for a deployment.
-- [ ] Execute/admit Product key-4 promotion evidence and stage/rebuild/promote a tenant.
+- [ ] Stage/rebuild/promote a real Product tenant only after evidence admission.
 - [ ] Move eligible Storefront traffic only after every parity/readiness/freshness/restart/latency gate passes.
 
 ## Next source-code boundary
 
-The Storefront request-shape, projection/hydration, timeout and current-key promotion contracts are source-complete.
-Do not add a traffic-switch adapter from source inspection alone. The next useful source-only slice is retained
-Product key-4 promotion/restart PostgreSQL evidence if no such packet exists; otherwise maintainer execution is
-the blocking action. Any new packet must use production schema registration/readiness/query/replay paths and
-must not manufacture a second Product compatibility implementation.
+The Storefront request-shape, projection/hydration, timeout, promotion contract and focused promotion/restart
+packet are source-complete. Do not add a traffic-switch adapter from source inspection alone. The remaining
+blocking work is maintainer execution/admission plus any source fix revealed by those runs. Independent source
+cleanup may actualize stale documentation/guards, but it must not convert source-only evidence into a serving
+claim.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
