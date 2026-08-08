@@ -15,6 +15,7 @@ function requireAbsent(text, marker, message) {
 }
 
 const servicePath = "crates/rustok-forum/src/services/counter_reconciliation.rs";
+const solutionPath = "crates/rustok-forum/src/services/solution_reconciliation.rs";
 const servicesModPath = "crates/rustok-forum/src/services/mod.rs";
 const graphqlPath = "crates/rustok-forum/src/graphql/reconciliation_query.rs";
 const graphqlModPath = "crates/rustok-forum/src/graphql/mod.rs";
@@ -23,6 +24,7 @@ const planPath = "crates/rustok-forum/docs/implementation-plan.md";
 const packetPath = "docs/modules/forum-33-counter-reconciliation-actualization-2026-08-08.md";
 
 const service = read(servicePath);
+const solution = read(solutionPath);
 const servicesMod = read(servicesModPath);
 const graphql = read(graphqlPath);
 const graphqlMod = read(graphqlModPath);
@@ -88,13 +90,64 @@ for (const forbidden of [
   "ActiveModel",
   " OFFSET ",
 ]) {
-  requireAbsent(service, forbidden, `read-only reconciliation service must not contain ${forbidden}`);
+  requireAbsent(service, forbidden, `read-only counter reconciliation service must not contain ${forbidden}`);
+}
+
+for (const marker of [
+  "pub enum ForumSolutionDriftKind",
+  "AcceptedReplyEligibility",
+  "SolutionAuthorStatMissing",
+  "SolutionAuthorStatCount",
+  "pub struct ForumSolutionReconciliationReport",
+  "pub struct ForumSolutionReconciliationService",
+  "security: &SecurityContext",
+  "enforce_operations_scope(security)",
+  "enforce_scope(security, Resource::ForumCategories, Action::Manage)?",
+  "enforce_scope(security, Resource::ForumTopics, Action::Manage)",
+  "solution_after: Option<Uuid>",
+  "solution_stat_after: Option<Uuid>",
+  "pub solution_cursor: Option<Uuid>",
+  "pub solution_stat_cursor: Option<Uuid>",
+  "FROM forum_solutions s",
+  "LEFT JOIN forum_topics t",
+  "LEFT JOIN forum_replies r",
+  "LEFT JOIN forum_user_stats us",
+  "r.status = 'approved'",
+  "WITH bounded_stats AS (",
+  "FROM forum_user_stats",
+  "AND s.topic_id > ?2",
+  "AND s.topic_id > $2",
+  "AND user_id > ?2",
+  "AND user_id > $2",
+  "COUNT(s.topic_id)",
+  "effective_limit.saturating_add(1)",
+  "IsolationLevel::RepeatableRead",
+  "AccessMode::ReadOnly",
+  "DatabaseBackend::Sqlite => self.db.begin().await?",
+  "transaction.commit().await?",
+  "transaction.rollback().await",
+  '"solution_reconciliation_report"',
+]) {
+  requireText(solution, marker, `Forum solution reconciliation service missing ${marker}`);
+}
+
+for (const forbidden of [
+  "UPDATE forum_",
+  "DELETE FROM forum_",
+  "INSERT INTO forum_",
+  "ActiveModel",
+  " OFFSET ",
+]) {
+  requireAbsent(solution, forbidden, `read-only solution reconciliation service must not contain ${forbidden}`);
 }
 
 for (const marker of [
   "mod counter_reconciliation;",
+  "mod solution_reconciliation;",
   "pub use counter_reconciliation::{",
+  "pub use solution_reconciliation::{",
   "ForumCounterReconciliationService",
+  "ForumSolutionReconciliationService",
   "MAX_FORUM_COUNTER_RECONCILIATION_LIMIT",
 ]) {
   requireText(servicesMod, marker, `Forum services composition missing ${marker}`);
@@ -103,6 +156,8 @@ for (const marker of [
 for (const marker of [
   "pub struct ForumReconciliationQuery",
   "forum_counter_reconciliation_report",
+  "forum_solution_reconciliation_report",
+  "reconciliation_context(ctx, limit).await?",
   "require_module_enabled(ctx, MODULE_SLUG).await?",
   "Permission::FORUM_CATEGORIES_MANAGE",
   "Permission::FORUM_TOPICS_MANAGE",
@@ -111,12 +166,14 @@ for (const marker of [
   "SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)",
   "topic_after: Option<Uuid>",
   "category_after: Option<Uuid>",
+  "solution_after: Option<Uuid>",
+  "solution_stat_after: Option<Uuid>",
   "pub topic_cursor: Option<Uuid>",
   "pub category_cursor: Option<Uuid>",
-  "ForumCounterReconciliationService::new(db.clone())",
-  ".report_page(",
-  "topic_after,",
-  "category_after,",
+  "pub solution_cursor: Option<Uuid>",
+  "pub solution_stat_cursor: Option<Uuid>",
+  "ForumCounterReconciliationService::new(db)",
+  "ForumSolutionReconciliationService::new(db)",
   "whole-tenant clean requires exhausting both",
 ]) {
   requireText(graphql, marker, `Forum reconciliation GraphQL boundary missing ${marker}`);
@@ -128,6 +185,10 @@ for (const forbidden of ["tenant_id: Option<Uuid>", "Mutation", "UPDATE forum_"]
 for (const marker of [
   "mod reconciliation_query;",
   "reconciliation_query::ForumReconciliationQuery",
+  "GqlForumCounterReconciliationReport",
+  "GqlForumSolutionDrift",
+  "GqlForumSolutionReconciliationReport",
+  "topic_reply_range_move_mutation::ForumTopicReplyRangeMoveMutation",
 ]) {
   requireText(graphqlMod, marker, `Forum GraphQL composition missing ${marker}`);
 }
@@ -145,32 +206,36 @@ requireAbsent(
 );
 
 for (const marker of [
-  "| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter reconciliation report with independent topic/category keyset cursors",
+  "| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter and accepted-solution reconciliation",
   "## `FORUM-33` — analytics, observability and reconciliation",
   "**Status:** `in_progress`",
-  "topicAfter: UUID",
-  "categoryAfter: UUID",
+  "forumSolutionReconciliationReport",
+  "solutionAfter: UUID",
+  "solutionStatAfter: UUID",
   "page-local snapshot",
   "node scripts/verify/verify-forum-counter-reconciliation-source.mjs",
-  "For FORUM-33, retain SQLite and PostgreSQL execution evidence",
+  "subscriptions",
+  "empty source registry",
 ]) {
   requireText(plan, marker, `canonical Forum plan missing ${marker}`);
 }
 
 for (const marker of [
-  "Status: `in-progress / bounded-owner-report-and-cursors-source-ready / repair-and-runtime-evidence-open`",
-  "topicAfter: UUID",
-  "categoryAfter: UUID",
-  "strict keyset predicate (`id > cursor`)",
-  "topic_cursor",
-  "category_cursor",
-  "The `clean` field is page-local",
+  "Status: `in-progress / bounded-counter-and-solution-reconciliation-source-ready / repair-and-runtime-evidence-open`",
+  "forumSolutionReconciliationReport(",
+  "solutionAfter: UUID",
+  "solutionStatAfter: UUID",
+  "accepted_reply_eligibility",
+  "solution_author_stat_missing",
+  "solution_author_stat_count",
+  "forum_user_stats.solution_count",
+  "strict `topic_id > solutionAfter`",
+  "strict `user_id > solutionStatAfter`",
   "page-local",
   "forum_categories:manage",
   "forum_topics:manage",
   "Authorization is deliberately enforced twice",
   "services::rbac::enforce_scope",
-  "Every page executes exactly two tenant-scoped aggregate queries inside one database snapshot",
   "REPEATABLE READ READ ONLY",
   "does **not** add a repair mutation",
   "idempotent job/receipt state",
@@ -178,4 +243,4 @@ for (const marker of [
   requireText(packet, marker, `FORUM-33 actualization missing ${marker}`);
 }
 
-console.log("Forum FORUM-33 counter reconciliation source: ok");
+console.log("Forum FORUM-33 reconciliation source: ok");

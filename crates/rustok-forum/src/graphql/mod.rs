@@ -52,7 +52,8 @@ pub use quote_commands::{
 };
 pub use read_state::*;
 pub use reconciliation_query::{
-    GqlForumCounterDrift, GqlForumCounterReconciliationReport,
+    GqlForumCounterDrift, GqlForumCounterReconciliationReport, GqlForumSolutionDrift,
+    GqlForumSolutionReconciliationReport,
 };
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
