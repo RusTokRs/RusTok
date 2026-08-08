@@ -22,6 +22,7 @@
     "admin_operator_storage_state_required": true,
     "production_tenant_modules_read_used": true,
     "production_update_module_settings_used": true,
+    "production_settings_owner_sources_hashed": true,
     "direct_sql_used": false,
     "raw_database_access_used": false,
     "original_settings_snapshotted": true,
@@ -75,5 +76,5 @@
     "owner_review_observed": false,
     "gate_accepted": false
   },
-  "next_cursor": "maintainer executes the four-profile matrix with separate reviewed API/admin auth states on the exact browser-predecessor source/deployment; successful output remains owner-review pending"
+  "next_cursor": "maintainer executes the four-profile matrix with separate reviewed API/admin auth states on the exact browser-predecessor source/API deployment and predecessor-bound standalone-admin origin; successful output remains owner-review pending"
 }
