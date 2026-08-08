@@ -12,19 +12,23 @@ use rustok_product::{
 };
 
 use super::{
-    ProductStorefrontIndexShadowError, build_product_storefront_index_shadow_query,
+    ProductStorefrontIndexPublicProjectionError, ProductStorefrontIndexShadowError,
+    build_product_storefront_index_shadow_query, project_product_storefront_index_page,
 };
 
 const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;
 
 /// Non-serving Product Storefront parity execution result.
 ///
-/// The authoritative owner result is always produced first. Projected failures or mismatches are retained
-/// separately and never replace the owner result.
+/// The authoritative owner result is always produced first. `projected` retains the raw generic Index page
+/// for identity/count evidence. `public_projected` is derived only after that page exists and applies the
+/// Product owner public placeholder contract without feeding values back into Index query semantics.
 #[derive(Debug)]
 pub(crate) struct ProductStorefrontIndexShadowExecution {
     pub(crate) authoritative: StorefrontProductList,
     pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>,
+    pub(crate) public_projected:
+        Option<Result<IndexQueryPage, ProductStorefrontIndexPublicProjectionError>>,
     pub(crate) comparison: Option<ProductStorefrontIndexShadowComparison>,
 }
 
@@ -133,7 +137,7 @@ pub(crate) fn classify_product_storefront_index_page_scope(
 /// This object composes only host-selected Product and Index capabilities. It never constructs
 /// `CatalogService`, `ProductCatalogSchemaService`, a PostgreSQL Index port, or a database connection.
 /// The owner list result remains authoritative even when Product metadata resolution, shadow query build,
-/// Index readiness/admission, or Index execution fails.
+/// Index readiness/admission, Index execution, or public post-page projection fails.
 ///
 /// Channel-scoped projection requires a trusted current slug/UUID pair supplied by the caller's current
 /// channel context. Channel-less requests and owner-valid deep offset pages are intentionally retained as
@@ -183,6 +187,11 @@ impl ProductStorefrontIndexShadowExecutor {
                 query,
             )
             .await;
+        let public_projected = projected
+            .as_ref()
+            .ok()
+            .cloned()
+            .map(project_product_storefront_index_page);
         let comparison = projected
             .as_ref()
             .ok()
@@ -191,6 +200,7 @@ impl ProductStorefrontIndexShadowExecutor {
         Ok(ProductStorefrontIndexShadowExecution {
             authoritative,
             projected,
+            public_projected,
             comparison,
         })
     }
