@@ -17,7 +17,7 @@ const providerPanel = read(contract.provider.panel_source);
 const providerModuleExport = read(contract.provider.module_export_source);
 const providerPanelExport = read(contract.provider.panel_export_source);
 const providerCanvas = read(contract.provider.composition_source);
-const moduleManifestTooling = read("crates/rustok-module-manifest/src/lib.rs");
+const moduleManifestTooling = read("crates/rustok-build/src/module_manifest_contribution.rs");
 const pagesContributions = read(contract.pages_consumer.contribution_source);
 const pagesContributionBuild = read("crates/rustok-pages/admin/build.rs");
 const pagesModuleManifest = read("crates/rustok-pages/rustok-module.toml");
@@ -263,6 +263,7 @@ for (const field of contract.pages_consumer.fields) {
   );
 }
 for (const marker of [
+  "module_manifest_contribution.rs",
   "normalize_module_contribution_manifest",
   '.role("landing_blocks")',
   '.role("metadata")',
