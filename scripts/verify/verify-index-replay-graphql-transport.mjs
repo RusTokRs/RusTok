@@ -39,7 +39,8 @@ const transport = requireMarkers(transportPath, [
   'let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;',
   'let worker_id = format!("graphql-replay-{}", Uuid::new_v4().simple());',
   '.get::<IndexReplayOperatorRuntime>()',
-  '.run(operator_context, request)',
+  'let stop_handle = ctx.data::<StopHandle>()?.clone();',
+  '.run_interruptible(operator_context, request, || stop_handle.is_stopping())',
   '.request_cancel(operator_context, job_id)',
   'replay_transport_authorizes_before_parsing_untrusted_run_input',
   'replay_transport_derives_authority_worker_and_server_owned_budgets',
@@ -89,6 +90,8 @@ for (const forbidden of [
   'locale',
   'partition',
   'source_name',
+  'StopHandle',
+  'is_stopping',
   'Uuid',
 ]) {
   if (runInput.includes(forbidden)) fail(`replay run input contains caller-owned field marker ${forbidden}`);
@@ -104,9 +107,10 @@ for (const forbidden of [
   'SharedIndexReplayRuntime',
   'PostgresMutationStore',
   'ModuleWorkScheduler',
+  '.stop()',
 ]) {
   if (production.includes(forbidden)) {
-    fail(`${transportPath} bypasses the guarded replay operator: ${forbidden}`);
+    fail(`${transportPath} bypasses the guarded replay/lifecycle boundary: ${forbidden}`);
   }
 }
 
@@ -114,24 +118,41 @@ requireMarkers('apps/server/src/graphql/mod.rs', ['pub mod index_replay;']);
 requireMarkers('apps/server/src/graphql/schema.rs', [
   'use super::index_replay::IndexReplayMutation;',
   'IndexDriftSourcePageDiagnosisMutation,\n    IndexReplayMutation,',
+  'pub stop_handle: StopHandle,',
+  '.data(stop_handle)',
+]);
+requireMarkers('apps/server/src/services/graphql_schema.rs', [
+  'let stop_handle = stop_handle_from_context(ctx);',
+  'ctx.shared_insert_if_absent(candidate.clone());',
+  'IndexReplayStopKeepalive',
+  '_receiver: handle.subscribe()',
+  'stop_handle,',
 ]);
 requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'pub struct IndexReplayOperatorRuntime',
-  'pub async fn run(',
+  'pub async fn run_interruptible<Check>(',
+  '.run_interruptible(request, should_interrupt)',
   'pub async fn request_cancel(',
   'Permission::MODULES_MANAGE',
   'context.authorize_for(request.page_request().tenant_id())?;',
 ]);
+requireMarkers('apps/server/src/services/app_lifecycle.rs', [
+  'pub struct StopHandle',
+  'pub fn subscribe(&self)',
+  'pub async fn stop(&self)',
+  'pub fn is_stopping(&self) -> bool',
+]);
 requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
-  'Status: `source_complete_owner_execution_pending`.',
+  'Status: `source_complete_shutdown_bound_execution_pending`.',
   '`runIndexReplay(input: ...)`',
   '`cancelIndexReplay(input: ...)`',
   'Tenant and actor identities are never accepted',
   'page limit: `100` mutations',
   'maximum pages: `8`',
   'lease duration: `60` seconds',
+  '`StopHandle::is_stopping`',
   'delegation only through `IndexReplayOperatorRuntime`',
   'maintainer-owned',
 ]);
 
-console.log('[verify-index-replay-graphql-transport] guarded schema-wide run/cancel GraphQL commands use request authority and server-owned bounded replay policy');
+console.log('[verify-index-replay-graphql-transport] guarded schema-wide replay run is bound to the server-owned StopHandle probe; cancel and caller input remain independent of shutdown control');
