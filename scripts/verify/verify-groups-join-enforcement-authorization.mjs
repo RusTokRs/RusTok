@@ -1,11 +1,9 @@
 import fs from "node:fs";
 
 const sourcePath = "crates/rustok-groups/src/effective_service.rs";
-const docsPath = "crates/rustok-groups/docs/join-enforcement-authorization-contract.md";
 const planPath = "crates/rustok-groups/docs/implementation-plan.md";
 
 const source = fs.readFileSync(sourcePath, "utf8");
-const docs = fs.readFileSync(docsPath, "utf8");
 const plan = fs.readFileSync(planPath, "utf8");
 
 function requireText(sourceText, marker, message) {
@@ -51,18 +49,12 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  "source complete / maintainer runtime execution pending",
+  "Source-complete join/rejoin effective authorization",
+  "join/rejoin suspension and enforcement-vs-join",
   "Group -> GroupMembership -> GroupMembershipEnforcement",
   "groups.membership_suspended",
   "groups.membership_banned",
-  "Concurrent enforcement semantics",
-]) {
-  requireText(docs, marker, `join enforcement handoff is missing ${marker}`);
-}
-
-for (const marker of [
-  "Source-complete join/rejoin effective authorization",
-  "join/rejoin suspension and enforcement-vs-join",
+  "Compilation plus SQLite/PostgreSQL join-versus-enforcement evidence remains open",
 ]) {
   requireText(plan, marker, `canonical Groups plan is missing join enforcement marker ${marker}`);
 }
