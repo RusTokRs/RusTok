@@ -22,6 +22,13 @@ const functionSlice = (source, name, nextName) => {
   const end = nextName ? source.indexOf(`async fn ${nextName}(`, start + 1) : -1;
   return source.slice(start, end < 0 ? source.length : end);
 };
+const requireRecordedBeforeCommit = (source, label) => {
+  const recorded = source.indexOf("record_product_operation_result(&())?");
+  const commit = source.indexOf("txn.commit().await?");
+  if (recorded < 0 || commit < 0 || recorded > commit) {
+    failures.push(`${label}: unit receipt result must be recorded before owner transaction commit`);
+  }
+};
 
 const port = read("crates/rustok-product/src/catalog_schema_write_port.rs");
 const transaction = read("crates/rustok-product/src/services/write_transaction.rs");
@@ -44,7 +51,7 @@ for (const required of [
   '"product.schema_idempotency_conflict"',
   '"product.schema_receipt_unavailable"',
 ]) {
-  requireText(port, required, "Product schema create receipt port");
+  requireText(port, required, "Product schema receipt port");
 }
 
 for (const [name, nextName] of [
@@ -54,6 +61,9 @@ for (const [name, nextName] of [
   ["create_schema", "create_schema_group"],
   ["create_schema_group", "create_category_group"],
   ["create_category_group", "set_category_schema_mode"],
+  ["set_category_schema_mode", "bind_schema_attribute"],
+  ["bind_schema_attribute", "bind_category_attribute"],
+  ["bind_category_attribute", "save_product_attribute_values"],
 ]) {
   const slice = functionSlice(portImpl, name, nextName);
   for (const required of [
@@ -67,14 +77,15 @@ for (const [name, nextName] of [
 }
 
 for (const [name, nextName] of [
-  ["set_category_schema_mode", "bind_schema_attribute"],
-  ["bind_schema_attribute", "bind_category_attribute"],
-  ["bind_category_attribute", "save_product_attribute_values"],
   ["save_product_attribute_values", "clear_detached_product_attribute_values"],
   ["clear_detached_product_attribute_values", "admit_schema_operation"],
 ]) {
   const slice = functionSlice(portImpl, name, nextName);
-  forbidText(slice, "admit_schema_operation(", `${name} must remain explicit update-style receipt follow-up debt`);
+  forbidText(
+    slice,
+    "admit_schema_operation(",
+    `${name} must remain explicit exact-projection replay follow-up debt`,
+  );
 }
 
 for (const required of [
@@ -129,6 +140,17 @@ for (const required of [
   requireText(categoryCreate, required, "category create actual-result receipt");
 }
 
+const categoryMode = functionSlice(categories, "set_category_schema_mode", "bind_category_attribute");
+const categoryBinding = functionSlice(categories, "bind_category_attribute", null);
+const schemaBinding = functionSlice(schemas, "bind_schema_attribute", null);
+for (const [slice, label] of [
+  [categoryMode, "category schema mode update"],
+  [categoryBinding, "category attribute binding update"],
+  [schemaBinding, "schema attribute binding update"],
+]) {
+  requireRecordedBeforeCommit(slice, label);
+}
+
 requireText(
   plan,
   "durable owner receipts cover all six schema create operations",
@@ -141,19 +163,19 @@ requireText(
 );
 requireText(
   recheck,
-  "all six Product schema create operations",
-  "Product schema write recheck must describe complete create receipt coverage",
+  "three update-style state writes now use durable owner receipts",
+  "Product schema write recheck must record state-write receipt coverage",
 );
 requireText(
   recheck,
-  "update-style schema writes remain open",
-  "Product schema write recheck must preserve remaining update-style debt",
+  "attribute-value writes remain open",
+  "Product schema write recheck must preserve exact-projection replay debt",
 );
 
 if (failures.length) {
-  console.error("Product schema create receipt source verification failed:");
+  console.error("Product schema receipt source verification failed:");
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ All six Product schema creates bind durable owner receipts to actual transaction results; update-style replay semantics remain explicit debt");
+console.log("✔ Product schema creates and three unit-result state writes use durable owner receipts; exact attribute-value projection replay remains explicit debt");

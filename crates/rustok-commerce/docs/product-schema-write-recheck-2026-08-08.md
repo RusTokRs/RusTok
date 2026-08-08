@@ -2,7 +2,7 @@
 
 ## Scope
 
-This source-only continuation follows Product schema-write capability publication, mounted consumer cutover, mandatory GraphQL caller identity, and the first durable attribute-create receipt slice. The canonical ecommerce source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`; its combined Product schema-write/idempotency item remains open while update-style owner replay semantics are defined and implemented.
+This source-only continuation follows Product schema-write capability publication, mounted consumer cutover, mandatory GraphQL caller identity, and durable receipts for all six schema create operations. The canonical ecommerce source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`; its combined Product schema-write/idempotency item remains open while the two attribute-value writes gain exact completed-projection replay semantics.
 
 ## Current source result
 
@@ -15,7 +15,7 @@ This source-only continuation follows Product schema-write capability publicatio
 
 ## Durable schema-create receipts
 
-All six Product schema create operations now use the shared `rustok-outbox::idempotency` owner-operation ledger under `owner_slug = product`:
+All six Product schema create operations use the shared `rustok-outbox::idempotency` owner-operation ledger under `owner_slug = product`:
 
 1. attribute create;
 2. attribute-option create;
@@ -26,7 +26,7 @@ All six Product schema create operations now use the shared `rustok-outbox::idem
 
 For each admitted create, the receipt binds tenant, Product owner namespace, caller idempotency key, operation, authenticated actor, and canonical request input. The receipt operation UUID is reused as the Product-owned resource ID while the receipt scope is active. A stale lease reclaim therefore reuses the same attribute, option, category, schema, or group identity instead of allocating a second row.
 
-The receipt fence now records the **actual result produced inside the owner create method** rather than requiring the port adapter to predict the response before the Product transaction starts. `ProductWriteTransaction` captures an explicitly scoped lease plus an initially empty result slot. Each receipted create records its concrete result after its schema rows and transactional outbox publication are prepared and before commit. Transaction commit fails closed if a receipt scope has no recorded result.
+The receipt fence records the actual result produced inside the owner method rather than requiring the port adapter to predict the response before the Product transaction starts. `ProductWriteTransaction` captures an explicitly scoped lease plus an initially empty result slot. Each receipted create records its concrete result after its schema rows and transactional outbox publication are prepared and before commit. Transaction commit fails closed if a receipt scope has no recorded result.
 
 This is material for `create_category`: `CatalogCategoryRecord.path` depends on the parent row read inside the Product transaction. The port does not perform an external parent/path preflight. The actual path computed by the same transaction is stored in the receipt, so lost-response replay returns the exact committed category result.
 
@@ -36,25 +36,39 @@ A completed receipt decodes the typed create result. Reusing the same key for a 
 
 Direct Product service callers remain outside receipt semantics. Without the explicit task-local owner-port scope, create methods use normal generated resource IDs, result recording is a no-op for receipt state, and `ProductWriteTransaction` commits without receipt completion.
 
+## Durable unit-result state-write receipts
+
+The three update-style state writes now use durable owner receipts as well:
+
+1. `set_category_schema_mode`;
+2. `bind_schema_attribute`;
+3. `bind_category_attribute`.
+
+Each port call admits the caller key against the authenticated actor and canonical input before owner execution. On a new lease, the owner method runs inside the same task-local Product receipt scope used by schema creates. The owner method records its successful `()` result as JSON `null` after the state mutation and transactional outbox publication are prepared and before `ProductWriteTransaction::commit`.
+
+Receipt completion therefore commits atomically with the category assignment or attribute binding plus its domain event. Lost-response replay decodes the stored `null` back to `()` and does not rerun the upsert or publish a duplicate event. Immutable key rebinding and terminal/retryable failure handling reuse the same Product receipt admission and failure policy as schema creates.
+
+The receipt operation UUID is not used as a domain resource ID for these three updates because they mutate an existing category/schema binding identity. It remains only the receipt fence identity.
+
 ## Why the canonical item remains open
 
-Durable owner replay is now source-complete for all six non-idempotent schema create operations. Update-style schema writes remain open:
+Two attribute-value writes remain open:
 
-- `set_category_schema_mode`;
-- `bind_schema_attribute`;
-- `bind_category_attribute`;
 - `save_product_attribute_values`;
 - `clear_detached_product_attribute_values`.
 
-Those operations need an explicit replay result/state contract. In particular, the two attribute-value writes return projections that must replay the exact intended completed outcome rather than merely assuming repeated state mutation is harmless. The combined canonical item therefore remains `[ ]`.
+Both return `Vec<ProductAttributeValueRecord>`. Their current owner implementations commit the EAV mutation and outbox event first and then load the returned projection through a separate database read. Simply adding the receipt wrapper at the port would therefore be incorrect: `ProductWriteTransaction` would have no exact completed result to store before commit, and replaying by re-reading later state could return a projection changed by a subsequent legitimate write.
+
+Those operations need an owner-transaction-local projection loader or equivalent canonical result capture so the exact returned `ProductAttributeValueRecord` vector is serialized into the receipt before the same write transaction commits. Until that exists, both methods intentionally remain outside receipt admission rather than claiming durable replay through repeated mutation or post-commit state reads.
 
 Remaining source order:
 
-1. define owner receipt/replay semantics for update-style schema writes, including exact returned attribute-value projections;
-2. implement those update-style semantics through the same owner transaction fence where appropriate;
-3. remove superseded Product Admin schema-write compatibility strings only after compile/source evidence confirms they are unmounted;
-4. retain static/compile/parity/lost-response/restart/backend evidence as separate maintainer-run verification before any promotion.
+1. make the attribute-value result projection readable from the active `ProductWriteTransaction` without a post-commit owner read;
+2. record and complete the exact `save_product_attribute_values` result inside the mutation/outbox transaction;
+3. record and complete the exact `clear_detached_product_attribute_values` result inside the delete/outbox transaction, including the empty-target path;
+4. remove superseded Product Admin schema-write compatibility strings only after compile/source evidence confirms they are unmounted;
+5. retain static/compile/parity/lost-response/restart/backend evidence as separate maintainer-run verification before any promotion.
 
 ## Verification state
 
-No tests, checks, formatters, workflows, or runtime verification were executed in this slice per maintainer instruction. Source and GitHub diff inspection only. No FBA/FFA status is promoted.
+Source and GitHub diff inspection only. No tests, checks, formatters, workflows, or runtime verification were executed per maintainer instruction. No FBA/FFA status is promoted.

@@ -36,7 +36,7 @@ tokio::task_local! {
 /// The scope is intentionally task-local: the shared `ProductCatalogSchemaService`
 /// stays stateless across concurrent callers, while `ProductWriteTransaction::begin`
 /// captures the receipt only for the explicitly wrapped owner command. The concrete
-/// owner create method records its actual result before commit, so transaction-derived
+/// owner write method records its actual result before commit, so transaction-derived
 /// fields such as category path never need a preflight read outside the owner transaction.
 pub(crate) async fn with_product_operation_receipt<F, T>(
     lease: idempotency::Lease,
@@ -97,7 +97,7 @@ pub(crate) fn record_product_operation_result<T: Serialize>(value: &T) -> Commer
 /// transport unavailable to product write paths before the transaction commits.
 /// When a Product owner receipt scope is active, terminal success is completed
 /// in this same transaction before commit using the actual result recorded by the
-/// owner create method.
+/// owner write method.
 pub(crate) struct ProductWriteTransaction {
     transaction: DatabaseTransaction,
     event_bus: TransactionalEventBus,

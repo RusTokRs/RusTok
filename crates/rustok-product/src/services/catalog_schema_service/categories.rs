@@ -267,6 +267,7 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
+        record_product_operation_result(&())?;
         txn.commit().await?;
         Ok(())
     }
@@ -333,6 +334,7 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
+        record_product_operation_result(&())?;
         txn.commit().await?;
         Ok(())
     }
