@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Storefront serving-budget policy merge
-`0c40387d9bb2257f8345448792f9c9ddd6b38480` and continued on
-`agent/product-storefront-budgeted-execution-20260808`.
+Status overlay rechecked after Storefront budgeted execution merge
+`dd57844c52d05e624710eda6174b43c246173886` and continued on
+`agent/product-storefront-budgeted-execution-evidence-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -32,8 +32,10 @@ Source-complete:
 - bounded Product-owned post-page tag hydration keyed by selected Product IDs, including Taxonomy fallback and
   legacy metadata-only tags;
 - host-measured post-owner serving-budget eligibility policy without hard-coded production SLO values;
-- **non-serving post-owner budgeted execution** that accepts only `Eligible`, narrows phase port deadlines and
+- non-serving post-owner budgeted execution that accepts only `Eligible`, narrows phase port deadlines and
   enforces outer Tokio timeouts for raw Index/EAV execution and Product tag hydration;
+- deterministic storage-free timeout evidence source for that real budgeted adapter through a crate-private
+  post-owner phase seam implemented in production by `ProductStorefrontIndexShadowExecutor`;
 - current-key core/EAV Storefront PostgreSQL packet source;
 - historical retained Product PostgreSQL fixtures actualized to current Product routing key `4`.
 
@@ -56,7 +58,7 @@ Product relation ordering, Taxonomy requested->fallback/canonical-key resolution
 fallback remain owner semantics. Embedded runtime selects the capability; external profiles have no implicit
 embedded fallback.
 
-## Serving budget and timeout enforcement
+## Serving budget, timeout enforcement and retained evidence
 
 `PortContext.deadline_ms` is the original duration budget. A future host/router must measure `remaining_ms`
 after owner success. `ProductStorefrontIndexServingBudget` carries host-selected positive Index/tag phase
@@ -68,12 +70,18 @@ page, rejects non-`Eligible` decisions before work starts, narrows the projected
 outer timeout, then separately narrows and times Product tag hydration. Public placeholder mapping occurs only
 after successful raw projection. Timeout/error results remain separate and never replace owner success.
 
-The ordinary owner-first shadow executor remains the unbudgeted evidence path. Mounted Storefront still uses
-only Product owner reads and does not call either serving-budget classification or budgeted execution.
+`ProductStorefrontIndexProjectionPhases` isolates only those two post-owner phases. Production uses the real
+shadow executor. The retained packet substitutes deterministic fake phases and covers non-eligible no-work,
+projected timeout/error, tag timeout, exact phase deadlines and the fast identity/count/public/tag path. The
+packet is source-complete but has **not** been executed or admitted by the implementation agent.
+
+Mounted Storefront still uses only Product owner reads and does not call either serving-budget classification or
+budgeted execution.
 
 ## Remaining Storefront parity/evidence blockers
 
-- retain and execute deterministic timeout/latency evidence for budgeted post-owner execution;
+- execute/admit the deterministic budgeted timeout packet and retain acceptable runtime latency/cancellation
+  evidence for the selected deployment profile;
 - execute/review current-key Storefront core/EAV/collation and actualized retained Product PostgreSQL packets;
 - admit collation parity only where the deployment default-vs-`C` packet agrees;
 - complete maintainer-executed stale locale/readiness/admission/restart evidence;
@@ -116,20 +124,20 @@ only Product owner reads and does not call either serving-budget classification 
 - [x] Batch-hydrate Product tags post-page through Product owner capability, including legacy metadata fallback.
 - [x] Define host-measured post-owner serving-budget eligibility.
 - [x] Enforce admitted Index/tag phase timeouts in a separate non-serving post-owner adapter.
-- [ ] Retain deterministic runtime timeout/latency evidence for the budgeted adapter.
+- [x] Retain deterministic timeout/error/deadline/fast-path evidence source for the budgeted adapter.
+- [ ] Execute/admit the retained budgeted timeout evidence.
 - [ ] Execute/review retained Product/Storefront/collation PostgreSQL packets.
 - [ ] Admit owner/default vs Index `COLLATE "C"` title-search parity for a deployment.
 - [ ] Execute/admit current replacement Product PostgreSQL evidence.
 - [ ] Stage/rebuild/promote Product key `4` for a tenant.
 - [ ] Move eligible Storefront traffic only after every parity/readiness/freshness/restart/latency gate passes.
 
-## Next source-code step
+## Next source-code boundary
 
-Retain deterministic non-serving timeout-behavior evidence for `ProductStorefrontIndexBudgetedProjectionExecutor`.
-The source packet should prove: a non-eligible decision starts no projected work; Index timeout preserves the
-owner page; raw projection failure skips public/tag enrichment; tag timeout preserves raw/public pages; phase
-`deadline_ms` values reach Product capabilities; and an eligible fast path preserves raw identity/count/page
-semantics. Do not run the packet and do not mount Storefront traffic.
+The Storefront request-shape, post-page projection, tag hydration, budget policy, timeout enforcement and
+retained timeout packet are source-complete. Do not add a traffic-switch adapter from source inspection alone.
+Further source work should stay on an independent retained evidence boundary (replacement/readiness/restart) and
+must not claim runtime admission. Maintainer execution of the timeout and PostgreSQL packets remains required.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
