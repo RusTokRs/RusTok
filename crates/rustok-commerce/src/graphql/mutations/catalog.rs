@@ -1,15 +1,23 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
-use rustok_api::Permission;
 use rustok_api::graphql::require_module_enabled;
+use rustok_api::{
+    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
+    TenantContext,
+};
+use sha2::{Digest, Sha256};
+use std::time::Duration;
 use uuid::Uuid;
 
-use rustok_product::{CatalogService, ProductCatalogSchemaService};
+use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogSchemaService};
 
 use super::super::{
     PRODUCT_MODULE_SLUG as MODULE_SLUG, map_product_service_error, product_mutation_actor,
     require_commerce_permission, types::*,
 };
 use super::helpers::*;
+
+const PRODUCT_COMMAND_DEADLINE: Duration = Duration::from_secs(2);
+const MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 
 #[derive(Default)]
 pub struct CommerceCatalogMutation;
@@ -24,11 +32,156 @@ fn invalid_catalog_input(error: impl std::fmt::Debug) -> async_graphql::Error {
         .extend_with(|_, extensions| extensions.set("code", "INVALID_PRODUCT_CATALOG_INPUT"))
 }
 
+fn invalid_product_idempotency_key(message: impl Into<String>) -> async_graphql::Error {
+    async_graphql::Error::new(message.into())
+        .extend_with(|_, extensions| extensions.set("code", "BAD_USER_INPUT"))
+}
+
+fn product_command_runtime(ctx: &Context<'_>) -> Result<ProductCatalogCommandRuntime> {
+    let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+    let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+    Ok(
+        crate::graphql_runtime::product_catalog_command_runtime_for_current_graphql_scope(
+            db.clone(),
+            event_bus.clone(),
+        ),
+    )
+}
+
+fn product_command_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    product_id: Option<Uuid>,
+    idempotency_key: Option<String>,
+    operation: &'static str,
+) -> Result<PortContext> {
+    let caller_key = match idempotency_key {
+        Some(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                return Err(invalid_product_idempotency_key(
+                    "Product mutation idempotency key must not be empty",
+                ));
+            }
+            if value.len() > MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH {
+                return Err(invalid_product_idempotency_key(format!(
+                    "Product mutation idempotency key must contain at most {MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH} bytes"
+                )));
+            }
+            value.to_string()
+        }
+        None => {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                actor_id = %user_id,
+                product_id = ?product_id,
+                operation,
+                "Product GraphQL lifecycle caller omitted idempotency key; using one-request compatibility identity"
+            );
+            format!("compatibility-{}", Uuid::new_v4())
+        }
+    };
+
+    let tenant = ctx.data::<TenantContext>()?;
+    let auth = ctx.data::<AuthContext>()?;
+    let request_context = ctx.data_opt::<RequestContext>();
+    let locale = request_context
+        .map(|request| request.locale.clone())
+        .unwrap_or_else(|| tenant.default_locale.clone());
+
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(user_id.as_bytes());
+    digest.update(operation.as_bytes());
+    if let Some(product_id) = product_id {
+        digest.update(product_id.as_bytes());
+    }
+    digest.update(caller_key.as_bytes());
+    let scoped_key = format!(
+        "commerce-graphql-product:{operation}:{}",
+        hex::encode(digest.finalize())
+    );
+
+    let mut context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(user_id.to_string()),
+        locale,
+        scoped_key.clone(),
+    )
+    .with_idempotency_key(scoped_key)
+    .with_deadline(PRODUCT_COMMAND_DEADLINE);
+    for permission in &auth.permissions {
+        context = context.with_claim(permission.to_string());
+    }
+    if let Some(channel) = request_context
+        .and_then(|request| request.channel_slug.as_deref())
+        .map(str::trim)
+        .filter(|channel| !channel.is_empty())
+    {
+        context = context.with_channel(channel);
+    }
+    Ok(context)
+}
+
+fn product_command_port_error(
+    context: &PortContext,
+    error: PortError,
+    operation: &'static str,
+) -> async_graphql::Error {
+    let (message, code) = match (&error.kind, error.code.as_str()) {
+        (PortErrorKind::Unavailable | PortErrorKind::Timeout, _) => (
+            "Product data is temporarily unavailable",
+            "PRODUCT_TEMPORARILY_UNAVAILABLE",
+        ),
+        (PortErrorKind::NotFound, _) => ("Product was not found", "PRODUCT_NOT_FOUND"),
+        (PortErrorKind::Conflict, "product.duplicate_handle") => (
+            "Product handle conflicts with an existing product",
+            "DUPLICATE_HANDLE",
+        ),
+        (PortErrorKind::Conflict, "product.duplicate_sku") => (
+            "Product SKU conflicts with an existing product",
+            "DUPLICATE_SKU",
+        ),
+        (PortErrorKind::Conflict, "product.lifecycle_conflict") => (
+            "Published products must be archived before removal",
+            "CANNOT_DELETE_PUBLISHED",
+        ),
+        (PortErrorKind::Validation, "product.no_variants") => (
+            "Product requires at least one variant",
+            "NO_VARIANTS",
+        ),
+        (PortErrorKind::Validation, _) => ("Product request is invalid", "PRODUCT_VALIDATION"),
+        (PortErrorKind::Forbidden, _) => ("Product access is denied", "PRODUCT_ACCESS_DENIED"),
+        (PortErrorKind::Conflict | PortErrorKind::InvariantViolation, _) => (
+            "Product operation could not be completed safely",
+            "PRODUCT_OPERATION_FAILED",
+        ),
+    };
+
+    tracing::error!(
+        operation,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        public_code = code,
+        "Product GraphQL owner command failed"
+    );
+
+    async_graphql::Error::new(message).extend_with(|_, extensions| {
+        extensions.set("code", code);
+        extensions.set("retryable", error.retryable);
+        extensions.set("correlation_id", context.correlation_id.clone());
+    })
+}
+
 #[Object]
 impl CommerceCatalogMutation {
     async fn create_product(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: Option<String>,
         input: CreateProductInput,
     ) -> Result<GqlProduct> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -40,8 +193,6 @@ impl CommerceCatalogMutation {
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let catalog = CatalogService::new(db.clone(), event_bus.clone());
         validate_product_shipping_profile_input(
             db,
             tenant_id,
@@ -49,10 +200,19 @@ impl CommerceCatalogMutation {
         )
         .await?;
         let domain_input = convert_create_product_input(input)?;
-        let product = catalog
-            .create_product(tenant_id, user_id, domain_input)
+        let port_context = product_command_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "create_product",
+        )?;
+        let product = product_command_runtime(ctx)?
+            .command_port()
+            .create_product(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
+            .map_err(|error| product_command_port_error(&port_context, error, "create_product"))?;
 
         Ok(product.into())
     }
@@ -60,6 +220,7 @@ impl CommerceCatalogMutation {
     async fn update_product(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: Option<String>,
         id: Uuid,
         input: UpdateProductInput,
     ) -> Result<GqlProduct> {
@@ -72,8 +233,6 @@ impl CommerceCatalogMutation {
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let catalog = CatalogService::new(db.clone(), event_bus.clone());
         validate_product_shipping_profile_input(
             db,
             tenant_id,
@@ -104,15 +263,29 @@ impl CommerceCatalogMutation {
             status: input.status.map(Into::into),
         };
 
-        let product = catalog
-            .update_product(tenant_id, user_id, id, domain_input)
+        let port_context = product_command_context(
+            ctx,
+            tenant_id,
+            user_id,
+            Some(id),
+            idempotency_key,
+            "update_product",
+        )?;
+        let product = product_command_runtime(ctx)?
+            .command_port()
+            .update_product(port_context.clone(), id, domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
+            .map_err(|error| product_command_port_error(&port_context, error, "update_product"))?;
 
         Ok(product.into())
     }
 
-    async fn publish_product(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlProduct> {
+    async fn publish_product(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: Option<String>,
+        id: Uuid,
+    ) -> Result<GqlProduct> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
@@ -121,18 +294,29 @@ impl CommerceCatalogMutation {
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let catalog = CatalogService::new(db.clone(), event_bus.clone());
-        let product = catalog
-            .publish_product(tenant_id, user_id, id)
+        let port_context = product_command_context(
+            ctx,
+            tenant_id,
+            user_id,
+            Some(id),
+            idempotency_key,
+            "publish_product",
+        )?;
+        let product = product_command_runtime(ctx)?
+            .command_port()
+            .publish_product(port_context.clone(), id)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
+            .map_err(|error| product_command_port_error(&port_context, error, "publish_product"))?;
 
         Ok(product.into())
     }
 
-    async fn delete_product(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+    async fn delete_product(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: Option<String>,
+        id: Uuid,
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
@@ -141,13 +325,19 @@ impl CommerceCatalogMutation {
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let catalog = CatalogService::new(db.clone(), event_bus.clone());
-        catalog
-            .delete_product(tenant_id, user_id, id)
+        let port_context = product_command_context(
+            ctx,
+            tenant_id,
+            user_id,
+            Some(id),
+            idempotency_key,
+            "delete_product",
+        )?;
+        product_command_runtime(ctx)?
+            .command_port()
+            .delete_product(port_context.clone(), id)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
+            .map_err(|error| product_command_port_error(&port_context, error, "delete_product"))?;
 
         Ok(true)
     }

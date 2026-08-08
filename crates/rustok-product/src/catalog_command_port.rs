@@ -193,9 +193,13 @@ fn product_command_error(
             "product.duplicate_sku",
             "product SKU conflicts with an existing variant",
         ),
-        CommerceError::Validation(_) | CommerceError::NoVariants => {
+        CommerceError::Validation(_) => {
             PortError::validation("product.validation", "product request is invalid")
         }
+        CommerceError::NoVariants => PortError::validation(
+            "product.no_variants",
+            "product requires at least one variant",
+        ),
         CommerceError::CannotDeletePublished => PortError::conflict(
             "product.lifecycle_conflict",
             "product operation conflicts with the current state",
@@ -226,7 +230,8 @@ fn product_error_code(error: &CommerceError) -> &'static str {
         CommerceError::ProductNotFound(_) => "product.product_not_found",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::DuplicateSku(_) => "product.duplicate_sku",
-        CommerceError::Validation(_) | CommerceError::NoVariants => "product.validation",
+        CommerceError::Validation(_) => "product.validation",
+        CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",
         CommerceError::Core(_) => "product.invariant_violation",
     }
