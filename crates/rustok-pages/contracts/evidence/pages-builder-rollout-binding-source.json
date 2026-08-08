@@ -1,0 +1,33 @@
+{
+  "format": "pages_builder_rollout_binding_source_v1",
+  "status": "ui_and_authoritative_ssr_binding_source_ready_runtime_matrix_pending",
+  "prepared_on": "2026-08-08",
+  "source_base": "488803a831e725ef0fbeaa8540f09458ee461b85",
+  "source_contract": {
+    "ui_workspace_loads_server_owned_flags": true,
+    "ui_facade_provider_status_uses_loaded_flags": true,
+    "ui_facade_provider_health_remains_unobserved": true,
+    "authoritative_ssr_rereads_trusted_snapshot_per_request": true,
+    "authoritative_ssr_verifies_snapshot_tenant_slug": true,
+    "authoritative_ssr_composes_handlers_from_trusted_flags": true,
+    "browser_rollout_flags_are_authoritative": false,
+    "hardcoded_all_on_consumer_binding_present": false,
+    "four_profiles_source_exercisable": true,
+    "four_profile_runtime_evidence_retained": false,
+    "gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "validation": {
+    "tests_run": false,
+    "node_verifiers_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "database_run": false,
+    "http_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false
+  },
+  "next_cursor": "retain and maintainer-execute a bounded exact-source four-profile runtime matrix with Pages-owned read guarantees"
+}
