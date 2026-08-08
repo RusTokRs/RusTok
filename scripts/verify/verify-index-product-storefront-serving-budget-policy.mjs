@@ -72,13 +72,15 @@ for (const forbidden of [
 const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 const budgeted = requireMarkers(budgetedPath, [
   'use tokio::time::timeout;',
+  'pub(crate) trait ProductStorefrontIndexProjectionPhases',
+  'phases: Arc<dyn ProductStorefrontIndexProjectionPhases>',
   'pub(crate) struct ProductStorefrontIndexBudgetedProjectionExecutor',
   'pub(crate) async fn execute_after_owner(',
   'ProductStorefrontIndexServingBudgetDecision::Eligible',
   'BudgetNotEligible',
   'index_context.deadline_ms = Some(index_execution_budget_ms);',
   'Duration::from_millis(index_execution_budget_ms)',
-  'self.shadow.execute_projected(',
+  'self.phases.execute_projected(',
   'tag_context.deadline_ms = Some(tag_hydration_budget_ms);',
   'Duration::from_millis(tag_hydration_budget_ms)',
   '.hydrate_projected_tags(tag_context, fallback_locale, projected)',
@@ -130,4 +132,4 @@ for (const forbidden of [
   }
 }
 
-console.log('[verify-index-product-storefront-serving-budget-policy] host-measured eligibility stays pure, separate budgeted execution enforces admitted phase timeouts, and mounted Storefront remains owner-native');
+console.log('[verify-index-product-storefront-serving-budget-policy] host-measured eligibility stays pure, separate budgeted execution enforces admitted phase timeouts through the production phase seam, and mounted Storefront remains owner-native');
