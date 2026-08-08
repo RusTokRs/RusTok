@@ -36,8 +36,8 @@ if (consumer.status !== "source_delivered_execution_pending") {
 if (consumer.owner_port !== "rustok_groups::GroupMembershipEnforcementReadPort") {
   throw new Error("Forum audience provider consumer must name the neutral Groups enforcement read port");
 }
-if (consumer.positive_fact !== "effective_status_active_only") {
-  throw new Error("Forum audience positive membership fact must remain effective-active only");
+if (consumer.positive_fact !== "owner_computed_active_member_only") {
+  throw new Error("Forum audience positive membership fact must remain owner-computed active-member only");
 }
 if (consumer.expiry !== "groups_owner_clock_without_cleanup") {
   throw new Error("Forum audience expiry semantics must remain Groups-owner-clock based");
@@ -84,11 +84,12 @@ if (groupsFba?.evidence?.membership_enforcement_access_path_integration !== null
 
 for (const marker of [
   "GroupMembershipEnforcementReadPort",
-  "GroupMembershipEffectiveStatus::Active",
-  "read_membership_enforcement",
-  "PortActor::user",
+  "SharedGroupMembershipEnforcementReadPort",
+  ".read_membership_enforcement(",
+  "if state.active_member",
+  "validate_owner_state",
   "ServerForumAudienceGroupFactsPort",
-  "supports_group_membership",
+  "PARTIAL_PROVIDER_CODE",
 ]) {
   requireText(adapter, marker, `Forum audience Groups adapter is missing ${marker}`);
 }
@@ -96,7 +97,7 @@ for (const forbidden of [
   "group_memberships",
   "group_membership_enforcements",
   "rustok_groups::entities",
-  "sea_orm::",
+  "membership_enforcement::ActiveModel",
 ]) {
   if (adapter.includes(forbidden)) {
     throw new Error(`Forum audience Groups adapter contains direct owner-storage shortcut ${forbidden}`);
@@ -110,7 +111,8 @@ for (const marker of [
   "SuspendGroupMembershipRequest",
   "effective_until",
   "tokio::time::sleep",
-  "supports_group_membership",
+  "facts_after_suspend.group_memberships.is_empty()",
+  "facts_after_expiry.group_memberships",
 ]) {
   requireText(ownerBacked, marker, `Forum audience owner-backed evidence is missing ${marker}`);
 }
@@ -141,7 +143,7 @@ if (forumContract?.verification?.execution_status !== "not_run_by_implementation
 }
 
 for (const marker of [
-  "ownerBackedPath",
+  "ownerBackedTest",
   "forum_group_facts_follow_groups_owner_clock_sqlite",
   "forum_group_facts_follow_groups_owner_clock_postgres",
   "GroupMembershipEnforcementReadPort",
@@ -153,12 +155,13 @@ for (const marker of [
   "Forum audience provider ACL source delivered / maintainer execution pending",
   "Owner boundary",
   "GroupMembershipEnforcementReadPort::read_membership_enforcement",
+  "state.active_member=true",
   "Host composition",
   "Owner-backed backend source",
   "forum_group_facts_follow_groups_owner_clock_sqlite",
   "forum_group_facts_follow_groups_owner_clock_postgres",
   "Degraded and partial-provider semantics",
-  "additional provider ACL profiles",
+  "additional_provider_specific_acl_adapters",
   "membership_enforcement_access_path_integration",
 ]) {
   requireText(docs, marker, `Groups enforcement access-path integration handoff is missing ${marker}`);
