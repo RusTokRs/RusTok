@@ -12,6 +12,7 @@
     "pages_source_boundary": "complete_execution_pending",
     "page_builder_provider_status": "source_ready_health_unobserved",
     "plan_parity": "source_ready",
+    "candidate_harness": "source_ready_maintainer_execution_pending",
     "forum_second_consumer": {
       "contribution_metadata": "source_ready",
       "fly_adapter": "source_ready",
@@ -71,7 +72,8 @@
       "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs",
       "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
       "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
-      "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"
+      "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs"
     ],
     "required_execution_evidence": [
       "exact source revision and reviewed immutable deployment digest",
@@ -92,9 +94,22 @@
       "rollback_decision_required": true
     }
   },
+  "execution_harness": {
+    "status": "source_ready_maintainer_execution_pending",
+    "contract": "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
+    "runner": "scripts/evidence/pages-reference-consumer-gate-evidence.mjs",
+    "source_evidence": "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-evidence-harness-source.json",
+    "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs",
+    "candidate_format": "pages_reference_consumer_gate_candidate_v1",
+    "candidate_status": "component_execution_passed_owner_review_pending",
+    "automatic_acceptance": false,
+    "owner_signoff_after_candidate": true,
+    "rollback_decision_after_candidate": true
+  },
   "current_boundary": {
     "source_gate": "ready",
     "execution_gate": "pending",
+    "candidate_harness": "source_ready_maintainer_execution_pending",
     "forum_wave_blocker": "pages_reference_consumer_gate",
     "provider_health": "unobserved",
     "ffa_fba_promotion": "not_claimed"
@@ -102,6 +117,7 @@
   "verification": {
     "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs",
     "plan_parity_guard": "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs",
+    "candidate_harness_guard": "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "forbidden_claims": [
