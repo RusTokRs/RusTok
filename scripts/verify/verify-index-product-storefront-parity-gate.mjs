@@ -54,6 +54,14 @@ requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', 
   'pub struct ProductResolvedAttributeFilter',
   'product_attribute_localized_text_expr(',
 ]);
+requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs', [
+  'pub(crate) struct ProductStorefrontIndexShadowExecutor',
+  'list_filtered_published_products(',
+  '.resolve_storefront_attribute_filters(',
+  '.execute_localized_query(index_query)',
+  'pub(crate) authoritative: StorefrontProductList',
+  'pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>',
+]);
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
@@ -65,17 +73,18 @@ const productIndex = requireMarkers(productIndexPath, [
 if (productIndex.includes('SchemaVersion::new(3)')) fail(`${productIndexPath} restored historical key 3`);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `shadow_query_and_product_owned_eav_resolution_source_complete_execution_evidence_pending`',
+  'Status: `shadow_executor_source_complete_postgres_equivalence_pending`',
   'Mounted Storefront remains owner-native',
-  'Product-owned attribute-filter resolution — source complete',
-  '`ProductAttributeTermExpr`',
-  '`ProductCatalogSchemaReadPort`',
-  'Channel-less owner requests',
-  'shadow executor/equivalence harness',
+  'Non-serving shadow executor — source complete',
+  'owner-first',
+  '`ProductCatalogReadRuntime`',
+  '`SharedIndexQueryRuntime`',
+  'trusted current',
+  'retained PostgreSQL equivalence',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
   'Status: `source_complete_materialized_rebuild_pending`',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; shadow query plus Product-owned EAV resolution are source-complete while execution/evidence gates remain pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; Product-owned EAV resolution, shadow translation and owner-first non-serving execution are source-complete while PostgreSQL equivalence remains pending');
