@@ -15,6 +15,8 @@ use super::{
     ProductStorefrontIndexShadowError, build_product_storefront_index_shadow_query,
 };
 
+const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;
+
 /// Non-serving Product Storefront parity execution result.
 ///
 /// The authoritative owner result is always produced first. Projected failures or mismatches are retained
@@ -51,6 +53,17 @@ pub(crate) enum ProductStorefrontIndexChannelScopeDecision {
     OwnerNativeChannelLess,
 }
 
+/// Request-shape decision for owner-valid Product Storefront offset pagination.
+///
+/// The Product owner has no explicit maximum offset, while the generic Index offset contract is bounded at
+/// 10,000. Requests inside that bound remain shadow-eligible. Owner-valid deeper pages remain owner-native;
+/// they are never clamped or rewritten to cursor pagination because either would change owner semantics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProductStorefrontIndexPageScopeDecision {
+    ShadowEligible { offset: u64 },
+    OwnerNativeDeepPage { offset: u64 },
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum ProductStorefrontIndexShadowProjectionError {
     #[error("Product Storefront shadow schema-read capability is unavailable")]
@@ -59,6 +72,8 @@ pub(crate) enum ProductStorefrontIndexShadowProjectionError {
     InvalidTenant,
     #[error("Product Storefront channel-less requests remain owner-native for the current Index key-4 contract")]
     ChannelLessOwnerNative,
+    #[error("Product Storefront deep page at offset {offset} remains owner-native beyond the Index offset bound")]
+    DeepPageOwnerNative { offset: u64 },
     #[error("Product Storefront shadow requires a trusted public channel slug/id pair")]
     PublicChannelIdentityUnavailable,
     #[error("Product Storefront shadow attribute-filter owner resolution failed: {0}")]
@@ -90,6 +105,29 @@ pub(crate) fn classify_product_storefront_index_channel_scope(
     }
 }
 
+/// Classify Product owner offset pagination before projected metadata or Index work begins.
+///
+/// Invalid pagination remains an error and is not treated as an owner-native fallback shape. A valid offset
+/// above the generic Index bound is a deliberate owner-native request shape. The pure shadow query builder
+/// retains its own `OffsetTooDeep` fail-closed check as a second boundary for direct callers.
+pub(crate) fn classify_product_storefront_index_page_scope(
+    query: &StorefrontProductListQuery,
+) -> Result<ProductStorefrontIndexPageScopeDecision, ProductStorefrontIndexShadowProjectionError> {
+    if query.page == 0 || query.per_page == 0 || query.per_page > 48 {
+        return Err(ProductStorefrontIndexShadowError::InvalidPagination.into());
+    }
+    let offset = query
+        .page
+        .checked_sub(1)
+        .and_then(|page| page.checked_mul(query.per_page))
+        .ok_or(ProductStorefrontIndexShadowError::InvalidPagination)?;
+    if offset > MAX_INDEX_OFFSET_DEPTH {
+        Ok(ProductStorefrontIndexPageScopeDecision::OwnerNativeDeepPage { offset })
+    } else {
+        Ok(ProductStorefrontIndexPageScopeDecision::ShadowEligible { offset })
+    }
+}
+
 /// Owner-first, non-serving Product Storefront shadow executor.
 ///
 /// This object composes only host-selected Product and Index capabilities. It never constructs
@@ -98,8 +136,8 @@ pub(crate) fn classify_product_storefront_index_channel_scope(
 /// Index readiness/admission, or Index execution fails.
 ///
 /// Channel-scoped projection requires a trusted current slug/UUID pair supplied by the caller's current
-/// channel context. Channel-less requests are intentionally retained as typed owner-native projected results
-/// for the current key-4 schema rather than approximated from `sales_channel_ids`.
+/// channel context. Channel-less requests and owner-valid deep offset pages are intentionally retained as
+/// typed owner-native projected results rather than approximated by Index.
 #[derive(Clone)]
 pub(crate) struct ProductStorefrontIndexShadowExecutor {
     product: ProductCatalogReadRuntime,
@@ -176,6 +214,14 @@ impl ProductStorefrontIndexShadowExecutor {
                 return Err(ProductStorefrontIndexShadowProjectionError::ChannelLessOwnerNative);
             }
         };
+        match classify_product_storefront_index_page_scope(&query)? {
+            ProductStorefrontIndexPageScopeDecision::ShadowEligible { .. } => {}
+            ProductStorefrontIndexPageScopeDecision::OwnerNativeDeepPage { offset } => {
+                return Err(ProductStorefrontIndexShadowProjectionError::DeepPageOwnerNative {
+                    offset,
+                });
+            }
+        }
         let tenant_id = Uuid::parse_str(context.tenant_id.as_str())
             .map_err(|_| ProductStorefrontIndexShadowProjectionError::InvalidTenant)?;
         let schema_read = self
@@ -280,6 +326,37 @@ mod tests {
         assert!(matches!(
             classify_product_storefront_index_channel_scope(Some("web"), Some(Uuid::nil())),
             Err(ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable)
+        ));
+    }
+
+    #[test]
+    fn page_scope_distinguishes_shallow_from_owner_native_deep_pages() {
+        let shallow = StorefrontProductListQuery::default().with_pagination(209, 48);
+        assert_eq!(
+            classify_product_storefront_index_page_scope(&shallow).unwrap(),
+            ProductStorefrontIndexPageScopeDecision::ShadowEligible { offset: 9_984 }
+        );
+
+        let deep = StorefrontProductListQuery::default().with_pagination(210, 48);
+        assert_eq!(
+            classify_product_storefront_index_page_scope(&deep).unwrap(),
+            ProductStorefrontIndexPageScopeDecision::OwnerNativeDeepPage { offset: 10_032 }
+        );
+
+        let invalid = StorefrontProductListQuery::default().with_pagination(0, 48);
+        assert!(matches!(
+            classify_product_storefront_index_page_scope(&invalid),
+            Err(ProductStorefrontIndexShadowProjectionError::QueryBuild(
+                ProductStorefrontIndexShadowError::InvalidPagination
+            ))
+        ));
+
+        let overflow = StorefrontProductListQuery::default().with_pagination(u64::MAX, 48);
+        assert!(matches!(
+            classify_product_storefront_index_page_scope(&overflow),
+            Err(ProductStorefrontIndexShadowProjectionError::QueryBuild(
+                ProductStorefrontIndexShadowError::InvalidPagination
+            ))
         ));
     }
 }
