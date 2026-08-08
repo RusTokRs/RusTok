@@ -1,14 +1,14 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked from `main@aaa496887fd1492f3feca8ac52261458ce25705e` (#3203) and continued on
-`agent/index-storefront-localized-query-architecture-20260808`.
+Status overlay rechecked from `main@0a8d09a84688e4c0f3d6007d9b90d7f41b2a53a3` (#3204) and continued on
+`agent/index-localized-query-contract-20260808`.
 
 `implementation-plan.md` remains historical architecture context. The 2026-08-07 overlay remains useful
 history for the linked-target/replay sequence, but this file is the current execution cursor.
 
 ## Recheck result
 
-The previous current plan was stale after the following merged Index/Product work:
+The current Product/Index sequence now includes:
 
 - #3190 retained linked-target replay/redelivery source evidence;
 - #3192 added the fail-closed Product Storefront parity gate;
@@ -19,21 +19,21 @@ The previous current plan was stale after the following merged Index/Product wor
 - #3199 replaced Product runtime code with one current 15-field Product contract on internal routing key
   `4`, with lower keys historical only;
 - #3200 corrected Storefront parity after proving owner title search is all-translations and owner result
-  projection is requested-locale -> fallback-locale.
+  projection is requested-locale -> fallback-locale;
+- #3204 selected the one generic localized-entity fold architecture and kept Storefront cutover
+  fail-closed pending implementation/evidence.
 
-`main` subsequently advanced through #3203. The intervening work does not resolve the localized Product
-identity mismatch: one generic `rustok-index` change exposes trusted PostgreSQL query-admission rendering;
-#3202 is Moderation/RBAC; #3203 publishes a Product attribute-values schema-read owner capability for a
-separate ecommerce boundary. None changes `list_published_products_with_query`, the physical Product Index
-locale model, Product routing key `4`, or the Storefront parity gate described here.
+No newer `main` commit exists at the start of this source slice. The current branch implements the first
+runtime-independent fold contract without changing Product traffic, Product schema, ordinary Index query
+semantics, or event contracts.
 
 ## Old execution branch
 
 `agent/index-linked-target-replay-redelivery-evidence-20260807` is no longer a valid continuation base.
-It diverges from current `main` and contains source content that was already squash-merged through #3190.
-Do not cherry-pick or continue development from that branch.
+It diverges from current `main` and contains source content already squash-merged through #3190. Do not
+cherry-pick or continue development from that branch.
 
-The old branch should be deleted after this current work is safely on `main`. Branch deletion is repository
+The old branch should be deleted when repository tooling permits it. Branch deletion is repository
 hygiene only; it is not part of Index correctness.
 
 ## Current primary owner gate
@@ -76,12 +76,12 @@ mismatch:
 
 A scalar substring/LIKE operator on the current exact-locale query is therefore insufficient.
 
-## Localized Product query architecture
+## Localized Product query architecture and contract
 
-Source decision: complete in
+Architecture decision: complete in
 `m7-product-storefront-localized-query-architecture.md`.
 
-Selected architecture:
+Selected architecture remains:
 
 - preserve owner Storefront semantics;
 - keep exactly one current Product schema/routing key;
@@ -94,7 +94,21 @@ Selected architecture:
 - forbid client-side merging of independently paginated locale queries;
 - keep existing schema readiness, Product freshness, and linked-target availability admission.
 
-Implementation and retained evidence remain pending. Storefront traffic remains owner-native.
+This source slice makes the **query contract and cursor identity source-complete**:
+
+- `LocalizedEntityQuery` is explicit and does not reinterpret ordinary `IndexQuery`;
+- requested locale remains `query.scope.locale`;
+- equal fallback locale collapses through `canonical_fallback_locale()`;
+- `any_locale_filter` is a separate root-only existential predicate;
+- ordinary + any-locale filters share one bounded complexity budget;
+- `SchemaRegistry::validate_localized_entity_query` requires `LocaleMode::Required` and reuses canonical
+  field/operator/value validation;
+- `LocalizedCursorCodec` uses dedicated scoped wire version `3` and binds fold mode, requested/fallback,
+  ordinary filter, any-locale filter, order shape and schema fingerprint;
+- ordinary exact-locale cursor wire version `2` remains unchanged and cannot be accepted by the fold.
+
+No localized query execution port exists yet. PostgreSQL fold compilation, decode/execution and retained
+evidence remain pending. Storefront traffic remains owner-native.
 
 ## Retained M7 PostgreSQL packets
 
@@ -164,8 +178,11 @@ The digest workflow remains a maintainer execution gate. Source inspection must 
 - [x] Recheck and document owner all-translations search + requested/fallback projection mismatch.
 - [x] Choose one generic localized Product query identity/fallback architecture without another Product
       routing key.
-- [ ] Implement the generic localized-entity fold in `rustok-index` while keeping ordinary exact-locale
+- [x] Add explicit generic localized query shape/validation while keeping ordinary exact-locale
       `IndexQuery` unchanged.
+- [x] Add dedicated localized cursor identity/version bound to requested/fallback/filter/order semantics.
+- [ ] Compile the localized-entity fold to one PostgreSQL page/exact-count contract and expose execution
+      only after decode/admission semantics are complete.
 - [ ] Add generic scalar text-pattern matching inside the folded any-locale identity predicate.
 - [ ] Implement the Product Storefront Index adapter and Taxonomy tag hydration boundary.
 - [ ] Actualize retained Product PostgreSQL packets/guards to routing key `4` and the 15-field source.
@@ -179,9 +196,13 @@ The digest workflow remains a maintainer execution gate. Source inspection must 
 
 Primary maintainer gate remains: **execute and admit the locked M6 repair PostgreSQL packet**.
 
-Next source-code step: **implement the generic localized-entity fold in `rustok-index`** according to the
-selected architecture. Keep the existing exact-locale `IndexQuery` contract stable; do not silently
-reinterpret `IndexQueryScope.locale` as a locale union.
+Next source-code step: **compile `LocalizedEntityQuery` into one PostgreSQL identity-fold page/count
+contract**. Reuse current schema readiness and owner/link admission on every participating physical locale
+row, group before limit/count, and use `LocalizedCursorCodec` for continuation. Do not add
+`execute_localized_query` to the public runtime until compiler + decoder semantics are source-complete.
+
+After the folded execution path exists, add the generic scalar text-pattern primitive inside
+`any_locale_filter`, then implement the Product Storefront adapter/equivalence packet.
 
 In parallel, the retained Product PostgreSQL packets need a mechanical source actualization to routing key
 `4`/15-field Product contract before they can be treated as current evidence. No historical-key runtime
@@ -189,19 +210,16 @@ compatibility path is allowed.
 
 Typed Product events remain separately blocked on maintainer event-digest admission.
 
-## Maintainer verification after the next source slices
+## Maintainer verification after this source slice
 
-The implementation agent has not run these commands. Maintainer verification should include the relevant
-focused tests plus the aggregate guards, for example:
+The implementation agent has not run these commands. Maintainer verification should include:
 
 ```bash
+node scripts/verify/verify-index-localized-query-contract.mjs
 node scripts/verify/verify-index-product-storefront-localized-query-architecture.mjs
 node scripts/verify/verify-index-product-storefront-parity-gate.mjs
-node scripts/verify/verify-index-product-source.mjs
-node scripts/verify/verify-index-product-attribute-term-contract.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
-cargo check -p rustok-distribution --features mod-product --all-targets
 git diff --check
 ```
 
