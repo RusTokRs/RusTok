@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product Storefront collation packet merge
-`26d6e340ee6d1be462f29da6b95b6539458b843f` and continued on
-`agent/product-storefront-channel-scope-policy-20260808`.
+Status overlay rechecked on current `main` at
+`442e5e591f68ec93a527630a14fbce8e6de2ba5e` and continued on
+`agent/product-storefront-deep-page-policy-v2-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -29,6 +29,8 @@ Source-complete:
 - pure Storefront shadow builder and owner-first non-serving shadow executor;
 - explicit current-key channel-scope policy: trusted non-empty slug + non-nil UUID is shadow-eligible, while
   channel-less owner requests remain owner-native and partial/invalid channel identity fails closed;
+- explicit deep-page policy: owner-valid offsets through `10_000` are shadow-eligible while deeper offsets
+  remain typed owner-native without clamp or cursor rewriting;
 - current-key core/EAV Storefront PostgreSQL packet source;
 - historical retained Product PostgreSQL fixtures actualized to current Product routing key `4`.
 
@@ -47,27 +49,42 @@ request-specific Product visibility predicate. Consequently the current source d
 encode visibility into unrelated `attribute_terms`, or introduce a key-5 schema without the replacement
 protocol/evidence required for a real schema change.
 
-`classify_product_storefront_index_channel_scope` now makes the request policy explicit:
+`classify_product_storefront_index_channel_scope` makes the request policy explicit:
 
 - absent/blank slug + absent UUID => `OwnerNativeChannelLess`;
 - non-empty slug + non-nil UUID => `ShadowEligible`;
 - partial, contradictory or nil channel identity => `PublicChannelIdentityUnavailable`.
 
-The shadow executor still runs the authoritative Product owner list first. For channel-less requests it retains
-that result and records typed projected reason `ChannelLessOwnerNative`; it never approximates an Index result.
+The shadow executor runs the authoritative Product owner list first. For channel-less requests it retains that
+result and records typed projected reason `ChannelLessOwnerNative`; it never approximates an Index result.
 This closes the current-key **policy decision**, not channel-less Index parity. Any future serving router must
 continue to route this shape owner-native unless a later schema/query capability represents the distinction
 exactly with freshness evidence.
+
+## Deep-page decision
+
+The Product owner validates `page >= 1` and `1 <= per_page <= 48` but has no generic Index-style maximum
+offset. The generic Index path is bounded to offset `10_000`.
+
+`classify_product_storefront_index_page_scope` preserves that difference after owner success and before
+projected schema/EAV work:
+
+- offset `<= 10_000` => `ShadowEligible { offset }`;
+- offset `> 10_000` => `OwnerNativeDeepPage { offset }` and projected `DeepPageOwnerNative { offset }`;
+- invalid page/per-page or arithmetic overflow => existing invalid-pagination query-build error.
+
+No page/offset clamp or cursor rewrite is introduced. The pure shadow builder independently retains
+`OffsetTooDeep` as its direct-call fail-closed boundary.
 
 ## Remaining Storefront parity/evidence blockers
 
 - execute/review current-key Storefront, collation and actualized retained Product PostgreSQL packets;
 - admit collation parity only where the retained deployment matrix agrees;
-- owner page depth exceeds the Index bounded offset depth;
-- map localized null title/handle to owner public placeholders in final projection;
+- map localized null title/handle to owner public placeholders in final projection **after** Index page
+  identity/order/count is fixed;
 - hydrate localized Taxonomy tag names only after Product page identity/count is fixed;
 - define serving latency/deadline policy before any shadow-to-serving transition;
-- preserve channel-less owner-native routing in any future serving composition;
+- preserve channel-less and deep-page owner-native routing in any future serving composition;
 - complete maintainer-executed stale locale/readiness/admission/restart evidence.
 
 ## Retained Product evidence state
@@ -110,24 +127,23 @@ and SalesChannel remains key `1`.
 - [x] Retain current-key core/EAV owner-vs-shadow PostgreSQL packet source.
 - [x] Actualize historical retained Product PostgreSQL packets to routing key `4`.
 - [x] Keep channel-less Storefront owner-native on current key `4`; distinguish malformed channel identity.
+- [x] Keep owner-valid offsets above `10_000` owner-native without clamp/rewrite.
 - [ ] Execute/review retained Product/Storefront/collation PostgreSQL packets.
 - [ ] Admit owner/default vs Index `COLLATE "C"` title-search parity for a deployment.
-- [ ] Decide authoritative deep-page policy.
 - [ ] Map no-localized-row nulls to owner public title/handle placeholders in final projection.
 - [ ] Batch-hydrate Taxonomy tag names after the Product page is fixed.
 - [ ] Extend folded linked paths only with dedicated target-availability evidence.
 - [ ] Execute/admit current replacement Product PostgreSQL evidence.
 - [ ] Stage/rebuild/promote Product key `4` for a tenant.
 - [ ] Move eligible Storefront traffic only after every parity/readiness/freshness/restart/latency gate passes;
-      channel-less remains owner-native unless a later exact representation is admitted.
+      channel-less and deep-page shapes remain owner-native under the current contracts.
 
 ## Next source-code step
 
-Resolve deep-page request policy without silently narrowing owner semantics. The owner accepts any checked
-`(page - 1) * per_page` offset representable by its query path, while generic Index offset pagination is
-bounded to `10_000`. Classify an otherwise valid owner request whose computed offset exceeds that bound as a
-typed **owner-native deep-page** shape, distinct from invalid pagination, and keep shallow pages shadow-eligible.
-Do not clamp page/offset or silently switch pagination semantics.
+Add a Product Storefront post-page projection adapter for the current Index page. It must map a localized
+`title` null to `"Untitled product"` and localized `handle` null to `""` only **after** the Index page has fixed
+entity identity, ordering, exact count and page boundary. It must not use placeholders in filtering, sorting,
+identity folding or count and must not claim Taxonomy tag-name parity yet.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

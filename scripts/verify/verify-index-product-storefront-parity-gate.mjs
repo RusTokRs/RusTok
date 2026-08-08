@@ -45,11 +45,20 @@ const owner = requireMarkers(ownerPath, [
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
   'let pattern = format!("%{search}%");',
   'pt.title LIKE $1',
+  'if page == 0 || per_page == 0 || per_page > 48',
+  'let offset = (page.saturating_sub(1)) * per_page;',
 ]);
 const titleSearch = owner.slice(owner.indexOf('fn product_title_search_condition('));
 if (titleSearch.includes('pt.locale')) fail(`${ownerPath} title search became locale-scoped`);
 if (titleSearch.includes('COLLATE')) {
   fail(`${ownerPath} owner title search changed collation before retained default-vs-C evidence admission`);
+}
+const modernList = owner.slice(
+  owner.indexOf('pub async fn list_published_products_with_query('),
+  owner.indexOf('pub(crate) async fn list_legacy_storefront_products_with_locale_fallback('),
+);
+if (modernList.includes('10_000')) {
+  fail(`${ownerPath} must not narrow owner-valid Storefront page depth to the Index offset bound`);
 }
 
 requireMarkers('crates/rustok-product/src/services/catalog/helpers.rs', [
@@ -71,19 +80,31 @@ const executor = requireMarkers(executorPath, [
   'pub(crate) fn classify_product_storefront_index_channel_scope(',
   '(None, None) => Ok(ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess)',
   'return Err(ProductStorefrontIndexShadowProjectionError::ChannelLessOwnerNative);',
+  'pub(crate) enum ProductStorefrontIndexPageScopeDecision',
+  'OwnerNativeDeepPage { offset: u64 }',
+  'DeepPageOwnerNative { offset: u64 }',
+  'pub(crate) fn classify_product_storefront_index_page_scope(',
+  'classify_product_storefront_index_page_scope(&query)',
   'list_filtered_published_products(',
   '.resolve_storefront_attribute_filters(',
   '.execute_localized_query(index_query)',
   'pub(crate) authoritative: StorefrontProductList',
 ]);
-for (const forbidden of ['CHANNEL_LESS_SENTINEL', 'UNRESTRICTED_CHANNEL_SENTINEL']) {
-  if (executor.includes(forbidden)) fail(`${executorPath} contains forbidden visibility sentinel ${forbidden}`);
+for (const forbidden of [
+  'CHANNEL_LESS_SENTINEL',
+  'UNRESTRICTED_CHANNEL_SENTINEL',
+  '.min(MAX_INDEX_OFFSET_DEPTH)',
+  'Pagination::Cursor',
+]) {
+  if (executor.includes(forbidden)) fail(`${executorPath} contains forbidden request-shape shortcut ${forbidden}`);
 }
 
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow.rs', [
   'services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
   'PublicChannelRequired',
   'root_field("sales_channel_ids")?',
+  'const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;',
+  'ProductStorefrontIndexShadowError::OffsetTooDeep',
 ]);
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
   'RUSTOK_PRODUCT_STOREFRONT_EQUIVALENCE_DATABASE_URL',
@@ -127,23 +148,37 @@ requireMarkers('scripts/verify/verify-index-product-storefront-channel-scope-pol
   'ShadowEligible { public_channel_id: Uuid }',
   'must not infer or fabricate visibility membership',
 ]);
+requireMarkers('scripts/verify/verify-index-product-storefront-deep-page-policy.mjs', [
+  'OwnerNativeDeepPage { offset: u64 }',
+  'DeepPageOwnerNative { offset: u64 }',
+  'ShadowEligible { offset: 9_984 }',
+  'OwnerNativeDeepPage { offset: 10_032 }',
+  'must preserve owner pagination without clamp/rewrite',
+]);
 requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `channel_scope_policy_source_complete_deep_page_pending`',
+  'Status: `deep_page_policy_source_complete_projection_placeholder_pending`',
   'Mounted Storefront remains owner-native',
   'Channel-less serving policy — source complete for current key 4',
+  'Deep-page serving policy — source complete',
   '`OwnerNativeChannelLess`',
-  '`ShadowEligible`',
-  '`PublicChannelIdentityUnavailable`',
-  'No sentinel UUID',
-  'deep-page policy remains unresolved',
+  '`OwnerNativeDeepPage { offset }`',
+  '`DeepPageOwnerNative { offset }`',
+  'no-localized-row null title/handle',
+]);
+requireMarkers('crates/rustok-index/docs/m7-product-storefront-deep-page-policy.md', [
+  'Status: `source_complete_owner_execution_policy_retained`',
+  '`OwnerNativeDeepPage { offset }`',
+  '`DeepPageOwnerNative { offset }`',
+  'no Index page is fabricated',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-storefront-channel-scope-policy.mjs'",
+  "'verify-index-product-storefront-deep-page-policy.mjs'",
   "'verify-index-product-storefront-collation-postgres-packet.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; current key-4 channel-less requests have a typed owner-native policy while deep-page, evidence admission and serving gates remain pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; channel-less and deep-page request shapes have typed owner-native policies while projection, evidence admission and serving gates remain pending');
