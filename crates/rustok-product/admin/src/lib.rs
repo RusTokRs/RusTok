@@ -4,6 +4,7 @@ mod catalog_controls;
 mod transport;
 mod core;
 mod i18n;
+mod lifecycle_retry_identity;
 mod model;
 mod ui;
 
