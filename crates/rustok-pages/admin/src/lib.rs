@@ -2,6 +2,7 @@ mod access;
 mod browser_intent;
 mod browser_problem;
 mod builder;
+mod builder_rollout_settings;
 #[cfg(test)]
 mod builder_contract;
 mod composition;
