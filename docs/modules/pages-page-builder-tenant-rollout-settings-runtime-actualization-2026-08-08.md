@@ -47,7 +47,7 @@ The old `pages_builder_capability_flags() -> BuilderCapabilityFlags::default()` 
 
 The platform read seam and Pages UI/SSR consumer binding are source-ready. Therefore the four declared profiles are now technically exercisable through the real reference consumer.
 
-This is **not** runtime acceptance. No four-profile execution packet has been retained in this slice. Provider health remains `unobserved`; `pages_reference_consumer_gate` remains `accepted = false`; Forum Wave remains blocked; FFA/FBA are not promoted.
+This is **not** runtime acceptance. No four-profile execution packet has been retained in this slice. The four-profile runtime evidence-pending boundary remains explicit. Provider health remains `unobserved`; `pages_reference_consumer_gate` remains `accepted = false`; Forum Wave remains blocked; FFA/FBA are not promoted.
 
 ## Next exact cursor
 
