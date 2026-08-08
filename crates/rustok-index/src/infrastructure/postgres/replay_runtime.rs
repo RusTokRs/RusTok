@@ -19,8 +19,8 @@ use super::{
 /// Cloneable operator capability for bounded Index replay execution.
 ///
 /// Construction is Index-owned so executable hosts publish one canonical runner assembled from
-/// the complete immutable schema/source registries. Consumers receive only bounded run and cancel
-/// operations; the database connection and registry internals remain private.
+/// the complete immutable schema/source registries. Consumers receive only bounded run, cooperative
+/// interruptible run, and cancel operations; the database connection and registry internals remain private.
 #[derive(Clone)]
 pub struct SharedIndexReplayRuntime {
     runner: Arc<PostgresIndexReplayRunner>,
@@ -38,6 +38,24 @@ impl SharedIndexReplayRuntime {
         request: IndexReplayRunRequest,
     ) -> Result<IndexReplayRunOutcome, IndexReplayRunError> {
         self.runner.run(request).await
+    }
+
+    /// Runs one bounded replay invocation with a host-owned cooperative stop probe.
+    ///
+    /// The probe is intentionally synchronous and carries no transport or storage failure surface.
+    /// It is sampled only by the runner's existing durable safe points. Callers that do not own a
+    /// host lifecycle should use [`Self::run`] instead.
+    pub async fn run_interruptible<Check>(
+        &self,
+        request: IndexReplayRunRequest,
+        should_interrupt: Check,
+    ) -> Result<IndexReplayRunOutcome, IndexReplayRunError>
+    where
+        Check: FnMut() -> bool,
+    {
+        self.runner
+            .run_interruptible(request, should_interrupt)
+            .await
     }
 
     pub async fn request_cancel(

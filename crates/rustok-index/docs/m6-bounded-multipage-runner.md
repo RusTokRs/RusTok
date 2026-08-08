@@ -4,9 +4,10 @@ Status: `source_complete_owner_execution_pending`
 
 This slice composes the existing one-page replay worker, fenced rebuild jobs, mutation
 store, and lease-bound checkpoint store into one bounded PostgreSQL runner. It includes
-durable cancellation requests, between-page terminal cancellation, and a separate
-host-probed in-page interruption path. It does not add a scheduler, background task,
-automatic retry/backoff, dry-run, or production source adapter.
+durable cancellation requests, between-page terminal cancellation, a separate host-probed
+in-page interruption path, and server-owned graceful-shutdown binding through the guarded
+replay command. It does not add a scheduler, background task, automatic retry/backoff,
+dry-run, or production source adapter.
 
 ## Request bounds
 
@@ -69,6 +70,20 @@ checkpoint advance or mutation rollback is introduced.
 The retained SQLite packet is documented in `m6-replay-graceful-shutdown.md`. It is
 source-only until maintainer execution/admission.
 
+## Server shutdown binding
+
+The Index runner and `SharedIndexReplayRuntime` accept only a lifecycle-neutral boolean probe.
+`IndexReplayOperatorRuntime::run_interruptible` preserves exact request authorization before
+passing that probe to Index.
+
+GraphQL schema initialization owns the actual server lifecycle binding. It resolves the one
+shared `StopHandle`, retains a private watch receiver for API-only hosts, and publishes a clone
+in schema data. The authorized `runIndexReplay` command samples only
+`StopHandle::is_stopping`; GraphQL input contains no shutdown state or stop control and the
+transport never calls `StopHandle::stop()`.
+
+`cancelIndexReplay` remains the separate persisted cancellation state machine.
+
 ## Cancellation contract
 
 `PostgresIndexReplayRunner::request_cancel` accepts one non-nil tenant and job UUID. It
@@ -116,9 +131,7 @@ Host interruption is not a page failure and does not enter this failure path.
 
 ## Still open
 
-- bind the server-owned `StopHandle` to the interruptible runner path without exposing a
-  shutdown control to GraphQL callers;
-- execute/admit retained interruption/restart evidence;
+- execute/admit retained interruption/restart and end-to-end server-shutdown evidence;
 - automatic bounded retry/backoff and dead-letter scheduling;
 - operator-visible scheduler health and metrics;
 - explicit targeted/full/shadow rebuild modes;
@@ -126,8 +139,8 @@ Host interruption is not a page failure and does not enter this failure path.
 - retained PostgreSQL cancellation, crash, lease-expiry, restart, timing, and
   multi-instance evidence beyond current focused packets.
 
-The guarded schema-wide GraphQL run/cancel command transport is now source-complete through
-`IndexReplayOperatorRuntime`; its execution evidence remains maintainer-owned.
+The guarded schema-wide GraphQL run/cancel command transport and server `StopHandle` observation
+are source-complete; execution evidence remains maintainer-owned.
 
 ## Owner validation
 
