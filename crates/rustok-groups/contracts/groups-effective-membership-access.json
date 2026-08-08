@@ -27,7 +27,7 @@
   "access_semantics": {
     "public_read_during_suspension": "preserved",
     "closed_private_read_during_suspension": "denied",
-    "secret_summary_during_suspension": "not_found",
+    "secret_group_summary_during_suspension": "not_found",
     "post_comment_invite_moderate_manage_transfer_during_suspension": "denied",
     "join_during_active_suspension": "denied",
     "join_for_legacy_banned_status": "denied",
@@ -49,7 +49,7 @@
       "adapter": "apps/server/src/services/forum_audience_group_facts.rs",
       "runtime_composition": "apps/server/src/services/module_event_dispatcher.rs",
       "owner_port": "rustok_groups::GroupMembershipEnforcementReadPort",
-      "positive_fact": "effective_status_active_only",
+      "positive_fact": "owner_computed_active_member_only",
       "suspended_fact": "false",
       "expiry": "groups_owner_clock_without_cleanup",
       "storage_bypass": false,
