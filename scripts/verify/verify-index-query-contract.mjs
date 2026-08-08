@@ -81,6 +81,7 @@ const scripts = [
   'verify-index-linked-target-replay-redelivery-postgres-harness.mjs',
   'verify-index-product-storefront-parity-gate.mjs',
   'verify-index-product-storefront-localized-query-architecture.mjs',
+  'verify-index-product-storefront-shadow-adapter.mjs',
   'verify-index-localized-query-contract.mjs',
   'verify-index-localized-query-postgres-fold.mjs',
   'verify-index-localized-query-runtime.mjs',

@@ -10,6 +10,10 @@ mod product;
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
 mod query_admission;
 pub(crate) mod relation_admission;
+mod storefront_shadow;
+pub(crate) use storefront_shadow::{
+    ProductStorefrontIndexShadowError, build_product_storefront_index_shadow_query,
+};
 #[path = "../product_variant_index.rs"]
 mod variant;
 #[cfg(test)]
