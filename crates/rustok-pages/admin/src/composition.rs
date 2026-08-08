@@ -13,6 +13,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use rustok_page_builder::runtime_context::{
     PageBuilderRuntimeExampleRequest, generate_page_builder_runtime_example,
 };
@@ -62,10 +63,11 @@ pub fn PagesAdmin() -> impl IntoView {
         async move {
             let Some(page_id) = page_id.filter(|page_id| core::optional_ui_text(page_id).is_some())
             else {
-                return Ok::<_, transport::TransportError>(None);
+                return Ok::<_, String>(None);
             };
-            let Some(page) =
-                transport::fetch_page(token.clone(), tenant.clone(), page_id.clone()).await?
+            let Some(page) = transport::fetch_page(token.clone(), tenant.clone(), page_id.clone())
+                .await
+                .map_err(|error| error.to_string())?
             else {
                 return Ok(None);
             };
@@ -74,11 +76,19 @@ pub fn PagesAdmin() -> impl IntoView {
                 tenant.clone(),
                 page_id.clone(),
             )
-            .await?;
-            let release_status =
-                transport::fetch_page_builder_scenario_release_status(token, tenant, page_id)
-                    .await?;
-            Ok(Some((page, baseline, release_status)))
+            .await
+            .map_err(|error| error.to_string())?;
+            let release_status = transport::fetch_page_builder_scenario_release_status(
+                token,
+                tenant,
+                page_id,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            let provider_flags = crate::builder_rollout_settings::pages_builder_rollout_flags()
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok(Some((page, baseline, release_status, provider_flags)))
         }
     });
 
@@ -163,11 +173,12 @@ pub fn PagesAdmin() -> impl IntoView {
                     }>
                         {move || {
                             workspace_resource.get().map(|result| match result {
-                                Ok(Some((page, baseline, release_status))) => view! {
+                                Ok(Some((page, baseline, release_status, provider_flags))) => view! {
                                     <PageWorkspace
                                         page
                                         baseline
                                         release_status
+                                        provider_flags
                                         token
                                         tenant
                                         default_locale=default_locale.clone()
@@ -297,16 +308,16 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                             prop:value=move || locale.get()
                             on:input=move |event| locale.set(event_target_value(&event))
                             required
-                        />
+                    />
                     </label>
                     <label class="block text-sm font-medium text-card-foreground">
                         "Channels"
                         <input
                             class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                            prop:value=move || channel_slugs.get()
+                            prop:value=move || channel_slugs.get_untracked()
                             on:input=move |event| channel_slugs.set(event_target_value(&event))
                             placeholder="web, mobile"
-                        />
+                    />
                     </label>
                 </div>
                 {move || error.get().map(|message| view! {
@@ -397,6 +408,7 @@ fn PageWorkspace(
     page: PageDetail,
     baseline: Option<RuntimeScenarioReleaseBaseline>,
     release_status: PageBuilderScenarioReleaseStatus,
+    provider_flags: BuilderCapabilityFlags,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
     default_locale: String,
@@ -548,6 +560,7 @@ fn PageWorkspace(
                             page=page_for_builder
                             baseline
                             release_status
+                            provider_flags
                             token
                             tenant
                             default_locale
@@ -598,6 +611,7 @@ fn PagesFlyBuilder(
     page: PageDetail,
     baseline: Option<RuntimeScenarioReleaseBaseline>,
     release_status: PageBuilderScenarioReleaseStatus,
+    provider_flags: BuilderCapabilityFlags,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
     default_locale: String,
@@ -655,19 +669,22 @@ fn PagesFlyBuilder(
             let snapshot_default_locale = default_locale.clone();
             let facade_token = token;
             let facade_tenant = tenant;
-            let facade: Arc<dyn PageBuilderAdminFacade> = Arc::new(PagesBuilderFacade::new(
-                move || PagesBuilderSaveSnapshot {
-                    token: facade_token.get_untracked(),
-                    tenant_slug: facade_tenant.get_untracked(),
-                    page_id: page_id.clone(),
-                    default_locale: snapshot_default_locale.clone(),
-                },
-                move |_page, _project_data| {
-                    refresh_generation.update(|generation| {
-                        *generation = generation.wrapping_add(1)
-                    })
-                },
-            ));
+            let facade: Arc<dyn PageBuilderAdminFacade> = Arc::new(
+                PagesBuilderFacade::new(
+                    move || PagesBuilderSaveSnapshot {
+                        token: facade_token.get_untracked(),
+                        tenant_slug: facade_tenant.get_untracked(),
+                        page_id: page_id.clone(),
+                        default_locale: snapshot_default_locale.clone(),
+                    },
+                    move |_page, _project_data| {
+                        refresh_generation.update(|generation| {
+                            *generation = generation.wrapping_add(1)
+                        })
+                    },
+                )
+                .with_provider_flags(provider_flags),
+            );
 
             let persistence_error = RwSignal::new(None::<String>);
             let server_status = RwSignal::new(release_status);
