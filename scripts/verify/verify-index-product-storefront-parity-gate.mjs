@@ -52,6 +52,9 @@ const owner = requireMarkers(ownerPath, [
 ]);
 const titleSearch = owner.slice(owner.indexOf('fn product_title_search_condition('));
 if (titleSearch.includes('pt.locale')) fail(`${ownerPath} title search became locale-scoped`);
+if (titleSearch.includes('COLLATE')) {
+  fail(`${ownerPath} owner title search changed collation before retained default-vs-C evidence admission`);
+}
 const ownerValidation = owner.indexOf(
   'types::validate_storefront_product_search(list_query.search.as_deref())?;',
 );
@@ -100,6 +103,15 @@ requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_e
   'color=missing',
   'color=00000000-0000-0000-0000-000000000000',
 ]);
+requireMarkers('crates/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
+  'RUSTOK_PRODUCT_STOREFRONT_COLLATION_DATABASE_URL',
+  'translation.title LIKE $2',
+  '(translation.title COLLATE "C") LIKE $2',
+  "current_setting('lc_collate')",
+  'owner_ids != index_c_ids',
+  'Unicode NFC remains byte-distinct',
+  'escaped percent literal',
+]);
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
@@ -114,6 +126,12 @@ requireMarkers('scripts/verify/verify-product-storefront-search-bound.mjs', [
   'ownerBytes + 2 !== indexBytes',
   'reject over-bound input rather than truncate it',
 ]);
+requireMarkers('scripts/verify/verify-index-product-storefront-collation-postgres-packet.mjs', [
+  'must remain the owner/default-collation side',
+  'COLLATE \\"C\\"',
+  'owner_ids != index_c_ids',
+  'must observe deployment/default collation rather than manufacture parity',
+]);
 requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs', [
   'product_locale_absence_postgres.rs',
   'product_materialized_query_freshness_postgres.rs',
@@ -127,14 +145,14 @@ requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `search_bound_source_complete_collation_evidence_pending`',
+  'Status: `collation_packet_source_complete_execution_and_visibility_pending`',
   'Mounted Storefront remains owner-native',
   'Product-owned Storefront search bound — source complete',
+  'Title-search collation packet — source complete, execution pending',
   '`MAX_STOREFRONT_PRODUCT_SEARCH_BYTES = 1022`',
-  'Core PostgreSQL packet — source complete, execution pending',
-  'EAV PostgreSQL packet — source complete, execution pending',
+  'Core and EAV PostgreSQL packets — source complete, execution pending',
   'Historical retained Product packets — key 4 source actualized',
-  'Owner/default PostgreSQL `pt.title LIKE $1` collation',
+  'Collation admission per deployment',
   'ProductVariant stays on key',
   'SalesChannel stays on key',
 ]);
@@ -144,7 +162,8 @@ requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-product-storefront-search-bound.mjs'",
+  "'verify-index-product-storefront-collation-postgres-packet.mjs'",
   "'verify-index-product-postgres-key4-fixtures.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; Product search length is source-aligned with TextLike while collation, execution/admission and remaining serving-policy gates stay pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; search length and collation packet source are complete while PostgreSQL execution/admission, channel-less visibility and serving-policy gates stay pending');
