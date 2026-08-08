@@ -190,11 +190,10 @@ for (const marker of [
   "translation_target_applies_replays_and_tracks_an_exact_category_locale"
 ]) need(sqlitePilot, marker, "SQLite pilot baseline");
 
-need(
-  rootPlan,
-  "Retained PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence are still required before production inventory enablement",
-  "Blog root plan open pilot result",
-);
+for (const marker of [
+  "PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence are",
+  "still required before production inventory enablement"
+]) need(rootPlan, marker, "Blog root plan open pilot result");
 for (const marker of [
   "category_translation_postgres_evidence_source_ready_maintainer_execution_pending",
   "PostgreSQL migration up/down/up",
