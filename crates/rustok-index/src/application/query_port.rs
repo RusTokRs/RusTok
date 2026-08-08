@@ -3,10 +3,11 @@ use std::fmt;
 use async_trait::async_trait;
 use thiserror::Error;
 
-use crate::domain::{IndexQuery, SchemaRef};
+use crate::domain::{IndexQuery, LocalizedEntityQuery, SchemaRef};
 
 use super::{
-    IndexQueryPage, PostgresQueryDecodeError, PostgresQueryPageBuildError, QueryPlanError,
+    IndexQueryPage, PostgresLocalizedQueryBuildError, PostgresLocalizedQueryDecodeError,
+    PostgresQueryDecodeError, PostgresQueryPageBuildError, QueryPlanError,
 };
 
 /// Persisted schema state that prevents a compiled query from executing safely.
@@ -37,7 +38,11 @@ pub enum IndexQueryExecutionError {
     #[error(transparent)]
     Build(#[from] PostgresQueryPageBuildError),
     #[error(transparent)]
+    LocalizedBuild(#[from] PostgresLocalizedQueryBuildError),
+    #[error(transparent)]
     Decode(#[from] PostgresQueryDecodeError),
+    #[error(transparent)]
+    LocalizedDecode(#[from] PostgresLocalizedQueryDecodeError),
     #[error("Index query execution requires a PostgreSQL connection")]
     UnsupportedBackend,
     #[error("persisted Index schema is not query-ready: {reference} ({reason})")]
@@ -106,4 +111,20 @@ pub trait IndexQueryPort: Send + Sync {
         &self,
         query: IndexQuery,
     ) -> Result<IndexQueryPage, IndexQueryExecutionError>;
+
+    /// Explicit localized identity-fold capability.
+    ///
+    /// Existing adapters remain source-compatible and fail closed until they implement the localized
+    /// execution contract. The canonical PostgreSQL adapter overrides this method only after fold SQL,
+    /// persisted readiness, trusted owner admission, one-snapshot page/count execution, and decoder
+    /// semantics are available together.
+    async fn execute_localized_query(
+        &self,
+        query: LocalizedEntityQuery,
+    ) -> Result<IndexQueryPage, IndexQueryExecutionError> {
+        Err(IndexQueryExecutionError::contract_preparation(
+            query.query.schema.clone(),
+            "localized Index query execution is unavailable for this adapter",
+        ))
+    }
 }
