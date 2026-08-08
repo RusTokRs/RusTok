@@ -143,6 +143,18 @@ mod tests {
     }
 
     #[test]
+    fn rollout_preview_off_is_degraded_and_keeps_properties_without_preview_or_publish() {
+        let status =
+            PageBuilderAdminProviderStatus::unobserved(BuilderToggleProfile::PreviewOff.flags());
+        let effective = status.limit_capabilities(CapabilityState::full());
+        assert_eq!(status.state(), PageBuilderAdminProviderState::Degraded);
+        assert!(effective.edit);
+        assert!(effective.properties);
+        assert!(!effective.publish);
+        assert!(!status.preview_enabled());
+    }
+
+    #[test]
     fn rollout_builder_off_is_unavailable_and_forces_read_only() {
         let status = PageBuilderAdminProviderStatus::unobserved(BuilderToggleProfile::BuilderOff.flags());
         assert_eq!(status.state(), PageBuilderAdminProviderState::Unavailable);
