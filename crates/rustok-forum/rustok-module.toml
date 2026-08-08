@@ -114,7 +114,7 @@ format = "forum_widget_owner_schema_ref_v1"
 schema_id = "forum.topic_list.v1"
 catalog_endpoint = "/api/forum/widgets/catalog"
 validate_endpoint = "/api/forum/widgets/validate"
-owner_data_state = "owner_preview_transport_open"
+owner_data_state = "owner_property_editor_ready"
 
 [[fba.builder_consumer.contribution_manifest.admin.property_editors]]
 id = "rustok.forum.topic-detail.properties"
@@ -131,7 +131,7 @@ format = "forum_widget_owner_schema_ref_v1"
 schema_id = "forum.topic_detail.v1"
 catalog_endpoint = "/api/forum/widgets/catalog"
 validate_endpoint = "/api/forum/widgets/validate"
-owner_data_state = "owner_preview_transport_open"
+owner_data_state = "owner_property_editor_ready"
 
 [[fba.builder_consumer.contribution_manifest.admin.property_editors]]
 id = "rustok.forum.reply-stream.properties"
@@ -148,7 +148,7 @@ format = "forum_widget_owner_schema_ref_v1"
 schema_id = "forum.reply_stream.v1"
 catalog_endpoint = "/api/forum/widgets/catalog"
 validate_endpoint = "/api/forum/widgets/validate"
-owner_data_state = "owner_preview_transport_open"
+owner_data_state = "owner_property_editor_ready"
 
 [fba.builder_consumer.contribution_manifest.admin.messages]
 "forum.builder.contributions.widgetCatalog" = "Forum widgets"
@@ -170,6 +170,7 @@ preview_endpoint = "/api/forum/widgets/preview"
 catalog_source = "fba.builder_consumer.widgets"
 adapter_state = "fly_contract_ready"
 preview_data_state = "owner_preview_transport_ready"
+property_data_state = "owner_property_editor_ready"
 persistence_owner = "forum"
 authorization_owner = "forum"
 
