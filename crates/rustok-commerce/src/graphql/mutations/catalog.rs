@@ -56,32 +56,20 @@ fn product_command_context(
     idempotency_key: Option<String>,
     operation: &'static str,
 ) -> Result<PortContext> {
-    let caller_key = match idempotency_key {
-        Some(value) => {
-            let value = value.trim();
-            if value.is_empty() {
-                return Err(invalid_product_idempotency_key(
-                    "Product mutation idempotency key must not be empty",
-                ));
-            }
-            if value.len() > MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH {
-                return Err(invalid_product_idempotency_key(format!(
-                    "Product mutation idempotency key must contain at most {MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH} bytes"
-                )));
-            }
-            value.to_string()
-        }
-        None => {
-            tracing::warn!(
-                tenant_id = %tenant_id,
-                actor_id = %user_id,
-                product_id = ?product_id,
-                operation,
-                "Product GraphQL lifecycle caller omitted idempotency key; using one-request compatibility identity"
-            );
-            format!("compatibility-{}", Uuid::new_v4())
-        }
-    };
+    let caller_key = idempotency_key.ok_or_else(|| {
+        invalid_product_idempotency_key("Product mutation idempotency key is required")
+    })?;
+    let caller_key = caller_key.trim();
+    if caller_key.is_empty() {
+        return Err(invalid_product_idempotency_key(
+            "Product mutation idempotency key must not be empty",
+        ));
+    }
+    if caller_key.len() > MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH {
+        return Err(invalid_product_idempotency_key(format!(
+            "Product mutation idempotency key must contain at most {MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH} bytes"
+        )));
+    }
 
     let tenant = ctx.data::<TenantContext>()?;
     let auth = ctx.data::<AuthContext>()?;

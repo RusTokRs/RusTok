@@ -69,18 +69,27 @@ for (const required of [
 forbidText(adapter, "compatibility-", "Product Admin explicit retry caller");
 forbidText(adapter, "Option<String>\n    idempotency_key", "Product Admin explicit retry caller");
 
-// This consumer slice deliberately stops before the server schema contract becomes required.
-// Keeping the next debt visible prevents source inspection from over-claiming completion.
+// Product Admin already sends a non-null caller key. Mounted Commerce now rejects an omitted key
+// instead of manufacturing a compatibility identity, but the resolver argument remains nullable so
+// tenant/profile admission regression fixtures preserve their existing ordering until the dedicated
+// non-null SDL cutover updates those callers explicitly.
 requireText(
   commerce,
   "idempotency_key: Option<String>",
-  "mounted GraphQL mandatory-idempotency follow-up remains explicit",
+  "mounted GraphQL non-null SDL follow-up remains explicit",
 );
 requireText(
   commerce,
-  "using one-request compatibility identity",
-  "mounted GraphQL compatibility path remains explicit",
+  "Product mutation idempotency key is required",
+  "mounted GraphQL execution requires caller identity",
 );
+for (const forbidden of [
+  "using one-request compatibility identity",
+  "compatibility-{}",
+  "Product GraphQL lifecycle caller omitted idempotency key",
+]) {
+  forbidText(commerce, forbidden, "mounted GraphQL compatibility identity must stay removed");
+}
 
 if (failures.length) {
   console.error("Product Admin lifecycle retry consumer source verification failed:");
@@ -88,4 +97,4 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Product Admin lifecycle callers retain explicit GraphQL retry identity; mandatory server schema remains follow-up debt");
+console.log("✔ Product Admin lifecycle callers retain explicit retry identity and mounted Commerce rejects omission; non-null server SDL remains follow-up debt");
