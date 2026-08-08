@@ -95,17 +95,20 @@ impl SchemaRegistry {
         if let Some(filter) = &query.query.filter {
             filter.field_paths(&mut ordinary_filter_paths);
         }
-        let ordinary_filter_paths = ordinary_filter_paths.into_iter().collect::<BTreeSet<_>>();
+        let ordinary_filter_paths = ordinary_filter_paths
+            .into_iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
         let order_paths = query
             .query
             .order_by
             .iter()
-            .map(|order| &order.field)
+            .map(|order| order.field.clone())
             .collect::<BTreeSet<_>>();
 
         let mut localized = BTreeSet::new();
         for path in &query.localized_projection_fields {
-            if !localized.insert(path) {
+            if !localized.insert(path.clone()) {
                 return Err(
                     LocalizedEntityQueryValidationError::DuplicateLocalizedProjection(path.clone()),
                 );
