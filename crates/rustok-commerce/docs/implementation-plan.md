@@ -289,7 +289,7 @@ These are source-contract defects, not verification-only tasks.
 - [x] Cut GraphQL return/order-change detail and list reads to the scoped host-selected
   runtime with validated actor, resolved channel/effective-locale context, typed
   not-found compatibility errors, and no concrete owner service storage.
-- [x] Cut mounted admin return/order-change detail/list reads to the host-selected
+- [x] Cut mounted admin return/order-change detail and list reads to the host-selected
   runtime while preserving `ORDERS_READ`, filters, clamped pagination, totals, public
   envelopes, actor/channel/effective-locale/deadline context, and unchanged mutation,
   payment, and fulfillment ownership.
