@@ -5,10 +5,10 @@ use std::{sync::Arc, time::Duration};
 use rustok_api::{HostRuntimeContext, PortActor, PortContext, PortErrorKind};
 use rustok_forum::ForumModerationSubjectAdapterFactory;
 use rustok_moderation_api::{
-    ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationDecisionEffect,
-    ModerationDecisionEffectAction, ModerationDecisionKind, ModerationReasonCode,
-    ModerationSubjectAdapterFactory, ModerationSubjectCommandPort, ModerationSubjectKind,
-    ModerationSubjectRef, ModerationVisibilityState,
+    ApplyModerationDecisionCommand, ModerationDecisionEffect, ModerationDecisionEffectAction,
+    ModerationDecisionKind, ModerationReasonCode, ModerationSubjectAdapterFactory,
+    ModerationSubjectCommandPort, ModerationSubjectKind, ModerationSubjectRef,
+    ModerationVisibilityState,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use uuid::Uuid;
@@ -80,8 +80,6 @@ async fn reject_publication_accounts_once_and_replays(db: &DatabaseConnection) -
     assert_eq!(status_event_count(db, seed.tenant_id).await?, 1);
     assert_receipt(db, seed.tenant_id, decision_id, "completed").await?;
 
-    // A new decision evaluated against the already-rejected current revision is an owner no-op:
-    // it completes truthfully without another counter adjustment, event, or revision bump.
     let no_op_id = Uuid::new_v4();
     let no_op = reject_command(seed, revision_after_first, no_op_id)?;
     let no_op_application = adapter
@@ -170,11 +168,7 @@ fn reply_adapter(db: DatabaseConnection) -> TestResult<Arc<dyn ModerationSubject
     Ok(ForumModerationSubjectAdapterFactory::reply().build(&HostRuntimeContext::new(db))?)
 }
 
-fn reject_command(
-    seed: ReplySeed,
-    revision: i64,
-    decision_id: Uuid,
-) -> TestResult<ApplyModerationDecisionCommand> {
+fn reject_command(seed: ReplySeed, revision: i64, decision_id: Uuid) -> TestResult<ApplyModerationDecisionCommand> {
     command(
         seed,
         revision,
@@ -185,11 +179,7 @@ fn reject_command(
     )
 }
 
-fn removed_command(
-    seed: ReplySeed,
-    revision: i64,
-    decision_id: Uuid,
-) -> TestResult<ApplyModerationDecisionCommand> {
+fn removed_command(seed: ReplySeed, revision: i64, decision_id: Uuid) -> TestResult<ApplyModerationDecisionCommand> {
     command(
         seed,
         revision,
@@ -202,11 +192,7 @@ fn removed_command(
     )
 }
 
-fn unpublished_command(
-    seed: ReplySeed,
-    revision: i64,
-    decision_id: Uuid,
-) -> TestResult<ApplyModerationDecisionCommand> {
+fn unpublished_command(seed: ReplySeed, revision: i64, decision_id: Uuid) -> TestResult<ApplyModerationDecisionCommand> {
     command(
         seed,
         revision,
@@ -340,25 +326,16 @@ VALUES
     Ok(seed)
 }
 
-async fn assert_approved_state(
-    db: &DatabaseConnection,
-    seed: ReplySeed,
-    accepted_solution: bool,
-) -> TestResult<()> {
+async fn assert_approved_state(db: &DatabaseConnection, seed: ReplySeed, accepted_solution: bool) -> TestResult<()> {
     let row = reply_state_row(db, seed).await?;
+    let expected_solution_count = if accepted_solution { 1 } else { 0 };
     assert_eq!(row.try_get::<String>("", "status")?, "approved");
     assert!(!row.try_get::<bool>("", "is_deleted")?);
     assert_eq!(row.try_get::<i64>("", "topic_reply_count")?, 1);
     assert_eq!(row.try_get::<i64>("", "category_reply_count")?, 1);
     assert_eq!(row.try_get::<i64>("", "user_reply_count")?, 1);
-    assert_eq!(
-        row.try_get::<i64>("", "solution_rows")?,
-        i64::from(accepted_solution)
-    );
-    assert_eq!(
-        row.try_get::<i64>("", "user_solution_count")?,
-        i64::from(accepted_solution)
-    );
+    assert_eq!(row.try_get::<i64>("", "solution_rows")?, expected_solution_count);
+    assert_eq!(row.try_get::<i64>("", "user_solution_count")?, expected_solution_count);
     Ok(())
 }
 
@@ -374,17 +351,11 @@ async fn assert_rejected_state(db: &DatabaseConnection, seed: ReplySeed) -> Test
     Ok(())
 }
 
-async fn assert_removed_solution_tombstone(
-    db: &DatabaseConnection,
-    seed: ReplySeed,
-) -> TestResult<()> {
+async fn assert_removed_solution_tombstone(db: &DatabaseConnection, seed: ReplySeed) -> TestResult<()> {
     let row = reply_state_row(db, seed).await?;
     assert_eq!(row.try_get::<String>("", "status")?, "deleted");
     assert!(row.try_get::<bool>("", "is_deleted")?);
-    assert_eq!(
-        row.try_get::<String>("", "body")?,
-        "Moderation effect fixture"
-    );
+    assert_eq!(row.try_get::<String>("", "body")?, "Moderation effect fixture");
     for field in [
         "topic_reply_count",
         "category_reply_count",
@@ -397,10 +368,7 @@ async fn assert_removed_solution_tombstone(
     Ok(())
 }
 
-async fn reply_state_row(
-    db: &DatabaseConnection,
-    seed: ReplySeed,
-) -> TestResult<sea_orm::QueryResult> {
+async fn reply_state_row(db: &DatabaseConnection, seed: ReplySeed) -> TestResult<sea_orm::QueryResult> {
     db.query_one(Statement::from_string(
         DatabaseBackend::Postgres,
         format!(
