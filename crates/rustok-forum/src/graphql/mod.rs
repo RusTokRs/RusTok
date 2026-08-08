@@ -104,7 +104,7 @@ pub struct ForumMutation(
     storefront_read_state::ForumStorefrontReadStateMutation,
     topic_fork_mutation::ForumTopicForkMutation,
     topic_merge_mutation::ForumTopicMergeMutation,
-    topic_reply_range_move_mutation::ForumReplyRangeMoveMutation,
+    topic_reply_range_move_mutation::ForumTopicReplyRangeMoveMutation,
     topic_slug_rename_mutation::ForumTopicSlugRenameMutation,
     topic_split_mutation::ForumTopicSplitMutation,
 );
