@@ -81,8 +81,8 @@ pub use inbox_group_summary::{
     NotificationInboxGroupSummaryRequest, NotificationInboxGroupSummaryService,
 };
 pub use inbox_reconcile::{
-    NotificationInboxReconcilePage, NotificationInboxReconcileRequest,
-    NotificationInboxReconcileService,
+    NotificationInboxReconcileInspectionPage, NotificationInboxReconcilePage,
+    NotificationInboxReconcileRequest, NotificationInboxReconcileService,
 };
 pub use inbox_selected::{
     MAX_NOTIFICATION_INBOX_SELECTED_IDS, NotificationInboxSelectedAction,
