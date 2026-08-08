@@ -54,7 +54,7 @@ pub struct GroupMembershipEnforcementMutationResult {
     pub user_id: Uuid,
     pub membership_revision: i64,
     pub group_version: i64,
-    /// Stored-lifecycle member count. Temporary enforcement deliberately does not change it.
+    /// Stored-lifecycle active count. Temporary enforcement deliberately does not change it.
     pub member_count: i64,
     pub effective_status: GroupMembershipEffectiveStatus,
     pub enforcement_revision: i64,
@@ -65,9 +65,9 @@ pub struct GroupMembershipEnforcementMutationResult {
 
 /// Provenance passed to the shared Groups-owned enforcement mutation.
 ///
-/// Direct local commands use `DirectLocal`. The later neutral Moderation adapter can reuse the
-/// same owner mutation by supplying `ModerationDecision` plus immutable decision identity; no
-/// moderation case, queue or policy data belongs here.
+/// Direct commands use `DirectLocal`. The later neutral Moderation adapter can reuse these owner
+/// mutations with `ModerationDecision` provenance after its own receipt, subject/scope and revision
+/// validation. Moderation cases, queue state and policy snapshots never belong here.
 #[derive(Clone, Debug)]
 pub(crate) struct MembershipEnforcementProvenance {
     pub(crate) source_kind: GroupMembershipEnforcementSourceKind,
@@ -107,7 +107,11 @@ impl GroupMembershipEnforcementCommandService {
         request: SuspendGroupMembershipRequest,
     ) -> GroupsResult<GroupMembershipEnforcementMutationResult> {
         require_write(context)?;
-        validate_identity(request.group_id, request.target_user_id, request.expected_membership_revision)?;
+        validate_identity(
+            request.group_id,
+            request.target_user_id,
+            request.expected_membership_revision,
+        )?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         if actor_user_id == request.target_user_id {
@@ -115,18 +119,18 @@ impl GroupMembershipEnforcementCommandService {
         }
         let idempotency_key = idempotency_key(context)?;
         let reason_code = normalize_reason_code(&request.reason_code)?;
-        let normalized_request = SuspendGroupMembershipRequest {
+        let request = SuspendGroupMembershipRequest {
             reason_code,
             ..request
         };
-        let request_hash = request_hash(&normalized_request)?;
+        let request_hash = request_hash(&request)?;
 
         let transaction = self.db.begin().await?;
-        let locked_group = lock_group(&transaction, tenant_id, normalized_request.group_id).await?;
+        let locked_group = lock_group(&transaction, tenant_id, request.group_id).await?;
         if let Some(replayed) = replay_receipt::<GroupMembershipEnforcementMutationResult>(
             &transaction,
             tenant_id,
-            normalized_request.group_id,
+            request.group_id,
             actor_user_id,
             &idempotency_key,
             SUSPEND_COMMAND,
@@ -142,10 +146,7 @@ impl GroupMembershipEnforcementCommandService {
         }
 
         let now = Utc::now();
-        if normalized_request
-            .effective_until
-            .is_some_and(|until| until <= now)
-        {
+        if request.effective_until.is_some_and(|until| until <= now) {
             return Err(GroupsError::Validation(
                 "membership suspension expiry must be in the future".to_string(),
             ));
@@ -157,45 +158,42 @@ impl GroupMembershipEnforcementCommandService {
             tenant_id,
             locked_group.id,
             actor_user_id,
-            normalized_request.target_user_id,
+            request.target_user_id,
             !platform_moderate,
         )
         .await?;
         authorize_direct_enforcement(
             &transaction,
-            context,
             tenant_id,
             &locked_group,
             &locked,
             actor_user_id,
-            normalized_request.target_user_id,
+            request.target_user_id,
             platform_moderate,
             now,
         )
         .await?;
 
         let target = locked
-            .target(normalized_request.target_user_id)
+            .membership(request.target_user_id)
             .ok_or_else(|| GroupsError::Conflict("target group membership is required".to_string()))?;
-        let target_enforcement = locked.enforcement(target.id);
         let result = apply_membership_suspension_in_tx(
             &transaction,
             context,
             locked_group,
-            target,
-            target_enforcement,
-            normalized_request.expected_membership_revision,
-            normalized_request.reason_code.clone(),
-            normalized_request.effective_until,
+            target.clone(),
+            locked.enforcement(target.id),
+            request.expected_membership_revision,
+            request.reason_code.clone(),
+            request.effective_until,
             MembershipEnforcementProvenance::direct_local(actor_user_id),
             now,
         )
         .await?;
-
         store_receipt(
             &transaction,
             tenant_id,
-            normalized_request.group_id,
+            request.group_id,
             actor_user_id,
             idempotency_key,
             SUSPEND_COMMAND,
@@ -213,7 +211,11 @@ impl GroupMembershipEnforcementCommandService {
         request: RevokeGroupMembershipSuspensionRequest,
     ) -> GroupsResult<GroupMembershipEnforcementMutationResult> {
         require_write(context)?;
-        validate_identity(request.group_id, request.target_user_id, request.expected_membership_revision)?;
+        validate_identity(
+            request.group_id,
+            request.target_user_id,
+            request.expected_membership_revision,
+        )?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         if actor_user_id == request.target_user_id {
@@ -221,18 +223,18 @@ impl GroupMembershipEnforcementCommandService {
         }
         let idempotency_key = idempotency_key(context)?;
         let reason_code = normalize_reason_code(&request.reason_code)?;
-        let normalized_request = RevokeGroupMembershipSuspensionRequest {
+        let request = RevokeGroupMembershipSuspensionRequest {
             reason_code,
             ..request
         };
-        let request_hash = request_hash(&normalized_request)?;
+        let request_hash = request_hash(&request)?;
 
         let transaction = self.db.begin().await?;
-        let locked_group = lock_group(&transaction, tenant_id, normalized_request.group_id).await?;
+        let locked_group = lock_group(&transaction, tenant_id, request.group_id).await?;
         if let Some(replayed) = replay_receipt::<GroupMembershipEnforcementMutationResult>(
             &transaction,
             tenant_id,
-            normalized_request.group_id,
+            request.group_id,
             actor_user_id,
             &idempotency_key,
             REVOKE_SUSPENSION_COMMAND,
@@ -254,44 +256,41 @@ impl GroupMembershipEnforcementCommandService {
             tenant_id,
             locked_group.id,
             actor_user_id,
-            normalized_request.target_user_id,
+            request.target_user_id,
             !platform_moderate,
         )
         .await?;
         authorize_direct_enforcement(
             &transaction,
-            context,
             tenant_id,
             &locked_group,
             &locked,
             actor_user_id,
-            normalized_request.target_user_id,
+            request.target_user_id,
             platform_moderate,
             now,
         )
         .await?;
 
         let target = locked
-            .target(normalized_request.target_user_id)
+            .membership(request.target_user_id)
             .ok_or_else(|| GroupsError::Conflict("target group membership is required".to_string()))?;
-        let target_enforcement = locked.enforcement(target.id);
         let result = revoke_membership_suspension_in_tx(
             &transaction,
             context,
             locked_group,
-            target,
-            target_enforcement,
-            normalized_request.expected_membership_revision,
-            normalized_request.reason_code.clone(),
+            target.clone(),
+            locked.enforcement(target.id),
+            request.expected_membership_revision,
+            request.reason_code.clone(),
             MembershipEnforcementProvenance::direct_local(actor_user_id),
             now,
         )
         .await?;
-
         store_receipt(
             &transaction,
             tenant_id,
-            normalized_request.group_id,
+            request.group_id,
             actor_user_id,
             idempotency_key,
             REVOKE_SUSPENSION_COMMAND,
@@ -329,7 +328,7 @@ struct LockedCommandState {
 }
 
 impl LockedCommandState {
-    fn target(&self, user_id: Uuid) -> Option<membership_state::Model> {
+    fn membership(&self, user_id: Uuid) -> Option<membership_state::Model> {
         self.memberships
             .iter()
             .find(|row| row.user_id == user_id)
@@ -426,7 +425,6 @@ async fn lock_command_memberships(
 
 async fn authorize_direct_enforcement(
     transaction: &DatabaseTransaction,
-    context: &PortContext,
     tenant_id: Uuid,
     group_model: &group::Model,
     locked: &LockedCommandState,
@@ -436,16 +434,16 @@ async fn authorize_direct_enforcement(
     now: DateTime<Utc>,
 ) -> GroupsResult<()> {
     let target = locked
-        .target(target_user_id)
+        .membership(target_user_id)
         .ok_or_else(|| GroupsError::Conflict("target group membership is required".to_string()))?;
     let target_role = GroupRole::from_str(&target.role).map_err(GroupsError::Invariant)?;
-    let owner_identity_matches = target.user_id == group_model.owner_user_id;
-    if owner_identity_matches != (target_role == GroupRole::Owner) {
+    let target_is_owner = target.user_id == group_model.owner_user_id;
+    if target_is_owner != (target_role == GroupRole::Owner) {
         return Err(GroupsError::Invariant(
             "group owner reference and owner membership role disagree".to_string(),
         ));
     }
-    if owner_identity_matches {
+    if target_is_owner {
         return Err(GroupsError::MembershipEnforcementOwnerProtected);
     }
 
@@ -458,9 +456,9 @@ async fn authorize_direct_enforcement(
         return Ok(());
     }
 
-    let actor = locked
-        .target(actor_user_id)
-        .ok_or_else(|| GroupsError::ManagerRequired("active local moderator authority is required".to_string()))?;
+    let actor = locked.membership(actor_user_id).ok_or_else(|| {
+        GroupsError::ManagerRequired("active local moderator authority is required".to_string())
+    })?;
     let actor_state = resolve_group_membership_enforcement(
         transaction,
         tenant_id,
@@ -497,9 +495,8 @@ async fn authorize_direct_enforcement(
     }
 }
 
-/// Shared Groups-owned suspension mutation used by the direct command and, later, the neutral
-/// Moderation adapter after that caller has completed its own receipt admission and authorization.
-/// The caller must hold the group, target membership and target enforcement locks.
+/// Shared Groups-owned suspension mutation used by the direct command and later by the neutral
+/// Moderation adapter. The caller must hold the group, target membership and enforcement locks.
 pub(crate) async fn apply_membership_suspension_in_tx(
     transaction: &DatabaseTransaction,
     context: &PortContext,
@@ -525,27 +522,22 @@ pub(crate) async fn apply_membership_suspension_in_tx(
         ));
     }
 
-    if let Some(existing) = current_enforcement.as_ref() {
-        let existing_effective = existing.revoked_at.is_none()
-            && existing.effective_from.with_timezone(&Utc) <= now
-            && existing
-                .effective_until
-                .as_ref()
-                .is_none_or(|until| now < until.with_timezone(&Utc));
-        if existing_effective {
-            return Err(GroupsError::MembershipEnforcementAlreadySuspended);
-        }
+    if current_enforcement
+        .as_ref()
+        .is_some_and(|row| enforcement_is_effective(row, now))
+    {
+        return Err(GroupsError::MembershipEnforcementAlreadySuspended);
     }
 
     let fixed_now = now.fixed_offset();
-    let effective_until_fixed = effective_until.map(|value| value.fixed_offset());
+    let fixed_until = effective_until.map(|value| value.fixed_offset());
     if let Some(existing) = current_enforcement {
         let mut active: membership_enforcement::ActiveModel = existing.into();
         active.state = Set("suspended".to_string());
         active.reason_code = Set(reason_code.clone());
         active.source_kind = Set(provenance.source_kind.as_str().to_string());
         active.effective_from = Set(fixed_now);
-        active.effective_until = Set(effective_until_fixed);
+        active.effective_until = Set(fixed_until);
         active.restore_status = Set(target_status.as_str().to_string());
         active.moderation_decision_id = Set(provenance.moderation_decision_id);
         active.moderation_decision_hash = Set(provenance.moderation_decision_hash.clone());
@@ -564,7 +556,7 @@ pub(crate) async fn apply_membership_suspension_in_tx(
             reason_code: Set(reason_code.clone()),
             source_kind: Set(provenance.source_kind.as_str().to_string()),
             effective_from: Set(fixed_now),
-            effective_until: Set(effective_until_fixed),
+            effective_until: Set(fixed_until),
             restore_status: Set(target_status.as_str().to_string()),
             moderation_decision_id: Set(provenance.moderation_decision_id),
             moderation_decision_hash: Set(provenance.moderation_decision_hash.clone()),
@@ -579,7 +571,8 @@ pub(crate) async fn apply_membership_suspension_in_tx(
         .await?;
     }
 
-    let group_after = bump_group_version_without_member_count_change(transaction, group_model, fixed_now).await?;
+    let group_after =
+        bump_group_version_without_member_count_change(transaction, group_model, fixed_now).await?;
     let state = resolve_group_membership_enforcement(
         transaction,
         target.tenant_id,
@@ -633,8 +626,8 @@ pub(crate) async fn apply_membership_suspension_in_tx(
     Ok(result)
 }
 
-/// Shared Groups-owned revocation mutation. Direct local revocation may only revoke a direct-local
-/// suspension; a local moderator cannot erase moderation-decision provenance.
+/// Shared Groups-owned revocation mutation. A direct-local caller may only revoke direct-local
+/// enforcement, so local moderation cannot erase moderation-decision provenance.
 pub(crate) async fn revoke_membership_suspension_in_tx(
     transaction: &DatabaseTransaction,
     context: &PortContext,
@@ -656,13 +649,7 @@ pub(crate) async fn revoke_membership_suspension_in_tx(
     {
         return Err(GroupsError::MembershipEnforcementSourceConflict);
     }
-    let existing_effective = existing.revoked_at.is_none()
-        && existing.effective_from.with_timezone(&Utc) <= now
-        && existing
-            .effective_until
-            .as_ref()
-            .is_none_or(|until| now < until.with_timezone(&Utc));
-    if !existing_effective {
+    if !enforcement_is_effective(&existing, now) {
         return Err(GroupsError::MembershipEnforcementNotActive);
     }
 
@@ -670,13 +657,14 @@ pub(crate) async fn revoke_membership_suspension_in_tx(
     let previous_effective_until = existing.effective_until.map(|value| value.with_timezone(&Utc));
     let fixed_now = now.fixed_offset();
     let mut active: membership_enforcement::ActiveModel = existing.into();
+    // Preserve the original suspension actor/source provenance. The revoking actor is retained in
+    // immutable audit/event facts instead of overwriting who established the enforcement row.
     active.revoked_at = Set(Some(fixed_now));
-    active.actor_kind = Set(provenance.actor_kind.clone());
-    active.actor_id = Set(provenance.actor_id.clone());
     active.updated_at = Set(fixed_now);
     active.update(transaction).await?;
 
-    let group_after = bump_group_version_without_member_count_change(transaction, group_model, fixed_now).await?;
+    let group_after =
+        bump_group_version_without_member_count_change(transaction, group_model, fixed_now).await?;
     let state = resolve_group_membership_enforcement(
         transaction,
         target.tenant_id,
@@ -729,6 +717,15 @@ pub(crate) async fn revoke_membership_suspension_in_tx(
     )
     .await?;
     Ok(result)
+}
+
+fn enforcement_is_effective(row: &membership_enforcement::Model, now: DateTime<Utc>) -> bool {
+    row.revoked_at.is_none()
+        && row.effective_from.with_timezone(&Utc) <= now
+        && row
+            .effective_until
+            .as_ref()
+            .is_none_or(|until| now < until.with_timezone(&Utc))
 }
 
 fn validate_mutation_identity(
@@ -1030,9 +1027,7 @@ fn idempotency_key(context: &PortContext) -> GroupsResult<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty() && value.len() <= 160)
         .map(str::to_string)
-        .ok_or_else(|| {
-            GroupsError::Validation("bounded idempotency key is required".to_string())
-        })
+        .ok_or_else(|| GroupsError::Validation("bounded idempotency key is required".to_string()))
 }
 
 fn has_platform_moderate(context: &PortContext) -> bool {
