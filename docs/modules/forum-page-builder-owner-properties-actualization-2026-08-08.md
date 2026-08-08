@@ -111,7 +111,8 @@ validation and authorization owner.
 
 ## Browser/runtime evidence remains open
 
-This source slice does not claim execution evidence. The next retained evidence should prove:
+The browser/runtime evidence remains open; source presence is not execution proof. The next retained
+evidence should prove:
 
 1. Forum-enabled Pages can insert each Forum block, load its owner schema, receive invalid-field
    diagnostics, apply a sanitized/normalized valid configuration, undo/redo the Fly patch and save
