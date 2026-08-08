@@ -1,8 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use super::{DomainError, FieldPath, FilterExpr, IndexQuery, LocaleKey};
+use super::{DomainError, FieldPath, FilterExpr, IndexQuery, LocaleKey, OrderDirection};
 
 const MAX_LOCALIZED_FILTER_NODES: usize = 128;
+
+fn default_identity_order_direction() -> OrderDirection {
+    OrderDirection::Asc
+}
 
 /// Explicit localized-entity fold request layered on top of the ordinary exact-locale query shape.
 ///
@@ -17,6 +21,9 @@ const MAX_LOCALIZED_FILTER_NODES: usize = 128;
 /// requested row, then fallback row, then SQL null. Unlisted root fields are read from the deterministic
 /// admitted identity anchor. This prevents a third-locale anchor from becoming visible localized
 /// content when requested/fallback rows are absent without changing the immutable schema fingerprint.
+///
+/// `identity_order_direction` controls only the final root entity UUID tie-break after all explicit
+/// `query.order_by` terms. Ordinary `IndexQuery` keeps its existing always-ascending identity tie-break.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalizedEntityQuery {
     pub query: IndexQuery,
@@ -24,6 +31,8 @@ pub struct LocalizedEntityQuery {
     pub any_locale_filter: Option<FilterExpr>,
     #[serde(default)]
     pub localized_projection_fields: Vec<FieldPath>,
+    #[serde(default = "default_identity_order_direction")]
+    pub identity_order_direction: OrderDirection,
 }
 
 impl LocalizedEntityQuery {
@@ -37,6 +46,7 @@ impl LocalizedEntityQuery {
             fallback_locale,
             any_locale_filter,
             localized_projection_fields: Vec::new(),
+            identity_order_direction: OrderDirection::Asc,
         }
     }
 
@@ -48,14 +58,16 @@ impl LocalizedEntityQuery {
         self
     }
 
+    pub fn with_identity_order_direction(mut self, direction: OrderDirection) -> Self {
+        self.identity_order_direction = direction;
+        self
+    }
+
     pub fn requested_locale(&self) -> Option<&LocaleKey> {
         self.query.scope.locale.as_ref()
     }
 
     /// Return the canonical fallback role used by planning, cursor identity and execution.
-    ///
-    /// Equal requested/fallback locales collapse to one role instead of creating duplicate physical
-    /// locale work or a second cursor identity for equivalent semantics.
     pub fn canonical_fallback_locale(&self) -> Option<&LocaleKey> {
         self.fallback_locale
             .as_ref()
@@ -157,5 +169,17 @@ mod tests {
         assert!(!plain.is_localized_projection_path(&title));
         let localized = plain.with_localized_projection_fields([title.clone()]);
         assert!(localized.is_localized_projection_path(&title));
+    }
+
+    #[test]
+    fn identity_order_defaults_ascending_and_can_be_selected() {
+        let query = LocalizedEntityQuery::new(base_query("en-US"), None, None);
+        assert_eq!(query.identity_order_direction, OrderDirection::Asc);
+        assert_eq!(
+            query
+                .with_identity_order_direction(OrderDirection::Desc)
+                .identity_order_direction,
+            OrderDirection::Desc
+        );
     }
 }
