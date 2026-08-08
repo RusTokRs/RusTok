@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 const testPath = "apps/server/tests/groups_leave_enforcement_sqlite.rs";
+const postgresTestPath = "apps/server/tests/groups_leave_enforcement_postgres.rs";
 const contractPath = "crates/rustok-groups/contracts/groups-effective-membership-access.json";
 
 const test = fs.readFileSync(testPath, "utf8");
@@ -52,8 +53,8 @@ for (const forbidden of [
 if (contract?.evidence?.leave_sqlite_source !== testPath) {
   throw new Error("SQLite leave/enforcement evidence source is not registered");
 }
-if (contract?.evidence?.leave_postgresql_source !== null) {
-  throw new Error("PostgreSQL leave source must remain open until its packet is added");
+if (contract?.evidence?.leave_postgresql_source !== postgresTestPath) {
+  throw new Error("PostgreSQL leave source must remain registered once present");
 }
 if (contract?.evidence?.leave_runtime !== null) {
   throw new Error("unexecuted leave runtime evidence must remain null");
