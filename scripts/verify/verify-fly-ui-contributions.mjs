@@ -18,6 +18,10 @@ const paths = {
   pageBuilderPalette: 'crates/rustok-page-builder/admin/src/editor/palette_layers.rs',
   pageBuilderPaletteAccess: 'crates/rustok-page-builder/admin/src/palette_access.rs',
   pageBuilderContextContract: 'crates/rustok-page-builder/admin/src/context_contract.rs',
+  moduleManifestCargo: 'crates/rustok-module-manifest/Cargo.toml',
+  moduleManifestLib: 'crates/rustok-module-manifest/src/lib.rs',
+  xtaskCargo: 'xtask/Cargo.toml',
+  modulePublishReadiness: 'xtask/src/module_publish_readiness.rs',
   pagesCargo: 'crates/rustok-pages/admin/Cargo.toml',
   pagesBuild: 'crates/rustok-pages/admin/build.rs',
   pagesModuleManifest: 'crates/rustok-pages/rustok-module.toml',
@@ -221,29 +225,84 @@ requireMarker(
   'contribution assembly must remain safe for Leptos owner context',
 );
 
-requireMarkers('pagesCargo', [
-  '[build-dependencies]',
+requireMarkers('moduleManifestCargo', [
+  'name = "rustok-module-manifest"',
   'serde = { workspace = true, features = ["derive"] }',
   'serde_json.workspace = true',
   'toml.workspace = true',
-], 'Pages build-time contribution metadata dependencies');
-requireMarkers('pagesBuild', [
-  'MODULE_MANIFEST_RELATIVE_PATH',
-  'cargo:rerun-if-changed=',
-  'contribution_manifest: ContributionManifestSource',
-  'owner_provider: String',
-  'target_providers: BTreeMap<String, String>',
-  'role=\'landing_blocks\'',
-  'role=\'metadata\'',
+], 'shared contribution metadata crate');
+for (const forbidden of ['fly-ui', 'fly_ui', 'leptos', 'rustok-modules', 'rustok-page-builder']) {
+  rejectMarker(
+    'moduleManifestCargo',
+    forbidden,
+    `shared contribution metadata tooling must remain lightweight: ${forbidden}`,
+  );
+}
+requireMarkers('moduleManifestLib', [
+  'pub struct NormalizedModuleContributionManifest',
+  'pub struct ContributionRoleExport',
+  'pub fn normalize_module_contribution_manifest(',
+  'pub fn manifest_json(&self)',
   'OWNER_PROVIDER_METADATA_KEY',
   'PROVIDER_VERSION_METADATA_KEY',
-  'must not hand-author ownerProvider/providerVersion',
+  'fn normalize_targets(',
+  'fn normalize_contributions(',
+  'fn validate_nested_provider_array(',
+  'outside fba.builder_consumer.capabilities',
+  'normalizes_and_injects_versioned_provider_metadata',
+  'rejects_hand_authored_reserved_identity_metadata',
+  'rejects_contribution_capability_outside_builder_contract',
+  'modules_without_contribution_metadata_are_accepted',
+], 'shared contribution metadata normalization');
+requireMarker(
+  'xtaskCargo',
+  'rustok-module-manifest = { path = "../crates/rustok-module-manifest" }',
+  'xtask publish validation must use the shared module manifest tooling',
+);
+requireMarkers('modulePublishReadiness', [
+  'validate_module_contribution_manifest_contract(',
+  'rustok_module_manifest::normalize_module_contribution_manifest(&source)',
+  'declares admin contribution metadata without [provides.admin_ui]',
+  'declares storefront contribution metadata without [provides.storefront_ui]',
+], 'module publish contribution validation');
+
+requireMarkers('pagesCargo', [
+  '[build-dependencies]',
+  'rustok-module-manifest = { path = "../../rustok-module-manifest" }',
+], 'Pages shared build-time contribution metadata dependency');
+for (const forbidden of [
+  'serde = { workspace = true, features = ["derive"] }\nserde_json.workspace = true\ntoml.workspace = true',
+]) {
+  rejectMarker(
+    'pagesCargo',
+    forbidden,
+    'Pages build script must not retain its old direct parser dependency stack',
+  );
+}
+requireMarkers('pagesBuild', [
+  'normalize_module_contribution_manifest',
+  'MODULE_MANIFEST_RELATIVE_PATH',
+  'cargo:rerun-if-changed=',
+  '.role("landing_blocks")',
+  '.role("metadata")',
+  '.manifest_json()',
   'GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON',
   'PAGES_BUILDER_CAPABILITIES',
   'PAGES_LANDING_BLOCK_IDS',
-  'module.version',
   'CARGO_PKG_VERSION',
-], 'Pages canonical contribution build generator');
+], 'Pages shared contribution build adapter');
+for (const forbidden of [
+  'struct ModuleManifestRoot',
+  'struct ContributionManifestSource',
+  'fn normalize_targets(',
+  'fn normalize_contributions(',
+]) {
+  rejectMarker(
+    'pagesBuild',
+    forbidden,
+    `Pages build adapter must not retain shared parser/normalizer authority: ${forbidden}`,
+  );
+}
 requireMarkers('pagesModuleManifest', [
   '[fba.builder_consumer.contribution_manifest]',
   'owner_provider = "rustok.pages"',
