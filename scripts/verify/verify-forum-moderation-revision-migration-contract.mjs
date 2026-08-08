@@ -61,11 +61,13 @@ for (const marker of [
   requireText(migration, marker, `Forum moderation revision migration source is missing ${marker}`);
 }
 
-requireText(
-  migrations,
-  "Box::new(m20260807_000027_add_forum_moderation_subject_revisions::Migration)",
-  "Forum moderation revision migration must remain present in the production migration list",
-);
+const migrationList = migrations.match(/pub fn migrations\(\)[\s\S]*?\n}\n/)?.[0];
+if (!migrationList) throw new Error("Forum production migration list could not be located");
+if (!/Box::new\(m20260807_000027_add_forum_moderation_subject_revisions::Migration\),\s*\]\s*}/.test(migrationList)) {
+  throw new Error(
+    "Forum moderation revision migration must remain the final production migration while the upgrade harness uses migrations().pop()",
+  );
+}
 
 for (const marker of [
   "Upgrade / backfill",
