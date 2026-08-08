@@ -160,7 +160,15 @@ impl SchemaRegistry {
             }
         }
 
+        let mut link_names = BTreeSet::new();
         for link_value in &record.links {
+            if !link_names.insert(link_value.name.clone()) {
+                return Err(RecordValidationError::DuplicateLink {
+                    schema: schema.reference.clone(),
+                    link: link_value.name.clone(),
+                });
+            }
+
             let definition = schema
                 .links
                 .iter()
