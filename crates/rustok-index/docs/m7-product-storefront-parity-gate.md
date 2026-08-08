@@ -1,6 +1,6 @@
 # M7 Product Storefront Index parity gate
 
-Status: `deep_page_policy_source_complete_projection_placeholder_pending`.
+Status: `public_projection_source_complete_taxonomy_hydration_pending`.
 
 ## Current boundary
 
@@ -21,41 +21,58 @@ The Product relation resolver represents unrestricted metadata by resolving **al
 `sales_channel_ids`. A restricted Product whose allowed slugs currently resolve to every Channel therefore has
 the same membership vector as an unrestricted Product. Current key `4` cannot distinguish those states.
 
-The generic entity-admission catalog is schema-scoped rather than an arbitrary request-scoped Product
-predicate channel, so the shadow path cannot recover the owner metadata distinction at query time without a
-new generic contract or a persisted Product field/schema replacement.
-
-For the current key-4 contract the policy is explicit:
+For the current key-4 contract:
 
 - absent/blank slug and absent channel UUID => `OwnerNativeChannelLess`;
 - trusted non-empty slug and non-nil UUID => `ShadowEligible`;
-- partial identity, UUID-without-slug, slug-without-UUID, or nil UUID =>
-  `PublicChannelIdentityUnavailable`.
+- malformed/partial identity => `PublicChannelIdentityUnavailable`.
 
-The shadow executor still produces the authoritative owner result first. A channel-less request then retains
-that result and records `ChannelLessOwnerNative` in `projected`; it does not fabricate an Index page. This is a
-serving-policy decision, not a claim of channel-less Index parity.
-
-No sentinel UUID, `attribute_terms` visibility encoding, key-5 Product schema, or membership-equality inference
-is introduced. Any future serving composition must preserve owner-native handling for this shape until a later
-exact representation is implemented with the normal schema replacement and freshness evidence gates.
+The shadow executor produces the authoritative owner result first. A channel-less request records
+`ChannelLessOwnerNative` on the projected side and never fabricates an Index page. No sentinel UUID, unrelated
+`attribute_terms` encoding or key-5 approximation is used.
 
 ## Deep-page serving policy — source complete
 
 The Product owner validates `page >= 1` and `1 <= per_page <= 48`, but it does not impose the generic Index
-offset ceiling. The generic Product Storefront shadow builder remains bounded at offset `10_000`.
+offset ceiling. The generic Product Storefront path remains bounded at offset `10_000`.
 
-`classify_product_storefront_index_page_scope` now preserves this owner/Index difference after the authoritative
-owner list succeeds and before projected schema/EAV work:
+`classify_product_storefront_index_page_scope` preserves this owner/Index difference after authoritative owner
+success and before projected schema/EAV work:
 
 - checked offset `<= 10_000` => `ShadowEligible { offset }`;
-- checked offset `> 10_000` => `OwnerNativeDeepPage { offset }` and projected
-  `DeepPageOwnerNative { offset }`;
-- invalid page/per-page or arithmetic overflow => existing invalid-pagination query-build error.
+- checked offset `> 10_000` => `OwnerNativeDeepPage { offset }` and `DeepPageOwnerNative { offset }`;
+- invalid pagination/overflow => existing invalid-pagination failure.
 
-The policy does not clamp page/offset or rewrite the request to cursor pagination. The pure shadow builder
-retains `OffsetTooDeep` as a second fail-closed boundary for direct callers. Deep pages therefore remain
-owner-native under the current contracts rather than being made artificially representable.
+The policy does not clamp page/offset or rewrite to cursor pagination. The pure shadow builder independently
+retains `OffsetTooDeep` for direct callers.
+
+## Product public placeholder projection — source complete
+
+The raw localized Index page deliberately remains Product-neutral. If no requested or fallback translation row
+exists, raw root `title` and `handle` remain `IndexValue::Null`. The retained core PostgreSQL packet continues
+to preserve that raw evidence beside the authoritative owner result (`"Untitled product"` / empty handle).
+
+`storefront_projection.rs` adds a Product distribution-owned **post-page** transform:
+
+- root `title: Null` => `String("Untitled product")`;
+- root `handle: Null` => `String("")`;
+- existing strings are preserved;
+- missing, duplicate, or wrong-typed root title/handle fields fail closed;
+- item identities/order, `exact_count`, `has_more`, `next_cursor`, unrelated fields and `tag_ids` are preserved.
+
+`ProductStorefrontIndexShadowExecution` now retains two explicit layers:
+
+- `projected`: the raw generic `IndexQueryPage`, still used for identity/order/count/page comparison;
+- `public_projected`: an optional result derived only from a clone of a successful raw page by
+  `project_product_storefront_index_page`.
+
+The public transform is not called inside `execute_projected`, the shadow query builder contains no owner
+placeholder strings, and generic `rustok-index` remains unaware of Product public placeholder semantics.
+Therefore placeholders cannot influence title search, filters, ordering, localized identity folding, exact
+count, offset/cursor construction or raw equivalence evidence.
+
+This closes the no-requested/fallback public title/handle **source adapter** gap. It does not close Taxonomy tag
+parity: current Index projection still carries `tag_ids`, while Product owner list returns localized tag names.
 
 ## Product-owned Storefront search bound — source complete
 
@@ -80,13 +97,14 @@ used by shadow execution. Distribution translates Product-owned neutral term exp
 
 `ProductStorefrontIndexShadowExecutor` executes the authoritative Product owner list first. Only eligible
 channel-scoped, shallow projected work proceeds through Product metadata resolution, localized query
-construction and `execute_localized_query`. Projected failures cannot replace the successful owner result.
+construction and `execute_localized_query`. Projected or public-projection failures cannot replace the
+successful authoritative owner result.
 
 ## Core/EAV and retained Product PostgreSQL packets
 
 The core Storefront packet retains localized requested/fallback/neither projection, all-locale title matching,
 wildcards, identity de-duplication, count, Asc/Desc tie ordering, pagination and trusted public-channel
-membership. It also records the null-vs-public-placeholder projection gap.
+membership. Its raw null-vs-owner-placeholder assertions intentionally remain unchanged.
 
 The EAV packet separately retains scalar/localized terms, Select/Multiselect option code/direct UUID and
 missing/nil option `Never` behavior.
@@ -99,26 +117,25 @@ key `2`, SalesChannel key `1`. Execution/review remains maintainer-owned.
 
 1. Maintainer execution/review of Storefront core/EAV/collation and actualized retained Product packets.
 2. Collation admission per deployment: any owner/default-vs-`C` mismatch keeps eligible Index cutover closed.
-3. Final Storefront projection must map no-localized-row null title/handle to owner placeholders only after
-   entity identity/order/count/page boundary are fixed.
-4. Taxonomy tag names must be hydrated only after Product page identity/order/count is fixed.
-5. Shadow execution has no serving latency/deadline policy and remains non-serving.
-6. Stale locale/readiness/admission/restart cases still require maintainer-executed retained evidence.
-7. Any future serving router must preserve typed channel-less and deep-page owner-native branches.
+3. Taxonomy tag names must be batch-hydrated requested-locale -> fallback-locale only after Product page
+   identity/order/count is fixed; current post-page adapter intentionally leaves `tag_ids` unchanged.
+4. Shadow execution has no serving latency/deadline policy and remains non-serving.
+5. Stale locale/readiness/admission/restart cases still require maintainer-executed retained evidence.
+6. Any future serving router must preserve typed channel-less and deep-page owner-native branches.
 
 ## Next source slice
 
-Add a post-page Product Storefront projection adapter for the Index result. A localized null `title` must map to
-owner public placeholder `"Untitled product"` and a localized null `handle` to `""`, but only after the Index
-query has already fixed identity, ordering, exact count and page boundary. Do not feed placeholders back into
-filtering, sorting, identity folding or count. Taxonomy tag-name hydration remains a later slice.
+Add a Product/Taxonomy owner capability for bounded batched hydration of the already-selected Product page's
+`tag_ids`. Resolve requested-locale then fallback-locale display names only after Index identity/order/count is
+fixed. Hydration failure must be retained separately and must not replace the raw Product page. Do not copy tag
+names into Product Index schema merely to avoid post-page owner hydration.
 
 ## Source guards
 
-- `verify-index-product-storefront-channel-scope-policy.mjs` locks owner channel-less semantics, unrestricted
-  relation materialization and the typed current-key owner-native decision without sentinels;
-- `verify-index-product-storefront-deep-page-policy.mjs` locks owner-valid shallow/deep classification and
-  forbids page/offset clamp or cursor rewriting;
+- `verify-index-product-storefront-channel-scope-policy.mjs` locks current-key channel-less owner-native policy;
+- `verify-index-product-storefront-deep-page-policy.mjs` locks owner-valid shallow/deep classification;
+- `verify-index-product-storefront-public-projection.mjs` locks raw-vs-public page separation, Product public
+  placeholder values and preservation of page metadata/`tag_ids`;
 - `verify-product-storefront-search-bound.mjs` locks the Product-owned search-length contract;
 - `verify-index-product-storefront-collation-postgres-packet.mjs` locks retained collation evidence;
 - `verify-index-product-storefront-shadow-adapter.mjs` locks Product-term -> localized query translation;
