@@ -6,30 +6,42 @@ impl ProductCatalogSchemaService {
         tenant_id: Uuid,
         product_id: Uuid,
     ) -> CommerceResult<Option<EffectiveProductForm>> {
+        Self::load_effective_form_for_product_in(&self.db, tenant_id, product_id).await
+    }
+
+    pub(super) async fn load_effective_form_for_product_in<C>(
+        db: &C,
+        tenant_id: Uuid,
+        product_id: Uuid,
+    ) -> CommerceResult<Option<EffectiveProductForm>>
+    where
+        C: ConnectionTrait,
+    {
         let product = ProductPrimaryCategoryRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
+            db.get_database_backend(),
             "SELECT primary_category_id FROM products WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), product_id.into()],
         ))
-        .one(&self.db)
+        .one(db)
         .await?;
         let Some(primary_category_id) = product.and_then(|row| row.primary_category_id) else {
             return Ok(None);
         };
 
         let value_rows = AttributeIdRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
+            db.get_database_backend(),
             "SELECT attribute_id FROM product_attribute_values WHERE tenant_id = $1 AND product_id = $2",
             vec![tenant_id.into(), product_id.into()],
         ))
-        .all(&self.db)
+        .all(db)
         .await?;
         let existing_value_attribute_ids = value_rows
             .into_iter()
             .map(|row| row.attribute_id)
             .collect::<Vec<_>>();
 
-        self.load_effective_form_for_category(
+        Self::load_effective_form_for_category_in(
+            db,
             tenant_id,
             primary_category_id,
             &existing_value_attribute_ids,
@@ -44,8 +56,26 @@ impl ProductCatalogSchemaService {
         category_id: Uuid,
         existing_value_attribute_ids: &[Uuid],
     ) -> CommerceResult<EffectiveProductForm> {
-        let categories = Self::load_category_schema_map(&self.db, tenant_id).await?;
-        let schemas = Self::load_attribute_schema_map(&self.db, tenant_id).await?;
+        Self::load_effective_form_for_category_in(
+            &self.db,
+            tenant_id,
+            category_id,
+            existing_value_attribute_ids,
+        )
+        .await
+    }
+
+    async fn load_effective_form_for_category_in<C>(
+        db: &C,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        existing_value_attribute_ids: &[Uuid],
+    ) -> CommerceResult<EffectiveProductForm>
+    where
+        C: ConnectionTrait,
+    {
+        let categories = Self::load_category_schema_map(db, tenant_id).await?;
+        let schemas = Self::load_attribute_schema_map(db, tenant_id).await?;
         resolve_effective_product_form(
             category_id,
             &categories,
@@ -144,10 +174,13 @@ impl ProductCatalogSchemaService {
         Ok(labels)
     }
 
-    async fn load_category_schema_map(
-        db: &DatabaseConnection,
+    async fn load_category_schema_map<C>(
+        db: &C,
         tenant_id: Uuid,
-    ) -> CommerceResult<HashMap<Uuid, CatalogCategorySchema>> {
+    ) -> CommerceResult<HashMap<Uuid, CatalogCategorySchema>>
+    where
+        C: ConnectionTrait,
+    {
         let category_rows = CategorySchemaRow::find_by_statement(Statement::from_sql_and_values(
             db.get_database_backend(),
             r#"
@@ -232,10 +265,13 @@ impl ProductCatalogSchemaService {
         Ok(categories)
     }
 
-    async fn load_attribute_schema_map(
-        db: &DatabaseConnection,
+    async fn load_attribute_schema_map<C>(
+        db: &C,
         tenant_id: Uuid,
-    ) -> CommerceResult<HashMap<Uuid, ProductAttributeSchema>> {
+    ) -> CommerceResult<HashMap<Uuid, ProductAttributeSchema>>
+    where
+        C: ConnectionTrait,
+    {
         let schema_rows = SchemaRow::find_by_statement(Statement::from_sql_and_values(
             db.get_database_backend(),
             "SELECT id, code FROM product_attribute_schemas WHERE tenant_id = $1 AND archived_at IS NULL",
