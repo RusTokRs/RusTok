@@ -1,16 +1,19 @@
 {
   "format": "pages_builder_rollout_binding_source_v1",
-  "status": "ui_and_authoritative_ssr_binding_source_ready_runtime_matrix_pending",
+  "status": "server_owner_ui_ssr_and_browser_intent_binding_source_ready_runtime_matrix_pending",
   "prepared_on": "2026-08-08",
-  "source_base": "488803a831e725ef0fbeaa8540f09458ee461b85",
+  "source_base": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
   "source_contract": {
     "ui_workspace_loads_server_owned_flags": true,
     "ui_facade_provider_status_uses_loaded_flags": true,
     "ui_facade_provider_health_remains_unobserved": true,
-    "authoritative_ssr_rereads_trusted_snapshot_per_request": true,
+    "authoritative_ssr_rereads_server_owned_snapshot_per_request": true,
     "authoritative_ssr_verifies_snapshot_tenant_slug": true,
-    "authoritative_ssr_composes_handlers_from_trusted_flags": true,
+    "authoritative_ssr_composes_handlers_from_server_owned_flags": true,
+    "standalone_browser_intent_fetches_server_owned_snapshot": true,
+    "standalone_browser_intent_narrows_role_capabilities_before_draft_dispatch": true,
     "browser_rollout_flags_are_authoritative": false,
+    "standalone_admin_host_runtime_context_required": false,
     "hardcoded_all_on_consumer_binding_present": false,
     "four_profiles_source_exercisable": true,
     "four_profile_runtime_evidence_retained": false,
@@ -29,5 +32,5 @@
     "browser_run": false,
     "workflow_or_ci_run": false
   },
-  "next_cursor": "retain and maintainer-execute a bounded exact-source four-profile runtime matrix with Pages-owned read guarantees"
+  "next_cursor": "retain and maintainer-execute a bounded exact-source four-profile runtime matrix with UI, SSR, browser-intent and Pages-owned read guarantees"
 }
