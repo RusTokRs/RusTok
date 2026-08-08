@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
@@ -6,6 +6,7 @@ use sea_orm::{
 };
 use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
+use tokio::time::{Instant, sleep_until};
 use uuid::Uuid;
 
 use crate::{
@@ -21,6 +22,8 @@ use super::{
 };
 
 const MAX_PAGES_PER_RUN: usize = 1_024;
+const MIN_REPLAY_RUN_LEASE_DURATION: Duration = Duration::from_secs(60);
+const PAGE_LEASE_HEARTBEAT_DIVISOR: u32 = 3;
 const REPLAY_PAGE_FAILURE_CODE: &str = "index.replay_page_failed";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +99,12 @@ impl IndexReplayRunRequest {
             return Err(IndexReplayRunError::InvalidHeartbeatCadence {
                 actual: heartbeat_every_pages,
                 max: max_pages,
+            });
+        }
+        if lease_duration < MIN_REPLAY_RUN_LEASE_DURATION {
+            return Err(IndexReplayRunError::LeaseDurationTooShort {
+                actual: lease_duration,
+                minimum: MIN_REPLAY_RUN_LEASE_DURATION,
             });
         }
         let page_request = match locale {
@@ -323,7 +332,15 @@ impl PostgresIndexReplayRunner {
                 }
             }
 
-            let page = match worker.run_next_page(request.page_request().clone()).await {
+            let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(
+                &job_store,
+                &lease,
+                request.lease_duration(),
+                worker.run_next_page(request.page_request().clone()),
+            )
+            .await?;
+            aggregate.heartbeat_count += in_page_heartbeat_count;
+            let page = match page_result {
                 Ok(page) => page,
                 Err(error) if replay_error_is_lease_lost(&error) => {
                     return Err(lease_lost(&lease));
@@ -433,6 +450,44 @@ fn empty_outcome(
         applied_count: 0,
         duplicate_count: 0,
         stale_count: 0,
+    }
+}
+
+fn page_lease_heartbeat_interval(lease_duration: Duration) -> Duration {
+    lease_duration / PAGE_LEASE_HEARTBEAT_DIVISOR
+}
+
+async fn await_page_with_lease_heartbeats<T, F>(
+    job_store: &PostgresIndexReplayJobStore,
+    lease: &IndexReplayJobLease,
+    lease_duration: Duration,
+    page_future: F,
+) -> Result<(Result<T, IndexReplayError>, usize), IndexReplayRunError>
+where
+    F: Future<Output = Result<T, IndexReplayError>>,
+{
+    let heartbeat_interval = page_lease_heartbeat_interval(lease_duration);
+    debug_assert!(!heartbeat_interval.is_zero());
+    tokio::pin!(page_future);
+    let mut heartbeat_count = 0usize;
+    let mut next_heartbeat = Instant::now() + heartbeat_interval;
+
+    loop {
+        tokio::select! {
+            page_result = &mut page_future => return Ok((page_result, heartbeat_count)),
+            _ = sleep_until(next_heartbeat) => {
+                let heartbeat_future = heartbeat(job_store, lease, lease_duration);
+                tokio::pin!(heartbeat_future);
+                tokio::select! {
+                    page_result = &mut page_future => return Ok((page_result, heartbeat_count)),
+                    heartbeat_result = &mut heartbeat_future => {
+                        heartbeat_result?;
+                        heartbeat_count += 1;
+                        next_heartbeat = Instant::now() + heartbeat_interval;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -752,6 +807,10 @@ pub enum IndexReplayRunError {
     InvalidMaxPages { actual: usize, max: usize },
     #[error("Index replay heartbeat cadence is invalid: actual={actual}, max={max}")]
     InvalidHeartbeatCadence { actual: usize, max: usize },
+    #[error(
+        "Index replay lease duration is too short for the page heartbeat policy: actual={actual:?}, minimum={minimum:?}"
+    )]
+    LeaseDurationTooShort { actual: Duration, minimum: Duration },
     #[error("Index replay cancellation tenant id must not be nil")]
     NilCancelTenantId,
     #[error("Index replay cancellation job id must not be nil")]
@@ -829,5 +888,39 @@ mod locale_scope_tests {
         let lease_request = lease_request_for_run(&request, "product-postgres-primary".to_owned())
             .unwrap();
         assert!(lease_request.locale().is_none());
+    }
+
+    #[test]
+    fn page_lease_policy_requires_two_dependency_windows_and_heartbeats_at_one_third() {
+        let too_short = IndexReplayRunRequest::new(
+            Uuid::new_v4(),
+            product_schema(),
+            "short-lease-test",
+            100,
+            8,
+            1,
+            Duration::from_secs(59),
+        )
+        .expect_err("lease shorter than the canonical page reserve must fail closed");
+        assert!(matches!(
+            too_short,
+            IndexReplayRunError::LeaseDurationTooShort { .. }
+        ));
+
+        let minimum = IndexReplayRunRequest::new(
+            Uuid::new_v4(),
+            product_schema(),
+            "minimum-lease-test",
+            100,
+            8,
+            1,
+            Duration::from_secs(60),
+        )
+        .expect("canonical 60 second replay lease should remain valid");
+        assert_eq!(minimum.lease_duration(), Duration::from_secs(60));
+        assert_eq!(
+            page_lease_heartbeat_interval(minimum.lease_duration()),
+            Duration::from_secs(20)
+        );
     }
 }
