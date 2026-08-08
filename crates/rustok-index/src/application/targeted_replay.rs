@@ -201,7 +201,10 @@ pub enum IndexReplayTargetedError {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, sync::Mutex};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        sync::Mutex,
+    };
 
     use async_trait::async_trait;
     use rustok_core::ModuleRuntimeExtensions;
@@ -289,6 +292,47 @@ mod tests {
         ) -> Result<IndexReplayMutationOutcome, IndexReplayFailure> {
             self.event_ids.lock().unwrap().push(mutation.event_id());
             Ok(IndexReplayMutationOutcome::Applied)
+        }
+    }
+
+    struct RetryOnceSink {
+        applied: Mutex<BTreeSet<Uuid>>,
+        fail_event: Uuid,
+        fail_once: Mutex<bool>,
+    }
+
+    impl RetryOnceSink {
+        fn new(fail_event: Uuid) -> Self {
+            Self {
+                applied: Mutex::new(BTreeSet::new()),
+                fail_event,
+                fail_once: Mutex::new(true),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl IndexReplayMutationSink for RetryOnceSink {
+        async fn apply_replay_mutation(
+            &self,
+            _registry: &SchemaRegistry,
+            _source_name: &str,
+            mutation: &IndexMutation,
+        ) -> Result<IndexReplayMutationOutcome, IndexReplayFailure> {
+            let event_id = mutation.event_id();
+            let mut fail_once = self.fail_once.lock().unwrap();
+            if event_id == self.fail_event && *fail_once {
+                *fail_once = false;
+                return Err(IndexReplayFailure::retryable("targeted_retryable_failure").unwrap());
+            }
+            drop(fail_once);
+
+            let inserted = self.applied.lock().unwrap().insert(event_id);
+            Ok(if inserted {
+                IndexReplayMutationOutcome::Applied
+            } else {
+                IndexReplayMutationOutcome::Duplicate
+            })
         }
     }
 
@@ -401,5 +445,41 @@ mod tests {
             }
             assert!(executor.mutation_sink.event_ids.lock().unwrap().is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn targeted_exact_retry_replays_stable_event_ids_after_partial_failure() {
+        let template = executor(SourceMode::Valid);
+        let executor = IndexReplayTargetedExecutor::new(
+            template.sources.clone(),
+            template.schemas.clone(),
+            RetryOnceSink::new(Uuid::from_u128(901)),
+        );
+        let selection = || {
+            IndexReplayModeSelection::targeted(vec![key(10), key(11)]).unwrap()
+        };
+
+        let error = executor
+            .run(selection())
+            .await
+            .expect_err("second mutation should fail after first mutation is applied");
+        assert!(matches!(
+            error,
+            IndexReplayTargetedError::Mutation { position: 1, .. }
+        ));
+        assert_eq!(
+            executor.mutation_sink.applied.lock().unwrap().iter().copied().collect::<Vec<_>>(),
+            vec![Uuid::from_u128(900)]
+        );
+
+        let retry = executor
+            .run(selection())
+            .await
+            .expect("exact retry should converge through stable mutation identities");
+        assert_eq!(retry.mutation_count(), 2);
+        assert_eq!(retry.applied_count(), 1);
+        assert_eq!(retry.duplicate_count(), 1);
+        assert_eq!(retry.stale_count(), 0);
+        assert_eq!(executor.mutation_sink.applied.lock().unwrap().len(), 2);
     }
 }
