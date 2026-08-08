@@ -23,6 +23,8 @@ use super::index_drift_diagnosis::IndexDriftDiagnosisMutation;
 use super::index_drift_source_page_diagnosis::IndexDriftSourcePageDiagnosisMutation;
 use super::legacy_disable_user::LegacyDisableUserPolicy;
 use super::loaders::TenantNameLoader;
+#[cfg(feature = "mod-moderation")]
+use super::moderation_recovery::ModerationRecoveryMutation;
 use super::module_security::GraphqlModuleSecurityPolicy;
 use super::mutations::RootMutation;
 use super::observability::GraphqlObservability;
@@ -86,6 +88,8 @@ pub struct Mutation(
     RootMutation,
     IndexDriftDiagnosisMutation,
     IndexDriftSourcePageDiagnosisMutation,
+    #[cfg(feature = "mod-moderation")]
+    ModerationRecoveryMutation,
     #[cfg(all(
         feature = "mod-content",
         feature = "mod-blog",

@@ -1,10 +1,10 @@
 # Moderation application operator recovery
 
-Status: **bounded source-ready slice / maintainer execution pending**
+Status: **owner recovery + authorized GraphQL transport source-ready / maintainer execution pending**
 
 ## Scope
 
-This slice adds Moderation-owned, replay-safe operator commands over the existing durable application operation and case lifecycle. It does not add an admin transport/UI, a new queue, a new scheduler, a new decision type, a migration, or another domain-application path.
+This slice covers Moderation-owned, replay-safe operator commands over the existing durable application operation and case lifecycle plus the host-owned authenticated GraphQL transport that enters them through the dedicated recovery port. It does not add an admin UI, a new queue, a new scheduler, a new decision type, a migration, or another domain-application path.
 
 Two owner commands are source-ready:
 
@@ -12,6 +12,29 @@ Two owner commands are source-ready:
 - `operator_reconcile_legacy_application_replay_safe` for truthful case-state reconciliation of a pre-audit terminal operation.
 
 Both commands require write semantics, a human `PortActorKind::User` with UUID identity, a positive expected case revision, a bounded non-empty reason, and the existing Moderation command idempotency receipt.
+
+The dedicated `ModerationRecoveryCommandPort` additionally requires the trusted caller permission snapshot to contain `moderation_cases:override` or the effective `moderation_cases:manage` authority. Ordinary Forum moderation permissions do not authorize Moderation application recovery.
+
+## Authorized GraphQL transport
+
+When `rustok-server` is compiled with `mod-moderation`, the host schema exposes two administrative mutations:
+
+- `requeueModerationApplication(idempotencyKey, decisionId, expectedCaseRevision, reason)`;
+- `reconcileLegacyModerationApplication(idempotencyKey, decisionId, expectedCaseRevision, reason)`.
+
+The transport is intentionally host-owned rather than adding a GraphQL dependency to the Moderation owner crate. Before entering the recovery port it requires:
+
+1. an authenticated `AuthContext` whose tenant matches the request `TenantContext`;
+2. a human-user principal; OAuth service principals fail closed;
+3. effective `moderation_cases:override` authority, with `moderation_cases:manage` satisfying that authority through the shared permission semantics;
+4. the `moderation` tenant module to be enabled through the shared GraphQL module guard;
+5. a non-nil UUID idempotency key.
+
+The transport then builds a five-second `PortContext` from trusted tenant/actor/locale/permission facts, preserves the authenticated permission snapshot as port claims, carries the resolved channel when present, and uses the supplied UUID as the owner command idempotency key. It calls only `ModerationRecoveryCommandPort`; it does not bypass the port to call recovery owner methods directly.
+
+The response is a bounded recovery payload containing decision ID, case ID, operation status, case status, resulting case revision and whether reconciliation changed state. Owner `PortError` kinds are mapped to the existing public GraphQL error classes without exposing storage details.
+
+The port remains a second authorization boundary beneath GraphQL. A transport regression therefore cannot make ordinary `forum_topics:moderate` or `forum_replies:moderate` authority sufficient for recovery.
 
 ## Same-decision operator requeue
 
@@ -68,7 +91,7 @@ A stale reviewed subject revision is part of the immutable decision identity. Ch
 
 Therefore a true re-review must use a **new moderation case and new immutable decision** built from a freshly authorized producer-supplied subject revision. The old escalated case/decision remains historical truth. This slice adds no automatic producer read, no old-decision rewrite and no hidden replacement decision.
 
-Admin transport/UI for creating that fresh review remains separate work.
+Admin UI and the transport/workflow for creating that fresh review remain separate work.
 
 ## Concurrency and replay
 
@@ -82,6 +105,8 @@ A second recovery request with another idempotency key cannot silently duplicate
 
 Moderation remains the sole owner of reports, cases, immutable decisions, application operations, operator recovery and cross-domain moderation audit.
 
+The server transport owns only authenticated GraphQL adaptation. It supplies trusted request facts and calls the Moderation recovery port; it does not own or reproduce Moderation persistence, lifecycle or replay logic.
+
 Forum is not involved in recovery persistence and is never called for legacy reconciliation. Forum continues to own only its topic/reply state, moderation subject revision and domain-side application receipt/effect transaction.
 
 This slice is unrelated to Reactions. Existing `rustok-reactions` remains the sole reaction catalog/state/command/aggregate/event/repair owner and `rustok-reactions-storefront` remains the reusable presentation owner. No duplicate Forum reactions subsystem is created.
@@ -94,7 +119,7 @@ This slice does not add:
 - requeue of an already-applied decision;
 - producer current-revision lookup from Moderation;
 - domain adapter invocation from recovery;
-- admin GraphQL/HTTP/UI recovery transport;
+- admin UI or fresh-review creation transport/workflow;
 - public typed recovery event contracts;
 - a migration or new persistence table;
 - retained runtime, PostgreSQL, SQLite or concurrency evidence.
@@ -105,14 +130,17 @@ Suggested checks, intentionally not run while preparing this slice:
 
 ```bash
 node scripts/verify/verify-moderation-application-operator-recovery.mjs
+node scripts/verify/verify-moderation-recovery-graphql-transport.mjs
 node scripts/verify/verify-moderation-application-audit-lifecycle.mjs
 node scripts/verify/verify-moderation-application-dispatch-once.mjs
 cargo check -p rustok-moderation --all-targets
+cargo check -p rustok-server --features mod-moderation
 cargo test -p rustok-moderation
+cargo test -p rustok-server moderation_recovery
 cargo xtask module validate moderation
 git diff --check
 ```
 
-Retained evidence should cover human-actor enforcement; receipt replay/changed-request conflict; expected case revision contention; rejected/operator-review requeue; applied requeue rejection; requeue from current escalated and legacy decided case state; next scheduler claim after requeue; preservation of immutable decision UUID domain idempotency; terminal identity/evidence corruption fail-closed behavior; applied legacy reconciliation to closed at reconciliation time with active-key release; rejected/operator-review legacy reconciliation to escalated; already-consistent reconciliation no-op; no domain adapter invocation during reconciliation; rollback on audit/receipt failure; and PostgreSQL/SQLite parity.
+Retained evidence should cover GraphQL tenant mismatch/module-disabled/service-principal/permission denial; `moderation_cases:manage` effective authorization; ordinary Forum moderation permission denial; non-nil UUID idempotency propagation; human-actor enforcement at the owner boundary; receipt replay/changed-request conflict; expected case revision contention; rejected/operator-review requeue; applied requeue rejection; requeue from current escalated and legacy decided case state; next scheduler claim after requeue; preservation of immutable decision UUID domain idempotency; terminal identity/evidence corruption fail-closed behavior; applied legacy reconciliation to closed at reconciliation time with active-key release; rejected/operator-review legacy reconciliation to escalated; already-consistent reconciliation no-op; no domain adapter invocation during reconciliation; rollback on audit/receipt failure; and PostgreSQL/SQLite parity.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows, CI or `git diff --check` were executed while preparing this source slice.
