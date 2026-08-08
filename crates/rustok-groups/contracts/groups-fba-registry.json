@@ -348,6 +348,17 @@
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true,
+        "authorization": "effective_owner_admin_hierarchy_or_platform_manage",
+        "effective_clock": "groups_owner_utc_clock",
+        "role_change_target_effective_state": "active_required",
+        "new_owner_effective_state": "active_required",
+        "platform_owner_recovery": "current_stored_active_owner_may_be_suspended",
+        "owner_reference_consistency": "fail_closed",
+        "receipt_replay_order": "after_group_serialization_before_current_effective_authorization",
+        "receipt_identity": "tenant_group_actor_command_request_hash",
+        "lock_order": "group_then_memberships_uuid_order_then_enforcements_membership_id_order",
+        "transactional_group_version": true,
+        "transactional_membership_revision": "database_role_trigger",
         "transactional_receipt": true,
         "transactional_audit": true
       }
@@ -417,6 +428,20 @@
     "delete_last_translation": "deny",
     "version_bump": "same_transaction",
     "mutation_serialization": "base_group_row_then_effective_membership_locks"
+  },
+  "governance": {
+    "effective_authorization": "implemented_source",
+    "effective_clock": "groups_owner_utc_clock",
+    "role_change_actor": "effective_active_owner_or_admin_unless_platform_manage",
+    "role_change_target": "effective_active_non_owner_membership",
+    "ownership_transfer_actor": "effective_active_current_owner_unless_platform_manage",
+    "ownership_transfer_new_owner": "effective_active_membership",
+    "platform_owner_recovery": "may_transfer_away_from_suspended_current_owner",
+    "owner_reference_consistency": "group_owner_user_id_must_match_owner_role",
+    "receipt_replay_order": "group_lock_then_actor_bound_receipt_then_effective_authorization",
+    "lock_order": "group_then_memberships_uuid_order_then_enforcements_membership_id_order",
+    "stored_lifecycle_role_mutation": "same_transaction",
+    "group_version_bump": "same_transaction"
   },
   "invitations": {
     "plaintext_token_storage": "never",
@@ -671,7 +696,10 @@
       "surfaces": [
         "rust_port",
         "graphql",
-        "leptos_server_function"
+        "leptos_server_function",
+        "owner_clock_effective_governance",
+        "actor_bound_receipt_replay",
+        "deterministic_membership_enforcement_locks"
       ],
       "implicit_fallback": false
     },
@@ -697,6 +725,7 @@
     "membership_enforcement_read_static_boundary": "scripts/verify/verify-groups-membership-enforcement-read-path.mjs",
     "membership_enforcement_command_static_boundary": "scripts/verify/verify-groups-membership-enforcement-command.mjs",
     "membership_enforcement_graphql_static_boundary": "scripts/verify/verify-groups-membership-enforcement-graphql.mjs",
+    "governance_effective_authorization_static_boundary": "scripts/verify/verify-groups-governance-effective-authorization.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,

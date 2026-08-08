@@ -4,17 +4,20 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::domain::{GroupMembershipStatus, GroupRole};
+use crate::domain::{GroupMembershipEffectiveStatus, GroupMembershipStatus, GroupRole};
 use crate::entities::{group, membership};
 use crate::error::{GroupsError, GroupsResult};
 use crate::governance_entities::{audit_entry, command_receipt};
+use crate::membership_enforcement::resolve_group_membership_enforcement;
+use crate::membership_enforcement_entities::membership_enforcement;
+use crate::membership_enforcement_transaction::reserve_group_write_for_update;
 
 const CHANGE_ROLE_COMMAND: &str = "groups.change_role.v1";
 const TRANSFER_OWNERSHIP_COMMAND: &str = "groups.transfer_ownership.v1";
@@ -90,9 +93,12 @@ impl GroupGovernanceService {
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        let mut group_model = lock_group(&transaction, tenant_id, request.group_id).await?;
         if let Some(replayed) = replay_receipt::<GroupGovernanceResult>(
             &transaction,
             tenant_id,
+            request.group_id,
+            actor_user_id,
             &idempotency_key,
             CHANGE_ROLE_COMMAND,
             &request_hash,
@@ -106,43 +112,68 @@ impl GroupGovernanceService {
             });
         }
 
-        let mut group_model = find_group(&transaction, tenant_id, request.group_id).await?;
-        let actor_membership =
-            find_membership(&transaction, tenant_id, request.group_id, actor_user_id).await?;
-        let target_membership = find_membership(
+        let platform_manage = has_platform_manage(context);
+        let locked = lock_governance_memberships(
             &transaction,
             tenant_id,
             request.group_id,
+            actor_user_id,
             request.target_user_id,
+            !platform_manage,
         )
         .await?;
-
-        let actor_role = active_role(&actor_membership)?;
-        let target_role = active_role(&target_membership)?;
-        if target_role == GroupRole::Owner {
+        let target_membership = locked
+            .membership(request.target_user_id)
+            .ok_or_else(|| GroupsError::Conflict("an active group membership is required".to_string()))?;
+        validate_owner_identity(&group_model, &target_membership)?;
+        if target_membership.user_id == group_model.owner_user_id {
             return Err(GroupsError::Invariant(
                 "the owner role can only change through ownership transfer".to_string(),
             ));
         }
-        authorize_role_change(
-            actor_role,
-            target_role,
-            request.role,
-            has_platform_manage(context),
-        )?;
 
-        let now = Utc::now().fixed_offset();
+        let now = Utc::now();
+        let target_role = effective_governance_role(
+            &transaction,
+            tenant_id,
+            request.group_id,
+            request.target_user_id,
+            now,
+        )
+        .await?;
+        let actor_role = if platform_manage {
+            None
+        } else {
+            if locked.membership(actor_user_id).is_none() {
+                return Err(GroupsError::ManagerRequired(
+                    "an active group owner or administrator role is required".to_string(),
+                ));
+            }
+            Some(
+                effective_manager_role(
+                    &transaction,
+                    tenant_id,
+                    request.group_id,
+                    actor_user_id,
+                    now,
+                )
+                .await?,
+            )
+        };
+        authorize_role_change(actor_role, target_role, request.role, platform_manage)?;
+
+        let fixed_now = now.fixed_offset();
         let mut target_active: membership::ActiveModel = target_membership.into();
         target_active.role = Set(request.role.as_str().to_string());
-        target_active.updated_at = Set(now);
+        target_active.updated_at = Set(fixed_now);
         target_active.update(&transaction).await?;
 
         group_model.version = group_model.version.saturating_add(1);
-        group_model.updated_at = now;
+        group_model.updated_at = fixed_now;
         let group_version = group_model.version.max(1) as u64;
         let mut group_active: group::ActiveModel = group_model.into();
         group_active.version = Set(group_version as i64);
-        group_active.updated_at = Set(now);
+        group_active.updated_at = Set(fixed_now);
         group_active.update(&transaction).await?;
 
         let result = GroupGovernanceResult {
@@ -165,7 +196,8 @@ impl GroupGovernanceService {
             json!({
                 "previous_role": target_role.as_str(),
                 "current_role": request.role.as_str(),
-                "group_version": group_version
+                "group_version": group_version,
+                "authorization": if platform_manage { "platform_manage" } else { "effective_local_manager" }
             }),
         )
         .await?;
@@ -201,9 +233,12 @@ impl GroupGovernanceService {
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        let group_model = lock_group(&transaction, tenant_id, request.group_id).await?;
         if let Some(replayed) = replay_receipt::<GroupGovernanceResult>(
             &transaction,
             tenant_id,
+            request.group_id,
+            actor_user_id,
             &idempotency_key,
             TRANSFER_OWNERSHIP_COMMAND,
             &request_hash,
@@ -217,46 +252,98 @@ impl GroupGovernanceService {
             });
         }
 
-        let group_model = find_group(&transaction, tenant_id, request.group_id).await?;
-        if group_model.owner_user_id != actor_user_id && !has_platform_manage(context) {
+        let platform_manage = has_platform_manage(context);
+        if group_model.owner_user_id != actor_user_id && !platform_manage {
             return Err(GroupsError::Forbidden(
                 "only the current owner or a platform group manager may transfer ownership"
                     .to_string(),
             ));
         }
+
         let previous_owner_id = group_model.owner_user_id;
-        let previous_owner =
-            find_membership(&transaction, tenant_id, request.group_id, previous_owner_id).await?;
-        let new_owner = find_membership(
+        let locked = lock_ownership_memberships(
             &transaction,
             tenant_id,
             request.group_id,
+            previous_owner_id,
             request.new_owner_user_id,
+            actor_user_id,
+            !platform_manage,
         )
         .await?;
-        if active_role(&previous_owner)? != GroupRole::Owner {
+        let previous_owner = locked.membership(previous_owner_id).ok_or_else(|| {
+            GroupsError::Invariant(
+                "group owner membership does not match the group owner reference".to_string(),
+            )
+        })?;
+        validate_owner_identity(&group_model, &previous_owner)?;
+        if stored_active_role(&previous_owner)? != GroupRole::Owner {
             return Err(GroupsError::Invariant(
                 "group owner membership does not match the group owner reference".to_string(),
             ));
         }
-        let previous_target_role = active_role(&new_owner)?;
 
-        let now = Utc::now().fixed_offset();
+        let new_owner = locked
+            .membership(request.new_owner_user_id)
+            .ok_or_else(|| GroupsError::Conflict("an active group membership is required".to_string()))?;
+        validate_owner_identity(&group_model, &new_owner)?;
+        if new_owner.user_id == previous_owner_id {
+            return Err(GroupsError::Conflict(
+                "the selected user already acts as the requested owner".to_string(),
+            ));
+        }
+
+        let now = Utc::now();
+        if platform_manage {
+            validate_platform_recovery_owner_state(
+                &transaction,
+                tenant_id,
+                request.group_id,
+                previous_owner_id,
+                now,
+            )
+            .await?;
+        } else {
+            let actor_role = effective_manager_role(
+                &transaction,
+                tenant_id,
+                request.group_id,
+                actor_user_id,
+                now,
+            )
+            .await?;
+            if actor_role != GroupRole::Owner {
+                return Err(GroupsError::Forbidden(
+                    "only the current owner or a platform group manager may transfer ownership"
+                        .to_string(),
+                ));
+            }
+        }
+        let previous_target_role = effective_governance_role(
+            &transaction,
+            tenant_id,
+            request.group_id,
+            request.new_owner_user_id,
+            now,
+        )
+        .await?;
+
+        let fixed_now = now.fixed_offset();
         let mut previous_owner_active: membership::ActiveModel = previous_owner.into();
         previous_owner_active.role = Set(GroupRole::Admin.as_str().to_string());
-        previous_owner_active.updated_at = Set(now);
+        previous_owner_active.updated_at = Set(fixed_now);
         previous_owner_active.update(&transaction).await?;
 
         let mut new_owner_active: membership::ActiveModel = new_owner.into();
         new_owner_active.role = Set(GroupRole::Owner.as_str().to_string());
-        new_owner_active.updated_at = Set(now);
+        new_owner_active.updated_at = Set(fixed_now);
         new_owner_active.update(&transaction).await?;
 
         let group_version = group_model.version.saturating_add(1).max(1) as u64;
         let mut group_active: group::ActiveModel = group_model.into();
         group_active.owner_user_id = Set(request.new_owner_user_id);
         group_active.version = Set(group_version as i64);
-        group_active.updated_at = Set(now);
+        group_active.updated_at = Set(fixed_now);
         group_active.update(&transaction).await?;
 
         let result = GroupGovernanceResult {
@@ -281,7 +368,8 @@ impl GroupGovernanceService {
                 "new_owner_user_id": request.new_owner_user_id,
                 "previous_target_role": previous_target_role.as_str(),
                 "previous_owner_role": GroupRole::Admin.as_str(),
-                "group_version": group_version
+                "group_version": group_version,
+                "authorization": if platform_manage { "platform_manage" } else { "effective_current_owner" }
             }),
         )
         .await?;
@@ -324,11 +412,25 @@ impl GroupGovernanceCommandPort for GroupGovernanceService {
     }
 }
 
-async fn find_group(
+struct LockedGovernanceState {
+    memberships: Vec<membership::Model>,
+}
+
+impl LockedGovernanceState {
+    fn membership(&self, user_id: Uuid) -> Option<membership::Model> {
+        self.memberships
+            .iter()
+            .find(|row| row.user_id == user_id)
+            .cloned()
+    }
+}
+
+async fn lock_group(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     group_id: Uuid,
 ) -> GroupsResult<group::Model> {
+    reserve_group_write_for_update(transaction, tenant_id, group_id).await?;
     group::Entity::find()
         .filter(group::Column::TenantId.eq(tenant_id))
         .filter(group::Column::Id.eq(group_id))
@@ -337,22 +439,164 @@ async fn find_group(
         .ok_or(GroupsError::NotFound)
 }
 
-async fn find_membership(
+async fn lock_governance_memberships(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    actor_user_id: Uuid,
+    target_user_id: Uuid,
+    require_actor_membership: bool,
+) -> GroupsResult<LockedGovernanceState> {
+    let mut user_ids = vec![target_user_id];
+    if require_actor_membership {
+        user_ids.push(actor_user_id);
+    }
+    lock_membership_set(transaction, tenant_id, group_id, user_ids).await
+}
+
+async fn lock_ownership_memberships(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    previous_owner_user_id: Uuid,
+    new_owner_user_id: Uuid,
+    actor_user_id: Uuid,
+    require_actor_membership: bool,
+) -> GroupsResult<LockedGovernanceState> {
+    let mut user_ids = vec![previous_owner_user_id, new_owner_user_id];
+    if require_actor_membership {
+        user_ids.push(actor_user_id);
+    }
+    lock_membership_set(transaction, tenant_id, group_id, user_ids).await
+}
+
+async fn lock_membership_set(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    mut user_ids: Vec<Uuid>,
+) -> GroupsResult<LockedGovernanceState> {
+    user_ids.sort_unstable();
+    user_ids.dedup();
+
+    let mut memberships = Vec::with_capacity(user_ids.len());
+    for user_id in user_ids {
+        let mut query = membership::Entity::find()
+            .filter(membership::Column::TenantId.eq(tenant_id))
+            .filter(membership::Column::GroupId.eq(group_id))
+            .filter(membership::Column::UserId.eq(user_id));
+        if transaction.get_database_backend() != DatabaseBackend::Sqlite {
+            query = query.lock_exclusive();
+        }
+        if let Some(row) = query.one(transaction).await? {
+            memberships.push(row);
+        }
+    }
+
+    let mut membership_ids = memberships.iter().map(|row| row.id).collect::<Vec<_>>();
+    membership_ids.sort_unstable();
+    for membership_id in membership_ids {
+        let mut query = membership_enforcement::Entity::find_by_id(membership_id)
+            .filter(membership_enforcement::Column::TenantId.eq(tenant_id));
+        if transaction.get_database_backend() != DatabaseBackend::Sqlite {
+            query = query.lock_exclusive();
+        }
+        query.one(transaction).await?;
+    }
+
+    Ok(LockedGovernanceState { memberships })
+}
+
+fn validate_owner_identity(
+    group_model: &group::Model,
+    membership_model: &membership::Model,
+) -> GroupsResult<()> {
+    let role = GroupRole::from_str(&membership_model.role).map_err(GroupsError::Invariant)?;
+    let is_owner_reference = membership_model.user_id == group_model.owner_user_id;
+    if is_owner_reference != (role == GroupRole::Owner) {
+        return Err(GroupsError::Invariant(
+            "group owner reference and owner membership role disagree".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn effective_manager_role(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     group_id: Uuid,
     user_id: Uuid,
-) -> GroupsResult<membership::Model> {
-    membership::Entity::find()
-        .filter(membership::Column::TenantId.eq(tenant_id))
-        .filter(membership::Column::GroupId.eq(group_id))
-        .filter(membership::Column::UserId.eq(user_id))
-        .one(transaction)
-        .await?
-        .ok_or_else(|| GroupsError::Conflict("an active group membership is required".to_string()))
+    now: chrono::DateTime<Utc>,
+) -> GroupsResult<GroupRole> {
+    let state = resolve_group_membership_enforcement(transaction, tenant_id, group_id, user_id, now)
+        .await?;
+    match state.effective_status {
+        GroupMembershipEffectiveStatus::Suspended => Err(GroupsError::MembershipSuspended),
+        GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::MembershipBanned),
+        GroupMembershipEffectiveStatus::Active => {
+            let role = state.role.ok_or_else(|| {
+                GroupsError::Invariant("active group membership is missing a local role".to_string())
+            })?;
+            if role.can_manage_settings() {
+                Ok(role)
+            } else {
+                Err(GroupsError::ManagerRequired(
+                    "an active group owner or administrator role is required".to_string(),
+                ))
+            }
+        }
+        _ => Err(GroupsError::ManagerRequired(
+            "an active group owner or administrator role is required".to_string(),
+        )),
+    }
 }
 
-fn active_role(model: &membership::Model) -> GroupsResult<GroupRole> {
+async fn effective_governance_role(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_id: Uuid,
+    now: chrono::DateTime<Utc>,
+) -> GroupsResult<GroupRole> {
+    let state = resolve_group_membership_enforcement(transaction, tenant_id, group_id, user_id, now)
+        .await?;
+    match state.effective_status {
+        GroupMembershipEffectiveStatus::Suspended => Err(GroupsError::MembershipSuspended),
+        GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::MembershipBanned),
+        GroupMembershipEffectiveStatus::Active => state.role.ok_or_else(|| {
+            GroupsError::Invariant("active group membership is missing a local role".to_string())
+        }),
+        _ => Err(GroupsError::Conflict(
+            "an active group membership is required".to_string(),
+        )),
+    }
+}
+
+async fn validate_platform_recovery_owner_state(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    owner_user_id: Uuid,
+    now: chrono::DateTime<Utc>,
+) -> GroupsResult<()> {
+    let state = resolve_group_membership_enforcement(
+        transaction,
+        tenant_id,
+        group_id,
+        owner_user_id,
+        now,
+    )
+    .await?;
+    match state.effective_status {
+        GroupMembershipEffectiveStatus::Active | GroupMembershipEffectiveStatus::Suspended => Ok(()),
+        GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::MembershipBanned),
+        _ => Err(GroupsError::Invariant(
+            "current group owner effective membership is not recoverable".to_string(),
+        )),
+    }
+}
+
+fn stored_active_role(model: &membership::Model) -> GroupsResult<GroupRole> {
     let status = GroupMembershipStatus::from_str(&model.status).map_err(GroupsError::Invariant)?;
     if status != GroupMembershipStatus::Active {
         return Err(GroupsError::Conflict(
@@ -363,7 +607,7 @@ fn active_role(model: &membership::Model) -> GroupsResult<GroupRole> {
 }
 
 fn authorize_role_change(
-    actor_role: GroupRole,
+    actor_role: Option<GroupRole>,
     target_role: GroupRole,
     requested_role: GroupRole,
     platform_manage: bool,
@@ -371,6 +615,11 @@ fn authorize_role_change(
     if platform_manage {
         return Ok(());
     }
+    let actor_role = actor_role.ok_or_else(|| {
+        GroupsError::ManagerRequired(
+            "an active group owner or administrator role is required".to_string(),
+        )
+    })?;
     let allowed = match actor_role {
         GroupRole::Owner => true,
         GroupRole::Admin => {
@@ -391,6 +640,8 @@ fn authorize_role_change(
 async fn replay_receipt<T: DeserializeOwned>(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
+    group_id: Uuid,
+    actor_user_id: Uuid,
     idempotency_key: &str,
     command_type: &str,
     request_hash: &str,
@@ -403,7 +654,11 @@ async fn replay_receipt<T: DeserializeOwned>(
     else {
         return Ok(None);
     };
-    if receipt.command_type != command_type || receipt.request_hash != request_hash {
+    if receipt.group_id != group_id
+        || receipt.actor_user_id != actor_user_id
+        || receipt.command_type != command_type
+        || receipt.request_hash != request_hash
+    {
         return Err(GroupsError::Conflict(
             "idempotency key was already used for another group command".to_string(),
         ));
@@ -524,7 +779,7 @@ mod tests {
     fn admins_cannot_promote_another_admin() {
         assert!(
             authorize_role_change(
-                GroupRole::Admin,
+                Some(GroupRole::Admin),
                 GroupRole::Admin,
                 GroupRole::Moderator,
                 false,
@@ -537,7 +792,7 @@ mod tests {
     fn admins_can_manage_moderators_and_members() {
         assert!(
             authorize_role_change(
-                GroupRole::Admin,
+                Some(GroupRole::Admin),
                 GroupRole::Member,
                 GroupRole::Moderator,
                 false,
@@ -549,8 +804,13 @@ mod tests {
     #[test]
     fn owners_can_delegate_all_non_owner_roles() {
         assert!(
-            authorize_role_change(GroupRole::Owner, GroupRole::Admin, GroupRole::Member, false,)
-                .is_ok()
+            authorize_role_change(
+                Some(GroupRole::Owner),
+                GroupRole::Admin,
+                GroupRole::Member,
+                false,
+            )
+            .is_ok()
         );
     }
 }

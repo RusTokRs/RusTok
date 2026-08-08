@@ -27,52 +27,51 @@ const source = requireMarkers(executorPath, [
   'pub(crate) authoritative: StorefrontProductList',
   'pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>',
   'pub(crate) public_projected:',
-  'Option<Result<IndexQueryPage, ProductStorefrontIndexPublicProjectionError>>',
-  'pub(crate) enum ProductStorefrontIndexChannelScopeDecision',
-  'OwnerNativeChannelLess',
-  'ChannelLessOwnerNative',
-  'pub(crate) enum ProductStorefrontIndexPageScopeDecision',
-  'OwnerNativeDeepPage { offset: u64 }',
-  'DeepPageOwnerNative { offset: u64 }',
+  'pub(crate) tag_hydration:',
   'list_filtered_published_products(',
   'let projected = self',
   '.execute_projected(',
   'let public_projected = projected',
-  '.as_ref()',
-  '.ok()',
-  '.cloned()',
   '.map(project_product_storefront_index_page);',
-  'let comparison = projected',
-  'compare_owner_and_index(&authoritative, projected)',
-  'classify_product_storefront_index_channel_scope(',
-  'classify_product_storefront_index_page_scope(&query)',
+  'let tag_hydration = match projected.as_ref()',
+  'self.hydrate_projected_tags(context, fallback_locale, projected)',
+  'pub(crate) async fn hydrate_projected_tags(',
+  '.storefront_tag_read_port()',
+  '.hydrate_storefront_product_tags(',
+  'pub(crate) async fn execute_projected(',
   '.schema_read_port()',
   '.resolve_storefront_attribute_filters(',
   'build_product_storefront_index_shadow_query(',
   '.execute_localized_query(index_query)',
-  'identities_match: authoritative_ids == projected_ids',
-  'projected.exact_count == Some(authoritative.total)',
-  'projected.has_more == authoritative.has_next',
+  'let comparison = projected',
+  'compare_owner_and_index(&authoritative, projected)',
 ]);
 
 const ownerPosition = source.indexOf('list_filtered_published_products(');
 const projectedPosition = source.indexOf('let projected = self');
 const publicPosition = source.indexOf('let public_projected = projected');
-const comparisonPosition = source.indexOf('let comparison = projected');
+const hydrationPosition = source.indexOf('let tag_hydration = match projected.as_ref()');
 if (
   ownerPosition < 0 ||
   projectedPosition <= ownerPosition ||
   publicPosition <= projectedPosition ||
-  comparisonPosition <= projectedPosition
+  hydrationPosition <= projectedPosition
 ) {
-  fail('owner success must precede raw Index projection, and raw page must precede public projection/comparison');
+  fail('owner success must precede raw Index evidence, and post-page enrichment must follow it');
 }
 
-const rawStart = source.indexOf('async fn execute_projected(');
+const rawStart = source.indexOf('pub(crate) async fn execute_projected(');
 const compareStart = source.indexOf('fn compare_owner_and_index(');
-if (rawStart < 0 || compareStart <= rawStart) fail('raw projected execution boundary is missing');
-if (source.slice(rawStart, compareStart).includes('project_product_storefront_index_page')) {
-  fail('Product public placeholder transform must not run inside raw Index execution');
+if (rawStart < 0 || compareStart <= rawStart) fail('crate-private raw projected execution boundary is missing');
+const rawExecution = source.slice(rawStart, compareStart);
+for (const forbidden of [
+  'project_product_storefront_index_page',
+  'hydrate_storefront_product_tags',
+  'storefront_tag_read_port()',
+]) {
+  if (rawExecution.includes(forbidden)) {
+    fail(`post-page enrichment must not run inside raw Index execution: ${forbidden}`);
+  }
 }
 
 for (const forbidden of [
@@ -80,28 +79,44 @@ for (const forbidden of [
   'CatalogService::new',
   'ProductCatalogSchemaService::new',
   'PostgresIndexQueryPort',
+  'TaxonomyService',
+  'product_tag::',
   'query_all(',
   'query_one(',
   'CHANNEL_LESS_SENTINEL',
   'UNRESTRICTED_CHANNEL_SENTINEL',
   '.min(MAX_INDEX_OFFSET_DEPTH)',
   'Pagination::Cursor',
+  'tokio::time::timeout',
+  'ProductStorefrontIndexServingBudgetDecision',
 ]) {
-  if (source.includes(forbidden)) fail(`${executorPath} must compose selected ports and preserve owner request semantics; found ${forbidden}`);
+  if (source.includes(forbidden)) fail(`${executorPath} must remain the unbudgeted evidence executor; found ${forbidden}`);
 }
 
+const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+requireMarkers(budgetedPath, [
+  'ProductStorefrontIndexProjectionPhases',
+  'impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor',
+  'ProductStorefrontIndexBudgetedProjectionExecutor',
+  'ProductStorefrontIndexServingBudgetDecision::Eligible',
+  'self.phases.execute_projected(',
+  '.hydrate_projected_tags(tag_context, fallback_locale, projected)',
+  'use tokio::time::timeout;',
+]);
+
+requireMarkers('crates/rustok-product/src/storefront_tag_read_port.rs', [
+  'pub trait ProductStorefrontTagReadPort',
+  'MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48',
+  '.load_product_tag_map(',
+]);
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_projection.rs', [
   'pub(crate) fn project_product_storefront_index_page(',
-  'const UNTITLED_PRODUCT: &str = "Untitled product";',
-  'apply_string_placeholder(item, "handle", "")?;',
+  'value(&projected.items[0], "tag_ids")',
 ]);
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
-  'mod storefront_projection;',
-  'ProductStorefrontIndexPublicProjectionError',
-  'project_product_storefront_index_page',
-  'mod storefront_shadow_executor;',
-  'ProductStorefrontIndexShadowExecutor',
-  'ProductStorefrontIndexPageScopeDecision',
+  'ProductStorefrontIndexTagHydrationError',
+  'ProductStorefrontIndexBudgetedProjectionExecutor',
+  'ProductStorefrontIndexProjectionPhases',
 ]);
 
 const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
@@ -111,10 +126,12 @@ const mounted = requireMarkers(mountedPath, [
 ]);
 for (const forbidden of [
   'ProductStorefrontIndexShadowExecutor',
+  'ProductStorefrontIndexBudgetedProjectionExecutor',
   'execute_localized_query',
   'project_product_storefront_index_page',
+  'hydrate_storefront_product_tags',
 ]) {
   if (mounted.includes(forbidden)) fail(`${mountedPath} must remain owner-native; found ${forbidden}`);
 }
 
-console.log('[verify-index-product-storefront-shadow-executor] owner-first raw Index evidence and derived post-page Product public projection are source-locked; mounted Storefront remains owner-native');
+console.log('[verify-index-product-storefront-shadow-executor] owner-first evidence executor implements the crate-private post-owner phase seam for a separate budgeted adapter while mounted Storefront remains owner-native');

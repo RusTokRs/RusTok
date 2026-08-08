@@ -10,9 +10,23 @@ mod product;
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
 mod query_admission;
 pub(crate) mod relation_admission;
+mod storefront_budgeted_execution;
+pub(crate) use storefront_budgeted_execution::{
+    ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedProjectionError,
+    ProductStorefrontIndexBudgetedProjectionExecutor, ProductStorefrontIndexBudgetedStartError,
+    ProductStorefrontIndexBudgetedTagHydrationError, ProductStorefrontIndexProjectionPhases,
+};
+#[cfg(test)]
+mod storefront_budgeted_execution_tests;
 mod storefront_projection;
 pub(crate) use storefront_projection::{
     ProductStorefrontIndexPublicProjectionError, project_product_storefront_index_page,
+};
+mod storefront_serving_budget;
+pub(crate) use storefront_serving_budget::{
+    ProductStorefrontIndexServingBudget, ProductStorefrontIndexServingBudgetDecision,
+    ProductStorefrontIndexServingBudgetError, ProductStorefrontIndexServingBudgetObservation,
+    classify_product_storefront_index_serving_budget,
 };
 mod storefront_shadow;
 pub(crate) use storefront_shadow::{
@@ -23,7 +37,8 @@ pub(crate) use storefront_shadow_executor::{
     ProductStorefrontIndexChannelScopeDecision, ProductStorefrontIndexPageScopeDecision,
     ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecution,
     ProductStorefrontIndexShadowExecutor, ProductStorefrontIndexShadowProjectionError,
-    classify_product_storefront_index_channel_scope, classify_product_storefront_index_page_scope,
+    ProductStorefrontIndexTagHydrationError, classify_product_storefront_index_channel_scope,
+    classify_product_storefront_index_page_scope,
 };
 #[cfg(test)]
 mod storefront_shadow_eav_postgres_tests;

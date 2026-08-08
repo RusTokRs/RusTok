@@ -3,6 +3,11 @@ use rustok_page_builder_admin::{
     PageBuilderContributionHostContext, PageBuilderContributionHostExtension,
     PageBuilderContributionPreviewError, PageBuilderContributionPreviewFuture,
     PageBuilderContributionPreviewPort, PageBuilderContributionPreviewRequest,
+    PageBuilderContributionPropertyError, PageBuilderContributionPropertyIssue,
+    PageBuilderContributionPropertyPort, PageBuilderContributionPropertySchema,
+    PageBuilderContributionPropertySchemaFuture, PageBuilderContributionPropertySchemaRequest,
+    PageBuilderContributionPropertyValidation, PageBuilderContributionPropertyValidationFuture,
+    PageBuilderContributionPropertyValidationRequest,
 };
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -38,6 +43,90 @@ impl PageBuilderContributionPreviewPort for ForumPageBuilderPreviewPort {
                     error.to_string(),
                     "FORUM_WIDGET_PREVIEW_TRANSPORT_FAILED",
                 )
+            })
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ForumPageBuilderPropertyPort;
+
+impl PageBuilderContributionPropertyPort for ForumPageBuilderPropertyPort {
+    fn schema(
+        &self,
+        request: PageBuilderContributionPropertySchemaRequest,
+    ) -> PageBuilderContributionPropertySchemaFuture {
+        Box::pin(async move {
+            if request.provider.trim() != "rustok.forum" {
+                return Err(PageBuilderContributionPropertyError::with_stable_code(
+                    format!(
+                        "Forum property port received provider `{}`",
+                        request.provider.trim()
+                    ),
+                    "FORUM_PROPERTY_PROVIDER_MISMATCH",
+                ));
+            }
+            let response = rustok_forum_admin::load_forum_page_builder_widget_property_schema(
+                rustok_forum_admin::ForumWidgetPropertySchemaTransportRequest {
+                    widget_type: request.component_type,
+                    property_schema: request.property_schema,
+                },
+            )
+            .await
+            .map_err(|error| {
+                PageBuilderContributionPropertyError::with_stable_code(
+                    error.to_string(),
+                    "FORUM_WIDGET_PROPERTY_SCHEMA_TRANSPORT_FAILED",
+                )
+            })?;
+            Ok(PageBuilderContributionPropertySchema {
+                schema_id: response.schema_id,
+                schema: response.schema,
+            })
+        })
+    }
+
+    fn validate(
+        &self,
+        request: PageBuilderContributionPropertyValidationRequest,
+    ) -> PageBuilderContributionPropertyValidationFuture {
+        Box::pin(async move {
+            if request.provider.trim() != "rustok.forum" {
+                return Err(PageBuilderContributionPropertyError::with_stable_code(
+                    format!(
+                        "Forum property port received provider `{}`",
+                        request.provider.trim()
+                    ),
+                    "FORUM_PROPERTY_PROVIDER_MISMATCH",
+                ));
+            }
+            let response = rustok_forum_admin::validate_forum_page_builder_widget_properties(
+                rustok_forum_admin::ForumWidgetPropertyValidationTransportRequest {
+                    widget_type: request.component_type,
+                    property_schema: request.property_schema,
+                    props: request.props,
+                },
+            )
+            .await
+            .map_err(|error| {
+                PageBuilderContributionPropertyError::with_stable_code(
+                    error.to_string(),
+                    "FORUM_WIDGET_PROPERTY_VALIDATE_TRANSPORT_FAILED",
+                )
+            })?;
+            Ok(PageBuilderContributionPropertyValidation {
+                valid: response.valid,
+                normalized_props: response.normalized_props,
+                issues: response
+                    .issues
+                    .into_iter()
+                    .map(|issue| PageBuilderContributionPropertyIssue {
+                        class: issue.class,
+                        code: issue.code,
+                        message: issue.message,
+                        path: issue.path,
+                    })
+                    .collect(),
             })
         })
     }
@@ -153,7 +242,8 @@ fn ResolvedPageBuilderContributionScope(
                         .map_err(|error| error.to_string())
                 },
             )
-            .with_preview_port(Arc::new(ForumPageBuilderPreviewPort)),
+            .with_preview_port(Arc::new(ForumPageBuilderPreviewPort))
+            .with_property_port(Arc::new(ForumPageBuilderPropertyPort)),
         );
     }
 

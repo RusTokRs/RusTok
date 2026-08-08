@@ -20,6 +20,9 @@ pub const FORUM_WIDGET_ERROR_SANITIZE: &str = "forum.widget.sanitize";
 pub const FORUM_WIDGET_ERROR_RBAC: &str = "forum.widget.rbac";
 pub const FORUM_WIDGET_ERROR_RUNTIME: &str = "forum.widget.runtime";
 
+const FORUM_WIDGET_LOCALE_MIN_LENGTH: usize = 2;
+const FORUM_WIDGET_LOCALE_MAX_LENGTH: usize = 16;
+
 #[derive(Default)]
 pub struct ForumWidgetContractService;
 
@@ -98,6 +101,11 @@ fn validate_topic_list_props(
     issues: &mut Vec<ForumWidgetValidationIssue>,
 ) {
     let object = expect_object(props, "props", issues);
+    sanitize_unknown_fields(
+        object,
+        &["category_id", "page", "per_page", "include_pinned", "sort"],
+        issues,
+    );
 
     validate_optional_uuid(
         object,
@@ -129,6 +137,7 @@ fn validate_topic_detail_props(
     issues: &mut Vec<ForumWidgetValidationIssue>,
 ) {
     let object = expect_object(props, "props", issues);
+    sanitize_unknown_fields(object, &["topic_id", "locale", "include_replies"], issues);
 
     validate_required_uuid(
         object,
@@ -147,6 +156,11 @@ fn validate_reply_stream_props(
     issues: &mut Vec<ForumWidgetValidationIssue>,
 ) {
     let object = expect_object(props, "props", issues);
+    sanitize_unknown_fields(
+        object,
+        &["topic_id", "page", "per_page", "approved_only"],
+        issues,
+    );
 
     validate_required_uuid(
         object,
@@ -178,6 +192,24 @@ fn expect_object<'a>(
     }
 }
 
+fn sanitize_unknown_fields(
+    object: Option<&Map<String, Value>>,
+    allowed_fields: &[&str],
+    issues: &mut Vec<ForumWidgetValidationIssue>,
+) {
+    let Some(object) = object else {
+        return;
+    };
+    let allowed = allowed_fields.iter().copied().collect::<BTreeSet<_>>();
+    for field in object.keys().filter(|field| !allowed.contains(field.as_str())) {
+        issues.push(sanitize_issue(
+            field,
+            "unknown_field_removed",
+            "Field is not part of the Forum widget schema and was removed",
+        ));
+    }
+}
+
 fn validate_required_uuid(
     object: Option<&Map<String, Value>>,
     field: &str,
@@ -189,27 +221,34 @@ fn validate_required_uuid(
         return;
     };
 
-    match object.get(field).and_then(Value::as_str) {
-        Some(raw) => {
-            let trimmed = raw.trim();
-            if trimmed != raw {
-                issues.push(sanitize_issue(
-                    field,
-                    "trimmed_string",
-                    "String value was trimmed",
-                ));
-            }
-            if Uuid::parse_str(trimmed).is_err() {
-                issues.push(validation_issue(field, "invalid_uuid", invalid_message));
-                return;
-            }
-            normalized.insert(field.to_string(), Value::String(trimmed.to_string()));
-        }
+    match object.get(field) {
         None => issues.push(validation_issue(
             field,
             "missing_field",
             "Required field is missing",
         )),
+        Some(value) => match value.as_str() {
+            None => issues.push(validation_issue(
+                field,
+                "invalid_type",
+                "Field must be a string",
+            )),
+            Some(raw) => {
+                let trimmed = raw.trim();
+                if trimmed != raw {
+                    issues.push(sanitize_issue(
+                        field,
+                        "trimmed_string",
+                        "String value was trimmed",
+                    ));
+                }
+                if Uuid::parse_str(trimmed).is_err() {
+                    issues.push(validation_issue(field, "invalid_uuid", invalid_message));
+                    return;
+                }
+                normalized.insert(field.to_string(), Value::String(trimmed.to_string()));
+            }
+        },
     }
 }
 
@@ -239,6 +278,13 @@ fn validate_optional_uuid(
 
     let trimmed = raw.trim();
     if trimmed.is_empty() {
+        if trimmed != raw {
+            issues.push(sanitize_issue(
+                field,
+                "empty_string_removed",
+                "Empty optional UUID value was removed",
+            ));
+        }
         return;
     }
     if trimmed != raw {
@@ -269,7 +315,21 @@ fn validate_u64_with_bounds(
         return;
     };
 
-    let value = object.get(field).and_then(Value::as_u64).unwrap_or(default);
+    let value = match object.get(field) {
+        None => default,
+        Some(value) => match value.as_u64() {
+            Some(value) => value,
+            None => {
+                issues.push(validation_issue(
+                    field,
+                    "invalid_type",
+                    "Field must be an unsigned integer",
+                ));
+                normalized.insert(field.to_string(), Value::from(default));
+                return;
+            }
+        },
+    };
     if value < min || value > max {
         issues.push(validation_issue(
             field,
@@ -323,21 +383,34 @@ fn validate_optional_locale(
     let Some(object) = object else {
         return;
     };
-
-    let Some(raw) = object.get(field).and_then(Value::as_str) else {
+    let Some(value) = object.get(field) else {
+        return;
+    };
+    let Some(raw) = value.as_str() else {
+        issues.push(validation_issue(
+            field,
+            "invalid_type",
+            "Field must be a string",
+        ));
         return;
     };
 
     let trimmed = raw.trim().to_ascii_lowercase();
-    if trimmed.is_empty() {
-        return;
-    }
     if trimmed != raw {
         issues.push(sanitize_issue(
             field,
             "normalized_locale",
             "Locale code was normalized",
         ));
+    }
+    let length = trimmed.chars().count();
+    if length < FORUM_WIDGET_LOCALE_MIN_LENGTH || length > FORUM_WIDGET_LOCALE_MAX_LENGTH {
+        issues.push(validation_issue(
+            field,
+            "invalid_length",
+            "Locale code length is outside the owner schema bounds",
+        ));
+        return;
     }
     normalized.insert(field.to_string(), Value::String(trimmed));
 }
@@ -355,9 +428,23 @@ fn validate_optional_string_enum(
         return;
     };
 
-    let Some(raw) = object.get(field).and_then(Value::as_str) else {
-        normalized.insert(field.to_string(), Value::String(default.to_string()));
-        return;
+    let raw = match object.get(field) {
+        None => {
+            normalized.insert(field.to_string(), Value::String(default.to_string()));
+            return;
+        }
+        Some(value) => match value.as_str() {
+            Some(value) => value,
+            None => {
+                issues.push(validation_issue(
+                    field,
+                    "invalid_type",
+                    "Field must be a string",
+                ));
+                normalized.insert(field.to_string(), Value::String(default.to_string()));
+                return;
+            }
+        },
     };
 
     let candidate = raw.trim().to_ascii_lowercase();
@@ -442,7 +529,11 @@ fn topic_detail_catalog_item() -> ForumWidgetCatalogItem {
             "required": ["topic_id"],
             "properties": {
                 "topic_id": { "type": "string", "format": "uuid" },
-                "locale": { "type": "string", "minLength": 2, "maxLength": 16 },
+                "locale": {
+                    "type": "string",
+                    "minLength": FORUM_WIDGET_LOCALE_MIN_LENGTH,
+                    "maxLength": FORUM_WIDGET_LOCALE_MAX_LENGTH
+                },
                 "include_replies": { "type": "boolean", "default": true }
             },
             "additionalProperties": false
@@ -539,6 +630,39 @@ mod tests {
     }
 
     #[test]
+    fn validate_topic_list_rejects_wrong_scalar_types_and_sanitizes_unknown_fields() {
+        let response = ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
+            widget_type: FORUM_WIDGET_TYPE_TOPIC_LIST.to_string(),
+            props: json!({
+                "page": "3",
+                "sort": 7,
+                "legacy": "remove-me"
+            }),
+        });
+
+        assert!(!response.valid);
+        assert!(
+            response
+                .issues
+                .iter()
+                .any(|issue| issue.path.as_deref() == Some("page") && issue.code.ends_with("invalid_type"))
+        );
+        assert!(
+            response
+                .issues
+                .iter()
+                .any(|issue| issue.path.as_deref() == Some("sort") && issue.code.ends_with("invalid_type"))
+        );
+        assert!(
+            response
+                .issues
+                .iter()
+                .any(|issue| issue.path.as_deref() == Some("legacy") && issue.class == "sanitize")
+        );
+        assert!(response.normalized_props.get("legacy").is_none());
+    }
+
+    #[test]
     fn validate_topic_detail_requires_topic_id() {
         let response = ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
             widget_type: FORUM_WIDGET_TYPE_TOPIC_DETAIL.to_string(),
@@ -554,6 +678,20 @@ mod tests {
             "missing-field validation issue expected, got {:?}",
             response.issues
         );
+    }
+
+    #[test]
+    fn validate_topic_detail_enforces_catalog_locale_bounds_and_type() {
+        for locale in [json!("e"), json!("abcdefghijklmnopq"), json!(42)] {
+            let response = ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
+                widget_type: FORUM_WIDGET_TYPE_TOPIC_DETAIL.to_string(),
+                props: json!({
+                    "topic_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "locale": locale
+                }),
+            });
+            assert!(!response.valid, "locale should be rejected: {:?}", response.issues);
+        }
     }
 
     #[test]

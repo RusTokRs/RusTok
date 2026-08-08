@@ -25,6 +25,7 @@ mod public_error;
 mod runtime;
 mod seo_targets;
 pub mod services;
+mod storefront_tag_read_port;
 
 pub use catalog_command_port::ProductCatalogCommandPort;
 pub use catalog_schema_read_port::{
@@ -68,6 +69,10 @@ pub use services::{
     product_attribute_integer_term, product_attribute_localized_presence_term,
     product_attribute_localized_text_expr, product_attribute_localized_text_term,
     product_attribute_option_term, product_attribute_text_term,
+};
+pub use storefront_tag_read_port::{
+    ProductStorefrontTagHydration, ProductStorefrontTagHydrationItem,
+    ProductStorefrontTagHydrationRequest, ProductStorefrontTagReadPort,
 };
 
 /// Typed marker proving that `ProductModule` participated in runtime extension registration.

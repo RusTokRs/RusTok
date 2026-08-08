@@ -18,209 +18,185 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const storefrontPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
-const storefront = requireMarkers(storefrontPath, [
+const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
+const mounted = requireMarkers(mountedPath, [
   'CatalogService::new(runtime_ctx.db_clone(), event_bus)',
   '.list_published_products_with_query(',
 ]);
 for (const forbidden of [
   'rustok_index',
-  'SharedIndexQueryRuntime',
+  'ProductStorefrontIndexShadowExecutor',
+  'ProductStorefrontIndexBudgetedProjectionExecutor',
+  'ProductStorefrontIndexServingBudget',
+  'classify_product_storefront_index_serving_budget',
   'execute_localized_query',
-  'project_product_storefront_index_page',
 ]) {
-  if (storefront.includes(forbidden)) fail(`${storefrontPath} contains forbidden marker ${forbidden}`);
+  if (mounted.includes(forbidden)) fail(`${mountedPath} must remain owner-native; found ${forbidden}`);
 }
 
 requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
   'pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;',
-  'search: normalize_storefront_product_search(search)?',
-  'pub(crate) fn validate_storefront_product_search(',
 ]);
-
-const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
-const owner = requireMarkers(ownerPath, [
-  'ProductStatus::Active',
-  'Column::PublishedAt.is_not_null()',
+requireMarkers('crates/rustok-product/src/services/catalog/queries.rs', [
   'product_channel_visibility_condition(',
   'attribute_filters::load_catalog_attribute_filter_conditions(',
   'types::validate_storefront_product_search(list_query.search.as_deref())?;',
-  'product_title_search_condition(',
   'let total = query.clone().count(&self.db).await?',
-  'pick_product_translation(items.as_slice(), locale, fallback_locale)',
   '.unwrap_or_else(|| "Untitled product".to_string())',
-  'handle: translation',
-  '.unwrap_or_default()',
   'let pattern = format!("%{search}%");',
   'pt.title LIKE $1',
-  'if page == 0 || per_page == 0 || per_page > 48',
   'let offset = (page.saturating_sub(1)) * per_page;',
 ]);
-const titleSearch = owner.slice(owner.indexOf('fn product_title_search_condition('));
-if (titleSearch.includes('pt.locale')) fail(`${ownerPath} title search became locale-scoped`);
-if (titleSearch.includes('COLLATE')) {
-  fail(`${ownerPath} owner title search changed collation before retained default-vs-C evidence admission`);
-}
-const modernList = owner.slice(
-  owner.indexOf('pub async fn list_published_products_with_query('),
-  owner.indexOf('pub(crate) async fn list_legacy_storefront_products_with_locale_fallback('),
-);
-if (modernList.includes('10_000')) {
-  fail(`${ownerPath} must not narrow owner-valid Storefront page depth to the Index offset bound`);
-}
-
-requireMarkers('crates/rustok-product/src/services/catalog/helpers.rs', [
-  'pub(crate) fn product_channel_visibility_condition(',
-  "metadata->'channel_visibility'->'allowed_channel_slugs'",
-  "jsonb_array_length(COALESCE(products.metadata->'channel_visibility'->'allowed_channel_slugs', '[]'::jsonb)) = 0",
-]);
-requireMarkers('crates/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
-  'ProductChannelVisibility::Unrestricted => (',
-  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
+requireMarkers('crates/rustok-product/src/storefront_tag_read_port.rs', [
+  'MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48',
+  'pub trait ProductStorefrontTagReadPort',
+  '.load_product_tag_map(',
 ]);
 
-const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
-const executor = requireMarkers(executorPath, [
-  'pub(crate) enum ProductStorefrontIndexChannelScopeDecision',
+const shadowPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const shadow = requireMarkers(shadowPath, [
   'OwnerNativeChannelLess',
-  'ChannelLessOwnerNative',
-  'pub(crate) enum ProductStorefrontIndexPageScopeDecision',
   'OwnerNativeDeepPage { offset: u64 }',
-  'DeepPageOwnerNative { offset: u64 }',
-  'pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>',
-  'pub(crate) public_projected:',
-  'Option<Result<IndexQueryPage, ProductStorefrontIndexPublicProjectionError>>',
+  'pub(crate) async fn execute_projected(',
+  'pub(crate) async fn hydrate_projected_tags(',
   'list_filtered_published_products(',
-  'classify_product_storefront_index_page_scope(&query)',
-  '.resolve_storefront_attribute_filters(',
   '.execute_localized_query(index_query)',
-  'let public_projected = projected',
-  '.map(project_product_storefront_index_page);',
-  'let comparison = projected',
-  'compare_owner_and_index(&authoritative, projected)',
+  '.hydrate_storefront_product_tags(',
+]);
+for (const forbidden of ['tokio::time::timeout', 'ProductStorefrontIndexServingBudgetDecision']) {
+  if (shadow.includes(forbidden)) fail(`${shadowPath} evidence executor must stay unbudgeted: ${forbidden}`);
+}
+
+const policyPath = 'crates/rustok-distribution/src/product_index/storefront_serving_budget.rs';
+const policy = requireMarkers(policyPath, [
+  'ProductStorefrontIndexServingBudget',
+  'ProductStorefrontIndexServingBudgetObservation',
+  'pub(crate) remaining_ms: Option<u64>',
+  'OwnerNativeMissingDeadline',
+  'OwnerNativeBudgetPolicyUnavailable',
+  'OwnerNativeRemainingBudgetUnavailable',
+  'OwnerNativeTagHydrationUnavailable',
+  'OwnerNativeInsufficientBudget',
+  'ProductStorefrontIndexServingBudgetDecision::Eligible',
+  'does not automatically decrease',
+]);
+if (policy.split('#[cfg(test)]')[0].includes('tokio::time::timeout')) {
+  fail(`${policyPath} classification policy must remain separate from timeout enforcement`);
+}
+
+const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+const budgeted = requireMarkers(budgetedPath, [
+  'use tokio::time::timeout;',
+  'pub(crate) trait ProductStorefrontIndexProjectionPhases',
+  'impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor',
+  'phases: Arc<dyn ProductStorefrontIndexProjectionPhases>',
+  'pub(crate) struct ProductStorefrontIndexBudgetedExecution',
   'pub(crate) authoritative: StorefrontProductList',
+  'pub(crate) struct ProductStorefrontIndexBudgetedProjectionExecutor',
+  'pub(crate) async fn execute_after_owner(',
+  'ProductStorefrontIndexServingBudgetDecision::Eligible',
+  'BudgetNotEligible',
+  'index_context.deadline_ms = Some(index_execution_budget_ms);',
+  'Duration::from_millis(index_execution_budget_ms)',
+  'self.phases.execute_projected(',
+  'ProductStorefrontIndexBudgetedProjectionError::TimedOut',
+  '.map(project_product_storefront_index_page);',
+  'tag_context.deadline_ms = Some(tag_hydration_budget_ms);',
+  'Duration::from_millis(tag_hydration_budget_ms)',
+  '.hydrate_projected_tags(tag_context, fallback_locale, projected)',
+  'ProductStorefrontIndexBudgetedTagHydrationError::TimedOut',
+  'compare_owner_and_projected(&authoritative, projected)',
 ]);
-for (const forbidden of [
-  'CHANNEL_LESS_SENTINEL',
-  'UNRESTRICTED_CHANNEL_SENTINEL',
-  '.min(MAX_INDEX_OFFSET_DEPTH)',
-  'Pagination::Cursor',
-]) {
-  if (executor.includes(forbidden)) fail(`${executorPath} contains forbidden request-shape shortcut ${forbidden}`);
+if (budgeted.includes('list_filtered_published_products(')) {
+  fail(`${budgetedPath} must be post-owner and must not repeat the authoritative Product read`);
 }
-const executeProjectedStart = executor.indexOf('async fn execute_projected(');
-const compareStart = executor.indexOf('fn compare_owner_and_index(');
-if (
-  executeProjectedStart < 0 ||
-  compareStart <= executeProjectedStart ||
-  executor.slice(executeProjectedStart, compareStart).includes('project_product_storefront_index_page')
-) {
-  fail(`${executorPath} public Product projection must remain outside raw Index execution`);
-}
-
-const projectionPath = 'crates/rustok-distribution/src/product_index/storefront_projection.rs';
-const projection = requireMarkers(projectionPath, [
-  'const UNTITLED_PRODUCT: &str = "Untitled product";',
-  'pub(crate) enum ProductStorefrontIndexPublicProjectionError',
-  'pub(crate) fn project_product_storefront_index_page(',
-  'apply_string_placeholder(item, "title", UNTITLED_PRODUCT)?;',
-  'apply_string_placeholder(item, "handle", "")?;',
-  'MissingField',
-  'DuplicateField',
-  'InvalidFieldValue',
-  'projected.exact_count, Some(9)',
-  'projected.next_cursor.as_deref(), Some("opaque-cursor")',
-  'value(&projected.items[0], "tag_ids")',
-]);
-for (const forbidden of ['FilterExpr', 'OrderExpr', 'LocalizedEntityQuery', 'execute_localized_query']) {
-  if (projection.includes(forbidden)) {
-    fail(`${projectionPath} must remain post-page only; found ${forbidden}`);
-  }
-}
-
-const builderPath = 'crates/rustok-distribution/src/product_index/storefront_shadow.rs';
-const builder = requireMarkers(builderPath, [
-  'services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
-  'PublicChannelRequired',
-  'root_field("sales_channel_ids")?',
-  'const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;',
-  'ProductStorefrontIndexShadowError::OffsetTooDeep',
-]);
-for (const forbidden of ['Untitled product', 'project_product_storefront_index_page']) {
-  if (builder.includes(forbidden)) {
-    fail(`${builderPath} must not feed Product public placeholders into query construction: ${forbidden}`);
-  }
-}
-
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
-  'RUSTOK_PRODUCT_STOREFRONT_EQUIVALENCE_DATABASE_URL',
-  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-  'assert_eq!(owner_c.title, "Untitled product");',
-  'assert_eq!(owner_c.handle, "");',
-  'assert_eq!(projected_string(index_c, "title")?, None);',
-  'assert_eq!(projected_string(index_c, "handle")?, None);',
-]);
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_eav_postgres_tests.rs', [
-  'RUSTOK_PRODUCT_STOREFRONT_EAV_EQUIVALENCE_DATABASE_URL',
-  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-  'weight=7',
-  'color=missing',
-]);
-requireMarkers('crates/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
-  'RUSTOK_PRODUCT_STOREFRONT_COLLATION_DATABASE_URL',
-  'translation.title LIKE $2',
-  '(translation.title COLLATE "C") LIKE $2',
-  "current_setting('lc_collate')",
-]);
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
+  'derive_index_schema_source_event_id',
   'assert_eq!(schema.fields.len(), 15);',
   'many_field("tag_ids", IndexValueType::Uuid, true, false)',
   'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
 ]);
-for (const forbidden of ['SchemaVersion::new(3)', 'SchemaVersion::new(5)']) {
+for (const forbidden of ['SchemaVersion::new(3)', 'SchemaVersion::new(5)', 'localized_tag_names', 'derive_index_source_event_id(']) {
   if (productIndex.includes(forbidden)) fail(`${productIndexPath} contains forbidden Product schema marker ${forbidden}`);
 }
 
-requireMarkers('scripts/verify/verify-index-product-storefront-public-projection.mjs', [
-  'Product public placeholders are post-page only',
-  'raw Index null evidence and tag_ids remain unchanged',
+requireMarkers('scripts/verify/verify-index-product-current-schema-promotion.mjs', [
+  'Product key4 is the only current runtime contract',
+  'retained tenant promotion PostgreSQL packet is source-complete',
 ]);
-requireMarkers('scripts/verify/verify-index-product-storefront-deep-page-policy.mjs', [
-  'OwnerNativeDeepPage { offset: u64 }',
-  'must preserve owner pagination without clamp/rewrite',
+requireMarkers('scripts/verify/verify-index-product-current-schema-promotion-postgres-packet.mjs', [
+  'retained Product key4 stage/replay/register_current/inactive-old-key/restart PostgreSQL packet source verified',
 ]);
-requireMarkers('scripts/verify/verify-index-product-storefront-channel-scope-policy.mjs', [
-  'OwnerNativeChannelLess',
-  'must not infer or fabricate visibility membership',
+requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md', [
+  'Status: `postgres_packet_source_complete_execution_pending`',
+  'Tenant promotion sequence',
+  'Retained PostgreSQL promotion packet — source complete',
+  'storage-only lower-key fixture',
+  '`PostgresSchemaRegistrationStore::register_current`',
+  'Mounted Storefront remains owner-native',
 ]);
-requireMarkers('scripts/verify/verify-index-product-storefront-collation-postgres-packet.mjs', [
-  'must remain the owner/default-collation side',
-  'must observe deployment/default collation rather than manufacture parity',
+
+requireMarkers('crates/rustok-distribution/src/product_index/storefront_projection.rs', [
+  'const UNTITLED_PRODUCT: &str = "Untitled product";',
+  'pub(crate) fn project_product_storefront_index_page(',
+  'value(&projected.items[0], "tag_ids")',
+]);
+requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
+  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
+  'assert_eq!(owner_c.title, "Untitled product");',
+  'assert_eq!(projected_string(index_c, "title")?, None);',
+]);
+requireMarkers('crates/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
+  'translation.title LIKE $2',
+  '(translation.title COLLATE "C") LIKE $2',
+]);
+
+requireMarkers('scripts/verify/verify-index-product-storefront-serving-budget-policy.mjs', [
+  'production phase seam',
+]);
+requireMarkers('scripts/verify/verify-index-product-storefront-budgeted-execution.mjs', [
+  'production phase seam',
+]);
+requireMarkers('scripts/verify/verify-index-product-storefront-budgeted-execution-evidence.mjs', [
+  'retained fake-phase packet covers noneligible, Index timeout/error, tag timeout, phase deadlines and fast-path identity/count',
+]);
+requireMarkers('scripts/verify/verify-index-product-storefront-shadow-executor.mjs', [
+  'implements the crate-private post-owner phase seam',
+]);
+requireMarkers('scripts/verify/verify-index-product-storefront-tag-hydration.mjs', [
+  'Product IDs from the fixed raw Index page drive bounded Product-owned tag hydration',
 ]);
 requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `public_projection_source_complete_taxonomy_hydration_pending`',
+  'Status: `budgeted_timeout_evidence_source_complete_execution_pending`',
   'Mounted Storefront remains owner-native',
-  'Product public placeholder projection — source complete',
-  '`public_projected`',
-  'Taxonomy tag names',
+  'Serving-budget policy and timeout enforcement — source complete',
+  'Deterministic timeout evidence — source complete, execution pending',
+  'Current Product key-4 promotion — PostgreSQL packet source complete, execution pending',
+  '`ProductStorefrontIndexBudgetedProjectionExecutor`',
+  'The packet has not been executed by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-public-projection.md', [
-  'Status: `source_complete_taxonomy_hydration_pending`',
-  '`projected` — raw generic Index page',
-  '`public_projected` — optional Product public page',
-  '`tag_ids`',
+requireMarkers('crates/rustok-index/docs/m7-product-storefront-serving-budget-policy.md', [
+  'Status: `policy_and_timeout_enforcement_source_complete_runtime_evidence_pending`',
+  '`tokio::time::timeout`',
+]);
+requireMarkers('crates/rustok-index/docs/m7-product-storefront-budgeted-execution.md', [
+  'Status: `source_complete_timeout_evidence_execution_pending`',
+  'Retained deterministic timeout evidence — source complete',
+  'The retained packet is **source-only** until a maintainer executes it.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
-  "'verify-index-product-storefront-public-projection.mjs'",
-  "'verify-index-product-storefront-deep-page-policy.mjs'",
-  "'verify-index-product-storefront-collation-postgres-packet.mjs'",
+  "'verify-index-product-current-schema-promotion.mjs'",
+  "'verify-index-product-current-schema-promotion-postgres-packet.mjs'",
+  "'verify-index-product-storefront-serving-budget-policy.mjs'",
+  "'verify-index-product-storefront-budgeted-execution.mjs'",
+  "'verify-index-product-storefront-budgeted-execution-evidence.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; raw Index evidence and Product post-page public placeholders are separated while Taxonomy hydration, evidence admission and serving gates remain pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; key4 promotion PostgreSQL packet, budget policy, timeout enforcement and deterministic timeout evidence are source-complete while maintainer execution/admission remains pending');

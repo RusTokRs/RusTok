@@ -112,7 +112,7 @@ materialization is ready:
 
 A rolling deployment can temporarily have old and new process generations, and staging can temporarily
 leave two persisted keys `active`, but source code still contains only one replacement implementation.
-There is no Product v4/v5 compatibility branch or dual query path in the new runtime.
+There is no compatibility branch or dual query path in the new runtime.
 
 If fail-closed downtime is acceptable, callers may invoke `register_current` before rebuild; the old
 contract then becomes non-authoritative immediately. The staged sequence above is preferred for
@@ -121,34 +121,40 @@ production replacement.
 Historical rows may be purged later through a separately admitted maintenance policy, but purge is not
 required for correctness and is intentionally not coupled to source-module migrations.
 
-## Product Storefront relevance
+## Current Product key-4 application
 
-The current Product Index contract cannot be expanded under its existing persisted routing key because
-that would change the fingerprint. The Storefront parity gate also rejects introducing parallel Product
-v4/v5 compatibility branches.
+Product has already crossed the **source-code** replacement boundary described above. Current runtime code
+publishes exactly one 15-field Product contract on routing key `4`; lower Product keys are historical storage
+identities only. The selected Product source uses `derive_index_schema_source_event_id` and explicitly rejects
+reintroduction of the old key `3` compatibility path.
 
-This generic supersession path provides the persistence/replay identity mechanisms for a future
-**single-current** Product replacement:
+This does **not** mean every tenant has completed persisted promotion. For a tenant that still has a lower
+Product contract active, the current key-4 rollout must follow the staged sequence:
 
-- one monotonically higher internal routing key;
-- only that replacement contract published by new Product runtime code;
-- schema-scoped deterministic Product replay delivery IDs;
-- staged new-key replay/rebuild before authority transition;
-- all lower persisted Product keys retired atomically per tenant at final supersession;
-- no old Product source/query compatibility branch selected in the replacement runtime.
+1. ordinary-register the exact current Product key `4` contract while any lower persisted Product key remains
+   active;
+2. rebuild key `4` with schema-scoped delivery UUIDs so historical inbox rows cannot suppress replacement
+   deliveries;
+3. retain and execute current-key readiness/freshness/parity/restart evidence;
+4. call `register_current` with the same already-staged Product key `4` contract;
+5. require all lower active Product schema rows for that tenant to become `retired` atomically;
+6. require old-key readiness/query execution to fail closed as inactive;
+7. only then admit an authoritative Product Index consumer for that tenant.
 
-This slice does not change the Product routing key or Product schema yet. The future replacement Product
-source must switch from `derive_index_source_event_id` to `derive_index_schema_source_event_id` in the
-same PR that changes its current routing key.
+The runtime must not stage or select a Product key `3` implementation merely because persisted key `3` rows may
+still exist. Historical rows remain valid storage history; they are not a compatibility surface.
+
+The focused M7 Product promotion contract is retained in
+`m7-product-current-schema-promotion.md` and guarded by
+`verify-index-product-current-schema-promotion.mjs`.
 
 ## Deliberate limits
 
 This primitive does not:
 
-- choose a Product replacement key;
-- alter Product fields;
-- register schemas automatically for every tenant;
-- run replay/rebuild jobs;
+- automatically stage Product key `4` for every tenant;
+- run Product replay/rebuild jobs;
+- execute or admit Product current-key PostgreSQL evidence;
 - delete old Index materialization;
 - change public event contracts;
 - authorize Storefront cutover.
@@ -164,6 +170,7 @@ cargo test -p rustok-index source_event_id --lib -- --nocapture
 cargo test -p rustok-index schema_registration --lib -- --nocapture
 node scripts/verify/verify-index-schema-scoped-source-event-id.mjs
 node scripts/verify/verify-index-schema-supersession.mjs
+node scripts/verify/verify-index-product-current-schema-promotion.mjs
 node scripts/verify/verify-index-schema-readiness.mjs
 node scripts/verify/verify-index-product-storefront-parity-gate.mjs
 node scripts/verify/verify-index-query-contract.mjs

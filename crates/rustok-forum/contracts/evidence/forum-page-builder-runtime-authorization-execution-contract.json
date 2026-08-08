@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "module": "forum",
+  "packet": "page_builder_runtime_authorization_evidence",
+  "status": "source_ready_maintainer_execution_pending",
+  "runner": "scripts/evidence/forum-page-builder-runtime-authorization-evidence.mjs",
+  "output": {
+    "environment": "RUSTOK_FORUM_PAGE_BUILDER_RUNTIME_EVIDENCE_OUTPUT",
+    "default_path": "target/forum-page-builder-runtime-authorization-evidence.json",
+    "format": "forum_page_builder_runtime_authorization_execution_v1",
+    "status": "runtime_authorization_execution_passed_wave_pending"
+  },
+  "commands": [
+    {
+      "id": "transport_authorization",
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-forum-admin",
+        "--features",
+        "ssr",
+        "widget_preview_transport::tests"
+      ]
+    },
+    {
+      "id": "tenant_module_state",
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-api",
+        "--features",
+        "runtime",
+        "tenant_module_enablement_is_exact_and_fail_closed"
+      ]
+    },
+    {
+      "id": "owner_moderator_policy",
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-forum",
+        "widget_preview::tests"
+      ]
+    },
+    {
+      "id": "owner_visibility_sqlite",
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-forum",
+        "--test",
+        "page_builder_widget_visibility_sqlite"
+      ]
+    }
+  ],
+  "proofs": [
+    "preview and property transports share exact tenant and effective forum_topics:read authorization",
+    "forum_topics:manage satisfies effective forum_topics:read without a parallel Forum-specific implication rule",
+    "tenant mismatch and missing read permission fail closed",
+    "tenant module lookup admits only the exact enabled forum row and rejects disabled, foreign and missing rows",
+    "reply_stream approved_only=false requires effective forum_replies:moderate",
+    "moderator preview includes pending/approved/rejected/hidden/flagged but excludes deleted tombstones",
+    "anonymous topic visibility excludes authenticated categories and descendants",
+    "authenticated topic visibility admits authenticated categories while retaining tenant and topic-status filtering"
+  ],
+  "required_source_files": [
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json",
+    "scripts/evidence/forum-page-builder-runtime-authorization-evidence.mjs",
+    "crates/rustok-forum/admin/src/widget_preview_transport.rs",
+    "crates/rustok-forum/admin/src/widget_property_transport.rs",
+    "crates/rustok-api/src/runtime.rs",
+    "crates/rustok-api/src/context/auth.rs",
+    "crates/rustok-forum/src/services/widget_preview.rs",
+    "crates/rustok-forum/src/services/topic_visibility.rs",
+    "crates/rustok-forum/src/services/category_visibility.rs",
+    "crates/rustok-forum/tests/page_builder_widget_visibility_sqlite.rs"
+  ],
+  "retained_data": [
+    "exact source commit",
+    "source-file SHA-256 hashes",
+    "command ids and argv",
+    "exit status",
+    "stdout/stderr byte lengths and SHA-256 hashes"
+  ],
+  "forbidden_retained_data": [
+    "database contents",
+    "tenant ids",
+    "actor ids",
+    "Forum topic or reply content",
+    "authorization headers",
+    "cookies",
+    "raw stdout or stderr"
+  ],
+  "not_claimed": [
+    "runtime authorization execution",
+    "browser execution",
+    "deployed server-function transport attestation",
+    "observed Page Builder Wave",
+    "provider SLO health"
+  ]
+}

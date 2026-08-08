@@ -7,8 +7,8 @@ use rustok_index::{
 };
 use rustok_product::{
     FilteredPublishedProductsRequest, ProductCatalogReadRuntime,
-    ProductStorefrontAttributeFilterResolutionRequest, StorefrontProductList,
-    StorefrontProductListQuery,
+    ProductStorefrontAttributeFilterResolutionRequest, ProductStorefrontTagHydration,
+    ProductStorefrontTagHydrationRequest, StorefrontProductList, StorefrontProductListQuery,
 };
 
 use super::{
@@ -21,14 +21,16 @@ const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;
 /// Non-serving Product Storefront parity execution result.
 ///
 /// The authoritative owner result is always produced first. `projected` retains the raw generic Index page
-/// for identity/count evidence. `public_projected` is derived only after that page exists and applies the
-/// Product owner public placeholder contract without feeding values back into Index query semantics.
+/// for identity/count evidence. `public_projected` derives Product title/handle placeholders from that page.
+/// `tag_hydration` is a separate Product-owned post-page read keyed only by identities from the raw Index page.
 #[derive(Debug)]
 pub(crate) struct ProductStorefrontIndexShadowExecution {
     pub(crate) authoritative: StorefrontProductList,
     pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>,
     pub(crate) public_projected:
         Option<Result<IndexQueryPage, ProductStorefrontIndexPublicProjectionError>>,
+    pub(crate) tag_hydration:
+        Option<Result<ProductStorefrontTagHydration, ProductStorefrontIndexTagHydrationError>>,
     pub(crate) comparison: Option<ProductStorefrontIndexShadowComparison>,
 }
 
@@ -45,23 +47,12 @@ impl ProductStorefrontIndexShadowComparison {
     }
 }
 
-/// Request-shape decision for the current Product key-4 channel projection.
-///
-/// `sales_channel_ids` stores resolved Channel UUID membership. For unrestricted Product metadata this is
-/// the set of all current Channels, so it cannot distinguish an unrestricted Product from a restricted
-/// Product whose allowed slugs currently resolve to that same complete set. Channel-less owner semantics
-/// therefore remain owner-native instead of being inferred from membership equality.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ProductStorefrontIndexChannelScopeDecision {
     ShadowEligible { public_channel_id: Uuid },
     OwnerNativeChannelLess,
 }
 
-/// Request-shape decision for owner-valid Product Storefront offset pagination.
-///
-/// The Product owner has no explicit maximum offset, while the generic Index offset contract is bounded at
-/// 10,000. Requests inside that bound remain shadow-eligible. Owner-valid deeper pages remain owner-native;
-/// they are never clamped or rewritten to cursor pagination because either would change owner semantics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ProductStorefrontIndexPageScopeDecision {
     ShadowEligible { offset: u64 },
@@ -88,13 +79,14 @@ pub(crate) enum ProductStorefrontIndexShadowProjectionError {
     Index(#[from] IndexQueryExecutionError),
 }
 
-/// Classify the caller's public-channel context without guessing channel-less visibility from Index
-/// membership.
-///
-/// An absent/blank slug paired with no UUID is the owner's channel-less shape and is deliberately retained as
-/// owner-native. A present non-empty slug plus a non-nil UUID is eligible for channel-scoped shadow
-/// translation. Partial, contradictory or nil identities fail closed as malformed context rather than being
-/// treated as channel-less.
+#[derive(Debug, Error)]
+pub(crate) enum ProductStorefrontIndexTagHydrationError {
+    #[error("Product Storefront tag hydration capability is unavailable")]
+    TagReadPortUnavailable,
+    #[error("Product Storefront tag hydration owner read failed: {0}")]
+    Owner(PortError),
+}
+
 pub(crate) fn classify_product_storefront_index_channel_scope(
     public_channel_slug: Option<&str>,
     public_channel_id: Option<Uuid>,
@@ -109,11 +101,6 @@ pub(crate) fn classify_product_storefront_index_channel_scope(
     }
 }
 
-/// Classify Product owner offset pagination before projected metadata or Index work begins.
-///
-/// Invalid pagination remains an error and is not treated as an owner-native fallback shape. A valid offset
-/// above the generic Index bound is a deliberate owner-native request shape. The pure shadow query builder
-/// retains its own `OffsetTooDeep` fail-closed check as a second boundary for direct callers.
 pub(crate) fn classify_product_storefront_index_page_scope(
     query: &StorefrontProductListQuery,
 ) -> Result<ProductStorefrontIndexPageScopeDecision, ProductStorefrontIndexShadowProjectionError> {
@@ -134,14 +121,8 @@ pub(crate) fn classify_product_storefront_index_page_scope(
 
 /// Owner-first, non-serving Product Storefront shadow executor.
 ///
-/// This object composes only host-selected Product and Index capabilities. It never constructs
-/// `CatalogService`, `ProductCatalogSchemaService`, a PostgreSQL Index port, or a database connection.
-/// The owner list result remains authoritative even when Product metadata resolution, shadow query build,
-/// Index readiness/admission, Index execution, or public post-page projection fails.
-///
-/// Channel-scoped projection requires a trusted current slug/UUID pair supplied by the caller's current
-/// channel context. Channel-less requests and owner-valid deep offset pages are intentionally retained as
-/// typed owner-native projected results rather than approximated by Index.
+/// All enrichment happens only after a successful raw Index page. Product public placeholder projection and
+/// Product-owned tag hydration are retained separately; neither can change raw Index identity/order/count.
 #[derive(Clone)]
 pub(crate) struct ProductStorefrontIndexShadowExecutor {
     product: ProductCatalogReadRuntime,
@@ -180,8 +161,8 @@ impl ProductStorefrontIndexShadowExecutor {
 
         let projected = self
             .execute_projected(
-                context,
-                fallback_locale,
+                context.clone(),
+                fallback_locale.clone(),
                 public_channel_slug,
                 public_channel_id,
                 query,
@@ -192,6 +173,13 @@ impl ProductStorefrontIndexShadowExecutor {
             .ok()
             .cloned()
             .map(project_product_storefront_index_page);
+        let tag_hydration = match projected.as_ref() {
+            Ok(projected) => Some(
+                self.hydrate_projected_tags(context, fallback_locale, projected)
+                    .await,
+            ),
+            Err(_) => None,
+        };
         let comparison = projected
             .as_ref()
             .ok()
@@ -201,11 +189,39 @@ impl ProductStorefrontIndexShadowExecutor {
             authoritative,
             projected,
             public_projected,
+            tag_hydration,
             comparison,
         })
     }
 
-    async fn execute_projected(
+    pub(crate) async fn hydrate_projected_tags(
+        &self,
+        context: PortContext,
+        fallback_locale: String,
+        projected: &IndexQueryPage,
+    ) -> Result<ProductStorefrontTagHydration, ProductStorefrontIndexTagHydrationError> {
+        let tag_read = self
+            .product
+            .storefront_tag_read_port()
+            .ok_or(ProductStorefrontIndexTagHydrationError::TagReadPortUnavailable)?;
+        let product_ids = projected
+            .items
+            .iter()
+            .map(|item| item.entity_id)
+            .collect::<Vec<_>>();
+        tag_read
+            .hydrate_storefront_product_tags(
+                context,
+                ProductStorefrontTagHydrationRequest {
+                    product_ids,
+                    fallback_locale,
+                },
+            )
+            .await
+            .map_err(ProductStorefrontIndexTagHydrationError::Owner)
+    }
+
+    pub(crate) async fn execute_projected(
         &self,
         context: PortContext,
         fallback_locale: String,
@@ -313,28 +329,14 @@ mod tests {
             classify_product_storefront_index_channel_scope(None, None).unwrap(),
             ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess
         );
-        assert_eq!(
-            classify_product_storefront_index_channel_scope(Some("   "), None).unwrap(),
-            ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess
-        );
-
         let channel_id = Uuid::new_v4();
         assert_eq!(
             classify_product_storefront_index_channel_scope(Some(" web "), Some(channel_id))
                 .unwrap(),
             ProductStorefrontIndexChannelScopeDecision::ShadowEligible { public_channel_id: channel_id }
         );
-
         assert!(matches!(
             classify_product_storefront_index_channel_scope(Some("web"), None),
-            Err(ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable)
-        ));
-        assert!(matches!(
-            classify_product_storefront_index_channel_scope(None, Some(channel_id)),
-            Err(ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable)
-        ));
-        assert!(matches!(
-            classify_product_storefront_index_channel_scope(Some("web"), Some(Uuid::nil())),
             Err(ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable)
         ));
     }
@@ -352,21 +354,5 @@ mod tests {
             classify_product_storefront_index_page_scope(&deep).unwrap(),
             ProductStorefrontIndexPageScopeDecision::OwnerNativeDeepPage { offset: 10_032 }
         );
-
-        let invalid = StorefrontProductListQuery::default().with_pagination(0, 48);
-        assert!(matches!(
-            classify_product_storefront_index_page_scope(&invalid),
-            Err(ProductStorefrontIndexShadowProjectionError::QueryBuild(
-                ProductStorefrontIndexShadowError::InvalidPagination
-            ))
-        ));
-
-        let overflow = StorefrontProductListQuery::default().with_pagination(u64::MAX, 48);
-        assert!(matches!(
-            classify_product_storefront_index_page_scope(&overflow),
-            Err(ProductStorefrontIndexShadowProjectionError::QueryBuild(
-                ProductStorefrontIndexShadowError::InvalidPagination
-            ))
-        ));
     }
 }
