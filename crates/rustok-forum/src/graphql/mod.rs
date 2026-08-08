@@ -52,7 +52,8 @@ pub use quote_commands::{
 };
 pub use read_state::*;
 pub use reconciliation_query::{
-    GqlForumCounterDrift, GqlForumCounterReconciliationReport,
+    GqlForumCounterDrift, GqlForumCounterReconciliationReport, GqlForumSolutionDrift,
+    GqlForumSolutionReconciliationReport,
 };
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
@@ -103,7 +104,7 @@ pub struct ForumMutation(
     storefront_read_state::ForumStorefrontReadStateMutation,
     topic_fork_mutation::ForumTopicForkMutation,
     topic_merge_mutation::ForumTopicMergeMutation,
-    topic_reply_range_move_mutation::ForumTopicReplyRangeMoveMutation,
+    topic_reply_range_move_mutation::ForumReplyRangeMoveMutation,
     topic_slug_rename_mutation::ForumTopicSlugRenameMutation,
     topic_split_mutation::ForumTopicSplitMutation,
 );
