@@ -13,6 +13,7 @@
     "page_builder_provider_status": "source_ready_health_unobserved",
     "plan_parity": "source_ready",
     "candidate_harness": "source_ready_maintainer_execution_pending",
+    "tenant_rollout_settings": "platform_read_seam_source_ready_pages_binding_pending",
     "forum_second_consumer": {
       "contribution_metadata": "source_ready",
       "fly_adapter": "source_ready",
@@ -110,6 +111,8 @@
     "source_gate": "ready",
     "execution_gate": "pending",
     "candidate_harness": "source_ready_maintainer_execution_pending",
+    "tenant_rollout_settings": "platform_read_seam_source_ready_pages_binding_pending",
+    "four_profile_runtime_matrix": "blocked_on_pages_tenant_settings_binding",
     "forum_wave_blocker": "pages_reference_consumer_gate",
     "provider_health": "unobserved",
     "ffa_fba_promotion": "not_claimed"
@@ -118,6 +121,7 @@
     "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs",
     "plan_parity_guard": "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs",
     "candidate_harness_guard": "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs",
+    "tenant_rollout_settings_guard": "crates/rustok-pages/scripts/verify/verify-pages-tenant-rollout-settings-runtime.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "forbidden_claims": [

@@ -81,7 +81,9 @@ pub use richtext::{
     RichTextView, document_json_schema,
 };
 #[cfg(feature = "runtime")]
-pub use runtime::{HostRuntimeContext, HostSettingsSnapshot, is_tenant_module_enabled};
+pub use runtime::{
+    HostRuntimeContext, HostSettingsSnapshot, is_tenant_module_enabled, tenant_module_settings,
+};
 pub use tenant_rbac::{
     SharedTenantRbacCatalog, TenantRbacCatalog, TenantRbacCatalogError, TenantRbacPermission,
     TenantRbacRole,

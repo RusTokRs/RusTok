@@ -1,0 +1,38 @@
+{
+  "format": "pages_tenant_rollout_settings_runtime_source_v1",
+  "status": "platform_settings_read_seam_source_ready_pages_binding_pending",
+  "prepared_on": "2026-08-08",
+  "source_base": "e91926363cfcdf6a91836358add1afdf94f65ffa",
+  "source_contract": {
+    "platform_runtime_helper": "rustok_api::tenant_module_settings",
+    "trusted_tenant_id_must_be_supplied_by_caller": true,
+    "exact_tenant_id_required": true,
+    "exact_module_slug_required": true,
+    "enabled_row_required": true,
+    "disabled_row_returns_none": true,
+    "missing_row_returns_none": true,
+    "settings_json_decode_is_fail_closed": true,
+    "sqlite_supported": true,
+    "postgres_supported": true,
+    "mysql_supported": true,
+    "tenant_persistence_entity_import_required": false,
+    "settings_mutation_added": false,
+    "parallel_settings_store_added": false,
+    "pages_consumer_binding_complete": false,
+    "pages_runtime_profile_matrix_executable": false,
+    "gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "validation": {
+    "tests_run": false,
+    "node_verifiers_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "database_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false
+  },
+  "next_cursor": "bind a trusted routed-tenant Pages settings snapshot into PagesBuilderFacade provider status and authoritative SSR Page Builder capability composition, then retain the four-profile runtime matrix"
+}
