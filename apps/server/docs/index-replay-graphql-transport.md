@@ -1,13 +1,13 @@
 # Index replay GraphQL transport
 
-Status: `full_locale_schema_wide_shadow_and_locale_safe_continuation_source_complete_execution_pending`.
+Status: `full_and_shadow_locale_source_complete_execution_pending`.
 
 ## Boundary
 
 The server exposes three bounded GraphQL mutations over server-owned guarded replay capabilities:
 
 - `runIndexReplay(input: ...)` runs one bounded durable Full schema-wide or exact-locale replay chunk and samples the server-owned graceful-shutdown signal at replay durable safe points;
-- `runIndexReplayShadow(input: ...)` runs one bounded **schema-wide**, side-effect-free Shadow validation chunk and returns only an authenticated confidential continuation token when more source pages remain;
+- `runIndexReplayShadow(input: ...)` runs one bounded schema-wide or exact-locale, side-effect-free Shadow validation chunk and returns only an authenticated confidential continuation token when more source pages remain;
 - `cancelIndexReplay(input: ...)` requests cancellation of one durable replay job in the authenticated tenant.
 
 This remains command transport. It does not add automatic replay scheduling, background worker ownership, a new
@@ -18,16 +18,16 @@ cutover.
 
 Tenant and actor identities are never accepted from GraphQL input. The transport derives both from
 `TenantContext` / `AuthContext`, requires the request-bound effective permission snapshot, and requires
-`modules:manage` before parsing untrusted schema identifiers, schema version, durable Full locale, Shadow
+`modules:manage` before parsing untrusted schema identifiers, schema version, optional Full/Shadow locale, Shadow
 continuation, or job UUID.
 
-Only after authorization does the durable Full run path canonicalize a supplied locale through
+Only after authorization do both replay run paths canonicalize a supplied locale through
 `rustok_index::LocaleKey`. Locale input is bounded to 32 bytes before parsing. Omission is not inferred from schema
-metadata and preserves the historical schema-wide durable replay identity exactly.
+metadata and preserves the exact schema-wide scan identity.
 
-The current Shadow GraphQL path intentionally still has no locale input. Its continuation input is bounded to
-16 KiB only after authorization. The token is then authenticated, decrypted, expired and scope-checked by the
-server-owned Shadow transport runtime before any raw `IndexSourceCursor` is reconstructed.
+Shadow continuation input is bounded to 16 KiB only after authorization. The token is then authenticated,
+decrypted, expired and scope-checked by the server-owned Shadow transport runtime before any raw
+`IndexSourceCursor` is reconstructed.
 
 The guarded server runtimes perform the same request-bound authorization again before source execution. A
 cross-tenant durable job UUID or Shadow continuation therefore cannot widen authority.
@@ -46,12 +46,13 @@ cross-tenant durable job UUID or Shadow continuation therefore cannot widen auth
 - module name;
 - entity name;
 - positive schema routing key;
+- optional canonicalizable locale;
 - optional sealed continuation token.
 
 Neither input accepts tenant, actor, source name, database handle, scheduler controls, partition, retry state, or
 resource budget controls. The durable Full input additionally exposes no worker identity, heartbeat cadence, lease
-duration, shutdown state, or stop handle. The Shadow input exposes no job, checkpoint, lease, cancellation,
-worker, locale, page limit, or max-page field.
+duration, shutdown state, or stop handle. The Shadow input exposes no job, checkpoint, lease, cancellation, worker,
+page limit, or max-page field.
 
 Each durable Full GraphQL invocation constructs a fresh server-owned worker identity and uses one fixed bounded
 chunk:
@@ -61,9 +62,9 @@ chunk:
 - heartbeat cadence: every page;
 - lease duration: `60` seconds.
 
-Each schema-wide Shadow invocation uses the same fixed source page limit and maximum-page count (`100 × 8`) but has
-no worker, lease or heartbeat because it creates no durable replay ownership. A yielded Shadow invocation is
-resumed only by presenting the sealed caller-carried continuation token to a later authorized invocation.
+Each Shadow invocation uses the same fixed source page limit and maximum-page count (`100 × 8`) but has no worker,
+lease or heartbeat because it creates no durable replay ownership. A yielded Shadow invocation is resumed only by
+presenting the sealed caller-carried continuation token to a later authorized invocation with the same scan scope.
 
 ## Shadow continuation boundary
 
@@ -71,22 +72,23 @@ resumed only by presenting the sealed caller-carried continuation token to a lat
 `IndexReplayOperatorRuntime::run_shadow` method. It reuses the deployment continuation keyring and frozen
 `SharedIndexSourceRegistry` already used by the source-page diagnosis transport.
 
-Authorization happens before token parsing. The adapter currently derives schema-wide
-`IndexSourceContinuationScope::from_registry` from the exact authenticated tenant, requested schema and frozen
-source owner. Incoming continuation is opened only after that scope is known; outgoing raw source cursor is sealed
-before the result crosses the adapter boundary.
+Authorization happens before token parsing. The adapter derives the canonical continuation scope from the exact
+authenticated tenant, requested schema, frozen source owner and optional canonical locale:
 
-The continuation contract itself is now locale-safe. Its encrypted canonical scope distinguishes schema-wide
-`locale = None` from one exact canonical `LocaleKey`, and `IndexSourceContinuationScope::for_locale` constructs
-the exact-locale identity from the same frozen source registry. A schema-wide token cannot open under a locale
-scope, a locale token cannot open schema-wide, and different canonical locales cannot exchange tokens.
+- schema-wide -> `IndexSourceContinuationScope::from_registry`;
+- exact-locale -> `IndexSourceContinuationScope::for_locale`.
 
-The codec has one current unversioned envelope. No old-format decoder, token version byte, or parallel claim family
-is retained. This repository-owned pre-release format is replaced in place when its shape changes.
+Incoming continuation is opened only after that exact scope is known. The adapter then creates the matching
+schema-wide `IndexReplayDryRunRequest::new` or exact-locale `IndexReplayDryRunRequest::for_locale`. Outgoing raw
+source cursor is sealed under the same scope before the result crosses the adapter boundary.
 
-Exact-locale Shadow GraphQL remains a separate next source boundary because locale still must be carried through
-`IndexReplayDryRunRequest`, the actual `IndexSourceScanRequest::for_locale` execution path, the sealed Shadow
-adapter and authorization-first input parsing. The now-complete continuation scope no longer blocks that work.
+`SharedIndexReplayDryRunRuntime` rejects exact-locale execution for `LocaleMode::None` before source scanning and
+constructs every actual page through `IndexSourceScanRequest::new` or `IndexSourceScanRequest::for_locale`. The
+source-page contract therefore rejects mutations that escape the selected locale.
+
+The continuation codec has one current unversioned envelope. No old-format decoder, token version byte, or
+parallel claim family is retained. Schema-wide and exact-locale tokens cannot cross scopes, and different canonical
+locales cannot exchange tokens.
 
 The Shadow result exposes only Complete/Yielded status, bounded page/mutation/upsert/delete counters and the
 optional sealed continuation. It does not expose raw cursor JSON, source name, source payloads, source version,
@@ -105,10 +107,10 @@ The terminal success fence checks the checkpoint using the leased locale rather 
 This keeps acquisition, page scan, checkpoint writes and final success on one exact scope. `partition_key`
 remains empty in both cases.
 
-The one-page worker still resolves the registered runtime schema before checkpoint/source work and rejects a
-locale run for `LocaleMode::None`. Product is the currently retained production source that filters exact locale
-before pagination. Schema-wide replay remains valid, including for `LocaleMode::Required`, so omission does not
-silently become one locale.
+The one-page worker resolves the registered runtime schema before checkpoint/source work and rejects a locale run
+for `LocaleMode::None`. Product is the currently retained production source that filters exact locale before
+pagination. Schema-wide replay remains valid, including for `LocaleMode::Required`, so omission does not silently
+become one locale.
 
 ## Graceful shutdown binding
 
@@ -147,9 +149,10 @@ The Shadow payload exposes only bounded validation counters plus status and opti
 cancellation payload exposes only the normalized durable outcome: requested, cancelled, already terminal, or not
 found.
 
-Operational runner failures are mapped to generic GraphQL errors; unknown source-owned schemas are reported as bad
-user input. Invalid/expired/scope-mismatched Shadow continuations receive stable input error handling while
-missing/unresolvable continuation keyring dependencies are reported through fixed server-owned error identities.
+Operational runner failures are mapped to generic GraphQL errors; unknown source-owned schemas and locale scope on
+a non-localized Shadow schema are reported as bad user input. Invalid/expired/scope-mismatched Shadow
+continuations receive stable input error handling while missing/unresolvable continuation keyring dependencies are
+reported through fixed server-owned error identities.
 
 ## Evidence state
 
@@ -157,11 +160,11 @@ Source guards retain:
 
 - authorization-before-schema/locale/continuation/job parsing ordering;
 - absence of caller authority/worker/resource-budget/shutdown/partition fields;
-- optional durable locale canonicalization and schema-wide omission compatibility;
-- schema-wide Shadow input limited to schema identity plus sealed continuation;
+- optional Full and Shadow locale canonicalization plus schema-wide omission compatibility;
 - exact durable runner page/job/checkpoint locale coupling;
+- exact Shadow request/source/token locale coupling without durable ownership;
 - locale-aware interruptible runner acquisition and terminal success fencing;
-- fixed server-owned `100 × 8` bounds for both durable Full and schema-wide Shadow invocations;
+- fixed server-owned `100 × 8` bounds for both Full and Shadow invocations;
 - Shadow continuation open/seal through the deployment keyring and frozen source scope;
 - canonical continuation scope separation between schema-wide and exact-locale scans;
 - one current unversioned continuation envelope with no legacy decoder family;
@@ -173,9 +176,6 @@ Source guards retain:
 GraphQL execution, actual Shadow source execution, continuation key deployment evidence, durable locale
 replay/restart execution, actual process-shutdown replay interruption, database replay execution, cancellation
 races, CI, and retained runtime evidence remain maintainer-owned and are not claimed by this source slice.
-
-Exact-locale Shadow transport remains source-open only for the dry-run/runtime/GraphQL locale execution path; the
-continuation identity prerequisite is source-complete.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
