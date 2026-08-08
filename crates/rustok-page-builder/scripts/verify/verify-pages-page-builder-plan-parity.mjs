@@ -69,6 +69,12 @@ for (const marker of [
   "forum-runtime-composition-source-ready",
   "forum-evidence-harness-source-ready",
   "pages-reference-consumer-gate-source-ready",
+]) {
+  requireText(sharedPlan, marker, `${sharedPlanPath}: status`);
+}
+forbidText(sharedPlan, "forum-fly-adapter-open", `${sharedPlanPath}: status`);
+
+for (const marker of [
   "PR #3239",
   "PR #3247",
   "PR #3254",
@@ -79,13 +85,12 @@ for (const marker of [
   "adapter_state = \"fly_contract_ready\"",
   "preview_data_state = \"owner_preview_transport_ready\"",
   "property_data_state = \"owner_property_editor_ready\"",
-  "accepted remains `false`",
+  "acceptance remains `false`",
 ]) {
   requireText(sharedCurrent, marker, `${sharedPlanPath}: current reconciliation`);
 }
 
 for (const stale of [
-  "forum-fly-adapter-open",
   "adapter_state = \"pending\"",
   "because Forum has no real Fly component registry or `ContributionAdapter` yet",
   "The next contribution source cursor is the real Forum Fly adapter/component-registry slice",
@@ -129,6 +134,14 @@ if (gate.artifact !== "pages_reference_consumer_gate_source") {
 }
 if (gate.mode !== "source_ready" || gate.accepted !== false) {
   failures.push(`${gatePath}: source gate must remain source_ready and accepted=false`);
+}
+if (gate.source_recheck?.plan_parity !== "source_ready") {
+  failures.push(`${gatePath}: plan parity source state must remain source_ready`);
+}
+if (!(gate.gate?.required_source_guards ?? []).includes(
+  "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs",
+)) {
+  failures.push(`${gatePath}: required source guards must include plan parity verification`);
 }
 if (gate.current_boundary?.execution_gate !== "pending") {
   failures.push(`${gatePath}: execution gate must remain pending`);
