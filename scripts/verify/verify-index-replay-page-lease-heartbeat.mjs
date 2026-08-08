@@ -63,10 +63,11 @@ for (const forbidden of [
   if (runner.includes(forbidden)) fail(`${runnerPath} absorbed forbidden page/retry semantics: ${forbidden}`);
 }
 
-const ordinaryPage = runner.indexOf('worker.run_next_page(request.page_request().clone())');
-const ordinaryHelper = runner.indexOf('await_page_with_lease_heartbeats(', ordinaryPage);
-if (ordinaryPage < 0 || ordinaryHelper <= ordinaryPage) {
-  fail('ordinary replay page must be awaited through the common lease-heartbeat helper');
+const ordinaryHelper = runner.indexOf('let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(');
+const ordinaryPage = runner.indexOf('worker.run_next_page(request.page_request().clone())', ordinaryHelper);
+const ordinaryMatch = runner.indexOf('let page = match page_result {', ordinaryPage);
+if (ordinaryHelper < 0 || ordinaryPage <= ordinaryHelper || ordinaryMatch <= ordinaryPage) {
+  fail('ordinary replay page must be nested inside the common lease-heartbeat await before result handling');
 }
 
 const gracefulPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
