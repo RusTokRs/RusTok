@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product Storefront EAV PostgreSQL packet merge
-`2098ab10cbac4741d83a06f49bb4de21a605b909` and continued on
-`agent/index-product-postgres-key4-actualize-20260808`.
+Status overlay rechecked after retained Product PostgreSQL key-4 actualization merge
+`07117d8c88608625a941de501464002aa835897d` and continued on
+`agent/product-storefront-search-bound-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -20,60 +20,46 @@ Source-complete:
 - one current 15-field Product schema on routing key `4`; lower keys are historical storage identities only;
 - schema-scoped Product replay IDs, Product owner clock and canonical typed `attribute_terms`;
 - Product channel relation/freshness materialization;
-- localized entity identity fold, scoped cursor v3 and requested -> fallback projection;
-- localized PostgreSQL compiler/decoder/runtime with persisted readiness, generic admission and one
-  `REPEATABLE READ, READ ONLY` page/count snapshot;
-- bounded generic String `TextLike` for all-translations title matching;
+- localized entity identity fold, cursor v3 and requested -> fallback projection;
+- localized PostgreSQL compiler/decoder/runtime with readiness/admission and one repeatable-read page/count snapshot;
+- generic String `TextLike` with a 1024-byte pattern bound;
+- Product-owned Storefront title-search input bound of 1022 effective UTF-8 bytes, leaving exactly two bytes
+  for the owner `%{search}%` pattern without truncation;
 - localized Product-ID tie-break direction matching owner Asc/Desc ordering;
 - Product-owned public Storefront attribute-filter -> neutral canonical term resolution;
-- pure Storefront shadow builder consuming only `ProductResolvedAttributeFilter`;
+- pure Storefront shadow builder consuming only Product-owned filter terms and the Product-owned search bound;
 - non-serving owner-first `ProductStorefrontIndexShadowExecutor`;
-- current-key core Product Storefront owner-vs-shadow PostgreSQL packet source;
-- separate current-key Product Storefront EAV owner-vs-shadow PostgreSQL packet source;
-- historical retained Product PostgreSQL fixtures actualized to current Product routing key `4` without a
-  key-3 runtime alias.
+- current-key core and EAV Product Storefront owner-vs-shadow PostgreSQL packet source;
+- historical retained Product PostgreSQL fixtures actualized to current Product routing key `4`.
 
-The core packet retains localized projection/search, identity de-duplication, equal-timestamp ordering,
-page/count and public-channel scenarios. The EAV packet isolates Product term resolution/materialization and
-retains integer, localized requested/fallback, Select/Multiselect option code, direct option UUID and
-missing/nil option `Never` scenarios. Both remain source-only until maintainer execution.
+The Product search bound is enforced both by `StorefrontProductListQuery::try_new*` and immediately before
+`CatalogService::list_published_products_with_query` constructs owner SQL. Public struct fields therefore
+cannot bypass the owner contract. Distribution imports the same Product constant; it no longer owns a second
+Product-specific search length value.
 
-Historical Product freshness, locale-absence, Channel convergence/identity-transition and linked-target
-recreate/availability/replay packets now target the same current Product key `4`. Their scenario semantics are
-unchanged; ProductVariant remains key `2` and SalesChannel remains key `1`.
-
-The core Storefront packet also records a public projection gap: owner uses `Untitled product`/empty handle
-when no requested/fallback translation exists, while generic localized Index returns null. Final Storefront
-projection must apply public placeholders only after Product page identity/order/count are fixed.
+Core/EAV Storefront packets and historical Product packets remain source-only until maintainer execution.
+The core packet also retains the no-requested/fallback-translation projection gap: owner emits
+`Untitled product`/empty handle while generic localized Index returns null.
 
 ## Remaining Storefront parity/evidence blockers
 
-- execute/review both current-key Storefront PostgreSQL packets and the actualized retained Product packets;
-  source presence is not evidence admission;
-- owner title search has no explicit length bound vs Index `TextLike` 1024-byte bound;
-- owner/default PostgreSQL collation vs Index deterministic `COLLATE "C"`;
+- execute/review current-key Storefront and actualized retained Product PostgreSQL packets;
+- owner/default PostgreSQL title `LIKE` collation vs Index deterministic `COLLATE "C"`;
 - channel-less owner visibility cannot currently be represented exactly by `sales_channel_ids`;
 - owner page depth exceeds Index bounded offset depth;
-- map localized null title/handle to owner public placeholders in final Storefront projection;
-- localized Taxonomy tag names must be hydrated after Product page identity/count is fixed;
-- shadow execution has no serving latency/deadline policy and must remain non-serving;
-- stale locale/readiness/admission/restart evidence still requires maintainer execution/extension.
+- map localized null title/handle to owner public placeholders in final projection;
+- hydrate localized Taxonomy tag names only after Product page identity/count is fixed;
+- define serving latency/deadline policy before any shadow-to-serving transition;
+- complete maintainer-executed stale locale/readiness/admission/restart evidence.
 
 ## Retained Product evidence state
 
-The retained Product PostgreSQL fixture set is now source-aligned on routing key `4`:
+The retained Product PostgreSQL fixture set is source-aligned on routing key `4`: locale absence, materialized
+query freshness, Product/Channel convergence, Channel identity transitions, linked-target delete/recreate,
+linked-target availability equivalence and linked-target replay/redelivery. ProductVariant remains key `2`
+and SalesChannel remains key `1`.
 
-- Product locale absence;
-- Product materialized query freshness;
-- Product/Channel convergence;
-- Channel identity transitions;
-- linked-target delete/recreate;
-- linked-target availability equivalence;
-- linked-target replay/redelivery.
-
-`verify-index-product-postgres-key4-fixtures.mjs` prevents these packets from restoring Product key `3` while
-also pinning the current 15-field Product bridge and unchanged ProductVariant/SalesChannel target keys.
-Execution and evidence admission remain separate maintainer gates.
+`verify-index-product-postgres-key4-fixtures.mjs` locks that boundary. Execution/admission remains separate.
 
 ## M5 incremental ingestion
 
@@ -101,18 +87,15 @@ Execution and evidence admission remain separate maintainer gates.
 - [x] Localized identity/fallback architecture and query/cursor contract.
 - [x] Localized PostgreSQL compiler/decoder/runtime.
 - [x] Generic scalar String `TextLike`.
+- [x] Product-owned 1022-byte Storefront search input bound compatible with the 1024-byte TextLike pattern.
 - [x] Explicit localized entity-ID tie-break direction matching owner Asc/Desc ordering.
 - [x] Product Storefront Index shadow/evidence query builder.
-- [x] Product-owned Storefront attribute-filter resolution to neutral canonical term expressions.
-- [x] Wire Product term expressions into the shadow builder.
+- [x] Product-owned Storefront attribute-filter resolution.
 - [x] Compose non-serving Product-owner + Index shadow executor.
-- [x] Retain current-key core owner-vs-shadow localized PostgreSQL packet source.
-- [x] Retain Product EAV owner-vs-shadow PostgreSQL packet source.
+- [x] Retain current-key core and EAV owner-vs-shadow PostgreSQL packet source.
 - [x] Actualize historical retained Product PostgreSQL packets to routing key `4`.
-- [ ] Execute/review the core Storefront PostgreSQL packet.
-- [ ] Execute/review the EAV Storefront PostgreSQL packet.
-- [ ] Execute/review the actualized retained Product PostgreSQL packets.
-- [ ] Resolve/admit search-length and collation parity.
+- [ ] Execute/review the retained Product/Storefront PostgreSQL packets.
+- [ ] Resolve/admit owner/default vs Index `COLLATE "C"` title-search collation parity.
 - [ ] Resolve channel-less unrestricted visibility parity or keep that shape owner-native.
 - [ ] Decide authoritative deep-page policy.
 - [ ] Map no-localized-row nulls to owner public title/handle placeholders in final projection.
@@ -124,10 +107,10 @@ Execution and evidence admission remain separate maintainer gates.
 
 ## Next source-code step
 
-Keep serving owner-native and resolve the next source-level parity mismatch: establish an authoritative Product
-Storefront title-search length contract compatible with bounded Index `TextLike`, then retain explicit
-PostgreSQL collation evidence. Do not silently truncate owner-valid input or weaken deterministic Index
-collation.
+Retain explicit PostgreSQL collation equivalence evidence for the owner all-translations `pt.title LIKE $1`
+query versus Index `TextLike` compiled with deterministic `COLLATE "C"`. The packet must include ASCII,
+non-ASCII/case-sensitive and wildcard/escape cases and must not weaken Index deterministic collation merely to
+match one deployment's database default.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
