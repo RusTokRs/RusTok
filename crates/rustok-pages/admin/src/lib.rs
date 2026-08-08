@@ -43,13 +43,14 @@ pub use contribution_browser_intent::{
     dispatch_pages_browser_intent_with_store_and_capabilities, pages_palette_block_access,
 };
 pub use contributions::{
-    FLY_BUILTIN_PROVIDER, PAGES_BUILDER_CAPABILITIES, PAGES_LANDING_BLOCK_CAPABILITIES,
-    PAGES_LANDING_BLOCK_IDS, PAGES_LANDING_BLOCKS_CONTRIBUTION_ID, PAGES_METADATA_CAPABILITIES,
+    FLY_BUILTIN_PROVIDER, FLY_BUILTIN_PROVIDER_VERSION, PAGES_BUILDER_CAPABILITIES,
+    PAGES_LANDING_BLOCK_CAPABILITIES, PAGES_LANDING_BLOCK_IDS,
+    PAGES_LANDING_BLOCKS_CONTRIBUTION_ID, PAGES_METADATA_CAPABILITIES,
     PAGES_METADATA_COMPONENT_TYPE, PAGES_METADATA_CONTRIBUTION_ID,
     PAGES_METADATA_PROPERTY_EDITOR_ID, PAGES_MODULE_ID, PAGES_OWNER_PROVIDER,
-    build_pages_admin_contribution_registry, pages_admin_contribution_policy,
-    pages_contribution_manifest, pages_landing_blocks_contribution, pages_metadata_contribution,
-    pages_metadata_property_schema,
+    PAGES_OWNER_PROVIDER_VERSION, build_pages_admin_contribution_registry,
+    pages_admin_contribution_policy, pages_contribution_manifest,
+    pages_landing_blocks_contribution, pages_metadata_contribution, pages_metadata_property_schema,
 };
 pub use fly_browser::BrowserIntentEnvelope;
 
