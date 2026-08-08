@@ -1,11 +1,11 @@
 # M6 replay mode contract
 
-Status: `source_complete_targeted_application_host_guard_pending`.
+Status: `source_complete_targeted_host_guard_transport_pending`.
 
 This contract keeps `Full`, `Targeted` and `Shadow` on separate execution surfaces without changing the existing
 durable replay runner, job, checkpoint, cancellation, locale or lease state machines. Shadow has guarded
-schema-wide/exact-locale transport. Targeted now has one bounded application mutation executor over the canonical
-exact-key load contract, but no server host dispatch or public transport yet.
+schema-wide/exact-locale transport. Targeted has a bounded application mutation executor, canonical PostgreSQL
+runtime composition and request-bound server host dispatch, but no public transport yet.
 
 ## Mode identity
 
@@ -76,9 +76,21 @@ the stable `index_inbox` delivery identity, so exact retry after a partial mutat
 ordinary `Duplicate` / `StaleIgnored` behavior without a Targeted checkpoint. Retained source evidence covers the
 mutation-1-applied / mutation-2-failed-once window and exact retry convergence.
 
-The Targeted executor owns no database handle itself and has no job, checkpoint, lease, worker, cancellation,
-scheduler, retry/requeue or partition state. PostgreSQL/runtime materialization and request-bound server host
-authorization are deliberately separate next steps.
+## Targeted PostgreSQL composition and host dispatch
+
+`materialize_postgres_index_replay_runtime` constructs one
+`IndexReplayTargetedExecutor<PostgresMutationStore>` from the same frozen source registry, immutable schema
+registry and host database used by replay composition. `SharedIndexReplayRuntime` stores that executor beside the
+durable Full runner and exposes a dedicated `run_targeted(IndexSourceLoadRequest)` method. It does not expose a
+generic mode switch.
+
+The server's existing `IndexReplayOperatorRuntime` adds a dedicated `run_targeted` method. It requires the exact
+request tenant to equal the request-bound operator tenant and requires the same effective `modules:manage`
+permission snapshot used by Full before delegating to `SharedIndexReplayRuntime::run_targeted`.
+
+This composition does not create a Targeted job, checkpoint, lease, worker, heartbeat, cancellation state,
+graceful-stop path, scheduler registration or retry/requeue owner. The database handle remains encapsulated by the
+shared runtime and mutation store.
 
 ## Shadow host dispatch
 
@@ -134,7 +146,8 @@ The mode contract composes already-retained boundaries rather than duplicating t
 
 - Full: durable fenced replay job/checkpoint runner, optional canonical locale and page lease-heartbeat policy;
 - Targeted: `IndexSourceLoadRequest`, active-schema requested-key admission, `SharedIndexSourceRegistry::load`,
-  full-batch replay preflight and `IndexReplayMutationSink` stable delivery application;
+  full-batch replay preflight, `IndexReplayMutationSink` stable delivery application, PostgreSQL mutation-store
+  composition and request-bound `modules:manage` host dispatch;
 - Shadow: locale-aware `IndexReplayDryRunRequest` / `SharedIndexReplayDryRunRuntime` bounded side-effect-free scan
   validation, guarded by the server replay operator and transported only through sealed caller-carried
   continuation.
@@ -145,9 +158,8 @@ Partition replay remains blocked until a real partition-capable source can filte
 
 This slice does not add:
 
-- Targeted PostgreSQL/runtime materialization or request-bound host dispatch;
 - Targeted GraphQL/HTTP/CLI/admin transport;
-- Targeted jobs/checkpoints/leases/cancellation or automatic retry/requeue;
+- Targeted jobs/checkpoints/leases/cancellation, graceful-stop semantics or automatic retry/requeue;
 - Shadow persistence or shadow tables;
 - a generic caller-controlled mode selector;
 - token-format version families or legacy continuation decoders;
@@ -157,14 +169,14 @@ This slice does not add:
 
 ## Next source boundary
 
-The explicit mode identity, bounded Targeted application executor, guarded Shadow host dispatch and
-schema-wide/exact-locale Shadow transport are source-complete. The next independent Targeted boundary is
-PostgreSQL/runtime composition plus request-bound server host dispatch. It should assemble the existing
-`PostgresMutationStore` as `IndexReplayMutationSink`, expose Targeted only through the same exact tenant/effective
-`modules:manage` operator authority as Full/Shadow, and keep jobs/checkpoints/leases/cancellation/retry ownership
-absent.
+The explicit mode identity, bounded Targeted application executor, PostgreSQL Targeted composition, guarded
+Targeted/Shadow host dispatch and schema-wide/exact-locale Shadow transport are source-complete.
 
-Public Targeted transport remains separate until that guarded host capability is source-complete.
+The next independent Targeted boundary is a dedicated authorization-first public transport. It must authorize the
+request-bound tenant/actor before parsing untrusted exact targets, build only the canonical bounded
+`IndexSourceLoadRequest`, delegate solely to `IndexReplayOperatorRuntime::run_targeted`, expose bounded counters,
+and keep source names, workers, jobs/checkpoints, leases, cancellation, retry/requeue, partition scope and generic
+mode selection unavailable to callers.
 
 Execution/admission remains maintainer-owned. Rust tests, Node verifiers, database scenarios and CI for this source
 slice were not executed by the implementation agent.

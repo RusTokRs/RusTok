@@ -71,6 +71,7 @@ const scripts = [
   'verify-index-replay-dry-run.mjs',
   'verify-index-replay-mode-contract.mjs',
   'verify-index-replay-targeted-application.mjs',
+  'verify-index-replay-targeted-host-dispatch.mjs',
   'verify-index-replay-shadow-host-dispatch.mjs',
   'verify-index-replay-shadow-graphql-transport.mjs',
   'verify-index-replay-page-interruption.mjs',

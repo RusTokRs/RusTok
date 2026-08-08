@@ -127,32 +127,35 @@ for (const forbidden of [
 }
 
 requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
-  'Status: `source_complete_host_guard_pending`.',
+  'Status: `source_complete_host_guard_transport_pending`.',
   '`IndexReplayTargetedExecutor`',
   'requested key admission',
   'Missing requested keys',
   'does not infer deletion',
   'source-owned mutation event UUID',
   'does not add a checkpoint for partial progress',
-  'PostgreSQL/runtime composition plus request-bound server host dispatch',
+  '## PostgreSQL/runtime composition',
+  'dedicated authorization-first Targeted public transport',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_targeted_application_host_guard_pending`.',
+  'Status: `source_complete_targeted_host_guard_transport_pending`.',
   '## Targeted mutation application',
   '`IndexReplayTargetedExecutor`',
   'validates requested keys against the active schema',
   'Missing requested keys are allowed',
-  'PostgreSQL/runtime materialization and request-bound server host',
+  '## Targeted PostgreSQL composition and host dispatch',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
+  'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
   '[M6 Targeted Replay Mutation Application](./m6-targeted-replay-mutation-application.md)',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-targeted-application.mjs'",
+  "'verify-index-replay-targeted-host-dispatch.mjs'",
 ]);
 
-console.log('[verify-index-replay-targeted-application] Targeted validates exact keys before load, preflights the whole batch, and converges exact retry without Full job/checkpoint ownership');
+console.log('[verify-index-replay-targeted-application] Targeted application remains storage-neutral, validates exact keys before load, preflights the whole batch, and converges exact retry while host composition is guarded separately');
