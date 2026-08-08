@@ -55,12 +55,43 @@ for (const forbidden of [
 
 requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'mod replay_mode;',
+  'mod targeted_replay;',
   'IndexReplayExecutionSurface, IndexReplayMode, IndexReplayModeSelection',
+  'IndexReplayTargetedError, IndexReplayTargetedExecutor, IndexReplayTargetedOutcome',
 ]);
+
+const targetedPath = 'crates/rustok-index/src/application/targeted_replay.rs';
+const targeted = requireMarkers(targetedPath, [
+  'pub struct IndexReplayTargetedExecutor<M>',
+  'IndexReplayModeSelection::Targeted(request) => request',
+  '.load(request)',
+  'let mut event_ids = BTreeSet::<Uuid>::new();',
+  'self.schemas.validate_mutation(mutation)',
+  '.apply_replay_mutation(self.schemas.as_ref(), &source_name, mutation)',
+  'missing_count: requested_count - mutation_count',
+]);
+for (const forbidden of [
+  'PostgresIndexReplayJobStore',
+  'PostgresIndexReplayCheckpointStore',
+  'DatabaseConnection',
+  'request_cancel(',
+  'tokio::spawn',
+  'partition_key',
+]) {
+  if (targeted.includes(forbidden)) {
+    fail(`${targetedPath} must stay bounded and independent of durable Full ownership: ${forbidden}`);
+  }
+}
 
 const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = read(runnerPath);
-for (const forbidden of ['IndexReplayMode::Targeted', 'IndexReplayMode::Shadow', 'TargetedLoad', 'SideEffectFreeScan']) {
+for (const forbidden of [
+  'IndexReplayMode::Targeted',
+  'IndexReplayMode::Shadow',
+  'IndexReplayTargetedExecutor',
+  'TargetedLoad',
+  'SideEffectFreeScan',
+]) {
   if (runner.includes(forbidden)) {
     fail(`${runnerPath} must remain the durable Full-scan runner: ${forbidden}`);
   }
@@ -109,18 +140,19 @@ requireMarkers('apps/server/src/graphql/index_replay.rs', [
 ]);
 
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_locale_transport_execution_pending`.',
+  'Status: `source_complete_targeted_application_host_guard_pending`.',
   '`Full` — cursor-based durable source scan',
   '`Targeted` — bounded exact-key source load',
   '`Shadow` — side-effect-free cursor scan',
-  'Mode is not locale scope and is not future partition scope.',
   'returns true only for `Full`',
-  'must not alias the Full durable job/checkpoint identity',
+  '## Targeted mutation application',
+  '`IndexReplayTargetedExecutor`',
+  'Missing requested keys are allowed',
   '`Shadow` host dispatch is source-complete',
   '`runIndexReplayShadow` is a dedicated transport',
   'Locale-safe continuation and dry-run execution',
   'one current unversioned envelope',
-  'bounded mutation-application',
+  'PostgreSQL/runtime composition plus request-bound server host dispatch',
   'Execution/admission remains maintainer-owned.',
 ]);
 
@@ -131,7 +163,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
+  'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
   'Add partition replay scope only after a real partition-capable source contract exists.',
 ]);
 
-console.log('[verify-index-replay-mode-contract] Full stays durable, Targeted stays bounded-load-only, and Shadow executes schema-wide or exact-locale only through the no-write sealed surface');
+console.log('[verify-index-replay-mode-contract] Full stays durable, Targeted has bounded exact-key mutation application without durable ownership, and Shadow remains no-write/sealed');
