@@ -89,7 +89,7 @@
       "accepted authenticated inline authoring HTTP/browser evidence",
       "accepted anonymous storefront authoring-exclusion evidence",
       "accepted provider degraded-profile behavior without fabricated health",
-      "accepted four-profile rollout runtime matrix bound to the exact browser predecessor source/deployment with verified settings restoration",
+      "accepted four-profile rollout runtime matrix bound to the exact browser predecessor source, API deployment RepoDigest and standalone-admin origin hash with verified settings restoration",
       "accepted four-profile standalone browser-intent preflight behavior using server-owned rollout flags",
       "maintainer owner sign-off and explicit rollback decision"
     ],
@@ -125,7 +125,8 @@
     "output_status": "four_profile_runtime_matrix_passed_owner_review_pending",
     "automatic_acceptance": false,
     "settings_restore_required": true,
-    "provider_health_claim": "unobserved"
+    "provider_health_claim": "unobserved",
+    "provenance_binding": "browser_predecessor_source_plus_api_repo_digest_plus_standalone_admin_origin_hash"
   },
   "current_boundary": {
     "source_gate": "ready",
