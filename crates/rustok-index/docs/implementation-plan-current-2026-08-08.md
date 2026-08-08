@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked at `main@b56af903141e77a3b3aab0eba5623e16e77078c8` and continued on
-`agent/index-replay-targeted-host-dispatch-20260808`.
+Status overlay rechecked at `main@d0557dbeb34c86184b4eeae83f93145ebd53c558` and continued on
+`agent/index-replay-targeted-graphql-transport-20260809`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -112,7 +112,7 @@ register a key3 Product source/factory. Runtime dual-read compatibility remains 
 tenant/actor context and effective `modules:manage`, rejects cross-tenant run requests and derives cancel tenant
 from that context.
 
-`SharedIndexReplayRuntime` now contains two distinct mutation-capable execution surfaces assembled from the same
+`SharedIndexReplayRuntime` contains two distinct mutation-capable execution surfaces assembled from the same
 frozen source/schema registries and host database:
 
 - durable Full through `PostgresIndexReplayRunner`;
@@ -128,33 +128,45 @@ Targeted host dispatch creates no replay job/checkpoint, lease, heartbeat, worke
 graceful-stop path, scheduler registration or automatic retry/requeue owner. It preserves source event UUIDs as
 the existing `index_inbox` delivery identity and relies on ordinary duplicate/stale semantics for exact retry.
 
-The GraphQL layer still exposes three source-complete command surfaces:
+The GraphQL layer now exposes four source-complete dedicated command surfaces:
 
 - schema-wide or exact-locale durable `runIndexReplay`;
+- bounded exact-key `runIndexReplayTargeted`;
 - schema-wide or exact-locale no-write `runIndexReplayShadow`;
 - durable `cancelIndexReplay`.
 
-There is deliberately no Targeted public transport in the current slice. Authorization occurs before parsing
-untrusted schema, Full/Shadow locale, Shadow continuation or job input on the existing GraphQL surfaces.
+There is no caller-controlled generic replay mode. Authorization occurs before custom parsing untrusted Full
+schema/locale, Targeted schema/entity/locale, Shadow schema/locale/continuation or cancel job input.
 
-Caller durable run input contains only module/entity/schema key plus one optional bounded locale. Tenant, actor,
+Caller durable Full input contains only module/entity/schema key plus one optional bounded locale. Tenant, actor,
 worker ID, source name, partition, scheduler handle, replay resource budget, stop handle and shutdown flag remain
 server-owned or unavailable. Locale is canonicalized through `LocaleKey` after authorization. Omission remains
-exactly schema-wide; it is not rewritten from schema locale defaults. Each durable run creates a server-owned
-worker identity and applies fixed transport caps: 100 mutations per page, at most 8 pages, heartbeat every page
-and a 60-second lease.
+exactly schema-wide. Each Full run creates a server-owned worker identity and applies fixed transport caps: 100
+mutations per page, at most 8 pages, heartbeat every page and a 60-second lease.
+
+Caller Targeted input contains one module/entity/schema routing identity plus `targets`. Each target contains only
+an entity UUID and optional locale. Target count is bounded to 1..=256 before per-key parsing. Each locale is
+canonicalized through `LocaleKey` and the transport constructs only `IndexSourceLoadRequest` using the authenticated
+tenant and one parsed schema. Canonical duplicate keys fail closed, including locale aliases such as `EN-us` and
+`en-US`. GraphQL delegates only to `IndexReplayOperatorRuntime::run_targeted` and does not expose source name,
+worker/page budget, job/checkpoint, lease, cancellation, retry/requeue, scheduler or partition controls.
+
+The Targeted payload contains only requested, returned mutation, missing, applied, duplicate and stale-ignored
+counts. `IndexReplayTargetedOutcome::source_name` remains internal. Missing source keys remain counts only; the
+transport never synthesizes deletes. Unknown/unregistered schemas and active-schema invalid targets are bad user
+input, while source/batch/persistence failures remain generic internal command errors.
 
 Caller Shadow input contains only module/entity/schema key plus one optional bounded locale and one optional
 bounded sealed continuation. It has no source name, raw source cursor, worker, page/max-page budget, job,
 checkpoint, lease, cancellation, retry or scheduler fields. Locale is canonicalized through the same `LocaleKey`
-contract only after request-bound authorization. The server uses the same fixed 100-page-size / 8-page invocation
+contract only after request-bound authorization. The server uses the fixed 100-page-size / 8-page invocation
 budget, repeats exact tenant authorization, and derives one exact frozen continuation/dry-run scope:
 
 - schema-wide -> `IndexSourceContinuationScope::from_registry` + `IndexReplayDryRunRequest::new`;
 - exact locale -> `IndexSourceContinuationScope::for_locale` + `IndexReplayDryRunRequest::for_locale`.
 
 Incoming continuation is opened under that scope before a raw source cursor is reconstructed. The no-write runtime
-rejects exact-locale execution for `LocaleMode::None`, constructs every actual scan through the matching
+rejects exact-locale execution for `LocaleMode::None`, constructs every actual scan through matching
 `IndexSourceScanRequest::new` or `for_locale`, calls the existing source registry, and seals any outgoing cursor
 under the same scope before GraphQL serialization.
 
@@ -170,11 +182,9 @@ Retained durable command source evidence includes schema-wide command behavior, 
 and a dedicated locale yield/isolation/fresh-runtime resume packet. Shadow source evidence retains
 authorization-first schema/locale/continuation preparation, exact schema-wide/locale dry-run scope selection,
 `LocaleMode` fail-closed admission, sealed non-durable resume routing and locale-safe continuation identity.
-Schema-wide/exact-locale Shadow execution and admission remain maintainer-owned.
-
-Targeted application, PostgreSQL mutation-sink composition and request-bound host authorization are source-complete.
-The next independent Targeted boundary is a dedicated authorization-first public transport over
-`IndexReplayOperatorRuntime::run_targeted`.
+Targeted source evidence retains authorization-first exact-target preparation, canonical per-key locale identity,
+1..=256 bounds, duplicate canonical-key rejection and guarded host delegation. Execution/admission remains
+maintainer-owned.
 
 ## M6 replay graceful interruption and server lifecycle binding
 
@@ -297,10 +307,15 @@ non-nil/unique event IDs and complete schema validation, then applies source-own
 `IndexReplayMutationSink`. Missing keys are counted and never reinterpreted as synthetic deletes. Partial mutation
 failure is retried through ordinary stable inbox identity rather than a Targeted checkpoint.
 
-`materialize_postgres_index_replay_runtime` now assembles that executor with `PostgresMutationStore` beside the
-Full runner inside `SharedIndexReplayRuntime`. `IndexReplayOperatorRuntime::run_targeted` applies the same exact
+`materialize_postgres_index_replay_runtime` assembles that executor with `PostgresMutationStore` beside the Full
+runner inside `SharedIndexReplayRuntime`. `IndexReplayOperatorRuntime::run_targeted` applies the same exact
 request-bound `modules:manage` authorization used by Full before Targeted source/mutation execution. This adds no
 Targeted job/checkpoint/lease/cancel/scheduler/retry owner.
+
+`runIndexReplayTargeted` is now the dedicated authorization-first Targeted transport. It keeps tenant/actor
+server-owned, accepts one schema plus exact entity/locale targets, builds only the canonical
+`IndexSourceLoadRequest`, and delegates only to the guarded Targeted host method. Its payload does not expose
+source routing or any durable/lifecycle controls.
 
 The server guards `Shadow` through `IndexReplayOperatorRuntime::run_shadow`, using the same exact request-bound
 `modules:manage` authorization check. Schema-wide/exact-locale GraphQL Shadow transport sits on one sealed
@@ -308,9 +323,9 @@ continuation adapter and does not reinterpret the durable `runIndexReplay` comma
 checkpoints.
 
 The explicit mode identity, bounded Targeted application executor, Targeted PostgreSQL/runtime composition,
-request-bound Targeted/Shadow host dispatch, schema-wide/exact-locale Shadow GraphQL transport and locale-safe
-Shadow continuation identity are source-complete. Dedicated Targeted public transport remains source-open.
-Maintainer execution and admission are not claimed.
+request-bound Targeted/Shadow host dispatch, dedicated Targeted GraphQL transport, schema-wide/exact-locale Shadow
+GraphQL transport and locale-safe Shadow continuation identity are source-complete. Maintainer execution and
+admission are not claimed.
 
 ## Remaining Storefront parity/evidence blockers
 
@@ -358,9 +373,9 @@ Maintainer execution and admission are not claimed.
 - [x] Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.
 - [x] Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.
 - [x] Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.
-- [ ] Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.
+- [x] Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
-- [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
+- [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence, including Targeted exact-key behavior.
 - [ ] Execute/admit schema-wide/exact-locale Shadow GraphQL transport and continuation-key deployment evidence.
 - [ ] Execute/admit retained graceful interruption/restart and GraphQL shutdown evidence.
 - [ ] Execute/admit retained dependency pending-future timeout evidence.
@@ -404,19 +419,21 @@ M7 Storefront remains execution/admission-gated and must not gain a traffic swit
 The locale request/source/job/checkpoint/runner/GraphQL identity chain, dependency timeout set,
 page-duration/lease-heartbeat policy, deterministic multi-host/restart evidence, explicit Full/Targeted/Shadow
 mode identity, bounded Targeted application executor, Targeted PostgreSQL/runtime composition, guarded
-Targeted/Shadow host dispatch, schema-wide/exact-locale Shadow GraphQL transport and locale-safe source continuation
-identity are source-complete. Their retained packets still require maintainer execution/admission.
+Targeted/Shadow host dispatch, dedicated Targeted GraphQL transport, schema-wide/exact-locale Shadow GraphQL
+transport and locale-safe source continuation identity are source-complete. Their retained packets still require
+maintainer execution/admission.
 
 Partition replay remains blocked: no real partition-capable source contract can yet filter a partition before
 pagination, so do not merely populate `partition_key`.
 
-For source-only M6 continuation, the next independent boundary is a dedicated authorization-first Targeted GraphQL
-transport over `IndexReplayOperatorRuntime::run_targeted`. Request tenant/actor must remain server-owned and
-`modules:manage` must be checked before parsing untrusted schema/entity/locale targets. The transport must build
-only the canonical bounded `IndexSourceLoadRequest`, preserve exact per-key locale identity, delegate only to the
-guarded Targeted host method, and return bounded counters/failures. Do not expose source name, generic mode,
-worker/page budget, job/checkpoint, lease, cancellation, retry/requeue, scheduler or partition controls, and do not
-infer deletes from missing keys.
+There is no remaining independent source-only M6 replay expansion justified by the current contract. The next M6
+steps are maintainer execution/admission of the concrete repair packet and replay transports/evidence. Further
+source changes should follow a concrete defect discovered by executed evidence. Partition replay remains blocked
+until a real partition-capable source can filter before pagination.
+
+M5 typed Product event work remains gated by canonical event-contract digest admission. M7 serving cutover remains
+gated by retained evidence execution/admission. Do not bypass those owner gates by adding parallel compatibility,
+mode, transport or traffic-switch surfaces.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

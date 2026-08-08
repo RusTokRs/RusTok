@@ -16,6 +16,7 @@ use crate::services::index_replay_runtime_composition::{
     IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
     IndexReplayShadowOperatorError, IndexReplayShadowTransportError,
     IndexReplayShadowTransportOutcome, IndexReplayShadowTransportRuntime,
+    IndexReplayTargetedOperatorError,
 };
 use crate::services::rbac_request_scope::permissions_for;
 
@@ -23,6 +24,7 @@ const MAX_SCHEMA_IDENTIFIER_BYTES: usize = 128;
 const MAX_SCHEMA_VERSION_BYTES: usize = 10;
 const MAX_LOCALE_BYTES: usize = 32;
 const MAX_CONTINUATION_BYTES: usize = 16 * 1024;
+const MAX_TARGETED_KEYS: usize = 256;
 const GRAPHQL_REPLAY_PAGE_LIMIT: usize = 100;
 const GRAPHQL_REPLAY_MAX_PAGES: usize = 8;
 const GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES: usize = 1;
@@ -38,6 +40,25 @@ pub struct IndexReplayRunInput {
     pub entity_name: String,
     pub schema_version: String,
     pub locale: Option<String>,
+}
+
+/// One exact Targeted replay key. Tenant and schema are inherited from the authorized command.
+#[derive(Debug, Clone, InputObject)]
+pub struct IndexReplayTargetedKeyInput {
+    pub entity_id: String,
+    pub locale: Option<String>,
+}
+
+/// Untrusted input for one bounded exact-key Targeted replay invocation.
+///
+/// Tenant and actor are server-owned. Source identity, generic mode, jobs, checkpoints, leases,
+/// cancellation, retry and scheduler controls are deliberately not caller fields.
+#[derive(Debug, Clone, InputObject)]
+pub struct IndexReplayTargetedRunInput {
+    pub module_name: String,
+    pub entity_name: String,
+    pub schema_version: String,
+    pub targets: Vec<IndexReplayTargetedKeyInput>,
 }
 
 /// Untrusted input for one bounded schema-wide or exact-locale Shadow validation run.
@@ -99,6 +120,31 @@ impl TryFrom<rustok_index::IndexReplayRunOutcome> for IndexReplayRunPayload {
             job_id: outcome.job_id(),
             pages_processed: bounded_count(outcome.pages_processed())?,
             mutations_processed: bounded_count(outcome.mutation_count())?,
+            applied_count: bounded_count(outcome.applied_count())?,
+            duplicate_count: bounded_count(outcome.duplicate_count())?,
+            stale_count: bounded_count(outcome.stale_count())?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct IndexReplayTargetedRunPayload {
+    pub requested_count: i32,
+    pub mutations_processed: i32,
+    pub missing_count: i32,
+    pub applied_count: i32,
+    pub duplicate_count: i32,
+    pub stale_count: i32,
+}
+
+impl TryFrom<rustok_index::IndexReplayTargetedOutcome> for IndexReplayTargetedRunPayload {
+    type Error = FieldError;
+
+    fn try_from(outcome: rustok_index::IndexReplayTargetedOutcome) -> Result<Self, Self::Error> {
+        Ok(Self {
+            requested_count: bounded_count(outcome.requested_count())?,
+            mutations_processed: bounded_count(outcome.mutation_count())?,
+            missing_count: bounded_count(outcome.missing_count())?,
             applied_count: bounded_count(outcome.applied_count())?,
             duplicate_count: bounded_count(outcome.duplicate_count())?,
             stale_count: bounded_count(outcome.stale_count())?,
@@ -229,6 +275,28 @@ impl IndexReplayMutation {
             .try_into()
     }
 
+    /// Run one bounded exact-key Targeted replay invocation.
+    async fn run_index_replay_targeted(
+        &self,
+        ctx: &Context<'_>,
+        input: IndexReplayTargetedRunInput,
+    ) -> GraphqlResult<IndexReplayTargetedRunPayload> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+
+        let (operator_context, request) =
+            prepare_authorized_targeted_run(tenant.id, auth.user_id, input)
+                .map_err(map_preparation_error)?;
+        let runtime = replay_runtime(ctx)?;
+        runtime
+            .run_targeted(operator_context, request)
+            .await
+            .map_err(map_targeted_operator_error)?
+            .try_into()
+    }
+
     /// Run one server-bounded schema-wide or exact-locale side-effect-free Shadow validation chunk.
     async fn run_index_replay_shadow(
         &self,
@@ -338,6 +406,40 @@ fn prepare_authorized_run(
     .map_err(|_| IndexReplayTransportPreparationError::InvalidInput {
         field: "schema_version",
     })?;
+    Ok((context, request))
+}
+
+fn prepare_authorized_targeted_run(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    input: IndexReplayTargetedRunInput,
+) -> std::result::Result<
+    (IndexReplayOperatorContext, rustok_index::IndexSourceLoadRequest),
+    IndexReplayTransportPreparationError,
+> {
+    let context = authorize(tenant_id, actor_id)?;
+    let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;
+    if input.targets.is_empty() || input.targets.len() > MAX_TARGETED_KEYS {
+        return Err(IndexReplayTransportPreparationError::InvalidInput { field: "targets" });
+    }
+
+    let mut keys = Vec::with_capacity(input.targets.len());
+    for target in input.targets {
+        let entity_id = Uuid::parse_str(bounded_text("entity_id", &target.entity_id, 64)?)
+            .map_err(|_| IndexReplayTransportPreparationError::InvalidInput {
+                field: "entity_id",
+            })?;
+        let locale = parse_locale(target.locale)?;
+        keys.push(rustok_index::EntityKey {
+            tenant_id,
+            schema: schema.clone(),
+            entity_id,
+            locale,
+        });
+    }
+
+    let request = rustok_index::IndexSourceLoadRequest::new(keys)
+        .map_err(|_| IndexReplayTransportPreparationError::InvalidInput { field: "targets" })?;
     Ok((context, request))
 }
 
@@ -497,6 +599,36 @@ fn map_operator_error(error: IndexReplayOperatorError) -> FieldError {
     }
 }
 
+fn map_targeted_operator_error(error: IndexReplayTargetedOperatorError) -> FieldError {
+    match error {
+        IndexReplayTargetedOperatorError::Authorization(error) => map_operator_error(error),
+        IndexReplayTargetedOperatorError::Targeted(error) => map_targeted_error(error),
+    }
+}
+
+fn map_targeted_error(error: rustok_index::IndexReplayTargetedError) -> FieldError {
+    match error {
+        rustok_index::IndexReplayTargetedError::UnknownSchemaSource(_)
+        | rustok_index::IndexReplayTargetedError::SchemaNotRegistered(_) => {
+            <FieldError as GraphQLError>::bad_user_input("Unknown Index replay schema")
+        }
+        rustok_index::IndexReplayTargetedError::InvalidTarget { .. } => {
+            FieldError::new("Invalid Index replay Targeted target").extend_with(|_, extensions| {
+                extensions.set("code", "BAD_USER_INPUT");
+                extensions.set("input_field", "targets");
+            })
+        }
+        rustok_index::IndexReplayTargetedError::WrongMode { .. }
+        | rustok_index::IndexReplayTargetedError::Source(_)
+        | rustok_index::IndexReplayTargetedError::NilEventId { .. }
+        | rustok_index::IndexReplayTargetedError::DuplicateEventId { .. }
+        | rustok_index::IndexReplayTargetedError::InvalidMutation { .. }
+        | rustok_index::IndexReplayTargetedError::Mutation { .. } => {
+            <FieldError as GraphQLError>::internal_error("Index replay Targeted command failed")
+        }
+    }
+}
+
 fn map_shadow_transport_error(error: IndexReplayShadowTransportError) -> FieldError {
     match error {
         IndexReplayShadowTransportError::Authorization(error) => map_operator_error(error),
@@ -598,9 +730,10 @@ mod tests {
     use super::{
         GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES, GRAPHQL_REPLAY_LEASE_SECONDS,
         GRAPHQL_REPLAY_MAX_PAGES, GRAPHQL_REPLAY_PAGE_LIMIT, MAX_CONTINUATION_BYTES,
-        IndexReplayCancelInput, IndexReplayRunInput, IndexReplayShadowRunInput,
+        MAX_TARGETED_KEYS, IndexReplayCancelInput, IndexReplayRunInput,
+        IndexReplayShadowRunInput, IndexReplayTargetedKeyInput, IndexReplayTargetedRunInput,
         IndexReplayTransportPreparationError, prepare_authorized_cancel, prepare_authorized_run,
-        prepare_authorized_shadow_run,
+        prepare_authorized_shadow_run, prepare_authorized_targeted_run,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
@@ -610,6 +743,18 @@ mod tests {
             entity_name: "product".to_owned(),
             schema_version: "zero".to_owned(),
             locale: Some("not a locale!!!".to_owned()),
+        }
+    }
+
+    fn malformed_targeted_run() -> IndexReplayTargetedRunInput {
+        IndexReplayTargetedRunInput {
+            module_name: "Rustok Product".to_owned(),
+            entity_name: "product".to_owned(),
+            schema_version: "zero".to_owned(),
+            targets: vec![IndexReplayTargetedKeyInput {
+                entity_id: "not-a-uuid".to_owned(),
+                locale: Some("not a locale!!!".to_owned()),
+            }],
         }
     }
 
@@ -650,6 +795,171 @@ mod tests {
         .await
         .expect_err("modules:read must fail before replay input parsing");
         assert_eq!(forbidden, IndexReplayTransportPreparationError::Forbidden);
+    }
+
+    #[tokio::test]
+    async fn targeted_transport_authorizes_before_schema_entity_and_locale_parsing() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+
+        let missing = with_rbac_request_scope(None, async {
+            prepare_authorized_targeted_run(tenant_id, actor_id, malformed_targeted_run())
+        })
+        .await
+        .expect_err("missing authority must win over malformed Targeted input");
+        assert_eq!(
+            missing,
+            IndexReplayTransportPreparationError::MissingRequestAuthority
+        );
+
+        let forbidden = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            async {
+                prepare_authorized_targeted_run(tenant_id, actor_id, malformed_targeted_run())
+            },
+        )
+        .await
+        .expect_err("modules:read must fail before Targeted input parsing");
+        assert_eq!(forbidden, IndexReplayTransportPreparationError::Forbidden);
+    }
+
+    #[tokio::test]
+    async fn targeted_transport_builds_bounded_canonical_exact_keys_after_authorization() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let first_id = Uuid::new_v4();
+        let second_id = Uuid::new_v4();
+        let (_, request) = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            async {
+                prepare_authorized_targeted_run(
+                    tenant_id,
+                    actor_id,
+                    IndexReplayTargetedRunInput {
+                        module_name: "rustok-product".to_owned(),
+                        entity_name: "product".to_owned(),
+                        schema_version: "4".to_owned(),
+                        targets: vec![
+                            IndexReplayTargetedKeyInput {
+                                entity_id: first_id.to_string(),
+                                locale: Some("EN-us".to_owned()),
+                            },
+                            IndexReplayTargetedKeyInput {
+                                entity_id: second_id.to_string(),
+                                locale: Some("de".to_owned()),
+                            },
+                        ],
+                    },
+                )
+            },
+        )
+        .await
+        .expect("authorized Targeted request should parse");
+
+        assert_eq!(request.tenant_id(), tenant_id);
+        assert_eq!(request.schema().module.as_str(), "rustok-product");
+        assert_eq!(request.schema().entity.as_str(), "product");
+        assert_eq!(request.schema().version.get(), 4);
+        assert_eq!(request.keys().len(), 2);
+        assert_eq!(request.keys()[0].entity_id, first_id);
+        assert_eq!(request.keys()[0].locale.as_ref().map(|locale| locale.as_str()), Some("en-US"));
+        assert_eq!(request.keys()[1].entity_id, second_id);
+        assert_eq!(request.keys()[1].locale.as_ref().map(|locale| locale.as_str()), Some("de"));
+    }
+
+    #[tokio::test]
+    async fn targeted_transport_rejects_empty_oversized_and_duplicate_target_sets_after_authorization() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::MODULES_MANAGE],
+            UserRole::Admin,
+        );
+
+        let empty = with_rbac_request_scope(Some(scope.clone()), async {
+            prepare_authorized_targeted_run(
+                tenant_id,
+                actor_id,
+                IndexReplayTargetedRunInput {
+                    module_name: "rustok-product".to_owned(),
+                    entity_name: "product".to_owned(),
+                    schema_version: "4".to_owned(),
+                    targets: Vec::new(),
+                },
+            )
+        })
+        .await
+        .expect_err("empty Targeted set must fail closed");
+        assert_eq!(
+            empty,
+            IndexReplayTransportPreparationError::InvalidInput { field: "targets" }
+        );
+
+        let oversized_targets = (0..=MAX_TARGETED_KEYS)
+            .map(|position| IndexReplayTargetedKeyInput {
+                entity_id: Uuid::from_u128((position + 1) as u128).to_string(),
+                locale: None,
+            })
+            .collect();
+        let oversized = with_rbac_request_scope(Some(scope.clone()), async {
+            prepare_authorized_targeted_run(
+                tenant_id,
+                actor_id,
+                IndexReplayTargetedRunInput {
+                    module_name: "rustok-product".to_owned(),
+                    entity_name: "product".to_owned(),
+                    schema_version: "4".to_owned(),
+                    targets: oversized_targets,
+                },
+            )
+        })
+        .await
+        .expect_err("oversized Targeted set must fail before per-key parsing");
+        assert_eq!(
+            oversized,
+            IndexReplayTransportPreparationError::InvalidInput { field: "targets" }
+        );
+
+        let duplicate_id = Uuid::new_v4();
+        let duplicate = with_rbac_request_scope(Some(scope), async {
+            prepare_authorized_targeted_run(
+                tenant_id,
+                actor_id,
+                IndexReplayTargetedRunInput {
+                    module_name: "rustok-product".to_owned(),
+                    entity_name: "product".to_owned(),
+                    schema_version: "4".to_owned(),
+                    targets: vec![
+                        IndexReplayTargetedKeyInput {
+                            entity_id: duplicate_id.to_string(),
+                            locale: Some("EN-us".to_owned()),
+                        },
+                        IndexReplayTargetedKeyInput {
+                            entity_id: duplicate_id.to_string(),
+                            locale: Some("en-US".to_owned()),
+                        },
+                    ],
+                },
+            )
+        })
+        .await
+        .expect_err("canonical duplicate Targeted key must fail closed");
+        assert_eq!(
+            duplicate,
+            IndexReplayTransportPreparationError::InvalidInput { field: "targets" }
+        );
     }
 
     #[tokio::test]
