@@ -43,6 +43,8 @@ The original settings are restored through `updateModuleSettings` inside `finall
 
 ## Four profiles
 
+The four profiles are source-declared in one fixed order and must all complete before an output packet is retained.
+
 The matrix covers exactly:
 
 - `all_on`: builder/preview/properties/publish enabled; provider state remains `unobserved` because no health telemetry is claimed;
