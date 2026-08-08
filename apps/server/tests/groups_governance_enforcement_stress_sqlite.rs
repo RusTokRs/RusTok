@@ -239,11 +239,12 @@ async fn governance_enforcement_fanout_contention_is_deadlock_free_sqlite() {
         let mut task_pairs = Vec::with_capacity(TARGETS_PER_ROUND);
 
         for (index, target_id) in targets.iter().copied().enumerate() {
-            let role_url = url.clone();
+            let role_db = connect(&url).await;
+            let suspension_db = connect(&url).await;
+
             let role_barrier = barrier.clone();
             let role_task = tokio::spawn(async move {
-                let db = connect(&role_url).await;
-                let service = GroupGovernanceService::new(db);
+                let service = GroupGovernanceService::new(role_db);
                 role_barrier.wait().await;
                 GroupGovernanceCommandPort::change_group_role(
                     &service,
@@ -261,11 +262,9 @@ async fn governance_enforcement_fanout_contention_is_deadlock_free_sqlite() {
                 .await
             });
 
-            let suspension_url = url.clone();
             let suspension_barrier = barrier.clone();
             let suspension_task = tokio::spawn(async move {
-                let db = connect(&suspension_url).await;
-                let service = GroupMembershipEnforcementCommandService::new(db);
+                let service = GroupMembershipEnforcementCommandService::new(suspension_db);
                 suspension_barrier.wait().await;
                 GroupMembershipEnforcementCommandPort::suspend_membership(
                     &service,
