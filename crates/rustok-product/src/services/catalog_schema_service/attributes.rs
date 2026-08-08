@@ -5,14 +5,15 @@ use super::{
     ProductCatalogSchemaService, load_attribute_write_definition, map_schema_resolution_error,
     uuid_filter_values, validate_locale,
 };
-use chrono::{DateTime, NaiveDate, Utc};
-use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
 use crate::services::catalog::types::validate_product_attribute_filters;
+use crate::services::catalog_attribute_terms::{
+    ProductAttributeFilterValue, parse_product_attribute_filter_value,
+};
 use crate::services::{
     ProductAttributeFilter, ProductAttributeTermError, ProductAttributeTermExpr,
     ProductResolvedAttributeFilter, product_attribute_boolean_term, product_attribute_date_term,
@@ -324,7 +325,8 @@ async fn load_storefront_filter_definitions(
     filters: &[ProductAttributeFilter],
 ) -> CommerceResult<HashMap<String, StorefrontAttributeFilterDefinitionRow>> {
     let backend = db.get_database_backend();
-    let mut values = vec![tenant_id.into()];
+    let mut values = Vec::<sea_orm::Value>::with_capacity(filters.len() + 1);
+    values.push(tenant_id.into());
     let placeholders = filters
         .iter()
         .enumerate()
@@ -369,63 +371,41 @@ async fn resolve_storefront_filter_predicate(
     requested_locale: &str,
     fallback_locale: &str,
 ) -> CommerceResult<ProductAttributeTermExpr> {
-    let term = match value_type {
-        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext
-            if definition.is_localized =>
-        {
+    let value = parse_product_attribute_filter_value(
+        definition.code.as_str(),
+        value_type,
+        raw_value,
+    )?;
+    let term = match value {
+        ProductAttributeFilterValue::Text(value) if definition.is_localized => {
             return product_attribute_localized_text_expr(
                 definition.id,
                 requested_locale,
                 fallback_locale,
-                raw_value,
+                value.as_str(),
             )
             .map_err(|error| map_term_error(definition.code.as_str(), error));
         }
-        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext => {
-            product_attribute_text_term(definition.id, raw_value)
+        ProductAttributeFilterValue::Text(value) => {
+            product_attribute_text_term(definition.id, value.as_str())
         }
-        AttributeValueType::Integer => {
-            let value = raw_value
-                .parse::<i64>()
-                .map_err(|_| invalid_typed_value(definition.code.as_str(), "integer", raw_value))?;
+        ProductAttributeFilterValue::Integer(value) => {
             product_attribute_integer_term(definition.id, value)
         }
-        AttributeValueType::Decimal => {
-            let value = raw_value
-                .parse::<Decimal>()
-                .map_err(|_| invalid_typed_value(definition.code.as_str(), "decimal", raw_value))?;
+        ProductAttributeFilterValue::Decimal(value) => {
             product_attribute_decimal_term(definition.id, value)
         }
-        AttributeValueType::Boolean => {
-            let value = match raw_value.to_ascii_lowercase().as_str() {
-                "true" | "1" => true,
-                "false" | "0" => false,
-                _ => {
-                    return Err(invalid_typed_value(
-                        definition.code.as_str(),
-                        "boolean",
-                        raw_value,
-                    ));
-                }
-            };
+        ProductAttributeFilterValue::Boolean(value) => {
             product_attribute_boolean_term(definition.id, value)
         }
-        AttributeValueType::Date => {
-            let value = NaiveDate::parse_from_str(raw_value, "%Y-%m-%d").map_err(|_| {
-                invalid_typed_value(definition.code.as_str(), "date (YYYY-MM-DD)", raw_value)
-            })?;
+        ProductAttributeFilterValue::Date(value) => {
             product_attribute_date_term(definition.id, value)
         }
-        AttributeValueType::Datetime => {
-            let value = DateTime::parse_from_rfc3339(raw_value)
-                .map(|value| value.with_timezone(&Utc))
-                .map_err(|_| {
-                    invalid_typed_value(definition.code.as_str(), "RFC3339 datetime", raw_value)
-                })?;
+        ProductAttributeFilterValue::Datetime(value) => {
             product_attribute_datetime_term(definition.id, value)
         }
-        AttributeValueType::Select | AttributeValueType::Multiselect => {
-            let option_id = match Uuid::parse_str(raw_value) {
+        ProductAttributeFilterValue::Option(raw_value) => {
+            let option_id = match Uuid::parse_str(raw_value.as_str()) {
                 Ok(option_id) if option_id.is_nil() => return Ok(ProductAttributeTermExpr::Never),
                 Ok(option_id) => option_id,
                 Err(_) => {
@@ -433,7 +413,7 @@ async fn resolve_storefront_filter_predicate(
                         db,
                         tenant_id,
                         definition.id,
-                        raw_value,
+                        raw_value.as_str(),
                     )
                     .await?
                     else {
@@ -443,12 +423,6 @@ async fn resolve_storefront_filter_predicate(
                 }
             };
             product_attribute_option_term(definition.id, option_id)
-        }
-        AttributeValueType::Json => {
-            return Err(CommerceError::Validation(format!(
-                "attribute {} uses json and cannot be used in attribute_filters",
-                definition.code
-            )));
         }
     }
     .map_err(|error| map_term_error(definition.code.as_str(), error))?;
@@ -462,17 +436,23 @@ async fn load_active_option_id(
     attribute_id: Uuid,
     code: &str,
 ) -> CommerceResult<Option<Uuid>> {
+    let backend = db.get_database_backend();
+    let tenant = storefront_sql_placeholder(backend, 1);
+    let attribute = storefront_sql_placeholder(backend, 2);
+    let code_placeholder = storefront_sql_placeholder(backend, 3);
     let row = StorefrontAttributeFilterOptionRow::find_by_statement(Statement::from_sql_and_values(
-        db.get_database_backend(),
-        r#"
-        SELECT id
-        FROM product_attribute_options
-        WHERE tenant_id = $1
-          AND attribute_id = $2
-          AND archived_at IS NULL
-          AND code = $3
-        LIMIT 1
-        "#,
+        backend,
+        format!(
+            r#"
+            SELECT id
+            FROM product_attribute_options
+            WHERE tenant_id = {tenant}
+              AND attribute_id = {attribute}
+              AND archived_at IS NULL
+              AND code = {code_placeholder}
+            LIMIT 1
+            "#
+        ),
         vec![tenant_id.into(), attribute_id.into(), code.to_string().into()],
     ))
     .one(db)
@@ -485,12 +465,6 @@ fn storefront_sql_placeholder(backend: DbBackend, index: usize) -> String {
         DbBackend::Sqlite => "?".to_string(),
         _ => format!("${index}"),
     }
-}
-
-fn invalid_typed_value(code: &str, expected: &str, value: &str) -> CommerceError {
-    CommerceError::Validation(format!(
-        "attribute filter {code} expects {expected}, received `{value}`"
-    ))
 }
 
 fn map_term_error(code: &str, error: ProductAttributeTermError) -> CommerceError {
