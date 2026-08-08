@@ -56,14 +56,16 @@ impl IndexSource for StableSinglePageSource {
                 links: Vec::new(),
             },
         };
-        IndexSourcePage::new(&request, vec![mutation], None)
+        Ok(IndexSourcePage::new(&request, vec![mutation], None)
+            .expect("stable single-page source should satisfy scan contract"))
     }
 
     async fn load(
         &self,
         request: IndexSourceLoadRequest,
     ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
-        IndexSourceLoadBatch::new(&request, Vec::new())
+        Ok(IndexSourceLoadBatch::new(&request, Vec::new())
+            .expect("empty targeted load should satisfy source contract"))
     }
 }
 
@@ -320,7 +322,7 @@ async fn host_stop_after_durable_mutation_before_checkpoint_replays_as_duplicate
     assert_eq!(
         scalar_i64(
             &fixture.db,
-            "SELECT COUNT(*) AS value FROM index_checkpoints WHERE checkpoint_kind = 'rebuild' AND json_type(cursor) = 'null'",
+            "SELECT COUNT(*) AS value FROM index_checkpoints WHERE checkpoint_kind = 'rebuild' AND CAST(cursor AS TEXT) = 'null'",
         )
         .await,
         1,
