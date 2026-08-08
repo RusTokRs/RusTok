@@ -11,7 +11,7 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{EntityKey, IndexMutation, SchemaIdentity, SchemaRef};
+use crate::domain::{EntityKey, IndexMutation, LocaleKey, SchemaIdentity, SchemaRef};
 
 use super::IndexSchemaSourceCatalog;
 
@@ -68,14 +68,40 @@ impl<'de> Deserialize<'de> for IndexSourceCursor {
 pub struct IndexSourceScanRequest {
     tenant_id: Uuid,
     schema: SchemaRef,
+    locale: Option<LocaleKey>,
     cursor: Option<IndexSourceCursor>,
     limit: usize,
 }
 
 impl IndexSourceScanRequest {
+    /// Construct the existing schema-wide scan request.
     pub fn new(
         tenant_id: Uuid,
         schema: SchemaRef,
+        cursor: Option<IndexSourceCursor>,
+        limit: usize,
+    ) -> Result<Self, IndexSourceError> {
+        Self::new_scoped(tenant_id, schema, None, cursor, limit)
+    }
+
+    /// Construct an exact-locale scan request.
+    ///
+    /// The caller owns schema `LocaleMode` admission. Once this request reaches a source, the
+    /// returned page is fail-closed: every mutation must carry exactly this canonical locale.
+    pub fn for_locale(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: LocaleKey,
+        cursor: Option<IndexSourceCursor>,
+        limit: usize,
+    ) -> Result<Self, IndexSourceError> {
+        Self::new_scoped(tenant_id, schema, Some(locale), cursor, limit)
+    }
+
+    fn new_scoped(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: Option<LocaleKey>,
         cursor: Option<IndexSourceCursor>,
         limit: usize,
     ) -> Result<Self, IndexSourceError> {
@@ -91,6 +117,7 @@ impl IndexSourceScanRequest {
         Ok(Self {
             tenant_id,
             schema,
+            locale,
             cursor,
             limit,
         })
@@ -102,6 +129,10 @@ impl IndexSourceScanRequest {
 
     pub fn schema(&self) -> &SchemaRef {
         &self.schema
+    }
+
+    pub fn locale(&self) -> Option<&LocaleKey> {
+        self.locale.as_ref()
     }
 
     pub fn cursor(&self) -> Option<&IndexSourceCursor> {
@@ -497,7 +528,7 @@ impl fmt::Debug for SharedIndexSourceRegistry {
         formatter
             .debug_struct("SharedIndexSourceRegistry")
             .field("source_count", &self.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -635,6 +666,8 @@ pub enum IndexSourceError {
     ScanBatchTooLarge { actual: usize, max: usize },
     #[error("Index source scan mutation at position {position} escapes the requested tenant/schema")]
     ScanMutationScopeMismatch { position: usize },
+    #[error("Index source scan mutation at position {position} escapes the requested locale")]
+    ScanMutationLocaleMismatch { position: usize },
     #[error("Index source scan mutation at position {position} duplicates an entity key")]
     DuplicateScanMutationKey { position: usize },
     #[error("Index source scan returned an empty page with a continuation cursor")]
@@ -701,6 +734,11 @@ fn validate_scan_page(
         let key = mutation.key();
         if key.tenant_id != request.tenant_id || key.schema != request.schema {
             return Err(IndexSourceError::ScanMutationScopeMismatch { position });
+        }
+        if let Some(locale) = request.locale.as_ref()
+            && key.locale.as_ref() != Some(locale)
+        {
+            return Err(IndexSourceError::ScanMutationLocaleMismatch { position });
         }
         if !keys.insert(key.clone()) {
             return Err(IndexSourceError::DuplicateScanMutationKey { position });
@@ -817,6 +855,24 @@ mod tests {
     #[test]
     fn source_materialization_requires_exact_schema_owner() {
         let mut schemas = IndexSchemaSourceCatalog::new();
+        schemas.register("catalog", schema(1)).unwrap();
+        let mut sources = IndexSourceCatalog::new();
+        sources
+            .register("product", "product-primary", [schema_ref(1)], NoopSource)
+            .unwrap();
+
+        let error = sources
+            .materialize(&schemas)
+            .expect_err("source owner must equal schema owner");
+        assert!(matches!(
+            error,
+            IndexSourceError::SourceSchemaOwnerMismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn source_materialization_builds_runtime_registry() {
+        let mut schemas = IndexSchemaSourceCatalog::new();
         schemas.register("product", schema(1)).unwrap();
 
         let mut sources = IndexSourceCatalog::new();
@@ -868,6 +924,22 @@ mod tests {
             MAX_SCAN_BATCH_SIZE + 1,
         )
         .is_err());
+    }
+
+    #[test]
+    fn locale_scan_request_preserves_exact_canonical_scope() {
+        let locale = LocaleKey::new("EN_us").unwrap();
+        let request = IndexSourceScanRequest::for_locale(
+            Uuid::new_v4(),
+            schema_ref(1),
+            locale.clone(),
+            None,
+            10,
+        )
+        .unwrap();
+
+        assert_eq!(request.locale(), Some(&locale));
+        assert_eq!(request.locale().unwrap().as_str(), "en-US");
     }
 
     #[test]
