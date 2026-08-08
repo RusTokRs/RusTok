@@ -24,6 +24,7 @@ const adminLibPath = "crates/rustok-forum/admin/src/lib.rs";
 const appRouterPath = "apps/server/src/services/app_router.rs";
 const dockerfilePath = "apps/server/Dockerfile";
 const releaseDockerfilePath = "apps/server/Dockerfile.release";
+const releaseWorkflowPath = ".github/workflows/release.yml";
 const packetPath =
   "docs/modules/forum-page-builder-serverfn-deployment-attestation-actualization-2026-08-08.md";
 
@@ -35,6 +36,7 @@ const adminLib = read(adminLibPath);
 const appRouter = read(appRouterPath);
 const dockerfile = read(dockerfilePath);
 const releaseDockerfile = read(releaseDockerfilePath);
+const releaseWorkflow = read(releaseWorkflowPath);
 const packet = read(packetPath);
 
 if (contract.status !== "source_ready_maintainer_execution_pending") {
@@ -57,6 +59,9 @@ if (contract.deployment_identity?.cryptographic_origin_to_repo_digest_binding_cl
 }
 if (contract.deployment_identity?.origin_to_repo_digest_binding_is_maintainer_reviewed_external_fact !== true) {
   throw new Error("origin-to-RepoDigest binding must stay an external reviewed fact");
+}
+if (contract.deployment_identity?.canonical_release_passes_github_sha_as_oci_revision !== true) {
+  throw new Error("deployment contract must retain canonical release revision wiring");
 }
 if (
   !contract.retained_data?.includes(
@@ -91,7 +96,18 @@ for (const pending of [
     throw new Error(`deployment contract must keep ${pending} unclaimed`);
   }
 }
-for (const source of [runnerPath, verifierPath, previewTransportPath, propertyTransportPath, adminLibPath, appRouterPath, dockerfilePath, releaseDockerfilePath, packetPath]) {
+for (const source of [
+  runnerPath,
+  verifierPath,
+  previewTransportPath,
+  propertyTransportPath,
+  adminLibPath,
+  appRouterPath,
+  dockerfilePath,
+  releaseDockerfilePath,
+  releaseWorkflowPath,
+  packetPath,
+]) {
   if (!contract.required_source_files?.includes(source)) {
     throw new Error(`deployment contract must hash ${source}`);
   }
@@ -194,6 +210,14 @@ for (const [label, source] of [
   ]) {
     requireContains(source, marker, `${label} missing source-revision binding ${marker}`);
   }
+}
+for (const marker of [
+  '--build-arg "OCI_REVISION=$GITHUB_SHA"',
+  '--metadata-file image-build-metadata.json',
+  '--provenance=mode=max',
+  'subject-digest: ${{ steps.image-metadata.outputs.digest }}',
+]) {
+  requireContains(releaseWorkflow, marker, `canonical release workflow missing ${marker}`);
 }
 
 for (const marker of [
