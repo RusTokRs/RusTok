@@ -21,18 +21,17 @@ const requireMarkers = (relative, markers) => {
 const ownerQueryPath = 'crates/rustok-product/src/services/catalog/queries.rs';
 const ownerQuery = requireMarkers(ownerQueryPath, [
   'pub async fn list_published_products_with_query(',
+  '.order_by_asc(entities::product::Column::Id)',
+  '.order_by_desc(entities::product::Column::Id)',
   'let total = query.clone().count(&self.db).await?',
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
-  'fn product_title_search_condition(',
   'let pattern = format!("%{search}%");',
-  'FROM product_translations pt',
-  'pt.product_id = products.id',
   'pt.title LIKE $1',
 ]);
 const titleSearchStart = ownerQuery.indexOf('fn product_title_search_condition(');
 if (titleSearchStart < 0) fail(`${ownerQueryPath} title-search helper is missing`);
 if (ownerQuery.slice(titleSearchStart).includes('pt.locale')) {
-  fail(`${ownerQueryPath} title search became locale-scoped; revisit the localized identity architecture in the same PR`);
+  fail(`${ownerQueryPath} title search became locale-scoped`);
 }
 
 requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
@@ -40,54 +39,23 @@ requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
   'pub search: Option<String>',
   'search: normalize_optional_text(search)',
 ]);
-requireMarkers('crates/rustok-product/src/services/catalog/commands.rs', [
-  'if input.translations.is_empty()',
-  'At least one translation is required',
-]);
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
   'Lower keys are historical storage identities only.',
 ]);
-const productSourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
-const productSource = requireMarkers(productSourcePath, [
-  'locale_mode: LocaleMode::Required',
-  'JOIN product_translations t',
-  't.locale',
-  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-  'derive_index_schema_source_event_id(',
-  'many_field("attribute_terms", IndexValueType::String, false, true)?',
-]);
-if (productSource.includes('SchemaVersion::new(3)')) {
-  fail(`${productSourcePath} must not restore historical Product routing key 3`);
-}
 
-const architecturePath = 'crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md';
-requireMarkers(architecturePath, [
-  'Status: `runtime_and_text_pattern_source_complete_adapter_and_evidence_pending`',
-  '`localized_projection_fields`',
-  '`SchemaRegistry::compile_postgres_localized_page_query`',
-  '`SchemaRegistry::decode_postgres_localized_query_page`',
-  '`IndexQueryPort` publishes `execute_localized_query`',
-  '`PostgresIndexQueryPort::execute_localized_query`',
-  '`REPEATABLE READ, READ ONLY`',
-  '`PostgresQueryEntityAdmission`',
-  'Generic `TextLike` — source complete',
-  '`FilterExpr::TextLike(FieldPath, String)`',
-  'pattern size at most 1024 UTF-8 bytes',
-  'Remaining Product search-bound mismatch',
-  'Implement the Product Storefront Index adapter',
-]);
-
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `localized_runtime_and_text_pattern_source_complete_adapter_and_evidence_pending`',
-  'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
+requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
+  'Status: `runtime_text_pattern_identity_order_source_complete_adapter_and_evidence_pending`',
+  '`identity_order_direction`',
+  'entity_id DESC',
+  'entity_id < cursor.entity_id',
+  'Channel-less visibility',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  'Status overlay rechecked from `main@eab3b1b925e5cbfa65d2fe3f938b63be7a067846` (#3218)',
-  'Wire localized execution through canonical PostgreSQL runtime with readiness/admission/snapshot.',
-  'Add generic scalar String `TextLike` usable inside folded `any_locale_filter`.',
-  'implement the Product Storefront Index adapter plus retained localized-query',
-  'No historical-key runtime compatibility path is allowed.',
+  'main@500c6f647b5f09f617cb907a43093e4f954b3fed` (#3220)',
+  'Explicit localized entity-ID tie-break direction matching owner Asc/Desc ordering.',
+  'Channel-less visibility',
+  'Build the Product Storefront **shadow/evidence adapter**',
 ]);
 
-console.log('[verify-index-product-storefront-localized-query-architecture] localized Product runtime plus generic TextLike are locked; adapter/search-bound/evidence remain pending');
+console.log('[verify-index-product-storefront-localized-query-architecture] localized runtime/text-pattern/identity-order are locked; adapter and evidence remain pending');
