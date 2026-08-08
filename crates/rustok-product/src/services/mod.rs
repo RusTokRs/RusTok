@@ -12,8 +12,9 @@ mod write_transaction;
 
 pub use catalog::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
-    ProductAttributeFilter, StorefrontProductList, StorefrontProductListItem,
-    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+    MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, StorefrontProductList,
+    StorefrontProductListItem, StorefrontProductListQuery, StorefrontProductSortBy,
+    StorefrontProductSortDirection,
 };
 pub use catalog_attribute_terms::{
     ProductAttributeTermError, ProductAttributeTermExpr, ProductResolvedAttributeFilter,

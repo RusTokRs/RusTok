@@ -1,6 +1,6 @@
 # M7 Product Storefront Index parity gate
 
-Status: `core_eav_and_retained_key4_packets_source_complete_execution_pending`.
+Status: `search_bound_source_complete_collation_evidence_pending`.
 
 ## Current boundary
 
@@ -8,10 +8,28 @@ Mounted Storefront remains owner-native and continues to execute
 `CatalogService::list_published_products_with_query`. No Index traffic switch is part of this state.
 
 The Product-owned EAV resolver, pure localized shadow builder and non-serving owner-first shadow executor are
-source-complete. Two current-key PostgreSQL owner-vs-shadow Storefront packets are retained in source: the
-localized core packet and a separate EAV packet. Historical retained Product PostgreSQL packets are also
-source-actualized to Product routing key `4`. None of those packets has been executed or admitted by the
-implementation agent.
+source-complete. Current-key core/EAV Storefront PostgreSQL packets and the historical retained Product
+PostgreSQL packet set are retained in source on Product routing key `4`. They have **not** been executed or
+admitted by the implementation agent.
+
+## Product-owned Storefront search bound — source complete
+
+Product now owns `MAX_STOREFRONT_PRODUCT_SEARCH_BYTES = 1022` as the authoritative effective title-search
+input bound, measured in UTF-8 bytes after whitespace normalization. The owner SQL wraps the effective search
+as `%{search}%`; the two ASCII wildcard bytes make the resulting pattern exactly representable by the generic
+Index `TextLike` maximum of 1024 bytes.
+
+`StorefrontProductListQuery::try_new*` validates the normalized input, and
+`CatalogService::list_published_products_with_query` validates again immediately before constructing owner
+SQL. The second check is deliberate because the query struct has public fields and may be constructed without
+its helpers. Over-bound input is rejected; it is never truncated.
+
+The Index shadow builder imports the same Product-owned constant through
+`rustok_product::services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES`. Distribution no longer owns a duplicate
+Product-specific pattern bound. A manually constructed over-bound owner query remains fail-closed in shadow
+translation. Generic Index validation continues to own the independent 1024-byte `TextLike` pattern contract.
+
+This closes the source-level search-length mismatch only. It does not establish PostgreSQL collation parity.
 
 ## Product-owned EAV resolution and shadow execution
 
@@ -44,74 +62,53 @@ serving projection must map that null state only after Product page identity/ord
 ## EAV PostgreSQL packet — source complete, execution pending
 
 `storefront_shadow_eav_postgres_tests.rs` is a separate crate-internal opt-in packet on routing key `4`.
-Its clean fixture seeds real active/filterable Product attributes, active options and value rows before the
-first Index materialization, then uses the real Product resolver and shadow executor side-by-side.
-
-The packet retains source scenarios for:
-
-- nonlocalized integer term (`weight=7`);
-- requested localized text (`label=Punainen`);
-- requested-locale-present fallback suppression plus requested-missing fallback (`label=Red` admits B, not A);
-- Select exact option code (`color=red` / `color=blue`);
-- direct Select option UUID;
-- Multiselect exact option code (`features=wifi`);
-- missing option code -> Product `Never` -> empty owner/Index result;
-- nil option UUID -> Product `Never` -> empty owner/Index result;
-- owner/Index ordered identity list, exact count and page-boundary agreement for every scenario.
+It retains nonlocalized integer, localized requested/fallback, Select exact option code, direct option UUID,
+Multiselect exact option code and missing/nil option `Never` behavior, including owner/Index identity/count
+agreement.
 
 The EAV fixture deliberately does not call `save_product_attribute_values`: Product EAV owner-clock command
-semantics already have a separate retained gate. This packet isolates query resolution/materialization parity
-from command-publication evidence.
+semantics have a separate retained gate, so query resolution/materialization failures remain attributable.
 
 ## Historical retained Product packets — key 4 source actualized
 
-The following retained PostgreSQL fixtures now use the current Product routing key `4` while preserving their
-existing scenario semantics:
+The retained Product locale-absence, materialized-freshness, Product/Channel convergence, Channel
+identity-transition and linked-target recreate/availability/replay packets use current Product routing key
+`4` while preserving their scenarios. ProductVariant stays on key `2`, SalesChannel stays on key `1`, and no
+Product key-3 compatibility path exists.
 
-- `product_locale_absence_postgres.rs`;
-- `product_materialized_query_freshness_postgres.rs`;
-- `product_channel_convergence_postgres.rs`;
-- `product_channel_identity_transitions_postgres.rs`;
-- `product_linked_target_recreate_postgres.rs`;
-- `product_linked_target_availability_equivalence_postgres.rs`;
-- `product_linked_target_replay_redelivery_postgres.rs`.
-
-They continue to build the real distribution schema/source registries, so current Product materialization is
-against the 15-field key-4 contract rather than a test-only compatibility schema. ProductVariant stays on key
-`2`, SalesChannel stays on key `1`, and no Product key-3 runtime alias exists.
-
-`verify-index-product-postgres-key4-fixtures.mjs` locks that boundary. Actualization is source maintenance,
-not proof that the packets pass; execution/review remains a maintainer gate.
+`verify-index-product-postgres-key4-fixtures.mjs` locks that boundary. Source actualization does not claim that
+the packets pass; execution/review remains a maintainer gate.
 
 ## Remaining fail-closed parity/evidence gates
 
-1. Maintainer execution/review of the Storefront core/EAV packets and actualized retained Product packets;
-   source presence is not evidence admission.
-2. Search-length mismatch: owner search is not explicitly bounded while Index `TextLike` is capped at 1024
-   UTF-8 bytes.
-3. Owner/default PostgreSQL collation vs Index deterministic `COLLATE "C"`.
-4. Channel-less owner requests mean metadata-unrestricted only; current `sales_channel_ids` cannot represent
+1. Maintainer execution/review of the Storefront core/EAV and actualized retained Product PostgreSQL packets.
+2. Owner/default PostgreSQL `pt.title LIKE $1` collation vs Index deterministic `COLLATE "C"`.
+3. Channel-less owner requests mean metadata-unrestricted only; current `sales_channel_ids` cannot represent
    that distinction exactly.
-5. Owner page depth exceeds the Index 10,000 offset bound.
-6. Final Storefront projection must map no-localized-row null title/handle to owner placeholders.
-7. Taxonomy tag names must be hydrated only after Product page identity/order/count is fixed.
-8. Shadow execution has no serving latency/deadline policy and remains non-serving.
-9. Stale locale/readiness/admission/restart cases still need maintainer-executed retained Storefront evidence.
+4. Owner page depth exceeds the Index 10,000 offset bound.
+5. Final Storefront projection must map no-localized-row null title/handle to owner placeholders.
+6. Taxonomy tag names must be hydrated only after Product page identity/order/count is fixed.
+7. Shadow execution has no serving latency/deadline policy and remains non-serving.
+8. Stale locale/readiness/admission/restart cases still require maintainer-executed retained evidence.
 
 ## Next source slice
 
-Establish an authoritative Product Storefront title-search length contract compatible with bounded Index
-`TextLike`. Do not silently truncate owner-valid input. After that contract is source-aligned, retain explicit
-PostgreSQL evidence for owner/default title `LIKE` collation versus deterministic Index `COLLATE "C"`.
+Retain explicit PostgreSQL collation evidence for owner all-translations `pt.title LIKE $1` versus Index
+`TextLike` compiled with deterministic `COLLATE "C"`. Include ASCII, non-ASCII/case-sensitive and
+wildcard/escape cases. Do not weaken deterministic Index collation merely to match one deployment's database
+default; if the owner deployment collation cannot preserve equivalence, keep the cutover fail-closed and make
+the deployment/owner contract explicit.
 
 ## Source guards
 
 - `verify-product-storefront-attribute-filter-terms.mjs` locks Product-owned EAV resolution;
+- `verify-product-storefront-search-bound.mjs` locks the Product-owned 1022-byte effective search bound and
+  proves that adding the two owner LIKE wildcards equals the generic 1024-byte Index `TextLike` bound;
 - `verify-index-product-storefront-shadow-adapter.mjs` locks Product-term -> localized query translation;
 - `verify-index-product-storefront-shadow-executor.mjs` locks owner-first non-serving execution;
 - `verify-index-product-storefront-equivalence-postgres-packet.mjs` locks the core current-key packet;
 - `verify-index-product-storefront-eav-equivalence-postgres-packet.mjs` locks the EAV current-key packet;
-- `verify-index-product-postgres-key4-fixtures.mjs` locks all actualized retained Product packets on key `4`;
+- `verify-index-product-postgres-key4-fixtures.mjs` locks actualized retained Product packets on key `4`;
 - `verify-index-product-storefront-parity-gate.mjs` keeps mounted Storefront owner-native.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or

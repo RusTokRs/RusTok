@@ -27,12 +27,21 @@ for (const forbidden of ['rustok_index', 'SharedIndexQueryRuntime', 'execute_loc
   if (storefront.includes(forbidden)) fail(`${storefrontPath} contains forbidden marker ${forbidden}`);
 }
 
+const typesPath = 'crates/rustok-product/src/services/catalog/types.rs';
+requireMarkers(typesPath, [
+  'pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;',
+  'search: normalize_storefront_product_search(search)?',
+  'pub(crate) fn validate_storefront_product_search(',
+  'search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
+]);
+
 const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
 const owner = requireMarkers(ownerPath, [
   'ProductStatus::Active',
   'Column::PublishedAt.is_not_null()',
   'product_channel_visibility_condition(',
   'attribute_filters::load_catalog_attribute_filter_conditions(',
+  'types::validate_storefront_product_search(list_query.search.as_deref())?;',
   'product_title_search_condition(',
   'let total = query.clone().count(&self.db).await?',
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
@@ -43,6 +52,13 @@ const owner = requireMarkers(ownerPath, [
 ]);
 const titleSearch = owner.slice(owner.indexOf('fn product_title_search_condition('));
 if (titleSearch.includes('pt.locale')) fail(`${ownerPath} title search became locale-scoped`);
+const ownerValidation = owner.indexOf(
+  'types::validate_storefront_product_search(list_query.search.as_deref())?;',
+);
+const ownerSql = owner.indexOf('let mut query = entities::product::Entity::find()');
+if (ownerValidation < 0 || ownerSql <= ownerValidation) {
+  fail(`${ownerPath} must validate Storefront search before constructing owner SQL`);
+}
 
 requireMarkers('crates/rustok-product/src/catalog_schema_read_port.rs', [
   'ProductStorefrontAttributeFilterResolutionRequest',
@@ -54,6 +70,11 @@ requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', 
   'pub struct ProductResolvedAttributeFilter',
   'product_attribute_localized_text_expr(',
   'ProductAttributeTermExpr::Never',
+]);
+requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow.rs', [
+  'services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
+  'if search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
+  'FilterExpr::TextLike(root_field("title")?, pattern)',
 ]);
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs', [
   'pub(crate) struct ProductStorefrontIndexShadowExecutor',
@@ -87,6 +108,12 @@ const productIndex = requireMarkers(productIndexPath, [
 ]);
 if (productIndex.includes('SchemaVersion::new(3)')) fail(`${productIndexPath} restored historical key 3`);
 
+requireMarkers('scripts/verify/verify-product-storefront-search-bound.mjs', [
+  'MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022',
+  'MAX_TEXT_LIKE_PATTERN_BYTES: usize = 1024',
+  'ownerBytes + 2 !== indexBytes',
+  'reject over-bound input rather than truncate it',
+]);
 requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs', [
   'product_locale_absence_postgres.rs',
   'product_materialized_query_freshness_postgres.rs',
@@ -100,15 +127,14 @@ requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `core_eav_and_retained_key4_packets_source_complete_execution_pending`',
+  'Status: `search_bound_source_complete_collation_evidence_pending`',
   'Mounted Storefront remains owner-native',
+  'Product-owned Storefront search bound — source complete',
+  '`MAX_STOREFRONT_PRODUCT_SEARCH_BYTES = 1022`',
   'Core PostgreSQL packet — source complete, execution pending',
   'EAV PostgreSQL packet — source complete, execution pending',
   'Historical retained Product packets — key 4 source actualized',
-  'routing key `4`',
-  'missing option code',
-  'nil option UUID',
-  'placeholder',
+  'Owner/default PostgreSQL `pt.title LIKE $1` collation',
   'ProductVariant stays on key',
   'SalesChannel stays on key',
 ]);
@@ -117,7 +143,8 @@ requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-product-storefront-search-bound.mjs'",
   "'verify-index-product-postgres-key4-fixtures.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; Storefront core/EAV and retained Product PostgreSQL packets are source-aligned on key 4 while execution/admission and policy gates remain pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; Product search length is source-aligned with TextLike while collation, execution/admission and remaining serving-policy gates stay pending');
