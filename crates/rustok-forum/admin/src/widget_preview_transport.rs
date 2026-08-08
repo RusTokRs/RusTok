@@ -22,6 +22,7 @@ pub struct ForumWidgetPreviewTransportRequest {
 pub struct ForumPageBuilderTransportAttestationResponse {
     pub challenge: String,
     pub contract: String,
+    pub source_commit: Option<String>,
     pub module_id: String,
     pub owner_provider: String,
     pub owner_version: String,
@@ -125,6 +126,14 @@ fn validate_attestation_challenge(challenge: &str) -> Result<(), ServerFnError> 
 }
 
 #[cfg(feature = "ssr")]
+fn deployed_source_commit() -> Option<String> {
+    let value = std::env::var("RUSTOK_SOURCE_COMMIT").ok()?;
+    let value = value.trim();
+    (value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| value.to_ascii_lowercase())
+}
+
+#[cfg(feature = "ssr")]
 fn build_transport_attestation(
     challenge: String,
 ) -> ForumPageBuilderTransportAttestationResponse {
@@ -140,6 +149,7 @@ fn build_transport_attestation(
     ForumPageBuilderTransportAttestationResponse {
         challenge,
         contract: FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT.to_string(),
+        source_commit: deployed_source_commit(),
         module_id: manifest.module_id,
         owner_provider: manifest.owner_provider,
         owner_version: manifest.owner_version,
@@ -158,7 +168,8 @@ fn build_transport_attestation(
 /// tenant/auth middleware, the shared effective `forum_topics:read` gate, exact tenant-module
 /// enablement, the Forum admin host runtime (including its transactional event bus), and the
 /// Forum-owned widget contract catalog. It returns only stable contract identity plus the caller's
-/// bounded challenge; it never reads or returns Forum topic/reply data.
+/// bounded challenge and canonical runtime source revision when the production image supplied one;
+/// it never reads or returns Forum topic/reply data.
 #[server(prefix = "/api/fn", endpoint = "forum/page-builder-transport-attestation")]
 pub async fn attest_forum_page_builder_transport(
     challenge: String,
