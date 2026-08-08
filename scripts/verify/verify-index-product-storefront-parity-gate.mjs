@@ -53,6 +53,7 @@ requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', 
   'pub enum ProductAttributeTermExpr',
   'pub struct ProductResolvedAttributeFilter',
   'product_attribute_localized_text_expr(',
+  'ProductAttributeTermExpr::Never',
 ]);
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs', [
   'pub(crate) struct ProductStorefrontIndexShadowExecutor',
@@ -60,38 +61,45 @@ requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_e
   '.resolve_storefront_attribute_filters(',
   '.execute_localized_query(index_query)',
   'pub(crate) authoritative: StorefrontProductList',
-  'pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>',
 ]);
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
   'RUSTOK_PRODUCT_STOREFRONT_EQUIVALENCE_DATABASE_URL',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-  'ProductSalesChannelRelationResolver',
-  'ProductStorefrontIndexShadowExecutor',
   'assert_eq!(owner_c.title, "Untitled product");',
   'assert_eq!(projected_string(index_c, "title")?, None);',
+]);
+requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_eav_postgres_tests.rs', [
+  'RUSTOK_PRODUCT_STOREFRONT_EAV_EQUIVALENCE_DATABASE_URL',
+  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
+  'weight=7',
+  'label=Punainen',
+  'label=Red',
+  'color=red',
+  'features=wifi',
+  'color=missing',
+  'color=00000000-0000-0000-0000-000000000000',
 ]);
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
   'assert_eq!(schema.fields.len(), 15);',
-  'JOIN product_translations t',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-  'derive_index_schema_source_event_id(',
 ]);
 if (productIndex.includes('SchemaVersion::new(3)')) fail(`${productIndexPath} restored historical key 3`);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `core_postgres_packet_source_complete_execution_and_eav_pending`',
+  'Status: `core_and_eav_postgres_packets_source_complete_execution_pending`',
   'Mounted Storefront remains owner-native',
-  'Core PostgreSQL owner-vs-shadow packet — source complete, execution pending',
+  'Core PostgreSQL packet — source complete, execution pending',
+  'EAV PostgreSQL packet — source complete, execution pending',
   'routing key `4`',
-  'third-locale',
+  'missing option code',
+  'nil option UUID',
   'placeholder',
-  'EAV parity',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
   'Status: `source_complete_materialized_rebuild_pending`',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; current-key core owner-vs-shadow PostgreSQL packet is retained in source while execution, EAV, placeholder and policy gates remain pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; current-key core and EAV owner-vs-shadow PostgreSQL packets are retained in source while execution/admission and policy gates remain pending');
