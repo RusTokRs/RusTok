@@ -257,15 +257,22 @@ pub fn PageBuilderAdminWithController(
                 .into_any();
             }
 
-            let effective = editor_capability_evaluation
+            let host_effective = editor_capability_evaluation
                 .as_ref()
                 .map(|evaluation| evaluation.effective)
                 .or(editor_capabilities)
                 .unwrap_or_else(CapabilityState::full);
-            let preview_enabled = facade
+            let provider_status = facade
                 .as_ref()
-                .and_then(|facade| facade.provider_status())
-                .is_none_or(|status| status.preview_enabled());
+                .and_then(|facade| facade.provider_status());
+            let effective = provider_status
+                .as_ref()
+                .map(|status| status.limit_capabilities(host_effective))
+                .unwrap_or(host_effective);
+            let preview_enabled = provider_status
+                .as_ref()
+                .map(|status| status.preview_enabled())
+                .unwrap_or(true);
             contribution_assembly = Some(extension_host.merge_admin_assembly(
                 contribution_assembly,
                 contribution_capabilities(effective, preview_enabled),
