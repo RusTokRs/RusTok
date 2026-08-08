@@ -270,9 +270,10 @@ These are source-contract defects, not verification-only tasks.
 - [x] Teach Product Admin FFA lifecycle commands to retain one GraphQL caller
   idempotency key across explicit retries, then make mounted GraphQL `idempotencyKey`
   non-null/mandatory after updating current regression callers to supply explicit keys.
-- [ ] Cut remaining Product schema writes away from direct
-  `ProductCatalogSchemaService` construction through typed Product owner write
-  capabilities with explicit write idempotency semantics.
+- [ ] Complete Product schema-write durable idempotency: mounted consumers already use
+  typed Product owner write capabilities with mandatory caller identity; durable owner
+  receipts cover attribute and attribute-option creates, while category/schema/group
+  creates and update-style schema writes still need explicit owner replay semantics.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.

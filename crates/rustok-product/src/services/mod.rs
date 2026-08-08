@@ -60,3 +60,5 @@ pub use index_refresh_relay::{
     ProductIndexRefreshEventFactory, ProductIndexRefreshRelayError,
     ProductIndexRefreshRelayStep, ProductIndexRefreshRelayStepOutcome,
 };
+
+pub(crate) use write_transaction::with_product_operation_receipt;
