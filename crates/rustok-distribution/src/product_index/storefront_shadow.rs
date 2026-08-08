@@ -92,11 +92,14 @@ pub(crate) fn build_product_storefront_index_shadow_query(
 
     if owner.attribute_filters.len() > MAX_STOREFRONT_ATTRIBUTE_FILTERS
         || canonical_attribute_filters.len() != owner.attribute_filters.len()
-        || !canonical_attribute_filters
-            .iter()
-            .all(is_canonical_attribute_term_predicate)
     {
         return Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch);
+    }
+    if !canonical_attribute_filters
+        .iter()
+        .all(is_canonical_attribute_term_predicate)
+    {
+        return Err(ProductStorefrontIndexShadowError::InvalidAttributeTermPredicate);
     }
 
     let mut filters = vec![
@@ -111,9 +114,6 @@ pub(crate) fn build_product_storefront_index_shadow_query(
         ),
     ];
     if let Some(category_id) = owner.category_id {
-        if category_id.is_nil() {
-            return Err(ProductStorefrontIndexShadowError::InvalidSchemaContract);
-        }
         filters.push(FilterExpr::Eq(
             root_field("primary_category_id")?,
             IndexValue::Uuid(category_id),
@@ -249,7 +249,9 @@ mod tests {
     fn attribute_term() -> FilterExpr {
         FilterExpr::Contains(
             root_field("attribute_terms").unwrap(),
-            IndexValue::String("a:00000000-0000-0000-0000-000000000001:t:acme".to_owned()),
+            IndexValue::String(
+                "00000000-0000-0000-0000-000000000001|text||61636d65".to_owned(),
+            ),
         )
     }
 
@@ -306,6 +308,20 @@ mod tests {
                 Vec::new(),
             ),
             Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch)
+        );
+        assert_eq!(
+            build_product_storefront_index_shadow_query(
+                Uuid::new_v4(),
+                "fi",
+                "en",
+                Some(Uuid::new_v4()),
+                &owner,
+                vec![FilterExpr::Eq(
+                    root_field("attribute_terms").unwrap(),
+                    IndexValue::String("forbidden".to_owned()),
+                )],
+            ),
+            Err(ProductStorefrontIndexShadowError::InvalidAttributeTermPredicate)
         );
     }
 
