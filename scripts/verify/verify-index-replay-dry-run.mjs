@@ -111,14 +111,22 @@ requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'self.shadow.run(request).await.map_err(Into::into)',
   '.get::<rustok_index::SharedIndexReplayDryRunRuntime>()',
   'IndexReplayOperatorRuntime::new(runtime, shadow)',
+  'IndexReplayShadowTransportRuntime',
 ]);
-const graphql = read('apps/server/src/graphql/index_replay.rs');
-if (graphql.includes('SharedIndexReplayDryRunRuntime') || graphql.includes('.run_shadow(')) {
-  fail('GraphQL must not bypass the guarded Shadow operator before the dedicated transport slice');
+const graphql = read('apps/server/src/graphql/index_replay.rs').split('\n#[cfg(test)]')[0];
+for (const forbidden of ['SharedIndexReplayDryRunRuntime', 'IndexReplayDryRunRequest', '.run_shadow(']) {
+  if (graphql.includes(forbidden)) {
+    fail(`GraphQL must use only the sealed Shadow transport adapter: ${forbidden}`);
+  }
 }
+requireMarkers('apps/server/src/graphql/index_replay.rs', [
+  'async fn run_index_replay_shadow(',
+  '.get::<IndexReplayShadowTransportRuntime>()',
+  '.run_schema_wide(',
+]);
 
 requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
-  'Status: `source_complete_transport_pending`',
+  'Status: `source_complete_schema_wide_transport_execution_pending`',
   '`IndexReplayDryRunRequest`',
   '`SharedIndexReplayDryRunRuntime::run`',
   'one invocation budget from 1 through 1024 pages',
@@ -129,8 +137,8 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'No-write boundary',
   'Server-owned host guard',
   '`IndexReplayOperatorRuntime::run_shadow`',
-  'same request-bound `modules:manage` authorization boundary',
-  'GraphQL, HTTP, CLI, or admin transport surfaces for Shadow invocation',
+  '`runIndexReplayShadow`',
+  'intentionally schema-wide',
   'maintainer-run',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
@@ -142,6 +150,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-dry-run.mjs'",
   "'verify-index-replay-shadow-host-dispatch.mjs'",
+  "'verify-index-replay-shadow-graphql-transport.mjs'",
 ]);
 
-console.log('[verify-index-replay-dry-run] bounded no-write replay validation is now protected by the request-bound server operator while public transport remains separate');
+console.log('[verify-index-replay-dry-run] bounded no-write validation stays Index-owned while schema-wide GraphQL resumes only through the sealed guarded Shadow adapter');
