@@ -41,12 +41,16 @@ for (const required of [
   "async fn list_categories(",
   "async fn list_schemas(",
   "async fn read_effective_form(",
+  "async fn read_product_attribute_values(",
   "pub enum ProductEffectiveFormSubject",
   "pub struct ProductEffectiveFormRequest",
   "pub struct ProductEffectiveFormProjection",
   "pub struct ProductEffectiveFormAttributeProjection",
+  "pub struct ProductAttributeValuesRequest",
   '"product.effective_form_unavailable"',
   "product effective form is unavailable",
+  '"product.attribute_values_unavailable"',
+  "product attribute values are unavailable",
   "require_policy(PortCallPolicy::read())",
   "ProductCatalogSchemaService::list_attributes(",
   "ProductCatalogSchemaService::list_categories(",
@@ -55,6 +59,7 @@ for (const required of [
   "ProductCatalogSchemaService::load_effective_form_for_category(",
   "ProductCatalogSchemaService::load_effective_form_group_labels(",
   "ProductCatalogSchemaService::list_attribute_options(",
+  "ProductCatalogSchemaService::load_product_attribute_values(",
   '"product.attribute_definition_missing"',
   "correlation_id = %context.correlation_id",
   '"product.database_unavailable"',
@@ -79,6 +84,7 @@ for (const required of [
   "mod catalog_schema_read_port;",
   "pub use catalog_schema_read_port::{",
   "ProductCatalogSchemaReadPort",
+  "ProductAttributeValuesRequest",
   "ProductEffectiveFormAttributeProjection",
   "ProductEffectiveFormProjection",
   "ProductEffectiveFormRequest",
@@ -145,6 +151,22 @@ forbidText(
   effectiveForm,
   ".read_effective_form(",
   "productEffectiveForm must not be marked cut over by the capability-only source guard",
+);
+
+const attributeValues = resolverSlice(
+  commerceQuery,
+  "product_attribute_values",
+  "storefront_catalog_search_options",
+);
+requireText(
+  attributeValues,
+  "ProductCatalogSchemaService::new",
+  "productAttributeValues consumer cutover must remain explicit follow-up debt in this capability slice",
+);
+forbidText(
+  attributeValues,
+  ".read_product_attribute_values(",
+  "productAttributeValues must not be marked cut over by the capability-only source guard",
 );
 
 if (!process.exitCode) {

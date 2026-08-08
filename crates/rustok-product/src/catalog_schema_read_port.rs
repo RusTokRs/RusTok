@@ -7,13 +7,14 @@ use uuid::Uuid;
 use crate::services::{
     AttributeValueType, CatalogCategoryListRecord, EffectiveAttributeSource,
     ProductAttributeListRecord, ProductAttributeOptionListRecord, ProductAttributeSchemaListRecord,
-    ProductCatalogSchemaService,
+    ProductAttributeValueRecord, ProductCatalogSchemaService,
 };
 
 const LIST_ATTRIBUTES_OPERATION: &str = "list_catalog_attributes";
 const LIST_CATEGORIES_OPERATION: &str = "list_catalog_categories";
 const LIST_SCHEMAS_OPERATION: &str = "list_attribute_schemas";
 const READ_EFFECTIVE_FORM_OPERATION: &str = "read_effective_product_form";
+const READ_PRODUCT_ATTRIBUTE_VALUES_OPERATION: &str = "read_product_attribute_values";
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -50,7 +51,13 @@ pub struct ProductEffectiveFormAttributeProjection {
     pub source: EffectiveAttributeSource,
 }
 
-/// Optional Product-owned read boundary for catalog schema directory and effective-form projections.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ProductAttributeValuesRequest {
+    pub product_id: Uuid,
+}
+
+/// Optional Product-owned read boundary for catalog schema directory, effective-form,
+/// and product attribute-value projections.
 #[async_trait]
 pub trait ProductCatalogSchemaReadPort: Send + Sync {
     async fn list_attributes(
@@ -78,6 +85,19 @@ pub trait ProductCatalogSchemaReadPort: Send + Sync {
         Err(PortError::unavailable(
             "product.effective_form_unavailable",
             "product effective form is unavailable",
+        ))
+    }
+
+    /// Optional product attribute-value projection. Existing schema-directory adapters
+    /// remain source-compatible until they explicitly support this owner read.
+    async fn read_product_attribute_values(
+        &self,
+        _context: PortContext,
+        _request: ProductAttributeValuesRequest,
+    ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
+        Err(PortError::unavailable(
+            "product.attribute_values_unavailable",
+            "product attribute values are unavailable",
         ))
     }
 }
@@ -234,6 +254,24 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
             attributes,
             detached_attribute_ids: form.detached_attribute_ids,
         }))
+    }
+
+    async fn read_product_attribute_values(
+        &self,
+        context: PortContext,
+        request: ProductAttributeValuesRequest,
+    ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
+        let owner_operation = READ_PRODUCT_ATTRIBUTE_VALUES_OPERATION;
+        require_schema_read_context(&context, owner_operation)?;
+        let tenant_id = parse_tenant_id(&context, owner_operation)?;
+        ProductCatalogSchemaService::load_product_attribute_values(
+            self,
+            tenant_id,
+            request.product_id,
+            context.locale.as_str(),
+        )
+        .await
+        .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))
     }
 }
 

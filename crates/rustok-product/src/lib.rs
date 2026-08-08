@@ -28,8 +28,9 @@ pub mod services;
 
 pub use catalog_command_port::ProductCatalogCommandPort;
 pub use catalog_schema_read_port::{
-    ProductCatalogSchemaReadPort, ProductEffectiveFormAttributeProjection,
-    ProductEffectiveFormProjection, ProductEffectiveFormRequest, ProductEffectiveFormSubject,
+    ProductAttributeValuesRequest, ProductCatalogSchemaReadPort,
+    ProductEffectiveFormAttributeProjection, ProductEffectiveFormProjection,
+    ProductEffectiveFormRequest, ProductEffectiveFormSubject,
 };
 pub use error::{CommerceError, CommerceResult};
 pub use ports::*;
