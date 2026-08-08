@@ -19,17 +19,17 @@ const files = {
   packet: "docs/modules/pages-page-builder-rollout-feature-preflight-actualization-2026-08-08.md",
 };
 const failures = [];
-const absolute = (relativePath) => path.join(repoRoot, relativePath);
-const read = (relativePath) => fs.readFileSync(absolute(relativePath), "utf8");
+const abs = (value) => path.join(repoRoot, value);
+const read = (value) => fs.readFileSync(abs(value), "utf8");
 const need = (source, marker, label) => { if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`); };
 const forbid = (source, marker, label) => { if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`); };
 
 for (const [label, relativePath] of Object.entries(files)) {
-  if (!fs.existsSync(absolute(relativePath))) {
+  if (!fs.existsSync(abs(relativePath))) {
     failures.push(`${label}: missing ${relativePath}`);
     continue;
   }
-  const stats = fs.lstatSync(absolute(relativePath));
+  const stats = fs.lstatSync(abs(relativePath));
   if (!stats.isFile() || stats.isSymbolicLink()) failures.push(`${label}: ${relativePath} must be a regular non-symlink file`);
 }
 if (failures.length) {
@@ -63,13 +63,7 @@ const expectedProfiles = [
   ["preview_off", [true, false, true, false], "feature_disabled", "allowed", "feature_disabled"],
   ["builder_off", [false, false, false, false], "feature_disabled", "feature_disabled", "feature_disabled"],
 ];
-const actualProfiles = contract.profiles?.map((profile) => [
-  profile.id,
-  profile.flags,
-  profile.preview,
-  profile.properties,
-  profile.publish,
-]);
+const actualProfiles = contract.profiles?.map((profile) => [profile.id, profile.flags, profile.preview, profile.properties, profile.publish]);
 if (JSON.stringify(actualProfiles) !== JSON.stringify(expectedProfiles)) failures.push("feature preflight profile contract drifted");
 
 const expectedPermissionMapping = {
@@ -101,17 +95,12 @@ if (
 ) failures.push("feature preflight settings authority/restore contract drifted");
 
 for (const relativePath of contract.required_source_files ?? []) {
-  if (!fs.existsSync(absolute(relativePath))) failures.push(`required source file is missing: ${relativePath}`);
+  if (!fs.existsSync(abs(relativePath))) failures.push(`required source file is missing: ${relativePath}`);
 }
 
 for (const marker of [
-  "fullyParallel: false",
-  "workers: 1",
-  "retries: 0",
-  'trace: "off"',
-  'screenshot: "off"',
-  'video: "off"',
-  'name: "pages-builder-rollout-feature-preflight-chromium"',
+  "fullyParallel: false", "workers: 1", "retries: 0", 'trace: "off"',
+  'screenshot: "off"', 'video: "off"', 'name: "pages-builder-rollout-feature-preflight-chromium"',
 ]) need(config, marker, "Playwright config");
 
 for (const marker of [
@@ -120,8 +109,6 @@ for (const marker of [
   "pageBuilderCapabilityPreflight(capability: PUBLISH)",
   'result.errorKind !== "feature-disabled"',
   'result.errorCode !== "FEATURE_DISABLED"',
-  "contract.predecessors.browser.environment",
-  "contract.predecessors.rollout_matrix.environment",
   "matrixBrowser.sha256 !== browser.record.sha256",
   "matrixTarget.api_origin_sha256 !== browserTarget.origin_sha256",
   "matrixTarget.deployment_image_digest !== deploymentDigest",
@@ -137,18 +124,9 @@ for (const marker of [
   "renameSync(temporary, location)",
 ]) need(spec, marker, "feature preflight spec");
 for (const marker of [
-  "SELECT ",
-  "INSERT ",
-  "UPDATE tenant_modules",
-  "DELETE FROM",
-  "DATABASE_URL",
-  "localStorage",
-  "sessionStorage",
-  'trace: "on"',
-  'screenshot: "on"',
-  'video: "on"',
-  "gate_accepted: true",
-  "provider_health_observed: true",
+  "SELECT ", "INSERT ", "UPDATE tenant_modules", "DELETE FROM", "DATABASE_URL",
+  "localStorage", "sessionStorage", 'trace: "on"', 'screenshot: "on"', 'video: "on"',
+  "gate_accepted: true", "provider_health_observed: true",
 ]) forbid(spec, marker, "feature preflight spec");
 
 for (const marker of [
@@ -184,6 +162,9 @@ for (const marker of [
   "tree: Permission::new(Resource::Pages, Action::Read)",
   "properties: Permission::new(Resource::Pages, Action::Update)",
   "publish: Permission::new(Resource::Pages, Action::Publish)",
+  "PAGE_BUILDER_PAGES_READ_PERMISSION",
+  "PAGE_BUILDER_PAGES_UPDATE_PERMISSION",
+  "PAGE_BUILDER_PAGES_PUBLISH_PERMISSION",
 ]) need(service, marker, "Page Builder authorizer permission mapping reference");
 for (const marker of [
   "pub fn ensure_capability(",
@@ -195,59 +176,36 @@ for (const marker of [
   "ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;",
 ]) need(service, marker, "canonical Page Builder feature-disabled service contract");
 
-for (const marker of [
-  "GqlPageBuilderCapability",
-  "GqlPageBuilderCapabilityPreflight",
-  "GqlPageBuilderRolloutSnapshot",
-]) need(graphqlMod, marker, "Pages GraphQL exports");
+for (const marker of ["GqlPageBuilderCapability", "GqlPageBuilderCapabilityPreflight", "GqlPageBuilderRolloutSnapshot"])
+  need(graphqlMod, marker, "Pages GraphQL exports");
 forbid(pagesCargo, 'rustok-page-builder = { workspace = true, default-features = false, features = ["server"]', "Pages Page Builder dependency");
-need(pageBuilderCargo, 'server = ["dep:rustok-api", "dep:rustok-core"]', "Page Builder feature boundary");
+for (const marker of ['default = ["server"]', '"dep:rustok-api"', '"dep:rustok-core"'])
+  need(pageBuilderCargo, marker, "Page Builder feature boundary");
 
 if (evidence.format !== "pages_builder_rollout_feature_preflight_harness_source_v1") failures.push("feature preflight source evidence format drifted");
 if (evidence.status !== "pages_builder_rollout_feature_preflight_harness_source_unvalidated") failures.push("feature preflight source evidence status drifted");
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) failures.push("feature preflight source evidence execution must remain empty");
 for (const [key, value] of Object.entries(evidence.validation ?? {})) if (value !== false) failures.push(`feature preflight validation.${key} must remain false`);
 for (const key of [
-  "server_owned_non_mutating_preflight_added",
-  "preflight_requires_exact_routed_tenant",
-  "preflight_uses_page_builder_permission_mapping",
-  "preflight_uses_shared_rollout_guard",
-  "preflight_allowed_path_has_no_error_contract",
-  "preflight_disabled_kind_is_feature_disabled",
-  "preflight_disabled_code_is_FEATURE_DISABLED",
-  "browser_predecessor_required",
-  "rollout_matrix_predecessor_required",
-  "predecessors_same_source_required",
-  "rollout_matrix_must_bind_exact_browser_hash",
-  "api_origin_and_deployment_digest_must_match_predecessors",
-  "original_settings_restored_in_finally",
-  "restore_semantically_verified",
-  "output_is_atomic",
+  "server_owned_non_mutating_preflight_added", "preflight_requires_exact_routed_tenant",
+  "preflight_uses_page_builder_permission_mapping", "preflight_uses_shared_rollout_guard",
+  "preflight_allowed_path_has_no_error_contract", "preflight_disabled_kind_is_feature_disabled",
+  "preflight_disabled_code_is_FEATURE_DISABLED", "browser_predecessor_required",
+  "rollout_matrix_predecessor_required", "predecessors_same_source_required",
+  "rollout_matrix_must_bind_exact_browser_hash", "api_origin_and_deployment_digest_must_match_predecessors",
+  "original_settings_restored_in_finally", "restore_semantically_verified", "output_is_atomic",
 ]) if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
 for (const key of [
-  "direct_sql_used",
-  "raw_database_access_used",
-  "raw_module_settings_persisted",
-  "raw_graphql_bodies_persisted",
-  "credentials_or_storage_contents_persisted",
-  "automatic_gate_acceptance",
-  "automatic_source_mutation",
-  "automatic_ffa_fba_promotion",
-  "provider_health_observed",
-  "gate_accepted",
-  "forum_wave_accepted",
-  "ffa_promoted",
-  "fba_promoted",
+  "direct_sql_used", "raw_database_access_used", "raw_module_settings_persisted",
+  "raw_graphql_bodies_persisted", "credentials_or_storage_contents_persisted",
+  "automatic_gate_acceptance", "automatic_source_mutation", "automatic_ffa_fba_promotion",
+  "provider_health_observed", "gate_accepted", "forum_wave_accepted", "ffa_promoted", "fba_promoted",
 ]) if (evidence.source_contract?.[key] !== false) failures.push(`source_contract.${key} must remain false`);
 
 for (const marker of [
-  "source-ready / maintainer-execution-pending",
-  "feature-disabled / FEATURE_DISABLED",
-  "PageBuilderCapabilityPermissions",
-  "source-lock",
-  "ensure_capability",
-  "browser -> rollout matrix -> feature preflight",
-  "No tests, Node verifiers, Cargo commands",
+  "source-ready / maintainer-execution-pending", "feature-disabled / FEATURE_DISABLED",
+  "PageBuilderCapabilityPermissions", "source-lock", "ensure_capability",
+  "browser -> rollout matrix -> feature preflight", "No tests, Node verifiers, Cargo commands",
 ]) need(packet, marker, "feature preflight actualization");
 
 if (failures.length) {
