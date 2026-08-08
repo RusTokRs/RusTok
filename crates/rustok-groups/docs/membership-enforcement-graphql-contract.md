@@ -4,12 +4,12 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`graphql_membership_enforcement::GroupsMutationRoot` adds exactly two direct Groups enforcement mutations to the existing final mutation chain:
+`graphql_membership_enforcement::GroupsMembershipEnforcementMutation` adds exactly two direct Groups enforcement mutations to the existing final mutation chain:
 
 - `suspendGroupMembership`;
 - `revokeGroupMembershipSuspension`.
 
-The wrapper composes the previous `graphql_application_cas::GroupsMutationRoot` through `MergedObject`, so application, invitation, governance, localization and core Groups mutations remain present. The module manifest points only the final mutation entrypoint at the new wrapper; the query root is unchanged.
+The existing `graphql_application_cas::GroupsMutationRoot` remains the stable module entrypoint. Its `MergedObject` now includes `GroupsMembershipEnforcementMutation` as an additive member, so application, invitation, governance, localization and core Groups mutations remain present. The module manifest query and mutation entrypoints do not change.
 
 ## Transport boundary
 
@@ -88,7 +88,7 @@ Owner stable error codes remain authoritative internally. Runtime schema/error-e
 
 ## No fallback
 
-The module manifest composes this source into the final Groups mutation root. There is no implicit GraphQL-to-native, native-to-GraphQL, admin, remote, or legacy fallback path.
+The stable module manifest entrypoint remains `graphql_application_cas::GroupsMutationRoot`; the new enforcement mutation is composed inside that root. There is no implicit GraphQL-to-native, native-to-GraphQL, admin, remote, or legacy fallback path.
 
 ## Verification
 
