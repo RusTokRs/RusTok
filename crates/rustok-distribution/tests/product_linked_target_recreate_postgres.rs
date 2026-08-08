@@ -396,7 +396,7 @@ fn product_schema_ref() -> TestResult<SchemaRef> {
     Ok(SchemaRef {
         module: ModuleName::new("rustok-product")?,
         entity: EntityName::new("product")?,
-        version: SchemaVersion::new(3),
+        version: SchemaVersion::new(4),
     })
 }
 
@@ -730,7 +730,7 @@ async fn product_epoch(db: &DatabaseConnection, sql: &str, column: &str) -> Test
 }
 
 async fn materialized_product_version(db: &DatabaseConnection) -> TestResult<u64> {
-    materialized_target_version(db, "rustok-product", "product", 3, PRODUCT_ID).await
+    materialized_target_version(db, "rustok-product", "product", 4, PRODUCT_ID).await
 }
 
 async fn assert_materialized_target_version(
