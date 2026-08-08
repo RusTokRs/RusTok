@@ -1,3 +1,4 @@
+mod builder_rollout_adapter;
 mod graphql_adapter;
 #[cfg(target_arch = "wasm32")]
 mod rollback_retry_adapter;
@@ -8,6 +9,7 @@ use crate::model::{
     CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMutationResult,
     PagePublicationResult,
 };
+use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use serde_json::Value;
 
@@ -26,6 +28,13 @@ pub async fn fetch_page(
     id: String,
 ) -> Result<Option<PageDetail>, TransportError> {
     graphql_adapter::fetch_page(token, tenant_slug, id).await
+}
+
+pub async fn fetch_page_builder_rollout_snapshot(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<(String, BuilderCapabilityFlags), TransportError> {
+    builder_rollout_adapter::fetch(token, tenant_slug).await
 }
 
 pub async fn fetch_page_builder_scenario_baseline(
