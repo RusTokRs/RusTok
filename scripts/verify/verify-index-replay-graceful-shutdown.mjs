@@ -33,8 +33,11 @@ const extensionPath = 'crates/rustok-index/src/infrastructure/postgres/source_re
 const extension = requireMarkers(extensionPath, [
   'pub async fn run_interruptible<Check>(',
   'Check: FnMut() -> bool',
-  '.run_next_page_interruptible(request.page_request().clone(), || {',
+  'let page_future = worker.run_next_page_interruptible(',
+  'request.page_request().clone(),',
   'Ok::<bool, crate::IndexReplayFailure>(interrupted)',
+  'await_page_with_lease_heartbeats(',
+  'aggregate.heartbeat_count += in_page_heartbeat_count;',
   'Err(crate::IndexReplayError::Interrupted) => {',
   'yield_after_host_interruption(&self.db, &lease, aggregate).await',
   'if cancel_if_requested(db, lease).await?',
@@ -48,6 +51,7 @@ for (const forbidden of [
   'finish_failure(db, lease',
   'IndexReplayRunStatus::Complete;',
   'StopHandle',
+  'index_replay_page_timeout',
 ]) {
   if (extension.includes(forbidden)) {
     fail(`${extensionPath} must yield host interruption without manufacturing cancellation/failure/lifecycle ownership: ${forbidden}`);
@@ -65,11 +69,12 @@ const ordinaryPath = 'crates/rustok-index/src/infrastructure/postgres/source_rep
 const ordinary = requireMarkers(ordinaryPath, [
   'pub async fn run(',
   'worker.run_next_page(request.page_request().clone())',
+  'await_page_with_lease_heartbeats(',
   'pub async fn request_cancel(',
   'yield_for_resume(&self.db, &lease).await?',
 ]);
 if (ordinary.includes('run_interruptible<Check>')) {
-  fail(`${ordinaryPath} ordinary runner file must remain unchanged by the host-probe extension`);
+  fail(`${ordinaryPath} ordinary runner file must remain separate from the host-probe extension`);
 }
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
@@ -167,4 +172,4 @@ requireMarkers('crates/rustok-index/docs/m6-replay-graceful-shutdown.md', [
   'actual server-shutdown path have not been executed',
 ]);
 
-console.log('[verify-index-replay-graceful-shutdown] server-owned StopHandle observation is bound through guarded lifecycle-neutral replay probes while interruption remains pending/duplicate-safe and distinct from user cancellation');
+console.log('[verify-index-replay-graceful-shutdown] server-owned StopHandle observation remains pending/duplicate-safe while interruptible pages share the ordinary in-page lease-maintenance policy');

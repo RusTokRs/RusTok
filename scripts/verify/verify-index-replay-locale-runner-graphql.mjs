@@ -28,6 +28,7 @@ const runner = requireMarkers(runnerPath, [
   'lease.locale()',
   'checkpoint.locale_key = {prefix}9',
   "checkpoint.partition_key = ''",
+  'await_page_with_lease_heartbeats(',
 ]);
 if (runner.includes("checkpoint.locale_key = ''")) {
   fail(`${runnerPath} must not hard-code schema locale in the terminal success fence`);
@@ -40,7 +41,9 @@ const gracefulPath =
   'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
 const graceful = requireMarkers(gracefulPath, [
   'let lease_request = lease_request_for_run(&request, source_name)?;',
-  'run_next_page_interruptible(request.page_request().clone()',
+  'let page_future = worker.run_next_page_interruptible(',
+  'request.page_request().clone(),',
+  'await_page_with_lease_heartbeats(',
   'yield_after_host_interruption',
 ]);
 if (graceful.includes('IndexReplayJobLeaseRequest::new(')) {
@@ -77,15 +80,16 @@ requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
   '`partition_key`',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-locale-replay-runner-graphql.md', [
-  'runner_graphql_source_complete_execution_pending',
+  'runner_graphql_evidence_source_complete_execution_pending',
   'checkpoint.locale_key',
   'Partition replay must remain blocked',
-  'end-to-end retained locale replay/restart execution',
+  'end-to-end GraphQL locale yield/isolation/fresh-runtime resume',
+  'Execution/admission remains maintainer-owned',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  'Carry optional locale through the multi-page replay runner and GraphQL command transport',
+  'optional locale is carried through the multi-page replay runner and GraphQL command transport',
   'Add partition replay scope only after a real partition-capable source contract exists',
   'Add explicit targeted/full/shadow rebuild modes under a separate contract',
 ]);
 
-console.log('[verify-index-replay-locale-runner-graphql] source contract markers present');
+console.log('[verify-index-replay-locale-runner-graphql] locale replay identity remains stable while ordinary and graceful pages share the lease-maintenance helper');
