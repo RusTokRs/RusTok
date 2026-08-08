@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::forum_reconciliation::{
     ForumProjectionOwnerRevisionRequest, SharedForumProjectionOwnerRevisionSourcePort,
-    resolve_forum_projection_owner_revision_head, resolve_forum_projection_owner_revisions,
+    resolve_forum_projection_owner_revisions,
 };
 
 const FORUM_SOURCE_MODULE: &str = "forum";
@@ -49,10 +49,12 @@ pub struct ForumSearchProjectionDrift {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ForumSearchProjectionReconciliationStatus {
     pub tenant_id: Uuid,
-    pub owner_revision: i64,
     pub checkpoint_revision: i64,
     pub checkpoint_event_id: Option<Uuid>,
     pub checkpoint_outcome: Option<String>,
+    pub owner_checkpoint_event_id: Option<Uuid>,
+    pub next_owner_revision: Option<i64>,
+    pub next_owner_event_id: Option<Uuid>,
     pub non_terminal_inbox_count: u64,
     pub drifts: Vec<ForumSearchProjectionDrift>,
 }
@@ -70,12 +72,12 @@ impl ForumSearchProjectionReconciliationStatus {
 /// Read-only cross-owner FORUM-33 diagnostic for Forum -> Search projection convergence.
 ///
 /// Forum remains authority for its projection revision ledger and is consulted only through the
-/// neutral owner-revision port. Search reads only its own checkpoint and inbox persistence. The
-/// report never reads Forum-private tables, never rebuilds a projection and never advances the
-/// durable Search checkpoint.
+/// existing neutral bounded owner-revision port. Search reads only its own checkpoint and inbox
+/// persistence. The report never reads Forum-private tables, never rebuilds a projection and never
+/// advances the durable Search checkpoint.
 ///
-/// The Search side is one PostgreSQL `REPEATABLE READ READ ONLY` snapshot. The Forum owner head is
-/// an independent public-owner observation, so this status is diagnostic evidence rather than a
+/// The Search side is one PostgreSQL `REPEATABLE READ READ ONLY` snapshot. Forum owner records are
+/// independent public-owner observations, so this status is diagnostic evidence rather than a
 /// cross-owner serializable repair fence.
 pub struct ForumSearchProjectionReconciliationStatusService {
     db: DatabaseConnection,
@@ -154,17 +156,7 @@ impl ForumSearchProjectionReconciliationStatusService {
             }
         };
 
-        let owner_revision = resolve_forum_projection_owner_revision_head(
-            Some(self.owner_source.clone()),
-            tenant_id,
-        )
-        .await
-        .map_err(map_owner_port_error)?
-        .unwrap_or(0);
-
-        let expected_checkpoint_event_id = if local.checkpoint_revision > 0
-            && local.checkpoint_revision <= owner_revision
-        {
+        let owner_checkpoint_record = if local.checkpoint_revision > 0 {
             let after_owner_revision = local
                 .checkpoint_revision
                 .checked_sub(1)
@@ -182,40 +174,60 @@ impl ForumSearchProjectionReconciliationStatusService {
             .into_iter()
             .next()
             .filter(|revision| revision.owner_revision == local.checkpoint_revision)
-            .map(|revision| revision.event_id)
         } else {
             None
         };
 
+        let next_owner_record = resolve_forum_projection_owner_revisions(
+            Some(self.owner_source.clone()),
+            ForumProjectionOwnerRevisionRequest {
+                tenant_id,
+                after_owner_revision: local.checkpoint_revision,
+                limit: 1,
+            },
+        )
+        .await
+        .map_err(map_owner_port_error)?
+        .into_iter()
+        .next();
+
+        let owner_checkpoint_event_id = owner_checkpoint_record
+            .as_ref()
+            .map(|revision| revision.event_id);
+        let next_owner_revision = next_owner_record
+            .as_ref()
+            .map(|revision| revision.owner_revision);
+        let next_owner_event_id = next_owner_record.as_ref().map(|revision| revision.event_id);
+
         let mut drifts = Vec::new();
-        if local.checkpoint_revision < owner_revision {
+        if let Some(next_revision) = next_owner_revision {
             drifts.push(ForumSearchProjectionDrift {
                 kind: ForumSearchProjectionDriftKind::CheckpointBehind,
                 stored_revision: local.checkpoint_revision,
-                expected_revision: owner_revision,
+                expected_revision: next_revision,
                 stored_event_id: local.checkpoint_event_id,
-                expected_event_id: None,
+                expected_event_id: next_owner_event_id,
             });
-        } else if local.checkpoint_revision > owner_revision {
+        } else if local.checkpoint_revision > 0 && owner_checkpoint_record.is_none() {
             drifts.push(ForumSearchProjectionDrift {
                 kind: ForumSearchProjectionDriftKind::CheckpointAhead,
                 stored_revision: local.checkpoint_revision,
-                expected_revision: owner_revision,
+                expected_revision: local.checkpoint_revision.saturating_sub(1),
                 stored_event_id: local.checkpoint_event_id,
                 expected_event_id: None,
             });
         }
 
         if local.checkpoint_revision > 0
-            && local.checkpoint_revision <= owner_revision
-            && expected_checkpoint_event_id != local.checkpoint_event_id
+            && owner_checkpoint_record.is_some()
+            && owner_checkpoint_event_id != local.checkpoint_event_id
         {
             drifts.push(ForumSearchProjectionDrift {
                 kind: ForumSearchProjectionDriftKind::CheckpointEventMismatch,
                 stored_revision: local.checkpoint_revision,
                 expected_revision: local.checkpoint_revision,
                 stored_event_id: local.checkpoint_event_id,
-                expected_event_id: expected_checkpoint_event_id,
+                expected_event_id: owner_checkpoint_event_id,
             });
         }
 
@@ -223,18 +235,20 @@ impl ForumSearchProjectionReconciliationStatusService {
             drifts.push(ForumSearchProjectionDrift {
                 kind: ForumSearchProjectionDriftKind::NonTerminalInboxWork,
                 stored_revision: local.checkpoint_revision,
-                expected_revision: owner_revision,
+                expected_revision: next_owner_revision.unwrap_or(local.checkpoint_revision),
                 stored_event_id: local.checkpoint_event_id,
-                expected_event_id: expected_checkpoint_event_id,
+                expected_event_id: next_owner_event_id.or(owner_checkpoint_event_id),
             });
         }
 
         Ok(ForumSearchProjectionReconciliationStatus {
             tenant_id,
-            owner_revision,
             checkpoint_revision: local.checkpoint_revision,
             checkpoint_event_id: local.checkpoint_event_id,
             checkpoint_outcome: local.checkpoint_outcome,
+            owner_checkpoint_event_id,
+            next_owner_revision,
+            next_owner_event_id,
             non_terminal_inbox_count: local.non_terminal_inbox_count,
             drifts,
         })
@@ -321,6 +335,6 @@ async fn load_local_status(
 fn map_owner_port_error(error: rustok_api::PortError) -> Error {
     Error::External(format!(
         "Forum projection owner revision source failed [{}]: {}",
-        error.stable_code, error.safe_message
+        error.code, error.message
     ))
 }
