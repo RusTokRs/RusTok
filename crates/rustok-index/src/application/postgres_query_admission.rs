@@ -43,14 +43,14 @@ impl PostgresQueryEntityAdmission {
         &self,
         compiled: &mut CompiledPostgresQuery,
     ) -> Result<(), PostgresQueryEntityAdmissionApplyError> {
-        apply_to_sql(&mut compiled.sql, &self.template)?;
+        apply_to_sql(&mut compiled.sql, self)?;
         if let Some(exact_count) = compiled.exact_count.as_mut() {
-            apply_to_sql(&mut exact_count.sql, &self.template)?;
+            apply_to_sql(&mut exact_count.sql, self)?;
         }
         Ok(())
     }
 
-    fn render(&self, entity_alias: &str) -> String {
+    pub fn render(&self, entity_alias: &str) -> String {
         self.template
             .replace(ENTITY_ALIAS_TOKEN, &quote_identifier(entity_alias))
     }
@@ -165,7 +165,7 @@ fn numeric_component(value: &str) -> bool {
 
 fn apply_to_sql(
     sql: &mut String,
-    template: &str,
+    admission: &PostgresQueryEntityAdmission,
 ) -> Result<(), PostgresQueryEntityAdmissionApplyError> {
     let aliases = entity_aliases(sql)?;
     for alias in aliases {
@@ -174,7 +174,7 @@ fn apply_to_sql(
         if !sql.contains(&anchor) {
             return Err(PostgresQueryEntityAdmissionApplyError::EntityAnchorMissing(alias));
         }
-        let rendered = template.replace(ENTITY_ALIAS_TOKEN, &alias_q);
+        let rendered = admission.render(&alias);
         let replacement = format!("{anchor} AND ({rendered})");
         *sql = sql.replace(&anchor, &replacement);
     }
@@ -200,6 +200,12 @@ mod tests {
     }
 
     #[test]
+    fn admission_renders_template_with_quoted_identifier() {
+        let admission = PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap();
+        assert_eq!(admission.render("t1"), "\"t1\".source_version > 0");
+    }
+
+    #[test]
     fn admission_renders_only_the_compiler_owned_entity_alias() {
         let admission = PostgresQueryEntityAdmission::new(
             "EXISTS (SELECT 1 WHERE {{entity}}.source_version > 0 AND {{entity}}.is_deleted = FALSE)",
@@ -221,7 +227,8 @@ mod tests {
             "AND EXISTS (SELECT 1 FROM index_entities AS \"mo_t1\" WHERE \"mo_t1\".is_deleted = FALSE)"
         )
         .to_owned();
-        apply_to_sql(&mut sql, "{{entity}}.source_version > 0").unwrap();
+        let admission = PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap();
+        apply_to_sql(&mut sql, &admission).unwrap();
         for alias in ["t0", "t1", "mp0_t1", "mx_t1", "mo_t1"] {
             let marker = format!(
                 "\"{alias}\".is_deleted = FALSE AND (\"{alias}\".source_version > 0)"
@@ -239,8 +246,9 @@ mod tests {
             ))
         );
         let mut sql = "SELECT 1 FROM index_entities AS \"t0\"".to_owned();
+        let admission = PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap();
         assert_eq!(
-            apply_to_sql(&mut sql, "{{entity}}.source_version > 0"),
+            apply_to_sql(&mut sql, &admission),
             Err(PostgresQueryEntityAdmissionApplyError::EntityAnchorMissing(
                 "t0".to_owned()
             ))

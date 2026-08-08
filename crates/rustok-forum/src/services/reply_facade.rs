@@ -335,6 +335,14 @@ impl ReplyService {
     ) -> ForumResult<forum_reply::Model> {
         reply_owner::ReplyService::set_status_in_tx(txn, tenant_id, reply_id, status).await
     }
+
+    pub(crate) async fn remove_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<reply_owner::ReplyRemovalOutcome> {
+        reply_owner::ReplyService::remove_in_tx(txn, tenant_id, reply_id).await
+    }
 }
 
 fn require_localized_reply_response(response: ReplyResponse) -> ForumResult<ReplyResponse> {

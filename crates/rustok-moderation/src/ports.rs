@@ -176,6 +176,18 @@ fn map_owner_error(error: ModerationError) -> PortError {
             "moderation.decision_not_found",
             format!("moderation decision {id} not found"),
         ),
+        ModerationError::ApplicationOperationNotFound(id) => PortError::not_found(
+            "moderation.application_operation_not_found",
+            format!("moderation application operation for decision {id} not found"),
+        ),
+        ModerationError::ApplicationLeaseConflict(id) => PortError::conflict(
+            "moderation.application_lease_conflict",
+            format!("moderation application lease conflict for decision {id}"),
+        ),
+        ModerationError::ApplicationEvidenceMismatch(id) => PortError::conflict(
+            "moderation.application_evidence_mismatch",
+            format!("moderation application evidence does not match decision {id}"),
+        ),
         ModerationError::Validation(message) => {
             PortError::validation("moderation.validation", message)
         }

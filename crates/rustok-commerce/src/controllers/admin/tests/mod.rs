@@ -135,6 +135,8 @@ pub(crate) fn test_app_context(
         crate::graphql_runtime::CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone());
     let product_catalog_read_runtime =
         rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
+    let product_catalog_command_runtime =
+        rustok_product::ProductCatalogCommandRuntime::in_process(db.clone(), event_bus.clone());
     crate::controllers::CommerceHttpRuntime {
         db,
         event_bus,
@@ -146,6 +148,7 @@ pub(crate) fn test_app_context(
         fulfillment_lifecycle_read_runtime,
         order_read_runtime,
         product_catalog_read_runtime,
+        product_catalog_command_runtime,
         #[cfg(feature = "marketplace-financial")]
         marketplace_financial_runtime,
     }

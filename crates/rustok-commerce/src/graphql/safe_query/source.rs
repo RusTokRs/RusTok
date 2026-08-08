@@ -10,7 +10,7 @@ use self::async_graphql_shim as async_graphql;
 
 mod rustok_api_shim {
     pub use ::rustok_api::{
-        AuthContext, Permission, PortActor, PortContext, PortErrorKind, RequestContext,
+        AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
         TenantContext, locale_tags_match,
     };
 

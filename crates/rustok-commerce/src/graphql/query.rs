@@ -89,14 +89,14 @@ fn product_schema_read_port(
         event_bus.clone(),
     );
     runtime.schema_read_port().ok_or_else(|| {
-        super::product_catalog::product_catalog_port_error(
+        FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
             context,
             rustok_api::PortError::unavailable(
                 "product.schema_read_unavailable",
                 "product schema directory is unavailable",
             ),
             operation,
-        )
+        ))
     })
 }
 
@@ -1620,11 +1620,11 @@ impl CommerceQuery {
             .list_attributes(port_context.clone())
             .await
             .map_err(|error| {
-                super::product_catalog::product_catalog_port_error(
+                FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
                     &port_context,
                     error,
                     "product_attributes",
-                )
+                ))
             })?
             .into_iter()
             .map(Into::into)
@@ -1666,11 +1666,11 @@ impl CommerceQuery {
             .list_categories(port_context.clone())
             .await
             .map_err(|error| {
-                super::product_catalog::product_catalog_port_error(
+                FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
                     &port_context,
                     error,
                     "catalog_categories",
-                )
+                ))
             })?
             .into_iter()
             .map(Into::into)
@@ -1716,11 +1716,11 @@ impl CommerceQuery {
             .list_schemas(port_context.clone())
             .await
             .map_err(|error| {
-                super::product_catalog::product_catalog_port_error(
+                FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
                     &port_context,
                     error,
                     "product_attribute_schemas",
-                )
+                ))
             })?
             .into_iter()
             .map(Into::into)
