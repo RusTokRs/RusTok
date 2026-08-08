@@ -12,6 +12,7 @@ mod receipts;
 pub mod service;
 
 use async_trait::async_trait;
+use rustok_api::Permission;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
@@ -59,6 +60,15 @@ impl RusToKModule for ModerationModule {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::MODERATION_CASES_READ,
+            Permission::MODERATION_CASES_LIST,
+            Permission::MODERATION_CASES_OVERRIDE,
+            Permission::MODERATION_CASES_MANAGE,
+        ]
+    }
+
     fn register_runtime_extensions(
         &self,
         extensions: &mut rustok_core::ModuleRuntimeExtensions,
@@ -93,7 +103,15 @@ mod tests {
         assert!(module.dependencies().is_empty());
         assert_eq!(module.migrations().len(), 4);
         assert_eq!(module.migration_dependencies().len(), 4);
-        assert!(module.permissions().is_empty());
+        assert_eq!(
+            module.permissions(),
+            vec![
+                Permission::MODERATION_CASES_READ,
+                Permission::MODERATION_CASES_LIST,
+                Permission::MODERATION_CASES_OVERRIDE,
+                Permission::MODERATION_CASES_MANAGE,
+            ]
+        );
 
         let mut extensions = rustok_core::ModuleRuntimeExtensions::default();
         module.register_runtime_extensions(&mut extensions).unwrap();
