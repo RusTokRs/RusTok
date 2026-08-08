@@ -8,6 +8,13 @@ const MAX_ATTRIBUTE_FILTERS: usize = 8;
 const MAX_ATTRIBUTE_FILTER_CODE_LENGTH: usize = 128;
 const MAX_ATTRIBUTE_FILTER_VALUE_LENGTH: usize = 512;
 
+/// Maximum effective Storefront Product title-search input in UTF-8 bytes.
+///
+/// The owner query wraps the effective search with one leading and one trailing `%`. The shared Index
+/// `TextLike` contract accepts at most 1024 bytes, so 1022 keeps the owner-owned search surface exactly
+/// representable without truncation in the non-serving Index shadow path.
+pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum StorefrontProductSortBy {
     #[default]
@@ -180,7 +187,7 @@ impl StorefrontProductListQuery {
         attribute_filters: Vec<String>,
     ) -> CommerceResult<Self> {
         Ok(Self {
-            search: normalize_optional_text(search),
+            search: normalize_storefront_product_search(search)?,
             category_id,
             sort_by: StorefrontProductSortBy::parse(sort_by)?,
             sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
@@ -331,6 +338,27 @@ pub struct ProductTagState {
     pub tags: Vec<String>,
 }
 
+pub(crate) fn validate_storefront_product_search(search: Option<&str>) -> CommerceResult<()> {
+    let Some(search) = search
+        .map(str::trim)
+        .filter(|search| !search.is_empty())
+    else {
+        return Ok(());
+    };
+    if search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES {
+        return Err(CommerceError::Validation(format!(
+            "search must contain at most {MAX_STOREFRONT_PRODUCT_SEARCH_BYTES} UTF-8 bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn normalize_storefront_product_search(value: Option<String>) -> CommerceResult<Option<String>> {
+    let value = normalize_optional_text(value);
+    validate_storefront_product_search(value.as_deref())?;
+    Ok(value)
+}
+
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
@@ -372,6 +400,42 @@ mod tests {
                 None,
                 None,
                 vec!["color".to_string()],
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn storefront_search_bound_uses_effective_utf8_bytes() {
+        let ascii = "a".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES);
+        assert_eq!(
+            StorefrontProductListQuery::try_new(Some(format!("  {ascii}  ")), None, None, None)
+                .expect("bounded search must be accepted")
+                .search
+                .as_deref(),
+            Some(ascii.as_str())
+        );
+        assert!(
+            StorefrontProductListQuery::try_new(
+                Some("a".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES + 1)),
+                None,
+                None,
+                None,
+            )
+            .is_err()
+        );
+
+        let multibyte = "é".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES / 2);
+        assert_eq!(multibyte.len(), MAX_STOREFRONT_PRODUCT_SEARCH_BYTES);
+        assert!(
+            StorefrontProductListQuery::try_new(Some(multibyte), None, None, None).is_ok()
+        );
+        assert!(
+            StorefrontProductListQuery::try_new(
+                Some("é".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES / 2 + 1)),
+                None,
+                None,
+                None,
             )
             .is_err()
         );
