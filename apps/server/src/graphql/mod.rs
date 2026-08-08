@@ -6,6 +6,8 @@ pub mod index_drift_diagnosis;
 pub mod index_drift_source_page_diagnosis;
 pub mod legacy_disable_user;
 pub mod loaders;
+#[cfg(feature = "mod-moderation")]
+pub mod moderation_recovery;
 pub mod module_security;
 pub mod mutations;
 pub mod observability;
