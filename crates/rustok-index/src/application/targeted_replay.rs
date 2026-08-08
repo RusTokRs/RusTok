@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt, sync::Arc};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{RecordValidationError, SchemaRef, SchemaRegistry};
+use crate::{LocaleMode, RecordValidationError, SchemaRef, SchemaRegistry};
 
 use super::{
     IndexReplayFailure, IndexReplayMode, IndexReplayModeSelection, IndexReplayMutationOutcome,
@@ -58,9 +58,10 @@ impl IndexReplayTargetedOutcome {
 /// Bounded exact-key mutation application for `IndexReplayMode::Targeted`.
 ///
 /// The executor consumes the canonical `IndexSourceLoadRequest` already owned by
-/// `IndexReplayModeSelection::Targeted`, validates the complete returned batch before the first
-/// mutation write, then applies source-owned stable mutation identities sequentially through the
-/// existing replay mutation sink. It deliberately has no scan cursor or durable replay ownership.
+/// `IndexReplayModeSelection::Targeted`, validates requested key shape against the active schema,
+/// validates the complete returned batch before the first mutation write, then applies source-owned
+/// stable mutation identities sequentially through the existing replay mutation sink. It
+/// deliberately has no scan cursor or durable replay ownership.
 pub struct IndexReplayTargetedExecutor<M> {
     sources: SharedIndexSourceRegistry,
     schemas: Arc<SchemaRegistry>,
@@ -96,15 +97,33 @@ where
             }
         };
 
+        let registered = self
+            .schemas
+            .get(request.schema())
+            .ok_or_else(|| IndexReplayTargetedError::SchemaNotRegistered(request.schema().clone()))?;
+        for (position, key) in request.keys().iter().enumerate() {
+            let source = if key.entity_id.is_nil() {
+                Some(RecordValidationError::NilEntityId)
+            } else {
+                match (registered.schema.locale_mode, key.locale.is_some()) {
+                    (LocaleMode::Required, false) => Some(RecordValidationError::LocaleRequired(
+                        request.schema().clone(),
+                    )),
+                    (LocaleMode::None, true) => Some(RecordValidationError::LocaleForbidden(
+                        request.schema().clone(),
+                    )),
+                    _ => None,
+                }
+            };
+            if let Some(source) = source {
+                return Err(IndexReplayTargetedError::InvalidTarget { position, source });
+            }
+        }
+
         let descriptor = self
             .sources
             .source_for_schema(request.schema())
             .ok_or_else(|| IndexReplayTargetedError::UnknownSchemaSource(request.schema().clone()))?;
-        if self.schemas.get(request.schema()).is_none() {
-            return Err(IndexReplayTargetedError::SchemaNotRegistered(
-                request.schema().clone(),
-            ));
-        }
         let source_name = descriptor.source_name().to_owned();
         let requested_count = request.keys().len();
         let batch = self
@@ -177,6 +196,12 @@ pub enum IndexReplayTargetedError {
     UnknownSchemaSource(SchemaRef),
     #[error("Index replay Targeted schema is not registered in the active runtime: {0}")]
     SchemaNotRegistered(SchemaRef),
+    #[error("Index replay Targeted key at position {position} is invalid")]
+    InvalidTarget {
+        position: usize,
+        #[source]
+        source: RecordValidationError,
+    },
     #[error("Index replay Targeted source load failed")]
     Source(#[source] IndexSourceError),
     #[error("Index replay Targeted mutation at position {position} has a nil event id")]
@@ -212,9 +237,9 @@ mod tests {
     use crate::{
         EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexMutation, IndexRecord,
         IndexSchema, IndexSource, IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest,
-        IndexSourcePage, IndexSourceScanRequest, IndexValue, IndexValueType, LocaleMode, ModuleName,
-        SchemaVersion, materialize_index_schema_registry, materialize_index_source_registry,
-        register_index_schema_source, register_index_source,
+        IndexSourcePage, IndexSourceScanRequest, IndexValue, IndexValueType, LocaleKey, LocaleMode,
+        ModuleName, SchemaVersion, materialize_index_schema_registry,
+        materialize_index_source_registry, register_index_schema_source, register_index_source,
     };
 
     use super::*;
@@ -336,14 +361,14 @@ mod tests {
         }
     }
 
-    fn schema() -> IndexSchema {
+    fn schema(locale_mode: LocaleMode) -> IndexSchema {
         IndexSchema {
             reference: SchemaRef {
                 module: ModuleName::new("targeted-owner").unwrap(),
                 entity: EntityName::new("item").unwrap(),
                 version: SchemaVersion::INITIAL,
             },
-            locale_mode: LocaleMode::Optional,
+            locale_mode,
             fields: vec![IndexField {
                 name: FieldName::new("id").unwrap(),
                 value_type: IndexValueType::Uuid,
@@ -360,15 +385,29 @@ mod tests {
     fn key(entity_id: u128) -> EntityKey {
         EntityKey {
             tenant_id: Uuid::from_u128(1),
-            schema: schema().reference,
+            schema: schema(LocaleMode::Optional).reference,
             entity_id: Uuid::from_u128(entity_id),
             locale: None,
         }
     }
 
+    fn localized_key(entity_id: u128, locale: &str) -> EntityKey {
+        EntityKey {
+            locale: Some(LocaleKey::new(locale).unwrap()),
+            ..key(entity_id)
+        }
+    }
+
     fn executor(mode: SourceMode) -> IndexReplayTargetedExecutor<RecordingSink> {
+        executor_with_locale_mode(mode, LocaleMode::Optional)
+    }
+
+    fn executor_with_locale_mode(
+        mode: SourceMode,
+        locale_mode: LocaleMode,
+    ) -> IndexReplayTargetedExecutor<RecordingSink> {
         let mut extensions = ModuleRuntimeExtensions::default();
-        let schema = schema();
+        let schema = schema(locale_mode);
         register_index_schema_source(&mut extensions, "targeted_owner", schema.clone()).unwrap();
         register_index_source(
             &mut extensions,
@@ -420,6 +459,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn targeted_rejects_invalid_requested_entity_and_locale_scope_before_load() {
+        let none_executor = executor_with_locale_mode(SourceMode::Valid, LocaleMode::None);
+        let forbidden_locale = none_executor
+            .run(
+                IndexReplayModeSelection::targeted(vec![localized_key(10, "en-US")]).unwrap(),
+            )
+            .await
+            .expect_err("non-localized schema must reject locale Targeted key");
+        assert!(matches!(
+            forbidden_locale,
+            IndexReplayTargetedError::InvalidTarget {
+                position: 0,
+                source: RecordValidationError::LocaleForbidden(_),
+            }
+        ));
+        assert!(none_executor.mutation_sink.event_ids.lock().unwrap().is_empty());
+
+        let required_executor = executor_with_locale_mode(SourceMode::Valid, LocaleMode::Required);
+        let missing_locale = required_executor
+            .run(IndexReplayModeSelection::targeted(vec![key(10)]).unwrap())
+            .await
+            .expect_err("localized schema must require locale Targeted key");
+        assert!(matches!(
+            missing_locale,
+            IndexReplayTargetedError::InvalidTarget {
+                position: 0,
+                source: RecordValidationError::LocaleRequired(_),
+            }
+        ));
+        assert!(required_executor.mutation_sink.event_ids.lock().unwrap().is_empty());
+
+        let optional_executor = executor(SourceMode::Valid);
+        let mut nil_key = key(10);
+        nil_key.entity_id = Uuid::nil();
+        let nil_entity = optional_executor
+            .run(IndexReplayModeSelection::targeted(vec![nil_key]).unwrap())
+            .await
+            .expect_err("Targeted entity id must be non-nil before load");
+        assert!(matches!(
+            nil_entity,
+            IndexReplayTargetedError::InvalidTarget {
+                position: 0,
+                source: RecordValidationError::NilEntityId,
+            }
+        ));
+        assert!(optional_executor.mutation_sink.event_ids.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn targeted_preflights_nil_duplicate_and_schema_invalid_batches_before_writes() {
         for (mode, expected) in [
             (SourceMode::NilEvent, "nil"),
@@ -455,9 +543,7 @@ mod tests {
             template.schemas.clone(),
             RetryOnceSink::new(Uuid::from_u128(901)),
         );
-        let selection = || {
-            IndexReplayModeSelection::targeted(vec![key(10), key(11)]).unwrap()
-        };
+        let selection = || IndexReplayModeSelection::targeted(vec![key(10), key(11)]).unwrap();
 
         let error = executor
             .run(selection())
@@ -468,7 +554,14 @@ mod tests {
             IndexReplayTargetedError::Mutation { position: 1, .. }
         ));
         assert_eq!(
-            executor.mutation_sink.applied.lock().unwrap().iter().copied().collect::<Vec<_>>(),
+            executor
+                .mutation_sink
+                .applied
+                .lock()
+                .unwrap()
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
             vec![Uuid::from_u128(900)]
         );
 
