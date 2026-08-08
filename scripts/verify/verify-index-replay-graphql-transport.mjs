@@ -123,9 +123,11 @@ requireMarkers('apps/server/src/graphql/schema.rs', [
 ]);
 requireMarkers('apps/server/src/services/graphql_schema.rs', [
   'let stop_handle = stop_handle_from_context(ctx);',
-  'ctx.shared_insert_if_absent(candidate.clone());',
+  'let (candidate, _initial_receiver) = StopHandle::new();',
+  'ctx.shared_insert_if_absent(candidate);',
   'IndexReplayStopKeepalive',
   '_receiver: handle.subscribe()',
+  'avoid a zero-receiver window',
   'stop_handle,',
 ]);
 requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
