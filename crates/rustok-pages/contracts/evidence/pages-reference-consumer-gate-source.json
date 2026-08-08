@@ -126,6 +126,7 @@
     "candidate_harness_guard": "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs",
     "tenant_rollout_settings_guard": "crates/rustok-pages/scripts/verify/verify-pages-tenant-rollout-settings-runtime.mjs",
     "trusted_rollout_server_snapshot_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-server-snapshot.mjs",
+    "rollout_binding_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "forbidden_claims": [
