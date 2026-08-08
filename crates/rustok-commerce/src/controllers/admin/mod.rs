@@ -2,6 +2,9 @@ pub mod changes;
 pub mod fulfillments;
 #[path = "orders_owner_ports.rs"]
 pub mod orders;
+#[path = "payments.rs"]
+mod payments_legacy;
+#[path = "payments_owner_reads.rs"]
 pub mod payments;
 pub mod post_order_reads;
 pub mod products;

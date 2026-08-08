@@ -3,6 +3,7 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod admin_read;
 #[path = "checkout_compensation.rs"]
 mod checkout_compensation_persistent;
 #[path = "checkout_compensation_api.rs"]
@@ -29,6 +30,12 @@ pub mod services;
 #[cfg(feature = "stripe")]
 pub mod stripe_provider;
 
+pub use admin_read::{
+    InProcessPaymentAdminReadPort, ListPaymentCollectionProjectionsRequest,
+    ListRefundProjectionsRequest, PaymentAdminReadPort, PaymentAdminReadRuntime,
+    PaymentCollectionProjectionPage, ReadPaymentCollectionProjectionRequest,
+    ReadRefundProjectionRequest, RefundProjectionPage, in_process_payment_admin_read_port,
+};
 pub use checkout_compensation::{
     CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
     InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,
