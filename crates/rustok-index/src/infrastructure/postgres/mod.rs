@@ -29,7 +29,10 @@ mod source_reconciliation_scheduler;
 mod source_replay;
 mod source_replay_job;
 mod source_replay_retry;
-mod source_replay_runner;
+mod source_replay_runner {
+    include!("source_replay_runner.rs");
+    mod graceful_shutdown;
+}
 
 #[cfg(test)]
 mod mutation_store_tests;
@@ -51,6 +54,8 @@ mod source_reconciliation_runner_tests;
 mod source_replay_job_tests;
 #[cfg(test)]
 mod source_replay_runner_tests;
+#[cfg(test)]
+mod source_replay_graceful_shutdown_tests;
 
 pub use drift_candidate_observer::{
     IndexDriftCandidateObserverCompositionError,

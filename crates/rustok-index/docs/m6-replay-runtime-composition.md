@@ -8,7 +8,7 @@ This composition freezes the complete immutable Index source/schema registries a
 - bounded guarded replay runtime;
 - one module-work registration for due reconciliation execution.
 
-It does not add automatic replay-job scheduling. The server now exposes one bounded authorized GraphQL run/cancel command transport over the guarded replay operator; that transport remains separate from runtime materialization and scheduler ownership.
+It does not add automatic replay-job scheduling. The server exposes one bounded authorized GraphQL run/cancel command transport over the guarded replay operator; that transport remains separate from runtime materialization and scheduler ownership.
 
 ## Composition order
 
@@ -33,6 +33,16 @@ The GraphQL transport authorizes before parsing caller schema/job input and dele
 
 Transport adapters must not call `SharedIndexReplayRuntime` directly. See the server transport contract in `apps/server/docs/index-replay-graphql-transport.md`.
 
+## In-page host interruption boundary
+
+`PostgresIndexReplayRunner` now has a separate `run_interruptible` path that delegates one host-owned probe to the existing `IndexReplayWorker::run_next_page_interruptible` safe points.
+
+An interrupted page is not marked failed and does not manufacture a persisted cancellation. After preserving any cancellation race, the runner yields the fenced job back to `pending` with lease ownership cleared and the last committed checkpoint unchanged. A later attempt can replay the same page; already-durable deliveries remain safe through inbox deduplication and source-version ordering.
+
+The retained SQLite packet covers interruption before source scan and interruption after one mutation is durable but before checkpoint commit. The latter resumes as `Duplicate` on attempt 2 before completing the checkpoint/job.
+
+This is runner-level source completeness only. `SharedIndexReplayRuntime`, `IndexReplayOperatorRuntime`, and the GraphQL transport do **not** yet receive the server `StopHandle`; actual host shutdown binding remains the next composition step.
+
 ## Reconciliation scheduling boundary
 
 The work registration added here is reconciliation-only. It discovers due pending or expired-running reconciliation jobs and delegates actual claim/takeover to `PostgresIndexReconciliationRunner`.
@@ -41,10 +51,11 @@ It does not schedule replay/rebuild jobs, create a second task, own a database l
 
 ## Explicitly open
 
+- connect the server-owned `StopHandle` to interruptible replay execution without exposing shutdown control to callers;
+- execute/admit retained replay interruption/restart evidence;
 - GraphQL command execution/admission evidence and any separately justified HTTP/CLI/admin surfaces;
 - automatic replay/rebuild job scheduling;
 - retained PostgreSQL replay and reconciliation scheduler execution evidence;
-- graceful host-shutdown binding to in-page replay interruption safe points;
 - operator-visible scheduler health and metrics;
 - in-page mutation/checkpoint timeout completion;
 - locale/partition replay checkpoint dimensions;
