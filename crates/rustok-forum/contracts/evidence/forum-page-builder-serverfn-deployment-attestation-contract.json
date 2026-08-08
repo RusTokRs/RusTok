@@ -54,6 +54,7 @@
     "immutable_repo_digest_argument_required": true,
     "live_transport_source_commit_required": true,
     "source_commit_is_exported_from_oci_revision": true,
+    "canonical_release_passes_github_sha_as_oci_revision": true,
     "origin_to_repo_digest_binding_is_maintainer_reviewed_external_fact": true,
     "cryptographic_origin_to_repo_digest_binding_claimed": false
   },
@@ -73,6 +74,7 @@
     "apps/server/src/services/app_router.rs",
     "apps/server/Dockerfile",
     "apps/server/Dockerfile.release",
+    ".github/workflows/release.yml",
     "docs/modules/forum-page-builder-serverfn-deployment-attestation-actualization-2026-08-08.md"
   ],
   "retained_data": [
