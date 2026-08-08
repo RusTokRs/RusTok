@@ -11,6 +11,8 @@ mod localized_validation;
 mod mutation_event;
 mod planner;
 mod postgres_compiler;
+mod postgres_localized_query;
+mod postgres_localized_query_result;
 mod postgres_query_admission;
 mod postgres_query_result;
 mod postgres_query_sql;
@@ -125,6 +127,11 @@ pub use postgres_compiler::{
     CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
     CompiledQueryColumn, PostgresBindValue, PostgresQueryBuildError, PostgresQueryCompileError,
 };
+pub use postgres_localized_query::{
+    CompiledPostgresLocalizedPageQuery, LocalizedQueryPlanFingerprint,
+    PostgresLocalizedQueryBuildError,
+};
+pub use postgres_localized_query_result::PostgresLocalizedQueryDecodeError;
 pub use postgres_query_admission::{
     PostgresQueryEntityAdmission, PostgresQueryEntityAdmissionApplyError,
     PostgresQueryEntityAdmissionError,

@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked from `main@0a8d09a84688e4c0f3d6007d9b90d7f41b2a53a3` (#3204) and continued on
-`agent/index-localized-query-contract-20260808`.
+Status overlay rechecked from `main@678606a78916ed631669e40c617c60a031097138` (#3208) and continued on
+`agent/index-localized-query-postgres-fold-20260808`.
 
 `implementation-plan.md` remains historical architecture context. The 2026-08-07 overlay remains useful
 history for the linked-target/replay sequence, but this file is the current execution cursor.
@@ -21,11 +21,13 @@ The current Product/Index sequence now includes:
 - #3200 corrected Storefront parity after proving owner title search is all-translations and owner result
   projection is requested-locale -> fallback-locale;
 - #3204 selected the one generic localized-entity fold architecture and kept Storefront cutover
-  fail-closed pending implementation/evidence.
+  fail-closed pending implementation/evidence;
+- #3208 added the explicit generic localized query shape, fail-closed validation, dedicated cursor wire
+  identity, and kept ordinary exact-locale `IndexQuery` unchanged.
 
-No newer `main` commit exists at the start of this source slice. The current branch implements the first
-runtime-independent fold contract without changing Product traffic, Product schema, ordinary Index query
-semantics, or event contracts.
+This source slice continues directly from #3208. It makes the root-only PostgreSQL localized fold compiler
+and decoder source-complete without publishing a production execution method, changing Product traffic,
+changing Product schema, or bypassing retained evidence gates.
 
 ## Old execution branch
 
@@ -74,9 +76,9 @@ mismatch:
 4. ordinary `IndexQuery` scopes one exact locale and therefore cannot by itself preserve owner search,
    fallback, global pagination, de-duplication, and exact count.
 
-A scalar substring/LIKE operator on the current exact-locale query is therefore insufficient.
+A scalar substring/LIKE operator on the current exact-locale query remains insufficient.
 
-## Localized Product query architecture and contract
+## Localized Product query architecture, contract, compiler and decoder
 
 Architecture decision: complete in
 `m7-product-storefront-localized-query-architecture.md`.
@@ -85,30 +87,45 @@ Selected architecture remains:
 
 - preserve owner Storefront semantics;
 - keep exactly one current Product schema/routing key;
-- add a generic Index query-layer localized-entity fold whose logical page identity is
+- use a generic Index query-layer localized-entity fold whose logical page identity is
   `(tenant_id, schema_ref, entity_id)` while physical storage remains locale-keyed;
 - evaluate any-locale title search as an identity predicate across current/admitted locale rows;
 - choose result localization independently: requested locale -> fallback locale -> no localized row;
-- apply exact count, sort, lookahead, and cursor semantics to grouped Product identities before page
-  truncation;
+- apply exact count, sort, lookahead, and cursor semantics to Product identities before page truncation;
 - forbid client-side merging of independently paginated locale queries;
-- keep existing schema readiness, Product freshness, and linked-target availability admission.
+- keep existing schema readiness and Product owner freshness admission mandatory.
 
-This source slice makes the **query contract and cursor identity source-complete**:
+The query/cursor contract from #3208 remains source-complete and this slice closes the compiler/decoder
+source gap:
 
-- `LocalizedEntityQuery` is explicit and does not reinterpret ordinary `IndexQuery`;
-- requested locale remains `query.scope.locale`;
-- equal fallback locale collapses through `canonical_fallback_locale()`;
-- `any_locale_filter` is a separate root-only existential predicate;
-- ordinary + any-locale filters share one bounded complexity budget;
-- `SchemaRegistry::validate_localized_entity_query` requires `LocaleMode::Required` and reuses canonical
-  field/operator/value validation;
-- `LocalizedCursorCodec` uses dedicated scoped wire version `3` and binds fold mode, requested/fallback,
-  ordinary filter, any-locale filter, order shape and schema fingerprint;
-- ordinary exact-locale cursor wire version `2` remains unchanged and cannot be accepted by the fold.
+- `LocalizedEntityQuery` stays explicit and ordinary `IndexQuery` remains exact-locale;
+- `localized_projection_fields` explicitly identifies selected root scalar fields that must be projected
+  requested -> fallback -> null instead of leaking a third-locale identity anchor;
+- localized projection fields cannot drive the ordinary identity filter or identity ordering;
+- the first compiler deliberately accepts root-only query paths; linked folded paths remain a later
+  capability/evidence step;
+- `SchemaRegistry::compile_postgres_localized_page_query` emits one page statement and matching exact
+  count using canonical physical aliases `t0` anchor, `t1` requested, `t2` fallback, `t3` any-locale
+  predicate and `t4` lower-locale anti-duplicate candidate;
+- all physical row roles retain the ordinary `is_deleted = FALSE` compiler anchor so generic
+  `PostgresQueryEntityAdmission` can inject owner freshness into every participating row;
+- one admitted identity anchor survives before ordering/lookahead/limit/count by excluding a lower-locale
+  admitted `t4` row;
+- requested/fallback projection uses row-presence `CASE`, so a present requested row with a nullable field
+  never incorrectly falls through to fallback;
+- exact count uses the same identity/admission boundary but does not depend on requested/fallback
+  projection-row availability;
+- `LocalizedQueryPlanFingerprint` separately binds canonical fallback, any-locale predicate and localized
+  projection roles on top of the ordinary query plan fingerprint;
+- `SchemaRegistry::decode_postgres_localized_query_page` checks both plan fingerprints, exact column/count
+  shape and lookahead bounds;
+- SQL null is accepted for a physically non-null field only when that field is explicitly listed as a
+  localized projection field, meaning no requested/fallback row was admitted;
+- lookahead emits only the dedicated `LocalizedCursorCodec` wire-version-3 continuation.
 
-No localized query execution port exists yet. PostgreSQL fold compilation, decode/execution and retained
-evidence remain pending. Storefront traffic remains owner-native.
+No `execute_localized_query` runtime method exists yet. The compiler/decoder output is therefore not an
+authoritative production query path until the PostgreSQL port wires readiness, admission and one
+repeatable-read execution snapshot around it.
 
 ## Retained M7 PostgreSQL packets
 
@@ -171,7 +188,8 @@ The digest workflow remains a maintainer execution gate. Source inspection must 
 - [x] Product materialized root freshness fence.
 - [x] Entity-level stale linked-target freshness fence for ProductVariant and SalesChannel.
 - [x] ProductVariant/SalesChannel recreate-safe monotonic `index_revision` via retained tombstones.
-- [x] Query-path-scoped fail-closed linked-target availability semantics.
+- [x] Query-path-scoped fail-closed linked-target availability semantics for ordinary Product graph
+      queries.
 - [x] One current 15-field Product Storefront-capable source contract.
 - [x] Schema-safe single-current replacement/promotion mechanism.
 - [x] Canonical typed EAV term representation and Product EAV owner clock.
@@ -180,11 +198,15 @@ The digest workflow remains a maintainer execution gate. Source inspection must 
       routing key.
 - [x] Add explicit generic localized query shape/validation while keeping ordinary exact-locale
       `IndexQuery` unchanged.
-- [x] Add dedicated localized cursor identity/version bound to requested/fallback/filter/order semantics.
-- [ ] Compile the localized-entity fold to one PostgreSQL page/exact-count contract and expose execution
-      only after decode/admission semantics are complete.
+- [x] Add dedicated localized cursor identity/version bound to requested/fallback/filter/projection/order
+      semantics.
+- [x] Compile the root-only localized-entity fold to one PostgreSQL page/exact-count contract.
+- [x] Add the localized page decoder with explicit requested/fallback-null semantics and dedicated cursor.
+- [ ] Wire localized execution through the PostgreSQL query port using persisted readiness, generic
+      entity admission and one read-only repeatable-read snapshot.
 - [ ] Add generic scalar text-pattern matching inside the folded any-locale identity predicate.
 - [ ] Implement the Product Storefront Index adapter and Taxonomy tag hydration boundary.
+- [ ] Extend folded execution to linked paths only with dedicated target-availability evidence.
 - [ ] Actualize retained Product PostgreSQL packets/guards to routing key `4` and the 15-field source.
 - [ ] Retain source-ready folded-query owner-vs-Index PostgreSQL equivalence packets.
 - [ ] Execute/admit current replacement Product PostgreSQL packets.
@@ -196,13 +218,15 @@ The digest workflow remains a maintainer execution gate. Source inspection must 
 
 Primary maintainer gate remains: **execute and admit the locked M6 repair PostgreSQL packet**.
 
-Next source-code step: **compile `LocalizedEntityQuery` into one PostgreSQL identity-fold page/count
-contract**. Reuse current schema readiness and owner/link admission on every participating physical locale
-row, group before limit/count, and use `LocalizedCursorCodec` for continuation. Do not add
-`execute_localized_query` to the public runtime until compiler + decoder semantics are source-complete.
+Next source-code step: **wire explicit localized execution into the PostgreSQL Index query port**. Reuse
+the current persisted-schema readiness verifier, `PostgresQueryEntityAdmission`, page/exact-count statement
+mapping and one read-only repeatable-read transaction. Admission/preparation failures must fail closed
+before page/count storage execution, and results must be decoded only through
+`decode_postgres_localized_query_page`.
 
-After the folded execution path exists, add the generic scalar text-pattern primitive inside
-`any_locale_filter`, then implement the Product Storefront adapter/equivalence packet.
+Do not publish Product Storefront traffic in that runtime slice. After the runtime boundary exists, add the
+generic scalar text-pattern primitive inside `any_locale_filter`, then implement the Product Storefront
+adapter and retained equivalence packet.
 
 In parallel, the retained Product PostgreSQL packets need a mechanical source actualization to routing key
 `4`/15-field Product contract before they can be treated as current evidence. No historical-key runtime
@@ -216,6 +240,7 @@ The implementation agent has not run these commands. Maintainer verification sho
 
 ```bash
 node scripts/verify/verify-index-localized-query-contract.mjs
+node scripts/verify/verify-index-localized-query-postgres-fold.mjs
 node scripts/verify/verify-index-product-storefront-localized-query-architecture.mjs
 node scripts/verify/verify-index-product-storefront-parity-gate.mjs
 node scripts/verify/verify-index-query-contract.mjs

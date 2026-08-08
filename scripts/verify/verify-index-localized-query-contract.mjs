@@ -23,39 +23,37 @@ requireMarkers('crates/rustok-index/src/domain/localized_query.rs', [
   'pub query: IndexQuery',
   'pub fallback_locale: Option<LocaleKey>',
   'pub any_locale_filter: Option<FilterExpr>',
+  'pub localized_projection_fields: Vec<FieldPath>',
+  'pub fn with_localized_projection_fields(',
   'pub fn canonical_fallback_locale(&self)',
   'Some(*fallback) != self.requested_locale()',
+  'pub fn is_localized_projection_path(&self, path: &FieldPath)',
   'ordinary_nodes + any_locale_nodes > MAX_LOCALIZED_FILTER_NODES',
-  'pub fn any_locale_referenced_paths(&self)',
-]);
-requireMarkers('crates/rustok-index/src/domain/mod.rs', [
-  'mod localized_query;',
-  'pub use localized_query::LocalizedEntityQuery;',
 ]);
 
 requireMarkers('crates/rustok-index/src/application/localized_validation.rs', [
   'pub enum LocalizedEntityQueryValidationError',
   'LocaleRequiredSchema(SchemaRef)',
+  'LinkedPathPending(FieldPath)',
   'AnyLocaleLinkedPath(FieldPath)',
-  'pub fn validate_localized_entity_query(',
+  'DuplicateLocalizedProjection(FieldPath)',
+  'LocalizedProjectionInOrdinaryFilter(FieldPath)',
+  'LocalizedProjectionInOrder(FieldPath)',
   'registered.schema.locale_mode != LocaleMode::Required',
   'self.validate_query(&query.query)?;',
-  '.find(|path| !path.links().is_empty())',
   'probe.filter = Some(filter.clone());',
-  'self.validate_query(&probe)?;',
+  'field.cardinality != FieldCardinality::One',
 ]);
 
 requireMarkers('crates/rustok-index/src/application/localized_cursor.rs', [
   'const LOCALIZED_SCOPED_CURSOR_VERSION: u8 = 3;',
   'pub struct LocalizedIndexCursor',
-  'pub requested_locale: LocaleKey',
-  'pub fallback_locale: Option<LocaleKey>',
-  'pub struct LocalizedCursorCodec;',
+  'localized_projection_fields: Vec<&\'a FieldPath>',
   'mode: "localized_entity_fold_v1"',
   'fallback_locale: query.canonical_fallback_locale()',
   'any_locale_filter: &query.any_locale_filter',
+  'localized_projection_fields.sort();',
   'b"rustok-index-localized-cursor-query-v1"',
-  'cursor.fallback_locale.as_ref() != query.canonical_fallback_locale()',
   'LocalizedCursorCodecError::UnsupportedVersion(2)',
 ]);
 
@@ -71,22 +69,21 @@ if (ordinaryCursor.includes('localized_entity_fold_v1')) {
 requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'mod localized_cursor;',
   'mod localized_validation;',
-  'LocalizedCursorCodec, LocalizedCursorCodecError, LocalizedCursorValidationError,',
-  'LocalizedIndexCursor,',
   'pub use localized_validation::LocalizedEntityQueryValidationError;',
 ]);
 
 const port = read('crates/rustok-index/src/application/query_port.rs');
 if (port.includes('execute_localized_query')) {
-  fail('this contract slice must not claim PostgreSQL localized execution before the folded compiler exists');
+  fail('localized execution must remain unpublished until runtime admission/readiness wiring is complete');
 }
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
-  'Status: `query_contract_source_complete_compiler_and_evidence_pending`',
+  'Status: `compiler_decoder_source_complete_runtime_and_evidence_pending`',
   '`LocalizedEntityQuery`',
+  '`localized_projection_fields`',
   '`LocalizedCursorCodec`',
   'wire version `3`',
   'ordinary exact-locale cursor wire version `2` remains unchanged',
 ]);
 
-console.log('[verify-index-localized-query-contract] explicit fold query validation and cursor identity are source-locked; compiler/execution remain pending');
+console.log('[verify-index-localized-query-contract] localized query/projection/cursor contract is source-locked; runtime publication remains pending');
