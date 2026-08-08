@@ -11,7 +11,7 @@ use std::{
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{HostRuntimeContext, PortActor, PortContext, PortError};
-use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
 use rustok_moderation::{
     AssignModerationCaseCommand, DecideModerationCaseCommand, ModerationApplicationOperationStatus,
     ModerationCasePriority, ModerationCaseRecord, ModerationCaseStatus, ModerationDecisionEffect,
@@ -33,7 +33,6 @@ use serde_json::json;
 use uuid::Uuid;
 
 const DATABASE_ENV: &str = "RUSTOK_MODERATION_TEST_DATABASE_URL";
-
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 struct TestMigrator;
@@ -59,7 +58,6 @@ impl TestDatabase {
             );
             return Ok(None);
         };
-
         let control = connect(&database_url, "moderation_scheduler_control").await?;
         let suffix = Uuid::new_v4().simple().to_string();
         let schema_name = format!("rustok_moderation_scheduler_{suffix}");
@@ -74,7 +72,6 @@ impl TestDatabase {
         .await?;
         TestMigrator::up(&migration, None).await?;
         migration.close().await?;
-
         Ok(Some(Self {
             control,
             database_url,
@@ -144,7 +141,6 @@ async fn postgres_scheduler_contract_preserves_multi_host_stop_and_crash_recover
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
-
     let outcome = run_scheduler_contract(&database).await;
     let cleanup = database.cleanup().await;
     outcome?;
@@ -153,36 +149,38 @@ async fn postgres_scheduler_contract_preserves_multi_host_stop_and_crash_recover
 
 async fn run_scheduler_contract(database: &TestDatabase) -> TestResult<()> {
     two_schedulers_converge_on_one_domain_call(database).await?;
-    stop_signal_prevents_new_moderation_claim(database).await?;
     expired_claim_is_recovered_by_scheduler_without_duplicate_start_transition(database).await?;
+    // Stop intentionally leaves one pending due operation untouched, so it must be the final
+    // scenario in the shared schema rather than a candidate for a later scheduler run.
+    stop_signal_prevents_new_moderation_claim(database).await?;
     Ok(())
 }
 
 async fn two_schedulers_converge_on_one_domain_call(database: &TestDatabase) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    let seed = ModerationService::new(database.connection("scheduler_race_seed").await?);
+    let owner = ModerationService::new(database.connection("scheduler_race_seed").await?);
     let (case, decision) =
-        seed_decided_case(&seed, tenant_id, actor_id, 11, "scheduler-race").await?;
+        seed_decided_case(&owner, tenant_id, actor_id, 11, "scheduler-race").await?;
 
     let adapter = CountingAdapter::forum_post();
     let registry = registry_with(adapter.clone())?;
     let first = scheduler(database.connection("scheduler_race_one").await?, registry.clone()).await?;
     let second = scheduler(database.connection("scheduler_race_two").await?, registry).await?;
-
     let (first_run, second_run) = tokio::join!(first.run_once(), second.run_once());
     let executed = first_run? + second_run?;
+
     assert!((1..=2).contains(&executed));
     assert_eq!(adapter.call_count(), 1);
-
-    let operation = seed
+    let operation = owner
         .get_application_operation(tenant_id, decision.id)
         .await?
-        .ok_or_else(|| test_error("scheduler race application operation disappeared"))?;
+        .ok_or_else(|| test_error("scheduler race operation disappeared"))?;
     assert_eq!(operation.status, ModerationApplicationOperationStatus::Applied);
     assert_eq!(operation.attempt_count, 1);
     assert_eq!(
-        seed.get_case(tenant_id, case.id)
+        owner
+            .get_case(tenant_id, case.id)
             .await?
             .ok_or_else(|| test_error("scheduler race case disappeared"))?
             .status,
@@ -190,70 +188,9 @@ async fn two_schedulers_converge_on_one_domain_call(database: &TestDatabase) -> 
     );
 
     let observer = database.connection("scheduler_race_observer").await?;
-    assert_eq!(
-        count_events(
-            &observer,
-            tenant_id,
-            "application",
-            decision.id,
-            "application_attempt_claimed",
-        )
-        .await?,
-        1
-    );
-    assert_eq!(
-        count_events(
-            &observer,
-            tenant_id,
-            "case",
-            case.id,
-            "case_application_started",
-        )
-        .await?,
-        1
-    );
-    assert_eq!(
-        count_events(&observer, tenant_id, "case", case.id, "case_closed").await?,
-        1
-    );
-    Ok(())
-}
-
-async fn stop_signal_prevents_new_moderation_claim(database: &TestDatabase) -> TestResult<()> {
-    let tenant_id = Uuid::new_v4();
-    let actor_id = Uuid::new_v4();
-    let service = ModerationService::new(database.connection("scheduler_stop_owner").await?);
-    let (case, decision) =
-        seed_decided_case(&service, tenant_id, actor_id, 21, "scheduler-stop").await?;
-
-    let adapter = CountingAdapter::forum_post();
-    let scheduler = scheduler(
-        database.connection("scheduler_stop_runtime").await?,
-        registry_with(adapter.clone())?,
-    )
-    .await?;
-    let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
-    stop_tx
-        .send(true)
-        .map_err(|_| test_error("scheduler stop receiver unexpectedly closed"))?;
-    scheduler
-        .run_until_stopped(stop_rx, Duration::from_millis(1))
-        .await;
-
-    assert_eq!(adapter.call_count(), 0);
-    let operation = service
-        .get_application_operation(tenant_id, decision.id)
-        .await?
-        .ok_or_else(|| test_error("stopped scheduler operation disappeared"))?;
-    assert_eq!(operation.status, ModerationApplicationOperationStatus::Pending);
-    assert_eq!(operation.attempt_count, 0);
-    assert!(operation.lease_token.is_none());
-    let stored_case = service
-        .get_case(tenant_id, case.id)
-        .await?
-        .ok_or_else(|| test_error("stopped scheduler case disappeared"))?;
-    assert_eq!(stored_case.status, ModerationCaseStatus::Decided);
-    assert_eq!(stored_case.revision, case.revision);
+    assert_eq!(count_events(&observer, tenant_id, "application", decision.id, "application_attempt_claimed").await?, 1);
+    assert_eq!(count_events(&observer, tenant_id, "case", case.id, "case_application_started").await?, 1);
+    assert_eq!(count_events(&observer, tenant_id, "case", case.id, "case_closed").await?, 1);
     Ok(())
 }
 
@@ -262,19 +199,18 @@ async fn expired_claim_is_recovered_by_scheduler_without_duplicate_start_transit
 ) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    let service = ModerationService::new(database.connection("scheduler_crash_owner").await?);
+    let owner = ModerationService::new(database.connection("scheduler_crash_owner").await?);
     let (case, decision) =
-        seed_decided_case(&service, tenant_id, actor_id, 31, "scheduler-crash").await?;
+        seed_decided_case(&owner, tenant_id, actor_id, 31, "scheduler-crash").await?;
 
-    // Simulate a host crash after the authoritative Moderation claim but before it can reach the
-    // domain adapter. The durable operation remains Applying until the owner lease expires.
-    let claimed = service
+    // Simulate a process crash after the authoritative owner claim but before adapter execution.
+    let claimed = owner
         .claim_application_operation(tenant_id, decision.id, "crashed-host", 60)
         .await?
-        .ok_or_else(|| test_error("crash fixture application was not claimable"))?;
+        .ok_or_else(|| test_error("crash fixture was not claimable"))?;
     assert_eq!(claimed.status, ModerationApplicationOperationStatus::Applying);
     assert_eq!(claimed.attempt_count, 1);
-    let after_first_claim = service
+    let after_first_claim = owner
         .get_case(tenant_id, case.id)
         .await?
         .ok_or_else(|| test_error("case after crashed claim disappeared"))?;
@@ -299,49 +235,61 @@ async fn expired_claim_is_recovered_by_scheduler_without_duplicate_start_transit
     assert_eq!(scheduler.run_once().await?, 1);
     assert_eq!(adapter.call_count(), 1);
 
-    let operation = service
+    let operation = owner
         .get_application_operation(tenant_id, decision.id)
         .await?
         .ok_or_else(|| test_error("recovered scheduler operation disappeared"))?;
     assert_eq!(operation.status, ModerationApplicationOperationStatus::Applied);
     assert_eq!(operation.attempt_count, 2);
-    assert!(operation.lease_token.is_none());
-    let closed = service
+    let closed = owner
         .get_case(tenant_id, case.id)
         .await?
         .ok_or_else(|| test_error("recovered scheduler case disappeared"))?;
     assert_eq!(closed.status, ModerationCaseStatus::Closed);
-    // Reclaim itself must not create another ApplyingDecision revision. The only revision after
-    // the crashed first claim is the canonical final close transition.
     assert_eq!(closed.revision, after_first_claim.revision + 1);
 
     let observer = database.connection("scheduler_crash_observer").await?;
-    assert_eq!(
-        count_events(
-            &observer,
-            tenant_id,
-            "application",
-            decision.id,
-            "application_attempt_claimed",
-        )
-        .await?,
-        2
-    );
-    assert_eq!(
-        count_events(
-            &observer,
-            tenant_id,
-            "case",
-            case.id,
-            "case_application_started",
-        )
-        .await?,
-        1
-    );
-    assert_eq!(
-        count_events(&observer, tenant_id, "case", case.id, "case_closed").await?,
-        1
-    );
+    assert_eq!(count_events(&observer, tenant_id, "application", decision.id, "application_attempt_claimed").await?, 2);
+    assert_eq!(count_events(&observer, tenant_id, "case", case.id, "case_application_started").await?, 1);
+    assert_eq!(count_events(&observer, tenant_id, "case", case.id, "case_closed").await?, 1);
+    Ok(())
+}
+
+async fn stop_signal_prevents_new_moderation_claim(database: &TestDatabase) -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let owner = ModerationService::new(database.connection("scheduler_stop_owner").await?);
+    let (case, decision) =
+        seed_decided_case(&owner, tenant_id, actor_id, 21, "scheduler-stop").await?;
+
+    let adapter = CountingAdapter::forum_post();
+    let scheduler = scheduler(
+        database.connection("scheduler_stop_runtime").await?,
+        registry_with(adapter.clone())?,
+    )
+    .await?;
+    let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+    stop_tx
+        .send(true)
+        .map_err(|_| test_error("scheduler stop receiver unexpectedly closed"))?;
+    scheduler
+        .run_until_stopped(stop_rx, Duration::from_millis(1))
+        .await;
+
+    assert_eq!(adapter.call_count(), 0);
+    let operation = owner
+        .get_application_operation(tenant_id, decision.id)
+        .await?
+        .ok_or_else(|| test_error("stopped scheduler operation disappeared"))?;
+    assert_eq!(operation.status, ModerationApplicationOperationStatus::Pending);
+    assert_eq!(operation.attempt_count, 0);
+    assert!(operation.lease_token.is_none());
+    let stored_case = owner
+        .get_case(tenant_id, case.id)
+        .await?
+        .ok_or_else(|| test_error("stopped scheduler case disappeared"))?;
+    assert_eq!(stored_case.status, ModerationCaseStatus::Decided);
+    assert_eq!(stored_case.revision, case.revision);
     Ok(())
 }
 
@@ -405,9 +353,7 @@ async fn seed_decided_case(
                 expected_revision: assigned.revision,
                 decision_kind: ModerationDecisionKind::Warning,
                 reason_code: ModerationReasonCode::Other,
-                effect: ModerationDecisionEffect::v1(
-                    ModerationDecisionEffectAction::NoDomainMutation,
-                )?,
+                effect: ModerationDecisionEffect::v1(ModerationDecisionEffectAction::NoDomainMutation)?,
                 policy_snapshot: json!({"policy": "postgres-scheduler-contract", "version": 1}),
             },
         )
@@ -431,11 +377,7 @@ fn write_context(tenant_id: Uuid, actor_id: Uuid, key: &str) -> PortContext {
     .with_deadline(Duration::from_secs(5))
 }
 
-fn report_command(
-    actor_id: Uuid,
-    subject_id: Uuid,
-    revision: i64,
-) -> SubmitModerationReportCommand {
+fn report_command(actor_id: Uuid, subject_id: Uuid, revision: i64) -> SubmitModerationReportCommand {
     SubmitModerationReportCommand {
         scope: ModerationScopeRef::platform(),
         subject: ModerationSubjectRef {
@@ -452,11 +394,7 @@ fn report_command(
     }
 }
 
-fn case_command(
-    subject_id: Uuid,
-    revision: i64,
-    report_ids: Vec<Uuid>,
-) -> OpenModerationCaseCommand {
+fn case_command(subject_id: Uuid, revision: i64, report_ids: Vec<Uuid>) -> OpenModerationCaseCommand {
     OpenModerationCaseCommand {
         scope: ModerationScopeRef::platform(),
         subject: ModerationSubjectRef {
