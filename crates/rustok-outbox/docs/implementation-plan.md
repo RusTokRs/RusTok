@@ -46,6 +46,13 @@ surfaces.
 - Transactional outbox integration tests live in this owner crate; the
   foundational `rustok-core` crate remains independent from outbox runtime
   implementations, including in its development dependency graph.
+- A representative sealed Blog Comments schedule-audit PostgreSQL packet is
+  retained in
+  `crates/rustok-outbox/contracts/evidence/blog-comments-audit-relay-postgres-source.json`.
+  Its outbox-owned harness covers retry, relay-owner reconstruction, delivery
+  acknowledgement ordering and attempt-budget DLQ transition for the exact
+  write-once envelope identity. The packet is source-ready and unexecuted; it
+  does not promote FFA/FBA or close the broader durable consumer-completion gap.
 
 ## Open results
 
@@ -62,7 +69,9 @@ surfaces.
 
 2. **Execute relay, backlog, retry, and DLQ runtime contracts.** Replace static
    evidence with targeted provider execution and fallback proof for relay
-   control before any FBA promotion.
+   control before any FBA promotion. The Blog Comments schedule-audit relay
+   packet now supplies representative PostgreSQL harness source, but its
+   maintainer execution remains pending and is not accepted runtime evidence.
    **Depends on:** a runtime-composed relay and representative delivery
    failures.
    **Done when:** transactional publish, retry, DLQ transition, degraded mode,
@@ -88,6 +97,7 @@ surfaces.
 - `npm run verify:outbox:admin-boundary`
 - `npm run test:verify:outbox:admin-boundary`
 - `node scripts/verify/verify-outbox-dlq-tenant-rbac.mjs`
+- `node scripts/verify/verify-blog-comments-audit-outbox-relay-postgres-source.mjs`
 - `npm run verify:outbox:fba`
 - `cargo xtask module validate outbox`
 - `cargo xtask module test outbox`
