@@ -17,4 +17,3 @@ postgres = "0.19"
 hex = "0.4"
 sha2.workspace = true
 url = "2.5"
-rustok-module-manifest = { path = "../crates/rustok-module-manifest" }
