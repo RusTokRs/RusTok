@@ -85,6 +85,15 @@ parallel package exports for repository-owned callers. Change the canonical
 contract in place, migrate its data, update every caller atomically, and keep
 one unversioned implementation.
 
+Unreleased tokens, cursors, envelopes, and other repository-owned serialized
+formats are explicitly covered by this rule. When their shape changes, replace
+the canonical encoder and decoder in place and update all repository-owned
+callers, tests, fixtures, scripts, and current documentation in the same change.
+Delete prior-format readers, writers, version bytes/tags, compatibility fixtures,
+and fallback decoders. Do not introduce `V1`/`V2` claim structs or retain an old
+format reader "temporarily" unless the user explicitly approves an external
+compatibility bridge under the exception above.
+
 **Why:** an internal version does not remove migration work; it postpones it
 while multiplying code paths, security fixes, test matrices, documentation,
 and operational states. Two "temporary" versions quickly become two plausible

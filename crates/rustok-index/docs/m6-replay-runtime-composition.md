@@ -10,6 +10,8 @@ This composition freezes the complete immutable Index source/schema registries a
 
 The server wraps both replay execution surfaces in one request-bound operator: durable Full replay through `SharedIndexReplayRuntime` and side-effect-free Shadow replay through `SharedIndexReplayDryRunRuntime`. It also publishes a separate schema-wide Shadow transport adapter that seals caller-carried continuation state. None of these boundaries add automatic replay-job scheduling.
 
+The shared continuation contract now has one current unversioned envelope and binds optional canonical locale identity inside encrypted claims. Runtime composition still exposes schema-wide Shadow only; exact-locale dry-run/runtime/GraphQL execution remains a separate next slice.
+
 ## Composition order
 
 1. selected modules contribute generic schema, source, and PostgreSQL source-factory contracts;
@@ -34,7 +36,9 @@ The Index materializer performs no SQL and calls neither `tokio::spawn` nor a po
 
 Durable ordinary/interruptible run rejects cross-tenant requests before delegation and cancellation derives tenant only from the authorized context. `run_shadow` applies the same exact tenant and `modules:manage` guard before delegating to the side-effect-free dry-run runtime. Shadow keeps a separate typed operator error wrapper so the existing Full/cancel error contract is not reinterpreted.
 
-`IndexReplayShadowTransportRuntime` sits above that guarded operator. It owns no database handle, scheduler, job, checkpoint, lease, cancellation or retry state. It repeats exact-tenant authorization before opening continuation, derives tenant/schema/source scope from the frozen source registry, calls only `IndexReplayOperatorRuntime::run_shadow`, and seals any outgoing raw source cursor before returning a transport-safe outcome.
+`IndexReplayShadowTransportRuntime` sits above that guarded operator. It owns no database handle, scheduler, job, checkpoint, lease, cancellation or retry state. It repeats exact-tenant authorization before opening continuation, currently derives schema-wide tenant/schema/source scope from the frozen source registry, calls only `IndexReplayOperatorRuntime::run_shadow`, and seals any outgoing raw source cursor before returning a transport-safe outcome.
+
+`IndexSourceContinuationScope` can now also derive an exact-locale identity through `for_locale`. Schema-wide and exact-locale tokens cannot cross scopes, and different canonical locales cannot exchange tokens. The codec does not retain an old-format decoder or format-version family.
 
 The GraphQL transport authorizes before parsing caller input. Durable Full uses a fixed 100-row × 8-page chunk, per-page heartbeat and 60-second lease. Schema-wide Shadow uses the same fixed 100-row × 8-page scan budget but no worker, heartbeat or lease. Its only resumable caller state is the authenticated confidential continuation token.
 
@@ -62,7 +66,7 @@ It does not schedule replay/rebuild jobs, create a second task, own a database l
 
 ## Explicitly open
 
-- locale-safe continuation identity before exact-locale Shadow GraphQL transport;
+- exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation identity;
 - execute/admit schema-wide Shadow GraphQL and continuation-key deployment evidence;
 - execute/admit retained replay interruption/restart evidence and end-to-end process-shutdown command evidence;
 - durable GraphQL command execution/admission evidence and any separately justified HTTP/CLI/admin surfaces;

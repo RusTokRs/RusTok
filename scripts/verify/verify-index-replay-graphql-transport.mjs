@@ -60,6 +60,7 @@ const transport = requireMarkers(transportPath, [
   'replay_transport_derives_authority_worker_and_server_owned_budgets',
   'replay_transport_canonicalizes_optional_locale_after_authorization',
   'replay_cancel_authorizes_before_job_id_parsing_and_derives_tenant',
+  'Error::LocaleScopeMismatch',
 ]);
 
 const runPrepare = transport.indexOf('fn prepare_authorized_run(');
@@ -159,20 +160,26 @@ requireMarkers('apps/server/src/services/app_lifecycle.rs', [
   'pub async fn stop(&self)',
   'pub fn is_stopping(&self) -> bool',
 ]);
+requireMarkers('crates/rustok-index/src/application/source_continuation.rs', [
+  'pub fn for_locale(',
+  'claims.locale != expected_scope.locale',
+  'IndexSourceContinuationError::LocaleScopeMismatch',
+]);
 requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
-  'Status: `full_locale_and_schema_wide_shadow_source_complete_execution_pending`.',
+  'Status: `full_locale_schema_wide_shadow_and_locale_safe_continuation_source_complete_execution_pending`.',
   '`runIndexReplay(input: ...)`',
   '`runIndexReplayShadow(input: ...)`',
   '`cancelIndexReplay(input: ...)`',
   'Tenant and actor identities are never accepted',
   'optional canonicalizable locale',
-  'schema-wide Shadow path intentionally has no locale input',
+  'current Shadow GraphQL path intentionally still has no locale input',
   'page limit: `100` mutations',
   'maximum pages: `8`',
   'lease duration: `60` seconds',
   'same fixed source page limit and maximum-page count (`100 × 8`)',
+  'continuation contract itself is now locale-safe',
   '`StopHandle::is_stopping`',
   'maintainer-owned',
 ]);
 
-console.log('[verify-index-replay-graphql-transport] durable Full/cancel and sealed schema-wide Shadow commands remain authorization-first and server-bounded without transport-owned execution state');
+console.log('[verify-index-replay-graphql-transport] durable Full/cancel and sealed schema-wide Shadow commands remain authorization-first/server-bounded while continuation scope is locale-safe');

@@ -69,23 +69,25 @@ for (const forbidden of ['IndexReplayMode::Shadow', 'SideEffectFreeScan', 'Share
 }
 
 requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
-  'Status: `source_complete_schema_wide_transport_execution_pending`',
+  'Status: `source_complete_schema_wide_transport_locale_execution_pending`',
   '`IndexReplayOperatorRuntime::run_shadow`',
   'same request-bound `modules:manage` authorization boundary',
   '`runIndexReplayShadow`',
-  'intentionally schema-wide',
+  'Exact-locale Shadow remains source-open only because the dry-run request/runtime and GraphQL adapter',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_schema_wide_transport_locale_pending`.',
+  'Status: `source_complete_shadow_schema_wide_transport_locale_execution_pending`.',
   '`Shadow` host dispatch is source-complete',
   '`IndexReplayOperatorRuntime::run_shadow`',
-  '`runIndexReplayShadow` is now a dedicated transport',
+  '`runIndexReplayShadow` is a dedicated transport',
+  'Locale-safe continuation identity',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
   'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',
   'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
+  'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
   'Targeted execution remains separate until a bounded mutation-application contract over `IndexSource::load` exists.',
 ]);
 
-console.log('[verify-index-replay-shadow-host-dispatch] Shadow host dispatch remains modules:manage-guarded and no-write while GraphQL uses only the sealed transport adapter');
+console.log('[verify-index-replay-shadow-host-dispatch] Shadow host dispatch remains modules:manage-guarded/no-write; continuation is locale-safe while execution remains schema-wide until the next slice');
