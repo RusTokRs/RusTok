@@ -199,9 +199,7 @@ function executeCommand(command) {
     stderr,
   };
   if (status !== 0) {
-    const error = new Error(`runtime command ${command.id} failed with status ${status}`);
-    error.observation = observation;
-    throw error;
+    throw new Error(`runtime command ${command.id} failed with status ${status}`);
   }
   return observation;
 }
@@ -245,9 +243,9 @@ function main() {
     commands: observations,
     retained_raw_command_output: false,
     runtime_authorization_execution_only: true,
-    deployed_server_fn_attestation_pending: true,
-    browser_execution_pending: true,
-    provider_slo_health_unobserved: true,
+    deployed_server_fn_attestation_not_claimed: true,
+    browser_execution_not_claimed: true,
+    provider_slo_health_not_claimed: true,
     observed_page_builder_wave_pending: true,
     executed_at: new Date().toISOString(),
   });
