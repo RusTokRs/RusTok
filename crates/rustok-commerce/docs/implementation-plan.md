@@ -245,11 +245,20 @@ These are source-contract defects, not verification-only tasks.
   trimmed locale, current-tenant scope, service actor, request channel, bounded deadline,
   exact category/attribute option projection semantics, and the shared stable Product
   GraphQL public error mapper.
-- [ ] Cut remaining Product schema writes, REST delete/publish/unpublish lifecycle
-  commands, and remaining GraphQL Product lifecycle operations over to host-composed
-  Product owner ports. Direct Product entities, `CatalogService`, and remaining
-  write-side `ProductCatalogSchemaService` usage remain explicit source debt; repeatable
-  lifecycle commands need an explicit caller idempotency contract before cutover.
+- [x] Publish optional fail-closed `ProductCatalogReadPort::list_legacy_admin_products`
+  and cut mounted legacy admin GraphQL `product` / `products` to the host-selected
+  Product read runtime, preserving current-tenant and Product permission admission,
+  the detail resolver's existing storefront-channel gate, authenticated actor, request
+  channel, requested/default locale fallback, bounded deadline, `NotFound -> null`,
+  status/vendor/search filters, created-at-desc ordering, clamped pagination,
+  `Untitled product`, normalized/default shipping-profile fallback, tags, telemetry,
+  response projection, and shared stable Product GraphQL public errors.
+- [ ] Cut legacy mounted storefront GraphQL `storefrontProduct` / `storefrontProducts`,
+  remaining Product schema writes, REST delete/publish/unpublish lifecycle commands,
+  and remaining GraphQL Product lifecycle operations over to host-composed Product owner
+  ports. Direct Product entities, `CatalogService`, and remaining write-side
+  `ProductCatalogSchemaService` usage remain explicit source debt; repeatable lifecycle
+  commands need an explicit caller idempotency contract before cutover.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -889,6 +898,11 @@ Source inspection is not execution evidence.
   owner capabilities while preserving storefront admission, current tenant, required
   locale, request channel/deadline context, exact option projection, and stable public
   owner errors without adding a redundant Product port method.
+- [x] Publish the optional legacy admin Product list compatibility capability and cut
+  mounted legacy admin GraphQL `product` / `products` to the host-selected Product read
+  runtime while preserving legacy detail/list admission, locale, filtering, ordering,
+  pagination, title/shipping fallback, tags, telemetry, projection, and stable errors;
+  legacy storefront Product reads remain separate source debt.
 
 ## Change rules
 

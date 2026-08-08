@@ -1473,7 +1473,7 @@ impl CommerceQuery {
         require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         let tenant_id = product_query_tenant(ctx, tenant_id)?;
         super::require_storefront_channel_enabled(ctx).await?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
             "Permission denied: products:read required",
@@ -1484,20 +1484,46 @@ impl CommerceQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let locale =
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
-
-        let service = CatalogService::new(db.clone(), event_bus.clone());
-        let product = match service
-            .get_product_with_locale_fallback(
-                tenant_id,
-                id,
-                &locale,
-                Some(tenant.default_locale.as_str()),
+        let request_context = ctx.data_opt::<RequestContext>();
+        let port_context = rustok_api::PortContext::new(
+            tenant_id.to_string(),
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+            locale.as_str(),
+            format!("commerce-graphql-product:legacy-product:{id}"),
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+        let port_context = match request_context.and_then(|context| context.channel_slug.as_deref()) {
+            Some(channel) => port_context.with_channel(channel),
+            None => port_context,
+        };
+        let product_read_runtime =
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            );
+        let product = match product_read_runtime
+            .read_port()
+            .read_product_projection(
+                port_context.clone(),
+                rustok_product::ProductProjectionRequest {
+                    product_id: id,
+                    locale: Some(locale.clone()),
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                },
             )
             .await
         {
             Ok(product) => product,
-            Err(rustok_product::CommerceError::ProductNotFound(_)) => return Ok(None),
-            Err(err) => return Err(map_product_service_error(err, "product_query")),
+            Err(error) if error.kind == rustok_api::PortErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(FieldError::from(
+                    crate::graphql::product_catalog::product_catalog_port_error(
+                        &port_context,
+                        error,
+                        "legacy_product",
+                    ),
+                ));
+            }
         };
 
         Ok(Some(
@@ -1514,7 +1540,7 @@ impl CommerceQuery {
     ) -> Result<GqlProductList> {
         require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         let tenant_id = product_query_tenant(ctx, tenant_id)?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_LIST],
             "Permission denied: products:list required",
@@ -1535,43 +1561,67 @@ impl CommerceQuery {
         let requested_limit = filter.per_page;
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
-        let offset = (page.saturating_sub(1)) * per_page;
-
-        let mut query = product::Entity::find().filter(product::Column::TenantId.eq(tenant_id));
-
-        if let Some(status) = &filter.status {
-            let status: rustok_product::entities::product::ProductStatus = (*status).into();
-            query = query.filter(product::Column::Status.eq(status));
-        }
-        if let Some(vendor) = &filter.vendor {
-            query = query.filter(product::Column::Vendor.eq(vendor));
-        }
-        if let Some(search) = &filter.search {
-            query = query.filter(product_translation_title_search_condition(
-                db.get_database_backend(),
-                &locale,
-                search,
-            ));
-        }
-
-        let total = query.clone().count(db).await?;
-        let products = query
-            .order_by_desc(product::Column::CreatedAt)
-            .offset(offset)
-            .limit(per_page)
-            .all(db)
-            .await?;
-
-        let items = load_product_list_items(
-            db,
-            event_bus,
-            tenant_id,
-            products,
-            &locale,
-            tenant.default_locale.as_str(),
-            product_list_path("commerce.products"),
+        let request_context = ctx.data_opt::<RequestContext>();
+        let port_context = rustok_api::PortContext::new(
+            tenant_id.to_string(),
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+            locale.as_str(),
+            format!("commerce-graphql-product:legacy-products:{page}:{per_page}"),
         )
-        .await?;
+        .with_deadline(std::time::Duration::from_secs(2));
+        let port_context = match request_context.and_then(|context| context.channel_slug.as_deref()) {
+            Some(channel) => port_context.with_channel(channel),
+            None => port_context,
+        };
+        let product_read_runtime =
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            );
+        let products = product_read_runtime
+            .read_port()
+            .list_legacy_admin_products(
+                port_context.clone(),
+                rustok_product::LegacyAdminProductsRequest {
+                    locale: Some(locale),
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                    search: filter.search,
+                    status: filter.status.map(Into::into),
+                    vendor: filter.vendor,
+                    page,
+                    per_page,
+                },
+            )
+            .await
+            .map_err(|error| {
+                FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "legacy_products",
+                ))
+            })?;
+        let items = products
+            .items
+            .into_iter()
+            .map(|item| GqlProductListItem {
+                id: item.id,
+                status: item.status.into(),
+                title: item.title,
+                handle: item.handle,
+                seller_id: item.seller_id,
+                vendor: item.vendor,
+                product_type: item.product_type,
+                shipping_profile_slug: Some(
+                    item.shipping_profile_slug
+                        .as_deref()
+                        .and_then(crate::storefront_shipping::normalize_shipping_profile_slug)
+                        .unwrap_or_else(|| "default".to_string()),
+                ),
+                tags: item.tags,
+                created_at: item.created_at.to_rfc3339(),
+                published_at: item.published_at.map(|value| value.to_rfc3339()),
+            })
+            .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
             "graphql",
@@ -1583,10 +1633,10 @@ impl CommerceQuery {
 
         Ok(GqlProductList {
             items,
-            total,
+            total: products.total,
             page,
             per_page,
-            has_next: page * per_page < total,
+            has_next: page * per_page < products.total,
         })
     }
 
