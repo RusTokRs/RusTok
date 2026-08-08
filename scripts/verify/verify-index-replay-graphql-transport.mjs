@@ -24,8 +24,10 @@ const transport = requireMarkers(transportPath, [
   'pub module_name: String',
   'pub entity_name: String',
   'pub schema_version: String',
+  'pub locale: Option<String>',
   'pub struct IndexReplayCancelInput',
   'pub job_id: String',
+  'const MAX_LOCALE_BYTES: usize = 32;',
   'const GRAPHQL_REPLAY_PAGE_LIMIT: usize = 100;',
   'const GRAPHQL_REPLAY_MAX_PAGES: usize = 8;',
   'const GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES: usize = 1;',
@@ -37,6 +39,10 @@ const transport = requireMarkers(transportPath, [
   'permissions_for(&tenant_id, &actor_id)',
   'has_effective_permission(&permissions, &Permission::MODULES_MANAGE)',
   'let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;',
+  'let locale = parse_locale(input.locale)?;',
+  'rustok_index::LocaleKey::new(locale)',
+  'rustok_index::IndexReplayRunRequest::for_locale(',
+  'rustok_index::IndexReplayRunRequest::new(',
   'let worker_id = format!("graphql-replay-{}", Uuid::new_v4().simple());',
   '.get::<IndexReplayOperatorRuntime>()',
   'let stop_handle = ctx.data::<StopHandle>()?.clone();',
@@ -44,6 +50,7 @@ const transport = requireMarkers(transportPath, [
   '.request_cancel(operator_context, job_id)',
   'replay_transport_authorizes_before_parsing_untrusted_run_input',
   'replay_transport_derives_authority_worker_and_server_owned_budgets',
+  'replay_transport_canonicalizes_optional_locale_after_authorization',
   'replay_cancel_authorizes_before_job_id_parsing_and_derives_tenant',
 ]);
 
@@ -54,18 +61,20 @@ const permissionCheck = transport.indexOf(
 );
 const runPrepare = transport.indexOf('fn prepare_authorized_run(');
 const runAuthorize = transport.indexOf('let context = authorize(tenant_id, actor_id)?;', runPrepare);
-const runParse = transport.indexOf(
+const runSchemaParse = transport.indexOf(
   'let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;',
   runPrepare,
 );
+const runLocaleParse = transport.indexOf('let locale = parse_locale(input.locale)?;', runPrepare);
 if (
   authorizeStart < 0 ||
   permissionCheck < authorizeStart ||
   runPrepare < 0 ||
   runAuthorize < runPrepare ||
-  runParse <= runAuthorize
+  runSchemaParse <= runAuthorize ||
+  runLocaleParse <= runAuthorize
 ) {
-  fail('run transport must authorize before parsing untrusted schema input');
+  fail('run transport must authorize before parsing untrusted schema/locale input');
 }
 
 const cancelPrepare = transport.indexOf('fn prepare_authorized_cancel(');
@@ -87,7 +96,6 @@ for (const forbidden of [
   'max_pages',
   'heartbeat',
   'lease',
-  'locale',
   'partition',
   'source_name',
   'StopHandle',
@@ -95,6 +103,9 @@ for (const forbidden of [
   'Uuid',
 ]) {
   if (runInput.includes(forbidden)) fail(`replay run input contains caller-owned field marker ${forbidden}`);
+}
+if (!runInput.includes('locale: Option<String>')) {
+  fail('replay run input must expose only one optional locale scope extension');
 }
 
 const production = transport.split('\n#[cfg(test)]')[0];
@@ -145,10 +156,11 @@ requireMarkers('apps/server/src/services/app_lifecycle.rs', [
   'pub fn is_stopping(&self) -> bool',
 ]);
 requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
-  'Status: `source_complete_shutdown_bound_execution_pending`.',
+  'Status: `locale_source_complete_execution_pending`.',
   '`runIndexReplay(input: ...)`',
   '`cancelIndexReplay(input: ...)`',
   'Tenant and actor identities are never accepted',
+  'optional canonicalizable locale',
   'page limit: `100` mutations',
   'maximum pages: `8`',
   'lease duration: `60` seconds',
@@ -157,4 +169,4 @@ requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
   'maintainer-owned',
 ]);
 
-console.log('[verify-index-replay-graphql-transport] guarded schema-wide replay run is bound to the server-owned StopHandle probe; cancel and caller input remain independent of shutdown control');
+console.log('[verify-index-replay-graphql-transport] guarded schema/locale replay run is authorized before optional locale parsing, bounded by server policy and bound to the server-owned StopHandle probe');

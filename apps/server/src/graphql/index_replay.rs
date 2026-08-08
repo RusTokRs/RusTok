@@ -19,19 +19,22 @@ use crate::services::rbac_request_scope::permissions_for;
 
 const MAX_SCHEMA_IDENTIFIER_BYTES: usize = 128;
 const MAX_SCHEMA_VERSION_BYTES: usize = 10;
+const MAX_LOCALE_BYTES: usize = 32;
 const GRAPHQL_REPLAY_PAGE_LIMIT: usize = 100;
 const GRAPHQL_REPLAY_MAX_PAGES: usize = 8;
 const GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES: usize = 1;
 const GRAPHQL_REPLAY_LEASE_SECONDS: u64 = 60;
 
-/// Untrusted GraphQL input for one bounded schema-wide replay run.
+/// Untrusted GraphQL input for one bounded schema-wide or exact-locale replay run.
 ///
 /// Tenant, actor, worker identity and replay resource budgets are server-owned and never caller supplied.
+/// Omitting locale preserves the historical schema-wide replay identity.
 #[derive(Debug, Clone, InputObject)]
 pub struct IndexReplayRunInput {
     pub module_name: String,
     pub entity_name: String,
     pub schema_version: String,
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, Clone, InputObject)]
@@ -146,7 +149,7 @@ pub struct IndexReplayMutation;
 
 #[Object]
 impl IndexReplayMutation {
-    /// Run one server-bounded chunk of the exact schema-wide replay job.
+    /// Run one server-bounded chunk of the exact schema-wide or locale replay job.
     async fn run_index_replay(
         &self,
         ctx: &Context<'_>,
@@ -210,16 +213,30 @@ fn prepare_authorized_run(
 > {
     let context = authorize(tenant_id, actor_id)?;
     let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;
+    let locale = parse_locale(input.locale)?;
     let worker_id = format!("graphql-replay-{}", Uuid::new_v4().simple());
-    let request = rustok_index::IndexReplayRunRequest::new(
-        tenant_id,
-        schema,
-        worker_id,
-        GRAPHQL_REPLAY_PAGE_LIMIT,
-        GRAPHQL_REPLAY_MAX_PAGES,
-        GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES,
-        Duration::from_secs(GRAPHQL_REPLAY_LEASE_SECONDS),
-    )
+    let request = if let Some(locale) = locale {
+        rustok_index::IndexReplayRunRequest::for_locale(
+            tenant_id,
+            schema,
+            locale,
+            worker_id,
+            GRAPHQL_REPLAY_PAGE_LIMIT,
+            GRAPHQL_REPLAY_MAX_PAGES,
+            GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES,
+            Duration::from_secs(GRAPHQL_REPLAY_LEASE_SECONDS),
+        )
+    } else {
+        rustok_index::IndexReplayRunRequest::new(
+            tenant_id,
+            schema,
+            worker_id,
+            GRAPHQL_REPLAY_PAGE_LIMIT,
+            GRAPHQL_REPLAY_MAX_PAGES,
+            GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES,
+            Duration::from_secs(GRAPHQL_REPLAY_LEASE_SECONDS),
+        )
+    }
     .map_err(|_| IndexReplayTransportPreparationError::InvalidInput {
         field: "schema_version",
     })?;
@@ -285,6 +302,19 @@ fn parse_schema(
         })?,
         version: rustok_index::SchemaVersion::new(schema_version),
     })
+}
+
+fn parse_locale(
+    locale: Option<String>,
+) -> std::result::Result<Option<rustok_index::LocaleKey>, IndexReplayTransportPreparationError> {
+    locale
+        .map(|locale| {
+            let locale = bounded_text("locale", &locale, MAX_LOCALE_BYTES)?;
+            rustok_index::LocaleKey::new(locale).map_err(|_| {
+                IndexReplayTransportPreparationError::InvalidInput { field: "locale" }
+            })
+        })
+        .transpose()
 }
 
 fn bounded_text<'a>(
@@ -362,6 +392,7 @@ mod tests {
             module_name: "Rustok Product".to_owned(),
             entity_name: "product".to_owned(),
             schema_version: "zero".to_owned(),
+            locale: Some("not a locale!!!".to_owned()),
         }
     }
 
@@ -413,6 +444,7 @@ mod tests {
                         module_name: "rustok-product".to_owned(),
                         entity_name: "product".to_owned(),
                         schema_version: "4".to_owned(),
+                        locale: None,
                     },
                 )
             },
@@ -424,6 +456,7 @@ mod tests {
         assert_eq!(request.page_request().schema().module.as_str(), "rustok-product");
         assert_eq!(request.page_request().schema().entity.as_str(), "product");
         assert_eq!(request.page_request().schema().version.get(), 4);
+        assert!(request.locale().is_none());
         assert!(request.worker_id().starts_with("graphql-replay-"));
         assert_eq!(request.page_request().limit(), GRAPHQL_REPLAY_PAGE_LIMIT);
         assert_eq!(request.max_pages(), GRAPHQL_REPLAY_MAX_PAGES);
@@ -435,6 +468,36 @@ mod tests {
             request.lease_duration(),
             std::time::Duration::from_secs(GRAPHQL_REPLAY_LEASE_SECONDS)
         );
+    }
+
+    #[tokio::test]
+    async fn replay_transport_canonicalizes_optional_locale_after_authorization() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let (_, request) = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            async {
+                prepare_authorized_run(
+                    tenant_id,
+                    actor_id,
+                    IndexReplayRunInput {
+                        module_name: "rustok-product".to_owned(),
+                        entity_name: "product".to_owned(),
+                        schema_version: "4".to_owned(),
+                        locale: Some("EN-us".to_owned()),
+                    },
+                )
+            },
+        )
+        .await
+        .expect("authorized locale replay request should parse");
+
+        assert_eq!(request.locale().map(|locale| locale.as_str()), Some("en-US"));
     }
 
     #[tokio::test]
