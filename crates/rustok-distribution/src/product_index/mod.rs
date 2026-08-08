@@ -16,8 +16,9 @@ pub(crate) use storefront_shadow::{
 };
 mod storefront_shadow_executor;
 pub(crate) use storefront_shadow_executor::{
-    ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecution,
-    ProductStorefrontIndexShadowExecutor, ProductStorefrontIndexShadowProjectionError,
+    ProductStorefrontIndexChannelScopeDecision, ProductStorefrontIndexShadowComparison,
+    ProductStorefrontIndexShadowExecution, ProductStorefrontIndexShadowExecutor,
+    ProductStorefrontIndexShadowProjectionError, classify_product_storefront_index_channel_scope,
 };
 #[cfg(test)]
 mod storefront_shadow_eav_postgres_tests;
@@ -105,7 +106,7 @@ mod tests {
         register(&mut extensions).unwrap();
 
         let admissions = extensions
-            .get::<rustok_index::PostgresIndexQueryAdmissionCatalog>()
+            .get::<rustok_index::PostgresQueryEntityAdmissionCatalog>()
             .expect("Product+Channel selection must publish graph entity admissions");
         assert_eq!(admissions.len(), 3);
         assert_eq!(admissions.link_availability_len(), 1);
