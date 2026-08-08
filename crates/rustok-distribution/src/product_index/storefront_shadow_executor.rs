@@ -6,9 +6,9 @@ use rustok_index::{
     IndexQueryExecutionError, IndexQueryPage, IndexQueryPort, SharedIndexQueryRuntime,
 };
 use rustok_product::{
-    FilteredPublishedProductsRequest, ProductCatalogReadPort, ProductCatalogReadRuntime,
-    ProductCatalogSchemaReadPort, ProductStorefrontAttributeFilterResolutionRequest,
-    StorefrontProductList, StorefrontProductListQuery,
+    FilteredPublishedProductsRequest, ProductCatalogReadRuntime,
+    ProductStorefrontAttributeFilterResolutionRequest, StorefrontProductList,
+    StorefrontProductListQuery,
 };
 
 use super::{
@@ -45,7 +45,7 @@ pub(crate) enum ProductStorefrontIndexShadowProjectionError {
     SchemaReadPortUnavailable,
     #[error("Product Storefront shadow request tenant identity is invalid")]
     InvalidTenant,
-    #[error("Product Storefront shadow requires matching public channel slug and id")]
+    #[error("Product Storefront shadow requires a trusted public channel slug/id pair")]
     PublicChannelIdentityUnavailable,
     #[error("Product Storefront shadow attribute-filter owner resolution failed: {0}")]
     AttributeFilterResolution(PortError),
@@ -61,6 +61,10 @@ pub(crate) enum ProductStorefrontIndexShadowProjectionError {
 /// `CatalogService`, `ProductCatalogSchemaService`, a PostgreSQL Index port, or a database connection.
 /// The owner list result remains authoritative even when Product metadata resolution, shadow query build,
 /// Index readiness/admission, or Index execution fails.
+///
+/// `public_channel_slug` and `public_channel_id` must be a trusted pair supplied by the caller's current
+/// channel context. This executor only checks that both identities are present and non-empty/non-nil; it
+/// does not independently prove slug/UUID correspondence.
 #[derive(Clone)]
 pub(crate) struct ProductStorefrontIndexShadowExecutor {
     product: ProductCatalogReadRuntime,
@@ -164,7 +168,7 @@ impl ProductStorefrontIndexShadowExecutor {
         self.index
             .execute_localized_query(index_query)
             .await
-            .map_err(Into::into)
+            .map_err(ProductStorefrontIndexShadowProjectionError::Index)
     }
 }
 
