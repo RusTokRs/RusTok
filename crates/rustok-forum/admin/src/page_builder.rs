@@ -53,9 +53,9 @@ pub struct ForumWidgetPropertyEditorModel {
 
 /// Forum-owned adapter for Fly contribution contracts.
 ///
-/// It does not execute Forum reads or duplicate widget validation. Rendering/property editing
-/// resolves only canonical widget identity and the owner contract reference; the Forum catalog,
-/// validation and future preview-data transport remain the authoritative owner boundary.
+/// It resolves canonical widget identity and opaque configuration only. It never executes Forum
+/// reads or copies Forum JSON schemas into the Fly layer. Owner catalog/validation and the future
+/// preview-data transport remain the authoritative Forum boundary.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ForumContributionAdapter;
 
@@ -70,23 +70,12 @@ impl ContributionAdapter for ForumContributionAdapter {
     ) -> UiResult<Self::Rendered> {
         ensure_forum_provider(request.provider)?;
         ensure_component_type(request.component_type, resolved.renderer.component_type.as_str())?;
-        let editor = resolved
-            .contribution
-            .property_editors
-            .iter()
-            .find(|editor| editor.component_type == request.component_type)
-            .ok_or_else(|| {
-                UiError::AdapterRejected(format!(
-                    "Forum widget `{}` has no owner-backed property contract",
-                    request.component_type
-                ))
-            })?;
         Ok(ForumWidgetRenderModel {
             component_id: request.component_id.to_string(),
             widget_type: request.component_type.to_string(),
             presentation: request.presentation,
             props: component_props(request.component)?,
-            owner_schema: owner_schema_ref(&editor.property_schema)?,
+            owner_schema: owner_schema_for_component(request.component_type)?,
         })
     }
 
@@ -115,7 +104,11 @@ pub fn forum_contribution_manifest() -> ModuleContributionManifest {
 }
 
 pub fn forum_widget_contribution() -> ContributionDescriptor {
-    generated_widget_contribution().clone()
+    generated_contribution(FORUM_WIDGET_CONTRIBUTION_ID).clone()
+}
+
+pub fn forum_widget_preview_contribution() -> ContributionDescriptor {
+    generated_contribution(FORUM_WIDGET_PREVIEW_CONTRIBUTION_ID).clone()
 }
 
 pub fn forum_full_admin_contribution_policy() -> ContributionAssemblyPolicy {
@@ -137,23 +130,25 @@ pub fn build_forum_admin_contribution_registry(
 /// Register Forum widget component/block definitions into a Fly registry set.
 ///
 /// Block ids intentionally equal component types (`forum.*`) so canonical module metadata remains
-/// the only mapping authority. The component stores only versioned widget configuration in `props`;
-/// Forum owner data is never copied into the Fly document.
+/// the only mapping authority. The Fly component persists only versioned widget configuration in
+/// `props`; Forum owner data is never copied into the builder document.
 pub fn register_forum_fly_widgets(registries: &mut RegistrySet) -> FlyResult<()> {
-    let contribution = generated_widget_contribution();
-    for block_id in &contribution.blocks {
-        let renderer = contribution
+    let catalog = generated_contribution(FORUM_WIDGET_CONTRIBUTION_ID);
+    let preview = generated_contribution(FORUM_WIDGET_PREVIEW_CONTRIBUTION_ID);
+    for block_id in &catalog.blocks {
+        let renderer = preview
             .renderers
             .iter()
             .find(|renderer| renderer.component_type == *block_id)
             .ok_or_else(|| {
                 FlyError::Decode(format!(
-                    "generated Forum contribution block `{block_id}` has no renderer contract"
+                    "generated Forum block `{block_id}` has no preview renderer contract"
                 ))
             })?;
-        let label = contribution
+        let label = catalog
             .messages
             .get(&renderer.accessibility.label_message_id)
+            .or_else(|| preview.messages.get(&renderer.accessibility.label_message_id))
             .cloned()
             .ok_or_else(|| {
                 FlyError::Decode(format!(
@@ -193,16 +188,25 @@ pub fn forum_fly_registry_set() -> FlyResult<RegistrySet> {
     Ok(registries)
 }
 
-fn generated_widget_contribution() -> &'static ContributionDescriptor {
+fn generated_contribution(id: &str) -> &'static ContributionDescriptor {
     GENERATED_FORUM_CONTRIBUTION_MANIFEST
         .admin
         .iter()
-        .find(|contribution| contribution.id == FORUM_WIDGET_CONTRIBUTION_ID)
-        .unwrap_or_else(|| {
-            panic!(
-                "generated Forum admin contribution `{FORUM_WIDGET_CONTRIBUTION_ID}` is missing"
-            )
-        })
+        .find(|contribution| contribution.id == id)
+        .unwrap_or_else(|| panic!("generated Forum admin contribution `{id}` is missing"))
+}
+
+fn owner_schema_for_component(component_type: &str) -> UiResult<ForumWidgetOwnerSchemaRef> {
+    let editor = generated_contribution(FORUM_WIDGET_CONTRIBUTION_ID)
+        .property_editors
+        .iter()
+        .find(|editor| editor.component_type == component_type)
+        .ok_or_else(|| {
+            UiError::AdapterRejected(format!(
+                "Forum widget `{component_type}` has no owner-backed property contract"
+            ))
+        })?;
+    owner_schema_ref(&editor.property_schema)
 }
 
 fn ensure_forum_provider(provider: &str) -> UiResult<()> {
@@ -285,19 +289,40 @@ mod tests {
     use serde_json::to_value;
 
     #[test]
-    fn generated_manifest_registers_all_forum_widget_contracts() {
+    fn generated_manifest_registers_split_authoring_and_preview_contracts() {
         let result = build_forum_admin_contribution_registry(&forum_full_admin_contribution_policy());
         assert!(result.is_valid(), "diagnostics: {:?}", result.diagnostics);
-        assert_eq!(result.registered_contributions, 1);
-        let contribution = result
+        assert_eq!(result.registered_contributions, 2);
+
+        let catalog = result
             .registry
             .get(FORUM_WIDGET_CONTRIBUTION_ID)
-            .expect("Forum widget contribution");
-        assert_eq!(contribution.blocks.len(), FORUM_WIDGET_COMPONENT_TYPES.len());
-        assert_eq!(contribution.renderers.len(), FORUM_WIDGET_COMPONENT_TYPES.len());
-        assert_eq!(
-            contribution.property_editors.len(),
-            FORUM_WIDGET_COMPONENT_TYPES.len()
+            .expect("Forum widget catalog contribution");
+        assert_eq!(catalog.blocks.len(), FORUM_WIDGET_COMPONENT_TYPES.len());
+        assert!(catalog.renderers.is_empty());
+        assert_eq!(catalog.property_editors.len(), FORUM_WIDGET_COMPONENT_TYPES.len());
+
+        let preview = result
+            .registry
+            .get(FORUM_WIDGET_PREVIEW_CONTRIBUTION_ID)
+            .expect("Forum widget preview contribution");
+        assert!(preview.blocks.is_empty());
+        assert_eq!(preview.renderers.len(), FORUM_WIDGET_COMPONENT_TYPES.len());
+        assert!(preview.property_editors.is_empty());
+    }
+
+    #[test]
+    fn preview_off_keeps_authoring_contracts_but_filters_renderers() {
+        let mut policy = forum_full_admin_contribution_policy();
+        policy.capabilities.remove("preview");
+        let result = build_forum_admin_contribution_registry(&policy);
+        assert!(result.is_valid(), "diagnostics: {:?}", result.diagnostics);
+        assert!(result.registry.get(FORUM_WIDGET_CONTRIBUTION_ID).is_some());
+        assert!(
+            result
+                .registry
+                .get(FORUM_WIDGET_PREVIEW_CONTRIBUTION_ID)
+                .is_none()
         );
     }
 
@@ -314,17 +339,19 @@ mod tests {
                 .blocks
                 .get(component_type)
                 .expect("Forum block definition");
-            assert_eq!(block.component.as_object().and_then(|value| value.provider.as_deref()), Some(FORUM_OWNER_PROVIDER));
+            assert_eq!(
+                block
+                    .component
+                    .as_object()
+                    .and_then(|value| value.provider.as_deref()),
+                Some(FORUM_OWNER_PROVIDER)
+            );
         }
     }
 
     #[test]
     fn adapter_resolves_preview_and_property_contract_without_copying_owner_schema() {
         let assembly = build_forum_admin_contribution_registry(&forum_full_admin_contribution_policy());
-        let contribution = assembly
-            .registry
-            .get(FORUM_WIDGET_CONTRIBUTION_ID)
-            .expect("Forum widget contribution");
         let component_type = FORUM_WIDGET_COMPONENT_TYPES[0];
         let registries = forum_fly_registry_set().expect("Forum Fly registry");
         let component = to_value(
@@ -352,7 +379,10 @@ mod tests {
         .expect("Forum preview contract");
         assert_eq!(rendered.widget_type, component_type);
         assert_eq!(rendered.owner_schema.format, OWNER_SCHEMA_REF_FORMAT);
-        assert_eq!(rendered.owner_schema.owner_data_state, "owner_preview_transport_open");
+        assert_eq!(
+            rendered.owner_schema.owner_data_state,
+            "owner_preview_transport_open"
+        );
 
         let editor = edit_contribution_properties(
             &assembly.registry,
@@ -372,13 +402,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_forum_permission_filters_manifest_before_registration() {
+    fn missing_forum_permission_filters_both_contributions_before_registration() {
         let mut policy = forum_full_admin_contribution_policy();
         policy.permissions.clear();
         let result = build_forum_admin_contribution_registry(&policy);
         assert!(result.is_valid());
         assert_eq!(result.registered_contributions, 0);
-        assert_eq!(result.skipped_contributions, 1);
+        assert_eq!(result.skipped_contributions, 2);
         assert!(
             result
                 .diagnostics
