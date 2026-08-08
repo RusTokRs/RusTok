@@ -1,12 +1,11 @@
 # M6 replay mode contract
 
-Status: `source_complete_shadow_schema_wide_transport_locale_execution_pending`.
+Status: `source_complete_shadow_locale_transport_execution_pending`.
 
 This slice defines explicit rebuild mode identity without changing the existing durable replay runner, job,
 checkpoint, cancellation, locale or lease state machines. Shadow execution is bound to the server-owned request
-authorization guard and has a dedicated schema-wide GraphQL command through a sealed continuation boundary.
-The shared continuation identity is now locale-safe; exact-locale Shadow execution remains the next separate
-transport/runtime slice.
+authorization guard and has a dedicated schema-wide or exact-locale GraphQL command through one sealed
+continuation boundary.
 
 ## Mode identity
 
@@ -55,39 +54,37 @@ This remains a host dispatch boundary, not a new durable mode state machine:
 - no mutation sink or database connection is exposed;
 - Full continues to route to the durable runner unchanged.
 
-## Schema-wide Shadow GraphQL transport
+## Shadow GraphQL transport
 
 `runIndexReplayShadow` is a dedicated transport rather than a generic mode selector on `runIndexReplay`.
-It currently accepts only schema routing identity and an optional authenticated confidential continuation token.
+It accepts schema routing identity, one optional canonicalizable locale and one optional authenticated confidential
+continuation token.
 
-The GraphQL layer authorizes request-bound `modules:manage` before parsing schema/continuation input. A separate
-server-owned `IndexReplayShadowTransportRuntime` repeats exact-tenant authorization, opens continuation only under
-the frozen schema-wide tenant/schema/source scope, constructs the existing `IndexReplayDryRunRequest`, calls
-guarded `run_shadow`, and seals any outgoing cursor before returning.
+The GraphQL layer authorizes request-bound `modules:manage` before parsing schema/locale/continuation input. Locale
+uses the same bounded `LocaleKey` canonicalization as durable Full replay. A separate server-owned
+`IndexReplayShadowTransportRuntime` repeats exact-tenant authorization, derives schema-wide or exact-locale frozen
+continuation scope, opens the token, constructs the matching `IndexReplayDryRunRequest`, calls guarded
+`run_shadow`, and seals any outgoing cursor under that same scope.
 
 Resource bounds remain server-owned: `100` mutations per source page and at most `8` pages per invocation. Shadow
 has no caller-visible worker, lease, heartbeat, job, checkpoint, cancel, retry/requeue or source-name field.
 Its payload contains only Complete/Yielded status, bounded scan counters and optional sealed continuation.
 
-## Locale-safe continuation identity
+## Locale-safe continuation and dry-run execution
 
-`IndexSourceContinuationScope` now distinguishes scan scope as part of the encrypted claims:
+`IndexSourceContinuationScope` distinguishes scan scope in encrypted claims:
 
 - schema-wide -> `locale = None`;
 - exact locale -> `locale = Some(LocaleKey)`.
 
-`from_registry` constructs only schema-wide scope and `for_locale` constructs only exact canonical-locale scope.
-Opening requires exact locale equality in addition to tenant/schema/source ownership. Schema-wide and locale
-tokens cannot cross scopes, and different canonical locales cannot exchange tokens.
+`IndexReplayDryRunRequest` now carries that same optional canonical locale. `SharedIndexReplayDryRunRuntime` rejects
+exact-locale execution for `LocaleMode::None` and constructs every actual scan through schema-wide
+`IndexSourceScanRequest::new` or exact-locale `IndexSourceScanRequest::for_locale`. Source-page validation therefore
+keeps every returned mutation on the same exact scope.
 
-The continuation codec has one current unversioned envelope. The previous pre-release shape was replaced in place:
-there is no version byte, `contract_version`, old-format claims type, or fallback decoder. Key rotation remains a
-cryptographic-key concern only and does not create format compatibility.
-
-Exact-locale Shadow transport remains source-open because locale still must be carried through
-`IndexReplayDryRunRequest`, `SharedIndexReplayDryRunRuntime`, the sealed server adapter and authorization-first
-GraphQL input. That next slice can now use `IndexSourceContinuationScope::for_locale` without changing the
-continuation format again.
+The continuation codec has one current unversioned envelope. There is no version byte, `contract_version`,
+old-format claims type, or fallback decoder. Key rotation remains a cryptographic-key concern only and does not
+create format compatibility.
 
 ## Existing contracts reused
 
@@ -95,8 +92,9 @@ The mode contract composes already-retained boundaries rather than duplicating t
 
 - Full: durable fenced replay job/checkpoint runner, optional canonical locale and page lease-heartbeat policy;
 - Targeted: `IndexSourceLoadRequest` exact-key validation and `IndexSource::load` source boundary;
-- Shadow: `IndexReplayDryRunRequest` / `SharedIndexReplayDryRunRuntime` bounded side-effect-free scan validation,
-  guarded by the server replay operator and transported only through sealed caller-carried continuation.
+- Shadow: locale-aware `IndexReplayDryRunRequest` / `SharedIndexReplayDryRunRuntime` bounded side-effect-free scan
+  validation, guarded by the server replay operator and transported only through sealed caller-carried
+  continuation.
 
 Partition replay remains blocked until a real partition-capable source can filter before pagination.
 
@@ -107,7 +105,6 @@ This slice does not add:
 - Targeted mutation execution;
 - Shadow persistence or shadow tables;
 - a generic caller-controlled mode selector;
-- exact-locale Shadow execution/GraphQL transport yet;
 - token-format version families or legacy continuation decoders;
 - a mode column in `index_jobs` or `index_checkpoints`;
 - partition replay scope;
@@ -116,14 +113,10 @@ This slice does not add:
 
 ## Next source boundary
 
-The next independent Shadow boundary is exact-locale dry-run/runtime/GraphQL execution using the now-canonical
-locale-safe continuation scope. Locale must be authorization-first, canonicalized through `LocaleKey`, carried by
-`IndexReplayDryRunRequest`, applied through `IndexSourceScanRequest::for_locale`, and used to derive
-`IndexSourceContinuationScope::for_locale` for open/seal. It still must not create job, checkpoint, lease,
-cancellation or retry state.
-
-Targeted execution remains a separate later slice because it needs an explicit bounded mutation-application
-contract over `IndexSource::load` rather than a scan checkpoint.
+The explicit Full/Targeted/Shadow identity, guarded Shadow host dispatch and schema-wide/exact-locale Shadow
+transport are source-complete. The next independent source-only M6 boundary is the bounded mutation-application
+contract required before Targeted can execute over `IndexSource::load`. It must reuse the canonical targeted load
+request and must not alias durable scan jobs/checkpoints or invent a second ownership/retry state machine.
 
 Execution/admission remains maintainer-owned. Rust tests, Node verifiers, database scenarios and CI for this source
 slice were not executed by the implementation agent.
