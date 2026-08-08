@@ -692,7 +692,7 @@
     {
       "name": "embedded_governance_native",
       "provider": "GroupGovernanceService",
-      "status": "implemented_source",
+      "status": "implemented",
       "surfaces": [
         "rust_port",
         "graphql",
