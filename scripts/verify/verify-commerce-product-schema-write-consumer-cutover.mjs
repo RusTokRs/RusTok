@@ -18,6 +18,7 @@ const forbidText = (source, text, message) => {
 };
 
 const server = read("crates/rustok-commerce/src/graphql/mutations/catalog.rs");
+const catalogFixture = read("crates/rustok-commerce/tests/graphql_runtime_parity_test/catalog.rs");
 const activeTransport = read("crates/rustok-product/admin/src/catalog_transport_retry.rs");
 const schemaTransport = read("crates/rustok-product/admin/src/transport/product_schema_graphql.rs");
 const retryIdentity = read("crates/rustok-product/admin/src/schema_retry_identity.rs");
@@ -31,7 +32,7 @@ forbidText(
 requireText(server, "ProductCatalogSchemaWritePort", "mounted Commerce must depend on the typed Product schema-write port");
 requireText(server, ".schema_write_port()", "mounted Commerce must resolve schema writes from the host-selected Product command runtime");
 requireText(server, "product.schema_write_port_unavailable", "missing external schema-write capability must fail closed");
-requireText(server, "Product schema mutation idempotency key is required", "omitted schema-write caller identity must be rejected before owner execution");
+forbidText(server, "Product schema mutation idempotency key is required", "mounted schema SDL must no longer rely on nullable-key omission handling");
 requireText(server, "with_idempotency_key(scoped_key)", "schema writes must reuse the scoped Product PortContext idempotency identity");
 requireText(server, "with_deadline(PRODUCT_COMMAND_DEADLINE)", "schema writes must retain the Product command deadline");
 
@@ -55,14 +56,27 @@ for (const [resolver, ownerMethod] of schemaResolvers) {
   const next = server.indexOf("\n    async fn ", start + 1);
   const end = next < 0 ? server.length : next;
   const slice = server.slice(start, end);
-  requireText(
-    slice,
-    "idempotency_key: Option<String>",
-    `${resolver} must keep nullable SDL only as the explicit admission-ordering follow-up`,
-  );
-  requireText(slice, "product_schema_write_context(", `${resolver} must reject omitted caller identity before owner execution`);
+  requireText(slice, "idempotency_key: String", `${resolver} must expose required GraphQL caller idempotency`);
+  forbidText(slice, "idempotency_key: Option<String>", `${resolver} must not keep nullable GraphQL caller idempotency`);
+  requireText(slice, "product_schema_write_context(", `${resolver} must build the owner write context from caller identity`);
   requireText(slice, `.${ownerMethod}(`, `${resolver} must call Product owner schema-write method ${ownerMethod}`);
   requireText(slice, "product_schema_write_port(ctx, &port_context)?", `${resolver} must resolve the host-composed schema-write capability`);
+}
+
+for (const required of [
+  'createProductAttribute(idempotencyKey: "foreign-actor-create-attribute-all"',
+  'createProductAttributeOption(idempotencyKey: "foreign-actor-create-option-all"',
+  'createCatalogCategory(idempotencyKey: "foreign-actor-create-category-all"',
+  'createProductAttributeSchema(idempotencyKey: "foreign-actor-create-schema-all"',
+  'createProductAttributeSchemaGroup(idempotencyKey: "foreign-actor-create-schema-group-all"',
+  'createCatalogCategoryAttributeGroup(idempotencyKey: "foreign-actor-create-category-group-all"',
+  'setCatalogCategorySchemaMode(idempotencyKey: "foreign-actor-set-schema-mode-all"',
+  'bindProductAttributeSchemaAttribute(idempotencyKey: "foreign-actor-bind-schema-attribute-all"',
+  'bindCatalogCategoryAttribute(idempotencyKey: "foreign-actor-bind-category-attribute-all"',
+  'idempotencyKey: "foreign-actor-save-values-all"',
+  'idempotencyKey: "foreign-actor-clear-values-all"',
+]) {
+  requireText(catalogFixture, required, "Product schema foreign-actor fixture");
 }
 
 requireText(
@@ -89,5 +103,5 @@ requireText(retryIdentity, "&pending.intent == intent", "schema retry identity m
 requireText(retryIdentity, "product-admin-schema:", "schema retry keys must use the Product Admin schema namespace");
 
 console.log(
-  "Product schema-write consumer cutover source guard passed: mounted Commerce uses the host-selected owner port, successful execution requires caller identity, Product Admin sends retained String! keys, and nullable server SDL remains an explicit admission-ordering follow-up.",
+  "Product schema-write consumer cutover source guard passed: mounted Commerce uses the host-selected owner port, all eleven SDL arguments require caller idempotency, foreign-actor regression callers provide keys, and Product Admin retains explicit retry identity.",
 );

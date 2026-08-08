@@ -114,12 +114,9 @@ fn product_schema_write_context(
     tenant_id: Uuid,
     user_id: Uuid,
     product_id: Option<Uuid>,
-    idempotency_key: Option<String>,
+    idempotency_key: String,
     operation: &'static str,
 ) -> Result<PortContext> {
-    let idempotency_key = idempotency_key.ok_or_else(|| {
-        invalid_product_idempotency_key("Product schema mutation idempotency key is required")
-    })?;
     product_command_context(
         ctx,
         tenant_id,
@@ -374,7 +371,7 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         locale: String,
         input: CreateProductAttributeInput,
     ) -> Result<bool> {
@@ -429,7 +426,7 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute_option(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         locale: String,
         input: CreateProductAttributeOptionInput,
     ) -> Result<bool> {
@@ -470,7 +467,7 @@ impl CommerceCatalogMutation {
     async fn create_catalog_category(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         locale: String,
         input: CreateCatalogCategoryInput,
     ) -> Result<bool> {
@@ -515,7 +512,7 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute_schema(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         locale: String,
         input: CreateProductAttributeSchemaInput,
     ) -> Result<bool> {
@@ -553,7 +550,7 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute_schema_group(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         locale: String,
         input: CreateProductAttributeSchemaGroupInput,
     ) -> Result<bool> {
@@ -594,7 +591,7 @@ impl CommerceCatalogMutation {
     async fn create_catalog_category_attribute_group(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         locale: String,
         input: CreateCategoryAttributeGroupInput,
     ) -> Result<bool> {
@@ -635,7 +632,7 @@ impl CommerceCatalogMutation {
     async fn set_catalog_category_schema_mode(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         input: SetCategorySchemaModeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -671,7 +668,7 @@ impl CommerceCatalogMutation {
     async fn bind_product_attribute_schema_attribute(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         input: BindSchemaAttributeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -712,7 +709,7 @@ impl CommerceCatalogMutation {
     async fn bind_catalog_category_attribute(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         input: BindCategoryAttributeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -754,7 +751,7 @@ impl CommerceCatalogMutation {
     async fn save_product_attribute_values(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         product_id: Uuid,
         locale: String,
         patches: Vec<ProductAttributeValuePatchInput>,
@@ -795,7 +792,7 @@ impl CommerceCatalogMutation {
     async fn clear_detached_product_attribute_values(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         product_id: Uuid,
         locale: String,
         attribute_ids: Vec<Uuid>,

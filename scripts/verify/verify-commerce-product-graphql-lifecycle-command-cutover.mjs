@@ -100,7 +100,6 @@ for (const required of [
 }
 
 for (const forbidden of [
-  "idempotency_key: Option<String>",
   "Product mutation idempotency key is required",
   "one-request compatibility identity",
   'format!("compatibility-{}", Uuid::new_v4())',
@@ -199,11 +198,18 @@ requireText(
   "Product lifecycle shipping-profile fixture",
 );
 
-requireText(
+forbidText(
   mutations,
   "ProductCatalogSchemaService::new",
-  "remaining Product schema-write debt must stay explicit",
+  "mounted Product schema writes must not regress to direct owner-service construction",
 );
+for (const required of [
+  "ProductCatalogSchemaWritePort",
+  ".schema_write_port()",
+  "product.schema_write_port_unavailable",
+]) {
+  requireText(mutations, required, "Product schema-write owner boundary");
+}
 forbidText(
   mutations,
   "use rustok_product::{CatalogService,",
@@ -216,4 +222,4 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Product GraphQL lifecycle SDL requires explicit caller idempotency; retry-aware Product Admin and regression callers supply keys with no compatibility identity");
+console.log("✔ Product GraphQL lifecycle SDL requires explicit caller idempotency; mounted schema writes retain the typed owner boundary with no direct Product schema service construction");
