@@ -87,11 +87,12 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'schema-wide or exact-locale invocation',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_locale_transport_execution_pending`.',
+  'Status: `source_complete_targeted_application_host_guard_pending`.',
   '`Shadow` host dispatch is source-complete',
   '`IndexReplayOperatorRuntime::run_shadow`',
   '`runIndexReplayShadow` is a dedicated transport',
   'Locale-safe continuation and dry-run execution',
+  '## Targeted mutation application',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
@@ -99,6 +100,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
+  'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
 ]);
 
-console.log('[verify-index-replay-shadow-host-dispatch] Shadow host dispatch remains modules:manage-guarded/no-write while the sealed adapter carries one canonical schema-wide or exact-locale scope');
+console.log('[verify-index-replay-shadow-host-dispatch] Shadow host dispatch remains modules:manage-guarded/no-write while Targeted application advances independently toward its own guarded host boundary');
