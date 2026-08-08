@@ -67,16 +67,7 @@ pub fn ModuleAdminPage() -> impl IntoView {
                         let subpath_value = module_subpath.get();
                         let page_for_render = page.clone();
                         let enabled = enabled_modules.modules.get();
-                        let rendered_page = if page.module_slug == "pages" {
-                            view! {
-                                <PageBuilderContributionScope enabled_modules=enabled>
-                                    {(page_for_render.render)()}
-                                </PageBuilderContributionScope>
-                            }
-                            .into_any()
-                        } else {
-                            (page_for_render.render)()
-                        };
+                        let pages_route = page.module_slug == "pages";
                         view! {
                             <div class="space-y-6">
                                 <ModulePageSecondaryNav
@@ -87,7 +78,16 @@ pub fn ModuleAdminPage() -> impl IntoView {
                                     route_segment=Some(route_segment_value)
                                     subpath=subpath_value
                                 >
-                                    {rendered_page}
+                                    {if pages_route {
+                                        view! {
+                                            <PageBuilderContributionScope enabled_modules=enabled>
+                                                {(page_for_render.render)()}
+                                            </PageBuilderContributionScope>
+                                        }
+                                        .into_any()
+                                    } else {
+                                        (page_for_render.render)()
+                                    }}
                                 </ModuleRequestProvider>
                             </div>
                         }
