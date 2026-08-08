@@ -60,7 +60,6 @@ slot = "home_before_footer"
 route_segment = "pages"
 page_title = "Pages"
 
-
 [provides.storefront_ui.i18n]
 default_locale = "en"
 supported_locales = ["en", "ru"]
@@ -73,6 +72,108 @@ contract_version = "1.1"
 builder_contract_version = "1.1"
 consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]
+
+# Canonical Fly contribution source for the Pages admin consumer. The admin build script derives
+# owner version from [module].version and injects ownerProvider/providerVersion into generated
+# descriptors, so those identity fields cannot drift in a parallel handwritten Rust manifest.
+[fba.builder_consumer.contribution_manifest]
+owner_provider = "rustok.pages"
+target_providers = { "fly.builtin" = "1" }
+
+[[fba.builder_consumer.contribution_manifest.admin]]
+role = "landing_blocks"
+id = "rustok.pages.landing-blocks"
+provider = "fly.builtin"
+required_capabilities = ["tree", "properties"]
+blocks = [
+  "fly.hero",
+  "fly.two_columns",
+  "fly.feature_grid",
+  "fly.cta",
+  "fly.contact_form",
+]
+
+[fba.builder_consumer.contribution_manifest.admin.messages]
+"pages.builder.contributions.landingBlocks" = "Pages landing blocks"
+
+[fba.builder_consumer.contribution_manifest.admin.metadata]
+format = "grapesjs"
+surface = "admin"
+
+[[fba.builder_consumer.contribution_manifest.admin]]
+role = "metadata"
+id = "rustok.pages.metadata"
+provider = "rustok.pages"
+required_capabilities = ["properties"]
+blocks = []
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors]]
+id = "rustok.pages.metadata.editor"
+component_type = "rustok-pages-metadata"
+provider = "rustok.pages"
+
+[fba.builder_consumer.contribution_manifest.admin.property_editors.accessibility]
+label_message_id = "pages.builder.contributions.metadata.label"
+description_message_id = "pages.builder.contributions.metadata.description"
+keyboard_hint_message_id = ""
+
+[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema]
+format = "page_builder_consumer_properties_v1"
+id = "rustok.pages.metadata.schema"
+title = "Page metadata"
+description = "Versioned Pages metadata. Saving these properties never writes the Fly document."
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema.fields]]
+id = "title"
+label = "Title"
+kind = "text"
+required = true
+max_bytes = 512
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema.fields]]
+id = "slug"
+label = "Slug"
+kind = "text"
+required = true
+max_bytes = 512
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema.fields]]
+id = "meta_title"
+label = "SEO title"
+kind = "text"
+required = false
+max_bytes = 512
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema.fields]]
+id = "meta_description"
+label = "SEO description"
+kind = "text_area"
+required = false
+max_bytes = 4096
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema.fields]]
+id = "template"
+label = "Template"
+kind = "text"
+required = false
+max_bytes = 256
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema.fields]]
+id = "channel_slugs"
+label = "Channels"
+kind = "string_list"
+required = false
+max_bytes = 4096
+help = "Comma-separated channel slugs. Leave empty for every channel."
+placeholder = "web, mobile"
+
+[fba.builder_consumer.contribution_manifest.admin.messages]
+"pages.builder.contributions.metadata.label" = "Page metadata"
+"pages.builder.contributions.metadata.description" = "Edit versioned Pages metadata without modifying the Fly document."
+
+[fba.builder_consumer.contribution_manifest.admin.metadata]
+persistence = "consumer_facade"
+surface = "admin"
 
 [fba.builder_consumer.degraded_modes]
 builder_disabled = "admin_builder_readonly_fallback"

@@ -1,207 +1,54 @@
 use fly_ui::{
-    AccessibilityMetadata, ContributionAssemblyPolicy, ContributionAssemblyResult,
-    ContributionDescriptor, ModuleContributionManifest, PropertyEditorDescriptor,
-    build_admin_contribution_registry_from_manifests,
+    ContributionAssemblyPolicy, ContributionAssemblyResult, ContributionDescriptor,
+    ModuleContributionManifest, build_admin_contribution_registry_from_manifests,
 };
 use rustok_page_builder_admin::{
-    ConsumerPropertyEditorSchema, ConsumerPropertyFieldDescriptor, ConsumerPropertyFieldKind,
-    PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT,
+    ConsumerPropertyEditorSchema, PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT,
 };
-use serde_json::{Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
+use std::sync::LazyLock;
 
-pub const PAGES_MODULE_ID: &str = "pages";
-pub const PAGES_OWNER_PROVIDER: &str = "rustok.pages";
-pub const PAGES_OWNER_PROVIDER_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const FLY_BUILTIN_PROVIDER: &str = "fly.builtin";
-pub const FLY_BUILTIN_PROVIDER_VERSION: &str = "1";
-pub const PAGES_LANDING_BLOCKS_CONTRIBUTION_ID: &str = "rustok.pages.landing-blocks";
-pub const PAGES_METADATA_CONTRIBUTION_ID: &str = "rustok.pages.metadata";
-pub const PAGES_METADATA_PROPERTY_EDITOR_ID: &str = "rustok.pages.metadata.editor";
-pub const PAGES_METADATA_COMPONENT_TYPE: &str = "rustok-pages-metadata";
+include!(concat!(env!("OUT_DIR"), "/pages_contribution_manifest.rs"));
 
-pub const PAGES_BUILDER_CAPABILITIES: &[&str] = &["preview", "tree", "properties", "publish"];
-pub const PAGES_LANDING_BLOCK_CAPABILITIES: &[&str] = &["tree", "properties"];
-pub const PAGES_METADATA_CAPABILITIES: &[&str] = &["properties"];
+static GENERATED_PAGES_CONTRIBUTION_MANIFEST: LazyLock<ModuleContributionManifest> =
+    LazyLock::new(|| {
+        serde_json::from_str(GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON)
+            .expect("build-generated Pages contribution manifest must deserialize")
+    });
 
-pub const PAGES_LANDING_BLOCK_IDS: &[&str] = &[
-    "fly.hero",
-    "fly.two_columns",
-    "fly.feature_grid",
-    "fly.cta",
-    "fly.contact_form",
-];
-
-/// Module-owned metadata used by the generated Fly admin contribution registry.
+/// Build-generated module contribution metadata sourced only from `../rustok-module.toml`.
 ///
-/// Pages owns document lifecycle and metadata persistence. Landing blocks explicitly target
-/// `fly.builtin@1`, while the executable metadata editor remains under the version-pinned
-/// `rustok.pages` owner provider and calls the consumer facade rather than mutating the Fly document.
+/// The build script injects owner/provider versions from canonical module metadata. Pages runtime
+/// never parses TOML and this module does not retain a handwritten contribution descriptor tree.
 pub fn pages_contribution_manifest() -> ModuleContributionManifest {
-    ModuleContributionManifest {
-        module_id: PAGES_MODULE_ID.to_string(),
-        owner_provider: PAGES_OWNER_PROVIDER.to_string(),
-        owner_version: PAGES_OWNER_PROVIDER_VERSION.to_string(),
-        target_providers: BTreeMap::from([(
-            FLY_BUILTIN_PROVIDER.to_string(),
-            FLY_BUILTIN_PROVIDER_VERSION.to_string(),
-        )]),
-        dependencies: BTreeSet::new(),
-        required_permissions: BTreeSet::new(),
-        admin: vec![
-            pages_landing_blocks_contribution(),
-            pages_metadata_contribution(),
-        ],
-        storefront: Vec::new(),
-    }
+    GENERATED_PAGES_CONTRIBUTION_MANIFEST.clone()
 }
 
 pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
-    ContributionDescriptor {
-        id: PAGES_LANDING_BLOCKS_CONTRIBUTION_ID.to_string(),
-        provider: FLY_BUILTIN_PROVIDER.to_string(),
-        required_capabilities: capability_set(PAGES_LANDING_BLOCK_CAPABILITIES),
-        blocks: PAGES_LANDING_BLOCK_IDS
-            .iter()
-            .map(|id| (*id).to_string())
-            .collect(),
-        renderers: Vec::new(),
-        property_editors: Vec::new(),
-        messages: BTreeMap::from([(
-            "pages.builder.contributions.landingBlocks".to_string(),
-            "Pages landing blocks".to_string(),
-        )]),
-        metadata: Map::from_iter([
-            (
-                "ownerProvider".to_string(),
-                Value::String(PAGES_OWNER_PROVIDER.to_string()),
-            ),
-            (
-                "providerVersion".to_string(),
-                Value::String(FLY_BUILTIN_PROVIDER_VERSION.to_string()),
-            ),
-            ("format".to_string(), Value::String("grapesjs".to_string())),
-            ("surface".to_string(), Value::String("admin".to_string())),
-        ]),
-    }
-}
-
-pub fn pages_metadata_property_schema() -> ConsumerPropertyEditorSchema {
-    ConsumerPropertyEditorSchema {
-        format: PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT.to_string(),
-        id: "rustok.pages.metadata.schema".to_string(),
-        title: "Page metadata".to_string(),
-        description: Some(
-            "Versioned Pages metadata. Saving these properties never writes the Fly document."
-                .to_string(),
-        ),
-        fields: vec![
-            property_field(
-                "title",
-                "Title",
-                ConsumerPropertyFieldKind::Text,
-                true,
-                512,
-                None,
-                None,
-            ),
-            property_field(
-                "slug",
-                "Slug",
-                ConsumerPropertyFieldKind::Text,
-                true,
-                512,
-                None,
-                None,
-            ),
-            property_field(
-                "meta_title",
-                "SEO title",
-                ConsumerPropertyFieldKind::Text,
-                false,
-                512,
-                None,
-                None,
-            ),
-            property_field(
-                "meta_description",
-                "SEO description",
-                ConsumerPropertyFieldKind::TextArea,
-                false,
-                4_096,
-                None,
-                None,
-            ),
-            property_field(
-                "template",
-                "Template",
-                ConsumerPropertyFieldKind::Text,
-                false,
-                256,
-                None,
-                None,
-            ),
-            property_field(
-                "channel_slugs",
-                "Channels",
-                ConsumerPropertyFieldKind::StringList,
-                false,
-                4_096,
-                Some("Comma-separated channel slugs. Leave empty for every channel."),
-                Some("web, mobile"),
-            ),
-        ],
-    }
+    generated_admin_contribution(PAGES_LANDING_BLOCKS_CONTRIBUTION_ID)
 }
 
 pub fn pages_metadata_contribution() -> ContributionDescriptor {
-    let schema = pages_metadata_property_schema();
-    ContributionDescriptor {
-        id: PAGES_METADATA_CONTRIBUTION_ID.to_string(),
-        provider: PAGES_OWNER_PROVIDER.to_string(),
-        required_capabilities: capability_set(PAGES_METADATA_CAPABILITIES),
-        blocks: Vec::new(),
-        renderers: Vec::new(),
-        property_editors: vec![PropertyEditorDescriptor {
-            id: PAGES_METADATA_PROPERTY_EDITOR_ID.to_string(),
-            component_type: PAGES_METADATA_COMPONENT_TYPE.to_string(),
-            provider: PAGES_OWNER_PROVIDER.to_string(),
-            property_schema: serde_json::to_value(schema)
-                .expect("Pages metadata property schema must be serializable"),
-            accessibility: AccessibilityMetadata {
-                label_message_id: "pages.builder.contributions.metadata.label".to_string(),
-                description_message_id: Some(
-                    "pages.builder.contributions.metadata.description".to_string(),
-                ),
-                keyboard_hint_message_id: None,
-            },
-        }],
-        messages: BTreeMap::from([
-            (
-                "pages.builder.contributions.metadata.label".to_string(),
-                "Page metadata".to_string(),
-            ),
-            (
-                "pages.builder.contributions.metadata.description".to_string(),
-                "Edit versioned Pages metadata without modifying the Fly document.".to_string(),
-            ),
-        ]),
-        metadata: Map::from_iter([
-            (
-                "ownerProvider".to_string(),
-                Value::String(PAGES_OWNER_PROVIDER.to_string()),
-            ),
-            (
-                "providerVersion".to_string(),
-                Value::String(PAGES_OWNER_PROVIDER_VERSION.to_string()),
-            ),
-            (
-                "persistence".to_string(),
-                Value::String("consumer_facade".to_string()),
-            ),
-            ("surface".to_string(), Value::String("admin".to_string())),
-        ]),
-    }
+    generated_admin_contribution(PAGES_METADATA_CONTRIBUTION_ID)
+}
+
+pub fn pages_metadata_property_schema() -> ConsumerPropertyEditorSchema {
+    let contribution = pages_metadata_contribution();
+    let editor = contribution
+        .property_editors
+        .iter()
+        .find(|editor| editor.id == PAGES_METADATA_PROPERTY_EDITOR_ID)
+        .unwrap_or_else(|| {
+            panic!(
+                "generated Pages metadata contribution is missing property editor `{PAGES_METADATA_PROPERTY_EDITOR_ID}`"
+            )
+        });
+    let schema = serde_json::from_value::<ConsumerPropertyEditorSchema>(editor.property_schema.clone())
+        .expect("generated Pages metadata property schema must deserialize");
+    schema
+        .validate()
+        .expect("generated Pages metadata property schema must satisfy Page Builder contract");
+    schema
 }
 
 pub fn pages_admin_contribution_policy() -> ContributionAssemblyPolicy {
@@ -222,24 +69,13 @@ pub fn build_pages_admin_contribution_registry(
     build_admin_contribution_registry_from_manifests([pages_contribution_manifest()], policy)
 }
 
-fn property_field(
-    id: &str,
-    label: &str,
-    kind: ConsumerPropertyFieldKind,
-    required: bool,
-    max_bytes: usize,
-    help: Option<&str>,
-    placeholder: Option<&str>,
-) -> ConsumerPropertyFieldDescriptor {
-    ConsumerPropertyFieldDescriptor {
-        id: id.to_string(),
-        label: label.to_string(),
-        help: help.map(ToString::to_string),
-        kind,
-        required,
-        max_bytes,
-        placeholder: placeholder.map(ToString::to_string),
-    }
+fn generated_admin_contribution(id: &str) -> ContributionDescriptor {
+    GENERATED_PAGES_CONTRIBUTION_MANIFEST
+        .admin
+        .iter()
+        .find(|contribution| contribution.id == id)
+        .cloned()
+        .unwrap_or_else(|| panic!("generated Pages admin contribution `{id}` is missing"))
 }
 
 fn capability_set(capabilities: &[&str]) -> BTreeSet<String> {
@@ -317,14 +153,18 @@ mod tests {
     }
 
     #[test]
-    fn capability_constants_match_the_module_manifest() {
+    fn generated_constants_match_canonical_module_metadata() {
         let module_manifest = include_str!("../../rustok-module.toml");
+        assert!(module_manifest.contains("[fba.builder_consumer.contribution_manifest]"));
+        assert!(module_manifest.contains("role = \"landing_blocks\""));
+        assert!(module_manifest.contains("role = \"metadata\""));
         for capability in PAGES_BUILDER_CAPABILITIES {
-            assert!(
-                module_manifest.contains(&format!("\"{capability}\"")),
-                "Pages module manifest is missing builder capability `{capability}`"
-            );
+            assert!(module_manifest.contains(&format!("\"{capability}\"")));
         }
+        for block_id in PAGES_LANDING_BLOCK_IDS {
+            assert!(module_manifest.contains(&format!("\"{block_id}\"")));
+        }
+        assert_eq!(pages_metadata_property_schema().format, PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT);
     }
 
     #[test]

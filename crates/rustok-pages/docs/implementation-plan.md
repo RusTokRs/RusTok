@@ -1,7 +1,7 @@
 # Implementation Plan for `rustok-pages`
 
-Date: 2026-08-07  
-Status: `in_progress / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
+Date: 2026-08-08  
+Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
 
 ## Policy: current code only
 
@@ -22,7 +22,8 @@ Forbidden:
 - enabling the same-origin admin launch in standalone/token-based admin builds;
 - mutable current draft content as immutable artifact repair authority;
 - automatic audit -> rebuild -> activation -> rollback chaining;
-- provenance-only rollback targets without live immutable artifacts and their required historical manifest.
+- provenance-only rollback targets without live immutable artifacts and their required historical manifest;
+- a handwritten Pages Fly contribution descriptor tree beside canonical module metadata.
 
 Fly remains the only visual document and command authority. Pages owns page identity, localization, document revisions, lifecycle, route history, immutable published bindings, artifact audit/rebuild/activation/rollback, caches, authenticated inline grants/save transport and the module-owned inline asset HTTP contract. Pages admin owns the optional same-origin launch control. Release engineering owns deterministic composition and evidence, not Pages document policy.
 
@@ -39,6 +40,18 @@ Fly remains the only visual document and command authority. Pages owns page iden
 - Reviewed Page Builder materialization remains the required publish path.
 - Rollback selects a prior immutable manifest without compiling the current draft.
 - Public/admin publication and rollback transports remain delegated to Pages owner services.
+
+### Canonical Page Builder contribution metadata: source-ready
+
+`rustok-module.toml` is now the single Pages source for the Page Builder contribution declaration. It owns the owner/target provider identity, contribution ids, capabilities, Fly landing block ids, messages, metadata property editor identity/accessibility and the full `page_builder_consumer_properties_v1` schema.
+
+`admin/build.rs` validates and normalizes that metadata at build time. Owner version is derived from `[module].version`; exact target-provider versions are retained from the module manifest; `ownerProvider` and `providerVersion` are injected by generation and may not be hand-authored in contribution metadata.
+
+The generator emits stable Rust constants plus the normalized `ModuleContributionManifest` JSON into `OUT_DIR`. `admin/src/contributions.rs` includes that generated source, lazily deserializes it and preserves the existing public helper API. The runtime has no TOML parser dependency and no handwritten `ModuleContributionManifest`, `ContributionDescriptor`, `PropertyEditorDescriptor` or consumer field tree.
+
+This changes metadata authority only. Pages persistence, lifecycle, reviewed publication, rollback, recovery and cache ownership are unchanged.
+
+The shared Page Builder plan tracks generalization of this Pages-specific build generator into reusable module tooling before a second production contribution consumer is connected.
 
 ### Immutable artifact integrity, rebuild, activation and rollback continuity
 
@@ -276,6 +289,11 @@ Dependency graph and built-artifact execution evidence remain pending.
 
 ## Source evidence
 
+- `rustok-module.toml`
+- `admin/build.rs`
+- `admin/src/contributions.rs`
+- `scripts/verify/verify-pages-metadata-properties.mjs`
+- `../../scripts/verify/verify-fly-ui-contributions.mjs`
 - `src/services/page/inline_edit.rs`
 - `src/services/page/inline_edit_feature.rs`
 - `src/services/page/inline_edit_runtime.rs`
@@ -320,7 +338,9 @@ These exact phrases remain only for retained static guard compatibility and desc
 - `Admin-owned inline edit launch: source-ready`.
 - `release-composition-source-ready`.
 
-## Remaining work: execution evidence only
+## Remaining Pages work: execution evidence only
+
+Shared cross-module contribution-generator generalization is tracked in the central Page Builder plan; the Pages reference consumer source boundary is complete in this plan.
 
 ### P0 — artifact repair and rollback evidence
 
@@ -342,6 +362,7 @@ These exact phrases remain only for retained static guard compatibility and desc
 
 - [ ] Apply and review the required `release-infra-approved` label for the protected workflow/build changes.
 - [ ] Review the exact action pins, occurrence counts and base-owned approval behavior.
+- [ ] Run Fly/Page Builder contribution metadata guards.
 - [ ] Run Pages inline consumer, route, asset, launch and release-composition static guards.
 - [ ] Run release infrastructure, supply-chain and readiness guards.
 - [ ] Run focused Cargo checks/tests for Pages admin/storefront/server profiles.
@@ -379,6 +400,8 @@ No tests, static verifiers, formatting, Cargo checks, npm installs, Trunk builds
 Suggested commands, intentionally not run:
 
 ```bash
+node scripts/verify/verify-fly-ui-contributions.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs

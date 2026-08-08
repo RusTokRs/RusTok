@@ -18,6 +18,9 @@ const paths = {
   pageBuilderPalette: 'crates/rustok-page-builder/admin/src/editor/palette_layers.rs',
   pageBuilderPaletteAccess: 'crates/rustok-page-builder/admin/src/palette_access.rs',
   pageBuilderContextContract: 'crates/rustok-page-builder/admin/src/context_contract.rs',
+  pagesCargo: 'crates/rustok-pages/admin/Cargo.toml',
+  pagesBuild: 'crates/rustok-pages/admin/build.rs',
+  pagesModuleManifest: 'crates/rustok-pages/rustok-module.toml',
   pagesLib: 'crates/rustok-pages/admin/src/lib.rs',
   pagesContributions: 'crates/rustok-pages/admin/src/contributions.rs',
   pagesContributionBrowser: 'crates/rustok-pages/admin/src/contribution_browser_intent.rs',
@@ -217,18 +220,42 @@ requireMarker(
   'assert_send_sync::<Arc<ContributionAssemblyResult>>()',
   'contribution assembly must remain safe for Leptos owner context',
 );
-requireMarkers('pagesContributions', [
-  'pub const PAGES_BUILDER_CAPABILITIES',
-  'pub const PAGES_LANDING_BLOCK_CAPABILITIES',
-  'pub fn pages_contribution_manifest()',
-  'pub fn pages_landing_blocks_contribution()',
-  'pub fn pages_admin_contribution_policy()',
-  'pub fn build_pages_admin_contribution_registry(',
-  'FLY_BUILTIN_PROVIDER',
-  'FLY_BUILTIN_PROVIDER_VERSION',
+
+requireMarkers('pagesCargo', [
+  '[build-dependencies]',
+  'serde = { workspace = true, features = ["derive"] }',
+  'serde_json.workspace = true',
+  'toml.workspace = true',
+], 'Pages build-time contribution metadata dependencies');
+requireMarkers('pagesBuild', [
+  'MODULE_MANIFEST_RELATIVE_PATH',
+  'cargo:rerun-if-changed=',
+  'contribution_manifest: ContributionManifestSource',
+  'owner_provider: String',
+  'target_providers: BTreeMap<String, String>',
+  'role=\'landing_blocks\'',
+  'role=\'metadata\'',
+  'OWNER_PROVIDER_METADATA_KEY',
+  'PROVIDER_VERSION_METADATA_KEY',
+  'must not hand-author ownerProvider/providerVersion',
+  'GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON',
+  'PAGES_BUILDER_CAPABILITIES',
   'PAGES_LANDING_BLOCK_IDS',
-  'PAGES_OWNER_PROVIDER.to_string(),',
-  'FLY_BUILTIN_PROVIDER.to_string(),',
+  'module.version',
+  'CARGO_PKG_VERSION',
+], 'Pages canonical contribution build generator');
+requireMarkers('pagesModuleManifest', [
+  '[fba.builder_consumer.contribution_manifest]',
+  'owner_provider = "rustok.pages"',
+  'target_providers = { "fly.builtin" = "1" }',
+  'role = "landing_blocks"',
+  'id = "rustok.pages.landing-blocks"',
+  'provider = "fly.builtin"',
+  'role = "metadata"',
+  'id = "rustok.pages.metadata"',
+  'id = "rustok.pages.metadata.editor"',
+  'component_type = "rustok-pages-metadata"',
+  'format = "page_builder_consumer_properties_v1"',
   '"preview"',
   '"tree"',
   '"properties"',
@@ -238,13 +265,36 @@ requireMarkers('pagesContributions', [
   '"fly.feature_grid"',
   '"fly.cta"',
   '"fly.contact_form"',
-  'renderers: Vec::new()',
-  'property_editors: Vec::new()',
-  'contributed_block_ids_exist_in_the_fly_registry',
+], 'Pages canonical module contribution metadata');
+requireMarkers('pagesContributions', [
+  'include!(concat!(env!("OUT_DIR"), "/pages_contribution_manifest.rs"));',
+  'GENERATED_PAGES_CONTRIBUTION_MANIFEST',
+  'GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON',
+  'serde_json::from_str(',
+  'pub fn pages_contribution_manifest()',
+  'pub fn pages_landing_blocks_contribution()',
+  'pub fn pages_metadata_contribution()',
+  'pub fn pages_metadata_property_schema()',
+  'pub fn pages_admin_contribution_policy()',
+  'pub fn build_pages_admin_contribution_registry(',
+  'fn generated_admin_contribution(',
+  'generated_constants_match_canonical_module_metadata',
   'contribution_policy_enables_owner_and_target_providers',
-  'capability_constants_match_the_module_manifest',
   'storefront_surface_stays_empty_until_a_real_adapter_exists',
-], 'Pages Fly contribution manifest and policy');
+], 'Pages generated Fly contribution manifest and policy');
+for (const forbidden of [
+  'ModuleContributionManifest {',
+  'ContributionDescriptor {',
+  'PropertyEditorDescriptor {',
+  'ConsumerPropertyFieldDescriptor {',
+]) {
+  rejectMarker(
+    'pagesContributions',
+    forbidden,
+    `Pages contribution runtime must not retain handwritten descriptor authority: ${forbidden}`,
+  );
+}
+
 requireMarkers('pagesContributionBrowser', [
   'pub fn pages_palette_block_access()',
   'pub async fn dispatch_pages_browser_intent(',
