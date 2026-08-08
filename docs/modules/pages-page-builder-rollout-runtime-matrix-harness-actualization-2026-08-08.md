@@ -27,6 +27,8 @@ It requires an already passing Pages inline-edit browser evidence packet from th
 
 The matrix API origin must hash to the predecessor `target.origin_sha256`; the admin origin must hash to `target.standalone_origin_sha256`; the two origins must be distinct. The immutable deployment RepoDigest is inherited from the same predecessor so the matrix cannot silently execute against another deployment.
 
+Authentication is explicit as well: maintainers supply separate reviewed storage-state files for the API operator and the standalone-admin operator. The harness creates separate Playwright browser contexts, so it does not depend on a combined or accidentally shared cookie jar across origins.
+
 ## Production settings authority
 
 The harness does not use direct SQL or database credentials.
@@ -72,7 +74,7 @@ The `all_on` publish probe is deliberately non-mutating: it requires the publish
 
 ## Privacy and retained data
 
-The output retains only exact source identity, immutable deployment digest, hashes/sizes of external inputs, hashes of both target origins, hashed fixture identities, response statuses/body sizes/body hashes, booleans, and the canonical hash of the original settings.
+The output retains only exact source identity, immutable deployment digest, hashes/sizes of the predecessor and both storage-state inputs, hashes of both target origins, hashed fixture identities, response statuses/body sizes/body hashes, booleans, and the canonical hash of the original settings.
 
 It does not retain tenant slugs or ids, page ids, admin routes, cookies, authorization headers, storage-state contents, tokens, session ids, raw module settings, raw GraphQL bodies, raw preview request/response bodies, raw browser-intent bodies, raw HTML, traces, screenshots, or videos.
 
