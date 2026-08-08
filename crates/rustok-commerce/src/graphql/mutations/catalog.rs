@@ -53,13 +53,10 @@ fn product_command_context(
     tenant_id: Uuid,
     user_id: Uuid,
     product_id: Option<Uuid>,
-    idempotency_key: Option<String>,
+    idempotency_key: String,
     operation: &'static str,
 ) -> Result<PortContext> {
-    let caller_key = idempotency_key.ok_or_else(|| {
-        invalid_product_idempotency_key("Product mutation idempotency key is required")
-    })?;
-    let caller_key = caller_key.trim();
+    let caller_key = idempotency_key.trim();
     if caller_key.is_empty() {
         return Err(invalid_product_idempotency_key(
             "Product mutation idempotency key must not be empty",
@@ -169,7 +166,7 @@ impl CommerceCatalogMutation {
     async fn create_product(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         input: CreateProductInput,
     ) -> Result<GqlProduct> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -208,7 +205,7 @@ impl CommerceCatalogMutation {
     async fn update_product(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         id: Uuid,
         input: UpdateProductInput,
     ) -> Result<GqlProduct> {
@@ -271,7 +268,7 @@ impl CommerceCatalogMutation {
     async fn publish_product(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         id: Uuid,
     ) -> Result<GqlProduct> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -302,7 +299,7 @@ impl CommerceCatalogMutation {
     async fn delete_product(
         &self,
         ctx: &Context<'_>,
-        idempotency_key: Option<String>,
+        idempotency_key: String,
         id: Uuid,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;

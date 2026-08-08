@@ -75,7 +75,7 @@ async fn admin_graphql_rejects_product_write_actor_from_another_tenant() {
         .execute(Request::new(
             r#"
             mutation {
-              createProduct(input: {
+              createProduct(idempotencyKey: "foreign-actor-create", input: {
                 translations: [{ locale: "en", title: "Unreachable", handle: "unreachable" }]
                 variants: [{ sku: "UNREACHABLE", prices: [{ currencyCode: "EUR", amount: "1.00" }] }]
               }) { id }
@@ -115,13 +115,13 @@ async fn admin_graphql_rejects_foreign_actor_for_every_product_mutation() {
         .execute(Request::new(format!(
             r#"
             mutation {{
-              create: createProduct(input: {{
+              create: createProduct(idempotencyKey: "foreign-actor-create-all", input: {{
                 translations: [{{ locale: "en", title: "Blocked", handle: "blocked" }}]
                 variants: [{{ sku: "BLOCKED", prices: [{{ currencyCode: "EUR", amount: "1.00" }}] }}]
               }}) {{ id }}
-              update: updateProduct(id: "{id}", input: {{}}) {{ id }}
-              publish: publishProduct(id: "{id}") {{ id }}
-              delete: deleteProduct(id: "{id}")
+              update: updateProduct(idempotencyKey: "foreign-actor-update-all", id: "{id}", input: {{}}) {{ id }}
+              publish: publishProduct(idempotencyKey: "foreign-actor-publish-all", id: "{id}") {{ id }}
+              delete: deleteProduct(idempotencyKey: "foreign-actor-delete-all", id: "{id}")
               createAttribute: createProductAttribute(locale: "en", input: {{
                 code: "blocked"
                 valueType: "text"

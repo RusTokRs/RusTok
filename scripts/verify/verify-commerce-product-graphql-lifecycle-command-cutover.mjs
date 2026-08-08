@@ -12,6 +12,8 @@ const mutations = read("crates/rustok-commerce/src/graphql/mutations/catalog.rs"
 const graphqlRuntime = read("crates/rustok-commerce/src/graphql_runtime.rs");
 const ownerPort = read("crates/rustok-product/src/catalog_command_port.rs");
 const hostComposition = read("apps/server/src/services/commerce_provider_runtime.rs");
+const catalogFixture = read("crates/rustok-commerce/tests/graphql_runtime_parity_test/catalog.rs");
+const shippingFixture = read("crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs");
 const failures = [];
 
 function fail(message) {
@@ -79,11 +81,10 @@ for (const required of [
   "product_catalog_command_runtime_for_current_graphql_scope(",
   "MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH: usize = 191",
   "PRODUCT_COMMAND_DEADLINE: Duration = Duration::from_secs(2)",
-  "idempotency_key: Option<String>",
-  "Product mutation idempotency key is required",
+  "idempotency_key: String",
   "Product mutation idempotency key must not be empty",
   "BAD_USER_INPUT",
-  "let caller_key = idempotency_key.ok_or_else(||",
+  "let caller_key = idempotency_key.trim();",
   "digest.update(tenant_id.as_bytes())",
   "digest.update(user_id.as_bytes())",
   "digest.update(operation.as_bytes())",
@@ -99,11 +100,13 @@ for (const required of [
 }
 
 for (const forbidden of [
+  "idempotency_key: Option<String>",
+  "Product mutation idempotency key is required",
   "one-request compatibility identity",
   'format!("compatibility-{}", Uuid::new_v4())',
   "Product GraphQL lifecycle caller omitted idempotency key",
 ]) {
-  forbidText(mutations, forbidden, "GraphQL Product lifecycle compatibility identity");
+  forbidText(mutations, forbidden, "GraphQL Product lifecycle mandatory caller identity");
 }
 
 forbidText(
@@ -139,7 +142,7 @@ for (const [slice, operation, permission, portCall, productIdentity] of [
   [remove, "delete_product", "Permission::PRODUCTS_DELETE", ".delete_product(port_context.clone(), id)", "Some(id)"],
 ]) {
   for (const required of [
-    "idempotency_key: Option<String>",
+    "idempotency_key: String",
     permission,
     "product_mutation_actor(ctx)?",
     "product_command_context(",
@@ -152,6 +155,7 @@ for (const [slice, operation, permission, portCall, productIdentity] of [
   ]) {
     requireText(slice, required, `${operation} GraphQL mutation`);
   }
+  forbidText(slice, "idempotency_key: Option<String>", `${operation} GraphQL mutation`);
   for (const forbidden of [
     "CatalogService::new",
     `.create_product(tenant_id, user_id`,
@@ -180,6 +184,21 @@ for (const required of [
   requireText(update, required, "update Product compatibility semantics");
 }
 
+for (const required of [
+  'createProduct(idempotencyKey: "foreign-actor-create"',
+  'createProduct(idempotencyKey: "foreign-actor-create-all"',
+  'updateProduct(idempotencyKey: "foreign-actor-update-all"',
+  'publishProduct(idempotencyKey: "foreign-actor-publish-all"',
+  'deleteProduct(idempotencyKey: "foreign-actor-delete-all"',
+]) {
+  requireText(catalogFixture, required, "Product lifecycle foreign-actor fixture");
+}
+requireText(
+  shippingFixture,
+  'idempotencyKey: "unknown-shipping-profile-product"',
+  "Product lifecycle shipping-profile fixture",
+);
+
 requireText(
   mutations,
   "ProductCatalogSchemaService::new",
@@ -197,4 +216,4 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Product GraphQL lifecycle execution requires explicit caller idempotency with no compatibility identity; non-null SDL remains explicit follow-up debt");
+console.log("✔ Product GraphQL lifecycle SDL requires explicit caller idempotency; retry-aware Product Admin and regression callers supply keys with no compatibility identity");
