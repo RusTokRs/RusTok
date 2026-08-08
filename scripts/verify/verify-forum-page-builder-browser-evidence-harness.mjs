@@ -57,6 +57,14 @@ if (
 ) {
   throw new Error("browser packet must keep runtime evidence pending");
 }
+if (
+  contract.deployment_identity?.source_commit_verified_against_checkout_head !== true ||
+  contract.deployment_identity?.deployment_digest_is_maintainer_supplied_reviewed_identity !== true ||
+  contract.deployment_identity?.browser_independent_digest_to_deployment_attestation !== false ||
+  contract.deployment_identity?.deployment_provenance_must_be_verified_outside_this_browser_packet !== true
+) {
+  throw new Error("browser evidence contract must keep deployment provenance explicit and external");
+}
 const expectedProfiles = [
   "full",
   "preview_off",
@@ -69,6 +77,7 @@ if (JSON.stringify(contract.profiles) !== JSON.stringify(expectedProfiles)) {
 }
 for (const pending of [
   "browser execution",
+  "browser-independent digest-to-deployment attestation",
   "runtime authorization execution",
   "observed Page Builder Wave",
   "provider SLO health",
@@ -204,6 +213,7 @@ for (const marker of [
   "properties_off",
   "Forum-disabled",
   "forum_topics:read",
+  "maintainer-supplied reviewed deployment identity",
   "No browser execution is claimed",
 ]) {
   requireContains(packet, marker, `browser evidence actualization missing ${marker}`);
