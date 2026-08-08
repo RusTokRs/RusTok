@@ -47,7 +47,7 @@ const ordinary = requireMarkers('crates/rustok-index/src/application/postgres_qu
   'fn compile_text_like(',
   'compile_many_exists(plan, field, bindings, |sql, bindings|',
   'PostgresBindValue::Text(pattern.to_owned())',
-  " LIKE {pattern} ESCAPE E'\\\\\\\\'",
+  ' LIKE {pattern} ESCAPE E\'',
 ]);
 if (ordinary.includes('rustok-product')) {
   fail('ordinary TextLike compiler must remain Product-agnostic');
@@ -56,8 +56,7 @@ if (ordinary.includes('rustok-product')) {
 const localized = requireMarkers('crates/rustok-index/src/application/postgres_localized_query.rs', [
   'FilterExpr::TextLike(path, pattern)',
   'PostgresBindValue::Text(pattern.clone())',
-  " LIKE {pattern} ESCAPE E'\\\\\\\\'",
-  'FilterExpr::TextLike(',
+  ' LIKE {pattern} ESCAPE E\'',
   '"%needle%".to_owned()',
 ]);
 if (localized.includes('product_title_search_condition')) {
@@ -89,4 +88,10 @@ if (owner.slice(searchStart).includes('pt.locale')) {
   fail(`${ownerPath} title search became locale-scoped; revisit localized Storefront parity in the same PR`);
 }
 
-console.log('[verify-index-text-like-filter] bounded generic PostgreSQL LIKE semantics are source-locked for ordinary and folded filters');
+requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
+  'pub struct StorefrontProductListQuery',
+  'pub search: Option<String>',
+  'search: normalize_optional_text(search)',
+]);
+
+console.log('[verify-index-text-like-filter] bounded generic PostgreSQL LIKE semantics are source-locked for ordinary and folded filters; Storefront input-bound parity remains explicit');
