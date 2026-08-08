@@ -33,9 +33,9 @@ requireMarkers("crates/rustok-groups/src/localization.rs", [
   "translation::Column::Locale.eq(locale.clone())",
   "the last group translation cannot be deleted",
   "version.saturating_add(1)",
-  "lock_exclusive()",
   "PortCallPolicy::read()",
   "PortCallPolicy::write()",
+  "reserve_group_write_for_update",
   "require_effective_manager_direct_owned",
   "require_effective_manager_owned",
   "GroupManagerCapability::ManageSettings",
@@ -55,6 +55,13 @@ requireMarkers("crates/rustok-groups/src/effective_membership_guard.rs", [
   "GroupMembershipEffectiveStatus::Suspended",
   "GroupMembershipEffectiveStatus::LegacyBanned",
   "GroupManagerCapability::ManageSettings",
+]);
+
+requireMarkers("crates/rustok-groups/src/membership_enforcement_transaction.rs", [
+  "reserve_group_write_for_update",
+  "UPDATE groups SET version = version WHERE tenant_id = ? AND id = ?",
+  "lock_exclusive()",
+  "resolve_group_membership_enforcement_for_update",
 ]);
 
 requireMarkers("crates/rustok-groups/src/graphql_localization.rs", [
@@ -136,8 +143,12 @@ for (const relative of [
 
 if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
+  const enforcementPort = registry?.provider?.ports?.find((port) => port?.name === "GroupMembershipEnforcementCommandPort");
   const readPort = registry?.provider?.ports?.find((port) => port?.name === "GroupLocalizationReadPort");
   const commandPort = registry?.provider?.ports?.find((port) => port?.name === "GroupLocalizationCommandPort");
+  if (enforcementPort?.graphql_root !== "graphql_application_cas::GroupsMutationRoot") {
+    failures.push("Groups enforcement registry must point at the stable final GraphQL root");
+  }
   if (!readPort?.operations?.includes("list_group_translations")) {
     failures.push("Groups registry is missing localization read operation");
   }
@@ -162,6 +173,9 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   if (registry?.localization?.effective_authorization !== "implemented_source") {
     failures.push("Groups localization effective authorization must be source-complete");
   }
+  if (registry?.localization?.write_lock_order !== "group_then_membership_then_enforcement") {
+    failures.push("Groups localization registry must publish the shared write lock order");
+  }
   if (registry?.evidence?.localization_transport_parity !== null || registry?.evidence?.localization_concurrency !== null) {
     failures.push("unexecuted localization runtime evidence must remain null");
   }
@@ -173,4 +187,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups exact-locale localization, effective owner-clock authorization, no-bypass CAS composition, FBA, FFA, last-row, and no-fallback boundary checks passed.");
+console.log("Groups exact-locale localization, effective owner-clock authorization, shared writer reservation, stable GraphQL root, FBA, FFA, last-row, and no-fallback boundary checks passed.");
