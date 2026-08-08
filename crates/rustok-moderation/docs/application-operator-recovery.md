@@ -1,40 +1,39 @@
 # Moderation application operator recovery
 
-Status: **owner recovery + authorized GraphQL transport source-ready / maintainer execution pending**
+Status: **owner recovery + authorized GraphQL recovery/re-review transport source-ready / maintainer execution pending**
 
 ## Scope
 
-This slice covers Moderation-owned, replay-safe operator commands over the existing durable application operation and case lifecycle plus the host-owned authenticated GraphQL transport that enters them through the dedicated recovery port. It does not add an admin UI, a new queue, a new scheduler, a new decision type, a migration, or another domain-application path.
+This slice covers Moderation-owned replay-safe operator recovery over the existing durable application operation and case lifecycle, plus the host-owned authenticated GraphQL transport that enters those owner ports. It also defines the explicit fresh-revision re-review workflow as a composition of the existing replay-safe case commands. It does not add an admin UI, a new queue, a new scheduler, a migration, a replacement decision table, or another domain-application path.
 
-Two owner commands are source-ready:
+Two owner recovery commands remain source-ready:
 
 - `operator_requeue_application_replay_safe` for an explicit same-decision retry;
 - `operator_reconcile_legacy_application_replay_safe` for truthful case-state reconciliation of a pre-audit terminal operation.
 
 Both commands require write semantics, a human `PortActorKind::User` with UUID identity, a positive expected case revision, a bounded non-empty reason, and the existing Moderation command idempotency receipt.
 
-The dedicated `ModerationRecoveryCommandPort` additionally requires the trusted caller permission snapshot to contain `moderation_cases:override` or the effective `moderation_cases:manage` authority. Ordinary Forum moderation permissions do not authorize Moderation application recovery.
+The dedicated `ModerationRecoveryCommandPort` additionally requires the trusted caller permission snapshot to contain `moderation_cases:override` or effective `moderation_cases:manage` authority. Ordinary Forum moderation permissions do not authorize Moderation application recovery or re-review orchestration.
 
 ## Authorized GraphQL transport
 
-When `rustok-server` is compiled with `mod-moderation`, the host schema exposes two administrative mutations:
+When `rustok-server` is compiled with `mod-moderation`, the host schema exposes three administrative mutations:
 
 - `requeueModerationApplication(idempotencyKey, decisionId, expectedCaseRevision, reason)`;
-- `reconcileLegacyModerationApplication(idempotencyKey, decisionId, expectedCaseRevision, reason)`.
+- `reconcileLegacyModerationApplication(idempotencyKey, decisionId, expectedCaseRevision, reason)`;
+- `createModerationRereview(idempotencyKey, sourceDecisionId, freshSubjectRevision, rereviewReason, decisionKind, reasonCode, effect, policySnapshot)`.
 
-The transport is intentionally host-owned rather than adding a GraphQL dependency to the Moderation owner crate. Before entering the recovery port it requires:
+The transport is intentionally host-owned rather than adding a GraphQL dependency to the Moderation owner crate. Before entering recovery/re-review it requires:
 
 1. an authenticated `AuthContext` whose tenant matches the request `TenantContext`;
 2. a human-user principal; OAuth service principals fail closed;
-3. effective `moderation_cases:override` authority, with `moderation_cases:manage` satisfying that authority through the shared permission semantics;
+3. effective `moderation_cases:override` authority, with `moderation_cases:manage` satisfying that authority through shared permission semantics;
 4. the `moderation` tenant module to be enabled through the shared GraphQL module guard;
-5. a non-nil UUID idempotency key.
+5. a non-nil UUID root idempotency key.
 
-The transport then builds a five-second `PortContext` from trusted tenant/actor/locale/permission facts, preserves the authenticated permission snapshot as port claims, carries the resolved channel when present, and uses the supplied UUID as the owner command idempotency key. It calls only `ModerationRecoveryCommandPort`; it does not bypass the port to call recovery owner methods directly.
+The transport builds a five-second `PortContext` from trusted tenant/actor/locale/permission facts, preserves the authenticated permission snapshot as port claims, carries the resolved channel when present, and maps owner `PortError` kinds to existing public GraphQL error classes without exposing storage details.
 
-The response is a bounded recovery payload containing decision ID, case ID, operation status, case status, resulting case revision and whether reconciliation changed state. Owner `PortError` kinds are mapped to the existing public GraphQL error classes without exposing storage details.
-
-The port remains a second authorization boundary beneath GraphQL. A transport regression therefore cannot make ordinary `forum_topics:moderate` or `forum_replies:moderate` authority sufficient for recovery.
+Same-decision requeue and legacy reconciliation call only `ModerationRecoveryCommandPort`; the transport does not bypass the port to call `operator_*` owner methods directly. Re-review composes only the public `ModerationReadPort` and `ModerationCommandPort` operations described below.
 
 ## Same-decision operator requeue
 
@@ -52,15 +51,11 @@ A successful operator requeue commits in the command receipt transaction:
 6. `application_operator_requeued` and `case_application_requeued` owner audit facts containing operator UUID, reason and previous terminal state/error facts;
 7. completion of the Moderation command receipt.
 
-The next scheduler claim still increments `attempt_count` and still invokes the existing one-attempt dispatcher. Recovery never invokes a subject adapter directly.
-
-The domain idempotency key therefore remains the immutable decision UUID. If a domain owner already retained a terminal receipt for that decision, the retry reaches that same receipt instead of creating a new domain mutation identity.
+The next scheduler claim still increments `attempt_count` and invokes the existing one-attempt dispatcher. Recovery never invokes a subject adapter directly. The domain idempotency key remains the immutable decision UUID.
 
 ## Legacy terminal reconciliation
 
 `ReconcileLegacyModerationApplicationCommand` is only for terminal `applied`, `rejected`, or `operator_review` rows whose case state may predate the atomic application-audit lifecycle.
-
-The command validates exact immutable decision/case/operation identity and terminal storage shape before changing the case.
 
 Target mapping is fixed:
 
@@ -70,58 +65,81 @@ Target mapping is fixed:
 
 For an `applied` row, stored `applied_revision >= reviewed_revision` and stored `applied_at` are required. Rejected/operator-review rows must not contain applied evidence. All terminal rows must have no lease tuple.
 
-If the case is already in the correct terminal state, reconciliation is an idempotent no-op (`changed = false`). A consistent already-closed applied case must have `closed_at` and no active deduplication key.
-
-If the case is still `decided` or `applying_decision`, reconciliation advances it to the mapped terminal state with one revision CAS. Closing happens at the **current reconciliation time** and releases `active_deduplication_key`; this does not pretend the case historically closed at the domain's older `applied_at` timestamp. Escalation preserves the active case identity.
+If the case is already in the correct terminal state, reconciliation is an idempotent no-op (`changed = false`). If the case is still `decided` or `applying_decision`, reconciliation advances it with one revision CAS. Closing happens at the **current reconciliation time** and releases `active_deduplication_key`; it does not pretend the case historically closed at the older domain `applied_at` timestamp.
 
 The command writes only present-time reconciliation audit facts:
 
 - `application_legacy_terminal_reconciled`;
 - `case_legacy_terminal_reconciled`.
 
-It does **not** fabricate historical `case_application_started`, `application_applied`, `application_rejected`, `application_operator_review`, `case_closed`, or `case_escalated` facts.
+Legacy reconciliation never invokes a domain adapter.
 
-Most importantly, legacy reconciliation never invokes a domain adapter. It trusts only already persisted terminal operation truth after validating its immutable decision/case identity and evidence shape.
+## Fresh-revision re-review
 
-## Re-review semantics
+Re-review is not mutation of an old case or decision. `createModerationRereview` creates a **new moderation case and new immutable decision** from an explicit producer/admin-supplied subject revision while preserving the historical source case/decision unchanged.
 
-Re-review is intentionally **not** implemented as mutation of an old case or decision.
+The source decision is resolved through `ModerationReadPort`, then its source case is read and checked. Re-review is admitted only when:
 
-A stale reviewed subject revision is part of the immutable decision identity. Changing that revision would silently retarget a decision that was made against different owner state.
+- the source decision points to that exact case;
+- the source decision reviewed the same stored source-case subject revision;
+- the source case is currently `escalated`;
+- `freshSubjectRevision` is strictly greater than the historical reviewed revision.
 
-Therefore a true re-review must use a **new moderation case and new immutable decision** built from a freshly authorized producer-supplied subject revision. The old escalated case/decision remains historical truth. This slice adds no automatic producer read, no old-decision rewrite and no hidden replacement decision.
+The caller cannot supply a replacement module, kind, subject UUID, scope, queue, priority, policy ID or policy version. The workflow copies those facts from the source case and changes only the subject revision. This prevents an administrative re-review request from silently retargeting historical Moderation identity to another domain subject.
 
-Admin UI and the transport/workflow for creating that fresh review remain separate work.
+The fresh case deliberately attaches no historical report IDs. Existing reports are revision-bound evidence for the old subject state and cannot truthfully be reused as if they were submitted against the new revision.
+
+The caller supplies a new decision kind, reason code, typed/versioned effect and policy snapshot. Effect/kind compatibility is validated before owner commands run, and `decide_case` validates the same contract again before persisting the new immutable decision/effect/pending application operation.
+
+### Replay-safe orchestration
+
+One non-nil root UUID becomes three deterministic owner receipt identities:
+
+- `<root>:rereview:open`;
+- `<root>:rereview:assign`;
+- `<root>:rereview:decide`.
+
+The workflow therefore composes the existing `open_case -> assign_case -> decide_case` replay-safe owner operations without adding an orchestration table. A caller retry after a lost response re-enters the same owner receipts rather than creating another command identity.
+
+Fresh case metadata contains a bounded `operator_rereview` ownership marker with root idempotency key, source case ID, source decision ID, old subject revision, fresh subject revision and operator reason. Because `open_case` uses active-case deduplication, it can truthfully return an already-existing case for the same fresh scope/subject/queue/policy identity. Before assign/decide, the transport verifies that the returned case carries the exact marker for this root workflow. If another active case already owns that fresh revision, orchestration fails closed instead of adopting or mutating it.
+
+The assigned moderator is the authenticated human operator. `assign_case` and `decide_case` retain their normal expected-revision CAS boundaries, so concurrent edits cannot be silently overwritten.
+
+### Producer revision truth
+
+Moderation still does not invent or fetch a producer's current revision. `freshSubjectRevision` is an explicit input fact supplied by the authorized producer/admin flow. A fabricated, future or already-stale revision cannot be silently retargeted during application: the subject-owner adapter fences the current domain revision and returns a conflict when it does not equal the immutable decision's reviewed revision.
+
+A later neutral producer-read contract may improve operator ergonomics, but it is not required to keep this workflow fail-closed.
 
 ## Concurrency and replay
 
-Both recovery commands use the existing `moderation_receipts` command ledger. The request hash binds actor plus command payload, including decision ID, expected case revision and reason. Same-key replay returns the stored recovery response; changed input conflicts.
+Same-decision recovery commands use the existing `moderation_receipts` ledger. Re-review uses that same ledger indirectly through the existing open/assign/decide owner commands with deterministic per-step keys.
 
-Case revision is an explicit optimistic CAS boundary. Requeue also CASes the exact prior application terminal status. Any operation/case/audit/receipt failure rolls back the owner transaction.
+Case revision remains an explicit optimistic CAS boundary. Requeue also CASes the exact prior application terminal status. Re-review cannot adopt a foreign active case because ownership metadata is checked before assignment. Any individual owner command remains transactionally atomic; a retry resumes by replaying completed steps and executing the first unfinished step.
 
-A second recovery request with another idempotency key cannot silently duplicate the state change: after successful requeue the operation is no longer terminal, and after successful reconciliation the case is already in the target terminal state.
+No workflow rewrites the historical source case, historical decision hash, historical reviewed revision or old domain receipt identity.
 
 ## Ownership boundaries
 
-Moderation remains the sole owner of reports, cases, immutable decisions, application operations, operator recovery and cross-domain moderation audit.
+Moderation remains the sole owner of reports, cases, immutable decisions, application operations, operator recovery, re-review workflow facts and cross-domain moderation audit.
 
-The server transport owns only authenticated GraphQL adaptation. It supplies trusted request facts and calls the Moderation recovery port; it does not own or reproduce Moderation persistence, lifecycle or replay logic.
+The server transport owns only authenticated GraphQL adaptation/orchestration. It supplies trusted request facts and composes public Moderation ports; it does not reproduce Moderation persistence, lifecycle or decision-application logic.
 
 Forum is not involved in recovery persistence and is never called for legacy reconciliation. Forum continues to own only its topic/reply state, moderation subject revision and domain-side application receipt/effect transaction.
 
-This slice is unrelated to Reactions. Existing `rustok-reactions` remains the sole reaction catalog/state/command/aggregate/event/repair owner and `rustok-reactions-storefront` remains the reusable presentation owner. No duplicate Forum reactions subsystem is created.
+This slice is unrelated to Reactions. Existing `rustok-reactions` remains the sole reaction catalog/state/command/aggregate/event/repair owner and `rustok-reactions-storefront` remains the reusable presentation owner.
 
 ## Explicitly not claimed
 
 This slice does not add:
 
-- automatic re-review or decision rewriting;
+- mutation or retargeting of an old moderation decision;
 - requeue of an already-applied decision;
-- producer current-revision lookup from Moderation;
-- domain adapter invocation from recovery;
-- admin UI or fresh-review creation transport/workflow;
-- public typed recovery event contracts;
-- a migration or new persistence table;
+- automatic producer current-revision lookup from Moderation;
+- domain adapter invocation from recovery/reconciliation/re-review creation;
+- admin UI;
+- public typed recovery/re-review event contracts;
+- a migration, orchestration table or new persistence owner;
 - retained runtime, PostgreSQL, SQLite or concurrency evidence.
 
 ## Maintainer verification handoff
@@ -141,6 +159,6 @@ cargo xtask module validate moderation
 git diff --check
 ```
 
-Retained evidence should cover GraphQL tenant mismatch/module-disabled/service-principal/permission denial; `moderation_cases:manage` effective authorization; ordinary Forum moderation permission denial; non-nil UUID idempotency propagation; human-actor enforcement at the owner boundary; receipt replay/changed-request conflict; expected case revision contention; rejected/operator-review requeue; applied requeue rejection; requeue from current escalated and legacy decided case state; next scheduler claim after requeue; preservation of immutable decision UUID domain idempotency; terminal identity/evidence corruption fail-closed behavior; applied legacy reconciliation to closed at reconciliation time with active-key release; rejected/operator-review legacy reconciliation to escalated; already-consistent reconciliation no-op; no domain adapter invocation during reconciliation; rollback on audit/receipt failure; and PostgreSQL/SQLite parity.
+Retained evidence should cover GraphQL tenant mismatch/module-disabled/service-principal/permission denial; effective `moderation_cases:manage` authorization; ordinary Forum moderation permission denial; root and per-step idempotency replay; source-decision/case identity mismatch; non-escalated source denial; equal/older fresh revision denial; preservation of source subject/scope/queue/policy identity; no historical report reuse; active-case dedup collision with foreign ownership marker; assign/decide revision contention; fresh typed decision enqueue; stale/fabricated producer revision conflict at domain application; rejected/operator-review requeue; applied requeue rejection; legacy terminal reconciliation/no-op; and PostgreSQL/SQLite parity.
 
 No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows, CI or `git diff --check` were executed while preparing this source slice.
