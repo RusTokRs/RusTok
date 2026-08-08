@@ -10,10 +10,14 @@ mod ssr_assets_browser_tests;
 pub mod browser_intent;
 mod capability_access;
 pub mod consumer_properties;
+pub mod contribution_host;
 pub mod draft_session;
 pub mod editor;
 mod i18n;
-mod model;
+mod model {
+    include!("model.rs");
+    include!("model_registry_extension.rs");
+}
 mod palette_access;
 pub mod provider_status;
 pub mod publish_scenario_selection;
@@ -37,6 +41,12 @@ pub use consumer_properties::{
     ConsumerPropertyFieldDescriptor, ConsumerPropertyFieldKind, ConsumerPropertyLoadFuture,
     ConsumerPropertySaveFuture, ConsumerPropertySaveReceipt,
     PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT, SaveConsumerPropertiesInput,
+};
+pub use contribution_host::{
+    PageBuilderContributionHostContext, PageBuilderContributionHostExtension,
+    PageBuilderContributionPreviewError, PageBuilderContributionPreviewFuture,
+    PageBuilderContributionPreviewPort, PageBuilderContributionPreviewRequest,
+    PageBuilderRegistryInstaller,
 };
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
