@@ -43,12 +43,21 @@ scan behavior. They do not accept a generic mode selector and are not reinterpre
 `IndexReplayTargetedExecutor` accepts only `IndexReplayModeSelection::Targeted`. `Full` and `Shadow` fail before
 source or mutation execution.
 
-The Targeted selection already owns the canonical `IndexSourceLoadRequest`, preserving one non-nil tenant, one
-exact schema, 1..=256 unique requested keys and per-key locale identity. The executor resolves the frozen source
-owner and active schema, performs exactly one bounded `SharedIndexSourceRegistry::load`, then preflights the whole
-returned batch before the first write.
+The Targeted selection owns the canonical `IndexSourceLoadRequest`, preserving one non-nil tenant, one exact
+schema and 1..=256 unique requested keys. Because the generic load request does not own active-schema semantics,
+the executor validates requested keys against the active schema before source resolution or load:
 
-The preflight requires:
+- every requested entity UUID is non-nil;
+- `LocaleMode::Required` requires a locale on every requested key;
+- `LocaleMode::None` forbids a locale on every requested key;
+- `LocaleMode::Optional` accepts either key shape.
+
+This prevents an invalid exact target from being silently reclassified as a missing source key.
+
+After requested-key admission the executor resolves the frozen source owner, performs exactly one bounded
+`SharedIndexSourceRegistry::load`, then preflights the whole returned batch before the first write.
+
+The returned-batch preflight requires:
 
 - every source mutation event UUID to be non-nil;
 - invocation-local event UUID uniqueness;
@@ -58,12 +67,14 @@ The source registry independently guarantees that every returned mutation corres
 that a key appears at most once. Only after all checks succeed are mutations applied sequentially through the
 existing `IndexReplayMutationSink`.
 
-Missing requested keys are allowed by the canonical load contract. Targeted reports their count and does not
-manufacture delete mutations. Owners that model authoritative deletion must return their own typed delete mutation.
+Missing requested keys are allowed by the canonical load contract after requested-key admission. Targeted reports
+their count and does not manufacture delete mutations. Owners that model authoritative deletion must return their
+own typed delete mutation.
 
 Targeted preserves each source-owned event UUID. With the existing PostgreSQL replay mutation sink this remains
 the stable `index_inbox` delivery identity, so exact retry after a partial mutation failure can converge through
-ordinary `Duplicate` / `StaleIgnored` behavior without a Targeted checkpoint.
+ordinary `Duplicate` / `StaleIgnored` behavior without a Targeted checkpoint. Retained source evidence covers the
+mutation-1-applied / mutation-2-failed-once window and exact retry convergence.
 
 The Targeted executor owns no database handle itself and has no job, checkpoint, lease, worker, cancellation,
 scheduler, retry/requeue or partition state. PostgreSQL/runtime materialization and request-bound server host
@@ -122,8 +133,8 @@ create format compatibility.
 The mode contract composes already-retained boundaries rather than duplicating them:
 
 - Full: durable fenced replay job/checkpoint runner, optional canonical locale and page lease-heartbeat policy;
-- Targeted: `IndexSourceLoadRequest`, `SharedIndexSourceRegistry::load`, full-batch replay preflight and
-  `IndexReplayMutationSink` stable delivery application;
+- Targeted: `IndexSourceLoadRequest`, active-schema requested-key admission, `SharedIndexSourceRegistry::load`,
+  full-batch replay preflight and `IndexReplayMutationSink` stable delivery application;
 - Shadow: locale-aware `IndexReplayDryRunRequest` / `SharedIndexReplayDryRunRuntime` bounded side-effect-free scan
   validation, guarded by the server replay operator and transported only through sealed caller-carried
   continuation.
