@@ -52,10 +52,14 @@ impl PageBuilderRolloutQuery {
         let settings = tenant_module_settings(db, tenant.id, MODULE_SLUG)
             .await
             .map_err(|error| {
-                async_graphql::Error::new(format!(
-                    "Unable to read Pages Page Builder rollout settings: {error}"
-                ))
-                .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
+                tracing::error!(
+                    tenant_id = %tenant.id,
+                    module = MODULE_SLUG,
+                    error = %error,
+                    "failed to read Pages Page Builder rollout settings"
+                );
+                async_graphql::Error::new("Unable to read Pages Page Builder rollout settings")
+                    .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
             })?
             .ok_or_else(|| {
                 async_graphql::Error::new("Pages module is not enabled for the routed tenant")
