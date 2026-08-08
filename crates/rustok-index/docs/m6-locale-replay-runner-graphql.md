@@ -1,6 +1,6 @@
 # M6 locale replay runner and GraphQL command scope
 
-Status: `runner_graphql_source_complete_execution_pending`.
+Status: `runner_graphql_evidence_source_complete_execution_pending`.
 
 ## Purpose
 
@@ -12,7 +12,8 @@ The retained sequence is:
 2. current Product PostgreSQL replay scans filter that locale before pagination;
 3. durable replay jobs gained an explicit `locale` scope and canonical `locale_key` identity;
 4. one-page replay requests/checkpoints gained the same locale identity and fail-closed `LocaleMode` admission;
-5. this slice carries that identity through `IndexReplayRunRequest`, both runner paths and the authorized GraphQL command.
+5. `IndexReplayRunRequest`, both runner paths and the authorized GraphQL command carry that same identity;
+6. retained GraphQL command evidence now covers bounded yield, other-locale/schema isolation and fresh-runtime attempt-2 resume.
 
 ## Multi-page run request
 
@@ -35,7 +36,7 @@ The runner never reconstructs locale from source cursor contents, returned mutat
 
 ## Terminal success fence
 
-Before this slice, multi-page `finish_success` required `checkpoint.locale_key = ''` unconditionally. That was correct for schema-wide replay but would make a durable locale job unable to finish honestly after writing a locale checkpoint.
+Before the runner/GraphQL locale slice, multi-page `finish_success` required `checkpoint.locale_key = ''` unconditionally. That was correct for schema-wide replay but would make a durable locale job unable to finish honestly after writing a locale checkpoint.
 
 The terminal write now binds one ninth value from `IndexReplayJobLease.locale`:
 
@@ -48,7 +49,7 @@ Job acquisition, page source scan, checkpoint read/write and final success there
 
 ## GraphQL command
 
-`runIndexReplay` now accepts one optional `locale` string in addition to module, entity and schema routing key.
+`runIndexReplay` accepts one optional `locale` string in addition to module, entity and schema routing key.
 
 Authority ordering is unchanged and explicit:
 
@@ -68,13 +69,29 @@ The interruptible runner uses the same locale-aware lease helper as ordinary rep
 
 User cancellation remains job-UUID based inside the authenticated tenant. Locale is not accepted on the cancellation mutation and is not needed to widen or reconstruct cancellation scope.
 
+## Retained command/restart evidence
+
+`apps/server/src/graphql/index_replay_locale_tests.rs` now retains deterministic end-to-end source evidence through the real GraphQL/operator/shared-runtime/runner path on production Index migrations and durable SQLite storage.
+
+The packet deliberately creates three scopes for the same `LocaleMode::Required` schema:
+
+- `en-US`: 9 one-mutation pages, so the first GraphQL invocation yields after the server-owned 8-page cap with cursor `8`;
+- `de`: 2 one-mutation pages, completing as a distinct locale job while `en-US` remains pending;
+- schema-wide: one page containing the same 11 stable owner events, completing as a third job/checkpoint identity while the locale checkpoint remains untouched.
+
+Because the schema-wide run redelivers the same stable events, it observes ten duplicates and applies the one final `en-US` owner fact that the yielded locale run has not reached yet. A fresh runtime composition then reclaims the original `en-US` job as attempt 2 and observes that final event as `Duplicate` before committing the locale completion checkpoint.
+
+The packet requires exactly three durable jobs/checkpoints at the end: schema-wide, `en-US` and `de`, all complete. It does not call the runner or lease store directly and does not hand-write checkpoint rows.
+
+See `m6-locale-replay-command-evidence.md` for the retained sequence and boundary.
+
 ## Compatibility
 
 Schema-wide callers continue to use `IndexReplayRunRequest::new(...)` and bind the same empty checkpoint locale as before.
 
 The existing Product schema-wide replay path remains available even for locale-required schemas, preserving full rebuild behavior. Locale-scoped commands are additive.
 
-No migration is introduced in this slice because the durable locale job/checkpoint storage shapes were already established by the preceding locale job/checkpoint slices.
+No migration is introduced in this evidence slice because the durable locale job/checkpoint storage shapes were already established by the preceding locale job/checkpoint slices.
 
 ## Boundary
 
@@ -84,16 +101,16 @@ This slice does not add:
 - targeted/full/shadow rebuild modes;
 - automatic scheduling or retry policy changes;
 - Storefront serving changes;
-- a new source implementation;
+- a new production source implementation;
 - new cancellation semantics;
 - production evidence admission.
 
 Partition replay must remain blocked until a real source contract can scan exactly one partition before pagination. Explicit rebuild modes remain a separate later contract.
 
-## Evidence state and next source boundary
+## Evidence state and next boundary
 
-Retained source assertions cover schema-wide omission, canonical locale request construction, common runner lease selection, locale-aware terminal checkpoint SQL and GraphQL authorization-before-locale-parsing.
+Retained source assertions now cover schema-wide omission, canonical locale request construction, common runner lease selection, locale-aware terminal checkpoint SQL, GraphQL authorization-before-locale-parsing, and end-to-end GraphQL locale yield/isolation/fresh-runtime resume with duplicate-safe stable delivery redelivery.
 
-The next M6 evidence boundary is end-to-end retained locale replay/restart execution through the real runner/command composition, including yielded/restarted locale identity and isolation from the schema-wide and other-locale jobs. Execution/admission remains maintainer-owned.
+Source work for this locale command/restart evidence boundary is complete. Execution/admission remains maintainer-owned; the next plan action is to run/review the retained packet rather than adding another locale scope abstraction.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or `git diff --check` were executed by the implementation agent.
