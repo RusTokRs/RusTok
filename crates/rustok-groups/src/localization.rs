@@ -2,9 +2,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, normalize_locale_tag};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
-    DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -18,6 +17,7 @@ use crate::effective_membership_guard::{
 };
 use crate::entities::{group, translation};
 use crate::error::{GroupsError, GroupsResult};
+use crate::membership_enforcement_transaction::reserve_group_write_for_update;
 use crate::ports::{GroupLocalizationCommandPort, GroupLocalizationReadPort};
 
 #[derive(Clone)]
@@ -212,18 +212,13 @@ impl GroupLocalizationService {
         group_id: Uuid,
         actor_user_id: Uuid,
     ) -> GroupsResult<group::Model> {
-        let query = || {
-            group::Entity::find()
-                .filter(group::Column::TenantId.eq(tenant_id))
-                .filter(group::Column::Id.eq(group_id))
-        };
-        let group_model = match transaction.get_database_backend() {
-            DbBackend::Sqlite => query().one(transaction).await?,
-            DbBackend::Postgres | DbBackend::MySql => {
-                query().lock_exclusive().one(transaction).await?
-            }
-        }
-        .ok_or(GroupsError::NotFound)?;
+        reserve_group_write_for_update(transaction, tenant_id, group_id).await?;
+        let group_model = group::Entity::find()
+            .filter(group::Column::TenantId.eq(tenant_id))
+            .filter(group::Column::Id.eq(group_id))
+            .one(transaction)
+            .await?
+            .ok_or(GroupsError::NotFound)?;
 
         require_effective_manager_owned(
             transaction,
