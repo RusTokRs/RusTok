@@ -26,8 +26,15 @@ const source = requireMarkers(executorPath, [
   'pub(crate) struct ProductStorefrontIndexShadowExecution',
   'pub(crate) authoritative: StorefrontProductList',
   'pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>',
+  'pub(crate) enum ProductStorefrontIndexChannelScopeDecision',
+  'ShadowEligible { public_channel_id: Uuid }',
+  'OwnerNativeChannelLess',
+  'ChannelLessOwnerNative',
+  'pub(crate) fn classify_product_storefront_index_channel_scope(',
   'list_filtered_published_products(',
   'let projected = self',
+  'classify_product_storefront_index_channel_scope(',
+  'return Err(ProductStorefrontIndexShadowProjectionError::ChannelLessOwnerNative);',
   '.schema_read_port()',
   '.resolve_storefront_attribute_filters(',
   'build_product_storefront_index_shadow_query(',
@@ -53,6 +60,8 @@ for (const forbidden of [
   'PostgresIndexQueryPort',
   'query_all(',
   'query_one(',
+  'CHANNEL_LESS_SENTINEL',
+  'UNRESTRICTED_CHANNEL_SENTINEL',
 ]) {
   if (source.includes(forbidden)) fail(`${executorPath} must compose selected ports only; found ${forbidden}`);
 }
@@ -62,6 +71,8 @@ requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'ProductStorefrontIndexShadowExecutor',
   'ProductStorefrontIndexShadowExecution',
   'ProductStorefrontIndexShadowComparison',
+  'ProductStorefrontIndexChannelScopeDecision',
+  'classify_product_storefront_index_channel_scope',
 ]);
 
 const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
@@ -73,4 +84,4 @@ for (const forbidden of ['ProductStorefrontIndexShadowExecutor', 'execute_locali
   if (mounted.includes(forbidden)) fail(`${mountedPath} must remain owner-native; found ${forbidden}`);
 }
 
-console.log('[verify-index-product-storefront-shadow-executor] owner-first non-serving shadow execution is source-locked; mounted Storefront remains owner-native');
+console.log('[verify-index-product-storefront-shadow-executor] owner-first non-serving shadow execution and typed channel-less owner-native policy are source-locked; mounted Storefront remains owner-native');
