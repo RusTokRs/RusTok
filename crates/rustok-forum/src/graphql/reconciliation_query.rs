@@ -4,6 +4,7 @@ use rustok_api::{
     graphql::{GraphQLError, require_module_enabled},
     has_any_effective_permission,
 };
+use rustok_core::SecurityContext;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -61,8 +62,9 @@ impl ForumReconciliationQuery {
         }
         let requested_limit = normalize_limit(limit)?;
         let db = ctx.data::<DatabaseConnection>()?;
+        let security = SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
         let report = ForumCounterReconciliationService::new(db.clone())
-            .report(tenant.id, requested_limit)
+            .report(tenant.id, &security, requested_limit)
             .await?;
         Ok(map_report(report))
     }
