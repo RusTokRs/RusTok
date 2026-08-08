@@ -1,6 +1,6 @@
 # M7 Product Storefront budgeted execution
 
-Status: `source_complete_runtime_latency_evidence_pending`.
+Status: `source_complete_timeout_evidence_execution_pending`.
 
 ## Post-owner only
 
@@ -39,14 +39,34 @@ The result retains:
 A raw Index failure skips public projection and tag hydration. A tag failure/timeout leaves the successful raw
 and public pages intact. None of these outcomes changes the authoritative Product owner result.
 
-## Separation from evidence and serving
+## Retained deterministic timeout evidence — source complete
 
-The existing owner-first shadow executor remains the unbudgeted evidence path. Its post-owner phase methods are
-crate-visible only so this separate adapter can enforce phase budgets around them.
+`ProductStorefrontIndexProjectionPhases` is a crate-private seam around the two post-owner phases. Production
+implements it with `ProductStorefrontIndexShadowExecutor`; the budgeted executor stores only this neutral phase
+capability. The test-only `from_phases` constructor allows retained evidence to exercise the **same timeout
+wrapper** without manufacturing PostgreSQL or `SharedIndexQueryRuntime` setup.
 
-Mounted Storefront does not call the budgeted adapter. Source completeness here does not establish acceptable
-latency, timeout cancellation behavior, external-provider deadline propagation or serving readiness. Those
-require retained runtime evidence and maintainer execution/admission before any traffic switch.
+`storefront_budgeted_execution_tests.rs` retains storage-free scenarios for:
+
+- non-eligible budget decisions starting zero projected/tag calls;
+- a never-completing projected phase timing out while preserving the authoritative owner page;
+- raw projected errors skipping public/tag enrichment;
+- a never-completing Product tag phase timing out while raw/public pages and comparison remain intact;
+- exact narrowed `PortContext.deadline_ms` values reaching both phase boundaries;
+- an eligible fast path retaining Product identity/exact-count/page semantics, public placeholders and Product
+  tag projection.
+
+The timeout cases use `std::future::pending` rather than scheduler-sensitive sleeps inside the fake phases. The
+outer production `tokio::time::timeout` remains the cancellation boundary under evidence.
+
+## Separation from serving and admission
+
+The existing owner-first shadow executor remains the unbudgeted evidence path and production implementation of
+the post-owner phase seam. Mounted Storefront does not call the budgeted adapter.
+
+The retained packet is **source-only** until a maintainer executes it. This source state does not establish a
+passing timeout packet, acceptable production latency, external-provider cancellation/deadline propagation or
+serving readiness. Those remain admission gates before any traffic switch.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

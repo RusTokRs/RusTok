@@ -1,5 +1,6 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 use rustok_api::PortContext;
 use rustok_index::IndexQueryPage;
 use rustok_product::{
@@ -53,6 +54,66 @@ pub(crate) enum ProductStorefrontIndexBudgetedTagHydrationError {
     Hydration(#[from] ProductStorefrontIndexTagHydrationError),
 }
 
+/// Post-owner projected phases consumed by the budgeted adapter.
+///
+/// Production uses `ProductStorefrontIndexShadowExecutor`. The trait exists so retained tests can exercise
+/// the real budget/timeout wrapper deterministically without PostgreSQL or a synthetic shared Index runtime.
+#[async_trait]
+pub(crate) trait ProductStorefrontIndexProjectionPhases: Send + Sync {
+    async fn execute_projected(
+        &self,
+        context: PortContext,
+        fallback_locale: String,
+        public_channel_slug: Option<String>,
+        public_channel_id: Option<Uuid>,
+        query: StorefrontProductListQuery,
+    ) -> Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>;
+
+    async fn hydrate_projected_tags(
+        &self,
+        context: PortContext,
+        fallback_locale: String,
+        projected: &IndexQueryPage,
+    ) -> Result<ProductStorefrontTagHydration, ProductStorefrontIndexTagHydrationError>;
+}
+
+#[async_trait]
+impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor {
+    async fn execute_projected(
+        &self,
+        context: PortContext,
+        fallback_locale: String,
+        public_channel_slug: Option<String>,
+        public_channel_id: Option<Uuid>,
+        query: StorefrontProductListQuery,
+    ) -> Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError> {
+        ProductStorefrontIndexShadowExecutor::execute_projected(
+            self,
+            context,
+            fallback_locale,
+            public_channel_slug,
+            public_channel_id,
+            query,
+        )
+        .await
+    }
+
+    async fn hydrate_projected_tags(
+        &self,
+        context: PortContext,
+        fallback_locale: String,
+        projected: &IndexQueryPage,
+    ) -> Result<ProductStorefrontTagHydration, ProductStorefrontIndexTagHydrationError> {
+        ProductStorefrontIndexShadowExecutor::hydrate_projected_tags(
+            self,
+            context,
+            fallback_locale,
+            projected,
+        )
+        .await
+    }
+}
+
 /// Non-serving executor for an already-authoritative Product Storefront page.
 ///
 /// The caller must first produce the authoritative owner result and classify the post-owner remaining budget.
@@ -61,12 +122,19 @@ pub(crate) enum ProductStorefrontIndexBudgetedTagHydrationError {
 /// Mounted Storefront does not call this adapter.
 #[derive(Clone)]
 pub(crate) struct ProductStorefrontIndexBudgetedProjectionExecutor {
-    shadow: ProductStorefrontIndexShadowExecutor,
+    phases: Arc<dyn ProductStorefrontIndexProjectionPhases>,
 }
 
 impl ProductStorefrontIndexBudgetedProjectionExecutor {
     pub(crate) fn new(shadow: ProductStorefrontIndexShadowExecutor) -> Self {
-        Self { shadow }
+        Self {
+            phases: Arc::new(shadow),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_phases(phases: Arc<dyn ProductStorefrontIndexProjectionPhases>) -> Self {
+        Self { phases }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -93,7 +161,7 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
         index_context.deadline_ms = Some(index_execution_budget_ms);
         let projected = match timeout(
             Duration::from_millis(index_execution_budget_ms),
-            self.shadow.execute_projected(
+            self.phases.execute_projected(
                 index_context,
                 fallback_locale.clone(),
                 public_channel_slug,
@@ -122,7 +190,7 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
                 Some(
                     match timeout(
                         Duration::from_millis(tag_hydration_budget_ms),
-                        self.shadow
+                        self.phases
                             .hydrate_projected_tags(tag_context, fallback_locale, projected),
                     )
                     .await

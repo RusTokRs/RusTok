@@ -87,6 +87,9 @@ if (policy.split('#[cfg(test)]')[0].includes('tokio::time::timeout')) {
 const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 const budgeted = requireMarkers(budgetedPath, [
   'use tokio::time::timeout;',
+  'pub(crate) trait ProductStorefrontIndexProjectionPhases',
+  'impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor',
+  'phases: Arc<dyn ProductStorefrontIndexProjectionPhases>',
   'pub(crate) struct ProductStorefrontIndexBudgetedExecution',
   'pub(crate) authoritative: StorefrontProductList',
   'pub(crate) struct ProductStorefrontIndexBudgetedProjectionExecutor',
@@ -95,7 +98,7 @@ const budgeted = requireMarkers(budgetedPath, [
   'BudgetNotEligible',
   'index_context.deadline_ms = Some(index_execution_budget_ms);',
   'Duration::from_millis(index_execution_budget_ms)',
-  'self.shadow.execute_projected(',
+  'self.phases.execute_projected(',
   'ProductStorefrontIndexBudgetedProjectionError::TimedOut',
   '.map(project_product_storefront_index_page);',
   'tag_context.deadline_ms = Some(tag_hydration_budget_ms);',
@@ -135,13 +138,16 @@ requireMarkers('crates/rustok-distribution/tests/product_storefront_search_colla
 ]);
 
 requireMarkers('scripts/verify/verify-index-product-storefront-serving-budget-policy.mjs', [
-  'separate budgeted execution enforces admitted phase timeouts',
+  'production phase seam',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-budgeted-execution.mjs', [
-  'eligible post-owner projection applies bounded Index/tag timeouts',
+  'production phase seam',
+]);
+requireMarkers('scripts/verify/verify-index-product-storefront-budgeted-execution-evidence.mjs', [
+  'retained fake-phase packet covers noneligible, Index timeout/error, tag timeout, phase deadlines and fast-path identity/count',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-shadow-executor.mjs', [
-  'separate budgeted adapter while mounted Storefront remains owner-native',
+  'implements the crate-private post-owner phase seam',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-tag-hydration.mjs', [
   'Product IDs from the fixed raw Index page drive bounded Product-owned tag hydration',
@@ -151,24 +157,26 @@ requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `budgeted_execution_source_complete_latency_evidence_pending`',
+  'Status: `budgeted_timeout_evidence_source_complete_execution_pending`',
   'Mounted Storefront remains owner-native',
   'Serving-budget policy and timeout enforcement — source complete',
+  'Deterministic timeout evidence — source complete, execution pending',
   '`ProductStorefrontIndexBudgetedProjectionExecutor`',
-  'runtime timeout/latency evidence',
+  'The packet has not been executed by the implementation agent',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-serving-budget-policy.md', [
   'Status: `policy_and_timeout_enforcement_source_complete_runtime_evidence_pending`',
   '`tokio::time::timeout`',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-budgeted-execution.md', [
-  'Status: `source_complete_runtime_latency_evidence_pending`',
-  'Post-owner only',
-  'Failure separation',
+  'Status: `source_complete_timeout_evidence_execution_pending`',
+  'Retained deterministic timeout evidence — source complete',
+  'The retained packet is **source-only** until a maintainer executes it.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-storefront-serving-budget-policy.mjs'",
   "'verify-index-product-storefront-budgeted-execution.mjs'",
+  "'verify-index-product-storefront-budgeted-execution-evidence.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; budget policy and non-serving phase timeout enforcement are source-complete while runtime latency/evidence admission remains pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; budget policy, non-serving phase timeout enforcement and deterministic timeout evidence source are complete while maintainer execution/admission remains pending');

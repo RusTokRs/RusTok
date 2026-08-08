@@ -14,8 +14,10 @@ mod storefront_budgeted_execution;
 pub(crate) use storefront_budgeted_execution::{
     ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedProjectionError,
     ProductStorefrontIndexBudgetedProjectionExecutor, ProductStorefrontIndexBudgetedStartError,
-    ProductStorefrontIndexBudgetedTagHydrationError,
+    ProductStorefrontIndexBudgetedTagHydrationError, ProductStorefrontIndexProjectionPhases,
 };
+#[cfg(test)]
+mod storefront_budgeted_execution_tests;
 mod storefront_projection;
 pub(crate) use storefront_projection::{
     ProductStorefrontIndexPublicProjectionError, project_product_storefront_index_page,

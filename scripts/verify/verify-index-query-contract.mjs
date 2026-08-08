@@ -91,6 +91,7 @@ const scripts = [
   'verify-index-product-storefront-tag-hydration.mjs',
   'verify-index-product-storefront-serving-budget-policy.mjs',
   'verify-index-product-storefront-budgeted-execution.mjs',
+  'verify-index-product-storefront-budgeted-execution-evidence.mjs',
   'verify-index-product-storefront-equivalence-postgres-packet.mjs',
   'verify-index-product-storefront-eav-equivalence-postgres-packet.mjs',
   'verify-index-product-storefront-collation-postgres-packet.mjs',
