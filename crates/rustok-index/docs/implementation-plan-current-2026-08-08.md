@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after retained Product PostgreSQL key-4 actualization merge
-`07117d8c88608625a941de501464002aa835897d` and continued on
-`agent/product-storefront-search-bound-20260808`.
+Status overlay rechecked after Product-owned Storefront search-bound merge
+`98757e58af94f4df20c14429c0eb6bdaea173b36` and continued on
+`agent/product-storefront-collation-evidence-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -25,6 +25,8 @@ Source-complete:
 - generic String `TextLike` with a 1024-byte pattern bound;
 - Product-owned Storefront title-search input bound of 1022 effective UTF-8 bytes, leaving exactly two bytes
   for the owner `%{search}%` pattern without truncation;
+- retained PostgreSQL title-search collation packet comparing owner/default `LIKE` against the Index-equivalent
+  explicit `COLLATE "C"` + backslash escape matrix on the real Product translation column;
 - localized Product-ID tie-break direction matching owner Asc/Desc ordering;
 - Product-owned public Storefront attribute-filter -> neutral canonical term resolution;
 - pure Storefront shadow builder consuming only Product-owned filter terms and the Product-owned search bound;
@@ -33,18 +35,24 @@ Source-complete:
 - historical retained Product PostgreSQL fixtures actualized to current Product routing key `4`.
 
 The Product search bound is enforced both by `StorefrontProductListQuery::try_new*` and immediately before
-`CatalogService::list_published_products_with_query` constructs owner SQL. Public struct fields therefore
-cannot bypass the owner contract. Distribution imports the same Product constant; it no longer owns a second
-Product-specific search length value.
+`CatalogService::list_published_products_with_query` constructs owner SQL. Distribution consumes the same
+Product constant.
 
-Core/EAV Storefront packets and historical Product packets remain source-only until maintainer execution.
-The core packet also retains the no-requested/fallback-translation projection gap: owner emits
-`Untitled product`/empty handle while generic localized Index returns null.
+The collation packet does not manufacture a favorable database locale. It runs Product migrations, seeds the
+real `product_translations.title` column, then compares production-owner `translation.title LIKE pattern`
+against `(translation.title COLLATE "C") LIKE pattern ESCAPE '\\'` for ASCII case, NFC/NFD Unicode,
+`%`, `_`, escaped wildcards and sharp-s/ASCII-SS distinctions. It records `lc_collate` in mismatch diagnostics.
+Any default-vs-C result difference is a retained fail-closed cutover signal.
+
+All PostgreSQL packets remain source-only until maintainer execution. The core Storefront packet also retains
+the no-requested/fallback-translation projection gap: owner emits `Untitled product`/empty handle while generic
+localized Index returns null.
 
 ## Remaining Storefront parity/evidence blockers
 
-- execute/review current-key Storefront and actualized retained Product PostgreSQL packets;
-- owner/default PostgreSQL title `LIKE` collation vs Index deterministic `COLLATE "C"`;
+- execute/review current-key Storefront, collation and actualized retained Product PostgreSQL packets;
+- admit collation parity only for deployments where the retained default-vs-C matrix agrees; a mismatch keeps
+  Storefront Index cutover fail-closed;
 - channel-less owner visibility cannot currently be represented exactly by `sales_channel_ids`;
 - owner page depth exceeds Index bounded offset depth;
 - map localized null title/handle to owner public placeholders in final projection;
@@ -88,14 +96,15 @@ and SalesChannel remains key `1`.
 - [x] Localized PostgreSQL compiler/decoder/runtime.
 - [x] Generic scalar String `TextLike`.
 - [x] Product-owned 1022-byte Storefront search input bound compatible with the 1024-byte TextLike pattern.
+- [x] Retain owner/default-vs-Index-`C` PostgreSQL title-search collation packet source.
 - [x] Explicit localized entity-ID tie-break direction matching owner Asc/Desc ordering.
 - [x] Product Storefront Index shadow/evidence query builder.
 - [x] Product-owned Storefront attribute-filter resolution.
 - [x] Compose non-serving Product-owner + Index shadow executor.
 - [x] Retain current-key core and EAV owner-vs-shadow PostgreSQL packet source.
 - [x] Actualize historical retained Product PostgreSQL packets to routing key `4`.
-- [ ] Execute/review the retained Product/Storefront PostgreSQL packets.
-- [ ] Resolve/admit owner/default vs Index `COLLATE "C"` title-search collation parity.
+- [ ] Execute/review the retained Product/Storefront/collation PostgreSQL packets.
+- [ ] Admit owner/default vs Index `COLLATE "C"` title-search collation parity for a deployment.
 - [ ] Resolve channel-less unrestricted visibility parity or keep that shape owner-native.
 - [ ] Decide authoritative deep-page policy.
 - [ ] Map no-localized-row nulls to owner public title/handle placeholders in final projection.
@@ -107,10 +116,11 @@ and SalesChannel remains key `1`.
 
 ## Next source-code step
 
-Retain explicit PostgreSQL collation equivalence evidence for the owner all-translations `pt.title LIKE $1`
-query versus Index `TextLike` compiled with deterministic `COLLATE "C"`. The packet must include ASCII,
-non-ASCII/case-sensitive and wildcard/escape cases and must not weaken Index deterministic collation merely to
-match one deployment's database default.
+Resolve the channel-less Storefront visibility shape without weakening owner semantics. Owner channel-less
+means metadata-unrestricted only, while current `sales_channel_ids` stores resolved channel membership and
+cannot distinguish unrestricted from a restricted Product that happens to contain every current channel.
+Prefer a Product-owned materialized visibility identity/capability over inference from the channel UUID set;
+keep channel-less shadow execution fail-closed until the distinction is representable and freshness-covered.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

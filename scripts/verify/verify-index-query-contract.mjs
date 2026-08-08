@@ -87,6 +87,7 @@ const scripts = [
   'verify-index-product-storefront-shadow-executor.mjs',
   'verify-index-product-storefront-equivalence-postgres-packet.mjs',
   'verify-index-product-storefront-eav-equivalence-postgres-packet.mjs',
+  'verify-index-product-storefront-collation-postgres-packet.mjs',
   'verify-index-localized-query-contract.mjs',
   'verify-index-localized-query-postgres-fold.mjs',
   'verify-index-localized-query-runtime.mjs',
