@@ -139,11 +139,40 @@ requireMarkers('crates/rustok-distribution/src/product_index/attribute_terms.rs'
   'localized_present',
 ]);
 
+const graphDocPath = 'crates/rustok-index/docs/m7-product-graph-source.md';
+const graphDoc = requireMarkers(graphDocPath, [
+  'Status: `single_current_product_and_storefront_query_source_complete_execution_admission_pending`',
+  'Current Product runtime code owns exactly one such Product key, `4`',
+  'Localized identity and Storefront query boundary',
+  'folds physical rows by logical identity `(tenant_id, schema_ref, entity_id)`',
+  'Owner Storefront title search remains across **all Product translations**',
+  'Product public projection after the fixed page',
+  '`title: Null` -> `"Untitled product"`',
+  '`ProductStorefrontTagReadPort`',
+  'Storefront request-shape policy',
+  'channel-less owner requests remain owner-native',
+  'deeper owner-valid pages remain owner-native',
+  'A retained PostgreSQL promotion/restart packet now exists in source',
+  'Non-serving budget boundary',
+  'deterministic storage-free timeout packet is retained in source',
+  'The Product graph/query/Storefront source boundaries above are source-complete.',
+]);
+forbidMarkers(graphDocPath, graphDoc, [
+  'single_current_product_source_complete_storefront_locale_query_gap_open',
+  'This is now an explicit Storefront query/source gap.',
+  'effective localized Storefront identity/search architecture must be resolved',
+  'any generic text-pattern primitive required by that chosen architecture',
+  'Storefront query translation and bounded Taxonomy tag-name hydration',
+  'full owner-vs-Index Storefront equivalence',
+]);
+
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-source.mjs'",
+  "'verify-index-product-current-schema-promotion-postgres-packet.mjs'",
+  "'verify-index-product-storefront-budgeted-execution-evidence.mjs'",
   "'verify-index-product-attribute-term-contract.mjs'",
   "'verify-index-product-channel-relation-freshness.mjs'",
   "'verify-index-linked-target-query-freshness.mjs'",
 ]);
 
-console.log('[verify-index-product-source] single-current Storefront-capable Product source verified');
+console.log('[verify-index-product-source] single-current key4 Product graph and resolved Storefront query-source boundaries verified; execution/admission remains separate');
