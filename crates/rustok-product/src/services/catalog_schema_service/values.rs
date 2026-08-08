@@ -1,4 +1,5 @@
 use super::*;
+use crate::services::write_transaction::record_product_operation_result;
 
 impl ProductCatalogSchemaService {
     pub async fn load_product_attribute_values(
@@ -7,22 +8,37 @@ impl ProductCatalogSchemaService {
         product_id: Uuid,
         locale: &str,
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
+        Self::load_product_attribute_values_in(&self.db, tenant_id, product_id, locale).await
+    }
+
+    pub(super) async fn load_product_attribute_values_in<C>(
+        conn: &C,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+    ) -> CommerceResult<Vec<ProductAttributeValueRecord>>
+    where
+        C: ConnectionTrait,
+    {
         validate_locale(locale)?;
-        ensure_product(&self.db, tenant_id, product_id).await?;
-        let detached_attribute_ids = match self
-            .load_effective_form_for_product(tenant_id, product_id)
-            .await?
+        ensure_product(conn, tenant_id, product_id).await?;
+        let detached_attribute_ids = match Self::load_effective_form_for_product_in(
+            conn,
+            tenant_id,
+            product_id,
+        )
+        .await?
         {
             Some(form) => form
                 .detached_attribute_ids
                 .into_iter()
                 .collect::<HashSet<_>>(),
             None => AttributeIdRow::find_by_statement(Statement::from_sql_and_values(
-                self.db.get_database_backend(),
+                conn.get_database_backend(),
                 "SELECT attribute_id FROM product_attribute_values WHERE tenant_id = $1 AND product_id = $2",
                 vec![tenant_id.into(), product_id.into()],
             ))
-            .all(&self.db)
+            .all(conn)
             .await?
             .into_iter()
             .map(|row| row.attribute_id)
@@ -30,7 +46,7 @@ impl ProductCatalogSchemaService {
         };
 
         let rows = ProductAttributeValueRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
+            conn.get_database_backend(),
             r#"
             SELECT
                 pav.id,
@@ -56,12 +72,12 @@ impl ProductCatalogSchemaService {
             "#,
             vec![tenant_id.into(), product_id.into(), locale.trim().into()],
         ))
-        .all(&self.db)
+        .all(conn)
         .await?;
 
         let option_rows =
             ProductAttributeValueOptionRow::find_by_statement(Statement::from_sql_and_values(
-                self.db.get_database_backend(),
+                conn.get_database_backend(),
                 r#"
                 SELECT pavo.value_id, pavo.option_id
                 FROM product_attribute_value_options pavo
@@ -71,7 +87,7 @@ impl ProductCatalogSchemaService {
                 "#,
                 vec![tenant_id.into(), product_id.into()],
             ))
-            .all(&self.db)
+            .all(conn)
             .await?;
         let mut options_by_value: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
         for row in option_rows {
@@ -336,10 +352,11 @@ impl ProductCatalogSchemaService {
             )
             .await?;
         }
+        let result = Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale)
+            .await?;
+        record_product_operation_result(&result)?;
         txn.commit().await?;
-
-        self.load_product_attribute_values(tenant_id, product_id, locale)
-            .await
+        Ok(result)
     }
 
     pub async fn clear_detached_product_attribute_values(
@@ -393,38 +410,37 @@ impl ProductCatalogSchemaService {
             }
             attribute_ids
         };
-        if target_attribute_ids.is_empty() {
-            return self
-                .load_product_attribute_values(tenant_id, product_id, locale)
-                .await;
-        }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        let (placeholders, mut values) = uuid_filter_values(tenant_id, &target_attribute_ids);
-        let product_placeholder = format!("${}", values.len() + 1);
-        values.push(product_id.into());
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            format!(
-                r#"
-                DELETE FROM product_attribute_values
-                WHERE tenant_id = $1
-                  AND attribute_id IN ({placeholders})
-                  AND product_id = {product_placeholder}
-                "#
-            ),
-            values,
-        ))
-        .await?;
-        txn.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProductAttributeValuesChanged { product_id },
-        )
-        .await?;
+        ensure_product(&txn, tenant_id, product_id).await?;
+        if !target_attribute_ids.is_empty() {
+            let (placeholders, mut values) = uuid_filter_values(tenant_id, &target_attribute_ids);
+            let product_placeholder = format!("${}", values.len() + 1);
+            values.push(product_id.into());
+            txn.execute(Statement::from_sql_and_values(
+                txn.get_database_backend(),
+                format!(
+                    r#"
+                    DELETE FROM product_attribute_values
+                    WHERE tenant_id = $1
+                      AND attribute_id IN ({placeholders})
+                      AND product_id = {product_placeholder}
+                    "#
+                ),
+                values,
+            ))
+            .await?;
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductAttributeValuesChanged { product_id },
+            )
+            .await?;
+        }
+        let result = Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale)
+            .await?;
+        record_product_operation_result(&result)?;
         txn.commit().await?;
-
-        self.load_product_attribute_values(tenant_id, product_id, locale)
-            .await
+        Ok(result)
     }
 }

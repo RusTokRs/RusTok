@@ -22,12 +22,11 @@ use crate::CommerceError;
 /// idempotency identity and deadline. Consumers must receive this capability from host
 /// composition rather than constructing `ProductCatalogSchemaService` directly.
 ///
-/// The embedded adapter durably binds all six Product schema create operations plus
-/// category schema-mode and schema/category attribute-binding updates to the shared
-/// owner-operation receipt ledger. Receipt completion is committed in the same Product
-/// transaction as schema rows and outbox publication using the actual result recorded by
-/// the owner write method. Attribute-value writes still require exact completed projection
-/// replay semantics before the combined ecommerce task can be closed.
+/// The embedded adapter durably binds all eleven mounted Product schema writes to the
+/// shared owner-operation receipt ledger. Receipt completion is committed in the same
+/// Product transaction as schema/EAV rows and outbox publication using the actual result
+/// recorded by the owner write method. Attribute-value writes capture their exact
+/// completed projection from that active owner transaction before commit.
 #[async_trait]
 pub trait ProductCatalogSchemaWritePort: Send + Sync {
     async fn create_attribute(
@@ -328,9 +327,26 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
     ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
         let operation = "save_product_attribute_values";
         let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
-        self.save_product_attribute_values(tenant_id, actor_id, product_id, &locale, patches)
-            .await
-            .map_err(|error| schema_write_error(&context, operation, error))
+        let request = serde_json::json!({
+            "actor": &context.actor,
+            "product_id": product_id,
+            "locale": &locale,
+            "patches": &patches,
+        });
+        let lease = match admit_schema_operation(self, &context, tenant_id, operation, &request).await?
+        {
+            idempotency::Admission::Run(lease) => lease,
+            idempotency::Admission::Replay(value) => {
+                return decode_schema_receipt(&context, operation, value)
+            }
+            idempotency::Admission::ReplayError(error) => return Err(error),
+        };
+        let result = with_product_operation_receipt(
+            lease,
+            self.save_product_attribute_values(tenant_id, actor_id, product_id, &locale, patches),
+        )
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
     }
 
     async fn clear_detached_product_attribute_values(
@@ -342,15 +358,32 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
     ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
         let operation = "clear_detached_product_attribute_values";
         let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
-        self.clear_detached_product_attribute_values(
-            tenant_id,
-            actor_id,
-            product_id,
-            &locale,
-            attribute_ids,
+        let request = serde_json::json!({
+            "actor": &context.actor,
+            "product_id": product_id,
+            "locale": &locale,
+            "attribute_ids": &attribute_ids,
+        });
+        let lease = match admit_schema_operation(self, &context, tenant_id, operation, &request).await?
+        {
+            idempotency::Admission::Run(lease) => lease,
+            idempotency::Admission::Replay(value) => {
+                return decode_schema_receipt(&context, operation, value)
+            }
+            idempotency::Admission::ReplayError(error) => return Err(error),
+        };
+        let result = with_product_operation_receipt(
+            lease,
+            self.clear_detached_product_attribute_values(
+                tenant_id,
+                actor_id,
+                product_id,
+                &locale,
+                attribute_ids,
+            ),
         )
-        .await
-        .map_err(|error| schema_write_error(&context, operation, error))
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
     }
 }
 

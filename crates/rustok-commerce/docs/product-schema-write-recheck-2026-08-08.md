@@ -2,11 +2,11 @@
 
 ## Scope
 
-This source-only continuation follows Product schema-write capability publication, mounted consumer cutover, mandatory GraphQL caller identity, and durable receipts for all six schema create operations. The canonical ecommerce source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`; its combined Product schema-write/idempotency item remains open while the two attribute-value writes gain exact completed-projection replay semantics.
+This source-only continuation follows Product schema-write capability publication, mounted consumer cutover, mandatory GraphQL caller identity, durable receipts for all six schema create operations, and durable receipts for the three unit-result schema state updates. The canonical ecommerce source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`. This slice closes the remaining Product attribute-value source gap by capturing the exact completed projection inside the owner transaction before receipt completion and commit. Runtime, backend, restart, and lost-response evidence remain maintainer-run work and are not promoted here.
 
 ## Current source result
 
-- Product publishes `ProductCatalogSchemaWritePort` for every Product schema write used by mounted Commerce GraphQL: attribute and option creation, category/schema/group creation, category schema mode, schema/category bindings, Product attribute-value save, and detached-value clear.
+- Product publishes `ProductCatalogSchemaWritePort` for all eleven mounted Product schema writes used by Commerce GraphQL: attribute and option creation, category/schema/group creation, category schema mode, schema/category bindings, Product attribute-value save, and detached-value clear.
 - Mounted Commerce GraphQL no longer constructs `ProductCatalogSchemaService` for those writes. Every schema-write path resolves the host-selected `ProductCatalogCommandRuntime`, obtains its optional `schema_write_port()`, and fails closed with bounded `PRODUCT_TEMPORARILY_UNAVAILABLE` when an external profile has not supplied the capability.
 - Schema writes derive tenant/actor/claims/request context from `PortContext`, retain the existing two-second Product command deadline, and scope-hash the caller key with tenant, authenticated actor, operation, and Product id when one exists.
 - All eleven mounted Product schema-write resolver arguments use `String`, so the generated GraphQL SDL requires `idempotencyKey: String!` before resolver execution.
@@ -28,46 +28,44 @@ For each admitted create, the receipt binds tenant, Product owner namespace, cal
 
 The receipt fence records the actual result produced inside the owner method rather than requiring the port adapter to predict the response before the Product transaction starts. `ProductWriteTransaction` captures an explicitly scoped lease plus an initially empty result slot. Each receipted create records its concrete result after its schema rows and transactional outbox publication are prepared and before commit. Transaction commit fails closed if a receipt scope has no recorded result.
 
-This is material for `create_category`: `CatalogCategoryRecord.path` depends on the parent row read inside the Product transaction. The port does not perform an external parent/path preflight. The actual path computed by the same transaction is stored in the receipt, so lost-response replay returns the exact committed category result.
-
-`ProductWriteTransaction` calls `idempotency::complete` with that recorded result inside the same database transaction as Product schema rows and transactional outbox publication, then commits. A response lost after commit is therefore replayed without rerunning the create or publishing a duplicate event.
-
-A completed receipt decodes the typed create result. Reusing the same key for a different operation, actor, or request is rejected by the shared immutable request binding and mapped to bounded Product idempotency errors. A non-retryable Product failure is persisted only after the owner write future has returned and its transaction has rolled back. Retryable database/receipt failures are not converted into terminal failure receipts; the processing lease remains reclaimable under the shared stale-lease policy.
-
-Direct Product service callers remain outside receipt semantics. Without the explicit task-local owner-port scope, create methods use normal generated resource IDs, result recording is a no-op for receipt state, and `ProductWriteTransaction` commits without receipt completion.
+This remains material for `create_category`: `CatalogCategoryRecord.path` depends on the parent row read inside the Product transaction. The actual path computed by that transaction is stored in the receipt, so lost-response replay returns the exact committed category result without rerunning the create.
 
 ## Durable unit-result state-write receipts
 
-The three update-style state writes now use durable owner receipts as well:
+The three update-style state writes use the same owner receipt fence:
 
 1. `set_category_schema_mode`;
 2. `bind_schema_attribute`;
 3. `bind_category_attribute`.
 
-Each port call admits the caller key against the authenticated actor and canonical input before owner execution. On a new lease, the owner method runs inside the same task-local Product receipt scope used by schema creates. The owner method records its successful `()` result as JSON `null` after the state mutation and transactional outbox publication are prepared and before `ProductWriteTransaction::commit`.
+Each owner method records successful `()` as JSON `null` after its mutation and transactional outbox publication are prepared and before `ProductWriteTransaction::commit`. Receipt completion therefore commits atomically with the state update and its domain event. Lost-response replay decodes the stored `null` back to `()` and does not rerun the upsert or publish a duplicate event.
 
-Receipt completion therefore commits atomically with the category assignment or attribute binding plus its domain event. Lost-response replay decodes the stored `null` back to `()` and does not rerun the upsert or publish a duplicate event. Immutable key rebinding and terminal/retryable failure handling reuse the same Product receipt admission and failure policy as schema creates.
+## Exact Product attribute-value replay
 
-The receipt operation UUID is not used as a domain resource ID for these three updates because they mutate an existing category/schema binding identity. It remains only the receipt fence identity.
-
-## Why the canonical item remains open
-
-Two attribute-value writes remain open:
+The remaining two write methods now participate in the same durable owner receipt protocol:
 
 - `save_product_attribute_values`;
 - `clear_detached_product_attribute_values`.
 
-Both return `Vec<ProductAttributeValueRecord>`. Their current owner implementations commit the EAV mutation and outbox event first and then load the returned projection through a separate database read. Simply adding the receipt wrapper at the port would therefore be incorrect: `ProductWriteTransaction` would have no exact completed result to store before commit, and replaying by re-reading later state could return a projection changed by a subsequent legitimate write.
+Their response type is `Vec<ProductAttributeValueRecord>`, so a later database read is not an acceptable replay source: another legitimate Product write could change the projection after the original command commits. The response therefore has to be captured from the exact owner transaction that contains the EAV mutation and outbox publication.
 
-Those operations need an owner-transaction-local projection loader or equivalent canonical result capture so the exact returned `ProductAttributeValueRecord` vector is serialized into the receipt before the same write transaction commits. Until that exists, both methods intentionally remain outside receipt admission rather than claiming durable replay through repeated mutation or post-commit state reads.
+`load_product_attribute_values` is now backed by a connection-neutral projection helper using SeaORM `ConnectionTrait`. The helper can read from both the normal `DatabaseConnection` and the active `ProductWriteTransaction`. Effective-form resolution uses the same connection-neutral path, including existing-value discovery, category/schema maps, localized values, option rows, ordering, and detached classification. The public read behavior therefore keeps the existing projection semantics while the write path can observe its own uncommitted mutation.
 
-Remaining source order:
+For `save_product_attribute_values`, Product applies all validated patches, publishes `ProductAttributeValuesChanged` when the patch set is non-empty, loads the exact completed projection from the active transaction, records that vector into the receipt result slot, and only then commits. A lost response is replayed from the completed receipt instead of rerunning the EAV mutation or reconstructing state later.
 
-1. make the attribute-value result projection readable from the active `ProductWriteTransaction` without a post-commit owner read;
-2. record and complete the exact `save_product_attribute_values` result inside the mutation/outbox transaction;
-3. record and complete the exact `clear_detached_product_attribute_values` result inside the delete/outbox transaction, including the empty-target path;
-4. remove superseded Product Admin schema-write compatibility strings only after compile/source evidence confirms they are unmounted;
-5. retain static/compile/parity/lost-response/restart/backend evidence as separate maintainer-run verification before any promotion.
+For `clear_detached_product_attribute_values`, the delete and event publication remain conditional on a non-empty detached target set, but projection capture and receipt completion are unconditional. The empty-target detached clear therefore opens an owner transaction, reads the unchanged exact projection inside that transaction, records it, and commits the receipt without fabricating an outbox event. This prevents a successful no-op from leaving an admitted lease permanently incomplete.
+
+Request binding for both methods includes authenticated actor, Product id, locale, and the exact patch or attribute-id payload. Reusing one caller key with a different Product, locale, patch set, clear target, actor, or operation remains an immutable-request conflict rather than a second execution.
+
+## Source completion boundary
+
+The mounted Product schema-write boundary now has source-complete durable owner replay across all eleven operations:
+
+1. six create operations with stable receipt-owned resource IDs and exact transaction-derived results;
+2. three state updates with atomically stored unit results;
+3. two Product attribute-value writes with exact transaction-local EAV projection results, including the no-op clear path.
+
+This closes the implementation gap identified by the prior recheck. It does not provide runtime promotion evidence. Compile coverage, static verifier execution, lost-response injection, stale-lease reclaim, restart replay, tenant/request conflict checks, and SQLite/PostgreSQL/MySQL evidence remain separate maintainer-run verification work. Superseded Product Admin compatibility strings should still be removed only after compile/source evidence confirms they are unmounted.
 
 ## Verification state
 
