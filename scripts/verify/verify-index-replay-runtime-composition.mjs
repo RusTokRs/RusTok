@@ -70,6 +70,7 @@ const server = requireMarkers(serverPath, [
   'pub struct IndexReplayOperatorRuntime',
   'inner: rustok_index::SharedIndexReplayRuntime',
   'shadow: rustok_index::SharedIndexReplayDryRunRuntime',
+  'pub enum IndexReplayTargetedOperatorError',
   'pub async fn run_targeted(',
   'request: rustok_index::IndexSourceLoadRequest',
   'context.authorize_for(request.tenant_id())?;',
@@ -91,6 +92,19 @@ const server = requireMarkers(serverPath, [
 ]);
 for (const forbidden of ['tokio::spawn', 'tokio::time::sleep', 'loop {', 'StopHandle']) {
   if (server.includes(forbidden)) fail(`${serverPath} contains lifecycle marker ${forbidden}`);
+}
+
+const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
+const graphqlProduction = read(graphqlPath).split('\n#[cfg(test)]')[0];
+for (const required of [
+  'async fn run_index_replay_targeted(',
+  'prepare_authorized_targeted_run(tenant.id, auth.user_id, input)',
+  '.run_targeted(operator_context, request)',
+]) {
+  if (!graphqlProduction.includes(required)) fail(`${graphqlPath} is missing guarded Targeted transport marker ${required}`);
+}
+for (const forbidden of ['SharedIndexReplayRuntime', 'IndexReplayTargetedExecutor', 'PostgresMutationStore']) {
+  if (graphqlProduction.includes(forbidden)) fail(`${graphqlPath} bypasses shared replay composition: ${forbidden}`);
 }
 
 requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
@@ -137,16 +151,15 @@ requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   'Status: `source_complete_owner_execution_pending`',
   'bounded shared replay runtime containing durable Full plus exact-key Targeted execution',
   '`IndexReplayTargetedExecutor<PostgresMutationStore>`',
-  'publishes no replay runtime, no dry-run runtime, no Shadow transport runtime and no empty Index work registration',
+  'publishes no replay runtime, no dry-run runtime, no Shadow transport runtime',
   'The Index materializer performs no SQL',
   'starts the single generic `ModuleWorkScheduler` only when registrations exist',
   '`SharedIndexReplayRuntime::run_targeted`',
   '`SharedIndexReplayRuntime::run_interruptible`',
+  '`runIndexReplayTargeted` is mounted on the existing `IndexReplayMutation` object',
   '`IndexReplayShadowTransportRuntime`',
   'one current unversioned envelope',
-  '`IndexSourceContinuationScope::from_registry` is schema-wide; `for_locale` binds one exact canonical `LocaleKey`',
-  'dedicated authorization-first Targeted public transport',
-  'The work registration added here is reconciliation-only',
+  'No additional independent source-only M6 replay boundary is open',
   'maintainer-run',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-reconciliation-host-scheduler.md', [
@@ -156,9 +169,10 @@ requireMarkers('crates/rustok-index/docs/m6-reconciliation-host-scheduler.md', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-runtime-composition.mjs'",
   "'verify-index-replay-targeted-host-dispatch.mjs'",
+  "'verify-index-replay-targeted-graphql-transport.mjs'",
   "'verify-index-replay-shadow-host-dispatch.mjs'",
   "'verify-index-replay-shadow-graphql-transport.mjs'",
   "'verify-index-reconciliation-host-scheduler.mjs'",
 ]);
 
-console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Targeted PostgreSQL-backed/request-guarded without a second owner, Shadow no-write/sealed, and reconciliation under the single generic scheduler boundary');
+console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Targeted PostgreSQL-backed/request-guarded with dedicated GraphQL but no second owner, Shadow no-write/sealed, and reconciliation under the single generic scheduler boundary');
