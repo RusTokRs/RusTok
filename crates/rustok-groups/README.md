@@ -22,22 +22,28 @@ Source now exists for:
 - monotonic `group_memberships.revision`;
 - bounded current `group_membership_enforcements` projection;
 - owner-clock effective-state resolution with expired/revoked fallback;
+- direct `GroupMembershipEnforcementCommandPort` suspend/revoke with expected-revision CAS,
+  receipt-first replay, local hierarchy, owner protection, group-version advance, audit/events and
+  shared owner mutation functions reserved for the later neutral Moderation adapter;
+- stored lifecycle active `groups.member_count` semantics: temporary enforcement never changes the
+  counter, so owner-clock expiry cannot leave a cleanup-dependent count split;
+- append-only membership suspension/revocation semantic events beside targeted invitation events;
 - crate-root effective `GroupsService` for core access, join/rejoin, private redaction, membership
   listing, enabled features, and feature settings;
 - effective invitation, targeted-invitation, and membership-application public services;
 - transaction-aware invitation/application writes using one owner transaction for receipt replay,
   locking, effective authorization, mutation, audit, and receipt.
 
-Invitation/application writes use the lock order:
+Invitation/application and direct enforcement writes preserve the lock family:
 
 ```text
 Group -> GroupMembership -> GroupMembershipEnforcement
 ```
 
 PostgreSQL and MySQL use row locks. SQLite acquires writer serialization with a no-op group write
-before reading membership/enforcement state. The effective check therefore occurs after receipt
-replay and owner locking, but before the first domain mutation. Public facades no longer perform a
-separate write precheck that can race the owner transaction.
+before reading membership/enforcement state. Effective checks therefore occur after receipt replay
+and owner locking, but before the first domain mutation. Direct enforcement additionally locks
+actor/target memberships and enforcement rows in deterministic UUID order.
 
 The status-only implementations remain crate-private compatibility delegates. Public module paths
 remain stable:
@@ -48,9 +54,9 @@ rustok_groups::targeted_invitations::*
 rustok_groups::applications::*
 ```
 
-Direct suspend/revoke commands, localization/governance conversion, provider ACL integration,
-member-count suspension/restoration semantics, the moderation adapter/application orchestration,
-and runtime evidence remain open. `GROUPS-07` remains `in_progress`.
+Localization/governance transaction-aware conversion, provider ACL integration, the neutral
+moderation adapter/application orchestration, native/GraphQL direct-enforcement transport, and
+runtime evidence remain open. `GROUPS-07` remains `in_progress`.
 
 ## Responsibilities
 
@@ -82,7 +88,16 @@ and runtime evidence remain open. `GROUPS-07` remains `in_progress`.
 - Never copy moderation reports, case notes, queue state, policy snapshots, or appeals into Groups.
 - Evaluate expiry with the Groups UTC clock; cleanup is optional normalization, not access logic.
 - Resolve effective states `missing`, `active`, `inactive`, `suspended`, and `legacy_banned`.
-- Publish `GroupMembershipEnforcementReadPort`; no public enforcement command port exists yet.
+- Publish `GroupMembershipEnforcementReadPort` for owner-clock effective state.
+- Publish `GroupMembershipEnforcementCommandPort` for direct single-membership suspend/revoke.
+- Require a user actor, bounded idempotency key, exact expected membership revision, hierarchy and
+  owner protection for direct enforcement.
+- Keep `groups.member_count` as the stored lifecycle-active count; suspension/revocation never
+  adjusts it, while every actual enforcement mutation still bumps `groups.version`.
+- Allow direct revoke only for active `direct_local` enforcement. Local moderation cannot erase a
+  `moderation_decision` row.
+- Preserve original suspension provenance on revoke and record revoker identity in immutable
+  audit/event facts.
 
 ### Effective core access
 
@@ -130,6 +145,7 @@ Core owner/runtime:
 - `GroupsModule`
 - `rustok_groups::GroupsService`
 - `GroupMembershipEnforcementService`
+- `GroupMembershipEnforcementCommandService`
 - `GroupLocalizationService`
 - `GroupInvitationService`
 - `GroupTargetedInvitationService`
@@ -142,6 +158,7 @@ Primary ports:
 - `GroupSummaryReadPort`
 - `GroupMembershipReadPort`
 - `GroupMembershipEnforcementReadPort`
+- `GroupMembershipEnforcementCommandPort`
 - `GroupAccessReadPort`
 - `GroupLocalizationReadPort`
 - `GroupInvitationReadPort`
@@ -169,8 +186,8 @@ Primary ports:
   consume Groups access ports.
 - Notifications may consume committed targeted-invitation events asynchronously.
 - Moderation owns reports, cases, decisions, retries, appeals, and application orchestration.
-  A future neutral adapter will call a shared Groups enforcement command; moderation never writes
-  Groups tables directly.
+  The neutral adapter will call the shared Groups enforcement owner mutation after producer receipt,
+  scope, subject revision and effect validation; moderation never writes Groups tables directly.
 
 ## Readiness
 
@@ -178,13 +195,14 @@ Source presence does not prove compilation, migration behavior, PostgreSQL/SQLit
 concurrency, replay, CAS, transport parity, security, accessibility, retry, or recovery.
 
 FFA, FBA, `GROUPS-06`, `GROUPS-07`, and `GROUPS-19` remain `in_progress`. Transaction-aware
-invitation/application authorization is source-complete, but runtime evidence and the remaining
-owner paths are open.
+invitation/application authorization and the direct enforcement command are source-complete, but
+runtime evidence and the remaining owner/adapter paths are open.
 
 ## Documentation
 
 - [Live module contract](docs/README.md)
 - [Canonical implementation plan](docs/implementation-plan.md)
+- [Membership enforcement command contract](docs/membership-enforcement-command-contract.md)
 - [Bulk review contract](docs/bulk-review-contract.md)
 - [FBA registry](contracts/groups-fba-registry.json)
 - [Effective membership access contract](contracts/groups-effective-membership-access.json)
@@ -192,5 +210,6 @@ owner paths are open.
 - [Application no-bypass guard](../../scripts/verify/verify-groups-application-native-no-bypass.mjs)
 - [Bulk review guard](../../scripts/verify/verify-groups-application-bulk-review.mjs)
 - [Membership enforcement read guard](../../scripts/verify/verify-groups-membership-enforcement-read-path.mjs)
+- [Membership enforcement command guard](../../scripts/verify/verify-groups-membership-enforcement-command.mjs)
 - [Effective membership access guard](../../scripts/verify/verify-groups-effective-membership-access.mjs)
 - [Effective invitation/application guard](../../scripts/verify/verify-groups-effective-membership-invitations-applications.mjs)
