@@ -130,6 +130,8 @@ Source exists for:
   deterministic membership/enforcement locks, owner-reference consistency and owner-clock authority;
 - executable governance/enforcement PostgreSQL evidence source for replay, actor binding, concurrent
   role-versus-suspension serialization, revision fencing and platform owner recovery;
+- executable governance/enforcement SQLite evidence source using a shared temporary database file and
+  independent SeaORM pools for the same replay/race/recovery contract;
 - sealed effective public invitation/application services with compatibility module paths;
 - transaction-aware invitation/application writes using the group/membership/enforcement lock
   protocol;
@@ -146,8 +148,8 @@ Evidence still open:
 - executed native/GraphQL parity and schema/error-mapping evidence for direct enforcement;
 - executed localization suspension/expiry, native/GraphQL parity, and concurrent enforcement-vs-write
   evidence;
-- maintainer execution of the governance/enforcement PostgreSQL evidence source plus remaining
-  governance suspension/expiry, stress/deadlock, SQLite and native/GraphQL parity evidence;
+- maintainer execution of the PostgreSQL and SQLite governance/enforcement evidence sources plus
+  remaining governance suspension/expiry, stress/deadlock and native/GraphQL parity evidence;
 - native/GraphQL parity, CAS, lifecycle, bulk-review, retry, recovery, security, and accessibility
   evidence for the broader module;
 - provider ACL integration and remote/degraded profiles;
@@ -387,6 +389,28 @@ Status is **maintainer execution pending**. The executable source does not popul
 documented in `docs/governance-enforcement-postgres-contract.md` and guarded by
 `scripts/verify/verify-groups-governance-enforcement-postgres.mjs`.
 
+### Executable governance/enforcement SQLite evidence source
+
+`apps/server/tests/groups_governance_enforcement_sqlite.rs` mirrors the PostgreSQL replay/race/recovery
+packet against a real temporary SQLite file and independent SeaORM pools. It applies the same production
+Groups migration list and invokes only the production governance/enforcement ports.
+
+The SQLite concurrency contract exercises the owner writer reservation rather than row locks. The first
+command to execute the no-op `groups.version` update owns the writer; the other command must observe the
+committed material change before continuing. The accepted outcomes therefore remain identical to
+PostgreSQL: stale suspension CAS after a role win, or `groups.membership_suspended` after a suspension
+win, with exactly one membership revision advance.
+
+Replay remains actor-bound and must occur before current effective authorization. Platform recovery
+uses the same valid moderation-owned suspended-owner projection fixture and the same production ownership
+transfer port. `sqlite::memory:` is intentionally forbidden because independent pools would otherwise
+observe independent databases and provide false concurrency evidence.
+
+Status is **maintainer execution pending**. SQLite concurrency/replay/recovery is not runtime evidence
+until this test is actually executed. The handoff is documented in
+`docs/governance-enforcement-sqlite-contract.md` and guarded by
+`scripts/verify/verify-groups-governance-enforcement-sqlite.mjs`.
+
 ### Planned moderation adapter
 
 Initial mapping remains:
@@ -421,9 +445,9 @@ above rather than introduce a second Groups enforcement state path.
 
 1. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
 2. Convert provider ACL consumers and remote/degraded profiles.
-3. Execute and retain the governance/enforcement PostgreSQL evidence source, then produce remaining
-   direct-enforcement, localization, governance and adapter runtime, parity, concurrency, security,
-   migration and accessibility evidence.
+3. Execute and retain the PostgreSQL/SQLite governance-enforcement evidence sources, then produce
+   remaining direct-enforcement, localization, governance and adapter runtime, parity, concurrency,
+   security, migration and accessibility evidence.
 
 ## Degraded modes
 
@@ -452,10 +476,12 @@ cargo check -p rustok-groups-admin --features ssr
 cargo check -p rustok-groups-storefront --features ssr
 cargo test -p rustok-groups
 RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://...' cargo test -p rustok-server --features mod-groups --test groups_governance_enforcement_postgres -- --ignored --nocapture
+cargo test -p rustok-server --features mod-groups --test groups_governance_enforcement_sqlite -- --nocapture
 node scripts/verify/verify-groups-boundary.mjs
 node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-governance-effective-authorization.mjs
 node scripts/verify/verify-groups-governance-enforcement-postgres.mjs
+node scripts/verify/verify-groups-governance-enforcement-sqlite.mjs
 node scripts/verify/verify-groups-invitations-boundary.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-application-policy-cas.mjs
