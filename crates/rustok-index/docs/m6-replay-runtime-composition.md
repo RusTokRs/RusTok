@@ -17,31 +17,34 @@ It does not add automatic replay-job scheduling. The server exposes one bounded 
 3. `materialize_postgres_index_replay_runtime` requires both immutable registries;
 4. it publishes replay dry-run and calls `register_postgres_index_reconciliation_work`;
 5. only complete source/schema composition creates `ModuleWorkRegistrations` for Index;
-6. it publishes `SharedIndexReplayRuntime`;
+6. it publishes `SharedIndexReplayRuntime` with ordinary and lifecycle-neutral interruptible run entry points;
 7. the server wraps replay and reconciliation capabilities in guarded operator runtimes;
-8. GraphQL exposes only the guarded replay operator through bounded schema-wide run/cancel commands.
+8. GraphQL exposes only the guarded replay operator through bounded schema-wide run/cancel commands;
+9. GraphQL schema initialization supplies the server-owned `StopHandle::is_stopping` probe to authorized replay run commands without making shutdown caller-controlled.
 
 An absent source registry publishes no replay runtime, no dry-run runtime, and no empty Index work registration. A source registry without the shared schema registry fails closed. Duplicate replay or reconciliation-work materialization also fails closed.
 
-The materializer performs no SQL and calls neither `tokio::spawn` nor a polling loop. Later server bootstrap collects all module-work registrations, starts the single generic `ModuleWorkScheduler` only when registrations exist, and binds that scheduler to the shared `StopHandle` lifecycle.
+The Index materializer performs no SQL and calls neither `tokio::spawn` nor a polling loop. Later server bootstrap collects all module-work registrations, starts the single generic `ModuleWorkScheduler` only when registrations exist, and binds that scheduler to the same shared `StopHandle` lifecycle used by replay GraphQL execution.
 
 ## Replay operator and command boundary
 
-`IndexReplayOperatorRuntime` remains the only server-owned replay invocation boundary. It requires an exact non-nil tenant/actor request context, a current request-scoped permission snapshot, and effective `modules:manage`. Run rejects cross-tenant requests before delegation; cancellation derives tenant only from the authorized context.
+`IndexReplayOperatorRuntime` remains the only server-owned replay invocation authority. It requires an exact non-nil tenant/actor request context, a current request-scoped permission snapshot, and effective `modules:manage`. Both ordinary and interruptible run reject cross-tenant requests before delegation; cancellation derives tenant only from the authorized context.
 
-The GraphQL transport authorizes before parsing caller schema/job input and delegates only to this operator. Tenant, actor, worker identity, source name, database handles, scheduler controls, and replay resource budgets are not caller fields. The run mutation creates a server-owned worker identity and uses a fixed 100-row × 8-page chunk, per-page heartbeat, and 60-second lease.
+The GraphQL transport authorizes before parsing caller schema/job input and delegates only to this operator. Tenant, actor, worker identity, source name, database handles, scheduler controls, replay resource budgets, and shutdown state are not caller fields. The run mutation creates a server-owned worker identity and uses a fixed 100-row × 8-page chunk, per-page heartbeat, and 60-second lease.
 
 Transport adapters must not call `SharedIndexReplayRuntime` directly. See the server transport contract in `apps/server/docs/index-replay-graphql-transport.md`.
 
 ## In-page host interruption boundary
 
-`PostgresIndexReplayRunner` now has a separate `run_interruptible` path that delegates one host-owned probe to the existing `IndexReplayWorker::run_next_page_interruptible` safe points.
+`PostgresIndexReplayRunner` has a separate `run_interruptible` path that delegates one host-owned probe to the existing `IndexReplayWorker::run_next_page_interruptible` safe points.
 
 An interrupted page is not marked failed and does not manufacture a persisted cancellation. After preserving any cancellation race, the runner yields the fenced job back to `pending` with lease ownership cleared and the last committed checkpoint unchanged. A later attempt can replay the same page; already-durable deliveries remain safe through inbox deduplication and source-version ordering.
 
-The retained SQLite packet covers interruption before source scan and interruption after one mutation is durable but before checkpoint commit. The latter resumes as `Duplicate` on attempt 2 before completing the checkpoint/job.
+`SharedIndexReplayRuntime::run_interruptible` and `IndexReplayOperatorRuntime::run_interruptible` now carry that boolean probe through the immutable replay/runtime and authorization boundaries without importing the server lifecycle type into the Index crate or operator composition.
 
-This is runner-level source completeness only. `SharedIndexReplayRuntime`, `IndexReplayOperatorRuntime`, and the GraphQL transport do **not** yet receive the server `StopHandle`; actual host shutdown binding remains the next composition step.
+GraphQL schema initialization resolves or atomically creates one `StopHandle` in shared server runtime state and retains a watch receiver even for API-only hosts. `runIndexReplay` reads only `StopHandle::is_stopping` and invokes the guarded interruptible operator. It never calls `StopHandle::stop`, and no shutdown field is accepted from GraphQL input.
+
+The retained SQLite runner packet covers interruption before source scan and interruption after one mutation is durable but before checkpoint commit. The latter resumes as `Duplicate` on attempt 2 before completing the checkpoint/job. Actual GraphQL/process-shutdown execution remains maintainer-run.
 
 ## Reconciliation scheduling boundary
 
@@ -51,8 +54,7 @@ It does not schedule replay/rebuild jobs, create a second task, own a database l
 
 ## Explicitly open
 
-- connect the server-owned `StopHandle` to interruptible replay execution without exposing shutdown control to callers;
-- execute/admit retained replay interruption/restart evidence;
+- execute/admit retained replay interruption/restart evidence and end-to-end process-shutdown command evidence;
 - GraphQL command execution/admission evidence and any separately justified HTTP/CLI/admin surfaces;
 - automatic replay/rebuild job scheduling;
 - retained PostgreSQL replay and reconciliation scheduler execution evidence;
