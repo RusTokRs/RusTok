@@ -77,6 +77,7 @@ for (const forbidden of [
   'last_error_details',
   'backtrace',
   'stack_trace',
+  'StopHandle',
 ]) {
   if (replay.includes(forbidden)) {
     fail(`${replayPath} contains forbidden host/storage/scheduler marker ${forbidden}`);
@@ -124,6 +125,20 @@ for (const forbidden of ['request_cancel(', 'cancel_requested = TRUE', 'finish_f
   }
 }
 
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
+  'pub async fn run_interruptible<Check>(',
+  '.run_interruptible(request, should_interrupt)',
+]);
+requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
+  'pub async fn run_interruptible<Check>(',
+  'context.authorize_for(request.page_request().tenant_id())?;',
+  '.run_interruptible(request, should_interrupt)',
+]);
+requireMarkers('apps/server/src/graphql/index_replay.rs', [
+  'let stop_handle = ctx.data::<StopHandle>()?.clone();',
+  '.run_interruptible(operator_context, request, || stop_handle.is_stopping())',
+]);
+
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay_runner {',
   'include!("source_replay_runner.rs");',
@@ -131,9 +146,11 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
 ]);
 
 requireMarkers('crates/rustok-index/docs/m6-cooperative-page-interruption.md', [
-  'Status: `worker_and_runner_source_complete_host_binding_pending`',
+  'Status: `worker_runner_host_binding_source_complete_execution_pending`',
   '`run_next_page_interruptible`',
   '`PostgresIndexReplayRunner::run_interruptible`',
+  '`SharedIndexReplayRuntime` and `IndexReplayOperatorRuntime`',
+  '`StopHandle::is_stopping`',
   '`IndexReplayError::Interrupted`',
   '`IndexReplayError::InterruptionCheckFailed`',
   'before every mutation',
@@ -141,7 +158,7 @@ requireMarkers('crates/rustok-index/docs/m6-cooperative-page-interruption.md', [
   '30-second source-call timeout wrapper',
   'bounded replay dry-run',
   'does not impose a deadline on the probe future itself',
-  'server lifecycle still does not supply its `StopHandle`',
+  'accepts no stop handle, shutdown flag, or probe from GraphQL input',
   'runner interruption after durable mutation / before checkpoint commit',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
@@ -155,4 +172,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-graceful-shutdown.mjs'",
 ]);
 
-console.log('[verify-index-replay-page-interruption] worker safe points remain storage-neutral while the separate runner extension retains lease-aware host interruption; server StopHandle binding remains open');
+console.log('[verify-index-replay-page-interruption] worker safe points remain storage-neutral and the guarded GraphQL replay path binds the shared server stop signal through lifecycle-neutral runtime/operator probes');
