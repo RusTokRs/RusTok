@@ -224,54 +224,58 @@ mod tests {
 
     use super::*;
 
-    fn extension_json(error: FieldError, key: &str) -> Option<serde_json::Value> {
-        error
-            .extend()
-            .extensions
-            .as_ref()
-            .and_then(|extensions| extensions.get(key))
-            .cloned()
-            .and_then(|value| value.into_json().ok())
-    }
-
     #[test]
     fn graphql_conflict_preserves_transport_and_owner_codes() {
         let error = map_port_error(PortError::conflict(
             "groups.membership_enforcement_revision_conflict",
             "stale membership revision",
-        ));
+        ))
+        .extend();
+        let extensions = error.extensions.expect("mapped GraphQL error should carry extensions");
+        let json = |key: &str| {
+            extensions
+                .get(key)
+                .cloned()
+                .and_then(|value| value.into_json().ok())
+        };
         assert_eq!(
-            extension_json(error.clone(), "code").and_then(|value| value.as_str().map(str::to_owned)),
+            json("code").and_then(|value| value.as_str().map(str::to_owned)),
             Some("BAD_USER_INPUT".to_string())
         );
         assert_eq!(
-            extension_json(error.clone(), DOMAIN_CODE_EXTENSION)
-                .and_then(|value| value.as_str().map(str::to_owned)),
+            json(DOMAIN_CODE_EXTENSION).and_then(|value| value.as_str().map(str::to_owned)),
             Some("groups.membership_enforcement_revision_conflict".to_string())
         );
         assert_eq!(
-            extension_json(error, RETRYABLE_EXTENSION).and_then(|value| value.as_bool()),
+            json(RETRYABLE_EXTENSION).and_then(|value| value.as_bool()),
             Some(false)
         );
     }
 
     #[test]
-    fn graphql_unavailable_keeps_safe_message_and_retryability() {
+    fn graphql_unavailable_keeps_owner_code_and_retryability() {
         let error = map_port_error(PortError::unavailable(
             "groups.persistence_unavailable",
             "private database diagnostic",
-        ));
+        ))
+        .extend();
+        let extensions = error.extensions.expect("mapped GraphQL error should carry extensions");
+        let json = |key: &str| {
+            extensions
+                .get(key)
+                .cloned()
+                .and_then(|value| value.into_json().ok())
+        };
         assert_eq!(
-            extension_json(error.clone(), "code").and_then(|value| value.as_str().map(str::to_owned)),
+            json("code").and_then(|value| value.as_str().map(str::to_owned)),
             Some("INTERNAL_ERROR".to_string())
         );
         assert_eq!(
-            extension_json(error.clone(), DOMAIN_CODE_EXTENSION)
-                .and_then(|value| value.as_str().map(str::to_owned)),
+            json(DOMAIN_CODE_EXTENSION).and_then(|value| value.as_str().map(str::to_owned)),
             Some("groups.persistence_unavailable".to_string())
         );
         assert_eq!(
-            extension_json(error, RETRYABLE_EXTENSION).and_then(|value| value.as_bool()),
+            json(RETRYABLE_EXTENSION).and_then(|value| value.as_bool()),
             Some(true)
         );
     }
