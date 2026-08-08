@@ -66,8 +66,10 @@ if (
 ) failures.push("matrix predecessor identity boundary drifted");
 if (
   contract.fixtures?.api_origin_environment !== "RUSTOK_PAGES_ROLLOUT_MATRIX_API_ORIGIN" ||
-  contract.fixtures?.admin_origin_environment !== "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ORIGIN"
-) failures.push("matrix API/admin origin fixture contract drifted");
+  contract.fixtures?.admin_origin_environment !== "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ORIGIN" ||
+  contract.fixtures?.api_storage_state_environment !== "RUSTOK_PAGES_ROLLOUT_MATRIX_API_STORAGE_STATE" ||
+  contract.fixtures?.admin_storage_state_environment !== "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_STORAGE_STATE"
+) failures.push("matrix origin/auth fixture contract drifted");
 
 const expectedProfiles = [
   ["all_on", true, true, true, true, "unobserved"],
@@ -142,30 +144,38 @@ for (const marker of [
 for (const marker of [
   "currentCommit()",
   "validatePredecessor",
-  "apiOrigin",
-  "adminOrigin",
   "target?.origin_sha256 !== sha256(apiOrigin)",
   "target?.standalone_origin_sha256 !== sha256(adminOrigin)",
   "apiOrigin === adminOrigin",
+  "api_storage_state_environment",
+  "admin_storage_state_environment",
+  "const apiContext = await browser.newContext",
+  "const adminContext = await browser.newContext",
+  "storageState: apiStorage.path",
+  "storageState: adminStorage.path",
   "tenantModulesQuery",
   "updateSettingsMutation",
   "rolloutSnapshotQuery",
   "pagesReadsQuery",
   "withProfile(original.settings, profile.flags)",
-  "writePagesSettings(context, apiOrigin, profileSettings)",
-  "readRolloutSnapshot(",
-  "assertPagesReads(context, apiOrigin, pageId)",
+  "writePagesSettings(apiContext, profileSettings)",
+  "readRolloutSnapshot(apiContext, tenantSlug, profile)",
+  "assertPagesReads(apiContext, pageId)",
+  "const page = await adminContext.newPage()",
   "assertUiProfile(page, profile)",
   "allowedPreview(page, profile.id === \"all_on\")",
-  "deniedPreview(context, previewTemplate)",
-  'deniedBrowserIntent(context, pageId, "save", "publish")',
-  'deniedBrowserIntent(context, pageId, "rename_page", "properties")',
+  "deniedPreview(adminContext, previewTemplate)",
+  'deniedBrowserIntent(\n            adminContext,\n            pageId,\n            "save",\n            "publish",',
+  '"rename_page"',
+  '"properties"',
   "finally {",
-  "await writePagesSettings(context, apiOrigin, originalSettings)",
+  "await writePagesSettings(apiContext, originalSettings)",
   "canonicalJson(restored.settings) !== canonicalJson(originalSettings)",
   "restoreVerified = true",
+  "Promise.all([apiContext.close(), adminContext.close()])",
   "rmSync(output, { force: true })",
   "renameSync(temporary, location)",
+  "storage_states:",
   "api_origin_sha256: sha256(apiOrigin)",
   "admin_origin_sha256: sha256(adminOrigin)",
   "raw_settings_persisted: false",
@@ -226,6 +236,8 @@ for (const key of [
   "predecessor_same_admin_origin_hash_required",
   "predecessor_immutable_deployment_digest_required",
   "api_and_admin_origins_must_be_distinct",
+  "api_operator_storage_state_required",
+  "admin_operator_storage_state_required",
   "production_tenant_modules_read_used",
   "production_update_module_settings_used",
   "original_settings_restored_in_finally",
@@ -277,6 +289,7 @@ for (const marker of [
   "updateModuleSettings",
   "API origin",
   "admin origin",
+  "separate reviewed storage-state files",
   "restore",
   "four profiles",
   "No tests, Node verifiers, Cargo commands",
@@ -287,4 +300,4 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-rollout-runtime-matrix-harness] PASS source_ready=true execution=not_run gate_accepted=false targets=api+admin");
+console.log("[verify-pages-builder-rollout-runtime-matrix-harness] PASS source_ready=true execution=not_run gate_accepted=false targets=api+admin auth=split");
