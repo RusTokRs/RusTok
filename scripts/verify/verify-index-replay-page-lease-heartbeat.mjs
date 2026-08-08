@@ -108,7 +108,8 @@ requireMarkers('crates/rustok-index/docs/m6-replay-pending-future-timeouts.md', 
 
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds',
-  'Complete remaining multi-host/restart evidence beyond existing convergence/replay packets',
+  'Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.',
+  'Execute/admit retained multi-host reclaim evidence.',
   'Add partition replay scope only after a real partition-capable source contract exists',
 ]);
 
