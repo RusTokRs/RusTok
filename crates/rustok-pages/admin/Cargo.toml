@@ -43,9 +43,7 @@ url = { version = "2.5", optional = true }
 uuid = { workspace = true, optional = true }
 
 [build-dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
-toml.workspace = true
+rustok-module-manifest = { path = "../../rustok-module-manifest" }
 
 [dev-dependencies]
 tokio.workspace = true
