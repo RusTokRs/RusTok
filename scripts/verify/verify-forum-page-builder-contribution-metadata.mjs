@@ -167,7 +167,7 @@ for (const marker of [
   "preview_port",
   "MAX_PREVIEW_JSON_BYTES",
   '"Refresh"',
-  'extensions\n            .get("props")',
+  '.get("props")',
 ]) requireMarker(pageBuilderPreviewPanel, marker, "Page Builder owner preview panel");
 forbidMarker(pageBuilderPreviewPanel, "rustok_forum", "provider-neutral owner preview panel");
 
