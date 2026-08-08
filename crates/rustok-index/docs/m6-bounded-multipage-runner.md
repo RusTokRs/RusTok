@@ -130,6 +130,13 @@ If an in-page heartbeat itself loses the lease, page execution fails closed thro
 existing `IndexReplayRunError::LeaseLost` path. The runner does not manufacture a checkpoint,
 rollback, retry or terminal state after losing ownership.
 
+The retained multi-host packet now proves the concurrent form of that fence. Host A remains
+blocked inside a real page future while the evidence fixture expires its lease. A distinct
+host B runner reclaims the same job as attempt 2 and completes it. When host A is released,
+its late stable delivery is duplicate-safe and its stale checkpoint path returns
+`IndexReplayRunError::LeaseLost`; attempt-2 durable state remains authoritative. See
+`m6-replay-multihost-reclaim-evidence.md`.
+
 ## Failure boundary
 
 Source, mutation, and checkpoint failures are recorded as one bounded
@@ -150,17 +157,16 @@ Host interruption is not a page failure and does not enter this failure path.
 
 ## Still open
 
-- execute/admit retained interruption/restart, page lease-heartbeat and end-to-end server-shutdown evidence;
+- execute/admit retained interruption/restart, page lease-heartbeat, multi-host reclaim and end-to-end server-shutdown evidence;
 - automatic bounded retry/backoff and dead-letter scheduling remains a separate owner policy;
 - operator-visible scheduler health and metrics;
 - explicit targeted/full/shadow rebuild modes;
 - partition replay scope only after a real partition-capable source contract exists;
-- retained PostgreSQL cancellation, crash, lease-expiry, restart, timing, and
-  multi-instance evidence beyond current focused packets.
+- retained PostgreSQL/process-level cancellation, crash, lease-expiry, restart and timing evidence beyond the deterministic SQLite packets where deployment admission requires it.
 
 The guarded schema/locale GraphQL run/cancel command transport, locale checkpoint identity,
-server `StopHandle` observation and in-page lease-maintenance source are complete; execution
-evidence remains maintainer-owned.
+server `StopHandle` observation, in-page lease maintenance and source-only multi-host reclaim
+fencing are complete; execution evidence remains maintainer-owned.
 
 ## Owner validation
 
@@ -168,6 +174,7 @@ evidence remains maintainer-owned.
 node scripts/verify/verify-index-replay-multipage-runner.mjs
 node scripts/verify/verify-index-replay-graceful-shutdown.mjs
 node scripts/verify/verify-index-replay-page-lease-heartbeat.mjs
+node scripts/verify/verify-index-replay-multihost-reclaim-evidence.mjs
 node scripts/verify/verify-index-replay-job-leases.mjs
 node scripts/verify/verify-index-source-replay-contract.mjs
 cargo check -p rustok-index --all-targets
