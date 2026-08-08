@@ -2,7 +2,7 @@
 
 Status: `source-parity-rechecked / pages-source-complete-execution-pending / forum-runtime-composition-source-ready / pages-reference-consumer-gate-source-ready / execution-rollout-pending`
 
-This packet reconciles the current Pages / Page Builder parity cursor against `main@65ff0a38a0a0d5039c77f56302f6e0f2586d3a62` and records the next source slice. It corrects stale open wording still present in the older shared continuation text and in the Page Builder local open-results list; it does not claim execution.
+This packet reconciles the current Pages / Page Builder parity cursor against `main@0f64eb62f9521e0c08027ab04433256429321c62` and records the next source slice. It corrects stale open wording still present in the older shared continuation text and in the Page Builder local open-results list; it does not claim execution.
 
 ## Recheck result
 
