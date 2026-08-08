@@ -77,7 +77,7 @@
   ],
   "retained_data": [
     "exact checkout source commit",
-    "live server-reported source commit",
+    "boolean verification that the live response contained the exact checkout source commit",
     "maintainer-supplied immutable deployment RepoDigest",
     "target origin SHA-256 and byte length",
     "challenge SHA-256 and byte length",
