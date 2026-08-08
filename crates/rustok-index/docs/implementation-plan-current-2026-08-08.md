@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked at `main@523b7fa6da9bed59743e4fed532e17095010eba7` and continued on
-`agent/index-replay-locale-command-evidence-20260808`.
+Status overlay rechecked at `main@5c0a50eded09efbd4f1b6437b46a94a7f2ef0989` and continued on
+`agent/index-replay-page-lease-heartbeat-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -123,8 +123,8 @@ exactly schema-wide; it is not rewritten from schema locale defaults. Each run c
 identity and applies fixed transport caps: 100 mutations per page, at most 8 pages, heartbeat every page and a
 60-second lease.
 
-Retained command source evidence now includes schema-wide command behavior, locale command canonicalization and
-a dedicated locale yield/isolation/fresh-runtime resume packet. GraphQL execution/admission remains maintainer-owned.
+Retained command source evidence includes schema-wide command behavior, locale command canonicalization and a
+dedicated locale yield/isolation/fresh-runtime resume packet. GraphQL execution/admission remains maintainer-owned.
 
 ## M6 replay graceful interruption and server lifecycle binding
 
@@ -136,7 +136,7 @@ An `IndexReplayError::Interrupted` first preserves any persisted cancellation ra
 job is yielded back to `pending`, lease ownership is cleared, no failure payload is recorded, and the last
 committed checkpoint is preserved.
 
-Retained source evidence now covers both runner and command boundaries:
+Retained source evidence covers both runner and command boundaries:
 
 - runner-level SQLite evidence covers stop before scan and the harder durable-mutation-before-checkpoint window,
   where attempt 2 replays the stable delivery as `Duplicate` before checkpoint/job completion;
@@ -151,39 +151,39 @@ bootstrap execution. Production schema lifecycle reservation/keepalive remains s
 Neither retained shutdown packet nor a full process-shutdown replay scenario has been executed or admitted by
 the implementation agent.
 
-## M6 replay pending storage-future timeout boundary
+## M6 replay dependency timeouts and page lease-heartbeat policy
 
-The PostgreSQL replay adapter now bounds the two storage futures that could remain pending after a page has
-already entered a durable phase:
+Production replay now has a bounded outer observation window for every dependency phase that can otherwise remain
+pending inside one page:
 
-- one replay mutation persistence call;
-- one replay checkpoint commit transaction.
+- production source scan: 30 seconds through the canonical `IndexSource` timeout wrapper;
+- checkpoint read transaction: 30 seconds with `index_replay_checkpoint_read_timeout`;
+- one replay mutation persistence call: 30 seconds with `index_replay_mutation_timeout`;
+- checkpoint commit transaction: 30 seconds with `index_replay_checkpoint_commit_timeout`.
 
-`source_replay_timeout.rs` applies a canonical 30-second outer bound and stable retryable dependency identities:
-`index_replay_mutation_timeout` and `index_replay_checkpoint_commit_timeout`.
+These are observation bounds, not rollback guarantees. Dropping a timed-out future does not prove that an
+underlying database operation was cancelled. Stable delivery identity, inbox deduplication, monotonic source
+versions, durable checkpoint reads and active-lease fencing remain authoritative.
 
-The one-page worker and multi-page runner error/state surfaces are unchanged. Mutation timeout still appears as
-`IndexReplayError::MutationFailed`; checkpoint timeout still appears as `IndexReplayError::CheckpointCommitFailed`.
-The existing runner records the dependency code plus `retryable: true`, but first rechecks persisted cancellation,
-so a user cancellation that won the race remains `Cancelled`.
+A coarse whole-page timeout is deliberately not added because it could mask the precise dependency failure code.
+Instead, `IndexReplayRunRequest` now requires at least a 60-second lease and both ordinary/graceful runners
+maintain an active page lease every one third of the configured lease duration. The server-owned 60-second lease
+therefore heartbeats a still-running page every 20 seconds. Existing page-count heartbeat cadence remains intact.
 
-These are observation bounds, not rollback guarantees. Dropping the timed-out future does not prove that the
-underlying database operation was cancelled. No synthetic checkpoint is created after mutation timeout. A timed
-checkpoint commit is treated as storage-state-unknown: the next admitted attempt must read the durable checkpoint
-normally under the existing lease fence.
+Checkpoint-read bounding closes the remaining replay data-plane future that could otherwise remain pending while
+lease heartbeats continued. The timeout helper still owns no `StopHandle`, persisted cancellation or retry/requeue
+policy. Persisted cancellation is rechecked before terminal page failure; graceful shutdown remains worker
+safe-point-only.
 
-The timeout helper contains no `StopHandle`, `request_cancel`, `cancel_requested` or yield semantics. Graceful
-shutdown remains safe-point-only, while replay retry/recovery policy remains the owner of later retry admission.
-
-Retained timeout unit source and source guard are complete but have **not** been executed or admitted by the
-implementation agent. See `m6-replay-pending-future-timeouts.md`.
+Retained source assertions and guards are complete but have **not** been executed/admitted by the implementation
+agent. See `m6-replay-pending-future-timeouts.md` and `m6-replay-page-lease-heartbeat.md`.
 
 ## M6 locale-scoped replay source state
 
 Locale replay is split from partition/rebuild-mode work and tracked end-to-end instead of as one aggregate
 future item.
 
-Already merged on reviewed `main`:
+Merged source-complete chain:
 
 - generic `IndexSourceScanRequest` accepts optional canonical `LocaleKey` and validates returned mutation scope;
 - current Product PostgreSQL replay scans honor exact locale before pagination while preserving the schema-wide
@@ -198,20 +198,12 @@ Already merged on reviewed `main`:
 - optional locale is carried through the multi-page replay runner and GraphQL command transport;
 - ordinary and graceful runner paths derive the durable job lease from the same page locale scope;
 - terminal success binds the leased locale checkpoint instead of hard-coding the schema-wide empty locale;
-- GraphQL locale parsing remains authorization-first and locale omission remains exactly schema-wide.
+- GraphQL locale parsing remains authorization-first and locale omission remains exactly schema-wide;
+- retained GraphQL/runtime/runner evidence forces bounded `en-US` yield, completes distinct `de` and schema-wide
+  jobs, rebuilds runtime composition and resumes the same `en-US` job as attempt 2 with duplicate-safe redelivery;
+- final evidence retains exactly three job/checkpoint scopes: schema-wide, `en-US` and `de`.
 
-Current branch source-complete work:
-
-- Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.
-- force bounded `en-US` yield at the fixed 8-page GraphQL cap and retain cursor `8` on attempt 1;
-- complete a distinct `de` locale job without advancing the pending `en-US` checkpoint;
-- complete a distinct schema-wide job over the same stable owner events and prove inbox duplicate safety without
-  stealing the locale checkpoint;
-- rebuild distribution/runtime/operator/GraphQL composition over the same durable database and require the same
-  `en-US` job to resume as attempt 2, redeliver the final event as `Duplicate`, and commit its own completion;
-- retain exactly three job/checkpoint scopes at completion: schema-wide, `en-US` and `de`.
-
-The retained packet is source-complete but has not been executed. SQLite/PostgreSQL runtime execution and
+The retained locale packet is source-complete but has not been executed. SQLite/PostgreSQL runtime execution and
 production admission remain maintainer-owned. See `m6-locale-replay-command-evidence.md`.
 
 ## Remaining Storefront parity/evidence blockers
@@ -245,18 +237,19 @@ production admission remain maintainer-owned. See `m6-locale-replay-command-evid
 - [x] Carry a host-owned interruption probe through replay runner safe points and retain duplicate-safe restart evidence source.
 - [x] Bind the shared server `StopHandle::is_stopping` signal through guarded replay runtime/operator composition without caller shutdown controls.
 - [x] Retain deterministic GraphQL StopHandle -> pending -> fresh-runtime attempt-2 completion evidence source without sleeps/polling.
-- [x] Bound replay mutation/checkpoint-commit pending futures with retryable timeout identities and preserve cancel/lease precedence.
+- [x] Bound replay checkpoint-read/mutation/checkpoint-commit pending futures with retryable timeout identities and preserve cancel/lease precedence.
 - [x] Define canonical locale-scoped source scan and make current Product filter before pagination.
 - [x] Add durable locale replay job scope and exact locale checkpoint identity.
 - [x] Carry locale through one-page replay worker/checkpoint storage with fail-closed `LocaleMode` admission.
 - [x] Carry optional locale through the multi-page replay runner and GraphQL command transport.
 - [x] Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.
+- [x] Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
 - [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
 - [ ] Execute/admit retained graceful interruption/restart and GraphQL shutdown evidence.
-- [ ] Execute/admit retained mutation/checkpoint pending-future timeout evidence.
+- [ ] Execute/admit retained dependency pending-future timeout evidence.
+- [ ] Execute/admit retained page lease-heartbeat evidence.
 - [ ] Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.
-- [ ] Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds.
 - [ ] Complete remaining multi-host/restart evidence beyond existing convergence/replay packets.
 - [ ] Add partition replay scope only after a real partition-capable source contract exists.
 - [ ] Add explicit targeted/full/shadow rebuild modes under a separate contract.
@@ -293,13 +286,13 @@ production admission remain maintainer-owned. See `m6-locale-replay-command-evid
 
 M7 Storefront remains execution/admission-gated and must not gain a traffic switch from source inspection alone.
 
-The locale request/source/job/checkpoint/runner/GraphQL identity chain and deterministic command/restart evidence
-source are complete. The next locale action is maintainer execution/admission of the retained packet, not another
-scope abstraction.
+The locale request/source/job/checkpoint/runner/GraphQL identity chain, deterministic locale command/restart
+evidence, dependency timeout set and page-duration/lease-heartbeat source policy are complete. Their next actions
+are maintainer execution/admission, not additional scope abstraction.
 
-For source-only M6 continuation, the next independent boundary is to define/retain whole-page duration versus
-lease/heartbeat policy beyond the existing per-dependency timeout bounds. That work must preserve cancellation,
-graceful-stop and locale job/checkpoint identities.
+For source-only M6 continuation, the next independent boundary is the remaining multi-host/restart evidence under
+the established lease, cancellation, graceful-stop and locale identities. Any retained packet must prove existing
+fencing/reclaim behavior rather than introduce automatic retry or a second job-ownership model.
 
 Partition remains separate and blocked. Add partition replay scope only after a real partition-capable source
 contract exists and can filter before pagination; do not merely populate `partition_key`. Explicit
