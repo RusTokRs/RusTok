@@ -32,8 +32,9 @@ use crate::service::GroupsService as LegacyGroupsService;
 /// Effective-membership facade for the public Groups owner boundary.
 ///
 /// The legacy service remains available only as an implementation delegate for operations that
-/// have not yet been converted. Every public core access decision, private group read, join, and
-/// feature-settings authorization in this facade uses the Groups-owned enforcement resolver.
+/// have not yet been converted. Every public core access decision, private group read, membership
+/// lifecycle command, and feature-settings authorization in this facade uses the Groups-owned
+/// enforcement resolver where effective state is relevant.
 #[derive(Clone)]
 pub struct GroupsService {
     db: DatabaseConnection,
@@ -215,6 +216,83 @@ impl GroupsService {
 
         if target_status == GroupMembershipStatus::Active {
             let next_member_count = group_model.member_count.saturating_add(1);
+            let next_version = group_model.version.saturating_add(1);
+            let mut active: group::ActiveModel = group_model.into();
+            active.member_count = Set(next_member_count);
+            active.version = Set(next_version);
+            active.updated_at = Set(now);
+            active.update(&transaction).await?;
+        }
+
+        transaction.commit().await?;
+        map_membership(updated_membership)
+    }
+
+    async fn leave_group_owned(
+        &self,
+        context: &PortContext,
+        request: LeaveGroupRequest,
+    ) -> GroupsResult<GroupMembership> {
+        require_write(context)?;
+        let tenant_id = context_tenant_id(context)?;
+        let user_id = actor_user_id(context)?;
+        let transaction = self.db.begin().await?;
+
+        // Leaving changes lifecycle state and may decrement the stored active count. Serialize the
+        // aggregate before reading effective membership so a concurrent suspension cannot race the
+        // lifecycle write or cause a stale group-version/member-count overwrite.
+        reserve_group_write_for_update(&transaction, tenant_id, request.group_id).await?;
+        let group_model = group::Entity::find()
+            .filter(group::Column::TenantId.eq(tenant_id))
+            .filter(group::Column::Id.eq(request.group_id))
+            .one(&transaction)
+            .await?
+            .ok_or(GroupsError::NotFound)?;
+        let effective = resolve_group_membership_enforcement_for_update(
+            &transaction,
+            tenant_id,
+            request.group_id,
+            user_id,
+            Utc::now(),
+        )
+        .await?;
+
+        // Legacy banned is itself stored owner enforcement. Never rewrite it to `left`, even when
+        // a temporary suspension row is also effective, because doing so would erase deny-reentry
+        // state after that suspension expires or is revoked.
+        if effective.stored_status == Some(GroupMembershipStatus::Banned) {
+            return Err(GroupsError::MembershipBanned);
+        }
+        if effective.role == Some(GroupRole::Owner) {
+            return Err(GroupsError::Invariant(
+                "group owner must transfer ownership before leaving".to_string(),
+            ));
+        }
+
+        let membership_model = membership::Entity::find()
+            .filter(membership::Column::TenantId.eq(tenant_id))
+            .filter(membership::Column::GroupId.eq(request.group_id))
+            .filter(membership::Column::UserId.eq(user_id))
+            .one(&transaction)
+            .await?
+            .ok_or_else(|| GroupsError::Conflict("membership is required".to_string()))?;
+        if membership_model.status == GroupMembershipStatus::Left.as_str() {
+            return map_membership(membership_model);
+        }
+
+        // Temporary suspension removes group authority but does not prevent a participant from
+        // leaving. The enforcement row remains intact as immutable current projection provenance;
+        // owner-clock fallback after expiry/revocation will then observe stored `left`.
+        let was_active = membership_model.status == GroupMembershipStatus::Active.as_str();
+        let now = Utc::now().fixed_offset();
+        let mut active: membership::ActiveModel = membership_model.into();
+        active.status = Set(GroupMembershipStatus::Left.as_str().to_string());
+        active.left_at = Set(Some(now));
+        active.updated_at = Set(now);
+        let updated_membership = active.update(&transaction).await?;
+
+        if was_active {
+            let next_member_count = group_model.member_count.saturating_sub(1);
             let next_version = group_model.version.saturating_add(1);
             let mut active: group::ActiveModel = group_model.into();
             active.member_count = Set(next_member_count);
@@ -452,7 +530,9 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: LeaveGroupRequest,
     ) -> Result<GroupMembership, PortError> {
-        GroupCommandPort::leave_group(&self.legacy, context, request).await
+        self.leave_group_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn set_group_feature(
