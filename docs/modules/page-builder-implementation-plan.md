@@ -18,12 +18,13 @@ status: active
 
 This central plan is reconciled to current `main` as of 2026-08-08. The detailed
 source overlays under `docs/modules/page-builder-*-actualization-2026-08-07.md`
-and the 2026-08-08 Pages/Page Builder parity packets remain authoritative where
-they are more specific. Older open checkboxes for Pages metadata contributions,
-immutable rollback, artifact audit/repair, reviewed static resource limits,
-authenticated real-DOM authoring, anonymous authoring exclusion, generated
-contribution-registry foundations and shared contribution metadata tooling were
-stale and are corrected below.
+and the 2026-08-08 Pages/Page Builder/Forum parity packets remain authoritative
+where they are more specific. Older open checkboxes for Pages metadata
+contributions, immutable rollback, artifact audit/repair, reviewed static resource
+limits, authenticated real-DOM authoring, anonymous authoring exclusion,
+generated contribution-registry foundations, shared contribution metadata
+tooling and the Forum Fly adapter/owner-preview source were stale and are
+corrected below.
 
 Current source markers for this slice:
 
@@ -32,29 +33,41 @@ Provider status/degraded controls: source-ready
 Pages module-metadata contribution generation: source-ready
 Shared module contribution tooling: source-ready
 Forum second-consumer contribution discovery: source-ready
-Forum Fly adapter/component registry: open
+Forum Fly adapter/component registry: source-ready
+Forum owner preview transport/Pages host composition: source-ready
+Forum owner-backed property editing: open
 ```
 
 Observed provider-health evidence remains an execution/composition cursor; an
 absent live health snapshot is represented as `unobserved`, not healthy.
 
 The Pages reference consumer keeps its complete Fly contribution declaration in
-canonical `rustok-module.toml`. `rustok-pages-admin/build.rs` now delegates generic
+canonical `rustok-module.toml`. `rustok-pages-admin/build.rs` delegates generic
 parsing, provider/version injection and capability validation to the reusable
 `rustok-build/src/module_manifest_contribution.rs` tooling source, while retaining
 only Pages-specific role/constant assertions. `xtask module validate` consumes the
 same normalizer for publish readiness. Admin/WASM runtime still does not parse TOML
 and no handwritten Pages `ContributionDescriptor` tree remains.
 
-Forum is now the second production consumer selected for the shared metadata
-boundary. Its canonical `rustok-module.toml` declares a versioned owner-provider
-`rustok.forum.widget-catalog` discovery contribution guarded by `forum_topics:read`
-and `preview`, while preserving Forum as widget persistence/authorization owner.
-The entry deliberately has no Fly blocks, renderers, property editors or storefront
-surface: Forum does not yet have a real Fly component registry/adapter, so the
-metadata records that adapter state as pending instead of fabricating runtime
-capability. The next source cursor is that real Forum adapter/component-registry
-slice. Live SLO health remains a separate open cursor.
+Forum is the second production consumer on the shared contribution boundary.
+Canonical `rustok-module.toml` now declares two complementary owner-provider admin
+contributions for the existing `forum.topic_list`, `forum.topic_detail` and
+`forum.reply_stream` widget contracts. `rustok.forum.widget-catalog` owns blocks
+and owner-schema-reference property contracts under `tree + properties`;
+`rustok.forum.widget-preview` owns only renderer admission under `preview`.
+Forum admin build generation consumes the shared normalizer, registers real Fly
+component/block identities and exposes a `ContributionAdapter` without importing
+Forum persistence or owner services.
+
+Forum owner preview is also source-ready. `ForumWidgetPreviewService` normalizes
+props through the existing Forum contract, applies Forum visibility/RBAC and
+executes bounded owner reads, including true pre-pagination `activity/newest/top`
+sort semantics. The owner HTTP route and SSR-only Forum admin transport are
+composed by a provider-neutral Page Builder host extension on the real Pages
+admin route only when Forum is tenant-enabled and its manifest permission is
+effectively granted. The Page Builder package itself has no Forum dependency.
+Owner-backed property editor schema/form/save UI plus runtime/browser/Wave
+evidence remain open. Live SLO health remains a separate open cursor.
 
 ## Current-only policy
 
@@ -84,12 +97,16 @@ The current component-tree authority is `pages[].component`.
   properties, contribution contracts and capability policy;
 - `fly-leptos` — browser/Leptos lifecycle, coordinates, iframe/real-DOM adapters
   and event cleanup;
-- `rustok-page-builder/admin` — full-authoring shell, canonical admin FFA facade
-  and typed provider status/degraded controls;
+- `rustok-page-builder/admin` — full-authoring shell, canonical admin FFA facade,
+  typed provider status/degraded controls and provider-neutral contribution-host
+  composition;
 - `rustok-page-builder/storefront` — published rendering and authenticated
   real-DOM editing support;
 - consumer admin/storefront packages — document lifecycle, metadata, transport,
   persistence adapters and domain contributions;
+- domain contribution owners such as Forum — canonical widget configuration,
+  owner data reads, validation, visibility and authorization behind public
+  contribution/preview/property contracts;
 - `rustok-page-builder` backend — capability policy, validation/sanitization,
   preview/review/materialization contracts, health and rollout controls;
 - consumer backend — page/document revisions, immutable artifacts, publish
@@ -218,17 +235,27 @@ persistence. Rich text remains an external dedicated capability.
 
 ### Forum second contribution consumer
 
-- [x] Forum already owns versioned `topic_list`, `topic_detail` and `reply_stream`
-  widget contracts plus catalog/validation HTTP routes guarded by
-  `forum_topics:read`.
-- [x] Canonical `rustok-module.toml` now declares the Forum owner-provider
-  contribution discovery entry through the shared module metadata boundary.
-- [x] The topic-detail manifest schema id is distinct (`forum.topic_detail.v1`)
-  instead of incorrectly reusing the topic-list schema id.
-- [x] Contribution discovery remains fail-closed with `blocks = []`, no renderers,
-  no property editors and no storefront claim while the adapter is pending.
-- [ ] Define actual Forum Fly component/block identities and a real adapter before
-  exposing authoring or rendering contributions.
+- [x] Forum owns versioned `topic_list`, `topic_detail` and `reply_stream` widget
+  contracts plus catalog/validation HTTP routes guarded by `forum_topics:read`.
+- [x] Canonical `rustok-module.toml` declares Forum owner-provider contribution
+  metadata through the shared module metadata boundary.
+- [x] Build-generated Forum admin contribution metadata registers exact version,
+  block/component, renderer and owner-schema-reference property identities without
+  runtime TOML or a handwritten descriptor tree.
+- [x] `rustok.forum.widget-catalog` and `rustok.forum.widget-preview` split
+  `tree + properties` from `preview`, preserving property admission when preview
+  is disabled.
+- [x] Forum supplies real Fly component/block registration plus a
+  `ContributionAdapter` that does not read Forum owner data.
+- [x] Forum owner preview normalizes existing widget props, applies Forum
+  visibility/RBAC and executes bounded topic/reply owner reads through
+  `/api/forum/widgets/preview` and the SSR-only Forum admin transport.
+- [x] The provider-neutral Page Builder host merges tenant-enabled Forum
+  contributions into the Pages consumer registry, installs the Forum Fly registry,
+  resolves effective manifest permissions server-side and exposes explicit bounded
+  selected-component preview without persisting owner data into Fly.
+- [ ] Implement owner-backed Forum property-editor schema/form/save UI that writes
+  only normalized configuration into Fly `props`.
 - [ ] Retain Forum Page Builder runtime/browser and observed Wave evidence.
 
 ## Target architecture
@@ -269,11 +296,18 @@ persistence. Rich text remains an external dedicated capability.
     -> module-owned route/page/artifact generation rotation
     -> generation-aware storefront/artifact cache reads
 
-  consumer domain (Forum)
+  contribution owner (Forum)
     -> topic/reply lifecycle, revisions and visibility remain Forum-owned
     -> versioned widget catalog and props validation remain Forum-owned
-    -> canonical contribution discovery metadata is shared-tooling validated
-    -> Fly component/block/adapter runtime remains pending
+    -> canonical contribution metadata is shared-tooling validated
+    -> Fly identity/configuration only; no copied owner data
+    -> owner preview service/HTTP/native transport reauthorize and read Forum state
+
+  application composition root
+    -> tenant-enabled contribution extensions
+    -> server-resolved effective manifest permissions
+    -> provider-neutral Page Builder host context
+    -> Pages remains document/persistence consumer
 
   rustok-page-builder
     -> capability policy / health / rollout
@@ -295,6 +329,7 @@ rustok-page-builder-admin -> fly-leptos -> fly-ui -> fly
 rustok-page-builder-storefront -> fly-leptos/fly-ui/fly as required
 consumer admin/storefront -> public Page Builder contracts
 consumer backend -> Fly/Page Builder validation and rendering contracts
+application host -> consumer UI + optional domain contribution UI
 ```
 
 Forbidden dependencies:
@@ -352,8 +387,10 @@ Rules:
 - acknowledgement returns the durable publish receipt;
 - promoted runtime scenario selection is explicit, ephemeral and resolved against
   the exact current baseline before publish;
-- widget data does not flow through a generic builder facade;
+- widget owner data does not flow through the consumer persistence facade;
 - dynamic widgets store versioned configuration only;
+- contribution preview data is fetched explicitly through an owner port and is
+  never persisted into the Fly document by the generic Page Builder UI;
 - consumer list/create/lifecycle UI remains consumer-owned;
 - provider status may only narrow host tenant/RBAC capabilities;
 - missing provider-health observation remains `unobserved` rather than healthy;
@@ -394,8 +431,10 @@ Rules:
   not retain a parallel handwritten descriptor tree.
 - Shared contribution parsing/normalization is platform build tooling and publish
   validation only; it must not become runtime registry, tenant or persistence policy.
-- A discovery contribution with no real adapter must not claim blocks, renderers,
-  property editors or storefront runtime surfaces.
+- Contribution owner transports reauthorize tenant/actor access even when host
+  discovery has already admitted the manifest permission.
+- Provider-neutral Page Builder host code may merge descriptors/install registries
+  but must not import domain owners such as Forum or duplicate their schemas/data.
 
 ## Implementation phases
 
@@ -493,6 +532,9 @@ of the verification programme.
 - [x] Provider status/degraded controls source: rollout flags, optional observed
   health, fail-closed capability narrowing, preview gate and explicit unobserved
   state.
+- [x] Provider-neutral optional contribution host source: external manifest
+  assembly, Fly registry installation, effective-permission admission and explicit
+  owner-preview port/panel without domain imports in Page Builder.
 - [ ] Complete remaining generic typed asset/control surfaces and accessibility
   evidence.
 - [ ] Retain observed provider-health/degraded browser evidence.
@@ -520,32 +562,42 @@ of the verification programme.
 - [x] Generalize canonical contribution metadata parsing/normalization into shared
   platform build tooling and `xtask` module publish validation.
 - [x] Onboard Forum as the second production consumer to canonical contribution
-  discovery metadata without a consumer-local parser or schema authority.
-- [ ] Connect Forum to runtime Fly component/block/adapter contribution assembly.
+  metadata without a consumer-local parser or copied schema authority.
+- [x] Connect Forum Fly component/block/renderer/property contracts to runtime
+  contribution assembly and Pages host registry composition.
+- [x] Connect Forum owner preview transport through a provider-neutral host port
+  while preserving Forum validation/visibility/RBAC ownership.
+- [ ] Connect Forum owner-backed property editor runtime through the same neutral
+  host boundary.
 
 ### Phase 10 — rollout
 
 - [ ] Internal tenant Wave 0 with observed evidence.
 - [ ] Pages Wave 1 after accepted publication/cache/rollback/repair/browser gates.
-- [x] Forum canonical contribution discovery metadata through shared tooling.
-- [ ] Forum Fly adapter/component registry and runtime contribution assembly.
+- [x] Forum canonical contribution metadata through shared tooling.
+- [x] Forum Fly adapter/component registry and runtime contribution assembly source.
+- [x] Forum owner-preview host composition source.
+- [ ] Forum retained runtime/browser and observed Wave evidence.
 - [ ] Media/Pages reusable sections.
 - [ ] Blog, Product, Pricing, Taxonomy and SEO contributions.
 - [ ] Additional modules only after renderer/property/cache ownership is proven.
 
 ## Immediate implementation order
 
-1. Define the real Forum Fly component/block identities and adapter behavior against
-   the existing Forum-owned widget catalog; only then make Forum contribution
-   blocks/renderers/property editors non-empty and mount runtime assembly.
-2. Connect a real provider-health observation source to the admin status seam and
+1. Implement the Forum owner-backed property editor schema/form/save path through
+   the existing Forum catalog/validation contracts and persist only normalized
+   configuration into Fly `props`.
+2. Retain Forum-enabled/disabled Pages browser evidence plus all-on/preview-off,
+   hidden-category/moderator-preview and effective `manage -> read` authorization
+   evidence for the new owner-preview host composition.
+3. Connect a real provider-health observation source to the admin status seam and
    retain observed provider-health evidence for degraded/unavailable behavior.
-3. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
+4. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
    cache rotation/miss-refill, metadata isolation and authenticated/anonymous
    authoring boundaries.
-4. Complete remaining generic Page Builder asset/accessibility controls and their
+5. Complete remaining generic Page Builder asset/accessibility controls and their
    executable browser evidence.
-5. Promote no new consumer or FFA/FBA wave until its ownership and retained
+6. Promote no new consumer or FFA/FBA wave until its ownership and retained
    execution evidence satisfy the same canonical composition boundary.
 
 ## Verification programme
@@ -594,8 +646,8 @@ authoritative sanitization/resource budgets, deterministic artifact and receipt
 integrity, preview/static materialization parity, idempotent replay, repair/
 rollback continuity, event-driven cache generation rotation and public miss/
 refill, anonymous authoring exclusion, provider degradation, generated module
-metadata authority, shared publish validation, Forum discovery-to-real-adapter
-continuity and observed tenant rollout.
+metadata authority, shared publish validation, Forum owner-preview host continuity,
+property editing once implemented and observed tenant rollout.
 
 ## Update rules
 
