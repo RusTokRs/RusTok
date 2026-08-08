@@ -2,25 +2,36 @@ use leptos::prelude::*;
 use rustok_page_builder::rollout::{BuilderCapabilityFlags, BuilderRolloutError};
 use serde_json::Value;
 
-fn nested_bool(settings: &Value, path: &[&str]) -> bool {
+fn nested_bool(settings: &Value, path: &[&str]) -> Result<bool, BuilderRolloutError> {
     let mut current = settings;
     for segment in path {
-        let Some(next) = current.get(*segment) else {
-            return true;
+        let Value::Object(values) = current else {
+            return Err(BuilderRolloutError::InvalidFlagCombination(format!(
+                "Page Builder rollout setting `{}` must be an object",
+                path.join(".")
+            )));
+        };
+        let Some(next) = values.get(*segment) else {
+            return Ok(true);
         };
         current = next;
     }
-    current.as_bool().unwrap_or(true)
+    current.as_bool().ok_or_else(|| {
+        BuilderRolloutError::InvalidFlagCombination(format!(
+            "Page Builder rollout setting `{}` must be a boolean",
+            path.join(".")
+        ))
+    })
 }
 
 pub(crate) fn pages_builder_flags_from_settings(
     settings: &Value,
 ) -> Result<BuilderCapabilityFlags, BuilderRolloutError> {
     let flags = BuilderCapabilityFlags {
-        builder_enabled: nested_bool(settings, &["builder", "enabled"]),
-        preview_enabled: nested_bool(settings, &["builder", "preview", "enabled"]),
-        properties_enabled: nested_bool(settings, &["builder", "properties", "enabled"]),
-        publish_enabled: nested_bool(settings, &["builder", "publish", "enabled"]),
+        builder_enabled: nested_bool(settings, &["builder", "enabled"])?,
+        preview_enabled: nested_bool(settings, &["builder", "preview", "enabled"])?,
+        properties_enabled: nested_bool(settings, &["builder", "properties", "enabled"])?,
+        publish_enabled: nested_bool(settings, &["builder", "publish", "enabled"])?,
     };
     flags.validate()?;
     Ok(flags)
@@ -112,6 +123,18 @@ mod tests {
             pages_builder_flags_from_settings(&json!({})).unwrap(),
             BuilderCapabilityFlags::default()
         );
+    }
+
+    #[test]
+    fn malformed_setting_types_fail_closed() {
+        for value in [
+            json!({ "builder": "disabled" }),
+            json!({ "builder": { "enabled": "false" } }),
+            json!({ "builder": { "preview": false } }),
+            json!({ "builder": { "publish": { "enabled": 0 } } }),
+        ] {
+            assert!(pages_builder_flags_from_settings(&value).is_err());
+        }
     }
 
     #[test]
