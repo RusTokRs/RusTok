@@ -10,6 +10,10 @@ use uuid::Uuid;
 
 use crate::{
     ForumCounterDrift, ForumCounterReconciliationReport, ForumCounterReconciliationService,
+    services::{
+        ForumSolutionDrift, ForumSolutionReconciliationReport,
+        ForumSolutionReconciliationService,
+    },
 };
 
 const MODULE_SLUG: &str = "forum";
@@ -39,6 +43,31 @@ pub struct GqlForumCounterReconciliationReport {
     pub drifts: Vec<GqlForumCounterDrift>,
 }
 
+#[derive(Debug, Clone, SimpleObject)]
+pub struct GqlForumSolutionDrift {
+    pub kind: String,
+    pub subject_id: Uuid,
+    pub stored: i64,
+    pub expected: i64,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct GqlForumSolutionReconciliationReport {
+    pub requested_limit: Option<i32>,
+    pub effective_limit: i32,
+    pub inspected_solutions: i32,
+    pub inspected_solution_stats: i32,
+    pub has_more_solutions: bool,
+    pub has_more_solution_stats: bool,
+    pub solution_cursor: Option<Uuid>,
+    pub solution_stat_cursor: Option<Uuid>,
+    pub drift_count: i32,
+    /// True only when the current bounded accepted-solution/stat page contains no detected drift.
+    /// Whole-tenant clean requires exhausting both cursor chains with every page clean.
+    pub clean: bool,
+    pub drifts: Vec<GqlForumSolutionDrift>,
+}
+
 #[derive(Default)]
 pub struct ForumReconciliationQuery;
 
@@ -60,24 +89,11 @@ impl ForumReconciliationQuery {
         topic_after: Option<Uuid>,
         category_after: Option<Uuid>,
     ) -> Result<GqlForumCounterReconciliationReport> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        require_operations_permissions(auth)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ));
-        }
-        let requested_limit = normalize_limit(limit)?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let security =
-            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
-        let report = ForumCounterReconciliationService::new(db.clone())
+        let (tenant_id, security, requested_limit, db) =
+            reconciliation_context(ctx, limit).await?;
+        let report = ForumCounterReconciliationService::new(db)
             .report_page(
-                tenant.id,
+                tenant_id,
                 &security,
                 requested_limit,
                 topic_after,
@@ -86,6 +102,55 @@ impl ForumReconciliationQuery {
             .await?;
         Ok(map_report(report))
     }
+
+    /// Read-only FORUM-33 accepted-solution and solution-author-stat drift report.
+    ///
+    /// A solution is authoritative only when the exact same-tenant/topic reply still exists and is
+    /// `approved`. `forum_user_stats.solution_count` is reconciled as a projection of those approved
+    /// solution rows. `solution_after` and `solution_stat_after` are independent UUID keyset cursors.
+    /// `clean` is page-local and is not whole-tenant proof until both cursor chains are exhausted.
+    async fn forum_solution_reconciliation_report(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+        solution_after: Option<Uuid>,
+        solution_stat_after: Option<Uuid>,
+    ) -> Result<GqlForumSolutionReconciliationReport> {
+        let (tenant_id, security, requested_limit, db) =
+            reconciliation_context(ctx, limit).await?;
+        let report = ForumSolutionReconciliationService::new(db)
+            .report_page(
+                tenant_id,
+                &security,
+                requested_limit,
+                solution_after,
+                solution_stat_after,
+            )
+            .await?;
+        Ok(map_solution_report(report))
+    }
+}
+
+async fn reconciliation_context(
+    ctx: &Context<'_>,
+    limit: Option<i32>,
+) -> Result<(Uuid, SecurityContext, Option<u64>, DatabaseConnection)> {
+    require_module_enabled(ctx, MODULE_SLUG).await?;
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    require_operations_permissions(auth)?;
+    let tenant = ctx.data::<TenantContext>()?;
+    if auth.tenant_id != tenant.id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Permission denied: tenant scope mismatch",
+        ));
+    }
+    let requested_limit = normalize_limit(limit)?;
+    let db = ctx.data::<DatabaseConnection>()?.clone();
+    let security =
+        SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+    Ok((tenant.id, security, requested_limit, db))
 }
 
 fn require_operations_permissions(auth: &AuthContext) -> Result<()> {
@@ -109,7 +174,7 @@ fn normalize_limit(limit: Option<i32>) -> Result<Option<u64>> {
         None => Ok(None),
         Some(value) if value > 0 => Ok(Some(value as u64)),
         Some(_) => Err(async_graphql::Error::new(
-            "Forum counter reconciliation limit must be positive",
+            "Forum reconciliation limit must be positive",
         )),
     }
 }
@@ -133,6 +198,34 @@ fn map_report(report: ForumCounterReconciliationReport) -> GqlForumCounterReconc
 
 fn map_drift(drift: ForumCounterDrift) -> GqlForumCounterDrift {
     GqlForumCounterDrift {
+        kind: drift.kind.as_str().to_string(),
+        subject_id: drift.subject_id,
+        stored: drift.stored,
+        expected: drift.expected,
+    }
+}
+
+fn map_solution_report(
+    report: ForumSolutionReconciliationReport,
+) -> GqlForumSolutionReconciliationReport {
+    let requested_limit = report.requested_limit.map(saturating_i32);
+    GqlForumSolutionReconciliationReport {
+        requested_limit,
+        effective_limit: saturating_i32(report.effective_limit),
+        inspected_solutions: saturating_i32(report.inspected_solutions),
+        inspected_solution_stats: saturating_i32(report.inspected_solution_stats),
+        has_more_solutions: report.has_more_solutions,
+        has_more_solution_stats: report.has_more_solution_stats,
+        solution_cursor: report.solution_cursor,
+        solution_stat_cursor: report.solution_stat_cursor,
+        drift_count: saturating_i32(report.drift_count() as u64),
+        clean: report.is_clean(),
+        drifts: report.drifts.into_iter().map(map_solution_drift).collect(),
+    }
+}
+
+fn map_solution_drift(drift: ForumSolutionDrift) -> GqlForumSolutionDrift {
+    GqlForumSolutionDrift {
         kind: drift.kind.as_str().to_string(),
         subject_id: drift.subject_id,
         stored: drift.stored,
@@ -205,5 +298,24 @@ mod tests {
         });
         assert_eq!(mapped.topic_cursor, Some(topic_cursor));
         assert_eq!(mapped.category_cursor, Some(category_cursor));
+    }
+
+    #[test]
+    fn mapped_solution_report_preserves_independent_cursors() {
+        let solution_cursor = Uuid::new_v4();
+        let solution_stat_cursor = Uuid::new_v4();
+        let mapped = map_solution_report(ForumSolutionReconciliationReport {
+            requested_limit: Some(25),
+            effective_limit: 25,
+            inspected_solutions: 25,
+            inspected_solution_stats: 8,
+            has_more_solutions: true,
+            has_more_solution_stats: false,
+            solution_cursor: Some(solution_cursor),
+            solution_stat_cursor: Some(solution_stat_cursor),
+            drifts: Vec::new(),
+        });
+        assert_eq!(mapped.solution_cursor, Some(solution_cursor));
+        assert_eq!(mapped.solution_stat_cursor, Some(solution_stat_cursor));
     }
 }
