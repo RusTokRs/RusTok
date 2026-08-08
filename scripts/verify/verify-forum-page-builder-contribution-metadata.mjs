@@ -11,6 +11,8 @@ const moduleManifest = read("crates/rustok-forum/rustok-module.toml");
 const widgetContract = read("crates/rustok-forum/src/services/widget_contract.rs");
 const widgetController = read("crates/rustok-forum/src/controllers/widgets.rs");
 const adminCargo = read("crates/rustok-forum/admin/Cargo.toml");
+const adminBuild = read("crates/rustok-forum/admin/build.rs");
+const adminAdapter = read("crates/rustok-forum/admin/src/page_builder.rs");
 const sharedTooling = read("crates/rustok-build/src/module_manifest_contribution.rs");
 const forumPlan = read("crates/rustok-forum/docs/implementation-plan.md");
 const pageBuilderPlan = read("docs/modules/page-builder-implementation-plan.md");
@@ -30,30 +32,31 @@ for (const marker of [
   'role = "widget_catalog"',
   'id = "rustok.forum.widget-catalog"',
   'provider = "rustok.forum"',
-  'required_capabilities = ["preview"]',
-  "blocks = []",
-  'format = "forum_widget_catalog_v1"',
-  'catalog_version = "v1"',
+  'required_capabilities = ["preview", "tree", "properties"]',
+  '"forum.topic_list"',
+  '"forum.topic_detail"',
+  '"forum.reply_stream"',
+  "[[fba.builder_consumer.contribution_manifest.admin.renderers]]",
+  "[[fba.builder_consumer.contribution_manifest.admin.property_editors]]",
+  'presentations = ["full", "inline", "preview", "read_only"]',
+  'format = "forum_widget_owner_schema_ref_v1"',
+  'schema_id = "forum.topic_list.v1"',
+  'schema_id = "forum.topic_detail.v1"',
+  'schema_id = "forum.reply_stream.v1"',
   'catalog_endpoint = "/api/forum/widgets/catalog"',
   'validate_endpoint = "/api/forum/widgets/validate"',
-  'catalog_source = "fba.builder_consumer.widgets"',
-  'adapter_state = "pending"',
+  'adapter_state = "fly_contract_ready"',
+  'preview_data_state = "owner_preview_transport_open"',
   'persistence_owner = "forum"',
   'authorization_owner = "forum"',
-  'props_schema = "forum.topic_list.v1"',
-  'props_schema = "forum.topic_detail.v1"',
-  'props_schema = "forum.reply_stream.v1"',
 ]) {
   requireMarker(moduleManifest, marker, "Forum canonical Page Builder metadata");
 }
-
-for (const forbidden of [
-  "[[fba.builder_consumer.contribution_manifest.admin.renderers]]",
-  "[[fba.builder_consumer.contribution_manifest.admin.property_editors]]",
+forbidMarker(
+  moduleManifest,
   "[[fba.builder_consumer.contribution_manifest.storefront]]",
-]) {
-  forbidMarker(moduleManifest, forbidden, "Forum adapter-pending contribution metadata");
-}
+  "Forum admin-only contribution metadata",
+);
 
 for (const marker of [
   'FORUM_WIDGET_TYPE_TOPIC_LIST: &str = "forum.topic_list"',
@@ -85,33 +88,71 @@ for (const marker of [
   requireMarker(sharedTooling, marker, "shared contribution metadata tooling");
 }
 
-for (const forbidden of [
-  "fly-ui",
-  "rustok-page-builder-admin",
-  "rustok-page-builder =",
+for (const marker of [
+  'fly = { path = "../../fly" }',
+  'fly-ui = { path = "../../fly-ui" }',
+  "[build-dependencies]",
+  "toml.workspace = true",
 ]) {
-  forbidMarker(adminCargo, forbidden, "Forum admin adapter-pending dependency boundary");
+  requireMarker(adminCargo, marker, "Forum admin Fly dependency boundary");
+}
+for (const forbidden of ["rustok-page-builder-admin", "rustok-page-builder ="]) {
+  forbidMarker(adminCargo, forbidden, "Forum owner-local Fly adapter dependency boundary");
 }
 
 for (const marker of [
-  "Forum Page Builder contribution discovery metadata: source-ready",
-  "Fly block/renderer/property-editor adapter remains open",
+  '#[path = "../../rustok-build/src/module_manifest_contribution.rs"]',
+  "normalize_module_contribution_manifest",
+  'role(WIDGET_ROLE)',
+  "validate_widget_contribution",
+  'FORUM_WIDGET_COMPONENT_TYPES',
+  'GENERATED_FORUM_CONTRIBUTION_MANIFEST_JSON',
+  'OWNER_SCHEMA_REF_FORMAT',
+]) {
+  requireMarker(adminBuild, marker, "Forum build-generated contribution manifest");
+}
+
+for (const marker of [
+  "pub struct ForumContributionAdapter",
+  "impl ContributionAdapter for ForumContributionAdapter",
+  "pub fn register_forum_fly_widgets",
+  "pub fn build_forum_admin_contribution_registry",
+  "pub fn forum_fly_registry_set",
+  'COMPONENT_PROPS_FIELD: &str = "props"',
+  'OWNER_SCHEMA_REF_FORMAT: &str = "forum_widget_owner_schema_ref_v1"',
+  'owner_preview_transport_open',
+]) {
+  requireMarker(adminAdapter, marker, "Forum Fly adapter source");
+}
+for (const forbidden of [
+  "toml::",
+  "ForumWidgetContractService",
+  "TopicService",
+  "ReplyService",
+  "DatabaseConnection",
+]) {
+  forbidMarker(adminAdapter, forbidden, "Forum Fly adapter owner-data boundary");
+}
+
+for (const marker of [
+  "Forum Fly component/block/adapter contracts: source-ready",
+  "owner-backed preview transport remains open",
 ]) {
   requireMarker(forumPlan, marker, "Forum canonical implementation plan");
 }
 for (const marker of [
-  "Forum second-consumer contribution discovery: source-ready",
-  "Forum Fly adapter/component registry: open",
+  "Forum Fly component/block/adapter contracts: source-ready",
+  "Forum owner-backed preview transport/host mount: open",
 ]) {
   requireMarker(pageBuilderPlan, marker, "Page Builder canonical implementation plan");
 }
 
 if (failures.length > 0) {
-  console.error("forum Page Builder contribution metadata verification failed:");
+  console.error("forum Page Builder Fly contribution verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
 console.log(
-  "forum Page Builder contribution metadata verification passed: shared_metadata=true adapter_state=pending runtime_claim=false",
+  "forum Page Builder Fly contribution verification passed: generated_manifest=true fly_contracts=true owner_preview_transport=open",
 );
