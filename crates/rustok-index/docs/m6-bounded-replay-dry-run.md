@@ -1,21 +1,29 @@
 # M6 bounded replay dry-run
 
-Status: `source_complete_schema_wide_transport_execution_pending`
+Status: `source_complete_schema_wide_transport_locale_execution_pending`
 
 This slice adds an Index-owned, side-effect-free validation runtime over the exact immutable
 `SharedIndexSourceRegistry` and `SharedIndexSchemaRegistry` used by production replay, binds that capability
-behind the server-owned request-bound replay operator guard, and now exposes a bounded schema-wide GraphQL Shadow
+behind the server-owned request-bound replay operator guard, and exposes a bounded schema-wide GraphQL Shadow
 command through an authenticated confidential continuation boundary.
+
+The shared continuation contract is now locale-safe, so schema-wide and exact canonical-locale tokens cannot cross
+scan scopes. Locale still must be carried through the dry-run execution path before exact-locale Shadow transport
+is exposed.
 
 ## Contract
 
-`IndexReplayDryRunRequest` carries:
+`IndexReplayDryRunRequest` currently carries:
 
 - one non-nil tenant;
 - one exact registered schema;
 - one optional source-owned continuation cursor;
 - one source page limit already bounded by `IndexSourceScanRequest`;
 - one invocation budget from 1 through 1024 pages.
+
+It remains schema-wide today. The next source boundary is to add one optional canonical `LocaleKey` to this request
+and construct the actual source request through schema-wide `IndexSourceScanRequest::new` or exact-locale
+`IndexSourceScanRequest::for_locale` without creating durable mode state.
 
 `SharedIndexReplayDryRunRuntime::run` resolves source ownership only from the immutable registry,
 then scans at most the requested page budget. For every returned page it verifies:
@@ -73,7 +81,7 @@ does not alter the Full runner.
 
 ## Schema-wide GraphQL Shadow transport
 
-`runIndexReplayShadow` now exposes one bounded schema-wide invocation through
+`runIndexReplayShadow` exposes one bounded schema-wide invocation through
 `IndexReplayShadowTransportRuntime`.
 
 The GraphQL preparation path derives tenant/actor from request context and requires effective `modules:manage`
@@ -82,21 +90,24 @@ authorization before opening the token or constructing `IndexReplayDryRunRequest
 
 Caller input contains only module/entity/schema routing identity plus one optional sealed continuation token. Page
 limit and maximum pages remain server-owned at `100` and `8`. Locale, source identity, raw cursor JSON, job,
-checkpoint, lease, worker, cancellation and retry controls are unavailable.
+checkpoint, lease, worker, cancellation and retry controls are unavailable in the current schema-wide surface.
 
 The adapter reuses the deployment `IndexSourceContinuationKeyringRuntime` and canonical frozen
-`IndexSourceContinuationScope`. Incoming tokens are authenticated, decrypted, expired and tenant/schema/source
-scope-checked before the raw cursor is reconstructed. An outgoing raw cursor is sealed before returning to GraphQL.
-The transport-safe result contains only Complete/Yielded status, bounded counters and optional sealed
-continuation; it omits internal source name and source version.
+`IndexSourceContinuationScope`. Incoming tokens are authenticated, decrypted, expired and scope-checked before the
+raw cursor is reconstructed. An outgoing raw cursor is sealed before returning to GraphQL. The transport-safe
+result contains only Complete/Yielded status, bounded counters and optional sealed continuation; it omits internal
+source name and source version.
 
-This transport is intentionally schema-wide. The existing continuation scope does not yet carry locale identity,
-so exact-locale Shadow replay must not be exposed until schema-wide versus exact-locale continuation scopes are
-cryptographically distinct.
+The continuation scope now binds optional canonical locale identity. Schema-wide (`None`) and exact-locale
+(`Some(LocaleKey)`) tokens are mutually incompatible, and different canonical locales cannot exchange tokens.
+The codec has one current unversioned envelope with no old-format decoder or version-tagged claim family.
+
+Exact-locale Shadow remains source-open only because the dry-run request/runtime and GraphQL adapter have not yet
+carried locale into `IndexSourceScanRequest::for_locale`. The continuation prerequisite is complete.
 
 ## Explicitly open
 
-- exact-locale Shadow/dry-run transport after continuation identity becomes locale-safe;
+- exact-locale Shadow/dry-run request, source-scan execution and authorization-first GraphQL transport;
 - persisted dry-run reports or comparison snapshots;
 - cross-page duplicate event detection beyond one bounded page;
 - mutation/checkpoint timing simulation and interruption;
@@ -120,6 +131,7 @@ Suggested commands:
 cargo test -p rustok-index --test replay_dry_run_contract -- --nocapture
 cargo test -p rustok-index replay_dry_run -- --nocapture
 cargo check -p rustok-index --all-targets
+node scripts/verify/verify-index-source-continuation.mjs
 node scripts/verify/verify-index-replay-runtime-composition.mjs
 node scripts/verify/verify-index-replay-shadow-host-dispatch.mjs
 node scripts/verify/verify-index-replay-shadow-graphql-transport.mjs
