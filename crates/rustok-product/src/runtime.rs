@@ -5,7 +5,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::{
     CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort, ProductCatalogSchemaReadPort,
-    ProductCatalogSchemaService, ProductStorefrontTagReadPort,
+    ProductCatalogSchemaService, ProductCatalogSchemaWritePort, ProductStorefrontTagReadPort,
 };
 
 /// Host-selected execution profile for the Product catalog read boundary.
@@ -111,9 +111,13 @@ impl ProductCatalogCommandProfile {
 }
 
 /// Canonical host-composed Product catalog lifecycle command capability.
+///
+/// Product schema writes are an explicit optional secondary capability. External command profiles
+/// therefore fail closed until a host deliberately composes a schema-write provider.
 #[derive(Clone)]
 pub struct ProductCatalogCommandRuntime {
     command_port: Arc<dyn ProductCatalogCommandPort>,
+    schema_write_port: Option<Arc<dyn ProductCatalogSchemaWritePort>>,
     profile: ProductCatalogCommandProfile,
 }
 
@@ -124,23 +128,37 @@ impl ProductCatalogCommandRuntime {
     ) -> Self {
         Self {
             command_port,
+            schema_write_port: None,
             profile,
         }
     }
 
     pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self::new(
-            Arc::new(CatalogService::new(db, event_bus)),
+            Arc::new(CatalogService::new(db.clone(), event_bus.clone())),
             ProductCatalogCommandProfile::EmbeddedNative,
         )
+        .with_schema_write_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
     }
 
     pub fn external(command_port: Arc<dyn ProductCatalogCommandPort>) -> Self {
         Self::new(command_port, ProductCatalogCommandProfile::External)
     }
 
+    pub fn with_schema_write_port(
+        mut self,
+        schema_write_port: Arc<dyn ProductCatalogSchemaWritePort>,
+    ) -> Self {
+        self.schema_write_port = Some(schema_write_port);
+        self
+    }
+
     pub fn command_port(&self) -> Arc<dyn ProductCatalogCommandPort> {
         self.command_port.clone()
+    }
+
+    pub fn schema_write_port(&self) -> Option<Arc<dyn ProductCatalogSchemaWritePort>> {
+        self.schema_write_port.clone()
     }
 
     pub const fn profile(&self) -> ProductCatalogCommandProfile {
