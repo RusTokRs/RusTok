@@ -113,3 +113,60 @@ impl HostRuntimeContext {
             .cloned()
     }
 }
+
+#[cfg(all(test, feature = "runtime"))]
+mod tests {
+    use super::*;
+    use sea_orm::Database;
+
+    #[tokio::test]
+    async fn tenant_module_enablement_is_exact_and_fail_closed() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("runtime module evidence SQLite should connect");
+        db.execute_unprepared(
+            r#"
+CREATE TABLE tenant_modules (
+    tenant_id TEXT NOT NULL,
+    module_slug TEXT NOT NULL,
+    enabled INTEGER NOT NULL,
+    PRIMARY KEY (tenant_id, module_slug)
+);
+"#,
+        )
+        .await
+        .expect("tenant_modules evidence table should create");
+
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES \
+             ('{tenant_id}', 'forum', 1), \
+             ('{tenant_id}', 'pages', 0), \
+             ('{foreign_tenant_id}', 'forum', 1)"
+        ))
+        .await
+        .expect("tenant module evidence rows should insert");
+
+        assert!(
+            is_tenant_module_enabled(&db, tenant_id, "forum")
+                .await
+                .expect("enabled Forum lookup should succeed")
+        );
+        assert!(
+            !is_tenant_module_enabled(&db, tenant_id, "pages")
+                .await
+                .expect("disabled module lookup should succeed")
+        );
+        assert!(
+            !is_tenant_module_enabled(&db, Uuid::new_v4(), "forum")
+                .await
+                .expect("foreign tenant lookup should succeed")
+        );
+        assert!(
+            !is_tenant_module_enabled(&db, tenant_id, "missing")
+                .await
+                .expect("missing module lookup should succeed")
+        );
+    }
+}
