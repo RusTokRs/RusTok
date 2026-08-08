@@ -28,6 +28,7 @@ use crate::{
 const TENANT: &str = "22222222-2222-2222-2222-222222222222";
 const ENTITY_ID: Uuid = Uuid::from_u128(202);
 const EVENT_ID: Uuid = Uuid::from_u128(2_002);
+const EVIDENCE_LEASE_DURATION: Duration = Duration::from_secs(86_400);
 
 struct BlockingFirstScanSource {
     calls: Arc<AtomicUsize>,
@@ -178,7 +179,7 @@ impl Fixture {
             10,
             1,
             1,
-            Duration::from_secs(60),
+            EVIDENCE_LEASE_DURATION,
         )
         .expect("bounded replay request")
     }
