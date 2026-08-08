@@ -43,6 +43,13 @@ for (const marker of [
   "effective_limit.saturating_add(1)",
   "has_more_topics",
   "has_more_categories",
+  "begin_with_config(",
+  "IsolationLevel::RepeatableRead",
+  "AccessMode::ReadOnly",
+  "DatabaseBackend::Sqlite => self.db.begin().await?",
+  "report_in_transaction(&transaction",
+  "transaction.commit().await?",
+  "transaction.rollback().await",
   "record_module_entrypoint_call(",
   '"counter_reconciliation_report"',
   "record_span_duration(",
@@ -56,7 +63,6 @@ for (const forbidden of [
   "DELETE FROM forum_",
   "INSERT INTO forum_",
   "ActiveModel",
-  "TransactionTrait",
 ]) {
   requireAbsent(service, forbidden, `read-only reconciliation service must not contain ${forbidden}`);
 }
@@ -96,7 +102,8 @@ for (const marker of [
   "forumCounterReconciliationReport(limit: Int)",
   "forum_categories:manage",
   "forum_topics:manage",
-  "exactly two tenant-scoped aggregate queries",
+  "exactly two tenant-scoped aggregate queries inside one database snapshot",
+  "REPEATABLE READ READ ONLY",
   "does **not** add a repair mutation",
   "idempotent job/receipt state",
 ]) {
