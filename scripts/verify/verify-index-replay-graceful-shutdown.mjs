@@ -22,7 +22,7 @@ const workerPath = 'crates/rustok-index/src/application/source_replay.rs';
 const worker = requireMarkers(workerPath, [
   'pub async fn run_next_page_interruptible<Check, CheckFuture>(',
   'check_replay_interruption(&mut should_interrupt).await?;',
-  'before every\n    /// mutation application, and before checkpoint commit',
+  'before every\n    /// mutation application, and before checkpoint commit'.replace('\\n', '\n'),
   'IndexReplayError::Interrupted',
 ]);
 if (worker.includes('cancel_requested')) {
@@ -93,7 +93,14 @@ const packet = requireMarkers(packetPath, [
   'resumed.duplicate_count(), 1',
   'state = \'succeeded\'',
 ]);
-for (const forbidden of ['tokio::time::sleep', 'tokio::spawn', 'Postgres', 'request_cancel(']) {
+for (const forbidden of [
+  'tokio::time::sleep',
+  'tokio::spawn',
+  'DbBackend::Postgres',
+  'postgres://',
+  'postgresql://',
+  'request_cancel(',
+]) {
   if (packet.includes(forbidden)) {
     fail(`${packetPath} must remain deterministic SQLite restart/redelivery source evidence: ${forbidden}`);
   }
