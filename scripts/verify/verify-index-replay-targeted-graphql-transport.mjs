@@ -166,7 +166,7 @@ requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application
   'Status: `source_complete_transport_execution_pending`.',
   '## GraphQL transport',
   '`runIndexReplayTargeted(input: ...)`',
-  'GraphQL does not expose it',
+  'not expose it. Source routing remains server-owned.',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_graphql_execution_pending`.',
