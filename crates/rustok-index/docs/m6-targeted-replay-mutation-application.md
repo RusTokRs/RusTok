@@ -7,13 +7,13 @@ Status: `source_complete_host_guard_pending`.
 `IndexReplayTargetedExecutor` defines the bounded mutation-application contract for
 `IndexReplayMode::Targeted` without reusing the durable Full replay job/checkpoint state machine.
 It consumes only `IndexReplayModeSelection::Targeted`, which already owns the canonical
-`IndexSourceLoadRequest` exact-key validation.
+`IndexSourceLoadRequest` bounded tenant/schema/key-set validation.
 
 This is an application execution boundary, not a public transport and not a new durable replay
 owner. PostgreSQL/runtime materialization and request-bound host dispatch remain separate follow-up
 slices.
 
-## Canonical Targeted request
+## Canonical Targeted request and key admission
 
 Targeted selection continues to reuse `IndexSourceLoadRequest` unchanged:
 
@@ -21,7 +21,18 @@ Targeted selection continues to reuse `IndexSourceLoadRequest` unchanged:
 - one non-nil tenant;
 - one exact schema;
 - per-key locale identity remains part of each `EntityKey`;
-- mixed tenant/schema keys and duplicate keys fail before source execution.
+- mixed tenant/schema keys and duplicate keys fail during request construction.
+
+The generic load request intentionally does not own active-schema semantics. Before source resolution
+or `IndexSource::load`, Targeted adds requested key admission against the active `SchemaRegistry`:
+
+- every requested entity UUID must be non-nil;
+- `LocaleMode::Required` requires every requested key to carry a locale;
+- `LocaleMode::None` rejects every requested key that carries a locale;
+- `LocaleMode::Optional` accepts either key shape.
+
+This prevents malformed or locale-incompatible exact targets from being reinterpreted as ordinary
+missing source keys.
 
 `Full` and `Shadow` selections are rejected by `IndexReplayTargetedExecutor`; they cannot alias the
 Targeted mutation path.
@@ -31,26 +42,28 @@ Targeted mutation path.
 One Targeted invocation performs exactly these steps:
 
 1. require `IndexReplayModeSelection::Targeted`;
-2. resolve the exact source owner from `SharedIndexSourceRegistry`;
-3. require the exact schema to exist in the active `SchemaRegistry`;
-4. call the canonical bounded `SharedIndexSourceRegistry::load` once;
-5. preflight the complete returned batch before the first mutation write;
-6. apply each returned mutation sequentially through the existing `IndexReplayMutationSink`;
-7. return bounded counters only.
+2. require the exact schema to exist in the active `SchemaRegistry`;
+3. validate every requested entity/locale key against that active schema;
+4. resolve the exact source owner from `SharedIndexSourceRegistry`;
+5. call the canonical bounded `SharedIndexSourceRegistry::load` once;
+6. preflight the complete returned batch before the first mutation write;
+7. apply each returned mutation sequentially through the existing `IndexReplayMutationSink`;
+8. return bounded counters only.
 
-The source registry already rejects mutations for unrequested keys and duplicate returned entity keys.
-The Targeted executor adds the replay-specific preflight used before persistence:
+The source registry rejects mutations for unrequested keys and duplicate returned entity keys. The
+Targeted executor then adds the replay-specific whole-batch preflight before persistence:
 
 - every mutation event UUID must be non-nil;
 - event UUIDs must be unique within the invocation;
 - every mutation must pass complete `SchemaRegistry::validate_mutation` validation.
 
-If any preflight check fails, no mutation sink call occurs.
+If requested key admission or any returned-batch preflight fails, no mutation sink call occurs.
 
 ## Missing requested keys
 
-`IndexSource::load` is allowed to return fewer mutations than requested keys. Targeted execution does
-not infer deletion from that absence and does not manufacture tombstones. The outcome reports
+`IndexSource::load` is allowed to return fewer mutations than requested keys. Once requested keys have
+passed active-schema admission, Targeted execution does not infer deletion from source absence and does
+not manufacture tombstones. The outcome reports
 `missing_count = requested_count - mutation_count` only.
 
 Owner adapters remain responsible for returning an authoritative delete mutation when deletion is the
@@ -67,9 +80,11 @@ When backed by the existing PostgreSQL replay mutation sink, that source event U
 `Duplicate` or `StaleIgnored` after an earlier invocation partially committed mutations before a later
 mutation failed.
 
-The executor intentionally does not add a checkpoint for partial progress. A failure reports the exact
-mutation position and existing bounded replay failure. Retry/requeue policy remains an operator/host
-concern and is not automatic here.
+Retained source evidence models the harder window where mutation 1 succeeds and mutation 2 fails once;
+the exact retry observes mutation 1 as `Duplicate` and applies mutation 2. The executor intentionally
+does not add a checkpoint for partial progress. A failure reports the exact mutation position and
+existing bounded replay failure. Retry/requeue policy remains an operator/host concern and is not
+automatic here.
 
 ## Outcome
 
