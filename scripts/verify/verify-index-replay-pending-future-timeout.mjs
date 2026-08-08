@@ -59,6 +59,7 @@ if (adapter.includes('bounded_replay_checkpoint_commit(async {\n            vali
 
 const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
+  'let page = match worker.run_next_page(request.page_request().clone()).await {',
   'if cancel_if_requested(&self.db, &lease).await? {',
   'let details = replay_failure_details(&error);',
   'finish_failure(&self.db, &lease, details).await?',
@@ -67,10 +68,18 @@ const runner = requireMarkers(runnerPath, [
   'failure.kind() == IndexReplayFailureKind::Retryable',
   '"retryable": retryable',
 ]);
-const pageFailure = runner.indexOf('Err(error) => {');
+const pageMatch = runner.indexOf('let page = match worker.run_next_page(request.page_request().clone()).await {');
+const pageFailure = runner.indexOf('Err(error) => {', pageMatch);
 const cancelCheck = runner.indexOf('if cancel_if_requested(&self.db, &lease).await? {', pageFailure);
 const failureDetails = runner.indexOf('let details = replay_failure_details(&error);', cancelCheck);
-if (pageFailure < 0 || cancelCheck <= pageFailure || failureDetails <= cancelCheck) {
+const finishFailure = runner.indexOf('finish_failure(&self.db, &lease, details).await?', failureDetails);
+if (
+  pageMatch < 0 ||
+  pageFailure <= pageMatch ||
+  cancelCheck <= pageFailure ||
+  failureDetails <= cancelCheck ||
+  finishFailure <= failureDetails
+) {
   fail('persisted cancellation must keep precedence over terminal page failure after a timeout');
 }
 
