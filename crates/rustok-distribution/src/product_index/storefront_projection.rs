@@ -59,9 +59,10 @@ fn apply_string_placeholder(
         entity_id: item.entity_id,
         field,
     })?;
-    match &mut item.fields[position].value {
+    let value = &mut item.fields[position].value;
+    match value {
         IndexValue::Null => {
-            item.fields[position].value = IndexValue::String(placeholder.to_owned());
+            *value = IndexValue::String(placeholder.to_owned());
             Ok(())
         }
         IndexValue::String(_) => Ok(()),
@@ -108,6 +109,7 @@ mod tests {
     fn maps_only_public_placeholders_after_page_identity_is_fixed() {
         let first = Uuid::new_v4();
         let second = Uuid::new_v4();
+        let tag_id = Uuid::new_v4();
         let page = IndexQueryPage {
             items: vec![
                 item(
@@ -116,6 +118,7 @@ mod tests {
                         projected("title", IndexValue::Null),
                         projected("handle", IndexValue::Null),
                         projected("vendor", IndexValue::Null),
+                        projected("tag_ids", IndexValue::List(vec![IndexValue::Uuid(tag_id)])),
                     ],
                 ),
                 item(
@@ -124,6 +127,7 @@ mod tests {
                         projected("title", IndexValue::String("Existing".to_owned())),
                         projected("handle", IndexValue::String("existing".to_owned())),
                         projected("vendor", IndexValue::String("Vendor".to_owned())),
+                        projected("tag_ids", IndexValue::List(Vec::new())),
                     ],
                 ),
             ],
@@ -149,6 +153,10 @@ mod tests {
             &IndexValue::String(String::new())
         );
         assert_eq!(value(&projected.items[0], "vendor"), &IndexValue::Null);
+        assert_eq!(
+            value(&projected.items[0], "tag_ids"),
+            &IndexValue::List(vec![IndexValue::Uuid(tag_id)])
+        );
         assert_eq!(
             value(&projected.items[1], "title"),
             &IndexValue::String("Existing".to_owned())
