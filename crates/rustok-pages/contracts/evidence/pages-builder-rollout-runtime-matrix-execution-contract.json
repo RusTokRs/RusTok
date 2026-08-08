@@ -30,7 +30,8 @@
   "fixtures": {
     "api_origin_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_API_ORIGIN",
     "admin_origin_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ORIGIN",
-    "operator_storage_state_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_OPERATOR_STORAGE_STATE",
+    "api_storage_state_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_API_STORAGE_STATE",
+    "admin_storage_state_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_STORAGE_STATE",
     "tenant_slug_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_TENANT_SLUG",
     "page_id_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_PAGE_ID",
     "admin_route_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ROUTE",
@@ -38,9 +39,9 @@
     "operator_requirements": [
       "authenticated API session for the reviewed API origin",
       "authenticated standalone admin session for the reviewed admin origin",
-      "effective modules:manage",
-      "effective pages:read",
-      "Pages admin edit authority for the selected unpublished page"
+      "effective modules:manage on the API session",
+      "effective pages:read on both routed sessions",
+      "Pages admin edit authority for the selected unpublished page on the standalone admin session"
     ]
   },
   "settings_authority": {
