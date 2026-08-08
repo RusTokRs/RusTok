@@ -14,6 +14,11 @@ mod storefront_shadow;
 pub(crate) use storefront_shadow::{
     ProductStorefrontIndexShadowError, build_product_storefront_index_shadow_query,
 };
+mod storefront_shadow_executor;
+pub(crate) use storefront_shadow_executor::{
+    ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecution,
+    ProductStorefrontIndexShadowExecutor, ProductStorefrontIndexShadowProjectionError,
+};
 #[path = "../product_variant_index.rs"]
 mod variant;
 #[cfg(test)]
