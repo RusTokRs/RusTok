@@ -62,7 +62,7 @@ for (const marker of [
 for (const marker of [
   "Clean install",
   "Upgrade fixture",
-  "backfilled **only** the typed decision",
+  "backfill **only** the typed decision",
   "old `effect: None` decisions remain non-dispatchable",
   "SQLite and PostgreSQL",
   "cargo test -p rustok-moderation --test application_operation_migration_contract",
