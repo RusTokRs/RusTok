@@ -6,6 +6,7 @@ mod category_tree_query;
 mod connection;
 mod content_commands;
 mod error_extension;
+mod mention_reconciliation_query;
 mod mutation;
 #[path = "query_runtime.rs"]
 mod query;
@@ -47,6 +48,9 @@ pub use content_commands::{
     UpdateForumReplyWithQuotesInput, UpdateForumTopicWithQuotesInput,
 };
 pub use error_extension::ForumGraphqlErrorExtension;
+pub use mention_reconciliation_query::{
+    GqlForumMentionDrift, GqlForumMentionReconciliationReport,
+};
 pub use quote_commands::{
     GqlForumQuoteReferenceInput, GqlForumQuoteTargetKind, GqlForumRelationQuote,
     GqlForumRelationSnapshot, SetForumQuoteRelationsInput,
@@ -91,6 +95,7 @@ pub struct ForumQuery(
     read_state::ForumReadStateQuery,
     reconciliation_query::ForumReconciliationQuery,
     subscription_reconciliation_query::ForumSubscriptionReconciliationQuery,
+    mention_reconciliation_query::ForumMentionReconciliationQuery,
     reply_audience_query::ForumReplyAudienceQuery,
     storefront_read_state::ForumStorefrontReadStateQuery,
     storefront_audience_topic::ForumStorefrontAudienceTopicQuery,
