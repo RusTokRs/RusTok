@@ -655,7 +655,7 @@ pub enum IndexSourceError {
     #[error("Index source targeted load requires at least one entity key")]
     EmptyLoadKeys,
     #[error("Index source targeted load has too many keys: actual={actual}, max={max}")]
-    TooManyLoadKeys { actual: usize, max: MAX_LOAD_KEYS },
+    TooManyLoadKeys { actual: usize, max: usize },
     #[error("Index source targeted load key at position {position} has another tenant or schema")]
     MixedLoadScope { position: usize },
     #[error("Index source targeted load key at position {position} is duplicated")]
