@@ -25,8 +25,8 @@ const worker = requireMarkers(workerPath, [
   'before every\n    /// mutation application, and before checkpoint commit'.replace('\\n', '\n'),
   'IndexReplayError::Interrupted',
 ]);
-if (worker.includes('cancel_requested')) {
-  fail(`${workerPath} generic one-page interruption must remain independent of persisted cancellation`);
+if (worker.includes('cancel_requested') || worker.includes('StopHandle')) {
+  fail(`${workerPath} generic one-page interruption must remain independent of persisted cancellation/server lifecycle`);
 }
 
 const extensionPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
@@ -47,9 +47,10 @@ for (const forbidden of [
   'cancel_requested = TRUE',
   'finish_failure(db, lease',
   'IndexReplayRunStatus::Complete;',
+  'StopHandle',
 ]) {
   if (extension.includes(forbidden)) {
-    fail(`${extensionPath} must yield host interruption without manufacturing cancellation/failure: ${forbidden}`);
+    fail(`${extensionPath} must yield host interruption without manufacturing cancellation/failure/lifecycle ownership: ${forbidden}`);
   }
 }
 const interrupted = extension.indexOf('Err(crate::IndexReplayError::Interrupted) => {');
@@ -69,6 +70,52 @@ const ordinary = requireMarkers(ordinaryPath, [
 ]);
 if (ordinary.includes('run_interruptible<Check>')) {
   fail(`${ordinaryPath} ordinary runner file must remain unchanged by the host-probe extension`);
+}
+
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
+  'pub async fn run_interruptible<Check>(',
+  '.run_interruptible(request, should_interrupt)',
+]);
+const operatorPath = 'apps/server/src/services/index_replay_runtime_composition.rs';
+const operator = requireMarkers(operatorPath, [
+  'pub async fn run_interruptible<Check>(',
+  'context.authorize_for(request.page_request().tenant_id())?;',
+  '.run_interruptible(request, should_interrupt)',
+]);
+if (operator.includes('StopHandle')) {
+  fail(`${operatorPath} must remain lifecycle-type neutral`);
+}
+
+const schemaInitPath = 'apps/server/src/services/graphql_schema.rs';
+const schemaInit = requireMarkers(schemaInitPath, [
+  'use crate::services::app_lifecycle::StopHandle;',
+  'let stop_handle = stop_handle_from_context(ctx);',
+  'ctx.shared_insert_if_absent(candidate.clone());',
+  'IndexReplayStopKeepalive',
+  '_receiver: handle.subscribe()',
+  'stop_handle,',
+]);
+if (schemaInit.includes('stop_handle.stop()')) {
+  fail(`${schemaInitPath} schema composition must never trigger shutdown`);
+}
+requireMarkers('apps/server/src/graphql/schema.rs', [
+  'pub stop_handle: StopHandle,',
+  '.data(stop_handle)',
+]);
+const transportPath = 'apps/server/src/graphql/index_replay.rs';
+const transport = requireMarkers(transportPath, [
+  'let stop_handle = ctx.data::<StopHandle>()?.clone();',
+  '.run_interruptible(operator_context, request, || stop_handle.is_stopping())',
+  '.request_cancel(operator_context, job_id)',
+]);
+if (transport.includes('stop_handle.stop()')) {
+  fail(`${transportPath} transport may observe but must never trigger server shutdown`);
+}
+const runInputStart = transport.indexOf('pub struct IndexReplayRunInput');
+const runInputEnd = transport.indexOf('\n}', runInputStart);
+const runInput = transport.slice(runInputStart, runInputEnd);
+for (const forbidden of ['stop', 'shutdown', 'probe', 'StopHandle']) {
+  if (runInput.includes(forbidden)) fail(`GraphQL replay input exposes lifecycle marker ${forbidden}`);
 }
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
@@ -107,12 +154,15 @@ for (const forbidden of [
 }
 
 requireMarkers('crates/rustok-index/docs/m6-replay-graceful-shutdown.md', [
-  'Status: `runner_source_complete_host_binding_execution_pending`.',
+  'Status: `host_binding_source_complete_execution_pending`.',
   '`PostgresIndexReplayRunner::run_interruptible`',
+  '`SharedIndexReplayRuntime::run_interruptible`',
+  '`IndexReplayOperatorRuntime::run_interruptible`',
+  '`StopHandle::is_stopping`',
   'Host interruption is not user cancellation',
   'pending',
   '`Duplicate`',
-  'does **not** yet connect a server `StopHandle`',
+  'actual server-shutdown path have not been executed',
 ]);
 
-console.log('[verify-index-replay-graceful-shutdown] interruptible runner yields host stops to pending and retains duplicate-safe restart source evidence; server StopHandle binding remains open');
+console.log('[verify-index-replay-graceful-shutdown] server-owned StopHandle observation is bound through guarded lifecycle-neutral replay probes while interruption remains pending/duplicate-safe and distinct from user cancellation');
