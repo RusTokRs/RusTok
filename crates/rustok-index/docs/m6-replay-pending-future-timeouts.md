@@ -4,25 +4,37 @@ Status: `source_complete_execution_pending`.
 
 ## Purpose
 
-Replay already had bounded owner-source calls and cooperative safe-point interruption, but those controls did not bound a storage future after mutation persistence or checkpoint commit had already started.
+Replay already had bounded owner-source calls and cooperative safe-point interruption, but storage futures inside one page also need finite outer observation bounds so lease maintenance cannot keep an indefinitely pending storage operation alive.
 
-This slice adds an outer timeout to the two PostgreSQL replay storage phases that can otherwise remain pending inside one page:
+The production PostgreSQL replay adapter now bounds all three storage phases that can otherwise remain pending inside one page:
 
+- checkpoint read transaction;
 - `PostgresMutationStore` when used through `IndexReplayMutationSink`;
 - `PostgresIndexReplayCheckpointStore::commit_replay_checkpoint`.
 
-The one-page worker and multi-page runner state machines are unchanged.
+The one-page worker error surface remains unchanged.
 
 ## Timeout contract
 
-`source_replay_timeout.rs` owns one canonical 30-second outer bound for each storage future and two stable retryable dependency codes:
+`source_replay_timeout.rs` owns one canonical 30-second outer bound for each replay storage dependency future and three stable retryable dependency codes:
 
+- `index_replay_checkpoint_read_timeout`;
 - `index_replay_mutation_timeout`;
 - `index_replay_checkpoint_commit_timeout`.
 
-The bound applies only after replay-specific contract preparation has succeeded. A normal dependency failure still passes through with its existing permanent/retryable classification.
+The bound applies only after replay-specific identity/contract preparation that can fail synchronously has succeeded. A normal dependency failure still passes through with its existing permanent/retryable classification.
 
-Source scan/load calls remain independently bounded by the existing canonical Index source timeout wrapper. This slice does not merge source and storage timeouts into one page deadline.
+Production source scan/load calls remain independently bounded by the existing canonical Index source timeout wrapper at 30 seconds. The page-duration/lease policy does not merge source and storage timeouts into one generic page deadline; see `m6-replay-page-lease-heartbeat.md`.
+
+## Checkpoint read timeout semantics
+
+Checkpoint identity validation remains outside the timeout so invalid lease/scope input fails immediately as the existing permanent contract error.
+
+The database transaction, active lease check, checkpoint read/decode and transaction commit/rollback are then observed through one bounded checkpoint-read future. Timeout returns retryable `index_replay_checkpoint_read_timeout`, preserved by the worker as `IndexReplayError::CheckpointReadFailed`.
+
+A timed-out read does not synthesize a checkpoint and does not claim that the database cancelled every underlying operation immediately when the future was dropped. The next attempt still reads durable state normally under the existing lease fence.
+
+Bounding the read is also required by the page lease-heartbeat policy: otherwise a pending checkpoint read could keep receiving lease extensions indefinitely without ever reaching source scan, mutation persistence, or checkpoint commit.
 
 ## Mutation timeout semantics
 
@@ -44,9 +56,9 @@ The timeout path does not execute a synthetic rollback, rewind or checkpoint wri
 
 ## Runner failure and cancellation precedence
 
-No new runner terminal state is introduced. Existing `replay_failure_details` already maps mutation/checkpoint dependency failures to their machine code and `IndexReplayFailureKind` retryability.
+No new runner terminal state is introduced. Existing `replay_failure_details` maps checkpoint-read, mutation and checkpoint-commit dependency failures to their machine code and `IndexReplayFailureKind` retryability.
 
-For either timeout, the multi-page runner still checks persisted cancellation after the page error and before writing terminal failure. Therefore:
+For any of these timeout paths, the multi-page runner still checks persisted cancellation after the page error and before writing terminal failure. Therefore:
 
 1. a user cancellation that won the race remains `Cancelled`;
 2. otherwise an active fenced attempt records the existing `index.replay_page_failed` terminal job failure with timeout dependency code and `retryable: true` in details;
@@ -57,27 +69,33 @@ This slice does not automatically requeue a failed replay job. Existing replay r
 
 ## Lease boundary
 
-The 30-second value is an upper bound for one storage dependency future, not a guarantee that a whole page fits inside a job lease. Existing heartbeat and lease fencing remain authoritative. A future page-budget/lease policy may tighten these per-phase values, but must not weaken the timeout error semantics retained here.
+Per-dependency 30-second bounds are not summed into a whole-page timeout. Large pages can legitimately span many bounded mutation futures, so the runner now maintains lease ownership while the real page future is pending.
+
+`IndexReplayRunRequest` requires at least a 60-second lease, and the ordinary/graceful runners heartbeat an active page every one third of the configured lease duration. With the server-owned 60-second lease, the in-page cadence is 20 seconds. The existing page-count heartbeat remains intact for fast pages.
+
+This keeps exact source/checkpoint/mutation timeout identities authoritative. There is deliberately no generic `index_replay_page_timeout` code. Full policy and retained evidence are documented in `m6-replay-page-lease-heartbeat.md`.
 
 ## Retained source evidence
 
 `source_replay_timeout.rs` retains unit source for:
 
+- a never-completing checkpoint-read future becoming retryable `index_replay_checkpoint_read_timeout`;
 - a never-completing mutation future becoming retryable `index_replay_mutation_timeout`;
-- a never-completing checkpoint commit future becoming retryable `index_replay_checkpoint_commit_timeout`;
+- a never-completing checkpoint-commit future becoming retryable `index_replay_checkpoint_commit_timeout`;
 - an immediate dependency failure passing through unchanged instead of being rewritten as timeout.
 
-`verify-index-replay-pending-future-timeout.mjs` additionally locks the production adapter wiring, timeout codes, runner retryability mapping, cancellation precedence and the deliberate absence of `StopHandle` / `request_cancel` from the timeout helper.
+`verify-index-replay-pending-future-timeout.mjs` locks production adapter wiring, all three timeout codes, runner retryability mapping, cancellation precedence and the deliberate absence of `StopHandle` / `request_cancel` from the timeout helper.
 
-The retained tests and verifier were not executed by the implementation agent.
+`verify-index-replay-page-lease-heartbeat.mjs` separately locks the minimum lease, in-page heartbeat policy and the deliberate absence of a generic whole-page timeout.
+
+The retained tests and verifiers were not executed by the implementation agent.
 
 ## Still open
 
-- maintainer execution/admission of the retained timeout source evidence;
-- broader page-duration versus lease/heartbeat budgeting under multi-mutation pages;
-- checkpoint-read pending-future policy if later evidence shows it needs a separate bound;
-- locale/partition replay checkpoint dimensions;
+- maintainer execution/admission of the retained dependency-timeout source evidence;
+- maintainer execution/admission of the page lease-heartbeat source evidence;
+- broader multi-host/restart execution evidence;
+- partition replay only after a real partition-capable source contract exists;
 - explicit targeted/full/shadow rebuild modes;
-- broader multi-host/restart execution evidence.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or `git diff --check` were executed by the implementation agent.
