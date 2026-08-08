@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "artifact": "pages_reference_consumer_gate_source",
+  "module_slug": "pages",
+  "provider_module": "page-builder",
+  "mode": "source_ready",
+  "execution_status": "not_run_by_implementation_agent",
+  "accepted": false,
+  "prepared_on": "2026-08-08",
+  "source_recheck": {
+    "main_base": "0f64eb62f9521e0c08027ab04433256429321c62",
+    "pages_source_boundary": "complete_execution_pending",
+    "page_builder_provider_status": "source_ready_health_unobserved",
+    "forum_second_consumer": {
+      "contribution_metadata": "source_ready",
+      "fly_adapter": "source_ready",
+      "owner_preview": "source_ready",
+      "owner_properties": "source_ready",
+      "browser_evidence_harness": "source_ready_execution_pending",
+      "runtime_authorization_harness": "source_ready_execution_pending",
+      "deployment_attestation_harness": "source_ready_execution_pending"
+    }
+  },
+  "gate": {
+    "id": "pages_reference_consumer_gate",
+    "purpose": "Require accepted exact-source Pages Page Builder reference-consumer evidence before a downstream consumer can treat the Pages gate as satisfied.",
+    "contract_version": "1.1",
+    "required_profiles": [
+      "all_on",
+      "publish_off",
+      "preview_off",
+      "builder_off"
+    ],
+    "required_profile_outcomes": {
+      "all_on": {
+        "preview": "pass",
+        "properties": "pass",
+        "publish_dry": "pass",
+        "pages_owned_reads": "pass"
+      },
+      "publish_off": {
+        "preview": "pass",
+        "properties": "pass",
+        "publish_dry": "typed_feature_disabled",
+        "pages_owned_reads": "pass"
+      },
+      "preview_off": {
+        "preview": "typed_feature_disabled",
+        "properties": "pass",
+        "publish_dry": "typed_feature_disabled",
+        "pages_owned_reads": "pass"
+      },
+      "builder_off": {
+        "preview": "typed_feature_disabled",
+        "properties": "readonly_or_hidden",
+        "publish_dry": "typed_feature_disabled",
+        "pages_owned_reads": "pass"
+      }
+    },
+    "required_source_guards": [
+      "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
+      "crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"
+    ],
+    "required_execution_evidence": [
+      "exact source revision and reviewed immutable deployment digest",
+      "accepted Pages metadata revision and dirty-Fly isolation evidence",
+      "accepted sanitizer and global resource-limit evidence with zero side effects on rejection",
+      "accepted publish/rollback/repair cache-generation correlation evidence",
+      "accepted authenticated inline authoring HTTP/browser evidence",
+      "accepted anonymous storefront authoring-exclusion evidence",
+      "accepted provider degraded-profile behavior without fabricated health",
+      "maintainer owner sign-off and explicit rollback decision"
+    ],
+    "acceptance": {
+      "execution_status": "maintainer_verified",
+      "all_required_profiles": true,
+      "all_required_source_guards": true,
+      "all_required_execution_evidence": true,
+      "owner_signoff_required": true,
+      "rollback_decision_required": true
+    }
+  },
+  "current_boundary": {
+    "source_gate": "ready",
+    "execution_gate": "pending",
+    "forum_wave_blocker": "pages_reference_consumer_gate",
+    "provider_health": "unobserved",
+    "ffa_fba_promotion": "not_claimed"
+  },
+  "verification": {
+    "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "forbidden_claims": [
+    "maintainer_verified",
+    "gate accepted",
+    "observed provider health",
+    "Forum Wave accepted",
+    "FFA promoted",
+    "FBA promoted"
+  ]
+}
