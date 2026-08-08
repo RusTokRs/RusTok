@@ -76,15 +76,23 @@ The result does not expose Moderation case/decision/report data or internal rece
 
 ## Errors
 
-Neutral `PortError` kinds map consistently with existing Groups transports:
+Neutral `PortError` kinds retain the common GraphQL transport classification:
 
-- validation/conflict -> GraphQL bad user input;
-- not found -> not found;
-- forbidden -> permission denied;
-- unavailable/timeout -> generic temporary-unavailable internal error;
-- invariant violation -> generic requires-review internal error.
+- validation/conflict -> GraphQL `BAD_USER_INPUT`;
+- not found -> `NOT_FOUND`;
+- forbidden -> `PERMISSION_DENIED`;
+- unavailable/timeout -> generic `INTERNAL_ERROR` with the public temporary-unavailable message;
+- invariant violation -> generic `INTERNAL_ERROR` with the public requires-review message.
 
-Owner stable error codes remain authoritative internally. Runtime schema/error-extension parity still requires executable evidence; source presence alone does not promote that gate.
+The enforcement transport additionally preserves the stable owner error identity in GraphQL extensions:
+
+- `code` remains the platform-wide GraphQL transport classification;
+- `domainCode` is the exact stable `PortError.code` returned by the Groups owner;
+- `retryable` is the exact neutral `PortError.retryable` flag.
+
+This avoids forcing clients to parse messages or collapse distinct owner conflicts such as `groups.membership_enforcement_revision_conflict`, while keeping unavailable/invariant diagnostics sanitized by the neutral port contract. The transport does not replace the common GraphQL `code` field with a domain-specific value.
+
+Source-level tests retain conflict and unavailable extension mapping. Runtime schema/error-extension parity still requires executable evidence; source presence alone does not promote that gate.
 
 ## No fallback
 
@@ -96,7 +104,8 @@ Intentionally not run while preparing this slice:
 
 ```bash
 cargo check -p rustok-groups --features graphql
-cargo test -p rustok-groups
+cargo test -p rustok-groups --features graphql graphql_conflict_preserves_transport_and_owner_codes
+cargo test -p rustok-groups --features graphql graphql_unavailable_keeps_owner_code_and_retryability
 node scripts/verify/verify-groups-membership-enforcement-graphql.mjs
 ```
 
