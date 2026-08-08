@@ -1,11 +1,11 @@
 impl TopicService {
     /// Bounded owner read for the Forum Page Builder topic-list widget.
     ///
-    /// Widget ordering is applied before pagination. This is intentionally separate from the
-    /// general admin topic list so Page Builder configuration cannot silently reinterpret an
-    /// existing transport that does not implement `sort` / `include_pinned`.
-    #[instrument(skip(self, security))]
-    pub async fn list_widget_preview_with_locale_fallback(
+    /// Widget ordering is applied before pagination. The public facade supplies the exact hidden
+    /// category set before this persistence-layer query executes, so Page Builder does not gain a
+    /// second visibility policy path.
+    #[instrument(skip(self, security, hidden_category_ids))]
+    pub(crate) async fn list_widget_preview_with_locale_fallback_and_hidden_categories(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
@@ -16,6 +16,7 @@ impl TopicService {
         sort: &str,
         locale: &str,
         fallback_locale: Option<&str>,
+        hidden_category_ids: &[Uuid],
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         let locale = normalize_locale(locale)?;
@@ -25,6 +26,11 @@ impl TopicService {
             forum_topic::Entity::find().filter(forum_topic::Column::TenantId.eq(tenant_id));
         if let Some(category_id) = category_id {
             select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
+        }
+        if !hidden_category_ids.is_empty() {
+            select = select.filter(
+                forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()),
+            );
         }
         if !include_pinned {
             select = select.filter(forum_topic::Column::IsPinned.eq(false));
