@@ -1,13 +1,14 @@
 # M7 Product Storefront Index parity gate
 
-Status: `source_gap_locale_search_and_fallback_adapter_evidence_pending`.
+Status: `source_architecture_selected_implementation_and_evidence_pending`.
 
 ## Purpose
 
 The Product Storefront catalog remains owner-native. The single current Product Index source now
 materializes the Storefront scalar fields, stable tag identities, and typed EAV query state that were
-previously missing, but a fresh owner-vs-Index recheck found a remaining **localized Product identity
-mismatch**. Source coverage must not be described as complete until that boundary is resolved.
+previously missing. A fresh owner-vs-Index recheck found a remaining **localized Product identity
+mismatch**; the query-layer architecture for that mismatch is now selected, but implementation and
+retained evidence are still pending.
 
 Storefront must continue to execute `CatalogService::list_published_products_with_query`.
 
@@ -47,10 +48,10 @@ The source emits **one Index entity for each physically stored `product_translat
 not fabricate a requested-locale row when that translation is absent. The Product absence provider
 correctly reports that exact locale identity as absent; it is not a Storefront fallback synthesizer.
 
-This is correct for the generic localized Index source contract, but it is not yet equivalent to the
-owner Storefront list semantics above.
+This physical storage model remains correct. Storefront equivalence is resolved at query composition,
+not by introducing another Product schema or fabricating locale rows during replay.
 
-## Remaining locale/search source gap
+## Selected locale/search architecture
 
 A scalar substring/LIKE operator alone cannot close Storefront parity:
 
@@ -61,14 +62,21 @@ A scalar substring/LIKE operator alone cannot close Storefront parity:
 - issuing an independent fallback query after the requested query would not automatically preserve one
   owner-equivalent global sort, page boundary, exact count, and de-duplication contract.
 
-Therefore the next Storefront query work must first choose and prove one explicit architecture for
-**effective localized Product list identity**. Acceptable designs must preserve owner semantics without
-adding another parallel Product compatibility schema. Examples include a generic bounded localized
-fallback/union query capability or an explicitly changed owner Storefront contract, but no choice is
-claimed by this document yet.
+The selected design is a generic **localized-entity identity fold** in the Index query layer. The
+physical Index rows remain locale-keyed, but the folded Storefront page is grouped by Product entity
+identity before exact count and pagination. Any current/admitted locale row may satisfy title search;
+result localization is selected independently as requested locale, then fallback locale, then no
+localized row. Existing schema readiness, Product freshness, and queried link-target availability remain
+mandatory for every row participating in the fold.
+
+Ordinary exact-locale `IndexQuery` remains unchanged. A consumer must not approximate the folded contract
+by independently paging multiple locales and merging them afterward.
+
+See `m7-product-storefront-localized-query-architecture.md` for the identity, search, projection,
+ordering, cursor, freshness, and retained-evidence contract.
 
 Do **not** add another Product routing key merely to patch this query semantic. The current Product
-contract remains the only runtime Product implementation while this query-layer decision is pending.
+contract remains the only runtime Product implementation.
 
 ## Typed EAV representation
 
@@ -106,8 +114,10 @@ Lower persisted Product keys are historical storage identities only. Promotion r
 
 Storefront traffic stays blocked until all of these are complete:
 
-1. resolve the effective localized Product identity/search/fallback architecture described above;
-2. add any required generic text-pattern/query primitive only after that architecture is fixed;
+1. implement the selected generic localized-entity identity fold without changing ordinary exact-locale
+   `IndexQuery` semantics;
+2. add the required generic scalar text-pattern primitive inside the folded any-locale identity
+   predicate;
 3. translate Active + published-only, category, visibility, EAV, timestamp ordering, ID tie-break,
    pagination, and exact count to Index;
 4. resolve Product attribute/option codes to canonical EAV terms;
@@ -119,29 +129,33 @@ Storefront traffic stays blocked until all of these are complete:
 8. stage/rebuild/promote the current Product key for the tenant;
 9. only then select Index traffic.
 
-## Source guard
+## Source guards
 
-`scripts/verify/verify-index-product-storefront-parity-gate.mjs` intentionally locks both sides of the
-current mismatch:
+`scripts/verify/verify-index-product-storefront-parity-gate.mjs` locks both sides of the current physical
+mismatch and keeps Storefront owner-native.
+
+`scripts/verify/verify-index-product-storefront-localized-query-architecture.mjs` locks the selected
+query-layer decision:
 
 - owner title search remains all-translations unless the same PR deliberately changes the owner
   contract;
 - owner result projection still has requested/fallback translation selection;
 - Product Index source remains one physical translation locale per entity and does not fabricate
   fallback rows;
-- native Storefront traffic has not silently switched to Index;
-- one current 15-field Product schema and schema-scoped replay identity remain selected;
-- cutover remains fail-closed.
+- one current Product routing key (`4`) and schema-scoped replay identity remain selected;
+- the localized fold is identity-level and happens before page/count semantics;
+- implementation/evidence remain pending and traffic stays fail-closed.
 
 ## Deliberate limits
 
-This slice does not choose a new locale-union/fallback architecture, change owner Storefront semantics,
-add another Product routing key, implement the Storefront Index adapter, execute tenant rebuild, add
-public typed Product events, or switch traffic.
+This slice selects and documents the localized query architecture but does not implement the fold, change
+owner Storefront semantics, add another Product routing key, implement the Storefront Index adapter,
+execute tenant rebuild, add public typed Product events, or switch traffic.
 
 ## Maintainer verification
 
 ```bash
+node scripts/verify/verify-index-product-storefront-localized-query-architecture.mjs
 node scripts/verify/verify-index-product-storefront-parity-gate.mjs
 node scripts/verify/verify-index-product-source.mjs
 node scripts/verify/verify-index-product-attribute-term-contract.mjs

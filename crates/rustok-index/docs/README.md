@@ -26,7 +26,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 ## Reference Documents
 
-- [Current Implementation Plan — 2026-08-07](./implementation-plan-current-2026-08-07.md)
+- [Current Implementation Plan — 2026-08-08](./implementation-plan-current-2026-08-08.md)
 - [Historical Milestone Plan](./implementation-plan.md)
 - [Source Module Integration Contract](./module-source-integration.md)
 - [M5 Mutation Event Commit/Ack Contract](./m5-mutation-event-ack-contract.md)
@@ -82,6 +82,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M7 Product Graph Projection Ledger](../../rustok-product/docs/index-graph-projection-ledger.md)
 - [M7 Product Attribute Term Contract](./m7-product-attribute-term-contract.md)
 - [M7 Product Storefront Index Parity Gate](./m7-product-storefront-parity-gate.md)
+- [M7 Product Storefront Localized Query Architecture](./m7-product-storefront-localized-query-architecture.md)
 - [M4 Source-owned Schema Registry](./m4-source-schema-registry.md)
 - [M4 Single-current Schema Supersession](./m4-single-current-schema-supersession.md)
 - [M4 Query Runtime Composition](./m4-query-runtime-composition.md)
