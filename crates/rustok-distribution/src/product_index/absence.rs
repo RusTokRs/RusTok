@@ -8,7 +8,7 @@ use rustok_index::{
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde_json::Value as JsonValue;
 
-use super::channel_visibility::decode_product_visibility;
+use super::{PRODUCT_SCHEMA_ROUTING_KEY, channel_visibility::decode_product_visibility};
 
 pub(crate) const PRODUCT_ABSENCE_WATERMARK_FACTORY: &str =
     "product-locale-absence-watermark";
@@ -220,9 +220,7 @@ fn product_schema_ref() -> Result<SchemaRef, String> {
     Ok(SchemaRef {
         module: ModuleName::new("rustok-product").map_err(|error| error.to_string())?,
         entity: EntityName::new("product").map_err(|error| error.to_string())?,
-        // Index core requires a positive schema key. Only this current Product contract is
-        // registered; this number is not a compatibility branch.
-        version: SchemaVersion::new(3),
+        version: SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY),
     })
 }
 

@@ -331,7 +331,7 @@ async fn missing_binding_activation_rejects_stale_source_publish_version_on_post
         result,
         Err(PagesError::RollbackTargetUnavailable(message))
             if message.contains(PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT)
-                && message.contains("source publish version is stale")
+                && message.contains("not fully explained")
     ));
     assert_eq!(SysEvents::find().count(&db).await?, events_before);
     assert_eq!(

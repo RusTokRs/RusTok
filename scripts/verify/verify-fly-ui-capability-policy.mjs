@@ -11,6 +11,7 @@ const paths = {
   runtime: 'crates/rustok-page-builder/admin/src/editor/runtime.rs',
   canvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
   controls: 'crates/rustok-page-builder/admin/src/editor/capability_controls.rs',
+  providerStatus: 'crates/rustok-page-builder/admin/src/provider_status.rs',
   pageManager: 'crates/rustok-page-builder/admin/src/editor/page_manager.rs',
   propertyFacade: 'crates/rustok-page-builder/admin/src/editor/properties_assets.rs',
   assetSection: 'crates/rustok-page-builder/admin/src/editor/asset_section.rs',
@@ -120,13 +121,27 @@ requireMarkers('runtime', [
   'pub fn capability_enabled(&self, capability: EditorCapability)',
 ], 'runtime capability metadata');
 requireMarkers('canvas', [
+  'facade.provider_status()',
+  'status.limit_capabilities(capabilities)',
   'UiIntent::SetEditableCapabilities(capabilities)',
-  '<CapabilityPolicyPanel runtime=capability_runtime />',
+  '<CapabilityPolicyPanel',
+  'provider_status=capability_provider_status',
 ], 'canvas capability application');
+requireMarkers('providerStatus', [
+  'pub struct PageBuilderAdminProviderStatus',
+  'pub health: Option<ProviderHealthSnapshot>',
+  'self.flags.validate().is_err()',
+  'return CapabilityState::read_only();',
+  'effective.properties = false;',
+  'effective.publish = false;',
+], 'admin provider capability narrowing');
 requireMarkers('controls', [
   'pub(crate) fn CapabilityFieldset(',
   'disabled=move || !disabled_runtime.capability_enabled(capability)',
   'pub(crate) fn CapabilityPolicyPanel(',
+  'data-fly-provider-control-state=provider_control_state.as_str()',
+  'data-fly-provider-health=observed_health_state',
+  'PageBuilderAdminProviderState::Unobserved',
   'EditorCapability::ALL.into_iter()',
 ], 'reusable capability controls');
 requireMarkers('pageManager', [
@@ -168,6 +183,7 @@ for (const forbidden of [
 requireMarkers('pageBuilderLib', [
   'pub const BROWSER_CAPABILITY_DENIAL_CODE: &str = "FLY_CAPABILITY_DENIED";',
   'BrowserCapabilityAccessError, BrowserCapabilityDenial,',
+  'PageBuilderAdminProviderState, PageBuilderAdminProviderStatus',
 ], 'Page Builder capability exports');
 
 requireMarkers('pagesAccess', [

@@ -98,6 +98,48 @@
       "invalid_success_evidence": "operator_review while the live lease is still held",
       "other_non_retryable_port_error": "rejected",
       "owner_storage_failure_after_claim": "return owner error and rely on lease expiry/reclaim; never forge a domain result"
+    },
+    "shared_scheduler": {
+      "runtime_owner": "rustok-runtime ModuleWorkScheduler",
+      "registration": "ModerationModule publishes one ModuleWorkRegistration",
+      "worker_slug": "moderation_decision_application",
+      "candidate_discovery": "read-only earliest due Moderation application row across tenants; at most one candidate per scheduler pass per host",
+      "durable_claim": "dispatch_application_operation_once remains the sole authoritative Moderation operation CAS before domain dispatch",
+      "generic_envelope_token": "scheduler-only token; never used as Moderation operation lease or domain idempotency key",
+      "multi_host": "duplicate candidate discovery converges on the existing Moderation CAS; losing hosts perform no domain mutation",
+      "completion": "generic ModuleWorkSource completion is a no-op because moderation_application_operations is the durable outcome source",
+      "shutdown": "shared deployment StopHandle prevents new claims while already claimed module work is allowed to finish",
+      "bespoke_loop": "forbidden; Moderation does not add its own tokio spawn or polling interval"
+    },
+    "audit_lifecycle": {
+      "audit_owner": "existing moderation_events table",
+      "schema_change": "none",
+      "scope": "atomic lifecycle applies to claims/finalizers executed after this source is active",
+      "claim": "winning operation CAS and first case decided -> applying_decision transition share one owner transaction; reclaim while already applying_decision does not bump the case revision",
+      "retryable": "operation retry scheduling and application_retry_scheduled audit share one owner transaction while the case remains applying_decision",
+      "applied": "operation applied evidence, case applying_decision -> closed, closed_at, active deduplication key release, application_applied and case_closed share one owner transaction",
+      "rejected": "operation rejected, case applying_decision -> escalated, application_rejected and case_escalated share one owner transaction",
+      "operator_review": "operation operator_review, case applying_decision -> escalated, application_operator_review and case_escalated share one owner transaction",
+      "active_case_identity": "released only on closed; preserved on escalated for operator work and report attachment",
+      "legacy_terminal_rows": "pre-audit applied/rejected/operator_review rows are terminal truth and are reconciled explicitly by the Moderation owner without domain application or fabricated historical lifecycle facts",
+      "public_event_contract": "not frozen; moderation_events remains an internal owner audit ledger rather than a typed cross-domain rustok-events family"
+    },
+    "operator_recovery": {
+      "owner": "rustok-moderation",
+      "actor": "human PortActorKind User with UUID identity",
+      "receipt": "existing moderation command receipt ledger; request identity binds actor, decision ID, expected case revision and bounded reason",
+      "same_decision_requeue": "only rejected or operator_review may move to retryable due now; applied can never be requeued",
+      "requeue_case": "escalated or legacy pre-audit decided moves to applying_decision with exact expected revision CAS",
+      "immutable_identity": "decision UUID/hash/reviewed subject remain unchanged; next domain attempt still comes only from the shared scheduler and one-attempt dispatcher",
+      "legacy_terminal_reconciliation": "applied maps to closed; rejected/operator_review map to escalated; already-consistent terminal case is a no-op",
+      "applied_reconciliation_evidence": "stored applied_revision must be at least reviewed revision and stored applied_at must exist",
+      "reconciliation_time": "a legacy applied case closes at current reconciliation time; stored historical applied_at is evidence, not a fabricated case closure timestamp",
+      "reconciliation_events": [
+        "application_legacy_terminal_reconciled",
+        "case_legacy_terminal_reconciled"
+      ],
+      "domain_invocation_during_reconciliation": "forbidden",
+      "re_review": "stale reviewed revision requires a new case and new immutable decision using a freshly authorized producer revision; old decision is never retargeted"
     }
   },
   "supported_effects": [
@@ -163,7 +205,7 @@
     "AccountSanctionRecommended"
   ],
   "ownership": [
-    "Moderation owns reports cases queues decisions appeals application orchestration and cross-domain audit",
+    "Moderation owns reports cases queues decisions appeals application orchestration operator recovery and cross-domain audit",
     "Forum owns topic/reply lifecycle state moderation subject revision local enforcement and Search projection invalidation",
     "Forum depends on rustok-moderation-api only and does not depend on rustok-moderation",
     "Forum registers neutral subject adapter factories; the selected host composes rustok-moderation and materializes them"
@@ -172,6 +214,7 @@
     "Forum moderation case table",
     "Forum report queue",
     "Forum appeal queue",
+    "Forum application recovery state or commands",
     "Forum copy of Moderation decisions or audit log",
     "direct rustok-moderation owner dependency",
     "retargeting a stale decision to a newer Forum revision",
@@ -182,13 +225,14 @@
     "reaction state catalog aggregate or presentation ownership changes"
   ],
   "not_claimed": [
-    "background Moderation application scheduler or polling loop",
-    "cross-tenant worker enumeration",
-    "case lifecycle closure from application outcomes",
-    "application lifecycle outbox events",
-    "operator recovery surface",
+    "Moderation-owned bespoke polling loop outside the shared ModuleWorkScheduler",
+    "typed cross-domain application lifecycle outbox event family",
+    "authorized admin transport or UI for operator recovery",
+    "automatic replacement decision or silent re-review after escalation",
+    "retained operator recovery execution evidence",
     "retained host composition execution evidence",
     "retained runtime decision application execution",
+    "retained multi-host scheduler race and graceful shutdown evidence",
     "PostgreSQL concurrency evidence",
     "SQLite evidence",
     "SetVisibility Unpublished support",

@@ -14,6 +14,24 @@ status: active
 - Source completion and phase-gate completion are separate: gates require
   executable Rust, WASM, browser and runtime evidence.
 
+## Current-source actualization
+
+This central plan is reconciled to current `main` as of 2026-08-07. The detailed
+source overlays under `docs/modules/page-builder-*-actualization-2026-08-07.md`
+remain authoritative where they are more specific. In particular, older open
+checkboxes for Pages metadata contributions, immutable rollback, artifact audit/
+repair, reviewed static resource limits, authenticated real-DOM authoring and
+anonymous authoring exclusion were stale and are corrected below.
+
+Current source marker for this slice:
+
+```text
+Provider status/degraded controls: source-ready
+```
+
+Observed provider-health evidence remains an execution/composition cursor; an
+absent live health snapshot is now represented as `unobserved`, not healthy.
+
 ## Current-only policy
 
 Fly and Page Builder are developed without legacy UI or data-authority branches.
@@ -42,10 +60,10 @@ The current component-tree authority is `pages[].component`.
   properties, contribution contracts and capability policy;
 - `fly-leptos` — browser/Leptos lifecycle, coordinates, iframe/real-DOM adapters
   and event cleanup;
-- `rustok-page-builder/admin` — full-authoring shell and canonical admin FFA
-  facade;
-- `rustok-page-builder/storefront` — published rendering and future authenticated
-  real-DOM editing surface;
+- `rustok-page-builder/admin` — full-authoring shell, canonical admin FFA facade
+  and typed provider status/degraded controls;
+- `rustok-page-builder/storefront` — published rendering and authenticated
+  real-DOM editing support;
 - consumer admin/storefront packages — document lifecycle, metadata, transport,
   persistence adapters and domain contributions;
 - `rustok-page-builder` backend — capability policy, validation/sanitization,
@@ -78,8 +96,9 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Isolated iframe projection, source/origin/protocol/instance/sequence checks.
 - [x] Geometry, viewport, hover, selection and overlay plumbing.
 - [x] Palette, command, DnD, resize, keyboard and browser-intent foundations.
-- [ ] Complete accessibility, nested-scroll, race and resource-limit evidence.
-- [ ] Real-DOM storefront edit adapter.
+- [x] Authenticated real-DOM adapter and Pages inline consumer path are source-ready.
+- [ ] Complete accessibility, nested-scroll, race and accepted browser/resource
+  evidence remains open.
 
 ### Page Builder provider
 
@@ -97,11 +116,17 @@ persistence. Rich text remains an external dedicated capability.
 - [x] `sanitize_static_landing_project` provides the authoritative static publish
   pre-materialization seam: current Fly decode/validation, deterministic stable
   ids, secure public-resource policy and SHA-256 sanitization evidence.
+- [x] Provider-owned HTML/CSS/URL/attribute/static-resource policy is source-ready
+  and rechecked on exact materialized output.
+- [x] Global reviewed publish resource limits are source-ready: 16 MiB project,
+  128 pages, 50,000 components, depth 128, 4,096 assets and 20,000 style rules.
 - [x] Public Page Builder publication has no legacy/default-runtime lifecycle path;
   every builder document crosses the reviewed sanitizer/materialization pipeline.
-- [ ] Complete HTML/CSS/URL/attribute policy and parser evidence is not integrated
-  for the full reviewed publish surface.
-- [ ] Observed tenant Wave 0/Wave 1 evidence is incomplete.
+- [x] Admin provider status/degraded controls are source-ready. Rollout flags and
+  optional observed health can only narrow host tenant/RBAC capabilities; missing
+  health is `unobserved` and no fallback editor is mounted.
+- [ ] Accepted parser/real-project/runtime policy evidence is incomplete.
+- [ ] Observed provider-health and tenant Wave 0/Wave 1 evidence is incomplete.
 
 ### Pages reference consumer
 
@@ -109,13 +134,15 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Pages owns optimistic metadata versions, localized body revisions and
   transport selection.
 - [x] Metadata-only patch and document-only save commands are separate.
+- [x] Consumer metadata editing uses registered typed property contributions; the
+  bespoke metadata editor/direct workspace metadata write are removed.
 - [x] The obsolete parallel JSON/CRUD UI and PageBlock persistence/fallback paths
   are deleted.
 - [x] Pages provides one builder-first workspace with list/create/select,
   publish/unpublish and delete operations.
 - [x] New/current documents use only `pages[].component`.
-- [x] Pages storefront renders current Page Builder documents and static landing
-  artifacts.
+- [x] Pages storefront renders current Page Builder documents and selected immutable
+  static landing artifacts with integrity checks.
 - [x] Pages persists and verifies Page Builder runtime materialization identity and
   snapshots. New immutable records carry complete evidence, legacy all-`NULL`
   records retain Fly integrity verification, and partial evidence fails closed.
@@ -136,6 +163,10 @@ persistence. Rich text remains an external dedicated capability.
 - [x] The mixed lifecycle/default-runtime branch is removed. Explicit
   `publish_non_builder[_if_current]` rejects GrapesJS/Fly bodies with
   `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED` before and inside the transaction.
+- [x] Immutable rollback, bounded artifact integrity audit, explicit append-only
+  rebuild, explicit repaired-binding activation, physical-loss recovery including
+  repeated rebuilt-artifact loss, and repair-aware current rollback continuity are
+  source-ready. Historical rollback targets remain strict.
 - [x] Pages owns route/page/artifact cache scopes and SHA-256 generation-aware key
   shape. A module listener consumes page lifecycle events and a neutral server
   adapter rotates bounded tenant-wide generations through the shared cache
@@ -144,9 +175,14 @@ persistence. Rich text remains an external dedicated capability.
   artifact HTTP delivery consumes artifact generation. Module/channel checks run
   before lookup, verified owner reads precede cache fill and cache failures fail
   open to the source read.
-- [ ] Accepted evidence must correlate outbox delivery, invalidation receipt,
-  generation rotation and cache miss/refill on both public readers.
-- [ ] Authenticated storefront inline editing is not implemented.
+- [x] Authenticated inline authoring, dedicated authoring assets, same-origin admin
+  launch, deterministic release composition and anonymous authoring exclusion are
+  source-ready.
+- [x] Pages facade exposes the same provider rollout flags used by its canonical
+  server handler composition. Live SLO health is deliberately `unobserved` until a
+  real source exists.
+- [ ] Accepted evidence must correlate outbox delivery, repair/rollback receipts,
+  generation rotation, cache miss/refill, browser authoring and provider status.
 
 ## Target architecture
 
@@ -181,14 +217,15 @@ persistence. Rich text remains an external dedicated capability.
     -> canonical runtime materialization
     -> deterministic artifact build + snapshot/hash evidence
     -> immutable artifact persistence and bindings
+    -> explicit rollback/audit/rebuild/activation recovery receipts
     -> published state + transactional outbox
-    -> durable idempotent publish receipt
     -> module-owned route/page/artifact generation rotation
     -> generation-aware storefront/artifact cache reads
 
   rustok-page-builder
     -> capability policy / health / rollout
     -> provider adapter seams
+    -> admin provider status/degraded controls
     -> preview/review/sanitization/materialization identity
 ```
 
@@ -265,13 +302,17 @@ Rules:
 - widget data does not flow through a generic builder facade;
 - dynamic widgets store versioned configuration only;
 - consumer list/create/lifecycle UI remains consumer-owned;
+- provider status may only narrow host tenant/RBAC capabilities;
+- missing provider-health observation remains `unobserved` rather than healthy;
 - no fallback editor is mounted when the provider is unavailable: the surface
-  shows a typed degraded/read-only state.
+  remains typed and read-only.
 
 ## Security and operations
 
 - Arbitrary component scripts are disabled.
 - HTML, CSS, URLs and attributes require authoritative backend policy.
+- Global reviewed project/page/component/depth/asset/style budgets are enforced
+  before expensive policy traversal and are revalidated at integrity boundaries.
 - Runtime-bound public resource URLs are revalidated on the exact materialized
   document before immutable artifact creation.
 - Storefront edit mode requires explicit authentication and authorization.
@@ -285,8 +326,8 @@ Rules:
   only scenario identity, snapshots and cryptographic hashes are retained.
 - Exact idempotency replay returns the stored receipt without rebuild or duplicate
   outbox events; key reuse with different input fails closed.
-- Cache invalidation remains post-commit/event-driven; publish transactions never
-  call cache infrastructure inline.
+- Cache invalidation remains post-commit/event-driven; publish/repair transactions
+  never call cache infrastructure inline.
 - Consumer-owned scopes rotate through bounded shared generations instead of
   wildcard Redis scans/deletes.
 - Public cache keys bind tenant/page/request dimensions through bounded SHA-256
@@ -294,8 +335,8 @@ Rules:
 - Cache backend failures fail open to the authoritative owner source read.
 - Handler receipts preserve source event and correlation identity; provider errors
   remain retryable. A retry may safely advance a generation more than once.
-- Save, review, sanitization, publish receipt, invalidation receipt, artifact and
-  storefront read share correlation identifiers.
+- Provider rollout flags and observed health are separate evidence. Lack of an
+  observed SLO snapshot is never converted to a healthy claim.
 
 ## Implementation phases
 
@@ -332,8 +373,9 @@ of the verification programme.
 
 - [x] Coordinates, event lifecycle, iframe validation and teardown.
 - [x] Geometry, hover, selection, DnD, resize and keyboard foundations.
-- [ ] Real-DOM storefront overlay adapter.
-- [ ] Accessibility, nested-scroll, race and resource-budget suites.
+- [x] Authenticated real-DOM storefront overlay/patch adapter source.
+- [ ] Retain accessibility, nested-scroll, race, resource-budget and browser
+  execution evidence.
 
 ### Phase 4 — authoritative validation and sanitization
 
@@ -342,16 +384,19 @@ of the verification programme.
 - [x] Route the reviewed static publish path through current Fly traversal,
   structural validation, deterministic ids and secure public-resource checks.
 - [x] Remove non-reviewed/default-runtime builder publication paths.
-- [ ] Finalize complete HTML/CSS/URL/attribute policy and parser dependencies.
-- [ ] Enforce all size/depth/assets/styles limits across the reviewed publish path.
-- [ ] Add real-project runtime tests and accepted typed policy evidence.
+- [x] Provider-owned HTML/CSS/URL/attribute/static-resource policy source.
+- [x] Enforce global size/page/component/depth/assets/styles limits across the
+  reviewed publish path.
+- [ ] Retain real-project runtime/parser tests and accepted typed policy evidence.
 
 ### Phase 5 — consumer write separation
 
 - [x] Add metadata-only patch commands.
 - [x] Add document-only save commands with body revision.
 - [x] Independently conflict-check metadata and document revisions.
-- [ ] Move consumer metadata editing into typed property contributions.
+- [x] Move Pages metadata editing into registered typed property contributions.
+- [ ] Retain focused metadata conflict/isolation and published-surface browser
+  execution evidence.
 
 ### Phase 6 — deterministic publication
 
@@ -364,21 +409,20 @@ of the verification programme.
   storefront reads; legacy all-`NULL` evidence remains backward-compatible.
 - [x] Explicit reviewed runtime/scenario contract without raw-context persistence.
 - [x] Authoritative static sanitizer before reviewed materialization.
-- [x] Idempotent atomic Pages service: page/body locks, transactional feature and
-  existing-baseline reads, sanitization, materialization, persist/bind, published
-  state, `NodeUpdated`/`NodePublished` outbox and durable receipt.
-- [x] Cut GraphQL, HTTP and admin transports over to the atomic reviewed service,
-  reject create-and-publish and remove builder publication through the default
-  runtime lifecycle.
+- [x] Idempotent atomic Pages service and reviewed public/admin transport cutover.
 - [x] Isolate non-builder publication behind explicitly named commands that reject
   every GrapesJS/Fly body before and inside the transaction.
 - [x] Connect page lifecycle events to consumer-owned bounded route/page/artifact
   generation rotation through a typed cache port and neutral server adapter.
 - [x] Adopt generation-aware keys in the composite storefront response and artifact
   HTTP delivery reader.
-- [ ] Retain accepted event/receipt/generation/miss/refill evidence.
-- [ ] Rollback to previous immutable artifacts.
-- [ ] Repair/rebuild and integrity-audit commands.
+- [x] Rollback to previous immutable artifacts.
+- [x] Bounded immutable artifact integrity audit, explicit rebuild and repaired
+  binding activation.
+- [x] Physical-loss and repeated rebuilt-artifact recovery with repair-aware
+  current rollback reconstruction; historical targets remain strict.
+- [ ] Retain accepted database/transport/event/receipt/generation/miss/refill
+  execution evidence.
 
 ### Phase 7 — Page Builder admin
 
@@ -387,19 +431,25 @@ of the verification programme.
 - [x] Contribution assembly and capability policy foundations.
 - [x] Complete reviewed-runtime scenario selection and deterministic idempotency
   transport UX at source level.
-- [ ] Complete typed properties, assets, provider-health and degraded controls.
-- [ ] Complete accessibility and bundle budgets.
+- [x] Provider status/degraded controls source: rollout flags, optional observed
+  health, fail-closed capability narrowing, preview gate and explicit unobserved
+  state.
+- [ ] Complete remaining generic typed asset/control surfaces and accessibility
+  evidence.
+- [ ] Retain observed provider-health/degraded browser evidence.
 
 ### Phase 8 — storefront
 
 - [x] Current published document/static artifact rendering foundations.
-- [ ] Render only selected immutable published artifacts.
+- [x] Render selected immutable published artifacts with integrity verification.
 - [x] Verify Page Builder runtime materialization evidence before storefront read.
 - [x] Use Pages generation-aware cache keys for storefront response and artifact
   delivery reads.
-- [ ] Authenticated real-DOM editing and draft/published switching.
-- [ ] Prove anonymous bundles exclude authoring code.
-- [ ] Visual/accessibility parity across admin preview and published output.
+- [x] Authenticated real-DOM editing, authoring asset delivery and draft/published
+  source composition.
+- [x] Anonymous default/CSR/hydrate/SSR source profiles exclude authoring assets.
+- [ ] Retain visual/accessibility, artifact/HTTP/browser and anonymous-bundle
+  execution evidence.
 
 ### Phase 9 — generated contribution registries
 
@@ -411,19 +461,25 @@ of the verification programme.
 ### Phase 10 — rollout
 
 - [ ] Internal tenant Wave 0 with observed evidence.
-- [ ] Pages Wave 1 after transport publication, cache and rollback gates.
+- [ ] Pages Wave 1 after accepted publication/cache/rollback/repair/browser gates.
 - [ ] Media/Pages reusable sections.
 - [ ] Blog, Forum, Product, Pricing, Taxonomy and SEO contributions.
 - [ ] Additional modules only after renderer/property/cache ownership is proven.
 
 ## Immediate implementation order
 
-1. Add idempotent rollback to a previous immutable artifact set.
-2. Complete Pages metadata property contributions and Page Builder asset/degraded
-   controls.
-3. Finish the reviewed HTML/CSS/URL/attribute policy and resource limits.
-4. Implement authenticated real-DOM storefront editing and bundle exclusion.
-5. Retain accepted Rust/WASM/browser, cache miss/refill and observed tenant evidence.
+1. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
+   cache rotation/miss-refill, metadata isolation and authenticated/anonymous
+   authoring boundaries.
+2. Connect a real provider-health observation source to the new admin status seam
+   and retain observed provider-health evidence for degraded/unavailable behavior.
+3. Complete remaining generic Page Builder asset/accessibility controls and their
+   executable browser evidence.
+4. Build generated contribution registries with tenant/permission/capability/
+   policy/health filtering and diagnostics.
+5. Connect the next production consumer to the canonical composition root only
+   after its tenant-scoped persistence, authorization and preview ownership are
+   explicitly defined.
 
 ## Verification programme
 
@@ -442,6 +498,8 @@ cargo xtask module validate pages
 node scripts/verify/verify-pages-ui-boundary.mjs
 node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-scenario-baseline.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs
@@ -455,12 +513,16 @@ cargo deny check
 cargo audit
 ```
 
+These commands are execution cursors only. They were not run by the source-authoring
+workflow for this actualization.
+
 Required evidence covers current GrapesJS/Fly round trips, iframe rejection and
 cleanup, DnD/keyboard/accessibility, metadata/body revision conflicts,
-authoritative sanitization, deterministic artifact and receipt integrity,
-preview/static materialization parity, idempotent replay, event-driven cache
-generation rotation and public miss/refill, publish/rollback correlation,
-anonymous bundle exclusion and provider degradation.
+authoritative sanitization/resource budgets, deterministic artifact and receipt
+integrity, preview/static materialization parity, idempotent replay, repair/
+rollback continuity, event-driven cache generation rotation and public miss/
+refill, anonymous authoring exclusion, provider degradation and observed tenant
+rollout.
 
 ## Update rules
 

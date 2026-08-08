@@ -1,137 +1,178 @@
 # M7 Product materialized/query freshness fence
 
-Status: `source_complete_linked_target_recreate_packet_execution_pending`.
+Status: `source_complete_link_target_availability_equivalence_execution_pending`.
 
 ## Query freshness boundary
 
 Product source admission and automatic Product-to-SalesChannel convergence protect source reads, but an
-already-produced Index mutation can still arrive after owner state changes. A post-result freshness
-check is too late because stale root or linked rows may already have affected filtering, ordering,
-cursor pagination, many projections, aggregate ordering, and exact count.
+already-produced Index mutation can still arrive after owner state changes. A post-result check is too
+late because stale root or linked rows may already have affected filtering, ordering, cursor pagination,
+nested projection, aggregate ordering, and exact count.
 
-`rustok-index` therefore owns `PostgresQueryEntityAdmission`, a trusted schema-scoped PostgreSQL
-entity-admission contract applied to every compiler-owned materialized `index_entities` relation.
+`rustok-index` therefore owns two module-neutral query admission layers:
 
-A rule:
+1. `PostgresQueryEntityAdmission` fences every compiler-owned materialized `index_entities` relation
+   against owner freshness;
+2. schema-scoped linked-target availability requires a current materialized+owner-admitted target when
+   a validated query actually traverses a link owned by a schema that selected the policy.
 
-- must reference the compiler-controlled `{{entity}}` alias;
-- cannot contain bind placeholders, SQL statement boundaries, or comments;
-- is bounded to 32 KiB;
-- changes no user bind, selected column, plan fingerprint, or cursor contract;
-- is applied to page and exact-count SQL;
-- fails closed for unknown compiler entity alias families or missing canonical `is_deleted = FALSE`
-  anchors.
+Neither layer adds a Product schema, Product relation copy, or new freshness clock.
 
-Current compiler alias families covered are `tN`, `mpN_tN`, `mx_tN`, and `mo_tN`, covering root and
-ordinary joins, many projections, many-filter `EXISTS`, and many aggregate ordering.
+## Entity freshness admission
 
-`PostgresIndexQueryAdmissionCatalog` keeps at most one owner rule per exact `SchemaRef`. Runtime-local
-pass-through descriptors let an otherwise ungoverned root still apply governed rules to linked targets.
+Current compiler aliases covered by `PostgresQueryEntityAdmission` are:
 
-## Product graph owner rules
+- `tN` for root and ordinary joins;
+- `mpN_tN` for many projections;
+- `mx_tN` for many-filter `EXISTS` paths;
+- `mo_tN` for many aggregate-order paths.
 
-The selected Product distribution registers entity admission for Product and ProductVariant. When
-Channel is selected it also registers SalesChannel admission. No new Index schema or freshness clock is
-introduced.
+The admission changes no user binds, selected columns, plan fingerprint, or cursor contract. Unknown
+compiler alias families and missing canonical `is_deleted = FALSE` anchors fail closed.
 
-### Product
+Current Product graph owner rules are:
 
-A Product materialized row requires live Product + exact locale, materialized `source_version` equal to
-current Product `projection_epoch`, current Product owner revision reflected in that projection, a
-matching relation freshness witness, current Channel generation, and no newer Product visibility
-convergence request.
+- Product: current projection/revision/relation freshness/Channel generation/visibility request/locale;
+- ProductVariant: live same tenant/UUID with `product_variants.index_revision == source_version`;
+- SalesChannel: live same tenant/UUID with `channels.index_revision == source_version`.
 
-### ProductVariant
+## Query-path-scoped linked-target availability
 
-A ProductVariant materialized row requires a live owner row for the same tenant/UUID and:
+Product registers exactly one generic link-target availability policy for its current Product
+`SchemaRef`.
 
-`product_variants.index_revision = index_entities.source_version`.
+The Index runtime derives the first-hop link names actually referenced by the validated `IndexQuery`
+across selected fields, filters, and ordering. When no Product link path is referenced, no availability
+predicate is added, so scalar-only Product queries do not become dependent on unrelated Variant or
+SalesChannel materialization.
 
-### SalesChannel
+When one or more Product links are referenced, the query port injects the same root predicate into page
+SQL and exact-count SQL before entity admission:
 
-A SalesChannel materialized row requires a live owner row for the same tenant/UUID and:
+- inspect only `index_links` rows whose source identity **and source_version** match the current
+  materialized Product row;
+- inspect only link names referenced by this query;
+- require every such current link row to have a matching live `index_entities` target;
+- require that target to pass the same owner freshness dispatcher used by ordinary materialized target
+  aliases;
+- if any current queried link lacks a live owner-admitted target, exclude the Product root.
 
-`channels.index_revision = index_entities.source_version`.
+The predicate is owned entirely by generic Index storage/runtime. Product owner admission still does
+not read `index_links` or `index_entities`, and the generic compiler contains no Product/Variant/Channel
+branch.
 
-These linked-target rules prevent stale/deleted target payloads from participating in ordinary joins,
-nested many projections, many filters, aggregate ordering, and other materialized target paths.
+This establishes the semantic distinction required for Product graph authority:
 
-## Recreate monotonicity is already source complete
+- no current link row for the queried link = authoritative absent relation;
+- current link row + current admitted target = authoritative linked relation;
+- current link row + missing/stale/deleted target = query fails closed for that Product root, **not**
+  authoritative null/empty linked data.
 
-A post-#3179 source recheck corrected an earlier assumption: ProductVariant and SalesChannel do **not**
-need a new recreate clock. Their existing retained tombstone migrations already preserve the same
-`index_revision` clock monotonically through hard delete and recreation of the same tenant/UUID.
+The policy is intentionally query-path scoped and one-hop. Current Product targets are ProductVariant
+and SalesChannel, both link-free in the canonical graph, so recursive availability SQL is unnecessary.
 
-### ProductVariant retained identity
+## Recreate monotonicity remains source complete
 
-`m20260731_000004_add_product_index_tombstones`:
+ProductVariant and SalesChannel do not need another recreate clock.
 
-- stores ProductVariant delete evidence at `OLD.index_revision + 1`;
-- before insert of the same tenant/Variant UUID, seeds `NEW.index_revision` to at least retained
-  `source_version + 1`;
-- rejects exhausted revisions;
-- clears the retained tombstone only after the live revision strictly supersedes it;
-- retains equivalent move/identity safety.
+Product migration `m20260731_000004_add_product_index_tombstones` and Channel migration
+`m20260731_000011_add_channel_index_tombstones` already retain delete source versions at
+`OLD.index_revision + 1`, seed same-UUID recreations above the retained tombstone, reject exhaustion,
+and clear tombstones only after strict live supersession.
 
-Therefore an old materialized ProductVariant source version cannot equal the recreated incarnation's
-current source version.
+Therefore an old materialized ProductVariant/SalesChannel source version cannot collide with the
+recreated incarnation's current owner revision.
 
-### SalesChannel retained identity
+## Recreate availability packet
 
-`m20260731_000011_add_channel_index_tombstones` provides the same protocol for SalesChannel:
+`product_linked_target_recreate_postgres.rs` remains source-ready and execution-pending with the
+canonical availability semantics.
 
-- delete tombstone at `OLD.index_revision + 1`;
-- recreate seed above the retained tombstone;
-- fail closed at exhaustion;
-- clear only after strict live supersession;
-- retain identity-move safety.
+For ProductVariant recreate, the old target row remains physically materialized while Product is
+refreshed to its current projection. A scalar-only Product query remains visible, but a graph query that
+requests `variants` fails closed with zero rows/exact count until only the current ProductVariant
+mutation is applied; then the recreated SKU appears.
 
-Channel identity generation remains separate: it drives Product relation freshness/convergence and is
-not a replacement for SalesChannel `index_revision`.
+For SalesChannel recreate, same UUID/canonical slug is restored before relation convergence. After
+freshness-only convergence Product `relation_epoch`, `projection_epoch`, and materialized Product source
+version remain unchanged. Scalar-only Product query becomes visible again, but a graph query requesting
+`sales_channels` stays fail closed while the old physical Channel target is stale. Applying only the
+current SalesChannel mutation restores the recreated Channel name.
 
-No new ProductVariant/SalesChannel ledger or schema version should be added for recreate ordering.
+## Filter/order/count/runtime equivalence packet
 
-## Retained PostgreSQL packets
+`product_linked_target_availability_equivalence_postgres.rs` is also source-ready and execution-pending.
+It uses two Product roots so one stale linked target can be isolated without hiding unrelated current
+results.
 
-Four M7 packets are source-ready and execution/admission pending:
+For ProductVariant target lag:
 
-1. `product_materialized_query_freshness_postgres.rs` — delayed Product scalar mutation and locale
-   deletion;
-2. `product_channel_convergence_postgres.rs` — Product visibility / Channel identity convergence,
-   lease reclaim, rejected Product isolation, changed and unchanged membership;
-3. `product_channel_identity_transitions_postgres.rs` — Channel create/delete/tenant-move and
-   delete+recreate Product relation/freshness behavior;
-4. `product_linked_target_recreate_postgres.rs` — ProductVariant/SalesChannel retained recreate
-   monotonicity plus stale linked-target payload exclusion and current-target recovery.
+- Variant A SKU-only update increments ProductVariant `index_revision` without changing Product
+  membership or Product projection;
+- the old Variant row stays physically materialized;
+- linked `IN` filtering that would otherwise match the stale old SKU returns only Product B;
+- `MIN(variants.sku)` ordering returns only Product B;
+- exact count is 1 on both query paths;
+- a newly composed query runtime on a fresh PostgreSQL session observes the same boundary;
+- applying only the current Variant mutation restores Product A and exact count 2.
 
-Detailed contract for packet 4:
-`m7-linked-target-recreate-postgres-harness.md`.
+For SalesChannel target lag:
 
-None of these packets has been executed or admitted by the implementation agent.
+- Channel A name-only update increments SalesChannel `index_revision`;
+- Channel identity generation is explicitly required to remain unchanged, so Product relation/projection
+  freshness remains current;
+- linked stale-name filtering and `MIN(sales_channels.name)` ordering return only Product B with exact
+  count 1;
+- applying only the current SalesChannel mutation restores both Products and exact count 2.
 
-## Remaining linked-target availability boundary
+Together the recreate and equivalence packets cover nested projection, linked filtering, many aggregate
+ordering, exact-count parity, target-only update lag, same-UUID recreate lag, and fresh query-runtime
+recomposition without introducing process-local availability state.
 
-The entity-admission fence proves that a stale linked target payload cannot be authoritative. It does
-**not** yet define the final semantics when a Product link exists but the target has not yet been
-materialized or is temporarily filtered as stale.
+## Replay/redelivery composition packet
 
-Current left-join/many-subquery SQL can represent that situation as null/empty nested data. Complete
-Product graph parity still needs an explicit fail-closed policy and retained PostgreSQL equivalence
-proof so target unavailability cannot be mistaken for authoritative owner null/absence semantics.
+`product_linked_target_replay_redelivery_postgres.rs` is source-ready and execution-pending. It composes
+canonical ProductVariant replay with real PostgreSQL mutation storage and Product graph queries.
 
-This link-present/target-missing policy is now the next unblocked M7 source-design gap. Recreate source
-ordering itself is no longer a gap.
+The packet keeps Product membership/projection unchanged while Variant owner state advances from
+materialized v1 through an undelivered canonical v2 to current v3. Before v3 materialization, scalar
+Product remains visible while the `variants` graph query fails closed.
 
-## Remaining M7 admission
+A fail-once checkpoint adapter injects a crash boundary after the real PostgreSQL v3 mutation commit but
+before replay checkpoint durability. The original query runtime and a newly composed query runtime both
+immediately expose v3. A newly constructed replay worker then replays the same stable v3 event, receives
+`Duplicate`, and commits the checkpoint. The previously unseen v2 event arrives later and receives
+`StaleIgnored`; a final v3 redelivery remains `Duplicate`. Neither late delivery can regress target source
+version, payload, or graph authority.
 
-Still required before Storefront cutover:
+The fail-once adapter is only a deterministic test boundary. Generic PostgreSQL replay-job/checkpoint
+lease persistence remains owned by the existing M6 replay contract; no Product-specific checkpoint
+state is introduced.
 
-- define and retain fail-closed linked-target availability semantics for link-present / target-missing
-  windows;
-- execute/admit the linked-target recreate packet and the other retained Product packets;
-- complete Product/ProductVariant/SalesChannel query equivalence and linked-target availability proof;
-- admit canonical Product typed events only after event-contract digest verification;
-- pass schema readiness, equivalence, convergence, freshness, restart, and retained PostgreSQL evidence.
+## Retained M7 PostgreSQL packets
+
+Six packets are source-ready and execution/admission pending:
+
+1. `product_materialized_query_freshness_postgres.rs`;
+2. `product_channel_convergence_postgres.rs`;
+3. `product_channel_identity_transitions_postgres.rs`;
+4. `product_linked_target_recreate_postgres.rs`;
+5. `product_linked_target_availability_equivalence_postgres.rs`;
+6. `product_linked_target_replay_redelivery_postgres.rs`.
+
+None has been executed or admitted by the implementation agent.
+
+## Remaining M7 evidence
+
+The linked-target query freshness, availability, equivalence, and replay/redelivery composition source
+contracts are now complete. Remaining work before Storefront cutover is no longer another query/replay
+policy or owner clock:
+
+- execute/admit the six retained Product PostgreSQL packets;
+- finish canonical Product typed event admission after event-contract digest verification;
+- retain the typed incremental route's separate crash-between-commit-and-ack/redelivery evidence;
+- retain remaining locale fan-out evidence;
+- complete Storefront Product/ProductVariant/SalesChannel query parity and cutover evidence.
 
 ## Maintainer verification
 
@@ -141,10 +182,19 @@ Suggested commands, intentionally not run by the implementation agent:
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-distribution --features mod-product \
   --test product_linked_target_recreate_postgres -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-distribution --features mod-product \
+  --test product_linked_target_availability_equivalence_postgres -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
+  cargo test -p rustok-distribution --features mod-product \
+  --test product_linked_target_replay_redelivery_postgres -- --nocapture
+node scripts/verify/verify-index-link-target-availability.mjs
 node scripts/verify/verify-index-linked-target-recreate-postgres-harness.mjs
-node scripts/verify/verify-index-product-materialized-query-freshness.mjs
+node scripts/verify/verify-index-linked-target-availability-equivalence-postgres-harness.mjs
+node scripts/verify/verify-index-linked-target-replay-redelivery-postgres-harness.mjs
+node scripts/verify/verify-index-source-replay-contract.mjs
 node scripts/verify/verify-index-linked-target-query-freshness.mjs
-node scripts/verify/verify-index-query-runtime-composition.mjs
+node scripts/verify/verify-index-product-materialized-query-freshness.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo check -p rustok-index --all-targets
 cargo check -p rustok-distribution --features mod-product --all-targets

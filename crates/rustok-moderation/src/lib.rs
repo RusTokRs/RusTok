@@ -1,6 +1,8 @@
 mod commands;
 pub mod application;
 pub mod application_dispatch;
+pub mod application_recovery;
+mod application_scheduler;
 pub mod domain;
 pub mod entities;
 pub mod error;
@@ -21,6 +23,7 @@ pub use application_dispatch::{
     APPLICATION_ADAPTER_DEADLINE_SECONDS, APPLICATION_RETRY_BASE_SECONDS,
     APPLICATION_RETRY_MAX_SECONDS, application_retry_delay_seconds,
 };
+pub use application_recovery::MAX_APPLICATION_RECOVERY_REASON_BYTES;
 pub use domain::*;
 pub use error::{ModerationError, ModerationResult};
 pub use ports::*;
@@ -55,6 +58,18 @@ impl RusToKModule for ModerationModule {
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut rustok_core::ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        extensions
+            .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default)
+            .register(std::sync::Arc::new(
+                application_scheduler::ModerationApplicationWorkRegistration,
+            ));
+        Ok(())
+    }
 }
 
 impl MigrationSource for ModerationModule {
@@ -79,5 +94,14 @@ mod tests {
         assert_eq!(module.migrations().len(), 4);
         assert_eq!(module.migration_dependencies().len(), 4);
         assert!(module.permissions().is_empty());
+
+        let mut extensions = rustok_core::ModuleRuntimeExtensions::default();
+        module.register_runtime_extensions(&mut extensions).unwrap();
+        assert!(
+            !extensions
+                .get::<rustok_runtime::ModuleWorkRegistrations>()
+                .unwrap()
+                .is_empty()
+        );
     }
 }

@@ -20,6 +20,11 @@ pub enum IndexQueryRuntimeCompositionError {
         owner_module: String,
         schema: SchemaRef,
     },
+    #[error("PostgreSQL Index link-target availability owner {owner_module} targets unregistered schema {schema}")]
+    LinkAvailabilitySchemaMissing {
+        owner_module: String,
+        schema: SchemaRef,
+    },
     #[error(transparent)]
     AdmissionCatalog(#[from] PostgresIndexQueryAdmissionError),
 }
@@ -27,12 +32,12 @@ pub enum IndexQueryRuntimeCompositionError {
 /// Materializes the canonical PostgreSQL-backed query runtime from the complete source registry.
 ///
 /// Absence of a source registry is represented as `Ok(None)` and never produces an empty or
-/// partially useful runtime. Trusted schema-scoped entity admission rules are snapshotted into the
-/// immutable runtime at materialization time. Every owner rule must target a schema present in the
-/// same complete immutable registry; dangling rules fail composition rather than silently never
-/// applying. When at least one owner rule exists, runtime-local pass-through descriptors are added
-/// for every otherwise ungoverned registered root schema so the same composite admission still
-/// fences governed linked targets reached from those roots.
+/// partially useful runtime. Trusted schema-scoped entity admission rules and generic link-target
+/// availability policies are snapshotted into the immutable runtime at materialization time. Every
+/// owner rule/policy must target a schema present in the same complete immutable registry; dangling
+/// registrations fail composition rather than silently never applying. When any admission or
+/// availability policy exists, runtime-local pass-through descriptors are added for every otherwise
+/// ungoverned registered root schema so the same composite still fences governed linked targets.
 ///
 /// The function performs no database I/O and makes no tenant schema-readiness or owner-freshness
 /// claim; those checks remain inside the query port when a request executes.
@@ -56,6 +61,14 @@ pub fn materialize_postgres_index_query_runtime(
             return Err(IndexQueryRuntimeCompositionError::AdmissionSchemaMissing {
                 owner_module: descriptor.owner_module().to_owned(),
                 schema: descriptor.schema().clone(),
+            });
+        }
+    }
+    for (schema, owner_module) in admissions.link_availability_iter() {
+        if registry.registry().get(schema).is_none() {
+            return Err(IndexQueryRuntimeCompositionError::LinkAvailabilitySchemaMissing {
+                owner_module: owner_module.to_owned(),
+                schema: schema.clone(),
             });
         }
     }
@@ -84,6 +97,7 @@ mod tests {
         LocaleMode, ModuleName, PostgresIndexQueryAdmissionCatalog, PostgresQueryEntityAdmission,
         SchemaRef, SchemaVersion, SharedIndexQueryRuntime, materialize_index_schema_registry,
         register_index_schema_source, register_postgres_index_query_admission,
+        register_postgres_index_query_link_target_availability,
     };
 
     use super::{
@@ -163,6 +177,12 @@ mod tests {
             PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap(),
         )
         .unwrap();
+        register_postgres_index_query_link_target_availability(
+            &mut extensions,
+            "runtime_owner",
+            selected.reference.clone(),
+        )
+        .unwrap();
         let registry = materialize_index_schema_registry(&extensions)
             .unwrap()
             .expect("registry");
@@ -172,13 +192,11 @@ mod tests {
             .expect("query runtime should materialize")
             .expect("runtime");
 
-        assert_eq!(
-            extensions
-                .get::<PostgresIndexQueryAdmissionCatalog>()
-                .expect("admission catalog")
-                .len(),
-            1
-        );
+        let catalog = extensions
+            .get::<PostgresIndexQueryAdmissionCatalog>()
+            .expect("admission catalog");
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog.link_availability_len(), 1);
     }
 
     #[tokio::test]
@@ -213,6 +231,37 @@ mod tests {
             }
         );
         assert!(!extensions.contains::<SharedIndexQueryRuntime>());
+    }
+
+    #[tokio::test]
+    async fn dangling_link_availability_schema_fails_composition() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        register_index_schema_source(&mut extensions, "runtime_owner", schema()).unwrap();
+        let missing = SchemaRef {
+            module: ModuleName::new("runtime-owner").unwrap(),
+            entity: EntityName::new("missing-link-owner").unwrap(),
+            version: SchemaVersion::INITIAL,
+        };
+        register_postgres_index_query_link_target_availability(
+            &mut extensions,
+            "runtime_owner",
+            missing.clone(),
+        )
+        .unwrap();
+        let registry = materialize_index_schema_registry(&extensions)
+            .unwrap()
+            .expect("registry");
+        extensions.insert(registry);
+
+        let error = materialize_postgres_index_query_runtime(&mut extensions, connection().await)
+            .expect_err("dangling link availability must fail composition");
+        assert_eq!(
+            error,
+            IndexQueryRuntimeCompositionError::LinkAvailabilitySchemaMissing {
+                owner_module: "runtime_owner".to_owned(),
+                schema: missing,
+            }
+        );
     }
 
     #[tokio::test]

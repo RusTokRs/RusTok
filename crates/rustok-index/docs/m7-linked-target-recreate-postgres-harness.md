@@ -4,10 +4,10 @@ Status: `source_ready_execution_pending`.
 
 ## Purpose
 
-The canonical Product graph already has retained tombstone protocols that keep ProductVariant and
-SalesChannel `index_revision` monotonic across hard delete followed by recreation of the same UUID.
-This packet retains a real PostgreSQL proof that those owner clocks compose with the generic entity
-query admission introduced for linked targets.
+The canonical Product graph has retained tombstone protocols that keep ProductVariant and SalesChannel
+`index_revision` monotonic across hard delete followed by recreation of the same UUID. This packet now
+retains both that owner-ordering proof and the query-path-scoped fail-closed availability semantics for
+Product links.
 
 It adds no owner clock, no Index schema, and no compatibility version.
 
@@ -17,94 +17,90 @@ It adds no owner clock, no Index schema, and no compatibility version.
 
 `m20260731_000004_add_product_index_tombstones` owns `product_variant_index_tombstones`.
 
-On hard delete it retains `OLD.index_revision + 1`. Before a later insert of the same tenant/variant
-UUID, `rustok_product_variant_seed_index_revision_from_tombstone` raises the new live
-`index_revision` to at least `retained_source_version + 1`. The retained tombstone is cleared only
-after the inserted live revision strictly supersedes it.
-
-Therefore a recreated ProductVariant cannot reuse the source version of an older materialized target.
+On hard delete it retains `OLD.index_revision + 1`. Before later insert of the same tenant/variant UUID,
+`rustok_product_variant_seed_index_revision_from_tombstone` raises live `index_revision` to at least
+`retained_source_version + 1`. The tombstone clears only after strict live supersession.
 
 ### SalesChannel
 
 `m20260731_000011_add_channel_index_tombstones` provides the same invariant for
 `channel_index_tombstones` and `channels.index_revision`.
 
-On hard delete it retains `OLD.index_revision + 1`; before recreation of the same tenant/Channel UUID,
-`rustok_channel_seed_index_revision_from_tombstone` seeds the live revision above the retained delete
-version. The tombstone is cleared only after the live row supersedes it.
-
-Channel identity generation remains a separate tenant freshness clock for Product-to-SalesChannel
-membership resolution. It is not the SalesChannel Index mutation source version.
+Channel identity generation remains a separate Product relation freshness clock. It is not the
+SalesChannel entity mutation source version.
 
 ## Harness path
 
 `crates/rustok-distribution/tests/product_linked_target_recreate_postgres.rs` uses real Channel,
 Product, and Index migrations; selected Index + Channel + Product distribution composition; persisted
-tenant schema registration; the real Product, ProductVariant, and SalesChannel source adapters; generic
-`PostgresMutationStore`; the canonical shared query runtime; and the registered generic Product/Channel
-convergence `ModuleWorkScheduler` worker.
+tenant schema registration; real Product/ProductVariant/SalesChannel source adapters; generic
+`PostgresMutationStore`; canonical shared query runtime; and the registered generic Product/Channel
+`ModuleWorkScheduler` convergence worker.
 
 No private resolver or query implementation is called directly.
 
-## ProductVariant scenario
+## Baseline
 
-The packet first materializes one current Product, ProductVariant, and SalesChannel and requires the
-Product nested projection to expose the initial Variant SKU and Channel name.
+The packet materializes one current Product, ProductVariant, and SalesChannel and requires:
 
-Then it:
+- scalar Product query visible with exact count 1;
+- Product graph query visible with exact count 1;
+- `variants.sku` contains the original Variant SKU;
+- `sales_channels.name` contains the original Channel name.
 
-1. hard-deletes the owner ProductVariant without delivering the target delete mutation to Index;
-2. requires a retained ProductVariant tombstone source version newer than the old materialized Variant;
-3. recreates the same Variant UUID with a different SKU;
-4. requires the new live `index_revision` to be newer than both the tombstone and old materialized
-   target source version;
-5. requires the retained Variant tombstone to clear only after that superseding live revision;
-6. materializes the current Product projection because Variant membership delete/insert advanced the
-   Product owner clock;
-7. proves the old ProductVariant target source version is still physically present in `index_entities`;
-8. requires the current Product root to remain visible while its `variants` nested payload is empty —
-   the stale old SKU must not leak through entity admission;
-9. applies only the current ProductVariant mutation and requires the recreated SKU to appear.
+## ProductVariant recreate scenario
 
-The empty nested payload in step 8 is stale-target exclusion evidence only. It is not a claim that
-link-present/target-unavailable should ultimately be authoritative empty semantics.
+1. Hard-delete ProductVariant without delivering the target delete mutation to Index.
+2. Require retained Variant tombstone source version newer than the old materialized target.
+3. Recreate the same Variant UUID with a different SKU.
+4. Require new live `index_revision` newer than both tombstone and old materialized version.
+5. Require tombstone clear only after strict live supersession.
+6. Materialize the current Product projection because Variant membership delete/insert advanced Product
+   owner state.
+7. Prove the old ProductVariant source version is still physically present in `index_entities`.
+8. Require scalar-only Product query to remain visible: it does not reference `variants` and therefore
+   does not depend on Variant target materialization.
+9. Require Product graph query that references `variants` to return zero rows and exact count zero.
+   Current Product link presence plus unavailable/stale target is fail-closed, not authoritative empty
+   nested data.
+10. Apply only the current ProductVariant mutation and require the Product graph to reappear with the
+    recreated SKU.
 
-## SalesChannel scenario
+## SalesChannel recreate scenario
 
-The packet then keeps the same Product-to-SalesChannel UUID membership while deleting and recreating
-the Channel before convergence:
+The packet then keeps the exact same Product-to-SalesChannel UUID membership while deleting/recreating
+Channel before convergence:
 
-1. record current Product `relation_epoch`, `projection_epoch`, materialized Product source version,
-   and Channel generation;
-2. hard-delete the Channel without delivering the target delete to Index;
-3. require the retained Channel tombstone to be newer than the old materialized SalesChannel source
-   version and Channel generation to advance;
-4. recreate the same Channel UUID/canonical slug with a different name;
-5. require the new live `channels.index_revision` to exceed the tombstone and old materialized source
-   version, require the tombstone to clear, and require Channel generation to advance again;
-6. require Product root query admission to fail before convergence because the Product relation witness
-   still carries the old Channel generation;
+1. record Product `relation_epoch`, `projection_epoch`, materialized Product source version, and Channel
+   generation;
+2. hard-delete Channel without delivering the target delete mutation to Index;
+3. require retained Channel tombstone newer than the old materialized target and generation advance;
+4. recreate the same Channel UUID/canonical slug with different name;
+5. require live `channels.index_revision` above tombstone and old target version, tombstone cleared, and
+   generation advanced again;
+6. before convergence require both scalar and graph Product queries fail owner freshness because the
+   relation witness still has old Channel generation;
 7. run only the registered generic convergence scheduler;
-8. require final membership to be unchanged, so Product `relation_epoch` and `projection_epoch` remain
-   unchanged and the existing Product materialized source version is not replaced;
-9. require freshness to reach the recreated Channel generation;
-10. prove the old SalesChannel source version is still physically materialized while the Product root
-    is query-admissible again;
-11. require the Product `sales_channels` nested payload to be empty, proving the stale old Channel name
-    cannot leak through the linked target row;
-12. apply only the current SalesChannel mutation and require the recreated Channel name to appear.
+8. require unchanged final Product membership, therefore unchanged `relation_epoch`, `projection_epoch`,
+   and materialized Product source version;
+9. require relation freshness witness reaches the recreated Channel generation;
+10. prove the old SalesChannel source version is still physically materialized;
+11. require scalar-only Product query visible again — Product owner authority is current;
+12. require Product graph query that references `sales_channels` still returns zero rows/exact count —
+    target entity authority is not current yet;
+13. apply only the current SalesChannel mutation and require the graph to reappear with recreated Channel
+    name.
 
-This isolates Product relation freshness from target entity freshness: the Product root may be current
-while a linked SalesChannel target still needs its own current materialization.
+This cleanly separates Product owner freshness from target availability and prevents target lag from
+masquerading as an authoritative empty relation.
 
-## Deliberate boundary
+## Remaining evidence boundary
 
-This packet does **not** define the final authoritative semantics for a link that exists while its target
-is absent or not yet materialized. Current SQL represents a filtered/unavailable many target as an empty
-nested projection. Before Storefront cutover, complete query parity still needs an explicit fail-closed
-policy deciding whether that window should fail the root query rather than appear as empty/null.
+This packet covers nested projection and exact-count behavior across delete/recreate. Additional retained
+query-equivalence evidence is still required for linked filtering, many aggregate ordering, and restart /
+replay ordering with link-present/target-unavailable states.
 
-The packet also does not claim execution success until the maintainer runs it.
+The packet does not claim execution success until the maintainer runs it.
 
 ## Maintainer verification
 
@@ -112,6 +108,7 @@ The packet also does not claim execution success until the maintainer runs it.
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \
   cargo test -p rustok-distribution --features mod-product \
   --test product_linked_target_recreate_postgres -- --nocapture
+node scripts/verify/verify-index-link-target-availability.mjs
 node scripts/verify/verify-index-linked-target-recreate-postgres-harness.mjs
 node scripts/verify/verify-index-linked-target-query-freshness.mjs
 node scripts/verify/verify-index-query-contract.mjs

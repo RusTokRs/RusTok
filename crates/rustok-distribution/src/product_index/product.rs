@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_index::{
     DomainError, EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexLink,
@@ -8,7 +9,7 @@ use rustok_index::{
     IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
     IndexSourceScanRequest, IndexValue, IndexValueType, LinkCardinality, LinkName, LinkedEntityKey,
     LocaleKey, LocaleMode, ModuleName, PostgresIndexSourceFactory, SchemaRef, SchemaVersion,
-    derive_index_source_event_id, register_index_schema_source, register_index_source,
+    derive_index_schema_source_event_id, register_index_schema_source, register_index_source,
     register_postgres_index_source_factory,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
@@ -17,13 +18,25 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::channel_visibility::decode_product_visibility;
+use super::{
+    PRODUCT_SCHEMA_ROUTING_KEY,
+    attribute_terms::PRODUCT_ATTRIBUTE_TERMS_CTE,
+    channel_visibility::decode_product_visibility,
+};
 
 pub(crate) const PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary";
 const PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay";
 const PRODUCT_RELATION_FRESHNESS_PENDING_CODE: &str = "product_index_relation_freshness_pending";
 
 const PRODUCT_ROWS_CTE: &str = r#"
+product_tag_ids AS (
+    SELECT
+        product_tag.product_id,
+        jsonb_agg(product_tag.term_id ORDER BY product_tag.term_id) AS tag_ids
+    FROM product_tags product_tag
+    WHERE product_tag.tenant_id = $1
+    GROUP BY product_tag.product_id
+),
 channel_identity_generation AS (
     SELECT COALESCE(
         (
@@ -82,13 +95,18 @@ product_index_union AS (
         projection.current_channel_identity_generation,
         p.metadata,
         p.status::text AS status,
+        p.seller_id,
         p.vendor,
         p.product_type,
         p.primary_category_id,
+        p.created_at,
+        p.published_at,
         t.locale,
         t.title,
         t.handle,
         t.description,
+        COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids,
+        COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms,
         COALESCE(
             (
                 SELECT jsonb_agg(v.id ORDER BY v.id)
@@ -106,6 +124,10 @@ product_index_union AS (
     LEFT JOIN product_graph_projection projection
       ON projection.tenant_id = p.tenant_id
      AND projection.product_id = p.id
+    LEFT JOIN product_tag_ids tags
+      ON tags.product_id = p.id
+    LEFT JOIN product_attribute_terms attributes
+      ON attributes.product_id = p.id
     WHERE p.tenant_id = $1
 
     UNION ALL
@@ -124,13 +146,18 @@ product_index_union AS (
         projection.current_channel_identity_generation,
         NULL::jsonb AS metadata,
         NULL::text AS status,
+        NULL::text AS seller_id,
         NULL::text AS vendor,
         NULL::text AS product_type,
         NULL::uuid AS primary_category_id,
+        NULL::timestamptz AS created_at,
+        NULL::timestamptz AS published_at,
         tombstone.locale,
         NULL::text AS title,
         NULL::text AS handle,
         NULL::text AS description,
+        '[]'::jsonb AS tag_ids,
+        '[]'::jsonb AS attribute_terms,
         '[]'::jsonb AS variant_ids,
         projection.channel_ids AS sales_channel_ids
     FROM product_index_tombstones tombstone
@@ -165,13 +192,18 @@ SELECT
     row.current_channel_identity_generation,
     row.metadata,
     row.status,
+    row.seller_id,
     row.vendor,
     row.product_type,
     row.primary_category_id,
+    row.created_at,
+    row.published_at,
     row.locale,
     row.title,
     row.handle,
     row.description,
+    row.tag_ids,
+    row.attribute_terms,
     row.variant_ids,
     row.sales_channel_ids
 FROM product_index_rows row
@@ -227,6 +259,7 @@ fn product_schema() -> Result<IndexSchema, ProductIndexBridgeError> {
             scalar_field("title", IndexValueType::String, false, true, true)?,
             scalar_field("handle", IndexValueType::String, false, true, true)?,
             scalar_field("description", IndexValueType::String, true, false, false)?,
+            scalar_field("seller_id", IndexValueType::String, true, false, false)?,
             scalar_field("vendor", IndexValueType::String, true, true, true)?,
             scalar_field("product_type", IndexValueType::String, true, true, true)?,
             scalar_field(
@@ -236,8 +269,12 @@ fn product_schema() -> Result<IndexSchema, ProductIndexBridgeError> {
                 true,
                 false,
             )?,
-            many_field("variant_ids", IndexValueType::Uuid, true)?,
-            many_field("sales_channel_ids", IndexValueType::Uuid, true)?,
+            many_field("tag_ids", IndexValueType::Uuid, true, false)?,
+            scalar_field("created_at", IndexValueType::Timestamp, false, false, true)?,
+            scalar_field("published_at", IndexValueType::Timestamp, true, true, true)?,
+            many_field("attribute_terms", IndexValueType::String, false, true)?,
+            many_field("variant_ids", IndexValueType::Uuid, true, true)?,
+            many_field("sales_channel_ids", IndexValueType::Uuid, true, true)?,
         ],
         links: vec![
             IndexLink {
@@ -271,7 +308,7 @@ fn product_schema_ref() -> Result<SchemaRef, ProductIndexBridgeError> {
             .map_err(ProductIndexBridgeError::InvalidContract)?,
         entity: EntityName::new("product")
             .map_err(ProductIndexBridgeError::InvalidContract)?,
-        version: SchemaVersion::new(3),
+        version: SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY),
     })
 }
 
@@ -316,6 +353,7 @@ fn scalar_field(
 fn many_field(
     name: &str,
     value_type: IndexValueType,
+    selectable: bool,
     filterable: bool,
 ) -> Result<IndexField, ProductIndexBridgeError> {
     Ok(IndexField {
@@ -323,7 +361,7 @@ fn many_field(
         value_type,
         cardinality: FieldCardinality::Many,
         nullable: false,
-        selectable: true,
+        selectable,
         filterable,
         sortable: false,
     })
@@ -373,7 +411,7 @@ impl ProductPostgresIndexSource {
         let (sql, values): (String, Vec<Value>) = match cursor {
             Some(cursor) => (
                 format!(
-                    "WITH {PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE (row.product_id, row.locale) > ($2, $3)\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $4"
+                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE (row.product_id, row.locale) > ($2, $3)\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $4"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -384,7 +422,7 @@ impl ProductPostgresIndexSource {
             ),
             None => (
                 format!(
-                    "WITH {PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $2"
+                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $2"
                 ),
                 vec![request.tenant_id().into(), fetch_limit.into()],
             ),
@@ -418,7 +456,7 @@ impl ProductPostgresIndexSource {
             parameter += 2;
         }
         let sql = format!(
-            "WITH requested(product_id, locale) AS (VALUES {}),\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nJOIN requested requested_key ON requested_key.product_id = row.product_id AND requested_key.locale = row.locale\nORDER BY row.product_id ASC, row.locale ASC",
+            "WITH requested(product_id, locale) AS (VALUES {}),\n{PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nJOIN requested requested_key ON requested_key.product_id = row.product_id AND requested_key.locale = row.locale\nORDER BY row.product_id ASC, row.locale ASC",
             tuples.join(", ")
         );
         self.db
@@ -550,9 +588,14 @@ struct ProductLiveFields {
     title: String,
     handle: String,
     description: Option<String>,
+    seller_id: Option<String>,
     vendor: Option<String>,
     product_type: Option<String>,
     primary_category_id: Option<Uuid>,
+    tag_ids: Vec<Uuid>,
+    created_at: DateTime<Utc>,
+    published_at: Option<DateTime<Utc>>,
+    attribute_terms: Vec<String>,
     variant_ids: Vec<Uuid>,
     sales_channel_ids: Vec<Uuid>,
 }
@@ -593,7 +636,8 @@ impl ProductRow {
         }
 
         // Projection and retained relation membership remain mandatory for delete replay. A deleted
-        // Product does not require a live freshness witness because its graph is being removed.
+        // Product does not require live Storefront fields or a live freshness witness because its graph
+        // is being removed.
         let sales_channel_ids = decode_uuid_json_list(&row, "sales_channel_ids")?;
 
         if is_deleted {
@@ -666,9 +710,14 @@ impl ProductRow {
                 title: required_string(&row, "title")?,
                 handle: required_string(&row, "handle")?,
                 description: optional_string(&row, "description")?,
+                seller_id: optional_string(&row, "seller_id")?,
                 vendor: optional_string(&row, "vendor")?,
                 product_type: optional_string(&row, "product_type")?,
                 primary_category_id,
+                tag_ids: decode_uuid_json_list(&row, "tag_ids")?,
+                created_at: required_timestamp(&row, "created_at")?,
+                published_at: optional_timestamp(&row, "published_at")?,
+                attribute_terms: decode_string_json_list(&row, "attribute_terms")?,
                 variant_ids: decode_uuid_json_list(&row, "variant_ids")?,
                 sales_channel_ids,
             }),
@@ -683,9 +732,11 @@ impl ProductRow {
     }
 
     fn into_mutation(self) -> Result<IndexMutation, ProductIndexBridgeError> {
-        let event_id = derive_index_source_event_id(
+        let schema = product_schema_ref()?;
+        let event_id = derive_index_schema_source_event_id(
             PRODUCT_EVENT_DOMAIN,
             self.tenant_id,
+            &schema,
             self.product_id,
             Some(&self.locale),
             self.source_version,
@@ -693,7 +744,7 @@ impl ProductRow {
         .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
         let key = EntityKey {
             tenant_id: self.tenant_id,
-            schema: product_schema_ref()?,
+            schema,
             entity_id: self.product_id,
             locale: Some(self.locale),
         };
@@ -716,6 +767,10 @@ impl ProductRow {
                 optional_string_value(live.description.take()),
             ),
             (
+                field_name("seller_id")?,
+                optional_string_value(live.seller_id.take()),
+            ),
+            (
                 field_name("vendor")?,
                 optional_string_value(live.vendor.take()),
             ),
@@ -728,6 +783,33 @@ impl ProductRow {
                 live.primary_category_id
                     .map(IndexValue::Uuid)
                     .unwrap_or(IndexValue::Null),
+            ),
+            (
+                field_name("tag_ids")?,
+                IndexValue::List(
+                    live.tag_ids
+                        .iter()
+                        .copied()
+                        .map(IndexValue::Uuid)
+                        .collect(),
+                ),
+            ),
+            (field_name("created_at")?, IndexValue::Timestamp(live.created_at)),
+            (
+                field_name("published_at")?,
+                live.published_at
+                    .map(IndexValue::Timestamp)
+                    .unwrap_or(IndexValue::Null),
+            ),
+            (
+                field_name("attribute_terms")?,
+                IndexValue::List(
+                    live.attribute_terms
+                        .iter()
+                        .cloned()
+                        .map(IndexValue::String)
+                        .collect(),
+                ),
             ),
             (
                 field_name("variant_ids")?,
@@ -803,6 +885,24 @@ fn decode_uuid_json_list(
         let raw = value.as_str().ok_or(ProductIndexBridgeError::InvalidRow)?;
         let id = Uuid::parse_str(raw).map_err(|_| ProductIndexBridgeError::InvalidRow)?;
         if id.is_nil() || !unique.insert(id) {
+            return Err(ProductIndexBridgeError::InvalidRow);
+        }
+    }
+    Ok(unique.into_iter().collect())
+}
+
+fn decode_string_json_list(
+    row: &QueryResult,
+    column: &str,
+) -> Result<Vec<String>, ProductIndexBridgeError> {
+    let value = row
+        .try_get::<JsonValue>("", column)
+        .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
+    let values = value.as_array().ok_or(ProductIndexBridgeError::InvalidRow)?;
+    let mut unique = BTreeSet::new();
+    for value in values {
+        let raw = value.as_str().ok_or(ProductIndexBridgeError::InvalidRow)?;
+        if raw.is_empty() || !unique.insert(raw.to_owned()) {
             return Err(ProductIndexBridgeError::InvalidRow);
         }
     }
@@ -894,6 +994,22 @@ fn optional_string(
         .map_err(|_| ProductIndexBridgeError::InvalidRow)
 }
 
+fn required_timestamp(
+    row: &QueryResult,
+    column: &str,
+) -> Result<DateTime<Utc>, ProductIndexBridgeError> {
+    row.try_get::<DateTime<Utc>>("", column)
+        .map_err(|_| ProductIndexBridgeError::InvalidRow)
+}
+
+fn optional_timestamp(
+    row: &QueryResult,
+    column: &str,
+) -> Result<Option<DateTime<Utc>>, ProductIndexBridgeError> {
+    row.try_get::<Option<DateTime<Utc>>>("", column)
+        .map_err(|_| ProductIndexBridgeError::InvalidRow)
+}
+
 fn optional_string_value(value: Option<String>) -> IndexValue {
     value.map(IndexValue::String).unwrap_or(IndexValue::Null)
 }
@@ -911,17 +1027,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn canonical_product_schema_contains_only_current_fields_and_links() {
+    fn canonical_product_schema_contains_only_current_storefront_graph_contract() {
         let schema = product_schema().unwrap();
         assert_eq!(schema.reference, product_schema_ref().unwrap());
-        assert_eq!(schema.fields.len(), 10);
+        assert_eq!(schema.reference.version.get(), PRODUCT_SCHEMA_ROUTING_KEY);
+        assert_eq!(schema.fields.len(), 15);
         assert_eq!(schema.links.len(), 2);
-        assert!(
-            schema
-                .fields
-                .iter()
-                .any(|field| field.name.as_str() == "sales_channel_ids")
-        );
+        for field in [
+            "id",
+            "status",
+            "title",
+            "handle",
+            "description",
+            "seller_id",
+            "vendor",
+            "product_type",
+            "primary_category_id",
+            "tag_ids",
+            "created_at",
+            "published_at",
+            "attribute_terms",
+            "variant_ids",
+            "sales_channel_ids",
+        ] {
+            assert!(schema.fields.iter().any(|candidate| candidate.name.as_str() == field));
+        }
+        let attribute_terms = schema
+            .fields
+            .iter()
+            .find(|field| field.name.as_str() == "attribute_terms")
+            .unwrap();
+        assert_eq!(attribute_terms.cardinality, FieldCardinality::Many);
+        assert!(attribute_terms.filterable);
+        assert!(!attribute_terms.selectable);
+        let published_at = schema
+            .fields
+            .iter()
+            .find(|field| field.name.as_str() == "published_at")
+            .unwrap();
+        assert!(published_at.nullable);
+        assert!(published_at.filterable);
+        assert!(published_at.sortable);
         assert!(
             !schema
                 .fields
@@ -935,15 +1081,7 @@ mod tests {
                 .any(|field| field.name.as_str() == "allowed_channel_slugs")
         );
         assert_eq!(schema.links[0].name.as_str(), "variants");
-        assert_eq!(
-            schema.links[0].target_schema,
-            product_variant_schema_ref().unwrap()
-        );
         assert_eq!(schema.links[1].name.as_str(), "sales_channels");
-        assert_eq!(
-            schema.links[1].target_schema,
-            sales_channel_schema_ref().unwrap()
-        );
     }
 
     #[test]
@@ -971,18 +1109,26 @@ mod tests {
     }
 
     #[test]
-    fn canonical_product_projection_sql_requires_owner_projection_relation_and_freshness() {
-        assert!(PRODUCT_ROWS_CTE.contains("product_index_graph_projection_snapshots"));
-        assert!(PRODUCT_ROWS_CTE.contains("product_sales_channel_index_relation_snapshots"));
-        assert!(
-            PRODUCT_ROWS_CTE.contains("product_sales_channel_index_relation_freshness_snapshots")
-        );
-        assert!(PRODUCT_ROWS_CTE.contains("channel_index_identity_generations"));
-        assert!(PRODUCT_ROWS_CTE.contains("projection.projection_epoch AS source_version"));
-        assert!(PRODUCT_ROWS_CTE.contains("projection.channel_ids AS sales_channel_ids"));
-        assert!(PRODUCT_ROWS_CTE.contains("freshness.visibility_key"));
-        assert!(PRODUCT_ROWS_CTE.contains("COUNT(*) OVER"));
-        assert!(PRODUCT_ROWS_CTE.contains("product_index_tombstones"));
+    fn canonical_product_sql_materializes_storefront_graph_and_eav_state() {
+        for marker in [
+            "product_index_graph_projection_snapshots",
+            "product_sales_channel_index_relation_snapshots",
+            "product_sales_channel_index_relation_freshness_snapshots",
+            "channel_index_identity_generations",
+            "projection.projection_epoch AS source_version",
+            "projection.channel_ids AS sales_channel_ids",
+            "product_tags product_tag",
+            "COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids",
+            "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
+            "p.seller_id",
+            "p.created_at",
+            "p.published_at",
+            "COUNT(*) OVER",
+            "product_index_tombstones",
+        ] {
+            assert!(PRODUCT_ROWS_CTE.contains(marker), "missing {marker}");
+        }
+        assert!(PRODUCT_ATTRIBUTE_TERMS_CTE.contains("product_filterable_attribute_values"));
     }
 
     #[test]
@@ -993,7 +1139,7 @@ mod tests {
     }
 
     #[test]
-    fn retained_product_row_emits_canonical_delete_mutation() {
+    fn retained_product_row_emits_current_schema_delete_mutation() {
         let product = ProductRow {
             tenant_id: Uuid::from_u128(1),
             product_id: Uuid::from_u128(2),

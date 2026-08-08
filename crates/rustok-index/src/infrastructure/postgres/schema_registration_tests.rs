@@ -77,6 +77,20 @@ async fn schema_count(db: &DatabaseConnection) -> i64 {
     .unwrap()
 }
 
+async fn schema_status(db: &DatabaseConnection, tenant_id: &str, version: u32) -> String {
+    db.query_one(Statement::from_string(
+        DbBackend::Sqlite,
+        format!(
+            "SELECT status FROM index_schemas WHERE tenant_id = '{tenant_id}' AND module_name = 'social-graph' AND entity_name = 'relation' AND schema_version = {version}"
+        ),
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "status")
+    .unwrap()
+}
+
 #[tokio::test]
 async fn registration_is_tenant_scoped_and_exactly_idempotent() {
     let (db, store) = fixture().await;
@@ -142,10 +156,126 @@ async fn retired_schema_cannot_be_reactivated_by_registration() {
 }
 
 #[tokio::test]
+async fn ordinary_registration_does_not_implicitly_retire_older_contracts() {
+    let (db, store) = fixture().await;
+    store.register(tenant(TENANT_A), &schema(1)).await.unwrap();
+    store.register(tenant(TENANT_A), &schema(2)).await.unwrap();
+
+    assert_eq!(schema_status(&db, TENANT_A, 1).await, "active");
+    assert_eq!(schema_status(&db, TENANT_A, 2).await, "active");
+}
+
+#[tokio::test]
+async fn staged_latest_contract_can_be_promoted_without_reinsertion() {
+    let (db, store) = fixture().await;
+    store.register(tenant(TENANT_A), &schema(1)).await.unwrap();
+    assert!(matches!(
+        store.register(tenant(TENANT_A), &schema(2)).await.unwrap(),
+        PersistedSchemaRegistrationOutcome::Inserted { .. }
+    ));
+    assert_eq!(schema_status(&db, TENANT_A, 1).await, "active");
+    assert_eq!(schema_status(&db, TENANT_A, 2).await, "active");
+
+    let promoted = store
+        .register_current(tenant(TENANT_A), &schema(2))
+        .await
+        .unwrap();
+    assert!(matches!(
+        promoted.registration(),
+        PersistedSchemaRegistrationOutcome::Unchanged { .. }
+    ));
+    assert_eq!(promoted.retired_schema_count(), 1);
+    assert_eq!(schema_status(&db, TENANT_A, 1).await, "retired");
+    assert_eq!(schema_status(&db, TENANT_A, 2).await, "active");
+}
+
+#[tokio::test]
+async fn explicit_current_supersession_retires_all_lower_active_contracts() {
+    let (db, store) = fixture().await;
+    store.register(tenant(TENANT_A), &schema(1)).await.unwrap();
+    store.register(tenant(TENANT_A), &schema(2)).await.unwrap();
+
+    let outcome = store
+        .register_current(tenant(TENANT_A), &schema(3))
+        .await
+        .unwrap();
+    assert!(matches!(
+        outcome.registration(),
+        PersistedSchemaRegistrationOutcome::Inserted { .. }
+    ));
+    assert_eq!(outcome.retired_schema_count(), 2);
+    assert_eq!(schema_status(&db, TENANT_A, 1).await, "retired");
+    assert_eq!(schema_status(&db, TENANT_A, 2).await, "retired");
+    assert_eq!(schema_status(&db, TENANT_A, 3).await, "active");
+}
+
+#[tokio::test]
+async fn explicit_current_supersession_is_idempotent_for_latest_current_contract() {
+    let (db, store) = fixture().await;
+    store.register(tenant(TENANT_A), &schema(1)).await.unwrap();
+    let first = store
+        .register_current(tenant(TENANT_A), &schema(2))
+        .await
+        .unwrap();
+    assert_eq!(first.retired_schema_count(), 1);
+
+    let repeated = store
+        .register_current(tenant(TENANT_A), &schema(2))
+        .await
+        .unwrap();
+    assert!(matches!(
+        repeated.registration(),
+        PersistedSchemaRegistrationOutcome::Unchanged { .. }
+    ));
+    assert_eq!(repeated.retired_schema_count(), 0);
+    assert_eq!(schema_status(&db, TENANT_A, 1).await, "retired");
+    assert_eq!(schema_status(&db, TENANT_A, 2).await, "active");
+}
+
+#[tokio::test]
+async fn historical_exact_contract_cannot_be_declared_current_after_supersession() {
+    let (_, store) = fixture().await;
+    store.register(tenant(TENANT_A), &schema(1)).await.unwrap();
+    store
+        .register_current(tenant(TENANT_A), &schema(2))
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        store.register_current(tenant(TENANT_A), &schema(1)).await,
+        Err(SchemaRegistrationError::NonMonotonicVersion {
+            latest,
+            attempted,
+            ..
+        }) if latest == SchemaVersion::new(2) && attempted == SchemaVersion::new(1)
+    ));
+}
+
+#[tokio::test]
+async fn supersession_is_tenant_scoped() {
+    let (db, store) = fixture().await;
+    store.register(tenant(TENANT_A), &schema(1)).await.unwrap();
+    store.register(tenant(TENANT_B), &schema(1)).await.unwrap();
+
+    store
+        .register_current(tenant(TENANT_A), &schema(2))
+        .await
+        .unwrap();
+
+    assert_eq!(schema_status(&db, TENANT_A, 1).await, "retired");
+    assert_eq!(schema_status(&db, TENANT_A, 2).await, "active");
+    assert_eq!(schema_status(&db, TENANT_B, 1).await, "active");
+}
+
+#[tokio::test]
 async fn nil_tenant_fails_before_storage() {
     let (_, store) = fixture().await;
     assert_eq!(
         store.register(Uuid::nil(), &schema(1)).await,
+        Err(SchemaRegistrationError::NilTenantId)
+    );
+    assert_eq!(
+        store.register_current(Uuid::nil(), &schema(1)).await,
         Err(SchemaRegistrationError::NilTenantId)
     );
 }

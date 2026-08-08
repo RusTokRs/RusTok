@@ -10,9 +10,11 @@ const files = {
   service: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
   migration: "crates/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
   test: "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
+  rollbackTest: "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
+  repeatedTest: "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json",
   packet: "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md",
-  actualization: "docs/modules/pages-page-builder-multilocale-activation-recovery-actualization-2026-08-07.md",
+  latestOverlay: "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
@@ -55,11 +57,10 @@ const sources = Object.fromEntries(
   Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]),
 );
 const evidence = JSON.parse(sources.evidence);
-
-if (evidence.format !== "pages_explicit_artifact_binding_replacement_source_v3") {
+if (evidence.format !== "pages_explicit_artifact_binding_replacement_source_v5") {
   failures.push("evidence format drifted");
 }
-if (evidence.status !== "pages_explicit_artifact_binding_replacement_multilocale_recovery_source_unvalidated") {
+if (evidence.status !== "pages_explicit_artifact_binding_replacement_repeated_loss_recovery_source_unvalidated") {
   failures.push("evidence status drifted");
 }
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
@@ -69,20 +70,26 @@ for (const value of Object.values(evidence.validation ?? {})) {
   if (value !== false) failures.push("evidence validation must remain unexecuted");
 }
 for (const key of [
-  "missing_binding_first_recovery_accepts_publish_result_version_equal_current_expected",
+  "missing_binding_direct_publish_anchor_accepts_publish_result_version_equal_current_expected",
+  "missing_binding_rollback_activation_anchor_is_supported",
   "missing_binding_sequential_recovery_requires_contiguous_activation_version_chain",
   "missing_binding_sequential_recovery_requires_same_source_publish",
-  "missing_binding_sequential_recovery_requires_other_unique_locales",
+  "missing_binding_sequential_recovery_tracks_latest_repair_state_per_locale",
+  "missing_binding_sequential_recovery_allows_repeated_locale_only_after_prior_rebuilt_artifact_absence",
   "missing_binding_sequential_recovery_revalidates_prior_rebuild_and_provenance",
   "missing_binding_sequential_recovery_recomputes_prior_activation_request_hash",
-  "missing_binding_sequential_recovery_requires_prior_repaired_binding_still_active",
-  "missing_binding_sequential_recovery_requires_prior_rebuilt_artifact_identity",
+  "missing_binding_sequential_recovery_requires_latest_non_target_binding_still_active",
+  "missing_binding_sequential_recovery_requires_latest_non_target_rebuilt_artifact_identity",
+  "missing_binding_sequential_recovery_requires_target_binding_absent",
+  "missing_binding_sequential_recovery_requires_latest_target_prior_rebuilt_artifact_absent_before_repeat",
   "missing_binding_sequential_recovery_rejects_unexplained_version_gap",
-  "missing_binding_sequential_recovery_rejects_prior_activation_for_target_locale",
   "missing_binding_sequential_recovery_is_bounded",
+  "missing_binding_sequential_recovery_query_is_physically_bounded",
   "postgres_multilocale_recovery_harness_source_ready",
   "postgres_multilocale_success_source_ready",
   "postgres_unexplained_version_drift_rejection_source_ready",
+  "postgres_rollback_activated_multilocale_success_source_ready",
+  "postgres_repeated_loss_recovery_harness_source_ready",
 ]) {
   if (evidence.source_contract?.[key] !== true) {
     failures.push(`evidence source_contract.${key} must be true`);
@@ -91,55 +98,35 @@ for (const key of [
 
 for (const marker of [
   "MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS",
+  "resolve_missing_binding_recovery_anchor_in_tx",
   "ensure_sequential_missing_binding_recovery_version_chain_in_tx",
-  "publish.result_version > expected_version",
-  "publish.result_version < expected_version",
-  "checked_sub(publish.result_version)",
+  "checked_sub(anchor_version)",
+  ".gt(anchor_version)",
+  ".limit((MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS + 1) as u64)",
   "operations.len() != version_gap",
+  "let mut cursor = anchor_version",
+  "let mut latest_by_locale",
   "operation.expected_version != cursor",
   "operation.result_version != cursor + 1",
-  "operation.locale == target_locale",
-  "prior_locales.insert(operation.locale.clone())",
-  "stable_replacement_hash(&(",
   "operation.request_hash != expected_request_hash",
-  "load_rebuild_operation_in_tx",
-  "load_rebuild_source_in_tx",
   "ensure_rebuild_matches_source(&prior_rebuild, &prior_source)?",
   "prior_rebuild.source_publish_operation_id != publish.id",
-  "prior_source.operation_id != publish.id",
-  "operation.expected_current_artifact_id != prior_rebuild.source_artifact_id",
-  "operation.replacement_artifact_id != prior_rebuild.rebuilt_artifact_id",
-  "load_binding_for_update_in_tx",
-  "prior_binding.artifact_id != prior_rebuild.rebuilt_artifact_id",
-  "prior_artifact.instance_key != prior_rebuild.artifact_instance_key",
-  "cursor = operation.result_version",
+  "recovery_artifact_if_present_in_tx",
+  "a repeated locale still has its prior rebuilt immutable artifact",
+  "target locale prior rebuilt immutable artifact still exists",
+  "latest repaired locale binding is no longer active",
+  "latest repaired immutable artifact drifted from its rebuild receipt",
   "cursor != expected_version",
 ]) {
   need(sources.service, marker, "sequential recovery service");
 }
-requireOrdered(
-  sources.service,
-  [
-    "publish.result_version > expected_version",
-    "publish.result_version < expected_version",
-    "ensure_sequential_missing_binding_recovery_version_chain_in_tx",
-  ],
-  "direct-version then sequential-version admission",
-);
-requireOrdered(
-  sources.service,
-  [
-    "operations.len() != version_gap",
-    "let mut cursor = publish.result_version",
-    "for operation in operations",
-    "load_rebuild_operation_in_tx",
-    "load_rebuild_source_in_tx",
-    "load_binding_for_update_in_tx",
-    "cursor = operation.result_version",
-    "cursor != expected_version",
-  ],
-  "sequential receipt verification ordering",
-);
+requireOrdered(sources.service, [
+  "publish.result_version > expected_version",
+  "let anchor_version = if publish.result_version == expected_version",
+  "resolve_missing_binding_recovery_anchor_in_tx",
+  "if anchor_version < expected_version",
+  "ensure_sequential_missing_binding_recovery_version_chain_in_tx",
+], "publish-or-rollback then sequential admission");
 for (const marker of [
   "sanitize_static_landing_project",
   "compile_materialized_static_landing",
@@ -152,44 +139,47 @@ for (const marker of [
   forbid(sources.service, marker, "sequential recovery boundary");
 }
 
-for (const marker of [
-  "idx_page_artifact_binding_replacements_result",
-  "ResultVersion",
-]) {
+for (const marker of ["idx_page_artifact_binding_replacements_result", "ResultVersion"]) {
   need(sources.migration, marker, "existing receipt index");
 }
-
 for (const marker of [
   "missing_binding_activation_recovers_two_lost_locales_sequentially_on_postgres",
   "missing_binding_activation_rejects_unexplained_version_between_locales_on_postgres",
-  "remove_binding_manifest_and_source_artifact",
-  "multilocale-activate-en-v1",
   "expected_version: en_activation.version",
   "fr_activation.version, fixture.publish_version + 2",
-  "events_before_activation + 4",
-  "advanced.version = Set(en_activation.version + 1)",
   "not fully explained",
   "RUSTOK_PAGES_TEST_DATABASE_URL",
 ]) {
-  need(sources.test, marker, "multi-locale PostgreSQL packet source");
+  need(sources.test, marker, "direct multi-locale PostgreSQL packet source");
 }
-
 for (const marker of [
-  "Sequential multi-locale version chain",
-  "bounded to at most 256 prior activation steps",
-  "every prior locale is unique and different from the locale currently being recovered",
-  "unexplained lifecycle/version increment",
-  "artifact_loss_multilocale_activation_recovery_postgres.rs",
+  "rollback_activated_publish_recovers_two_lost_locales_sequentially_on_postgres",
+  "expected_version: fixture.rollback_version",
+  "expected_version: en_activation.version",
+]) {
+  need(sources.rollbackTest, marker, "rollback-activated multi-locale source");
+}
+for (const marker of [
+  "missing_binding_activation_recovers_same_locale_after_rebuilt_artifact_is_lost_again_on_postgres",
+  "repeated_locale_recovery_rejects_missing_binding_while_prior_rebuilt_artifact_still_exists_on_postgres",
+  "another_locale_can_recover_after_repeated_locale_loss_on_postgres",
+]) {
+  need(sources.repeatedTest, marker, "repeated-loss PostgreSQL packet source");
+}
+for (const marker of [
+  "Sequential multi-locale and repeated-loss version chain",
+  "latest repair state per locale",
+  "prior rebuilt instance is physically absent",
+  "artifact_repeated_loss_recovery_postgres.rs",
 ]) {
   need(sources.packet, marker, "recovery packet");
 }
 for (const marker of [
-  "Multi-Locale Artifact-Loss Activation Recovery Actualization",
-  "multilocale-missing-binding-recovery-source-ready",
-  "same-publish activation chain",
-  "Unexplained version drift remains fail-closed",
+  "Repeated Artifact-Loss Recovery Actualization",
+  "latest-state-per-locale",
+  "execution remains pending",
 ]) {
-  need(sources.actualization, marker, "parity actualization");
+  need(sources.latestOverlay, marker, "latest parity actualization");
 }
 
 if (failures.length > 0) {

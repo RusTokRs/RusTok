@@ -184,7 +184,11 @@ fn map_owner_error(error: ModerationError) -> PortError {
             "moderation.application_lease_conflict",
             format!("moderation application lease conflict for decision {id}"),
         ),
-        ModerationError::ApplicationEvidenceMismatch(id) => PortError::conflict(
+        ModerationError::ApplicationRecoveryConflict(id) => PortError::conflict(
+            "moderation.application_recovery_conflict",
+            format!("moderation application recovery conflict for decision {id}"),
+        ),
+        ModerationError::ApplicationEvidenceMismatch(id) => PortError::invariant_violation(
             "moderation.application_evidence_mismatch",
             format!("moderation application evidence does not match decision {id}"),
         ),

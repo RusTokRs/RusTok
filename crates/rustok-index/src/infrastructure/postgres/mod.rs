@@ -112,6 +112,7 @@ pub use partition_admission::{
 pub use query_admission::{
     PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryAdmissionDescriptor,
     PostgresIndexQueryAdmissionError, register_postgres_index_query_admission,
+    register_postgres_index_query_link_target_availability,
 };
 pub use query_port::PostgresIndexQueryPort;
 pub use query_runtime::{
@@ -131,7 +132,8 @@ pub use schema_readiness::{
     PostgresIndexSchemaReadinessStore,
 };
 pub use schema_registration::{
-    PersistedSchemaRegistrationOutcome, PostgresSchemaRegistrationStore, SchemaRegistrationError,
+    PersistedSchemaRegistrationOutcome, PersistedSchemaSupersessionOutcome,
+    PostgresSchemaRegistrationStore, SchemaRegistrationError,
 };
 pub use secondary_index::{
     PostgresSecondaryIndexManager, SecondaryIndexClaimOutcome, SecondaryIndexError,

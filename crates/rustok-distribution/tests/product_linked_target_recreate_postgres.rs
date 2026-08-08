@@ -140,7 +140,7 @@ struct Runtime {
 }
 
 #[tokio::test]
-async fn linked_targets_remain_revision_monotonic_and_stale_payloads_are_fenced_across_recreate(
+async fn linked_targets_remain_revision_monotonic_and_graph_queries_fail_closed_across_recreate(
 ) -> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
@@ -160,6 +160,7 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         materialize_current(&runtime, PRODUCT_VARIANT_SOURCE, variant_key()?).await?;
     let old_channel_version =
         materialize_current(&runtime, SALES_CHANNEL_SOURCE, channel_key()?).await?;
+    assert_scalar_product_visible(&runtime.query, true).await?;
     assert_graph_payloads(
         &runtime.query,
         &[OLD_VARIANT_SKU],
@@ -168,8 +169,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     .await?;
 
     // ProductVariant delete -> recreate keeps the same UUID but must not reuse an old source version.
-    // Deliberately do not deliver either target delete or recreated upsert to Index: the old target row
-    // remains physically materialized while owner state moves through retained tombstone history.
+    // The target delete/current mutation is intentionally not delivered yet, so old target payload
+    // remains physically materialized while the owner moves through retained tombstone history.
     delete_variant(&database.writer).await?;
     let variant_tombstone = variant_tombstone_version(&database.writer)
         .await?
@@ -181,9 +182,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     assert!(recreated_variant_version > old_variant_version);
     assert!(variant_tombstone_version(&database.writer).await?.is_none());
 
-    // Variant membership delete/insert advances the Product owner/projection. Refresh only Product;
-    // keep the old Variant Index target row in place. The Product root is current but stale Variant
-    // payload must be filtered out by entity admission.
+    // Variant membership delete/insert advances Product revision/projection. Refresh only Product and
+    // keep the old Variant Index target row in place. Scalar Product authority is current, but a query
+    // that actually traverses `variants` must fail closed instead of presenting authoritative empty
+    // relation data while that current link target is unavailable.
     materialize_current(&runtime, PRODUCT_SOURCE, product_key()?).await?;
     assert_materialized_target_version(
         &database.mutation,
@@ -194,7 +196,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         old_variant_version,
     )
     .await?;
-    assert_graph_payloads(&runtime.query, &[], &[OLD_CHANNEL_NAME]).await?;
+    assert_scalar_product_visible(&runtime.query, true).await?;
+    assert_graph_query_visible(&runtime.query, false).await?;
 
     let applied_variant_version =
         materialize_current(&runtime, PRODUCT_VARIANT_SOURCE, variant_key()?).await?;
@@ -208,8 +211,9 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
 
     // SalesChannel delete -> recreate likewise seeds live index_revision above the retained delete
     // tombstone. Product membership returns to the same Channel UUID before convergence. Product root
-    // authority is temporarily fenced by Channel generation, then freshness-only convergence restores
-    // that exact already-materialized Product row while the old Channel target remains stale.
+    // owner authority is initially stale on Channel generation, then freshness-only convergence makes
+    // scalar Product queries current again while graph queries stay fail-closed until the target row is
+    // current.
     let relation_before_channel_recreate = latest_relation_epoch(&database.writer).await?;
     let projection_before_channel_recreate = latest_projection_epoch(&database.writer).await?;
     let product_materialized_before_channel_recreate =
@@ -232,7 +236,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let generation_after_channel_recreate = channel_generation(&database.writer).await?;
     assert!(generation_after_channel_recreate > generation_after_channel_delete);
 
-    assert_product_root_visible(&runtime.query, false).await?;
+    assert_scalar_product_visible(&runtime.query, false).await?;
+    assert_graph_query_visible(&runtime.query, false).await?;
     run_scheduler_until_idle(&runtime.scheduler, 20).await?;
     assert_eq!(
         latest_relation_epoch(&database.writer).await?,
@@ -259,8 +264,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         old_channel_version,
     )
     .await?;
-    assert_product_root_visible(&runtime.query, true).await?;
-    assert_graph_payloads(&runtime.query, &[NEW_VARIANT_SKU], &[]).await?;
+    assert_scalar_product_visible(&runtime.query, true).await?;
+    assert_graph_query_visible(&runtime.query, false).await?;
 
     let applied_channel_version =
         materialize_current(&runtime, SALES_CHANNEL_SOURCE, channel_key()?).await?;
@@ -411,6 +416,27 @@ fn channel_schema_ref() -> TestResult<SchemaRef> {
     })
 }
 
+fn scalar_product_query() -> TestResult<IndexQuery> {
+    Ok(IndexQuery {
+        scope: IndexQueryScope {
+            tenant_id: TENANT_ID,
+            locale: Some(LocaleKey::new("en")?),
+        },
+        schema: product_schema_ref()?,
+        fields: vec![FieldPath::new(FieldName::new("title")?)],
+        filter: Some(FilterExpr::Eq(
+            FieldPath::new(FieldName::new("id")?),
+            IndexValue::Uuid(PRODUCT_ID),
+        )),
+        order_by: Vec::new(),
+        pagination: Pagination::Offset {
+            limit: 10,
+            offset: 0,
+        },
+        include_exact_count: true,
+    })
+}
+
 fn product_graph_query() -> TestResult<IndexQuery> {
     Ok(IndexQuery {
         scope: IndexQueryScope {
@@ -442,16 +468,27 @@ fn product_graph_query() -> TestResult<IndexQuery> {
     })
 }
 
-async fn assert_product_root_visible(
+async fn assert_scalar_product_visible(
     query: &SharedIndexQueryRuntime,
     expected: bool,
 ) -> TestResult<()> {
-    let page = query.execute_query(product_graph_query()?).await?;
+    assert_query_visibility(query.execute_query(scalar_product_query()?).await?, expected);
+    Ok(())
+}
+
+async fn assert_graph_query_visible(
+    query: &SharedIndexQueryRuntime,
+    expected: bool,
+) -> TestResult<()> {
+    assert_query_visibility(query.execute_query(product_graph_query()?).await?, expected);
+    Ok(())
+}
+
+fn assert_query_visibility(page: rustok_index::IndexQueryPage, expected: bool) {
     let expected_rows = if expected { 1 } else { 0 };
     let expected_count = if expected { 1 } else { 0 };
     assert_eq!(page.items.len(), expected_rows);
     assert_eq!(page.exact_count, Some(expected_count));
-    Ok(())
 }
 
 async fn assert_graph_payloads(
@@ -460,7 +497,7 @@ async fn assert_graph_payloads(
     expected_channel_names: &[&str],
 ) -> TestResult<()> {
     let page = query.execute_query(product_graph_query()?).await?;
-    assert_eq!(page.items.len(), 1, "Product root must remain query-admissible");
+    assert_eq!(page.items.len(), 1, "Product graph must be query-admissible");
     assert_eq!(page.exact_count, Some(1));
     let item = &page.items[0];
     let variant_values = nested_strings(item, "variants", "sku")?;

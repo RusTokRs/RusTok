@@ -9,7 +9,7 @@ description = "Selected RusToK distribution module composition"
 default = []
 mod-cart = ["dep:rustok-cart"]
 mod-customer = ["dep:rustok-customer"]
-mod-product = ["dep:rustok-product", "mod-taxonomy"]
+mod-product = ["dep:rustok-product", "mod-taxonomy", "dep:chrono", "dep:hex", "dep:rust_decimal"]
 mod-profiles = ["dep:rustok-profiles", "mod-media", "mod-taxonomy"]
 mod-groups = ["dep:rustok-groups"]
 mod-region = ["dep:rustok-region"]
@@ -49,6 +49,9 @@ ai-translation = ["mod-ai", "mod-translation", "dep:rustok-ai-translation"]
 
 [dependencies]
 async-trait.workspace = true
+chrono = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+rust_decimal = { workspace = true, optional = true }
 sea-orm.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true

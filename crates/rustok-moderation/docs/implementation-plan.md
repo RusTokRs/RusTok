@@ -158,7 +158,7 @@ For Forum's bounded adapter source:
 Direct domain actions and moderation-driven actions converge on the same domain invariants
 and owner primitives. Whether a direct action also opens a case is host/product policy.
 
-## Host composition
+## Host composition and shared work scheduling
 
 The server host has source-ready optional materialization of the neutral subject-adapter
 registry:
@@ -172,12 +172,22 @@ registry:
 - Forum without Moderation remains valid and does not materialize the owner registry;
 - factory build, duplicate-key and factory-key mismatch errors remain startup failures.
 
-Host composition itself does not schedule work or add domain logic. Durable application
-intent/lease state and the bounded one-attempt dispatcher live in the Moderation owner. A
-future host/runtime scheduler may call that owner primitive with the already-materialized
-registry; it must not bypass owner due/lease semantics.
+Moderation reuses the platform's existing `rustok_runtime::ModuleWorkScheduler` instead of
+creating a capability-specific polling loop. `ModerationModule::register_runtime_extensions`
+publishes one `ModuleWorkRegistration` for `moderation_decision_application`. The existing
+server module-work bootstrap registers it only in deployment modes that run background work,
+uses the already-composed `HostRuntimeContext` and materialized adapter registry, polls through
+the shared bounded scheduler, and honors the deployment-owned `StopHandle`.
 
-## Application lifecycle
+The Moderation source returns at most one read-only earliest-due candidate per scheduler pass.
+This source lookup is not the durable claim: `dispatch_application_operation_once` repeats
+the owner due predicate and acquires the authoritative Moderation UUID lease through the
+existing CAS before any adapter call. The generic `ModuleWorkItem.lease_token` is only
+scheduler-envelope identity and never substitutes the Moderation lease or immutable decision
+UUID domain idempotency key. Generic scheduler completion is a no-op because
+`moderation_application_operations` remains the sole durable outcome source.
+
+## Application lifecycle and owner audit
 
 Durable decision application uses explicit owner states `pending`, `applying`, `retryable`,
 `applied`, `rejected`, and `operator_review`.
@@ -244,6 +254,76 @@ recording success are returned to the caller instead of being rewritten as opera
 outcomes. Moderation storage failure after claim likewise leaves the lease to expire/reclaim
 rather than forging a domain result.
 
+The shared module-work adapter adds scheduling only. It discovers one candidate and delegates
+immediately to the one-attempt dispatcher. If two hosts discover the same row, only one can
+win the authoritative CAS; the loser performs no domain call. A process failure after the CAS
+leaves the operation `applying` until the existing lease expires and becomes discoverable
+again. Shutdown stops future shared-scheduler claims while an already claimed operation may
+finish its canonical dispatcher path.
+
+Application operation state, case lifecycle and the existing `moderation_events` owner audit
+ledger advance atomically inside Moderation owner primitives for claims/finalizers executed
+after this source is active:
+
+- the first winning application claim moves `decided -> applying_decision`, increments the
+  case revision, and appends `case_application_started`; every winning claim appends
+  `application_attempt_claimed`;
+- retry/reclaim while the case is already `applying_decision` does not bump the case revision;
+- retryable completion keeps the case `applying_decision` and commits the retry schedule plus
+  `application_retry_scheduled` in the same owner transaction;
+- accepted application evidence commits operation `applied`, case
+  `applying_decision -> closed`, one case revision increment, `closed_at`, release of
+  `active_deduplication_key`, `application_applied`, and `case_closed` together;
+- application `rejected` or `operator_review` keeps those distinct operation outcomes but
+  fails closed at case level through `applying_decision -> escalated`, one case revision
+  increment, the corresponding application audit event, and `case_escalated` together;
+- an escalated case retains its active deduplication identity for later operator recovery and
+  report attachment; only a closed case releases it.
+
+If the operation CAS, case CAS or audit insert fails, the transaction rolls back rather than
+leaving a partially advanced case/application pair. `moderation_events` remains an internal
+owner audit ledger; this source slice does not freeze a typed cross-domain Moderation event
+family in `rustok-events`.
+
+Upgrade compatibility is fail-honest. Application rows that were already terminal
+(`applied`, `rejected`, or `operator_review`) before the atomic lifecycle source became active
+are no longer due and therefore do not flow through its claim/finalizer path. The owner now
+has an explicit replay-safe reconciliation command for those rows; it validates immutable
+decision/case identity and stored terminal evidence, then aligns only the Moderation case.
+It writes present-time reconciliation audit facts rather than fabricating historical lifecycle
+events or timestamps, and it never invokes a domain adapter just to construct history.
+
+## Operator recovery
+
+`operator_requeue_application_replay_safe` is a human-user, receipt-backed owner command for
+explicitly retrying the same immutable decision. It accepts only `rejected` or
+`operator_review`; an already `applied` decision can never be requeued. The command binds a
+positive expected case revision and bounded reason, validates exact decision/hash/subject/case
+identity and terminal storage shape, then atomically moves the operation to `retryable` due
+now and the case from `escalated` (or legacy pre-audit `decided`) to `applying_decision`.
+`application_operator_requeued` and `case_application_requeued` retain the operator UUID,
+reason, prior terminal status and prior error facts. The next shared-scheduler claim remains
+the only path to the one-attempt dispatcher, so the domain idempotency key stays the immutable
+decision UUID.
+
+`operator_reconcile_legacy_application_replay_safe` aligns only already-terminal operation
+truth with the Moderation case. Mapping is fixed: `applied -> closed` and
+`rejected|operator_review -> escalated`. Applied reconciliation requires stored
+`applied_revision >= reviewed_revision` plus stored `applied_at`; non-applied terminal rows
+must not contain applied evidence and no terminal row may retain a lease tuple. A case already
+in the matching terminal state returns a replay-safe no-op. A legacy `decided` or
+`applying_decision` case is advanced with one case revision CAS. Closed reconciliation uses
+the **current reconciliation time** for `closed_at` and releases the active deduplication key;
+it does not pretend the case closed at the older domain `applied_at`. The only audit facts
+written are `application_legacy_terminal_reconciled` and
+`case_legacy_terminal_reconciled` at reconciliation time.
+
+A true re-review is deliberately not an in-place recovery action. Reviewed subject revision
+is part of immutable decision identity, so stale-review recovery must create a new case and a
+new immutable decision from a freshly authorized producer-supplied subject revision. The old
+escalated case/decision remains historical truth. Moderation does not fetch a producer's
+current revision or silently rewrite/retarget the old decision.
+
 The Forum source slice demonstrates the matching receipt-first domain side using the shared
 Outbox owner-operation ledger. `PortContext.idempotency_key` equals the decision UUID; receipt
 admission binds the full immutable command before subject reads. Application then fences the
@@ -253,10 +333,10 @@ Forum moderation subject revision. Reply `Hidden` and `RejectPublication` share 
 bounded non-public lifecycle transaction; reply `Removed` uses the complete Forum removal
 owner path.
 
-The remaining orchestration gap is the scheduler and audit lifecycle: enumerate bounded due
-work in the selected runtime, call one-attempt dispatch, recover process crashes through
-lease reclaim, and advance case/application lifecycle events/operator recovery without
-weakening owner/domain idempotency. No background polling is claimed by this slice.
+The remaining orchestration code gap is no longer same-decision requeue or legacy-terminal
+reconciliation. Remaining owner/product work is the authorized admin transport/UI for these
+commands and the explicit fresh-case/new-decision re-review workflow, plus retained runtime,
+concurrency and database evidence before promotion.
 
 ## Source completed
 
@@ -290,21 +370,37 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - bounded one-attempt application dispatcher: immutable command reconstruction, exact adapter
   selection, decision-UUID domain idempotency, bounded deadline/backoff, retry/review/rejected
   classification and applied-evidence handoff, guarded by
-  `scripts/verify/verify-moderation-application-dispatch-once.mjs`.
+  `scripts/verify/verify-moderation-application-dispatch-once.mjs`;
+- shared runtime application scheduling: one Moderation `ModuleWorkRegistration`, read-only
+  earliest-due candidate discovery, canonical one-attempt CAS delegation, no-op generic
+  completion and shared host stop/background-worker lifecycle, guarded by
+  `scripts/verify/verify-moderation-application-work-scheduler.mjs`;
+- atomic application/case audit lifecycle for newly executed claims/finalizers over existing
+  owner storage: first-claim `decided -> applying_decision`, retry/reclaim without duplicate
+  case revision, applied `-> closed` with active-key release, rejected/operator-review
+  `-> escalated`, and matching internal `moderation_events` audit facts in the same owner
+  transaction, guarded by `scripts/verify/verify-moderation-application-audit-lifecycle.mjs`;
+- replay-safe operator application recovery: human-user same-decision requeue only for
+  rejected/operator-review outcomes, explicit applied-requeue denial, expected case revision
+  CAS, present-time legacy terminal reconciliation with no adapter invocation, and explicit
+  fresh-case/new-decision re-review semantics, guarded by
+  `scripts/verify/verify-moderation-application-operator-recovery.mjs`.
 
 ## Next priorities
 
-1. Add the runtime scheduler/runner over the bounded one-attempt dispatcher: bounded due
-   enumeration, process-crash recovery through lease reclaim, lifecycle ownership and safe
-   shutdown/startup behavior without duplicating adapter invocation logic.
-2. Define and persist case/application audit lifecycle around dispatch outcomes, including
-   `decided -> applying_decision -> closed/escalated` semantics and transactional application
-   lifecycle events; add bounded operator retry/requeue/re-review recovery.
+1. Add the authorized Moderation admin transport/UI over the source-ready application recovery
+   commands and define the explicit fresh producer-revision -> new case -> new immutable
+   decision re-review workflow without mutating historical cases/decisions.
+2. Retain operator-recovery, application-audit and shared-scheduler evidence: human actor gate,
+   command receipt replay/conflict, expected case revision contention, rejected/operator-review
+   requeue, applied requeue denial, next scheduler claim after requeue, legacy terminal
+   reconciliation/no-op, no domain invocation during reconciliation, audit rollback,
+   first-claim lifecycle, multi-host CAS convergence, graceful stop and crash recovery.
 3. Retain clean/upgraded PostgreSQL/SQLite application-operation migration/backfill evidence,
    atomic decision enqueue, due bounds/order, concurrent claim, lease expiry/reclaim,
    stale-token rejection, command reconstruction, exact adapter selection, retry/error
    classification, stale-conflict review, invalid-success-evidence review, lost-response
-   replay and applied-evidence validation.
+   replay, exactly-one case close and legacy-terminal reconciliation parity.
 4. Retain executable host-composition evidence for selected-owner/missing-owner,
    Moderation-only empty materialization and Forum+Moderation topic/reply materialization;
    prove factory build failures remain fail-closed.
@@ -322,8 +418,8 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
    membership-scoped expiry reference adapter, then Blog, Comments, Pages, Reviews,
    Marketplace, Media, Messaging, and Profiles.
 10. Add versioned policies, premoderation, automated assessment providers, appeals, and
-   capability-scoped account sanctions; publish admin queue/case/application surfaces only
-   after owner runtime composition.
+   capability-scoped account sanctions; publish broader admin queue/case/application surfaces
+   only after owner runtime composition.
 
 ## Invariants
 
@@ -333,6 +429,35 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - every new typed decision commits one durable pending application operation atomically;
 - historical decisions without typed effects remain non-dispatchable and are not backfilled;
 - only a live UUID lease token may finish an applying operation; expired leases are reclaimable;
+- the shared scheduler may discover a candidate but the existing Moderation CAS remains the
+  sole durable operation claim before any domain adapter call;
+- the generic module-work envelope token never substitutes the Moderation operation lease or
+  immutable decision UUID domain idempotency key;
+- generic module-work completion never writes a second Moderation applied/retry/rejected state;
+- Moderation must not add a bespoke polling loop outside the shared `ModuleWorkScheduler`;
+- the first winning operation claim advances a `decided` case to `applying_decision`; retries
+  and expired-lease reclaim do not repeatedly advance the case revision;
+- retryable application outcomes keep the case in `applying_decision`;
+- only accepted matching application evidence closes a case, and operation `applied`,
+  `closed_at`, active-deduplication release and matching owner audit facts commit together;
+- rejected/operator-review outcomes never close the case; they escalate it with matching
+  owner audit facts and preserve the active deduplication identity;
+- application/case lifecycle transitions and `moderation_events` audit inserts are one owner
+  transaction and cannot partially commit;
+- the internal `moderation_events` audit ledger is not silently promoted into a public typed
+  cross-domain event contract;
+- operator recovery requires a human user actor, a command idempotency key, a bounded reason
+  and exact expected case revision;
+- same-decision operator requeue is allowed only from `rejected` or `operator_review`; an
+  `applied` decision is never returned to retryable work;
+- operator requeue preserves immutable decision UUID/hash/subject identity and reaches the
+  domain only later through the existing scheduler + dispatcher path;
+- terminal reconciliation never invokes a domain adapter and never invents historical
+  application/case audit facts or timestamps;
+- applied legacy reconciliation requires stored applied evidence and closes at reconciliation
+  time; rejected/operator-review legacy reconciliation escalates and preserves active identity;
+- a stale reviewed revision is re-reviewed only through a new case and new immutable decision
+  built from a freshly authorized producer revision; an old decision is never retargeted;
 - the dispatcher selects exactly the stored subject module/kind adapter and never falls back;
 - every domain application attempt uses the immutable decision UUID as its idempotency key;
 - retryable neutral errors and missing adapters never become applied or terminal rejection;
@@ -357,21 +482,35 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 
 - moderation unavailable: existing domain enforcement remains authoritative; no new
   sanction is inferred;
-- adapter missing/unavailable: one-attempt dispatch records retryable state and never marks
-  applied;
-- domain owner unavailable/timeout: retryable neutral errors schedule bounded backoff;
-- owner storage failure after claim: the attempt remains applying until lease expiry and is
-  then reclaimable; no domain outcome is fabricated;
-- worker crash while applying: the expired lease becomes reclaimable; stale lease tokens
-  cannot complete the reclaimed operation;
+- background workers disabled: durable application intent remains pending/retryable and no
+  application is guessed or silently marked applied;
+- duplicate scheduler candidate discovery across hosts: the existing Moderation CAS chooses
+  at most one live attempt; losing hosts perform no domain mutation;
+- shared runtime stop: no new module-work claims begin after stop while already claimed work
+  may finish its canonical owner path;
+- adapter missing/unavailable: one-attempt dispatch records retryable state, leaves the case
+  `applying_decision`, and never marks applied;
+- domain owner unavailable/timeout: retryable neutral errors schedule bounded backoff while
+  the case stays `applying_decision`;
+- owner storage/audit failure after claim or during finalization: the owner transaction does
+  not partially advance operation/case/audit state; the live/expired operation lease remains
+  the recovery boundary and no domain outcome is fabricated;
+- worker crash while applying: the expired lease becomes reclaimable; the case remains
+  `applying_decision` and stale lease tokens cannot complete the reclaimed operation;
+- pre-audit terminal operation on upgrade: a human operator may run bounded reconciliation;
+  terminal operation truth is preserved, no historical lifecycle is fabricated and no domain
+  adapter is called merely to construct history;
+- explicit same-decision recovery: rejected/operator-review may be requeued under a human
+  receipt-backed case-revision CAS; applied remains terminal and cannot be requeued;
+- stale reviewed revision/conflict: operation enters operator review and the case escalates;
+  true re-review requires a new case/new decision at a freshly authorized producer revision,
+  never retargeting the old decision;
 - moderation disabled: authorized domain-local enforcement may continue when product policy
   permits it, while report/case/appeal features are unavailable;
-- stale reviewed revision/conflict: operator review and explicit re-review/new decision,
-  never retargeted or guessed applied;
-- unsupported deterministic validation/not-found/forbidden outcome: rejected application,
-  never guessed success;
-- missing/corrupt owner command identity or mismatched successful evidence: operator review,
-  never automatic replay to success;
+- unsupported deterministic validation/not-found/forbidden outcome: rejected application and
+  escalated case, never guessed success;
+- missing/corrupt owner command identity or mismatched successful evidence: operator review
+  and escalated case, never automatic replay to success;
 - unknown effect version or legacy `effect: None`: no domain mutation.
 
 ## Verification required before promotion
@@ -385,18 +524,35 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - `node scripts/verify/verify-moderation-host-composition.mjs`;
 - `node scripts/verify/verify-moderation-application-operation.mjs`;
 - `node scripts/verify/verify-moderation-application-dispatch-once.mjs`;
+- `node scripts/verify/verify-moderation-application-work-scheduler.mjs`;
+- `node scripts/verify/verify-moderation-application-audit-lifecycle.mjs`;
+- `node scripts/verify/verify-moderation-application-operator-recovery.mjs`;
 - `cargo check -p rustok-server --no-default-features --features mod-moderation`;
 - `cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"`;
 - `cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles`;
 - `cargo test -p rustok-server --no-default-features --features "mod-forum mod-moderation" --test moderation_composition_profiles`;
+- human-actor recovery enforcement, command receipt replay/changed-request conflict and
+  expected case revision contention evidence;
+- rejected/operator-review same-decision requeue, applied requeue denial, requeue from current
+  escalated and legacy decided case states, next scheduler claim and immutable decision UUID
+  domain idempotency evidence;
+- applied/rejected/operator-review legacy-terminal reconciliation, already-consistent no-op,
+  current reconciliation-time close semantics, active-key release/preservation, corrupt
+  terminal evidence fail-closed behavior and proof of no domain adapter invocation;
+- shared scheduler registration/background-worker-disabled/stop behavior, earliest-due
+  selection and multi-host same-candidate CAS convergence evidence;
+- first claim `decided -> applying_decision`, retry/reclaim without duplicate case revision,
+  retry audit atomicity, applied + closed + active-key release + audit atomicity,
+  rejected/operator-review + escalated + audit atomicity, audit-insert rollback, stale-token
+  finalizer rollback and case revision CAS contention evidence;
 - clean/upgraded PostgreSQL and SQLite decision-effect and application-operation migration
   evidence, including typed-effect-only backfill and legacy effectless exclusion;
 - atomic decision/effect/pending-operation/event/receipt commit and replay evidence;
 - due ordering/bounds, concurrent claim, lease expiry/reclaim, stale-token rejection,
   command reconstruction, exact registry selection, retry scheduling/classification,
   stale-conflict operator-review and applied-evidence mismatch operator-review evidence;
-- lost-response evidence proving repeated domain calls keep the decision UUID idempotency key
-  and replay the domain receipt rather than reapply;
+- lost-response evidence proving repeated domain calls keep the decision UUID idempotency key,
+  replay the domain receipt rather than reapply, and close the Moderation case exactly once;
 - owner-storage failure after claim followed by lease-expiry reclaim evidence;
 - Forum moderation subject revision migration/backfill and topic/reply content/lifecycle
   trigger-advance evidence on PostgreSQL and SQLite;
@@ -405,7 +561,7 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
   evidence;
 - historical decision `effect: None` read and non-dispatch evidence;
 - PostgreSQL duplicate-report, active-case, and case-revision contention tests;
-- scheduler/process crash/retry recovery and future case/application audit lifecycle evidence;
+- fresh-revision re-review/new-case/new-decision admin flow evidence once transport/UI exists;
 - Forum shared-receipt replay/request conflict, trusted caller, stale revision, permanent-lock,
   reply-hide, reply-reject and reply-remove versus concurrent content/lifecycle edit evidence;
 - approved-to-hidden and approved-to-rejected topic/category/author counter adjustment,
@@ -420,5 +576,5 @@ weakening owner/domain idempotency. No background polling is claimed by this sli
 - composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback
   evidence.
 
-No new execution evidence is claimed by the bounded one-attempt application-dispatch source
-slice. Maintainer-run verification remains required before promotion.
+No new execution evidence is claimed by the application operator-recovery source slice.
+Maintainer-run verification remains required before promotion.

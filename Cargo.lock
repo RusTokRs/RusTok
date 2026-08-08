@@ -12991,7 +12991,10 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "async-trait",
+ "chrono",
  "flex",
+ "hex",
+ "rust_decimal",
  "rustok-ai",
  "rustok-ai-translation",
  "rustok-api",
@@ -13962,6 +13965,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-moderation-api",
+ "rustok-runtime",
  "sea-orm",
  "sea-orm-migration",
  "serde",

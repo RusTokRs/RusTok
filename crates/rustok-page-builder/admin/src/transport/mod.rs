@@ -1,4 +1,4 @@
-use crate::ConsumerPropertyEditorRuntime;
+use crate::{ConsumerPropertyEditorRuntime, PageBuilderAdminProviderStatus};
 use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PageBuilderCapabilityResponse};
 use std::future::Future;
 use std::pin::Pin;
@@ -37,6 +37,15 @@ pub trait PageBuilderAdminFacade: Send + Sync {
     fn consumer_properties(&self) -> Option<Arc<ConsumerPropertyEditorRuntime>> {
         None
     }
+
+    /// Optional provider control snapshot for this concrete consumer composition.
+    ///
+    /// Rollout flags must match the flags used by the facade's capability pipeline. Observed health
+    /// remains optional; returning no snapshot is intentionally different from claiming the provider
+    /// is healthy. The admin runtime may only use this status to narrow host tenant/RBAC capabilities.
+    fn provider_status(&self) -> Option<PageBuilderAdminProviderStatus> {
+        None
+    }
 }
 
 impl<T> PageBuilderAdminFacade for Arc<T>
@@ -49,6 +58,10 @@ where
 
     fn consumer_properties(&self) -> Option<Arc<ConsumerPropertyEditorRuntime>> {
         self.as_ref().consumer_properties()
+    }
+
+    fn provider_status(&self) -> Option<PageBuilderAdminProviderStatus> {
+        self.as_ref().provider_status()
     }
 }
 

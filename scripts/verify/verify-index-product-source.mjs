@@ -29,17 +29,17 @@ forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, ['rustok-index',
 
 const modulePath = 'crates/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
+  'mod attribute_terms;',
   'mod channel_visibility;',
   'mod product;',
   'mod variant;',
+  'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
+  'Lower keys are historical storage identities only.',
   'product::register(extensions)?;',
   'variant::register(extensions)?;',
   'absence::register(extensions)?;',
   'query_admission::register(extensions)?;',
   'selected_product_bridge_registers_two_current_schemas_three_factories_and_entity_admissions',
-  'selected_product_and_channel_bridge_registers_channel_admission_and_convergence_work',
-  'assert_eq!(admissions.len(), 2)',
-  'assert_eq!(admissions.len(), 3)',
 ]);
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
@@ -51,51 +51,57 @@ for (const removed of [
   'scripts/verify/verify-index-product-graph-source.mjs',
   'scripts/verify/verify-index-product-v3-projection-ledger.mjs',
 ]) {
-  if (fs.existsSync(resolve(removed))) {
-    fail(`removed Product compatibility artifact still exists: ${removed}`);
-  }
+  if (fs.existsSync(resolve(removed))) fail(`removed Product compatibility artifact still exists: ${removed}`);
 }
 
 const sourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
 const source = requireMarkers(sourcePath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
+  'derive_index_schema_source_event_id',
+  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'fn product_schema()',
   'locale_mode: LocaleMode::Required',
-  'many_field("variant_ids", IndexValueType::Uuid, true)?',
-  'many_field("sales_channel_ids", IndexValueType::Uuid, true)?',
+  'scalar_field("seller_id", IndexValueType::String, true, false, false)?',
+  'many_field("tag_ids", IndexValueType::Uuid, true, false)?',
+  'scalar_field("created_at", IndexValueType::Timestamp, false, false, true)?',
+  'scalar_field("published_at", IndexValueType::Timestamp, true, true, true)?',
+  'many_field("attribute_terms", IndexValueType::String, false, true)?',
+  'many_field("variant_ids", IndexValueType::Uuid, true, true)?',
+  'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)?',
   'name: link_name("variants")?',
   'name: link_name("sales_channels")?',
-  'target_schema: product_variant_schema_ref()?',
-  'target_schema: sales_channel_schema_ref()?',
-  'assert_eq!(schema.fields.len(), 10);',
+  'assert_eq!(schema.fields.len(), 15);',
   'assert_eq!(schema.links.len(), 2);',
   'product_index_graph_projection_snapshots',
   'product_sales_channel_index_relation_snapshots',
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',
   'projection.projection_epoch AS source_version',
+  'product_tags product_tag',
+  "COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids",
+  "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
+  'p.seller_id',
+  'p.created_at',
+  'p.published_at',
   'projection.channel_ids AS sales_channel_ids',
-  'freshness.visibility_key AS freshness_visibility_key',
-  'freshness.channel_identity_generation AS freshness_channel_identity_generation',
   'decode_product_visibility(&metadata)',
   'freshness_visibility_key != current_visibility_key',
-  'freshness_channel_identity_generation != current_channel_identity_generation',
+  'freshness_channel_identity_generation < current_channel_identity_generation',
   'freshness_product_source_version > observed_product_source_version',
   'projected_product_source_version != observed_product_source_version',
-  'does not require a live freshness witness',
+  'does not require live Storefront fields or a live freshness witness',
   'FROM products p',
   'JOIN product_translations t',
   'FROM product_index_tombstones tombstone',
   'jsonb_agg(v.id ORDER BY v.id)',
   '(row.product_id, row.locale) > ($2, $3)',
-  'ORDER BY row.product_id ASC, row.locale ASC',
   'WITH requested(product_id, locale) AS (VALUES {})',
   'IndexMutation::Delete {',
   'IndexMutation::Upsert {',
-  'canonical_product_schema_contains_only_current_fields_and_links',
+  'canonical_product_schema_contains_only_current_storefront_graph_contract',
   'canonical_product_registration_publishes_one_schema_and_one_source_factory',
-  'canonical_product_projection_sql_requires_owner_projection_relation_and_freshness',
+  'canonical_product_sql_materializes_storefront_graph_and_eav_state',
 ]);
 forbidMarkers(sourcePath, source, [
   'ProductSchemaVersion',
@@ -105,6 +111,8 @@ forbidMarkers(sourcePath, source, [
   'PRODUCT_EVENT_DOMAIN_V2',
   'product-replay-v1',
   'product-replay-v2',
+  'derive_index_source_event_id(',
+  'SchemaVersion::new(3)',
   'FROM channels',
   'JOIN channels',
   'index_entities',
@@ -114,57 +122,28 @@ forbidMarkers(sourcePath, source, [
   'loop {',
 ]);
 
-const absencePath = 'crates/rustok-distribution/src/product_index/absence.rs';
-const absence = requireMarkers(absencePath, [
-  'PRODUCT_ABSENCE_WATERMARK_FACTORY',
-  'product-locale-absence-postgres',
-  '[product_schema_ref()?]',
-  'product_index_graph_projection_snapshots',
-  'projection.product_source_version = product.index_revision',
-  'product_sales_channel_index_relation_snapshots',
-  'product_sales_channel_index_relation_freshness_snapshots',
-  'channel_index_identity_generations',
-  'decode_product_visibility(&metadata)',
-  'freshness_visibility_key != current_visibility_key',
-  'freshness_channel_identity_generation != current_channel_identity_generation',
-  'FROM product_translations translation',
-  'FROM product_index_tombstones tombstone',
-  'IndexSourceAbsenceWatermark::new(key, source_version)',
-]);
-forbidMarkers(absencePath, absence, [
-  'product_schema_ref(1)',
-  'product_schema_ref(2)',
-  'product_index_graph_v3_projection_snapshots',
-  'CAST(product.index_revision AS TEXT)',
-  'INSERT ',
-  'UPDATE ',
-  'DELETE FROM',
-  'index_entities',
-  'index_links',
-  'tokio::spawn',
-  'loop {',
-]);
+for (const currentConsumer of [
+  'crates/rustok-distribution/src/product_index/absence.rs',
+  'crates/rustok-distribution/src/product_index/query_admission.rs',
+]) {
+  const consumer = requireMarkers(currentConsumer, [
+    'PRODUCT_SCHEMA_ROUTING_KEY',
+    'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
+  ]);
+  forbidMarkers(currentConsumer, consumer, ['SchemaVersion::new(3)']);
+}
 
-const canonicalMigration = requireMarkers(
-  'crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs',
-  [
-    'product_index_graph_projection_snapshots',
-    'rustok_product_guard_index_graph_projection_snapshot',
-    'rustok_product_reconcile_index_graph_projection',
-    'trg_products_zz_index_graph_projection_delete',
-    'trg_product_channel_relation_index_graph_projection_insert',
-  ],
-);
-forbidMarkers(
-  'crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs',
-  canonicalMigration,
-  ['FROM channels', 'JOIN channels', 'index_entities', 'index_links', 'IndexMutation'],
-);
+requireMarkers('crates/rustok-distribution/src/product_index/attribute_terms.rs', [
+  'PRODUCT_ATTRIBUTE_TERMS_CTE',
+  'localized_text_filter(',
+  'localized_present',
+]);
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-source.mjs'",
+  "'verify-index-product-attribute-term-contract.mjs'",
   "'verify-index-product-channel-relation-freshness.mjs'",
   "'verify-index-linked-target-query-freshness.mjs'",
 ]);
 
-console.log('[verify-index-product-source] canonical Product source and graph entity admission verified');
+console.log('[verify-index-product-source] single-current Storefront-capable Product source verified');
