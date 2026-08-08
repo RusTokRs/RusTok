@@ -4,6 +4,10 @@ const graphql = fs.readFileSync(
   "crates/rustok-groups/src/graphql_membership_enforcement.rs",
   "utf8",
 );
+const finalRoot = fs.readFileSync(
+  "crates/rustok-groups/src/graphql_application_cas.rs",
+  "utf8",
+);
 const moduleSource = fs.readFileSync("crates/rustok-groups/src/lib.rs", "utf8");
 const manifest = fs.readFileSync("crates/rustok-groups/rustok-module.toml", "utf8");
 const registry = fs.readFileSync(
@@ -24,8 +28,6 @@ function requireText(source, needle, message) {
 }
 
 for (const marker of [
-  "MergedObject",
-  "GroupsBaseMutationRoot",
   "GroupsMembershipEnforcementMutation",
   "suspend_group_membership",
   "revoke_group_membership_suspension",
@@ -66,21 +68,33 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  '#[cfg(feature = "graphql")]\npub mod graphql_membership_enforcement;',
+  "MergedObject",
+  "pub struct GroupsMutationRoot",
+  "GroupsPreApplicationMutationRoot",
+  "GroupsApplicationCasMutation",
+  "GroupsApplicationBulkReviewMutation",
+  "GroupsApplicationLifecycleMutation",
+  "GroupsMembershipEnforcementMutation",
 ]) {
-  requireText(moduleSource, marker, `Groups module registration is missing ${marker}`);
+  requireText(finalRoot, marker, `Stable Groups final GraphQL root is missing ${marker}`);
 }
+
+requireText(
+  moduleSource,
+  '#[cfg(feature = "graphql")]\npub mod graphql_membership_enforcement;',
+  "Groups module registration is missing enforcement GraphQL module",
+);
 
 for (const marker of [
   'query = "graphql_application_cas::GroupsQueryRoot"',
-  'mutation = "graphql_membership_enforcement::GroupsMutationRoot"',
+  'mutation = "graphql_application_cas::GroupsMutationRoot"',
 ]) {
-  requireText(manifest, marker, `Groups module GraphQL composition is missing ${marker}`);
+  requireText(manifest, marker, `Groups stable module GraphQL composition is missing ${marker}`);
 }
 
 for (const marker of [
   '"transport_status": "rust_and_graphql_source"',
-  '"graphql_root": "graphql_membership_enforcement::GroupsMutationRoot"',
+  '"graphql_root": "graphql_application_cas::GroupsMutationRoot"',
   '"suspendGroupMembership"',
   '"revokeGroupMembershipSuspension"',
   '"membership_enforcement_graphql_static_boundary"',
@@ -91,6 +105,8 @@ for (const marker of [
 
 for (const marker of [
   "Source-complete direct enforcement GraphQL transport",
+  "graphql_application_cas::GroupsMutationRoot",
+  "GroupsMembershipEnforcementMutation",
   "suspendGroupMembership",
   "revokeGroupMembershipSuspension",
   "membership-enforcement-graphql.mjs",
@@ -103,6 +119,7 @@ for (const marker of [
   "Transport boundary",
   "Owner-only business semantics",
   "No fallback",
+  "graphql_application_cas::GroupsMutationRoot",
   "GroupMembershipEnforcementCommandPort",
   "cargo check -p rustok-groups --features graphql",
 ]) {
