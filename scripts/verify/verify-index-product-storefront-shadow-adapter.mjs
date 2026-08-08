@@ -21,16 +21,25 @@ const requireMarkers = (relative, markers) => {
 const shadowPath = 'crates/rustok-distribution/src/product_index/storefront_shadow.rs';
 const shadow = requireMarkers(shadowPath, [
   'pub(crate) fn build_product_storefront_index_shadow_query(',
+  'resolved_attribute_filters: Vec<ProductResolvedAttributeFilter>',
+  'resolved_attribute_filters_to_index(owner, resolved_attribute_filters)?',
+  'owner.code.eq_ignore_ascii_case(resolved.code.as_str())',
+  'fn product_term_expr_to_index(',
+  'ProductAttributeTermExpr::Term(term)',
+  'ProductAttributeTermExpr::And(children)',
+  'ProductAttributeTermExpr::Or(children)',
+  'ProductAttributeTermExpr::Not(child)',
+  'ProductAttributeTermExpr::Never',
+  'FilterExpr::Contains(',
+  'root_field("attribute_terms")?',
+  'FilterExpr::Not(Box::new(FilterExpr::IsNull(',
+  'root_field("id")?',
   'ProductStorefrontIndexShadowError::PublicChannelRequired',
   'ProductStorefrontIndexShadowError::OffsetTooDeep',
   'ProductStorefrontIndexShadowError::SearchPatternTooLong',
   'ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch',
   'ProductStorefrontIndexShadowError::InvalidAttributeTermPredicate',
   'ProductStatus::Active.to_string()',
-  'FilterExpr::IsNull(root_field("published_at")?, false)',
-  'root_field("sales_channel_ids")?',
-  'root_field("primary_category_id")?',
-  'root_field("attribute_terms")',
   'FilterExpr::TextLike(root_field("title")?, pattern)',
   'StorefrontProductSortBy::PublishedAt => ["published_at", "created_at"]',
   'StorefrontProductSortBy::CreatedAt => ["created_at", "published_at"]',
@@ -51,25 +60,15 @@ for (const forbidden of [
   if (shadow.includes(forbidden)) fail(`${shadowPath} must remain a pure shadow query builder; found ${forbidden}`);
 }
 
+requireMarkers('crates/rustok-product/src/catalog_schema_read_port.rs', [
+  'async fn resolve_storefront_attribute_filters(',
+  'ProductResolvedAttributeFilter',
+]);
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'mod storefront_shadow;',
   'build_product_storefront_index_shadow_query',
   'ProductStorefrontIndexShadowError',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
-]);
-
-const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
-const owner = requireMarkers(ownerPath, [
-  'ProductStatus::Active',
-  'Column::PublishedAt.is_not_null()',
-  'product_channel_visibility_condition(',
-  'Column::PrimaryCategoryId.eq(category_id)',
-  'attribute_filters::load_catalog_attribute_filter_conditions(',
-  'let pattern = format!("%{search}%");',
-  'pt.title LIKE $1',
-  '.order_by_asc(entities::product::Column::Id)',
-  '.order_by_desc(entities::product::Column::Id)',
-  'let total = query.clone().count(&self.db).await?',
 ]);
 
 const storefrontPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
@@ -81,10 +80,4 @@ for (const forbidden of ['rustok_index', 'SharedIndexQueryRuntime', 'execute_loc
   if (storefront.includes(forbidden)) fail(`${storefrontPath} must remain owner-native; found ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
-  'if visibility.is_unrestricted',
-  'list_sales_channel_ids(',
-  'visibility.allowed_slugs',
-]);
-
-console.log('[verify-index-product-storefront-shadow-adapter] Product Storefront shadow builder is source-locked; traffic and unresolved owner metadata/search/channel gates remain fail-closed');
+console.log('[verify-index-product-storefront-shadow-adapter] shadow builder consumes only Product-owned resolved terms and remains non-serving/fail-closed');
