@@ -72,8 +72,9 @@ for (const forbidden of ['pub partition', 'partition_key', 'targeted_rebuild', '
 
 requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
   'optional canonicalizable locale',
-  'Omitting locale remains exactly schema-wide',
-  '`partition_key` remains empty',
+  'Omission is not inferred from schema metadata',
+  'The terminal success fence checks the checkpoint using the leased locale',
+  '`partition_key`',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-locale-replay-runner-graphql.md', [
   'runner_graphql_source_complete_execution_pending',
