@@ -21,6 +21,10 @@ const requireMarkers = (relative, markers) => {
 const runtimePath = 'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
 const runtime = requireMarkers(runtimePath, [
   'pub struct SharedIndexReplayRuntime',
+  'targeted: Arc<IndexReplayTargetedExecutor<PostgresMutationStore>>',
+  'pub async fn run_targeted(',
+  'request: IndexSourceLoadRequest',
+  '.run(crate::IndexReplayModeSelection::Targeted(request))',
   'pub async fn run_interruptible<Check>(',
   'Check: FnMut() -> bool',
   '.run_interruptible(request, should_interrupt)',
@@ -35,7 +39,9 @@ const runtime = requireMarkers(runtimePath, [
   'return Ok(None);',
   'materialize_index_replay_dry_run_runtime(extensions)?;',
   'register_postgres_index_reconciliation_work(extensions)?;',
-  'PostgresIndexReplayRunner::new(',
+  'let targeted = IndexReplayTargetedExecutor::new(',
+  'PostgresMutationStore::new(db.clone())',
+  'PostgresIndexReplayRunner::new(db, sources, schema_registry)',
   'extensions.insert(runtime.clone())',
   'missing_source_registry_does_not_publish_false_replay_or_work_runtime',
   'source_registry_without_shared_schema_registry_fails_closed',
@@ -52,9 +58,10 @@ for (const forbidden of [
 }
 const dryRun = runtime.indexOf('materialize_index_replay_dry_run_runtime(extensions)?;');
 const work = runtime.indexOf('register_postgres_index_reconciliation_work(extensions)?;');
-const replay = runtime.indexOf('let runtime = SharedIndexReplayRuntime::new(', work);
-if (dryRun < 0 || work <= dryRun || replay <= work) {
-  fail(`${runtimePath} must publish dry-run, work registration, then replay runtime`);
+const targeted = runtime.indexOf('let targeted = IndexReplayTargetedExecutor::new(', work);
+const replay = runtime.indexOf('let runtime = SharedIndexReplayRuntime::new(', targeted);
+if (dryRun < 0 || work <= dryRun || targeted <= work || replay <= targeted) {
+  fail(`${runtimePath} must publish dry-run, work registration, Targeted executor, then shared replay runtime`);
 }
 
 const serverPath = 'apps/server/src/services/index_replay_runtime_composition.rs';
@@ -63,8 +70,11 @@ const server = requireMarkers(serverPath, [
   'pub struct IndexReplayOperatorRuntime',
   'inner: rustok_index::SharedIndexReplayRuntime',
   'shadow: rustok_index::SharedIndexReplayDryRunRuntime',
-  'pub async fn run_shadow(',
+  'pub async fn run_targeted(',
+  'request: rustok_index::IndexSourceLoadRequest',
   'context.authorize_for(request.tenant_id())?;',
+  'self.inner.run_targeted(request).await.map_err(Into::into)',
+  'pub async fn run_shadow(',
   'self.shadow.run(request).await.map_err(Into::into)',
   'pub async fn run_interruptible<Check>(',
   '.run_interruptible(request, should_interrupt)',
@@ -125,15 +135,17 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   'Status: `source_complete_owner_execution_pending`',
-  'one module-work registration for due reconciliation execution',
+  'bounded shared replay runtime containing durable Full plus exact-key Targeted execution',
+  '`IndexReplayTargetedExecutor<PostgresMutationStore>`',
   'publishes no replay runtime, no dry-run runtime, no Shadow transport runtime and no empty Index work registration',
   'The Index materializer performs no SQL',
   'starts the single generic `ModuleWorkScheduler` only when registrations exist',
+  '`SharedIndexReplayRuntime::run_targeted`',
   '`SharedIndexReplayRuntime::run_interruptible`',
   '`IndexReplayShadowTransportRuntime`',
   'one current unversioned envelope',
   '`IndexSourceContinuationScope::from_registry` is schema-wide; `for_locale` binds one exact canonical `LocaleKey`',
-  'execute/admit schema-wide and exact-locale Shadow GraphQL plus continuation-key deployment evidence',
+  'dedicated authorization-first Targeted public transport',
   'The work registration added here is reconciliation-only',
   'maintainer-run',
 ]);
@@ -143,9 +155,10 @@ requireMarkers('crates/rustok-index/docs/m6-reconciliation-host-scheduler.md', [
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-runtime-composition.mjs'",
+  "'verify-index-replay-targeted-host-dispatch.mjs'",
   "'verify-index-replay-shadow-host-dispatch.mjs'",
   "'verify-index-replay-shadow-graphql-transport.mjs'",
   "'verify-index-reconciliation-host-scheduler.mjs'",
 ]);
 
-console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Shadow no-write/sealed and locale-aware, one unversioned continuation format, and reconciliation under the single generic scheduler boundary');
+console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Targeted PostgreSQL-backed/request-guarded without a second owner, Shadow no-write/sealed, and reconciliation under the single generic scheduler boundary');
