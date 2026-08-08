@@ -20,7 +20,8 @@ The query:
 
 - resolves the routed `TenantContext` and `AuthContext` on the Pages GraphQL server;
 - rejects a tenant mismatch;
-- maps Preview/Tree/Properties/Publish to the same Pages permissions used by `PageBuilderCapabilityPermissions`;
+- uses the exact Preview/Tree→`pages:read`, Properties→`pages:update`, Publish→`pages:publish` mapping used by `PageBuilderCapabilityPermissions`;
+- keeps that mapping source-locked against the server-only Page Builder authorizer instead of enabling the Page Builder `server` feature inside `rustok-pages`;
 - requires the effective permission before rollout evaluation;
 - reads the persisted Pages tenant-module settings through the existing server-owned rollout loader;
 - evaluates the same `rustok_page_builder::rollout::ensure_capability` guard used by `CapabilityGuardedService`;
@@ -28,6 +29,8 @@ The query:
 - returns `allowed=false`, `errorKind=feature-disabled`, `errorCode=FEATURE_DISABLED` for a disabled capability.
 
 The preflight never invokes Preview rendering or Publish persistence. This is deliberate: `CapabilityGuardedService` already checks `ensure_capability` before write-policy validation and before its inner Publish service/store, so the query gives the canonical provider error contract without creating a document write path.
+
+The source guard verifies both mappings together. Any future change in `PageBuilderCapabilityPermissions` that is not mirrored by the lightweight Pages preflight mapping fails the feature-preflight source contract instead of silently changing authorization semantics.
 
 ## Four-profile harness
 
