@@ -68,6 +68,21 @@ Never-completing phases use `std::future::pending`; timeout cancellation is stil
 `tokio::time::timeout` wrapper. The packet has not been executed by the implementation agent and therefore is
 not admitted runtime/latency evidence yet.
 
+## Current Product key-4 promotion — source contract complete, execution pending
+
+Current Product runtime code publishes one 15-field schema on routing key `4` and derives replay delivery IDs
+with `derive_index_schema_source_event_id`. Lower Product keys are historical persisted identities, not runtime
+compatibility implementations.
+
+Tenant promotion must remain staged: ordinary-register key `4`, rebuild/evidence it while lower persisted keys
+may still be active, then call `PostgresSchemaRegistrationStore::register_current` with the same staged key `4`
+contract. Final supersession retires lower active Product schemas atomically; old-key readiness/query execution
+must then fail closed as inactive.
+
+The focused source contract is retained in `m7-product-current-schema-promotion.md` and
+`verify-index-product-current-schema-promotion.mjs`. It does not claim that any tenant has completed the
+stage/rebuild/promote sequence.
+
 ## Search/collation/EAV source state
 
 Product owns the 1022-byte effective Storefront title-search bound compatible with generic 1024-byte
@@ -84,15 +99,15 @@ bind-free `Never`. Current Product Index remains one 15-field schema on routing 
 2. Maintainer execution/review of Storefront core/EAV/collation and actualized retained Product packets.
 3. Collation admission per deployment: any owner/default-vs-`C` mismatch keeps eligible cutover closed.
 4. Stale locale/readiness/admission/restart evidence remains maintainer-run.
-5. Stage/rebuild/promote current Product key `4` and admit replacement evidence.
+5. Execute/admit Product key-4 promotion evidence and perform tenant stage/rebuild/`register_current`.
 6. Any serving router must preserve channel-less/deep-page owner-native branches and traffic switch remains last.
 
 ## Next source boundary
 
 Do not move mounted Storefront traffic from source inspection alone. Further serving composition depends on
-maintainer execution/admission of timeout, Storefront parity/collation, stale-readiness and replacement evidence.
-Independent source work may continue only on one of those retained evidence boundaries without weakening this
-gate.
+maintainer execution/admission of timeout, Storefront parity/collation, stale-readiness and key-4 promotion
+evidence. Independent source work may continue only on one of those retained evidence boundaries without
+weakening this gate.
 
 ## Source guards
 
@@ -101,6 +116,7 @@ gate.
 - `verify-index-product-storefront-budgeted-execution.mjs` locks post-owner phase timeout enforcement;
 - `verify-index-product-storefront-budgeted-execution-evidence.mjs` locks the deterministic retained timeout
   packet and test-only phase seam;
+- `verify-index-product-current-schema-promotion.mjs` locks the single-current key-4 staged-promotion contract;
 - `verify-index-product-storefront-shadow-executor.mjs` keeps the ordinary evidence executor separate;
 - request-shape, public-projection, tag-hydration, collation and key-4 guards remain retained;
 - `verify-index-product-storefront-parity-gate.mjs` keeps mounted Storefront owner-native.

@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Storefront budgeted execution merge
-`dd57844c52d05e624710eda6174b43c246173886` and continued on
-`agent/product-storefront-budgeted-execution-evidence-20260808`.
+Status overlay rechecked after Storefront budgeted timeout evidence merge
+`e0bbcc885d7670990fdf0c21d5f2ef01f5015a99` and continued on
+`agent/product-key4-promotion-contract-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -36,6 +36,8 @@ Source-complete:
   enforces outer Tokio timeouts for raw Index/EAV execution and Product tag hydration;
 - deterministic storage-free timeout evidence source for that real budgeted adapter through a crate-private
   post-owner phase seam implemented in production by `ProductStorefrontIndexShadowExecutor`;
+- explicit current Product key-4 tenant promotion contract: ordinary-register/stage, schema-scoped rebuild,
+  evidence admission, `register_current`, lower-key retirement and old-key fail-closed readiness/query behavior;
 - current-key core/EAV Storefront PostgreSQL packet source;
 - historical retained Product PostgreSQL fixtures actualized to current Product routing key `4`.
 
@@ -78,6 +80,26 @@ packet is source-complete but has **not** been executed or admitted by the imple
 Mounted Storefront still uses only Product owner reads and does not call either serving-budget classification or
 budgeted execution.
 
+## Product key-4 tenant promotion
+
+Current Product code has already completed the source-code replacement from lower historical keys to one current
+key `4`. `product-postgres-primary` uses `derive_index_schema_source_event_id`; Product source, absence and query
+admission do not select key `3`.
+
+Persisted tenant authority remains a separate execution boundary. For a tenant with a lower Product key still
+active, the required sequence is:
+
+1. ordinary-register the exact current Product key `4` immutable contract;
+2. rebuild key `4` while lower persisted Product keys remain historical/staging state;
+3. execute/admit exact key-4 readiness, freshness, parity, inbox-isolation and restart evidence;
+4. call `PostgresSchemaRegistrationStore::register_current` with that already-staged key `4` contract;
+5. require all lower active Product schemas for that tenant to retire atomically;
+6. require lower-key readiness/query execution to fail closed as inactive;
+7. only then admit an authoritative Product Index consumer.
+
+No runtime dual-read compatibility branch is allowed. Historical lower-key rows are retained storage history,
+not a Product v3/v4 compatibility surface.
+
 ## Remaining Storefront parity/evidence blockers
 
 - execute/admit the deterministic budgeted timeout packet and retain acceptable runtime latency/cancellation
@@ -85,7 +107,7 @@ budgeted execution.
 - execute/review current-key Storefront core/EAV/collation and actualized retained Product PostgreSQL packets;
 - admit collation parity only where the deployment default-vs-`C` packet agrees;
 - complete maintainer-executed stale locale/readiness/admission/restart evidence;
-- execute/admit current Product replacement evidence and stage/rebuild/promote key `4`;
+- execute/admit Product key-4 staged promotion evidence and perform tenant stage/rebuild/`register_current`;
 - move only eligible Storefront traffic after every evidence/latency gate; channel-less/deep pages stay owner-native.
 
 ## M5 incremental ingestion
@@ -125,19 +147,20 @@ budgeted execution.
 - [x] Define host-measured post-owner serving-budget eligibility.
 - [x] Enforce admitted Index/tag phase timeouts in a separate non-serving post-owner adapter.
 - [x] Retain deterministic timeout/error/deadline/fast-path evidence source for the budgeted adapter.
+- [x] Define/guard the current Product key-4 tenant staging/rebuild/final-supersession contract.
 - [ ] Execute/admit the retained budgeted timeout evidence.
 - [ ] Execute/review retained Product/Storefront/collation PostgreSQL packets.
 - [ ] Admit owner/default vs Index `COLLATE "C"` title-search parity for a deployment.
-- [ ] Execute/admit current replacement Product PostgreSQL evidence.
-- [ ] Stage/rebuild/promote Product key `4` for a tenant.
+- [ ] Execute/admit Product key-4 promotion evidence and stage/rebuild/promote a tenant.
 - [ ] Move eligible Storefront traffic only after every parity/readiness/freshness/restart/latency gate passes.
 
 ## Next source-code boundary
 
-The Storefront request-shape, post-page projection, tag hydration, budget policy, timeout enforcement and
-retained timeout packet are source-complete. Do not add a traffic-switch adapter from source inspection alone.
-Further source work should stay on an independent retained evidence boundary (replacement/readiness/restart) and
-must not claim runtime admission. Maintainer execution of the timeout and PostgreSQL packets remains required.
+The Storefront request-shape, projection/hydration, timeout and current-key promotion contracts are source-complete.
+Do not add a traffic-switch adapter from source inspection alone. The next useful source-only slice is retained
+Product key-4 promotion/restart PostgreSQL evidence if no such packet exists; otherwise maintainer execution is
+the blocking action. Any new packet must use production schema registration/readiness/query/replay paths and
+must not manufacture a second Product compatibility implementation.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

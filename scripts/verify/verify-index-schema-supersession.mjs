@@ -96,11 +96,17 @@ requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.m
   '`derive_index_schema_source_event_id`',
   'Recommended staged rebuild sequence',
   'use ordinary `register` to stage',
-  'schema-scoped deterministic Product replay delivery IDs',
   'call `register_current` with that already-staged exact contract',
   'Historical rows may be purged later',
-  'single-current',
-  'This slice does not change the Product routing key or Product schema yet.',
+  'Current Product key-4 application',
+  'publishes exactly one 15-field Product contract on routing key `4`',
+  'uses `derive_index_schema_source_event_id`',
+  'must not stage or select a Product key `3` implementation',
+  'm7-product-current-schema-promotion.md',
 ]);
 
-console.log('[verify-index-schema-supersession] explicit single-current staged schema supersession source contract verified');
+requireMarkers('scripts/verify/verify-index-product-current-schema-promotion.mjs', [
+  'Product key4 is the only current runtime contract',
+]);
+
+console.log('[verify-index-schema-supersession] explicit single-current staged schema supersession source contract verified with current Product key4 application');

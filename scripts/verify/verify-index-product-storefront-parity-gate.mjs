@@ -113,14 +113,26 @@ if (budgeted.includes('list_filtered_published_products(')) {
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
+  'derive_index_schema_source_event_id',
   'assert_eq!(schema.fields.len(), 15);',
   'many_field("tag_ids", IndexValueType::Uuid, true, false)',
   'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
 ]);
-for (const forbidden of ['SchemaVersion::new(3)', 'SchemaVersion::new(5)', 'localized_tag_names']) {
+for (const forbidden of ['SchemaVersion::new(3)', 'SchemaVersion::new(5)', 'localized_tag_names', 'derive_index_source_event_id(']) {
   if (productIndex.includes(forbidden)) fail(`${productIndexPath} contains forbidden Product schema marker ${forbidden}`);
 }
+
+requireMarkers('scripts/verify/verify-index-product-current-schema-promotion.mjs', [
+  'Product key4 is the only current runtime contract',
+  'tenant stage/rebuild/register_current promotion remains fail-closed and execution-owned',
+]);
+requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md', [
+  'Status: `source_contract_complete_execution_pending`',
+  'Tenant promotion sequence',
+  '`PostgresSchemaRegistrationStore::register_current`',
+  'Mounted Storefront remains owner-native',
+]);
 
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_projection.rs', [
   'const UNTITLED_PRODUCT: &str = "Untitled product";',
@@ -161,6 +173,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', 
   'Mounted Storefront remains owner-native',
   'Serving-budget policy and timeout enforcement — source complete',
   'Deterministic timeout evidence — source complete, execution pending',
+  'Current Product key-4 promotion — source contract complete, execution pending',
   '`ProductStorefrontIndexBudgetedProjectionExecutor`',
   'The packet has not been executed by the implementation agent',
 ]);
@@ -174,9 +187,10 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-budgeted-executio
   'The retained packet is **source-only** until a maintainer executes it.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-index-product-current-schema-promotion.mjs'",
   "'verify-index-product-storefront-serving-budget-policy.mjs'",
   "'verify-index-product-storefront-budgeted-execution.mjs'",
   "'verify-index-product-storefront-budgeted-execution-evidence.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; budget policy, non-serving phase timeout enforcement and deterministic timeout evidence source are complete while maintainer execution/admission remains pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; current key4 promotion, budget policy, timeout enforcement and deterministic timeout evidence are source-complete while maintainer execution/admission remains pending');
