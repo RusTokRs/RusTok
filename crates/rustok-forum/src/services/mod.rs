@@ -41,6 +41,7 @@ mod category_tree {
     include!("category_tree_visibility.rs");
 }
 mod category_visibility;
+mod counter_reconciliation;
 pub mod event;
 #[allow(clippy::collapsible_if, clippy::too_many_arguments)]
 mod mention_relation;
@@ -175,6 +176,11 @@ pub use category_topic_create_audience::{
 pub use category_visibility::{
     ForumCategoryVisibilityPolicy, ForumCategoryVisibilityPolicyService,
     SetForumCategoryVisibilityPolicyInput,
+};
+pub use counter_reconciliation::{
+    DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, ForumCounterDrift, ForumCounterDriftKind,
+    ForumCounterReconciliationReport, ForumCounterReconciliationService,
+    MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
 };
 pub use event::ForumEventService;
 #[allow(unused_imports)]

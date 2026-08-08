@@ -11,6 +11,7 @@ mod mutation;
 mod query;
 mod quote_commands;
 mod read_state;
+mod reconciliation_query;
 mod reply_audience_query;
 mod runtime_data;
 mod storefront_audience_topic;
@@ -50,6 +51,9 @@ pub use quote_commands::{
     GqlForumRelationSnapshot, SetForumQuoteRelationsInput,
 };
 pub use read_state::*;
+pub use reconciliation_query::{
+    GqlForumCounterDrift, GqlForumCounterReconciliationReport,
+};
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
 pub use topic_fork_mutation::{
@@ -79,6 +83,7 @@ pub struct ForumQuery(
     category_policy::ForumCategoryTopicPolicyQuery,
     category_route_query::ForumCategoryRouteQuery,
     read_state::ForumReadStateQuery,
+    reconciliation_query::ForumReconciliationQuery,
     reply_audience_query::ForumReplyAudienceQuery,
     storefront_read_state::ForumStorefrontReadStateQuery,
     storefront_audience_topic::ForumStorefrontAudienceTopicQuery,
