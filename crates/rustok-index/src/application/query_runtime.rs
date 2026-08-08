@@ -2,7 +2,7 @@ use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
 
-use crate::domain::IndexQuery;
+use crate::domain::{IndexQuery, LocalizedEntityQuery};
 
 use super::{IndexQueryExecutionError, IndexQueryPage, IndexQueryPort};
 
@@ -41,5 +41,12 @@ impl IndexQueryPort for SharedIndexQueryRuntime {
         query: IndexQuery,
     ) -> Result<IndexQueryPage, IndexQueryExecutionError> {
         self.port.execute_query(query).await
+    }
+
+    async fn execute_localized_query(
+        &self,
+        query: LocalizedEntityQuery,
+    ) -> Result<IndexQueryPage, IndexQueryExecutionError> {
+        self.port.execute_localized_query(query).await
     }
 }
