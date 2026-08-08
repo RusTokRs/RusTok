@@ -36,6 +36,9 @@ const targeted = requireMarkers(targetedPath, [
   'targeted_load_applies_only_returned_mutations_and_reports_missing_keys',
   'targeted_rejects_other_modes_without_source_or_mutation_execution',
   'targeted_preflights_nil_duplicate_and_schema_invalid_batches_before_writes',
+  'targeted_exact_retry_replays_stable_event_ids_after_partial_failure',
+  'RetryOnceSink::new(Uuid::from_u128(901))',
+  'assert_eq!(retry.duplicate_count(), 1);',
 ]);
 for (const forbidden of [
   'DatabaseConnection',
@@ -125,4 +128,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-targeted-application.mjs'",
 ]);
 
-console.log('[verify-index-replay-targeted-application] Targeted uses canonical bounded load plus stable replay mutation application without Full job/checkpoint ownership');
+console.log('[verify-index-replay-targeted-application] Targeted uses canonical bounded load plus stable replay mutation application and exact retry convergence without Full job/checkpoint ownership');
