@@ -58,28 +58,34 @@ fn ensure_trusted_tenant(
     Ok(())
 }
 
+#[cfg(feature = "ssr")]
+pub(crate) async fn load_trusted_pages_builder_rollout_flags(
+) -> Result<BuilderCapabilityFlags, ServerFnError> {
+    use leptos::prelude::expect_context;
+    use rustok_api::{AuthContext, HostRuntimeContext, TenantContext, tenant_module_settings};
+
+    let runtime = expect_context::<HostRuntimeContext>();
+    let auth = leptos_axum::extract::<AuthContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+    let tenant = leptos_axum::extract::<TenantContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+    ensure_trusted_tenant(&auth, &tenant)?;
+
+    let settings = tenant_module_settings(runtime.db(), tenant.id, "pages")
+        .await
+        .map_err(|_| ServerFnError::new("Unable to read Pages builder rollout settings"))?
+        .ok_or_else(|| ServerFnError::new("Pages module is not enabled for the routed tenant"))?;
+    pages_builder_flags_from_settings(&settings)
+        .map_err(|_| ServerFnError::new("Pages builder rollout settings are invalid"))
+}
+
 #[server(prefix = "/api/fn", endpoint = "pages/builder-rollout-flags")]
 pub(crate) async fn pages_builder_rollout_flags() -> Result<BuilderCapabilityFlags, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext, tenant_module_settings};
-
-        let runtime = expect_context::<HostRuntimeContext>();
-        let auth = leptos_axum::extract::<AuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let tenant = leptos_axum::extract::<TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        ensure_trusted_tenant(&auth, &tenant)?;
-
-        let settings = tenant_module_settings(runtime.db(), tenant.id, "pages")
-            .await
-            .map_err(|_| ServerFnError::new("Unable to read Pages builder rollout settings"))?
-            .ok_or_else(|| ServerFnError::new("Pages module is not enabled for the routed tenant"))?;
-        pages_builder_flags_from_settings(&settings)
-            .map_err(|_| ServerFnError::new("Pages builder rollout settings are invalid"))
+        load_trusted_pages_builder_rollout_flags().await
     }
     #[cfg(not(feature = "ssr"))]
     {
