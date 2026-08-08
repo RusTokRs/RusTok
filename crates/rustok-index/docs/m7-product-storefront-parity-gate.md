@@ -1,14 +1,14 @@
 # M7 Product Storefront Index parity gate
 
-Status: `source_architecture_selected_implementation_and_evidence_pending`.
+Status: `localized_query_contract_source_complete_compiler_and_evidence_pending`.
 
 ## Purpose
 
 The Product Storefront catalog remains owner-native. The single current Product Index source now
 materializes the Storefront scalar fields, stable tag identities, and typed EAV query state that were
-previously missing. A fresh owner-vs-Index recheck found a remaining **localized Product identity
-mismatch**; the query-layer architecture for that mismatch is now selected, but implementation and
-retained evidence are still pending.
+previously missing. The remaining localized Product identity mismatch now has both a selected architecture
+and an explicit query/cursor contract, but PostgreSQL fold execution and retained equivalence evidence are
+still pending.
 
 Storefront must continue to execute `CatalogService::list_published_products_with_query`.
 
@@ -78,6 +78,24 @@ ordering, cursor, freshness, and retained-evidence contract.
 Do **not** add another Product routing key merely to patch this query semantic. The current Product
 contract remains the only runtime Product implementation.
 
+## Implemented generic query contract
+
+`rustok-index` now exposes the source-level contract required before the SQL compiler can exist safely:
+
+- `LocalizedEntityQuery` explicitly wraps the ordinary exact-locale query shape;
+- requested locale remains `query.scope.locale` and fallback is a separate canonical role;
+- `any_locale_filter` is an explicit root-only identity predicate;
+- `SchemaRegistry::validate_localized_entity_query` reuses ordinary field/operator/type validation and
+  requires a locale-required schema;
+- `LocalizedCursorCodec` uses dedicated scoped wire version `3`, while ordinary exact-locale cursors
+  remain on version `2`;
+- the folded continuation binds requested/fallback/filter/any-locale-filter/order/schema identity and
+  cannot be reused as an ordinary query cursor.
+
+The public query runtime still has no `execute_localized_query` method. PostgreSQL compiler, page decoder,
+exact-count execution and admission composition must be source-complete before that capability is
+published.
+
 ## Typed EAV representation
 
 Dynamic EAV attributes do not create dynamic Index fields. Public Product attribute/option codes are
@@ -114,8 +132,8 @@ Lower persisted Product keys are historical storage identities only. Promotion r
 
 Storefront traffic stays blocked until all of these are complete:
 
-1. implement the selected generic localized-entity identity fold without changing ordinary exact-locale
-   `IndexQuery` semantics;
+1. compile the selected localized-entity identity fold into one PostgreSQL page/exact-count execution
+   contract and expose runtime execution only after decoder/admission semantics are complete;
 2. add the required generic scalar text-pattern primitive inside the folded any-locale identity
    predicate;
 3. translate Active + published-only, category, visibility, EAV, timestamp ordering, ID tie-break,
@@ -135,26 +153,22 @@ Storefront traffic stays blocked until all of these are complete:
 mismatch and keeps Storefront owner-native.
 
 `scripts/verify/verify-index-product-storefront-localized-query-architecture.mjs` locks the selected
-query-layer decision:
+query-layer decision and its implemented query/cursor contract.
 
-- owner title search remains all-translations unless the same PR deliberately changes the owner
-  contract;
-- owner result projection still has requested/fallback translation selection;
-- Product Index source remains one physical translation locale per entity and does not fabricate
-  fallback rows;
-- one current Product routing key (`4`) and schema-scoped replay identity remain selected;
-- the localized fold is identity-level and happens before page/count semantics;
-- implementation/evidence remain pending and traffic stays fail-closed.
+`scripts/verify/verify-index-localized-query-contract.mjs` specifically locks `LocalizedEntityQuery`,
+required-locale validation, root-only `any_locale_filter`, fallback de-duplication and dedicated cursor
+identity while rejecting premature public runtime execution.
 
 ## Deliberate limits
 
-This slice selects and documents the localized query architecture but does not implement the fold, change
-owner Storefront semantics, add another Product routing key, implement the Storefront Index adapter,
-execute tenant rebuild, add public typed Product events, or switch traffic.
+This slice does not compile or execute the fold, change owner Storefront semantics, add another Product
+routing key, implement the Storefront Index adapter, execute tenant rebuild, add public typed Product
+events, or switch traffic.
 
 ## Maintainer verification
 
 ```bash
+node scripts/verify/verify-index-localized-query-contract.mjs
 node scripts/verify/verify-index-product-storefront-localized-query-architecture.mjs
 node scripts/verify/verify-index-product-storefront-parity-gate.mjs
 node scripts/verify/verify-index-product-source.mjs
