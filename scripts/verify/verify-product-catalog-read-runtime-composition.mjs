@@ -31,11 +31,13 @@ function forbid(source, marker, description) {
 
 const runtimePath = "crates/rustok-product/src/runtime.rs";
 const libPath = "crates/rustok-product/src/lib.rs";
+const tagPortPath = "crates/rustok-product/src/storefront_tag_read_port.rs";
 const hostPath = "apps/server/src/services/commerce_provider_runtime.rs";
 const registryPath = "crates/rustok-product/contracts/product-fba-registry.json";
 const planPath = "crates/rustok-product/docs/implementation-plan.md";
 const runtime = read(runtimePath);
 const lib = read(libPath);
+const tagPort = read(tagPortPath);
 const host = read(hostPath);
 const registry = read(registryPath);
 const plan = read(planPath);
@@ -45,16 +47,28 @@ requireAll(runtime, [
   "EmbeddedNative",
   "External",
   "pub struct ProductCatalogReadRuntime",
+  "storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>",
   "pub fn in_process",
+  ".with_storefront_tag_read_port(catalog)",
   "pub fn external",
   "pub fn read_port",
+  "pub fn storefront_tag_read_port",
   "pub const fn profile",
 ], "Product owner runtime");
 requireAll(lib, [
   "mod runtime;",
+  "mod storefront_tag_read_port;",
   "ProductCatalogReadProfile",
   "ProductCatalogReadRuntime",
+  "ProductStorefrontTagReadPort",
+  "ProductStorefrontTagHydrationRequest",
 ], "Product public exports");
+requireAll(tagPort, [
+  "pub trait ProductStorefrontTagReadPort",
+  "impl ProductStorefrontTagReadPort for CatalogService",
+  "MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48",
+  ".load_product_tag_map(",
+], "Product optional Storefront tag capability");
 requireAll(host, [
   "host.shared_get::<rustok_product::ProductCatalogReadRuntime>()",
   "server.shared_get::<rustok_product::ProductCatalogReadRuntime>()",
@@ -94,6 +108,14 @@ requireAll(plan, [
   "Concrete external transport execution remains open",
   "verify-product-catalog-read-runtime-composition.mjs",
 ], "Product implementation plan");
+
+const externalStart = runtime.indexOf("pub fn external(read_port: Arc<dyn ProductCatalogReadPort>)");
+const withTagStart = runtime.indexOf("pub fn with_storefront_tag_read_port(");
+if (externalStart < 0 || withTagStart <= externalStart) {
+  failures.push("Product owner runtime: external/tag capability boundaries are missing");
+} else if (runtime.slice(externalStart, withTagStart).includes("with_storefront_tag_read_port")) {
+  failures.push("Product owner runtime: external profile must not silently install embedded tag hydration");
+}
 
 if (failures.length > 0) {
   console.error("product catalog read runtime composition verification failed:");

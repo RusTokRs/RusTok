@@ -88,6 +88,7 @@ const scripts = [
   'verify-index-product-storefront-channel-scope-policy.mjs',
   'verify-index-product-storefront-deep-page-policy.mjs',
   'verify-index-product-storefront-public-projection.mjs',
+  'verify-index-product-storefront-tag-hydration.mjs',
   'verify-index-product-storefront-equivalence-postgres-packet.mjs',
   'verify-index-product-storefront-eav-equivalence-postgres-packet.mjs',
   'verify-index-product-storefront-collation-postgres-packet.mjs',
