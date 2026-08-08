@@ -86,6 +86,12 @@ pub enum IndexReplayOperatorError {
     Forbidden,
     #[error(transparent)]
     Replay(#[from] rustok_index::IndexReplayRunError),
+}
+
+#[derive(Debug, Error)]
+pub enum IndexReplayTargetedOperatorError {
+    #[error(transparent)]
+    Authorization(#[from] IndexReplayOperatorError),
     #[error(transparent)]
     Targeted(#[from] rustok_index::IndexReplayTargetedError),
 }
@@ -135,7 +141,7 @@ impl IndexReplayOperatorRuntime {
         &self,
         context: IndexReplayOperatorContext,
         request: rustok_index::IndexSourceLoadRequest,
-    ) -> Result<rustok_index::IndexReplayTargetedOutcome, IndexReplayOperatorError> {
+    ) -> Result<rustok_index::IndexReplayTargetedOutcome, IndexReplayTargetedOperatorError> {
         context.authorize_for(request.tenant_id())?;
         self.inner.run_targeted(request).await.map_err(Into::into)
     }
@@ -285,7 +291,7 @@ mod tests {
         IndexDriftDiagnosisOperatorRuntime, IndexDriftSourcePageDiagnosisRuntime,
         IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
         IndexReplayShadowOperatorError, IndexReplayShadowTransportRuntime,
-        materialize_index_replay_runtime,
+        IndexReplayTargetedOperatorError, materialize_index_replay_runtime,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
@@ -476,7 +482,10 @@ mod tests {
         )
         .await
         .expect_err("modules:read must not invoke Targeted replay");
-        assert!(matches!(forbidden, IndexReplayOperatorError::Forbidden));
+        assert!(matches!(
+            forbidden,
+            IndexReplayTargetedOperatorError::Authorization(IndexReplayOperatorError::Forbidden)
+        ));
 
         let outcome = with_rbac_request_scope(
             Some(RbacRequestScope::new(
