@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
+use super::{reply::ReplyResponse, topic::TopicListItem, topic::TopicResponse};
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ForumWidgetCatalogResponse {
     pub catalog_version: String,
@@ -63,4 +65,59 @@ pub struct ForumWidgetValidationIssue {
     pub code: String,
     pub message: String,
     pub path: Option<String>,
+}
+
+/// Forum-owned Page Builder preview input. `props` is always normalized through
+/// `ForumWidgetContractService` before any owner read executes.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PreviewForumWidgetInput {
+    pub widget_type: String,
+    #[serde(default)]
+    pub props: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ForumWidgetPreviewResponse {
+    pub widget_type: String,
+    pub data_contract_version: String,
+    pub valid: bool,
+    pub normalized_props: Value,
+    pub issues: Vec<ForumWidgetValidationIssue>,
+    pub payload: Option<ForumWidgetPreviewPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ForumWidgetPreviewPayload {
+    TopicList(ForumTopicListWidgetPreview),
+    TopicDetail(ForumTopicDetailWidgetPreview),
+    ReplyStream(ForumReplyStreamWidgetPreview),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ForumTopicListWidgetPreview {
+    pub items: Vec<TopicListItem>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub sort: String,
+    pub include_pinned: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ForumTopicDetailWidgetPreview {
+    pub topic: TopicResponse,
+    pub replies: Vec<ReplyResponse>,
+    pub replies_total: u64,
+    pub include_replies: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ForumReplyStreamWidgetPreview {
+    pub topic_id: String,
+    pub items: Vec<ReplyResponse>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub approved_only: bool,
 }

@@ -1,6 +1,8 @@
 use crate::editor::{AdminCanvas, AdminShell};
 use crate::i18n::t;
-use crate::{AdminCanvasController, PageBuilderAdminFacade};
+use crate::{
+    AdminCanvasController, PageBuilderAdminFacade, PageBuilderContributionHostContext,
+};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
@@ -13,6 +15,7 @@ use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
 use rustok_ui_core::UiRouteContext;
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 /// Host-provided composition context for a concrete consumer document.
@@ -212,10 +215,10 @@ pub fn PageBuilderAdmin() -> impl IntoView {
 
 #[component]
 pub fn PageBuilderAdminWithController(
-    controller: AdminCanvasController,
+    mut controller: AdminCanvasController,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
-    #[prop(optional_no_strip)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
+    #[prop(optional_no_strip)] mut contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
     #[prop(optional_no_strip)] editor_capabilities: Option<CapabilityState>,
     #[prop(optional_no_strip)] editor_capability_evaluation: Option<
         Arc<EditorCapabilityEvaluation>,
@@ -239,6 +242,44 @@ pub fn PageBuilderAdminWithController(
         "Full Fly authoring surface. Persistence remains owned by the consumer module facade.",
     );
 
+    if let Some(extension_host) = use_context::<PageBuilderContributionHostContext>() {
+        if !extension_host.is_empty() {
+            if let Err(error) = controller.install_contribution_registries(|registries| {
+                extension_host.install_registries(registries)
+            }) {
+                return view! {
+                    <AdminShell title=title.clone() subtitle=subtitle.clone()>
+                        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+                            {format!("Page Builder contribution registry installation failed: {error}")}
+                        </div>
+                    </AdminShell>
+                }
+                .into_any();
+            }
+
+            let host_effective = editor_capability_evaluation
+                .as_ref()
+                .map(|evaluation| evaluation.effective)
+                .or(editor_capabilities)
+                .unwrap_or_else(CapabilityState::full);
+            let provider_status = facade
+                .as_ref()
+                .and_then(|facade| facade.provider_status());
+            let effective = provider_status
+                .as_ref()
+                .map(|status| status.limit_capabilities(host_effective))
+                .unwrap_or(host_effective);
+            let preview_enabled = provider_status
+                .as_ref()
+                .map(|status| status.preview_enabled())
+                .unwrap_or(true);
+            contribution_assembly = Some(extension_host.merge_admin_assembly(
+                contribution_assembly,
+                contribution_capabilities(effective, preview_enabled),
+            ));
+        }
+    }
+
     view! {
         <AdminShell title subtitle>
             <AdminCanvas
@@ -259,4 +300,26 @@ pub fn PageBuilderAdminWithController(
             />
         </AdminShell>
     }
+    .into_any()
+}
+
+fn contribution_capabilities(
+    capabilities: CapabilityState,
+    preview_enabled: bool,
+) -> BTreeSet<String> {
+    let capabilities = capabilities.normalized();
+    let mut granted = BTreeSet::new();
+    if capabilities.edit {
+        granted.insert("tree".to_string());
+    }
+    if capabilities.properties {
+        granted.insert("properties".to_string());
+    }
+    if capabilities.publish {
+        granted.insert("publish".to_string());
+    }
+    if preview_enabled {
+        granted.insert("preview".to_string());
+    }
+    granted
 }

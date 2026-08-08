@@ -4,6 +4,7 @@ use leptos_router::hooks::use_params;
 use leptos_router::params::Params;
 
 use crate::app::modules::page_for_route_segment;
+use crate::app::page_builder_contributions::PageBuilderContributionScope;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::shared::context::module_request::ModuleRequestProvider;
 use crate::{t_string, use_i18n};
@@ -64,6 +65,9 @@ pub fn ModuleAdminPage() -> impl IntoView {
                     (_, Some(page)) => {
                         let route_segment_value = route_segment.get();
                         let subpath_value = module_subpath.get();
+                        let page_for_render = page.clone();
+                        let enabled = enabled_modules.modules.get();
+                        let pages_route = page.module_slug == "pages";
                         view! {
                             <div class="space-y-6">
                                 <ModulePageSecondaryNav
@@ -74,7 +78,16 @@ pub fn ModuleAdminPage() -> impl IntoView {
                                     route_segment=Some(route_segment_value)
                                     subpath=subpath_value
                                 >
-                                    {(page.render)()}
+                                    {if pages_route {
+                                        view! {
+                                            <PageBuilderContributionScope enabled_modules=enabled>
+                                                {(page_for_render.render)()}
+                                            </PageBuilderContributionScope>
+                                        }
+                                        .into_any()
+                                    } else {
+                                        (page_for_render.render)()
+                                    }}
                                 </ModuleRequestProvider>
                             </div>
                         }

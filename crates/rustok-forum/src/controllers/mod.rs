@@ -270,6 +270,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             axum::routing::post(widgets::validate_widget_props),
         )
         .route(
+            "/api/forum/widgets/preview",
+            axum::routing::post(widgets::preview_widget),
+        )
+        .route(
             "/api/forum/users/{user_id}/stats",
             get(users::get_user_stats),
         )

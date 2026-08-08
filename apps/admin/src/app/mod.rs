@@ -1,6 +1,7 @@
 #[cfg(feature = "ssr")]
 pub mod auth_ssr;
 pub mod modules;
+pub mod page_builder_contributions;
 pub mod providers;
 pub mod router;
 #[cfg(feature = "ssr")]

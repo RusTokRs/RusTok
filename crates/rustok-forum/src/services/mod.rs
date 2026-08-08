@@ -98,6 +98,7 @@ mod topic {
     include!("topic.rs");
     include!("topic_inline.rs");
     include!("topic_visibility_list.rs");
+    include!("topic_widget_preview.rs");
 }
 mod topic_audience {
     include!("topic_audience.rs");
@@ -138,6 +139,7 @@ mod user_trust;
 mod user_trust_audience_facts;
 pub mod vote;
 pub mod widget_contract;
+mod widget_preview;
 
 pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
@@ -326,3 +328,4 @@ pub use user_trust::{
 pub use user_trust_audience_facts::ForumUserTrustAudienceFactsPort;
 pub use vote::VoteService;
 pub use widget_contract::ForumWidgetContractService;
+pub use widget_preview::ForumWidgetPreviewService;
