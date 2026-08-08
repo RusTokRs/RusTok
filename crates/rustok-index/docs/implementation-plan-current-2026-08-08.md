@@ -1,6 +1,6 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked from `main@5f9e2fe4783d8bb5e6dad29adeff2dffc8296990` and continued on
+Status overlay rechecked from `main@dfddce9f57916a712d531db38e75c87e7c45e8cf` (#3202) and continued on
 `agent/index-storefront-localized-query-architecture-20260808`.
 
 `implementation-plan.md` remains historical architecture context. The 2026-08-07 overlay remains useful
@@ -21,9 +21,10 @@ The previous current plan was stale after the following merged Index/Product wor
 - #3200 corrected Storefront parity after proving owner title search is all-translations and owner result
   projection is requested-locale -> fallback-locale.
 
-`main` then advanced by two commits outside the Product Storefront parity/doc/guard file set. One of those
-commits only changes the generic PostgreSQL query admission rendering API in `rustok-index`; it does not
-resolve the localized Product identity mismatch.
+`main` subsequently advanced through #3202. Those intervening changes are outside the Product Storefront
+parity/doc/guard file set. One generic `rustok-index` change exposes trusted PostgreSQL query-admission
+rendering; it does not resolve the localized Product identity mismatch. #3202 itself is Moderation/RBAC
+work and does not overlap this Index slice.
 
 ## Old execution branch
 
