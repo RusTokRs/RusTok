@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product Storefront shadow-executor merge `de32e18022e761e3fcc80d2e8becc625f567fc5e` and continued on
-`agent/index-storefront-equivalence-postgres-20260808`.
+Status overlay rechecked after core Product Storefront PostgreSQL packet merge `6e635d890503443622b41ebfe203c5d5682e7333` and continued on
+`agent/index-storefront-eav-equivalence-postgres-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -26,47 +26,39 @@ Source-complete:
 - localized Product-ID tie-break direction matching owner Asc/Desc ordering;
 - Product-owned public Storefront attribute-filter -> neutral canonical term resolution;
 - pure Storefront shadow builder consuming only `ProductResolvedAttributeFilter`;
-- non-serving owner-first `ProductStorefrontIndexShadowExecutor` over host-selected Product and Index
-  runtimes;
-- first current-key Product Storefront owner-vs-shadow PostgreSQL packet source.
+- non-serving owner-first `ProductStorefrontIndexShadowExecutor`;
+- current-key core Product Storefront owner-vs-shadow PostgreSQL packet source;
+- separate current-key Product Storefront EAV owner-vs-shadow PostgreSQL packet source.
 
-The core PostgreSQL packet is source-only until the maintainer runs it. It uses real Product/Index migrations,
-channel relation freshness, Product source/mutation/query runtimes and Product owner reads. It covers
-requested/fallback/neither localized projection, third-locale search, `%`/`_`/backslash wildcard behavior,
-identity de-duplication, equal-timestamp Asc/Desc Product-ID ordering, exact count and offset page boundaries.
+The core packet retains localized projection/search, identity de-duplication, equal-timestamp ordering,
+page/count and public-channel scenarios. The EAV packet isolates Product term resolution/materialization and
+retains integer, localized requested/fallback, Select/Multiselect option code, direct option UUID and
+missing/nil option `Never` scenarios. Both remain source-only until maintainer execution.
 
-The packet also retains an explicit raw projection gap: owner uses `Untitled product`/empty handle when no
-requested/fallback translation exists, while the generic localized Index layer returns null. Final Storefront
-projection must apply those public placeholders after Index page identity/order/count are fixed.
+The core packet also records a public projection gap: owner uses `Untitled product`/empty handle when no
+requested/fallback translation exists, while generic localized Index returns null. Final Storefront
+projection must apply public placeholders only after Product page identity/order/count are fixed.
 
 ## Remaining Storefront parity/evidence blockers
 
-- execute/review the new core PostgreSQL packet; source presence is not evidence admission;
-- add a separate EAV PostgreSQL packet for scalar/localized terms and Select/Multiselect code/UUID/`Never`;
+- execute/review both current-key Storefront PostgreSQL packets; source presence is not evidence admission;
 - owner title search has no explicit length bound vs Index `TextLike` 1024-byte bound;
 - owner/default PostgreSQL collation vs Index deterministic `COLLATE "C"`;
 - channel-less owner visibility cannot currently be represented exactly by `sales_channel_ids`;
 - owner page depth exceeds Index bounded offset depth;
-- final Storefront projection must map localized null title/handle to owner placeholders;
+- map localized null title/handle to owner public placeholders in final Storefront projection;
 - localized Taxonomy tag names must be hydrated after Product page identity/count is fixed;
-- shadow execution has no serving latency/deadline policy and must remain non-serving.
+- shadow execution has no serving latency/deadline policy and must remain non-serving;
+- stale locale/readiness/admission/restart evidence still requires maintainer execution/extension.
 
 ## Retained Product evidence debt
 
 Historical PostgreSQL packets must still be mechanically actualized to routing key `4` / current 15-field
-Product contract; never add a key-3 runtime alias. This is deliberately kept separate from the new current-key
-Storefront packet to avoid hiding large fixture rewrites inside parity work.
+Product contract; never add a key-3 runtime alias. Keep those large fixture rewrites separate from the new
+Storefront packets.
 
-The next EAV Storefront packet should run owner and shadow side-by-side for:
-
-- nonlocalized scalar terms;
-- localized requested value and requested-missing/fallback value;
-- Select/Multiselect exact option code;
-- direct option UUID;
-- missing option code and nil UUID `Never` behavior;
-- exact identity/count/page agreement under the existing Product admission/freshness runtime.
-
-Later execution/admission still needs stale locale/readiness/restart and explicit search-bound/collation review.
+After the current packets are executed, use observed evidence to decide the next correction/admission slice:
+search collation/bounds, placeholder projection, channel-less visibility, deep-page policy or restart/readiness.
 
 ## M5 incremental ingestion
 
@@ -100,8 +92,8 @@ Later execution/admission still needs stale locale/readiness/restart and explici
 - [x] Wire Product term expressions into the shadow builder.
 - [x] Compose non-serving Product-owner + Index shadow executor.
 - [x] Retain current-key core owner-vs-shadow localized PostgreSQL packet source.
+- [x] Retain Product EAV owner-vs-shadow PostgreSQL packet source.
 - [ ] Execute/review the core Storefront PostgreSQL packet.
-- [ ] Retain Product EAV owner-vs-shadow PostgreSQL packet source.
 - [ ] Execute/review the EAV Storefront PostgreSQL packet.
 - [ ] Resolve/admit search-length and collation parity.
 - [ ] Resolve channel-less unrestricted visibility parity or keep that shape owner-native.
@@ -116,9 +108,9 @@ Later execution/admission still needs stale locale/readiness/restart and explici
 
 ## Next source-code step
 
-Build the separate Product Storefront EAV PostgreSQL packet on current routing key `4`. Keep it independent
-from the localized core packet so a failure identifies Product term resolution/materialization rather than
-locale folding or page ordering. Do not execute the packet in this implementation turn.
+Mechanically actualize historical retained Product PostgreSQL packets to current routing key `4` / 15-field
+fixtures without adding runtime compatibility. Keep that mechanical debt separate from Storefront parity.
+Do not execute tests or PostgreSQL packets in this implementation turn.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
