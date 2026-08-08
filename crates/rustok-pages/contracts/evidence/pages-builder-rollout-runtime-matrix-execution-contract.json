@@ -140,6 +140,7 @@
     "apps/next-admin/playwright.pages-builder-rollout-matrix.config.ts",
     "apps/next-admin/tests/pages-builder-rollout-matrix/runtime-matrix.spec.ts",
     "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
+    "crates/rustok-pages/rustok-module.toml",
     "crates/rustok-page-builder/src/rollout.rs",
     "crates/rustok-page-builder/admin/src/provider_status.rs",
     "crates/rustok-pages/src/graphql/builder_rollout.rs",
@@ -150,6 +151,10 @@
     "apps/admin/src/main.rs",
     "apps/server/src/graphql/queries.rs",
     "apps/server/src/graphql/mutations.rs",
+    "apps/server/src/services/module_lifecycle.rs",
+    "apps/server/src/modules/manifest/mod.rs",
+    "crates/rustok-modules/src/settings.rs",
+    "crates/rustok-modules/src/lifecycle_writer.rs",
     "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
     "docs/modules/pages-page-builder-rollout-runtime-matrix-harness-actualization-2026-08-08.md"
   ],
