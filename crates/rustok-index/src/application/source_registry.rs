@@ -609,14 +609,12 @@ pub enum IndexSourceError {
         schema: SchemaRef,
     },
     #[error(
-        "Index schema {schema} has multiple replay sources: existing={existing_source}/{existing_owner}, incoming={incoming_source}/{incoming_owner}"
+        "Index schema {schema} has multiple replay sources: existing={existing_source}, incoming={incoming_source}"
     )]
     SchemaSourceConflict {
         schema: SchemaRef,
         existing_source: String,
-        existing_owner: String,
         incoming_source: String,
-        incoming_owner: String,
     },
     #[error(
         "Index schema identity {identity} changes replay source: existing={existing_owner}/{existing_source}, incoming={incoming_owner}/{incoming_source}"
