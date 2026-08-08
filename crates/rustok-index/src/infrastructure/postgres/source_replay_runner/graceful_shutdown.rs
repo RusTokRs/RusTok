@@ -15,7 +15,7 @@ impl PostgresIndexReplayRunner {
         mut should_interrupt: Check,
     ) -> Result<IndexReplayRunOutcome, IndexReplayRunError>
     where
-        Check: FnMut() -> bool + Send,
+        Check: FnMut() -> bool,
     {
         let source_name = self
             .sources
