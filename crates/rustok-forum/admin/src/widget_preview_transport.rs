@@ -22,7 +22,7 @@ pub struct ForumWidgetPreviewTransportRequest {
 pub struct ForumPageBuilderTransportAttestationResponse {
     pub challenge: String,
     pub contract: String,
-    pub source_commit: Option<String>,
+    pub source_commit: String,
     pub module_id: String,
     pub owner_provider: String,
     pub owner_version: String,
@@ -125,16 +125,26 @@ fn validate_attestation_challenge(challenge: &str) -> Result<(), ServerFnError> 
 }
 
 #[cfg(feature = "ssr")]
-fn deployed_source_commit() -> Option<String> {
-    let value = std::env::var("RUSTOK_SOURCE_COMMIT").ok()?;
+fn canonical_source_commit(value: &str) -> Option<String> {
     let value = value.trim();
     (value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
         .then(|| value.to_ascii_lowercase())
 }
 
 #[cfg(feature = "ssr")]
+fn deployed_source_commit() -> Result<String, ServerFnError> {
+    let value = std::env::var("RUSTOK_SOURCE_COMMIT").map_err(|_| {
+        ServerFnError::new("Forum Page Builder deployed source revision is unavailable")
+    })?;
+    canonical_source_commit(&value).ok_or_else(|| {
+        ServerFnError::new("Forum Page Builder deployed source revision is not a canonical Git SHA")
+    })
+}
+
+#[cfg(feature = "ssr")]
 fn build_transport_attestation(
     challenge: String,
+    source_commit: String,
 ) -> ForumPageBuilderTransportAttestationResponse {
     let manifest = crate::forum_contribution_manifest();
     let catalog = rustok_forum::ForumWidgetContractService::catalog();
@@ -148,7 +158,7 @@ fn build_transport_attestation(
     ForumPageBuilderTransportAttestationResponse {
         challenge,
         contract: FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT.to_string(),
-        source_commit: deployed_source_commit(),
+        source_commit,
         module_id: manifest.module_id,
         owner_provider: manifest.owner_provider,
         owner_version: manifest.owner_version,
@@ -167,8 +177,8 @@ fn build_transport_attestation(
 /// tenant/auth middleware, the shared effective `forum_topics:read` gate, exact tenant-module
 /// enablement, the Forum admin host runtime (including its transactional event bus), and the
 /// Forum-owned widget contract catalog. It returns only stable contract identity plus the caller's
-/// bounded challenge and canonical runtime source revision when the production image supplied one;
-/// it never reads or returns Forum topic/reply data.
+/// bounded challenge and canonical runtime source revision; it never reads or returns Forum
+/// topic/reply data. Images without a canonical deployed source revision fail closed.
 #[server(prefix = "/api/fn", endpoint = "forum/page-builder-transport-attestation")]
 pub async fn attest_forum_page_builder_transport(
     challenge: String,
@@ -186,7 +196,8 @@ pub async fn attest_forum_page_builder_transport(
 
         let (host, _event_bus) = runtime()?;
         require_forum_module_enabled(&host, tenant.id).await?;
-        Ok(build_transport_attestation(challenge))
+        let source_commit = deployed_source_commit()?;
+        Ok(build_transport_attestation(challenge, source_commit))
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -347,9 +358,17 @@ mod tests {
             )
             .is_err()
         );
+        assert_eq!(
+            canonical_source_commit("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").as_deref(),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        assert_eq!(canonical_source_commit("unknown"), None);
 
-        let response = build_transport_attestation("forum-attest_01".to_string());
+        let source_commit = "a".repeat(40);
+        let response =
+            build_transport_attestation("forum-attest_01".to_string(), source_commit.clone());
         assert_eq!(response.contract, FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT);
+        assert_eq!(response.source_commit, source_commit);
         assert_eq!(response.module_id, "forum");
         assert_eq!(response.owner_provider, "rustok.forum");
         assert_eq!(
