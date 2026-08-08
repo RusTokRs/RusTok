@@ -10,19 +10,19 @@ pub struct ForumWidgetPreviewTransportRequest {
 }
 
 #[cfg(feature = "ssr")]
-fn require_tenant_scope(
+pub(crate) fn require_tenant_scope(
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
 ) -> Result<(), ServerFnError> {
     if auth.tenant_id == tenant.id {
         Ok(())
     } else {
-        Err(ServerFnError::new("Forum widget preview tenant scope mismatch"))
+        Err(ServerFnError::new("Forum Page Builder tenant scope mismatch"))
     }
 }
 
 #[cfg(feature = "ssr")]
-async fn require_forum_module_enabled(
+pub(crate) async fn require_forum_module_enabled(
     host: &rustok_api::HostRuntimeContext,
     tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {

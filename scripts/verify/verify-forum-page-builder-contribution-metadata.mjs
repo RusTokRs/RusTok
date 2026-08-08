@@ -16,13 +16,15 @@ const forumAdminCargo = read("crates/rustok-forum/admin/Cargo.toml");
 const forumAdminBuild = read("crates/rustok-forum/admin/build.rs");
 const forumAdminAdapter = read("crates/rustok-forum/admin/src/page_builder.rs");
 const forumAdminPreviewTransport = read("crates/rustok-forum/admin/src/widget_preview_transport.rs");
+const forumAdminPropertyTransport = read("crates/rustok-forum/admin/src/widget_property_transport.rs");
 const sharedTooling = read("crates/rustok-build/src/module_manifest_contribution.rs");
 const pageBuilderHost = read("crates/rustok-page-builder/admin/src/contribution_host.rs");
 const pageBuilderUi = read("crates/rustok-page-builder/admin/src/ui/leptos.rs");
 const pageBuilderPreviewPanel = read("crates/rustok-page-builder/admin/src/editor/contribution_preview.rs");
+const pageBuilderPropertiesPanel = read("crates/rustok-page-builder/admin/src/editor/contribution_properties.rs");
 const adminComposition = read("apps/admin/src/app/page_builder_contributions.rs");
 const moduleAdmin = read("apps/admin/src/pages/module_admin.rs");
-const actualization = read("docs/modules/forum-page-builder-owner-preview-actualization-2026-08-08.md");
+const actualization = read("docs/modules/forum-page-builder-owner-properties-actualization-2026-08-08.md");
 
 const failures = [];
 const requireMarker = (source, marker, label) => {
@@ -48,6 +50,8 @@ for (const marker of [
   "[[fba.builder_consumer.contribution_manifest.admin.renderers]]",
   "[[fba.builder_consumer.contribution_manifest.admin.property_editors]]",
   'format = "forum_widget_owner_schema_ref_v1"',
+  'owner_data_state = "owner_property_editor_ready"',
+  'property_data_state = "owner_property_editor_ready"',
   'preview_endpoint = "/api/forum/widgets/preview"',
   'preview_data_state = "owner_preview_transport_ready"',
   'persistence_owner = "forum"',
@@ -62,6 +66,7 @@ for (const marker of [
   "fn topic_list_catalog_item()",
   "fn topic_detail_catalog_item()",
   "fn reply_stream_catalog_item()",
+  '"additionalProperties": false',
 ]) requireMarker(widgetContract, marker, "Forum owner widget contract");
 
 for (const marker of [
@@ -127,6 +132,7 @@ for (const marker of [
   "pub fn register_forum_fly_widgets",
   "pub fn forum_widget_preview_contribution",
   'COMPONENT_PROPS_FIELD: &str = "props"',
+  '"owner_property_editor_ready"',
 ]) requireMarker(forumAdminAdapter, marker, "Forum Fly adapter source");
 for (const forbidden of ["ForumWidgetContractService", "TopicService", "ReplyService", "DatabaseConnection"])
   forbidMarker(forumAdminAdapter, forbidden, "Forum Fly adapter owner-data boundary");
@@ -141,7 +147,26 @@ for (const marker of [
 ]) requireMarker(forumAdminPreviewTransport, marker, "Forum admin owner preview transport");
 
 for (const marker of [
+  'endpoint = "forum/page-builder-widget-property-schema"',
+  'endpoint = "forum/page-builder-widget-property-validate"',
+  "authorize_forum_property_transport",
+  "require_tenant_scope",
+  "require_forum_module_enabled",
+  "Permission::FORUM_TOPICS_READ",
+  "resolve_owner_schema",
+  "forum_widget_contribution",
+  "ForumWidgetContractService::catalog",
+  "ForumWidgetContractService::validate_props",
+]) requireMarker(forumAdminPropertyTransport, marker, "Forum admin owner property transport");
+forbidMarker(forumAdminPropertyTransport, "DatabaseConnection", "Forum property transport direct persistence boundary");
+
+for (const marker of [
   "pub trait PageBuilderContributionPreviewPort",
+  "pub trait PageBuilderContributionPropertyPort",
+  "PageBuilderContributionPropertySchemaRequest",
+  "PageBuilderContributionPropertyValidationRequest",
+  "with_property_port",
+  "property_port",
   "pub struct PageBuilderContributionHostExtension",
   "pub struct PageBuilderContributionHostContext",
   "install_registries",
@@ -172,7 +197,25 @@ for (const marker of [
 forbidMarker(pageBuilderPreviewPanel, "rustok_forum", "provider-neutral owner preview panel");
 
 for (const marker of [
+  "pub fn ContributionPropertiesPanel",
+  "selected_property_request",
+  "parse_owner_property_schema",
+  "property_port",
+  '"additionalProperties"',
+  'set_field("props", normalized_props.clone())',
+  "PageBuilderContributionPropertyValidationRequest",
+  '"Apply normalized properties"',
+  "selection_still_matches",
+]) requireMarker(pageBuilderPropertiesPanel, marker, "Page Builder owner property panel");
+for (const forbidden of ["rustok_forum", "ForumWidgetContractService", "DatabaseConnection"])
+  forbidMarker(pageBuilderPropertiesPanel, forbidden, "provider-neutral owner property panel");
+
+for (const marker of [
   "ForumPageBuilderPreviewPort",
+  "ForumPageBuilderPropertyPort",
+  "load_forum_page_builder_widget_property_schema",
+  "validate_forum_page_builder_widget_properties",
+  "with_property_port",
   "preview_forum_page_builder_widget",
   "required_contribution_permissions",
   "Permission::from_str",
@@ -189,17 +232,18 @@ for (const marker of [
 ]) requireMarker(moduleAdmin, marker, "Pages host contribution mount");
 
 for (const marker of [
-  "Status: `source-ready / owner-preview-host-composed / property-editing-open / execution-pending`",
-  "ForumWidgetPreviewService",
-  "Provider-neutral Page Builder host",
-  "effective `manage -> read` contribution admission",
-  "owner-backed Forum widget property-editor transport/UI",
-]) requireMarker(actualization, marker, "Forum owner preview actualization");
+  "Status: `source-ready / owner-preview-and-properties-host-composed / execution-pending`",
+  "ForumWidgetContractService::catalog",
+  "ForumWidgetContractService::validate_props",
+  "provider-neutral property port",
+  "normalized `props`",
+  "browser/runtime evidence remains open",
+]) requireMarker(actualization, marker, "Forum owner property actualization");
 
 if (failures.length > 0) {
-  console.error("forum Page Builder owner preview verification failed:");
+  console.error("forum Page Builder contribution verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("forum Page Builder owner preview verification passed: owner_preview=true host_composed=true property_editor=open runtime_evidence=pending");
+console.log("forum Page Builder contribution verification passed: adapter=true owner_preview=true property_editor=true host_composed=true runtime_evidence=pending");

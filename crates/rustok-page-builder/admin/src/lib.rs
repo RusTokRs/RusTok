@@ -46,7 +46,11 @@ pub use contribution_host::{
     PageBuilderContributionHostContext, PageBuilderContributionHostExtension,
     PageBuilderContributionPreviewError, PageBuilderContributionPreviewFuture,
     PageBuilderContributionPreviewPort, PageBuilderContributionPreviewRequest,
-    PageBuilderRegistryInstaller,
+    PageBuilderContributionPropertyError, PageBuilderContributionPropertyIssue,
+    PageBuilderContributionPropertyPort, PageBuilderContributionPropertySchema,
+    PageBuilderContributionPropertySchemaFuture, PageBuilderContributionPropertySchemaRequest,
+    PageBuilderContributionPropertyValidation, PageBuilderContributionPropertyValidationFuture,
+    PageBuilderContributionPropertyValidationRequest, PageBuilderRegistryInstaller,
 };
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,

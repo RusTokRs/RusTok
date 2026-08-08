@@ -101,27 +101,37 @@ tags, Forum statistics, transactional events, visibility-aware Search/SEO,
 shared rich text, module-owned admin/storefront packages and Page Builder
 contracts.
 
-Forum Page Builder contribution metadata, Fly identity and owner-preview source
-are now source-ready. Canonical `rustok-module.toml` owns two complementary
-version-pinned admin contributions: `rustok.forum.widget-catalog` admits the
-`forum.topic_list`, `forum.topic_detail` and `forum.reply_stream` blocks plus
-owner-schema-reference property editors under `tree + properties`, while
+Forum Page Builder contribution metadata, Fly identity, owner-preview and
+owner-property source are now source-ready. Canonical `rustok-module.toml` owns
+two complementary version-pinned admin contributions: `rustok.forum.widget-catalog`
+admits the `forum.topic_list`, `forum.topic_detail` and `forum.reply_stream` blocks
+plus owner-schema-reference property editors under `tree + properties`, while
 `rustok.forum.widget-preview` admits only their renderer contracts under
 `preview`. `rustok-forum-admin/build.rs` consumes the shared platform contribution
 normalizer, and the Forum admin package registers real Fly component/block
 identities plus a `ContributionAdapter` without reading Forum owner data.
 
-Owner preview data now remains Forum-owned end to end. `ForumWidgetPreviewService`
+Owner preview data remains Forum-owned end to end. `ForumWidgetPreviewService`
 first normalizes configuration through the existing widget contract, then applies
 Forum visibility/RBAC and bounded owner reads for all three widget types. The
 HTTP owner route `/api/forum/widgets/preview`, SSR-only Forum admin transport and
 provider-neutral Page Builder contribution host compose that source into the real
 Pages admin route only when Forum is tenant-enabled and its exact manifest
 permission is effectively granted. `preview_off` filters the renderer
-contribution without removing `tree + properties`. Property-editor schema/form/
-save UI, retained runtime/browser evidence and the observed tenant Wave remain
-open; no source may treat source-ready host composition as observed rollout
-proof.
+contribution without removing `tree + properties`.
+
+Owner-backed property editing is also source-ready. Contribution metadata keeps
+only `forum_widget_owner_schema_ref_v1` pointers; the Forum admin property
+transport verifies the exact generated descriptor, loads the current schema body
+from `ForumWidgetContractService::catalog`, and validates candidate configuration
+through `ForumWidgetContractService::validate_props`. The provider-neutral Page
+Builder property panel supports the current bounded Forum schema subset and
+applies only valid owner `normalized_props` through the ordinary Fly
+`EditorCommand::Patch` history path. It rechecks selection/schema identity around
+asynchronous validation and never writes Forum owner data, tenant identity or actor
+identity into the document. Retained runtime/browser evidence and the observed
+tenant Wave remain open; no source may treat source-ready host composition as
+observed rollout proof.
 
 Profiles, Media, Social Graph, Reactions, Moderation, Notifications,
 Translation, SEO, Search/Index, Outbox/Events, Taxonomy, Workflow, Comments,
@@ -178,6 +188,7 @@ soft-delete/tombstone capture, public/solution accounting and the canonical
 deleted status event/projection in the same fenced receipt transaction.
 `SetVisibility(Unpublished)` remains fail-closed and distinct from
 `RejectPublication`; it is not approximated as `ReplyStatus::Rejected`.
+
 The optional server host source-materializes the neutral Moderation adapter
 registry when `mod-moderation` and `ModerationModule` are both selected. A
 Moderation-only profile materializes an empty registry; Forum+Moderation
@@ -230,7 +241,7 @@ remain pending.
 | `FORUM-29` | `planned` | Shared realtime transport with Forum cursors/revisions and canonical reload. |
 | `FORUM-30` | `planned` | Complete Forum admin by composing Forum and shared owners. |
 | `FORUM-31` | `planned` | Complete Forum storefront by composing Profiles, Media, Reactions, Notifications and Search. |
-| `FORUM-32` | `in_progress` | Generated Forum Fly blocks/renderers/property contracts plus Forum-owned preview service/HTTP/native transport and provider-neutral Pages host composition are source-ready. Owner-backed property editing, retained runtime/browser evidence and observed Page Builder Wave evidence remain. |
+| `FORUM-32` | `in_progress` | Generated Forum Fly blocks/renderers/property contracts, Forum-owned preview service/HTTP/native transport, provider-neutral Pages host composition and owner-backed schema/validation property editing are source-ready. Retained runtime/browser evidence and observed Page Builder Wave evidence remain. |
 | `FORUM-33` | `planned` | Forum metrics/reconciliation providers integrated with platform operations. |
 | `FORUM-34` | `planned` | Forum import/export adapter and NodeBB mapping over a shared runner. |
 | `NOTIFY-00` | `in_progress` | Neutral API/runtime composition and Forum providers exist; executable distribution evidence remains. |
@@ -550,12 +561,13 @@ one-attempt dispatch path.
 
 **Status:** `in_progress`
 
-Forum contribution discovery, Fly contract registration and owner-backed preview
-host composition are source-ready. Canonical `rustok-module.toml` owns the exact
-three widget identities and splits authoring/property admission from preview
-admission: `rustok.forum.widget-catalog` requires `tree + properties`, while
-`rustok.forum.widget-preview` requires only `preview`. This preserves property
-access when the provider is in `preview_off` degraded mode.
+Forum contribution discovery, Fly contract registration, owner-backed preview
+and owner-backed property editing are source-ready. Canonical
+`rustok-module.toml` owns the exact three widget identities and splits
+authoring/property admission from preview admission: `rustok.forum.widget-catalog`
+requires `tree + properties`, while `rustok.forum.widget-preview` requires only
+`preview`. This preserves property access when the provider is in `preview_off`
+degraded mode.
 
 Forum admin build generation uses the shared platform normalizer and exports the
 version-pinned manifest plus stable component ids. The Forum Fly adapter registers
@@ -563,7 +575,7 @@ component/block identities and resolves renderer/property-editor contracts but
 never imports Forum owner services or persistence. The Fly document stores only
 versioned widget configuration in `props`.
 
-Owner preview is now explicit instead of reusing an incomplete generic topic
+Owner preview is explicit instead of reusing an incomplete generic topic
 transport. `ForumWidgetPreviewService` first runs the existing widget contract
 normalizer, applies Forum visibility/RBAC and executes bounded owner reads. Topic
 list `activity/newest/top`, `include_pinned`, category filtering and pagination
@@ -573,21 +585,30 @@ excludes deleted tombstones. `/api/forum/widgets/preview` and the Forum admin
 server-function adapter expose this owner source without moving tenant/actor
 selection into widget props.
 
-The generic Page Builder admin package owns only a provider-neutral extension
-context: external manifest, Fly registry installer and optional async preview
-port. `apps/admin` composes the Forum extension on the real Pages route only when
-Forum is tenant-enabled. Contribution RBAC is resolved server-side through
-`has_effective_permission`, so `manage -> read` semantics remain identical to the
-platform permission model and the browser never receives an unrelated permission
-snapshot. Selected-component owner preview is explicit Refresh-only and bounded
-to a 16 KiB JSON summary; owner data is never persisted into Fly.
+The generic Page Builder admin package owns only provider-neutral extension ports:
+external manifest, Fly registry installer, async preview, and owner property
+schema/validation. `apps/admin` composes the Forum extension on the real Pages
+route only when Forum is tenant-enabled. Contribution RBAC is resolved
+server-side through `has_effective_permission`, so `manage -> read` semantics
+remain identical to the platform permission model and the browser never receives
+an unrelated permission snapshot. Selected-component owner preview remains
+explicit Refresh-only and bounded to a 16 KiB JSON summary; owner data is never
+persisted into Fly.
 
-Owner-backed property editing remains open. `forum_widget_owner_schema_ref_v1`
-still points to the Forum catalog/validation authority, but schema-fetch/form/
-save UI must be implemented before property-editor runtime parity is complete.
-Observed browser/runtime and tenant Wave evidence also remain open. Page Builder
-stays optional; Forum routes and owner state must remain available when builder
-or preview capabilities are disabled.
+Property schema and validation also remain Forum-owned. The generated property
+editor descriptor carries only `forum_widget_owner_schema_ref_v1`; the Forum admin
+transport requires an exact descriptor match before loading the schema body from
+`ForumWidgetContractService::catalog`, and candidate props are normalized only by
+`ForumWidgetContractService::validate_props`. The generic property panel accepts
+only the bounded current schema subset, rejects unsupported/additional fields,
+rechecks the selected component around async validation, and executes
+`ComponentPatch::set_field("props", normalized_props)` only for a valid object
+response. Raw browser form state and Forum topic/reply/category data are never
+persisted as a second owner authority.
+
+Observed browser/runtime and tenant Wave evidence remain open. Page Builder stays
+optional; Forum routes and owner state must remain available when builder,
+properties or preview capabilities are disabled.
 
 Replace the synthetic Wave packet with an observed tenant control-plane run only
 after the `pages` reference-consumer gate. The observed run must retain the
@@ -653,9 +674,9 @@ Hosts register/mount packages and do not absorb policy.
 
 1. Keep canonical Forum contribution metadata on the shared module-tooling boundary and keep Forum widget persistence/visibility/validation authoritative.
 2. Generated Fly component/block/renderer/property identities plus provider-neutral Pages host composition: source-ready.
-3. Forum-owned preview service/HTTP/native transport with explicit selected-component Page Builder preview: source-ready; retain all-on/preview-off and authorization evidence.
-4. Implement owner-backed property editor schema/form/save UI that writes only normalized Fly `props`.
-5. Retain runtime/browser evidence before replacing synthetic Wave evidence with an observed run.
+3. Forum-owned preview service/HTTP/native transport with explicit selected-component Page Builder preview: source-ready.
+4. Forum-owned property schema/validation transport plus generic normalized-`props` editor: source-ready.
+5. Retain all-on/preview-off/properties-off/Forum-disabled runtime/browser evidence before replacing synthetic Wave evidence with an observed run.
 
 ## Compatibility and migration
 
@@ -780,9 +801,10 @@ Hosts register/mount packages and do not absorb policy.
   strings for admission, but every Forum owner transport must independently
   reauthorize the request. A `manage` grant may satisfy an exact `read` manifest
   requirement only through the platform `has_effective_permission` semantics.
-- Forum widget property editing remains owner-contract driven: future UI must
-  fetch/validate through Forum contracts and persist only normalized Fly `props`.
-  It must not create a second Forum data authority.
+- Forum widget property editing is owner-contract driven: schema must be loaded
+  from the Forum owner catalog, candidate props must pass Forum owner validation,
+  and only owner-normalized Fly `props` may be persisted. It must not create a
+  second Forum data authority.
 
 ## Required verification
 
@@ -843,8 +865,8 @@ git diff --check
 Tests, lockfile/event-digest generation and runtime evidence are maintainer-run.
 Source contracts, Moderation adapter/migration/materialization/application-operation/
 one-attempt-dispatch/shared-scheduler/application-audit/operator-recovery source,
-Forum Page Builder Fly/owner-preview host source and browser harness source do not
-promote runtime status.
+Forum Page Builder Fly/owner-preview/owner-property host source and browser harness
+source do not promote runtime status.
 
 ## Release gates
 
@@ -865,14 +887,15 @@ runtime claims without retained executable evidence.
 
 ## Immediate next action
 
-For FORUM-32, implement the owner-backed Forum widget property-editor
-schema/form/save path over the existing catalog/validation authority. The UI may
-write only normalized widget configuration into Fly `props`; it must not persist
-Forum topic/reply/category owner data. Retain browser/runtime evidence for
-Forum-enabled Pages authoring, explicit owner preview, Forum-disabled composition,
-`preview_off` property availability, hidden-category filtering, moderator reply
-preview and effective `manage -> read` contribution admission. Replace synthetic
-Wave evidence only after the existing Pages reference-consumer execution gate.
+For FORUM-32, retain browser/runtime evidence for Forum-enabled Pages block
+insertion, owner schema loading, invalid diagnostics, owner-normalized `props`,
+undo/redo, explicit owner preview, Forum-disabled composition,
+`preview_off`/`properties_off`, hidden-category filtering, moderator reply preview
+and effective `manage -> read` contribution admission. Source composition is now
+complete for metadata, Fly identity, owner preview and owner properties; do not
+add another Forum-local schema/data authority. Replace synthetic Wave evidence
+only after the existing Pages reference-consumer execution gate and the Forum
+executable packet are accepted.
 
 Regenerate the event-contract digests and retain release verification for the
 current `Cargo.lock`, then retain SQLite and PostgreSQL evidence for changed/
