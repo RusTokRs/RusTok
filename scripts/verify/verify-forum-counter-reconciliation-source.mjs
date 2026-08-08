@@ -15,15 +15,19 @@ function requireAbsent(text, marker, message) {
 }
 
 const servicePath = "crates/rustok-forum/src/services/counter_reconciliation.rs";
+const servicesModPath = "crates/rustok-forum/src/services/mod.rs";
 const graphqlPath = "crates/rustok-forum/src/graphql/reconciliation_query.rs";
 const graphqlModPath = "crates/rustok-forum/src/graphql/mod.rs";
 const libPath = "crates/rustok-forum/src/lib.rs";
+const planPath = "crates/rustok-forum/docs/implementation-plan.md";
 const packetPath = "docs/modules/forum-33-counter-reconciliation-actualization-2026-08-08.md";
 
 const service = read(servicePath);
+const servicesMod = read(servicesModPath);
 const graphql = read(graphqlPath);
 const graphqlMod = read(graphqlModPath);
 const lib = read(libPath);
+const plan = read(planPath);
 const packet = read(packetPath);
 
 for (const marker of [
@@ -68,6 +72,15 @@ for (const forbidden of [
 }
 
 for (const marker of [
+  "mod counter_reconciliation;",
+  "pub use counter_reconciliation::{",
+  "ForumCounterReconciliationService",
+  "MAX_FORUM_COUNTER_RECONCILIATION_LIMIT",
+]) {
+  requireText(servicesMod, marker, `Forum services composition missing ${marker}`);
+}
+
+for (const marker of [
   "pub struct ForumReconciliationQuery",
   "forum_counter_reconciliation_report",
   "require_module_enabled(ctx, MODULE_SLUG).await?",
@@ -90,11 +103,28 @@ for (const marker of [
   requireText(graphqlMod, marker, `Forum GraphQL composition missing ${marker}`);
 }
 for (const marker of [
-  '#[path = "services/counter_reconciliation.rs"]',
+  "pub mod services;",
   "ForumCounterReconciliationService",
   "MAX_FORUM_COUNTER_RECONCILIATION_LIMIT",
 ]) {
   requireText(lib, marker, `Forum owner export missing ${marker}`);
+}
+requireAbsent(
+  lib,
+  '#[path = "services/counter_reconciliation.rs"]',
+  "Forum reconciliation must use the canonical services module boundary",
+);
+
+for (const marker of [
+  "| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter reconciliation report",
+  "## `FORUM-33` — analytics, observability and reconciliation",
+  "**Status:** `in_progress`",
+  "forumCounterReconciliationReport(limit: Int)",
+  "REPEATABLE READ READ ONLY",
+  "node scripts/verify/verify-forum-counter-reconciliation-source.mjs",
+  "For FORUM-33, retain SQLite and PostgreSQL execution evidence",
+]) {
+  requireText(plan, marker, `canonical Forum plan missing ${marker}`);
 }
 
 for (const marker of [
