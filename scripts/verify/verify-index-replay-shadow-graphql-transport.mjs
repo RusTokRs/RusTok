@@ -38,15 +38,39 @@ for (const forbidden of [
   }
 }
 
+const dryRunPath = 'crates/rustok-index/src/replay_dry_run.rs';
+const dryRun = requireMarkers(dryRunPath, [
+  'locale: Option<LocaleKey>',
+  'pub fn for_locale(',
+  'pub fn locale(&self) -> Option<&LocaleKey>',
+  'registered.schema.locale_mode == LocaleMode::None',
+  'IndexReplayDryRunError::LocaleScopeUnsupported',
+  'IndexSourceScanRequest::for_locale(',
+  'exact_locale_dry_run_uses_the_same_canonical_scope_for_every_page',
+  'exact_locale_dry_run_rejects_a_non_localized_schema_before_source_scan',
+]);
+for (const forbidden of [
+  'DatabaseConnection',
+  'PostgresMutationStore',
+  'PostgresIndexReplayJobStore',
+  'PostgresIndexReplayCheckpointStore',
+]) {
+  if (dryRun.includes(forbidden)) fail(`${dryRunPath} gained forbidden durable capability: ${forbidden}`);
+}
+
 const servicePath = 'apps/server/src/services/index_replay_shadow_transport.rs';
 const service = requireMarkers(servicePath, [
   'pub enum IndexReplayShadowTransportError',
   'pub struct IndexReplayShadowTransportOutcome',
   'pub struct IndexReplayShadowTransportRuntime',
-  'pub async fn run_schema_wide(',
+  'pub async fn run(',
+  'locale: Option<rustok_index::LocaleKey>',
   'context.authorize_for(context.tenant_id())?;',
+  'let scope = match locale.as_ref()',
+  'IndexSourceContinuationScope::for_locale(',
   'IndexSourceContinuationScope::from_registry(',
   '.open_encoded(&scope, encoded, Utc::now())',
+  'IndexReplayDryRunRequest::for_locale(',
   'IndexReplayDryRunRequest::new(',
   'self.operator.run_shadow(context, request).await?',
   '.next_cursor()',
@@ -65,54 +89,62 @@ for (const forbidden of [
   'tokio::time::sleep',
   '.execute(',
   '.begin()',
-  'IndexSourceScanRequest::for_locale',
-  'LocaleKey',
 ]) {
   if (service.includes(forbidden)) {
-    fail(`${servicePath} must remain schema-wide, no-write and lifecycle-neutral until the next locale execution slice: ${forbidden}`);
+    fail(`${servicePath} must remain no-write and lifecycle-neutral: ${forbidden}`);
   }
 }
 const authorize = service.indexOf('context.authorize_for(context.tenant_id())?;');
-const scope = service.indexOf('IndexSourceContinuationScope::from_registry(', authorize);
+const scope = service.indexOf('let scope = match locale.as_ref()', authorize);
 const open = service.indexOf('.open_encoded(&scope, encoded, Utc::now())', scope);
-const request = service.indexOf('IndexReplayDryRunRequest::new(', open);
+const request = service.indexOf('let request = match locale', open);
 const run = service.indexOf('self.operator.run_shadow(context, request).await?', request);
 const seal = service.indexOf('codec.seal(&scope, cursor, Utc::now(), keyring.lifetime())', run);
 if (authorize < 0 || scope <= authorize || open <= scope || request <= open || run <= request || seal <= run) {
-  fail('Shadow transport order must remain authorize -> frozen schema-wide scope -> open token -> dry-run request -> guarded Shadow -> seal cursor');
+  fail('Shadow transport order must remain authorize -> exact frozen scope -> open token -> scoped dry-run request -> guarded Shadow -> seal cursor');
 }
 
 const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
 const graphql = requireMarkers(graphqlPath, [
+  'const MAX_LOCALE_BYTES: usize = 32;',
   'const MAX_CONTINUATION_BYTES: usize = 16 * 1024;',
   'pub struct IndexReplayShadowRunInput',
+  'pub locale: Option<String>',
   'pub continuation: Option<String>',
   'pub enum IndexReplayGraphqlShadowStatus',
   'pub struct IndexReplayShadowRunPayload',
   'async fn run_index_replay_shadow(',
   'prepare_authorized_shadow_run(tenant.id, auth.user_id, input)',
   '.get::<IndexReplayShadowTransportRuntime>()',
-  '.run_schema_wide(',
+  '.run(',
   'GRAPHQL_REPLAY_PAGE_LIMIT,',
   'GRAPHQL_REPLAY_MAX_PAGES,',
-  'shadow_transport_authorizes_before_schema_and_continuation_parsing',
-  'shadow_transport_accepts_only_schema_and_bounded_sealed_continuation',
+  'shadow_transport_authorizes_before_schema_locale_and_continuation_parsing',
+  'shadow_transport_accepts_schema_locale_and_bounded_sealed_continuation',
   'INDEX_REPLAY_SHADOW_CONTINUATION_INVALID',
   'INDEX_REPLAY_SHADOW_CONTINUATION_EXPIRED',
   'Error::LocaleScopeMismatch',
+  'IndexReplayDryRunError::LocaleScopeUnsupported',
 ]);
 const shadowPrepare = graphql.indexOf('fn prepare_authorized_shadow_run(');
 const shadowAuthorize = graphql.indexOf('let context = authorize(tenant_id, actor_id)?;', shadowPrepare);
 const shadowSchema = graphql.indexOf('let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;', shadowPrepare);
-const shadowContinuation = graphql.indexOf('bounded_text("continuation", &value, MAX_CONTINUATION_BYTES)?;', shadowPrepare);
-if (shadowPrepare < 0 || shadowAuthorize < shadowPrepare || shadowSchema <= shadowAuthorize || shadowContinuation <= shadowSchema) {
-  fail('Shadow GraphQL preparation must authorize before parsing schema and continuation');
+const shadowLocale = graphql.indexOf('let locale = parse_locale(input.locale)?;', shadowSchema);
+const shadowContinuation = graphql.indexOf('bounded_text("continuation", &value, MAX_CONTINUATION_BYTES)?;', shadowLocale);
+if (
+  shadowPrepare < 0 ||
+  shadowAuthorize < shadowPrepare ||
+  shadowSchema <= shadowAuthorize ||
+  shadowLocale <= shadowSchema ||
+  shadowContinuation <= shadowLocale
+) {
+  fail('Shadow GraphQL preparation must authorize before parsing schema, locale and continuation');
 }
 const inputStart = graphql.indexOf('pub struct IndexReplayShadowRunInput');
 const inputEnd = graphql.indexOf('\n}', inputStart);
 const input = graphql.slice(inputStart, inputEnd);
 for (const forbidden of [
-  'tenant', 'actor', 'worker', 'locale', 'page_limit', 'max_pages', 'heartbeat', 'lease',
+  'tenant', 'actor', 'worker', 'page_limit', 'max_pages', 'heartbeat', 'lease',
   'partition', 'source_name', 'job_id', 'checkpoint', 'cancel', 'retry', 'StopHandle', 'Uuid',
 ]) {
   if (input.includes(forbidden)) fail(`Shadow GraphQL input contains caller-owned field marker ${forbidden}`);
@@ -138,27 +170,28 @@ requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'continuation.clone()',
 ]);
 requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
-  'Status: `full_locale_schema_wide_shadow_and_locale_safe_continuation_source_complete_execution_pending`.',
+  'Status: `full_and_shadow_locale_source_complete_execution_pending`.',
   '`runIndexReplayShadow(input: ...)`',
-  'current Shadow GraphQL path intentionally still has no locale input',
+  'optional canonicalizable locale',
   'same fixed source page limit and maximum-page count (`100 × 8`)',
-  'continuation contract itself is now locale-safe',
+  'IndexSourceContinuationScope::for_locale',
   'one current unversioned envelope',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
-  'Status: `source_complete_schema_wide_transport_locale_execution_pending`',
+  'Status: `source_complete_locale_transport_execution_pending`',
+  '`IndexReplayDryRunRequest::for_locale`',
+  '`LocaleScopeUnsupported`',
   '`runIndexReplayShadow`',
-  'continuation scope now binds optional canonical locale identity',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_schema_wide_transport_locale_execution_pending`.',
+  'Status: `source_complete_shadow_locale_transport_execution_pending`.',
   '`runIndexReplayShadow`',
-  'Locale-safe continuation identity',
-  'Exact-locale Shadow transport remains source-open',
+  'Locale-safe continuation and dry-run execution',
+  'bounded mutation-application',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
+  'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
 ]);
 
-console.log('[verify-index-replay-shadow-graphql-transport] schema-wide Shadow GraphQL remains authorization-first/no-write while the single canonical continuation format now binds exact locale scope');
+console.log('[verify-index-replay-shadow-graphql-transport] Shadow GraphQL is authorization-first, locale-scoped, sealed and no-write without a parallel transport or token format');
