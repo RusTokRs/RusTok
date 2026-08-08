@@ -23,6 +23,12 @@
     "forum_disabled_url": "RUSTOK_FORUM_PAGE_BUILDER_FORUM_DISABLED_URL",
     "no_read_url": "RUSTOK_FORUM_PAGE_BUILDER_NO_READ_URL"
   },
+  "deployment_identity": {
+    "source_commit_verified_against_checkout_head": true,
+    "deployment_digest_is_maintainer_supplied_reviewed_identity": true,
+    "browser_independent_digest_to_deployment_attestation": false,
+    "deployment_provenance_must_be_verified_outside_this_browser_packet": true
+  },
   "profiles": [
     "full",
     "preview_off",
@@ -56,7 +62,7 @@
   ],
   "retained_data": [
     "exact source commit",
-    "immutable deployment RepoDigest",
+    "maintainer-supplied reviewed immutable deployment RepoDigest",
     "source-file SHA-256 hashes",
     "storage-state file SHA-256 hashes and byte sizes",
     "profile URL SHA-256 hashes",
@@ -74,6 +80,7 @@
   ],
   "not_claimed": [
     "browser execution",
+    "browser-independent digest-to-deployment attestation",
     "runtime authorization execution",
     "observed Page Builder Wave",
     "provider SLO health"
