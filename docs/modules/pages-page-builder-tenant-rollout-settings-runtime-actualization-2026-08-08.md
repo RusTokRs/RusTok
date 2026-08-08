@@ -50,6 +50,8 @@ The helper is intentionally read-only and provider-neutral:
 - it does not mutate settings;
 - it does not create a second settings store or Pages-owned control plane.
 
+The helper deliberately does not authenticate or infer tenant authority. Its caller must supply the tenant id from a trusted `TenantContext` (and bind authenticated authority to that routed tenant where the transport requires authentication). The next Pages binding slice owns that server-adapter check; the low-level runtime helper only performs the exact tenant/module/enabled-row read.
+
 This keeps tenant-module lifecycle/settings ownership outside Pages while giving internal server adapters one neutral way to consume the persisted snapshot.
 
 ## Current boundary
