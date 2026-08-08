@@ -8,7 +8,7 @@ This slice continues the Pages/Page Builder contribution parity sequence after P
 
 ## Shared source boundary
 
-`crates/rustok-module-manifest` is now the lightweight shared parser/normalizer for module contribution metadata. It intentionally depends only on `serde`, `serde_json` and `toml`; it does not depend on `fly-ui`, Leptos, Page Builder runtime packages or the `rustok-modules` control plane.
+`crates/rustok-build/src/module_manifest_contribution.rs` is now the shared parser/normalizer for module contribution metadata. `rustok-build` already owns platform build tooling and already carries `serde`, `serde_json` and `toml`; no new workspace package or dependency edge is introduced for this slice. The module itself remains metadata-only and does not reference `fly-ui`, Leptos, Page Builder runtime packages or the `rustok-modules` control plane.
 
 The shared normalizer:
 
@@ -19,14 +19,14 @@ The shared normalizer:
 - rejects undeclared target providers and owner-version conflicts;
 - requires nested renderer/property-editor provider identity to match the contribution provider;
 - reserves `ownerProvider` and `providerVersion` for generation and injects those fields from canonical module metadata;
-- removes optional build/export-only `role` metadata before producing the runtime manifest JSON;
+- removes optional build/export-only `role` metadata before producing runtime manifest JSON;
 - returns `None` for modules that do not declare contribution metadata, so adoption remains explicit rather than mandatory for unrelated modules.
 
-The shared crate is metadata tooling only. It does not build a runtime `ContributionRegistry`, choose tenant policy, observe provider health, own persistence, or introduce a second Fly authority.
+The shared module is build metadata tooling only. It does not build a runtime `ContributionRegistry`, choose tenant policy, observe provider health, own persistence, or introduce a second Fly authority.
 
 ## Pages build-time consumer
 
-`crates/rustok-pages/admin/build.rs` is reduced to a Pages-specific adapter over the shared normalizer. It retains only Pages-specific assertions and exported constant names:
+`crates/rustok-pages/admin/build.rs` includes the platform build source directly for its build-script compilation and is reduced to a Pages-specific adapter. It retains only Pages-specific assertions and exported constant names:
 
 - module slug must remain `pages`;
 - module version must match the admin crate package version;
@@ -35,11 +35,11 @@ The shared crate is metadata tooling only. It does not build a runtime `Contribu
 - metadata must remain owned by the Pages provider and expose one property editor;
 - the normalized shared manifest is emitted into `OUT_DIR` for the unchanged Pages runtime helper API.
 
-TOML parsing and generic contribution normalization are no longer Pages-owned.
+TOML parsing and generic contribution normalization are no longer Pages-owned. The existing build dependency set remains unchanged, so this extraction creates no `Cargo.lock` delta.
 
 ## Publish readiness
 
-`xtask module validate <slug>` now invokes the same shared contribution normalizer while validating a publishable module package. When contribution metadata exists, publish readiness additionally requires:
+`xtask module validate <slug>` compiles the same platform build source into its tooling path and invokes the same contribution normalizer while validating a publishable module package. When contribution metadata exists, publish readiness additionally requires:
 
 - normalized module id/version to agree with the package manifest;
 - admin contributions to have `[provides.admin_ui]`;
@@ -49,7 +49,7 @@ Generic provider/version/capability admission is shared with the build-time cons
 
 ## Guardrails
 
-The Fly contribution guard now requires the shared crate, its lightweight dependency boundary, Pages build-time reuse and `xtask` publish validation. It rejects reintroduction of the old Pages-local parser/normalizer. The Pages metadata guard likewise follows canonical module metadata through shared normalization into the generated runtime manifest.
+The Fly contribution guard now requires the `rustok-build` shared module, Pages build-time reuse and `xtask` publish validation. It rejects reintroduction of the old Pages-local parser/normalizer. The Pages metadata guard likewise follows canonical module metadata through shared normalization into the generated runtime manifest.
 
 ## Boundaries retained
 
