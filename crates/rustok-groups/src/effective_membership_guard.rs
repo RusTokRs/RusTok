@@ -64,6 +64,33 @@ pub(crate) async fn require_effective_manager_owned(
     require_manager_state(effective, capability)
 }
 
+/// Canonical owner-clock manager authorization for read-only owner surfaces.
+///
+/// This shares the exact effective-state semantics with the transactional guard without acquiring
+/// write locks. Callers that mutate owner state must use `require_effective_manager_owned` instead.
+pub(crate) async fn require_effective_manager_direct_owned(
+    db: &DatabaseConnection,
+    context: &PortContext,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    actor_user_id: Uuid,
+    capability: GroupManagerCapability,
+) -> GroupsResult<()> {
+    if has_platform_manage(context) {
+        return Ok(());
+    }
+
+    let effective = resolve_group_membership_enforcement(
+        db,
+        tenant_id,
+        group_id,
+        actor_user_id,
+        Utc::now(),
+    )
+    .await?;
+    require_manager_state(effective, capability)
+}
+
 /// Canonical transaction-aware candidate/subject authorization under the same owner lock order.
 pub(crate) async fn require_user_not_denied_owned(
     transaction: &DatabaseTransaction,
@@ -91,16 +118,16 @@ pub(crate) async fn require_effective_manager(
     if has_platform_manage(context) {
         return Ok(());
     }
-    let effective = resolve_group_membership_enforcement(
+    require_effective_manager_direct_owned(
         db,
+        context,
         tenant_id(context)?,
         group_id,
         actor_user_id(context)?,
-        Utc::now(),
+        capability,
     )
     .await
-    .map_err(PortError::from)?;
-    require_manager_state(effective, capability).map_err(Into::into)
+    .map_err(Into::into)
 }
 
 pub(crate) async fn require_candidate_not_denied(
