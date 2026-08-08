@@ -59,8 +59,14 @@ fn ensure_trusted_tenant(
 }
 
 #[cfg(feature = "ssr")]
-pub(crate) async fn load_trusted_pages_builder_rollout_flags(
-) -> Result<BuilderCapabilityFlags, ServerFnError> {
+pub(crate) struct TrustedPagesBuilderRolloutSnapshot {
+    pub flags: BuilderCapabilityFlags,
+    pub tenant_slug: String,
+}
+
+#[cfg(feature = "ssr")]
+pub(crate) async fn load_trusted_pages_builder_rollout_snapshot(
+) -> Result<TrustedPagesBuilderRolloutSnapshot, ServerFnError> {
     use leptos::prelude::expect_context;
     use rustok_api::{AuthContext, HostRuntimeContext, TenantContext, tenant_module_settings};
 
@@ -77,15 +83,19 @@ pub(crate) async fn load_trusted_pages_builder_rollout_flags(
         .await
         .map_err(|_| ServerFnError::new("Unable to read Pages builder rollout settings"))?
         .ok_or_else(|| ServerFnError::new("Pages module is not enabled for the routed tenant"))?;
-    pages_builder_flags_from_settings(&settings)
-        .map_err(|_| ServerFnError::new("Pages builder rollout settings are invalid"))
+    let flags = pages_builder_flags_from_settings(&settings)
+        .map_err(|_| ServerFnError::new("Pages builder rollout settings are invalid"))?;
+    Ok(TrustedPagesBuilderRolloutSnapshot {
+        flags,
+        tenant_slug: tenant.slug,
+    })
 }
 
 #[server(prefix = "/api/fn", endpoint = "pages/builder-rollout-flags")]
 pub(crate) async fn pages_builder_rollout_flags() -> Result<BuilderCapabilityFlags, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        load_trusted_pages_builder_rollout_flags().await
+        Ok(load_trusted_pages_builder_rollout_snapshot().await?.flags)
     }
     #[cfg(not(feature = "ssr"))]
     {
