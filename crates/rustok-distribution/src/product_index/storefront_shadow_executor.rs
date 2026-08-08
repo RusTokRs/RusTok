@@ -39,12 +39,26 @@ impl ProductStorefrontIndexShadowComparison {
     }
 }
 
+/// Request-shape decision for the current Product key-4 channel projection.
+///
+/// `sales_channel_ids` stores resolved Channel UUID membership. For unrestricted Product metadata this is
+/// the set of all current Channels, so it cannot distinguish an unrestricted Product from a restricted
+/// Product whose allowed slugs currently resolve to that same complete set. Channel-less owner semantics
+/// therefore remain owner-native instead of being inferred from membership equality.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProductStorefrontIndexChannelScopeDecision {
+    ShadowEligible { public_channel_id: Uuid },
+    OwnerNativeChannelLess,
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum ProductStorefrontIndexShadowProjectionError {
     #[error("Product Storefront shadow schema-read capability is unavailable")]
     SchemaReadPortUnavailable,
     #[error("Product Storefront shadow request tenant identity is invalid")]
     InvalidTenant,
+    #[error("Product Storefront channel-less requests remain owner-native for the current Index key-4 contract")]
+    ChannelLessOwnerNative,
     #[error("Product Storefront shadow requires a trusted public channel slug/id pair")]
     PublicChannelIdentityUnavailable,
     #[error("Product Storefront shadow attribute-filter owner resolution failed: {0}")]
@@ -55,6 +69,27 @@ pub(crate) enum ProductStorefrontIndexShadowProjectionError {
     Index(#[from] IndexQueryExecutionError),
 }
 
+/// Classify the caller's public-channel context without guessing channel-less visibility from Index
+/// membership.
+///
+/// An absent/blank slug paired with no UUID is the owner's channel-less shape and is deliberately retained as
+/// owner-native. A present non-empty slug plus a non-nil UUID is eligible for channel-scoped shadow
+/// translation. Partial, contradictory or nil identities fail closed as malformed context rather than being
+/// treated as channel-less.
+pub(crate) fn classify_product_storefront_index_channel_scope(
+    public_channel_slug: Option<&str>,
+    public_channel_id: Option<Uuid>,
+) -> Result<ProductStorefrontIndexChannelScopeDecision, ProductStorefrontIndexShadowProjectionError> {
+    let public_channel_slug = public_channel_slug.map(str::trim).filter(|slug| !slug.is_empty());
+    match (public_channel_slug, public_channel_id) {
+        (None, None) => Ok(ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess),
+        (Some(_), Some(public_channel_id)) if !public_channel_id.is_nil() => {
+            Ok(ProductStorefrontIndexChannelScopeDecision::ShadowEligible { public_channel_id })
+        }
+        _ => Err(ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable),
+    }
+}
+
 /// Owner-first, non-serving Product Storefront shadow executor.
 ///
 /// This object composes only host-selected Product and Index capabilities. It never constructs
@@ -62,9 +97,9 @@ pub(crate) enum ProductStorefrontIndexShadowProjectionError {
 /// The owner list result remains authoritative even when Product metadata resolution, shadow query build,
 /// Index readiness/admission, or Index execution fails.
 ///
-/// `public_channel_slug` and `public_channel_id` must be a trusted pair supplied by the caller's current
-/// channel context. This executor only checks that both identities are present and non-empty/non-nil; it
-/// does not independently prove slug/UUID correspondence.
+/// Channel-scoped projection requires a trusted current slug/UUID pair supplied by the caller's current
+/// channel context. Channel-less requests are intentionally retained as typed owner-native projected results
+/// for the current key-4 schema rather than approximated from `sales_channel_ids`.
 #[derive(Clone)]
 pub(crate) struct ProductStorefrontIndexShadowExecutor {
     product: ProductCatalogReadRuntime,
@@ -130,15 +165,15 @@ impl ProductStorefrontIndexShadowExecutor {
         public_channel_id: Option<Uuid>,
         query: StorefrontProductListQuery,
     ) -> Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError> {
-        let public_channel_id = match (
-            public_channel_slug.as_deref().map(str::trim),
+        let public_channel_id = match classify_product_storefront_index_channel_scope(
+            public_channel_slug.as_deref(),
             public_channel_id,
-        ) {
-            (Some(slug), Some(channel_id)) if !slug.is_empty() && !channel_id.is_nil() => channel_id,
-            _ => {
-                return Err(
-                    ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable,
-                );
+        )? {
+            ProductStorefrontIndexChannelScopeDecision::ShadowEligible { public_channel_id } => {
+                public_channel_id
+            }
+            ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess => {
+                return Err(ProductStorefrontIndexShadowProjectionError::ChannelLessOwnerNative);
             }
         };
         let tenant_id = Uuid::parse_str(context.tenant_id.as_str())
@@ -214,5 +249,37 @@ mod tests {
         };
         let comparison = compare_owner_and_index(&authoritative, &projected);
         assert!(comparison.is_match());
+    }
+
+    #[test]
+    fn channel_scope_distinguishes_owner_native_channel_less_from_invalid_identity() {
+        assert_eq!(
+            classify_product_storefront_index_channel_scope(None, None).unwrap(),
+            ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess
+        );
+        assert_eq!(
+            classify_product_storefront_index_channel_scope(Some("   "), None).unwrap(),
+            ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess
+        );
+
+        let channel_id = Uuid::new_v4();
+        assert_eq!(
+            classify_product_storefront_index_channel_scope(Some(" web "), Some(channel_id))
+                .unwrap(),
+            ProductStorefrontIndexChannelScopeDecision::ShadowEligible { public_channel_id: channel_id }
+        );
+
+        assert!(matches!(
+            classify_product_storefront_index_channel_scope(Some("web"), None),
+            Err(ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable)
+        ));
+        assert!(matches!(
+            classify_product_storefront_index_channel_scope(None, Some(channel_id)),
+            Err(ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable)
+        ));
+        assert!(matches!(
+            classify_product_storefront_index_channel_scope(Some("web"), Some(Uuid::nil())),
+            Err(ProductStorefrontIndexShadowProjectionError::PublicChannelIdentityUnavailable)
+        ));
     }
 }

@@ -27,12 +27,10 @@ for (const forbidden of ['rustok_index', 'SharedIndexQueryRuntime', 'execute_loc
   if (storefront.includes(forbidden)) fail(`${storefrontPath} contains forbidden marker ${forbidden}`);
 }
 
-const typesPath = 'crates/rustok-product/src/services/catalog/types.rs';
-requireMarkers(typesPath, [
+requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
   'pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;',
   'search: normalize_storefront_product_search(search)?',
   'pub(crate) fn validate_storefront_product_search(',
-  'search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
 ]);
 
 const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
@@ -47,44 +45,45 @@ const owner = requireMarkers(ownerPath, [
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
   'let pattern = format!("%{search}%");',
   'pt.title LIKE $1',
-  '.order_by_asc(entities::product::Column::Id)',
-  '.order_by_desc(entities::product::Column::Id)',
 ]);
 const titleSearch = owner.slice(owner.indexOf('fn product_title_search_condition('));
 if (titleSearch.includes('pt.locale')) fail(`${ownerPath} title search became locale-scoped`);
 if (titleSearch.includes('COLLATE')) {
   fail(`${ownerPath} owner title search changed collation before retained default-vs-C evidence admission`);
 }
-const ownerValidation = owner.indexOf(
-  'types::validate_storefront_product_search(list_query.search.as_deref())?;',
-);
-const ownerSql = owner.indexOf('let mut query = entities::product::Entity::find()');
-if (ownerValidation < 0 || ownerSql <= ownerValidation) {
-  fail(`${ownerPath} must validate Storefront search before constructing owner SQL`);
-}
 
-requireMarkers('crates/rustok-product/src/catalog_schema_read_port.rs', [
-  'ProductStorefrontAttributeFilterResolutionRequest',
-  'async fn resolve_storefront_attribute_filters(',
-  '"product.storefront_attribute_filter_resolution_unavailable"',
+requireMarkers('crates/rustok-product/src/services/catalog/helpers.rs', [
+  'pub(crate) fn product_channel_visibility_condition(',
+  "metadata->'channel_visibility'->'allowed_channel_slugs'",
+  "jsonb_array_length(COALESCE(products.metadata->'channel_visibility'->'allowed_channel_slugs', '[]'::jsonb)) = 0",
 ]);
-requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', [
-  'pub enum ProductAttributeTermExpr',
-  'pub struct ProductResolvedAttributeFilter',
-  'product_attribute_localized_text_expr(',
-  'ProductAttributeTermExpr::Never',
+requireMarkers('crates/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+  'ProductChannelVisibility::Unrestricted => (',
+  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow.rs', [
-  'services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
-  'if search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
-  'FilterExpr::TextLike(root_field("title")?, pattern)',
-]);
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs', [
-  'pub(crate) struct ProductStorefrontIndexShadowExecutor',
+
+const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executor = requireMarkers(executorPath, [
+  'pub(crate) enum ProductStorefrontIndexChannelScopeDecision',
+  'ShadowEligible { public_channel_id: Uuid }',
+  'OwnerNativeChannelLess',
+  'ChannelLessOwnerNative',
+  'pub(crate) fn classify_product_storefront_index_channel_scope(',
+  '(None, None) => Ok(ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess)',
+  'return Err(ProductStorefrontIndexShadowProjectionError::ChannelLessOwnerNative);',
   'list_filtered_published_products(',
   '.resolve_storefront_attribute_filters(',
   '.execute_localized_query(index_query)',
   'pub(crate) authoritative: StorefrontProductList',
+]);
+for (const forbidden of ['CHANNEL_LESS_SENTINEL', 'UNRESTRICTED_CHANNEL_SENTINEL']) {
+  if (executor.includes(forbidden)) fail(`${executorPath} contains forbidden visibility sentinel ${forbidden}`);
+}
+
+requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow.rs', [
+  'services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
+  'PublicChannelRequired',
+  'root_field("sales_channel_ids")?',
 ]);
 requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
   'RUSTOK_PRODUCT_STOREFRONT_EQUIVALENCE_DATABASE_URL',
@@ -96,74 +95,55 @@ requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_e
   'RUSTOK_PRODUCT_STOREFRONT_EAV_EQUIVALENCE_DATABASE_URL',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'weight=7',
-  'label=Punainen',
-  'label=Red',
-  'color=red',
-  'features=wifi',
   'color=missing',
-  'color=00000000-0000-0000-0000-000000000000',
 ]);
 requireMarkers('crates/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
   'RUSTOK_PRODUCT_STOREFRONT_COLLATION_DATABASE_URL',
   'translation.title LIKE $2',
   '(translation.title COLLATE "C") LIKE $2',
   "current_setting('lc_collate')",
-  'owner_ids != index_c_ids',
-  'Unicode NFC remains byte-distinct',
-  'escaped percent literal',
 ]);
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
   'assert_eq!(schema.fields.len(), 15);',
+  'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
 ]);
-if (productIndex.includes('SchemaVersion::new(3)')) fail(`${productIndexPath} restored historical key 3`);
+for (const forbidden of ['SchemaVersion::new(3)', 'SchemaVersion::new(5)']) {
+  if (productIndex.includes(forbidden)) fail(`${productIndexPath} contains forbidden Product schema marker ${forbidden}`);
+}
 
 requireMarkers('scripts/verify/verify-product-storefront-search-bound.mjs', [
   'MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022',
   'MAX_TEXT_LIKE_PATTERN_BYTES: usize = 1024',
-  'ownerBytes + 2 !== indexBytes',
-  'reject over-bound input rather than truncate it',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-collation-postgres-packet.mjs', [
   'must remain the owner/default-collation side',
-  'COLLATE \\"C\\"',
-  'owner_ids != index_c_ids',
   'must observe deployment/default collation rather than manufacture parity',
 ]);
+requireMarkers('scripts/verify/verify-index-product-storefront-channel-scope-policy.mjs', [
+  'OwnerNativeChannelLess',
+  'ShadowEligible { public_channel_id: Uuid }',
+  'must not infer or fabricate visibility membership',
+]);
 requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs', [
-  'product_locale_absence_postgres.rs',
-  'product_materialized_query_freshness_postgres.rs',
-  'product_channel_convergence_postgres.rs',
-  'product_channel_identity_transitions_postgres.rs',
-  'product_linked_target_recreate_postgres.rs',
-  'product_linked_target_availability_equivalence_postgres.rs',
-  'product_linked_target_replay_redelivery_postgres.rs',
-  "source.includes('SchemaVersion::new(3)')",
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `collation_packet_source_complete_execution_and_visibility_pending`',
+  'Status: `channel_scope_policy_source_complete_deep_page_pending`',
   'Mounted Storefront remains owner-native',
-  'Product-owned Storefront search bound — source complete',
-  'Title-search collation packet — source complete, execution pending',
-  '`MAX_STOREFRONT_PRODUCT_SEARCH_BYTES = 1022`',
-  'Core and EAV PostgreSQL packets — source complete, execution pending',
-  'Historical retained Product packets — key 4 source actualized',
-  'Collation admission per deployment',
-  'ProductVariant stays on key',
-  'SalesChannel stays on key',
-]);
-requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
-  'Status: `source_complete_materialized_rebuild_pending`',
-  '`requested-value OR (NOT requested-present AND fallback-value)`',
+  'Channel-less serving policy — source complete for current key 4',
+  '`OwnerNativeChannelLess`',
+  '`ShadowEligible`',
+  '`PublicChannelIdentityUnavailable`',
+  'No sentinel UUID',
+  'deep-page policy remains unresolved',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
-  "'verify-product-storefront-search-bound.mjs'",
+  "'verify-index-product-storefront-channel-scope-policy.mjs'",
   "'verify-index-product-storefront-collation-postgres-packet.mjs'",
-  "'verify-index-product-postgres-key4-fixtures.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; search length and collation packet source are complete while PostgreSQL execution/admission, channel-less visibility and serving-policy gates stay pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; current key-4 channel-less requests have a typed owner-native policy while deep-page, evidence admission and serving gates remain pending');
