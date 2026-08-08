@@ -21,6 +21,7 @@ for (const marker of [
   "pub struct ModerationRecoveryMutation",
   "requeue_moderation_application",
   "reconcile_legacy_moderation_application",
+  "create_moderation_rereview",
   'const MODULE_SLUG: &str = "moderation"',
   "require_module_enabled(ctx, MODULE_SLUG).await?",
   "auth.tenant_id != tenant.id",
@@ -34,6 +35,7 @@ for (const marker of [
   "ModerationRecoveryCommandPort::requeue_application",
   "ModerationRecoveryCommandPort::reconcile_legacy_application",
   "ModerationApplicationRecoveryPayload",
+  "ModerationRereviewPayload",
 ]) {
   requireText(transport, marker, `Moderation recovery GraphQL transport is missing ${marker}`);
 }
@@ -46,7 +48,57 @@ for (const forbidden of [
   forbidText(
     transport,
     forbidden,
-    `GraphQL recovery transport must enter only through the recovery port: ${forbidden}`,
+    `GraphQL recovery transport must enter only through public owner ports: ${forbidden}`,
+  );
+}
+
+for (const rereviewMarker of [
+  "fresh_subject_revision",
+  "source_decision_id",
+  "ModerationReadPort::read_decision",
+  "ModerationReadPort::read_case",
+  "ModerationCaseStatus::Escalated",
+  "fresh_subject_revision <= source_case.subject.revision",
+  "let mut fresh_subject = source_case.subject.clone()",
+  "fresh_subject.revision = fresh_subject_revision",
+  "scope: source_case.scope.clone()",
+  "queue_key: source_case.queue_key.clone()",
+  "policy_id: source_case.policy_id",
+  "policy_version: source_case.policy_version",
+  "report_ids: Vec::new()",
+  '"operator_rereview"',
+  '"root_idempotency_key"',
+  '"source_case_id"',
+  '"source_decision_id"',
+  '"source_subject_revision"',
+  '"fresh_subject_revision"',
+  "require_owned_rereview_case",
+  "ModerationCommandPort::open_case",
+  "ModerationCommandPort::assign_case",
+  "ModerationCommandPort::decide_case",
+  "rereview_step_context",
+  '"open"',
+  '"assign"',
+  '"decide"',
+  '":rereview:{step}"',
+]) {
+  requireText(
+    transport,
+    rereviewMarker,
+    `Moderation rereview workflow is missing ${rereviewMarker}`,
+  );
+}
+
+for (const forbiddenRereview of [
+  "source_case.subject.id =",
+  "source_case.subject.module =",
+  "source_case.subject.kind =",
+  "source_decision.subject_revision =",
+]) {
+  forbidText(
+    transport,
+    forbiddenRereview,
+    `Rereview must not mutate historical identity: ${forbiddenRereview}`,
   );
 }
 
@@ -91,4 +143,4 @@ requireText(
   "Moderation recovery port must retain its dedicated permission boundary",
 );
 
-console.log("Moderation recovery GraphQL transport source guard passed");
+console.log("Moderation recovery and rereview GraphQL transport source guard passed");
