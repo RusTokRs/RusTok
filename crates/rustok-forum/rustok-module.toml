@@ -77,6 +77,39 @@ consumer_min_version = "1.0"
 catalog_version = "v1"
 capabilities = ["preview", "tree", "properties", "publish"]
 
+# Canonical contribution discovery for the Forum Page Builder consumer. This intentionally
+# advertises the existing Forum-owned widget catalog only. Real Fly block definitions,
+# renderers, and property editors remain absent until a Forum adapter/component-registry slice
+# exists, so contribution assembly cannot imply an authoring/runtime capability that Forum does
+# not yet implement.
+[fba.builder_consumer.contribution_manifest]
+owner_provider = "rustok.forum"
+target_providers = {}
+dependencies = []
+required_permissions = ["forum_topics:read"]
+
+[[fba.builder_consumer.contribution_manifest.admin]]
+role = "widget_catalog"
+id = "rustok.forum.widget-catalog"
+provider = "rustok.forum"
+required_capabilities = ["preview"]
+blocks = []
+
+[fba.builder_consumer.contribution_manifest.admin.messages]
+"forum.builder.contributions.widgetCatalog" = "Forum widget catalog"
+
+[fba.builder_consumer.contribution_manifest.admin.metadata]
+format = "forum_widget_catalog_v1"
+surface = "admin"
+catalog_version = "v1"
+contract_version = "1.0"
+catalog_endpoint = "/api/forum/widgets/catalog"
+validate_endpoint = "/api/forum/widgets/validate"
+catalog_source = "fba.builder_consumer.widgets"
+adapter_state = "pending"
+persistence_owner = "forum"
+authorization_owner = "forum"
+
 [fba.builder_consumer.error_mapping]
 validation = "forum.widget.validation"
 sanitize = "forum.widget.sanitize"
@@ -95,7 +128,7 @@ fallback_mode = "readonly"
 
 [fba.builder_consumer.widgets.topic_detail]
 data_contract_version = "1.0"
-props_schema = "forum.topic_list.v1"
+props_schema = "forum.topic_detail.v1"
 capability_requirements = ["preview", "moderation_view"]
 fallback_mode = "degraded"
 
