@@ -5,6 +5,7 @@ pub mod control;
 pub mod events;
 pub mod execution;
 pub mod executor;
+pub mod module_manifest_contribution;
 pub mod plan;
 pub mod release;
 pub mod report;

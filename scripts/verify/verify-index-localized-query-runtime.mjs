@@ -61,11 +61,11 @@ if (admissionPosition < 0 || beginPosition < 0 || admissionPosition > beginPosit
 }
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
-  'Status: `runtime_source_complete_text_pattern_and_evidence_pending`',
+  'Status: `runtime_text_pattern_identity_order_source_complete_adapter_and_evidence_pending`',
   '`execute_localized_query`',
-  'read-only repeatable-read',
-  'persisted schema readiness',
+  '`REPEATABLE READ, READ ONLY`',
   '`PostgresQueryEntityAdmission`',
+  '`identity_order_direction`',
 ]);
 
-console.log('[verify-index-localized-query-runtime] localized fold runtime is source-locked behind readiness/admission/snapshot semantics; Product adapter/evidence remain pending');
+console.log('[verify-index-localized-query-runtime] localized fold runtime remains source-locked behind readiness/admission/snapshot semantics with explicit identity ordering');

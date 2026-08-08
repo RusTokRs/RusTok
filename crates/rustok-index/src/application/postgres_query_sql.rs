@@ -273,6 +273,7 @@ fn compile_filter(
         FilterExpr::IsNull(path, expected_null) => {
             compile_is_null(plan, path, *expected_null, bindings)
         }
+        FilterExpr::TextLike(path, pattern) => compile_text_like(plan, path, pattern, bindings),
     }
 }
 
@@ -433,6 +434,31 @@ fn compile_is_null(
         } else {
             Ok(format!("NOT ({})", sql.null_predicate))
         }
+    }
+}
+
+fn compile_text_like(
+    plan: &ExecutableQueryPlan,
+    path: &FieldPath,
+    pattern: &str,
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
+    let field = planned_field(plan, path)?;
+    if field.traverses_many {
+        compile_many_exists(plan, field, bindings, |sql, bindings| {
+            let pattern = bindings.push(PostgresBindValue::Text(pattern.to_owned()));
+            Ok(format!(
+                "COALESCE({} LIKE {pattern} ESCAPE E'\\\\', FALSE)",
+                sql.scalar
+            ))
+        })
+    } else {
+        let sql = field_sql(field, bindings);
+        let pattern = bindings.push(PostgresBindValue::Text(pattern.to_owned()));
+        Ok(format!(
+            "COALESCE({} LIKE {pattern} ESCAPE E'\\\\', FALSE)",
+            sql.scalar
+        ))
     }
 }
 

@@ -91,16 +91,10 @@ struct LocalizedPlanIdentity<'a> {
     fallback_locale: Option<&'a crate::domain::LocaleKey>,
     any_locale_filter: &'a Option<FilterExpr>,
     localized_projection_fields: Vec<&'a FieldPath>,
+    identity_order_direction: OrderDirection,
 }
 
 impl SchemaRegistry {
-    /// Compile one root-only localized-entity fold page and optional exact-count statement.
-    ///
-    /// The compiler deliberately emits only ordinary canonical `tN` materialized entity aliases and
-    /// an `is_deleted = FALSE` anchor for each physical row role. Existing trusted owner admission can
-    /// therefore be applied to anchor/requested/fallback/search/anti-duplicate rows without learning a
-    /// Product-specific query shape. Runtime execution is published only in a later slice after
-    /// admission composition is wired and retained PostgreSQL evidence exists.
     pub fn compile_postgres_localized_page_query(
         &self,
         query: &LocalizedEntityQuery,
@@ -194,10 +188,10 @@ fn compile_localized_page(
         )?);
     }
     if let Some(cursor) = cursor {
-        predicates.push(compile_keyset(plan, cursor, &mut bindings)?);
+        predicates.push(compile_keyset(query, plan, cursor, &mut bindings)?);
     }
 
-    let order = compile_order(plan, &mut bindings)?;
+    let order = compile_order(query, plan, &mut bindings)?;
     let pagination = compile_pagination_with_lookahead(&plan.pagination, &mut bindings)?;
     let sql = format!(
         "SELECT {} {} WHERE {} {order} {pagination}",
@@ -242,6 +236,7 @@ pub(super) fn localized_plan_fingerprint(
         fallback_locale: query.canonical_fallback_locale(),
         any_locale_filter: &query.any_locale_filter,
         localized_projection_fields,
+        identity_order_direction: query.identity_order_direction,
     };
     let bytes = postcard::to_stdvec(&identity)?;
     let mut hasher = Sha256::new();
@@ -429,6 +424,14 @@ fn compile_filter_for_alias(
                 Ok(format!("NOT ({})", sql.null_predicate))
             }
         }
+        FilterExpr::TextLike(path, pattern) => {
+            let sql = field_sql_for_path(plan, path, alias, bindings)?;
+            let pattern = bindings.push(PostgresBindValue::Text(pattern.clone()));
+            Ok(format!(
+                "COALESCE({} LIKE {pattern} ESCAPE E'\\\\', FALSE)",
+                sql.scalar
+            ))
+        }
     }
 }
 
@@ -475,6 +478,7 @@ fn field_sql_for_path(
 }
 
 fn compile_keyset(
+    query: &LocalizedEntityQuery,
     plan: &ExecutableQueryPlan,
     cursor: &LocalizedIndexCursor,
     bindings: &mut Bindings,
@@ -495,10 +499,17 @@ fn compile_keyset(
     }
 
     let entity_id = bindings.push(PostgresBindValue::Uuid(cursor.entity_id));
-    let root_after = format!(
-        "{}.entity_id > {entity_id}",
-        quote_identifier(ROOT_ALIAS)
-    );
+    let root_after = match query.identity_order_direction {
+        OrderDirection::Asc => format!(
+            "{}.entity_id > {entity_id}",
+            quote_identifier(ROOT_ALIAS)
+        ),
+        OrderDirection::Desc => format!(
+            "{}.entity_id < {entity_id}",
+            quote_identifier(ROOT_ALIAS)
+        ),
+        _ => unreachable!("validated localized identity order is asc or desc"),
+    };
     disjuncts.push(conjunction(&equalities, &root_after));
     Ok(format!("({})", disjuncts.join(" OR ")))
 }
@@ -542,6 +553,7 @@ fn conjunction(prefix: &[String], final_predicate: &str) -> String {
 }
 
 fn compile_order(
+    query: &LocalizedEntityQuery,
     plan: &ExecutableQueryPlan,
     bindings: &mut Bindings,
 ) -> Result<String, PostgresQueryCompileError> {
@@ -557,7 +569,15 @@ fn compile_order(
             })
         })
         .collect::<Result<Vec<_>, PostgresQueryCompileError>>()?;
-    terms.push(format!("{}.entity_id ASC", quote_identifier(ROOT_ALIAS)));
+    let identity_direction = match query.identity_order_direction {
+        OrderDirection::Asc => "ASC",
+        OrderDirection::Desc => "DESC",
+        _ => unreachable!("validated localized identity order is asc or desc"),
+    };
+    terms.push(format!(
+        "{}.entity_id {identity_direction}",
+        quote_identifier(ROOT_ALIAS)
+    ));
     Ok(format!("ORDER BY {}", terms.join(", ")))
 }
 
@@ -773,9 +793,9 @@ mod tests {
                 include_exact_count: true,
             },
             Some(LocaleKey::new("en").unwrap()),
-            Some(FilterExpr::Eq(
+            Some(FilterExpr::TextLike(
                 FieldPath::new(FieldName::new("title").unwrap()),
-                IndexValue::String("needle".to_owned()),
+                "%needle%".to_owned(),
             )),
         )
         .with_localized_projection_fields([FieldPath::new(FieldName::new("title").unwrap())])
@@ -799,12 +819,28 @@ mod tests {
         assert!(sql.contains("\"t4\".locale_key < \"t0\".locale_key"));
         assert!(sql.contains("CASE WHEN \"t1\".entity_id IS NOT NULL"));
         assert!(sql.contains("WHEN \"t2\".entity_id IS NOT NULL"));
+        assert!(sql.contains(" LIKE "));
+        assert!(sql.contains("ESCAPE E'\\\\'"));
+        assert!(sql.contains("\"t0\".entity_id ASC"));
         assert_eq!(compiled.requested_page_size(), 20);
         let count = compiled.compiled().exact_count.as_ref().unwrap();
         assert!(count.sql.contains("index_entities AS \"t0\""));
         assert!(count.sql.contains("index_entities AS \"t3\""));
         assert!(count.sql.contains("index_entities AS \"t4\""));
+        assert!(count.sql.contains(" LIKE "));
         assert!(!count.sql.contains("index_entities AS \"t1\""));
+    }
+
+    #[test]
+    fn localized_identity_tie_break_can_follow_descending_owner_order() {
+        let schema = schema();
+        let mut registry = SchemaRegistry::new();
+        registry.register(schema.clone()).unwrap();
+        let query = query(&schema).with_identity_order_direction(OrderDirection::Desc);
+        let compiled = registry
+            .compile_postgres_localized_page_query(&query)
+            .unwrap();
+        assert!(compiled.compiled().sql.contains("\"t0\".entity_id DESC"));
     }
 
     #[test]
