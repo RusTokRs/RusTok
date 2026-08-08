@@ -36,7 +36,7 @@ struct LocalizedCursorQueryIdentity<'a> {
     mode: &'static str,
     tenant_id: Uuid,
     schema: &'a SchemaRef,
-    requested_locale: &'a LocaleKey,
+    requested_locale: Option<&'a LocaleKey>,
     fallback_locale: Option<&'a LocaleKey>,
     filter: &'a Option<FilterExpr>,
     any_locale_filter: &'a Option<FilterExpr>,
@@ -162,14 +162,11 @@ fn decode_payload<T: DeserializeOwned>(
 fn query_fingerprint(
     query: &LocalizedEntityQuery,
 ) -> Result<[u8; 32], LocalizedCursorCodecError> {
-    let requested_locale = query
-        .requested_locale()
-        .expect("validated localized queries always carry a requested locale");
     let identity = LocalizedCursorQueryIdentity {
         mode: "localized_entity_fold_v1",
         tenant_id: query.query.scope.tenant_id,
         schema: &query.query.schema,
-        requested_locale,
+        requested_locale: query.requested_locale(),
         fallback_locale: query.canonical_fallback_locale(),
         filter: &query.query.filter,
         any_locale_filter: &query.any_locale_filter,
@@ -351,7 +348,8 @@ mod tests {
             order_values: vec![IndexValue::Uuid(Uuid::new_v4())],
             entity_id: Uuid::new_v4(),
         };
-        let standard_encoded = CursorCodec::encode_for_query(&standard, &original.query, &registry).unwrap();
+        let standard_encoded =
+            CursorCodec::encode_for_query(&standard, &original.query, &registry).unwrap();
         assert!(matches!(
             LocalizedCursorCodec::decode_scoped_for_query(&standard_encoded, &original, &registry),
             Err(LocalizedCursorValidationError::Codec(
