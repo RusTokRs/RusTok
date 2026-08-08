@@ -23,6 +23,7 @@ const scripts = [
   'verify-index-source-replay-contract.mjs',
   'verify-index-locale-source-scan.mjs',
   'verify-index-replay-locale-job-scope.mjs',
+  'verify-index-replay-locale-runner-graphql.mjs',
   'verify-index-source-refresh-event.mjs',
   'verify-index-source-absence-watermark.mjs',
   'verify-index-source-continuation.mjs',
