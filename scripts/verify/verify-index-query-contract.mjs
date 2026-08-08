@@ -33,6 +33,7 @@ const scripts = [
   'verify-index-source-reconciliation.mjs',
   'verify-index-replay-runtime-composition.mjs',
   'verify-index-replay-graphql-transport.mjs',
+  'verify-index-replay-graphql-shutdown-evidence.mjs',
   'verify-index-server-reconciliation-guard.mjs',
   'verify-index-drift-diagnosis-graphql-transport.mjs',
   'verify-index-drift-source-page-diagnosis.mjs',
