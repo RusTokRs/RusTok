@@ -10,6 +10,8 @@ use crate::domain::{
 
 use super::{SchemaRegistry, SchemaRegistryError};
 
+const MAX_TEXT_LIKE_PATTERN_BYTES: usize = 1024;
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RecordValidationError {
     #[error("schema is not registered: {0}")]
@@ -88,6 +90,12 @@ pub enum QueryValidationError {
     },
     #[error("filter value does not match field {field} on schema {schema}")]
     InvalidFilterValue { schema: SchemaRef, field: FieldName },
+    #[error("text-like filter pattern exceeds {maximum} UTF-8 bytes: {actual}")]
+    TextLikePatternTooLong { maximum: usize, actual: usize },
+    #[error("text-like filter pattern contains a NUL byte")]
+    TextLikePatternContainsNul,
+    #[error("text-like filter pattern ends with an unpaired escape character")]
+    TextLikePatternDanglingEscape,
     #[error("logical filter {operator} must contain at least one child")]
     EmptyLogicalFilter { operator: &'static str },
     #[error("IN filter must contain at least one value")]
@@ -152,15 +160,7 @@ impl SchemaRegistry {
             }
         }
 
-        let mut link_names = BTreeSet::new();
         for link_value in &record.links {
-            if !link_names.insert(link_value.name.clone()) {
-                return Err(RecordValidationError::DuplicateLink {
-                    schema: schema.reference.clone(),
-                    link: link_value.name.clone(),
-                });
-            }
-
             let definition = schema
                 .links
                 .iter()
@@ -344,6 +344,19 @@ impl SchemaRegistry {
                     });
                 }
             }
+            FilterExpr::TextLike(path, pattern) => {
+                let resolved = self.resolve_filterable_field(root, path)?;
+                if resolved.field.cardinality != FieldCardinality::One
+                    || resolved.field.value_type != IndexValueType::String
+                {
+                    return Err(QueryValidationError::InvalidOperator {
+                        schema: resolved.schema.clone(),
+                        field: resolved.field.name.clone(),
+                        operator: "text_like",
+                    });
+                }
+                validate_text_like_pattern(pattern)?;
+            }
         }
         Ok(())
     }
@@ -439,6 +452,32 @@ impl SchemaRegistry {
             traverses_many,
         })
     }
+}
+
+fn validate_text_like_pattern(pattern: &str) -> Result<(), QueryValidationError> {
+    let actual = pattern.len();
+    if actual > MAX_TEXT_LIKE_PATTERN_BYTES {
+        return Err(QueryValidationError::TextLikePatternTooLong {
+            maximum: MAX_TEXT_LIKE_PATTERN_BYTES,
+            actual,
+        });
+    }
+    if pattern.contains('\0') {
+        return Err(QueryValidationError::TextLikePatternContainsNul);
+    }
+
+    let mut escaped = false;
+    for character in pattern.chars() {
+        if escaped {
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        }
+    }
+    if escaped {
+        return Err(QueryValidationError::TextLikePatternDanglingEscape);
+    }
+    Ok(())
 }
 
 fn validate_entity_key(
@@ -568,6 +607,7 @@ mod tests {
             locale_mode: LocaleMode::Required,
             fields: vec![
                 field("id", IndexValueType::Uuid),
+                field("title", IndexValueType::String),
                 field("sales_channel_id", IndexValueType::Uuid),
             ],
             links: vec![IndexLink {
@@ -607,6 +647,10 @@ mod tests {
                 (
                     FieldName::new("id").unwrap(),
                     IndexValue::Uuid(Uuid::new_v4()),
+                ),
+                (
+                    FieldName::new("title").unwrap(),
+                    IndexValue::String("Example".to_owned()),
                 ),
                 (
                     FieldName::new("sales_channel_id").unwrap(),
@@ -673,6 +717,48 @@ mod tests {
         };
 
         assert!(registry.validate_query(&query).is_ok());
+    }
+
+    #[test]
+    fn validates_bounded_text_like_only_for_scalar_strings() {
+        let registry = registry();
+        let mut query = IndexQuery {
+            scope: query_scope(),
+            schema: reference("product"),
+            fields: vec![FieldPath::new(FieldName::new("id").unwrap())],
+            filter: Some(FilterExpr::TextLike(
+                FieldPath::new(FieldName::new("title").unwrap()),
+                "%phone\\_%".to_owned(),
+            )),
+            order_by: Vec::new(),
+            pagination: Pagination::Cursor {
+                first: 20,
+                after: None,
+            },
+            include_exact_count: false,
+        };
+        assert!(registry.validate_query(&query).is_ok());
+
+        query.filter = Some(FilterExpr::TextLike(
+            FieldPath::new(FieldName::new("id").unwrap()),
+            "%id%".to_owned(),
+        ));
+        assert!(matches!(
+            registry.validate_query(&query),
+            Err(QueryValidationError::InvalidOperator {
+                operator: "text_like",
+                ..
+            })
+        ));
+
+        query.filter = Some(FilterExpr::TextLike(
+            FieldPath::new(FieldName::new("title").unwrap()),
+            "dangling\\".to_owned(),
+        ));
+        assert_eq!(
+            registry.validate_query(&query),
+            Err(QueryValidationError::TextLikePatternDanglingEscape)
+        );
     }
 
     #[test]
