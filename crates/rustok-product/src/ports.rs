@@ -15,8 +15,10 @@ const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;
 const MAX_ADMIN_PRODUCTS_PER_PAGE: u64 = 100;
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
 const READ_VARIANT_PRODUCT_PROJECTION_OPERATION: &str = "read_variant_product_projection";
+const READ_STOREFRONT_PRODUCT_PROJECTION_OPERATION: &str = "read_storefront_product_projection";
 const LIST_PUBLISHED_PRODUCTS_OPERATION: &str = "list_published_products";
 const LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION: &str = "list_filtered_published_products";
+const LIST_LEGACY_STOREFRONT_PRODUCTS_OPERATION: &str = "list_legacy_storefront_products";
 const LIST_ADMIN_PRODUCTS_OPERATION: &str = "list_admin_products";
 const LIST_LEGACY_ADMIN_PRODUCTS_OPERATION: &str = "list_legacy_admin_products";
 
@@ -56,6 +58,33 @@ pub trait ProductCatalogReadPort: Send + Sync {
         Err(PortError::unavailable(
             "product.filtered_published_list_unavailable",
             "filtered product listing is unavailable",
+        ))
+    }
+
+    /// Optional published storefront detail projection for legacy consumers that need the
+    /// owner to apply lifecycle/channel visibility, locale narrowing, and public inventory.
+    async fn read_storefront_product_projection(
+        &self,
+        _context: PortContext,
+        _request: StorefrontProductProjectionRequest,
+    ) -> Result<Option<ProductResponse>, PortError> {
+        Err(PortError::unavailable(
+            "product.storefront_detail_unavailable",
+            "storefront product detail is unavailable",
+        ))
+    }
+
+    /// Optional compatibility projection for the mounted legacy storefront GraphQL list.
+    /// Existing adapters remain source-compatible and fail closed until they explicitly
+    /// implement vendor/product-type/raw-search plus shipping-profile projection semantics.
+    async fn list_legacy_storefront_products(
+        &self,
+        _context: PortContext,
+        _request: LegacyStorefrontProductsRequest,
+    ) -> Result<LegacyStorefrontProductList, PortError> {
+        Err(PortError::unavailable(
+            "product.legacy_storefront_list_unavailable",
+            "legacy storefront product listing is unavailable",
         ))
     }
 
@@ -116,6 +145,56 @@ pub struct FilteredPublishedProductsRequest {
     pub fallback_locale: Option<String>,
     pub public_channel_slug: Option<String>,
     pub query: StorefrontProductListQuery,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StorefrontProductProjectionSubject {
+    ProductId { product_id: Uuid },
+    Handle { handle: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorefrontProductProjectionRequest {
+    pub subject: StorefrontProductProjectionSubject,
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub public_channel_slug: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyStorefrontProductsRequest {
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub public_channel_slug: Option<String>,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub search: Option<String>,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LegacyStorefrontProductList {
+    pub items: Vec<LegacyStorefrontProductListItem>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LegacyStorefrontProductListItem {
+    pub id: Uuid,
+    pub status: crate::entities::product::ProductStatus,
+    pub title: String,
+    pub handle: String,
+    pub seller_id: Option<String>,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub shipping_profile_slug: String,
+    pub tags: Vec<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -246,6 +325,85 @@ impl ProductCatalogReadPort for crate::CatalogService {
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
     }
 
+    async fn read_storefront_product_projection(
+        &self,
+        context: PortContext,
+        request: StorefrontProductProjectionRequest,
+    ) -> Result<Option<ProductResponse>, PortError> {
+        let owner_operation = READ_STOREFRONT_PRODUCT_PROJECTION_OPERATION;
+        context
+            .require_policy(PortCallPolicy::read())
+            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let StorefrontProductProjectionRequest {
+            subject,
+            locale,
+            fallback_locale,
+            public_channel_slug,
+        } = request;
+        let locale = locale.as_deref().unwrap_or(context.locale.as_str());
+        let result = match subject {
+            StorefrontProductProjectionSubject::ProductId { product_id } => {
+                self.get_published_product_by_id_with_locale_fallback(
+                    tenant_id,
+                    product_id,
+                    locale,
+                    fallback_locale.as_deref(),
+                    public_channel_slug.as_deref(),
+                )
+                .await
+            }
+            StorefrontProductProjectionSubject::Handle { handle } => {
+                self.get_published_product_by_handle_with_locale_fallback(
+                    tenant_id,
+                    handle.as_str(),
+                    locale,
+                    fallback_locale.as_deref(),
+                    public_channel_slug.as_deref(),
+                )
+                .await
+            }
+        };
+        result.map_err(|error| product_error_to_port_error(&context, owner_operation, error))
+    }
+
+    async fn list_legacy_storefront_products(
+        &self,
+        context: PortContext,
+        request: LegacyStorefrontProductsRequest,
+    ) -> Result<LegacyStorefrontProductList, PortError> {
+        let owner_operation = LIST_LEGACY_STOREFRONT_PRODUCTS_OPERATION;
+        context
+            .require_policy(PortCallPolicy::read())
+            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        validate_legacy_storefront_products_request(&context, owner_operation, &request)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let LegacyStorefrontProductsRequest {
+            locale,
+            fallback_locale,
+            public_channel_slug,
+            vendor,
+            product_type,
+            search,
+            page,
+            per_page,
+        } = request;
+        let locale = locale.as_deref().unwrap_or(context.locale.as_str());
+        self.list_legacy_storefront_products_with_locale_fallback(
+            tenant_id,
+            locale,
+            fallback_locale.as_deref(),
+            public_channel_slug.as_deref(),
+            vendor.as_deref(),
+            product_type.as_deref(),
+            search.as_deref(),
+            page,
+            per_page,
+        )
+        .await
+        .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
+    }
+
     async fn list_admin_products(
         &self,
         context: PortContext,
@@ -364,6 +522,45 @@ fn validate_published_products_request(
             operation = owner_operation,
             code = "product.per_page_invalid",
             "published product page-size validation failed"
+        );
+        return Err(PortError::validation(
+            "product.per_page_invalid",
+            "published products page size is invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_legacy_storefront_products_request(
+    context: &PortContext,
+    owner_operation: &'static str,
+    request: &LegacyStorefrontProductsRequest,
+) -> Result<(), PortError> {
+    if request.page == 0 {
+        tracing::warn!(
+            page = request.page,
+            per_page = request.per_page,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "product.page_invalid",
+            "legacy storefront product page validation failed"
+        );
+        return Err(PortError::validation(
+            "product.page_invalid",
+            "published products page is invalid",
+        ));
+    }
+    if !(1..=MAX_PUBLISHED_PRODUCTS_PER_PAGE).contains(&request.per_page) {
+        tracing::warn!(
+            page = request.page,
+            per_page = request.per_page,
+            max_per_page = MAX_PUBLISHED_PRODUCTS_PER_PAGE,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "product.per_page_invalid",
+            "legacy storefront product page-size validation failed"
         );
         return Err(PortError::validation(
             "product.per_page_invalid",

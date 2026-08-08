@@ -153,28 +153,130 @@ impl CatalogService {
     }
 
     #[instrument(skip(self))]
-    pub async fn get_published_product_by_handle_with_locale_fallback(
+    pub(crate) async fn list_legacy_storefront_products_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        handle: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+        vendor: Option<&str>,
+        product_type: Option<&str>,
+        search: Option<&str>,
+        page: u64,
+        per_page: u64,
+    ) -> CommerceResult<crate::LegacyStorefrontProductList> {
+        let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
+        if page == 0 || per_page == 0 || per_page > 48 {
+            return Err(CommerceError::Validation(
+                "page must be at least 1 and per_page must be between 1 and 48".to_owned(),
+            ));
+        }
+        let offset = (page.saturating_sub(1)) * per_page;
+
+        let mut query = entities::product::Entity::find()
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
+            .filter(entities::product::Column::PublishedAt.is_not_null())
+            .filter(product_channel_visibility_condition(
+                self.db.get_database_backend(),
+                public_channel_slug,
+            ));
+        if let Some(vendor) = vendor {
+            query = query.filter(entities::product::Column::Vendor.eq(vendor));
+        }
+        if let Some(product_type) = product_type {
+            query = query.filter(entities::product::Column::ProductType.eq(product_type));
+        }
+        if let Some(search) = search {
+            query = query.filter(product_title_search_condition(
+                self.db.get_database_backend(),
+                search,
+            ));
+        }
+
+        let total = query.clone().count(&self.db).await?;
+        let products = query
+            .order_by_desc(entities::product::Column::PublishedAt)
+            .order_by_desc(entities::product::Column::CreatedAt)
+            .offset(offset)
+            .limit(per_page)
+            .all(&self.db)
+            .await?;
+        let product_ids = products
+            .iter()
+            .map(|product| product.id)
+            .collect::<Vec<_>>();
+        let translations = if product_ids.is_empty() {
+            Vec::new()
+        } else {
+            entities::product_translation::Entity::find()
+                .filter(entities::product_translation::Column::ProductId.is_in(product_ids))
+                .all(&self.db)
+                .await?
+        };
+        let mut translations_by_product: HashMap<Uuid, Vec<entities::product_translation::Model>> =
+            HashMap::new();
+        for translation in translations {
+            translations_by_product
+                .entry(translation.product_id)
+                .or_default()
+                .push(translation);
+        }
+        let product_tags = self
+            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))
+            .await?;
+
+        let items = products
+            .into_iter()
+            .map(|product| {
+                let translation = translations_by_product.get(&product.id).and_then(|items| {
+                    pick_product_translation(items.as_slice(), locale, fallback_locale)
+                });
+                let shipping_profile_slug = product
+                    .shipping_profile_slug
+                    .as_deref()
+                    .and_then(normalize_shipping_profile_slug)
+                    .or_else(|| extract_shipping_profile_slug(&product.metadata))
+                    .unwrap_or_else(|| "default".to_string());
+                crate::LegacyStorefrontProductListItem {
+                    id: product.id,
+                    status: product.status,
+                    title: translation
+                        .map(|value| value.title.clone())
+                        .unwrap_or_else(|| "Untitled product".to_string()),
+                    handle: translation
+                        .map(|value| value.handle.clone())
+                        .unwrap_or_default(),
+                    seller_id: product.seller_id,
+                    vendor: product.vendor,
+                    product_type: product.product_type,
+                    shipping_profile_slug,
+                    tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
+                    created_at: product.created_at.into(),
+                    published_at: product.published_at.map(Into::into),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Ok(crate::LegacyStorefrontProductList {
+            items,
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_published_product_by_id_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
         public_channel_slug: Option<&str>,
     ) -> CommerceResult<Option<ProductResponse>> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
-        let Some(product_id) = find_published_product_id_by_handle(
-            &self.db,
-            tenant_id,
-            handle,
-            locale,
-            fallback_locale,
-            public_channel_slug,
-        )
-        .await?
-        else {
-            return Ok(None);
-        };
-
         let mut product = match self
             .get_product_with_locale_fallback(tenant_id, product_id, locale, Some(fallback_locale))
             .await
@@ -204,6 +306,39 @@ impl CatalogService {
             locale,
             fallback_locale,
         )))
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_published_product_by_handle_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        handle: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+    ) -> CommerceResult<Option<ProductResponse>> {
+        let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
+        let Some(product_id) = find_published_product_id_by_handle(
+            &self.db,
+            tenant_id,
+            handle,
+            locale,
+            fallback_locale,
+            public_channel_slug,
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+
+        self.get_published_product_by_id_with_locale_fallback(
+            tenant_id,
+            product_id,
+            locale,
+            Some(fallback_locale),
+            public_channel_slug,
+        )
+        .await
     }
 }
 

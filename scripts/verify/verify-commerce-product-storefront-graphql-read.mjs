@@ -43,8 +43,20 @@ for (const required of [
   "filtered product listing is unavailable",
   "LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION",
   "CatalogService::list_published_products_with_query(",
+  "async fn read_storefront_product_projection(",
+  "pub enum StorefrontProductProjectionSubject",
+  "pub struct StorefrontProductProjectionRequest",
+  "product.storefront_detail_unavailable",
+  "READ_STOREFRONT_PRODUCT_PROJECTION_OPERATION",
+  "async fn list_legacy_storefront_products(",
+  "pub struct LegacyStorefrontProductsRequest",
+  "pub struct LegacyStorefrontProductList",
+  "pub struct LegacyStorefrontProductListItem",
+  "product.legacy_storefront_list_unavailable",
+  "LIST_LEGACY_STOREFRONT_PRODUCTS_OPERATION",
+  "list_legacy_storefront_products_with_locale_fallback(",
 ]) {
-  requireText(ports, required, `filtered Product read capability must contain ${required}`);
+  requireText(ports, required, `Product storefront read capability must contain ${required}`);
 }
 
 const publishedStart = ports.indexOf("pub struct PublishedProductsRequest");
@@ -56,6 +68,28 @@ for (const forbidden of ["search", "category_id", "sort_by", "attribute_filters"
     forbidden,
     `existing PublishedProductsRequest public shape must not gain filtered field ${forbidden}`,
   );
+}
+
+const ownerQueries = read("crates/rustok-product/src/services/catalog/queries.rs");
+for (const required of [
+  "list_legacy_storefront_products_with_locale_fallback(",
+  "Column::Status.eq(entities::product::ProductStatus::Active)",
+  "Column::PublishedAt.is_not_null()",
+  "product_channel_visibility_condition(",
+  "Column::Vendor.eq(vendor)",
+  "Column::ProductType.eq(product_type)",
+  "if let Some(search) = search",
+  "product_title_search_condition(",
+  "order_by_desc(entities::product::Column::PublishedAt)",
+  "order_by_desc(entities::product::Column::CreatedAt)",
+  ".and_then(normalize_shipping_profile_slug)",
+  "extract_shipping_profile_slug(&product.metadata)",
+  "unwrap_or_else(|| \"default\".to_string())",
+  "get_published_product_by_id_with_locale_fallback(",
+  "apply_public_channel_inventory_to_product(",
+  "localize_product_response(",
+]) {
+  requireText(ownerQueries, required, `Product owner storefront compatibility source must contain ${required}`);
 }
 
 const source = read("crates/rustok-commerce/src/graphql/product_catalog.rs");
@@ -96,6 +130,34 @@ for (const required of [
   requireText(admin, required, `admin Product catalog cutover must remain intact: ${required}`);
 }
 forbidText(source, "CatalogService::new", "Product GraphQL catalog module must not construct CatalogService");
+
+const legacySource = read("crates/rustok-commerce/src/graphql/query.rs");
+const legacyDetail = resolverSlice(legacySource, "storefront_product", "storefront_products");
+const legacyList = resolverSlice(legacySource, "storefront_products", null);
+for (const required of [
+  "CatalogService::new",
+  ".get_published_product_by_handle_with_locale_fallback(",
+  ".get_product_with_locale_fallback(",
+  "apply_public_channel_inventory_to_product(",
+]) {
+  requireText(
+    legacyDetail,
+    required,
+    `legacy storefront Product detail must remain explicit consumer cutover debt: ${required}`,
+  );
+}
+for (const required of [
+  "product::Entity::find()",
+  "product_channel_visibility_condition(",
+  "product_translation_title_search_condition(",
+  "load_product_list_items(",
+]) {
+  requireText(
+    legacyList,
+    required,
+    `legacy storefront Product list must remain explicit consumer cutover debt: ${required}`,
+  );
+}
 
 for (const required of [
   '"PRODUCT_VALIDATION"',
