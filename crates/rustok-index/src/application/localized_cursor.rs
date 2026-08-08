@@ -5,8 +5,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::domain::{
-    FieldPath, FilterExpr, IndexValue, IndexValueType, LocaleKey, LocalizedEntityQuery, OrderExpr,
-    SchemaFingerprint, SchemaRef,
+    FieldPath, FilterExpr, IndexValue, IndexValueType, LocaleKey, LocalizedEntityQuery, OrderDirection,
+    OrderExpr, SchemaFingerprint, SchemaRef,
 };
 
 use super::{LocalizedEntityQueryValidationError, SchemaRegistry, SchemaRegistryError};
@@ -42,6 +42,7 @@ struct LocalizedCursorQueryIdentity<'a> {
     any_locale_filter: &'a Option<FilterExpr>,
     localized_projection_fields: Vec<&'a FieldPath>,
     order_by: &'a [OrderExpr],
+    identity_order_direction: OrderDirection,
 }
 
 #[derive(Debug, Error)]
@@ -178,6 +179,7 @@ fn query_fingerprint(
         any_locale_filter: &query.any_locale_filter,
         localized_projection_fields,
         order_by: &query.query.order_by,
+        identity_order_direction: query.identity_order_direction,
     };
     let bytes = postcard::to_stdvec(&identity)?;
     let mut hasher = Sha256::new();
@@ -276,7 +278,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         EntityName, FieldCardinality, FieldName, IndexField, IndexQuery, IndexQueryScope, IndexSchema,
-        LocaleMode, ModuleName, OrderDirection, Pagination, SchemaVersion,
+        LocaleMode, ModuleName, Pagination, SchemaVersion,
     };
     use crate::{CursorCodec, IndexCursor};
 
@@ -341,21 +343,25 @@ mod tests {
         .with_localized_projection_fields([FieldPath::new(FieldName::new("title").unwrap())])
     }
 
+    fn cursor(query: &LocalizedEntityQuery, schema: &IndexSchema) -> LocalizedIndexCursor {
+        LocalizedIndexCursor {
+            tenant_id: query.query.scope.tenant_id,
+            schema: schema.reference.clone(),
+            schema_fingerprint: schema.fingerprint().unwrap(),
+            requested_locale: LocaleKey::new("en-US").unwrap(),
+            fallback_locale: query.canonical_fallback_locale().cloned(),
+            order_values: vec![IndexValue::Uuid(Uuid::new_v4())],
+            entity_id: Uuid::new_v4(),
+        }
+    }
+
     #[test]
     fn localized_cursor_is_bound_to_fallback_and_has_separate_wire_version() {
         let schema = schema();
         let mut registry = SchemaRegistry::new();
         registry.register(schema.clone()).unwrap();
         let original = query(&schema, Some("en"));
-        let cursor = LocalizedIndexCursor {
-            tenant_id: original.query.scope.tenant_id,
-            schema: schema.reference.clone(),
-            schema_fingerprint: schema.fingerprint().unwrap(),
-            requested_locale: LocaleKey::new("en-US").unwrap(),
-            fallback_locale: Some(LocaleKey::new("en").unwrap()),
-            order_values: vec![IndexValue::Uuid(Uuid::new_v4())],
-            entity_id: Uuid::new_v4(),
-        };
+        let cursor = cursor(&original, &schema);
         let encoded = LocalizedCursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
         assert_eq!(
             LocalizedCursorCodec::decode_scoped_for_query(&encoded, &original, &registry).unwrap(),
@@ -381,39 +387,35 @@ mod tests {
     }
 
     #[test]
-    fn localized_cursor_cannot_cross_fallback_or_projection_semantics() {
+    fn localized_cursor_cannot_cross_fallback_projection_or_identity_order_semantics() {
         let schema = schema();
         let mut registry = SchemaRegistry::new();
         registry.register(schema.clone()).unwrap();
         let original = query(&schema, Some("en"));
-        let cursor = LocalizedIndexCursor {
-            tenant_id: original.query.scope.tenant_id,
-            schema: schema.reference.clone(),
-            schema_fingerprint: schema.fingerprint().unwrap(),
-            requested_locale: LocaleKey::new("en-US").unwrap(),
-            fallback_locale: Some(LocaleKey::new("en").unwrap()),
-            order_values: vec![IndexValue::Uuid(Uuid::new_v4())],
-            entity_id: Uuid::new_v4(),
-        };
+        let cursor = cursor(&original, &schema);
         let encoded = LocalizedCursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
 
         let mut changed_fallback = original.clone();
         changed_fallback.fallback_locale = Some(LocaleKey::new("fr").unwrap());
         assert!(matches!(
-            LocalizedCursorCodec::decode_scoped_for_query(
-                &encoded,
-                &changed_fallback,
-                &registry
-            ),
+            LocalizedCursorCodec::decode_scoped_for_query(&encoded, &changed_fallback, &registry),
             Err(LocalizedCursorValidationError::QueryFingerprintMismatch)
         ));
 
         let mut changed_projection = original.clone();
         changed_projection.localized_projection_fields.clear();
         assert!(matches!(
+            LocalizedCursorCodec::decode_scoped_for_query(&encoded, &changed_projection, &registry),
+            Err(LocalizedCursorValidationError::QueryFingerprintMismatch)
+        ));
+
+        let changed_identity_order = original
+            .clone()
+            .with_identity_order_direction(OrderDirection::Desc);
+        assert!(matches!(
             LocalizedCursorCodec::decode_scoped_for_query(
                 &encoded,
-                &changed_projection,
+                &changed_identity_order,
                 &registry
             ),
             Err(LocalizedCursorValidationError::QueryFingerprintMismatch)

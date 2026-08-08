@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::domain::{
-    FieldCardinality, FieldPath, LocalizedEntityQuery, LocaleMode, SchemaRef,
+    FieldCardinality, FieldPath, LocalizedEntityQuery, LocaleMode, OrderDirection, SchemaRef,
 };
 
 use super::{QueryValidationError, SchemaRegistry, SchemaRegistryError};
@@ -16,6 +16,8 @@ pub enum LocalizedEntityQueryValidationError {
     Registry(#[from] SchemaRegistryError),
     #[error("localized entity fold requires a locale-required root schema: {0}")]
     LocaleRequiredSchema(SchemaRef),
+    #[error("localized entity identity tie-break supports only asc or desc")]
+    InvalidIdentityOrderDirection,
     #[error("localized entity fold compiler currently accepts root-only query paths: {0:?}")]
     LinkedPathPending(FieldPath),
     #[error("any-locale identity predicate must reference root fields only: {0:?}")]
@@ -45,6 +47,13 @@ impl SchemaRegistry {
             .validate_shape()
             .map_err(QueryValidationError::from)?;
 
+        if !matches!(
+            query.identity_order_direction,
+            OrderDirection::Asc | OrderDirection::Desc
+        ) {
+            return Err(LocalizedEntityQueryValidationError::InvalidIdentityOrderDirection);
+        }
+
         let registered = self
             .get(&query.query.schema)
             .ok_or_else(|| SchemaRegistryError::SchemaNotFound(query.query.schema.clone()))?;
@@ -54,13 +63,8 @@ impl SchemaRegistry {
             ));
         }
 
-        // The embedded query remains a normal, fully validated exact-locale query shape. Fold mode is
-        // additive and cannot weaken selection/filter/order/pagination/schema checks.
         self.validate_query(&query.query)?;
 
-        // The first folded PostgreSQL compiler is intentionally root-only. This exactly covers the
-        // Product Storefront list contract while keeping linked traversal/availability semantics out of
-        // the slice until they can be introduced with dedicated retained evidence.
         if let Some(path) = query
             .query
             .referenced_paths()
@@ -82,9 +86,6 @@ impl SchemaRegistry {
             ));
         }
 
-        // Reuse the canonical filter validator by substituting only the existential root predicate.
-        // This keeps field existence/filterability/operator/value rules exactly aligned with ordinary
-        // Index queries while preserving the separate any-locale semantic role.
         if let Some(filter) = &query.any_locale_filter {
             let mut probe = query.query.clone();
             probe.filter = Some(filter.clone());
@@ -162,8 +163,8 @@ mod tests {
     use super::*;
     use crate::domain::{
         EntityName, FieldName, FieldPath, FilterExpr, IndexField, IndexQuery, IndexQueryScope,
-        IndexSchema, IndexValue, IndexValueType, LocaleKey, ModuleName, OrderDirection, OrderExpr,
-        Pagination, SchemaRef, SchemaVersion,
+        IndexSchema, IndexValue, IndexValueType, LocaleKey, ModuleName, OrderExpr, Pagination,
+        SchemaRef, SchemaVersion,
     };
 
     fn schema(locale_mode: LocaleMode) -> IndexSchema {
@@ -244,6 +245,19 @@ mod tests {
             registry.validate_localized_entity_query(&query),
             Err(LocalizedEntityQueryValidationError::LocaleRequiredSchema(_))
         ));
+    }
+
+    #[test]
+    fn rejects_aggregate_identity_tie_break_direction() {
+        let schema = schema(LocaleMode::Required);
+        let mut registry = SchemaRegistry::new();
+        registry.register(schema.clone()).unwrap();
+        let query = localized_query(&schema)
+            .with_identity_order_direction(OrderDirection::MaxDesc);
+        assert_eq!(
+            registry.validate_localized_entity_query(&query),
+            Err(LocalizedEntityQueryValidationError::InvalidIdentityOrderDirection)
+        );
     }
 
     #[test]
