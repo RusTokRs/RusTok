@@ -12,6 +12,7 @@ const files = {
   transactional: "crates/rustok-outbox/src/transactional.rs",
   event: "crates/rustok-events/src/blog_comments_schedule_audit.rs",
   writer: "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_canonical_writer.rs",
+  outboxPlan: "crates/rustok-outbox/docs/implementation-plan.md",
   previousPlan: "crates/rustok-blog/docs/implementation-plan-slice-96.md",
   plan: "crates/rustok-blog/docs/implementation-plan-slice-97.md",
 };
@@ -47,6 +48,7 @@ const relay = read(files.relay);
 const transactional = read(files.transactional);
 const event = read(files.event);
 const writer = read(files.writer);
+const outboxPlan = read(files.outboxPlan);
 const previousPlan = read(files.previousPlan);
 const plan = read(files.plan);
 
@@ -143,6 +145,14 @@ for (const marker of [
   "source rows and the immutable recovery-audit ledger",
   "No tests, Cargo commands, Node verifiers",
 ]) need(plan, marker, "slice 97 plan");
+
+for (const marker of [
+  "blog-comments-audit-relay-postgres-source.json",
+  "retry, relay-owner reconstruction, delivery",
+  "source-ready and unexecuted",
+  "verify-blog-comments-audit-outbox-relay-postgres-source.mjs",
+  "broader durable consumer-completion gap",
+]) need(outboxPlan, marker, "Outbox implementation plan");
 
 for (const marker of [
   "pub async fn process_pending_once",
