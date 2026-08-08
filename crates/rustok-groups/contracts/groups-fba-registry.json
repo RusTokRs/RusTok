@@ -422,7 +422,7 @@
     "plaintext_token_storage": "never",
     "token_digest": "sha256_hex",
     "token_delivery": "create_response_once",
-    "create_replay_token": null,
+    "create_replay_token": "null",
     "targeted_max_uses": 1,
     "shareable_max_uses": 100,
     "minimum_expiry_seconds": 300,
