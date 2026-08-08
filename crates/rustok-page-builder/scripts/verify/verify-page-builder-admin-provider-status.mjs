@@ -98,6 +98,13 @@ for (const marker of [
 ]) need(sources.status, marker, "provider status contract");
 
 for (const marker of [
+  "unobserved_all_on_status_does_not_claim_healthy_or_reduce_capabilities",
+  "rollout_publish_off_is_degraded_and_removes_publish_only",
+  "rollout_preview_off_is_degraded_and_keeps_properties_without_preview_or_publish",
+  "rollout_builder_off_is_unavailable_and_forces_read_only",
+]) need(sources.status, marker, "reference gate provider-profile tests");
+
+for (const marker of [
   "fn provider_status(&self) -> Option<PageBuilderAdminProviderStatus>",
   "self.as_ref().provider_status()",
   "returning no snapshot is intentionally different from claiming the provider",
