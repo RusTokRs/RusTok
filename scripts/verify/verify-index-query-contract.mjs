@@ -63,6 +63,7 @@ const scripts = [
   'verify-index-replay-dead-letter-admission.mjs',
   'verify-index-product-source.mjs',
   'verify-index-product-current-schema-promotion.mjs',
+  'verify-index-product-current-schema-promotion-postgres-packet.mjs',
   'verify-index-product-locale-refresh-ledger.mjs',
   'verify-index-product-eav-owner-clock.mjs',
   'verify-index-product-attribute-term-contract.mjs',
