@@ -145,7 +145,8 @@ requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   '## Targeted PostgreSQL composition and host dispatch',
   '## Targeted GraphQL transport',
   '`run_targeted(IndexSourceLoadRequest)`',
-  'same effective `modules:manage`',
+  'requires the same effective',
+  '`modules:manage` permission snapshot used by Full',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
