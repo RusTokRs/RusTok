@@ -14,12 +14,15 @@ use crate::context::{AuthContext, TenantContext};
 use crate::services::app_lifecycle::StopHandle;
 use crate::services::index_replay_runtime_composition::{
     IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
+    IndexReplayShadowOperatorError, IndexReplayShadowTransportError,
+    IndexReplayShadowTransportOutcome, IndexReplayShadowTransportRuntime,
 };
 use crate::services::rbac_request_scope::permissions_for;
 
 const MAX_SCHEMA_IDENTIFIER_BYTES: usize = 128;
 const MAX_SCHEMA_VERSION_BYTES: usize = 10;
 const MAX_LOCALE_BYTES: usize = 32;
+const MAX_CONTINUATION_BYTES: usize = 16 * 1024;
 const GRAPHQL_REPLAY_PAGE_LIMIT: usize = 100;
 const GRAPHQL_REPLAY_MAX_PAGES: usize = 8;
 const GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES: usize = 1;
@@ -35,6 +38,19 @@ pub struct IndexReplayRunInput {
     pub entity_name: String,
     pub schema_version: String,
     pub locale: Option<String>,
+}
+
+/// Untrusted input for one bounded schema-wide Shadow validation run.
+///
+/// The only resumable state is an authenticated confidential continuation token. Locale, source
+/// identity, page budget, jobs, checkpoints, leases, cancellation and retry controls are not
+/// caller fields in this schema-wide transport slice.
+#[derive(Debug, Clone, InputObject)]
+pub struct IndexReplayShadowRunInput {
+    pub module_name: String,
+    pub entity_name: String,
+    pub schema_version: String,
+    pub continuation: Option<String>,
 }
 
 #[derive(Debug, Clone, InputObject)]
@@ -85,6 +101,47 @@ impl TryFrom<rustok_index::IndexReplayRunOutcome> for IndexReplayRunPayload {
             applied_count: bounded_count(outcome.applied_count())?,
             duplicate_count: bounded_count(outcome.duplicate_count())?,
             stale_count: bounded_count(outcome.stale_count())?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum IndexReplayGraphqlShadowStatus {
+    Complete,
+    Yielded,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct IndexReplayShadowRunPayload {
+    pub status: IndexReplayGraphqlShadowStatus,
+    pub pages_scanned: i32,
+    pub mutations_scanned: i32,
+    pub upsert_count: i32,
+    pub delete_count: i32,
+    pub continuation: Option<String>,
+}
+
+impl TryFrom<IndexReplayShadowTransportOutcome> for IndexReplayShadowRunPayload {
+    type Error = FieldError;
+
+    fn try_from(outcome: IndexReplayShadowTransportOutcome) -> Result<Self, Self::Error> {
+        Ok(Self {
+            status: match outcome.status() {
+                rustok_index::IndexReplayDryRunStatus::Complete => {
+                    IndexReplayGraphqlShadowStatus::Complete
+                }
+                rustok_index::IndexReplayDryRunStatus::Yielded => {
+                    IndexReplayGraphqlShadowStatus::Yielded
+                }
+            },
+            pages_scanned: bounded_count(outcome.pages_scanned())?,
+            mutations_scanned: bounded_count(outcome.mutation_count())?,
+            upsert_count: bounded_count(outcome.upsert_count())?,
+            delete_count: bounded_count(outcome.delete_count())?,
+            continuation: outcome
+                .next_token()
+                .map(|token| token.as_str().to_owned()),
         })
     }
 }
@@ -171,6 +228,34 @@ impl IndexReplayMutation {
             .try_into()
     }
 
+    /// Run one server-bounded schema-wide side-effect-free Shadow validation chunk.
+    async fn run_index_replay_shadow(
+        &self,
+        ctx: &Context<'_>,
+        input: IndexReplayShadowRunInput,
+    ) -> GraphqlResult<IndexReplayShadowRunPayload> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+
+        let (operator_context, schema, continuation) =
+            prepare_authorized_shadow_run(tenant.id, auth.user_id, input)
+                .map_err(map_preparation_error)?;
+        let runtime = shadow_replay_runtime(ctx)?;
+        runtime
+            .run_schema_wide(
+                operator_context,
+                schema,
+                continuation.as_deref(),
+                GRAPHQL_REPLAY_PAGE_LIMIT,
+                GRAPHQL_REPLAY_MAX_PAGES,
+            )
+            .await
+            .map_err(map_shadow_transport_error)?
+            .try_into()
+    }
+
     /// Request cancellation of one replay job in the authenticated tenant.
     async fn cancel_index_replay(
         &self,
@@ -200,6 +285,17 @@ fn replay_runtime(ctx: &Context<'_>) -> GraphqlResult<IndexReplayOperatorRuntime
         .cloned()
         .ok_or_else(|| {
             <FieldError as GraphQLError>::internal_error("Index replay runtime is not available")
+        })
+}
+
+fn shadow_replay_runtime(ctx: &Context<'_>) -> GraphqlResult<IndexReplayShadowTransportRuntime> {
+    ctx.data::<Arc<ModuleRuntimeExtensions>>()?
+        .get::<IndexReplayShadowTransportRuntime>()
+        .cloned()
+        .ok_or_else(|| {
+            <FieldError as GraphQLError>::internal_error(
+                "Index replay Shadow transport runtime is not available",
+            )
         })
 }
 
@@ -241,6 +337,30 @@ fn prepare_authorized_run(
         field: "schema_version",
     })?;
     Ok((context, request))
+}
+
+fn prepare_authorized_shadow_run(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    input: IndexReplayShadowRunInput,
+) -> std::result::Result<
+    (
+        IndexReplayOperatorContext,
+        rustok_index::SchemaRef,
+        Option<String>,
+    ),
+    IndexReplayTransportPreparationError,
+> {
+    let context = authorize(tenant_id, actor_id)?;
+    let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;
+    let continuation = input
+        .continuation
+        .map(|value| {
+            bounded_text("continuation", &value, MAX_CONTINUATION_BYTES)?;
+            Ok(value)
+        })
+        .transpose()?;
+    Ok((context, schema, continuation))
 }
 
 fn prepare_authorized_cancel(
@@ -373,6 +493,94 @@ fn map_operator_error(error: IndexReplayOperatorError) -> FieldError {
     }
 }
 
+fn map_shadow_transport_error(error: IndexReplayShadowTransportError) -> FieldError {
+    match error {
+        IndexReplayShadowTransportError::Authorization(error) => map_operator_error(error),
+        IndexReplayShadowTransportError::ContinuationUnavailable => fixed_shadow_dependency_error(
+            "INDEX_REPLAY_SHADOW_CONTINUATION_UNAVAILABLE",
+            false,
+            "Index replay Shadow continuation is unavailable",
+        ),
+        IndexReplayShadowTransportError::ContinuationKeyringUnavailable => {
+            fixed_shadow_dependency_error(
+                "INDEX_REPLAY_SHADOW_CONTINUATION_KEYRING_UNAVAILABLE",
+                true,
+                "Index replay Shadow continuation dependency failed",
+            )
+        }
+        IndexReplayShadowTransportError::Continuation(error) => {
+            map_shadow_continuation_error(error)
+        }
+        IndexReplayShadowTransportError::Request(error) => map_shadow_dry_run_error(error),
+        IndexReplayShadowTransportError::Shadow(
+            IndexReplayShadowOperatorError::Authorization(error),
+        ) => map_operator_error(error),
+        IndexReplayShadowTransportError::Shadow(IndexReplayShadowOperatorError::DryRun(error)) => {
+            map_shadow_dry_run_error(error)
+        }
+    }
+}
+
+fn map_shadow_continuation_error(error: rustok_index::IndexSourceContinuationError) -> FieldError {
+    use rustok_index::IndexSourceContinuationError as Error;
+
+    match error {
+        Error::UnknownSchemaSource(_) => {
+            <FieldError as GraphQLError>::bad_user_input("Unknown Index replay schema")
+        }
+        Error::Expired => shadow_continuation_input_error("INDEX_REPLAY_SHADOW_CONTINUATION_EXPIRED"),
+        Error::EmptyToken
+        | Error::TokenTooLarge { .. }
+        | Error::DecodedTokenTooLarge { .. }
+        | Error::PlaintextTooLarge { .. }
+        | Error::Base64(_)
+        | Error::MalformedEnvelope
+        | Error::UnsupportedVersion(_)
+        | Error::InvalidKeyId(_)
+        | Error::KeyUnavailable(_)
+        | Error::InvalidToken
+        | Error::Postcard(_)
+        | Error::ContractVersionMismatch
+        | Error::TenantMismatch
+        | Error::SchemaMismatch
+        | Error::SourceOwnerMismatch
+        | Error::SourceNameMismatch
+        | Error::InvalidClaimsLifetime
+        | Error::IssuedAtInFuture => {
+            shadow_continuation_input_error("INDEX_REPLAY_SHADOW_CONTINUATION_INVALID")
+        }
+        _ => <FieldError as GraphQLError>::internal_error(
+            "Index replay Shadow continuation processing failed",
+        ),
+    }
+}
+
+fn shadow_continuation_input_error(code: &'static str) -> FieldError {
+    FieldError::new("Invalid Index replay Shadow continuation").extend_with(|_, extensions| {
+        extensions.set("code", code);
+    })
+}
+
+fn map_shadow_dry_run_error(error: rustok_index::IndexReplayDryRunError) -> FieldError {
+    match error {
+        rustok_index::IndexReplayDryRunError::UnknownSchemaSource(_) => {
+            <FieldError as GraphQLError>::bad_user_input("Unknown Index replay schema")
+        }
+        _ => <FieldError as GraphQLError>::internal_error("Index replay Shadow command failed"),
+    }
+}
+
+fn fixed_shadow_dependency_error(
+    code: &'static str,
+    retryable: bool,
+    message: &'static str,
+) -> FieldError {
+    FieldError::new(message).extend_with(|_, extensions| {
+        extensions.set("code", code);
+        extensions.set("retryable", retryable);
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use rustok_api::Permission;
@@ -381,9 +589,10 @@ mod tests {
 
     use super::{
         GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES, GRAPHQL_REPLAY_LEASE_SECONDS,
-        GRAPHQL_REPLAY_MAX_PAGES, GRAPHQL_REPLAY_PAGE_LIMIT, IndexReplayCancelInput,
-        IndexReplayRunInput, IndexReplayTransportPreparationError, prepare_authorized_cancel,
-        prepare_authorized_run,
+        GRAPHQL_REPLAY_MAX_PAGES, GRAPHQL_REPLAY_PAGE_LIMIT, MAX_CONTINUATION_BYTES,
+        IndexReplayCancelInput, IndexReplayRunInput, IndexReplayShadowRunInput,
+        IndexReplayTransportPreparationError, prepare_authorized_cancel, prepare_authorized_run,
+        prepare_authorized_shadow_run,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
@@ -393,6 +602,15 @@ mod tests {
             entity_name: "product".to_owned(),
             schema_version: "zero".to_owned(),
             locale: Some("not a locale!!!".to_owned()),
+        }
+    }
+
+    fn malformed_shadow_run() -> IndexReplayShadowRunInput {
+        IndexReplayShadowRunInput {
+            module_name: "Rustok Product".to_owned(),
+            entity_name: "product".to_owned(),
+            schema_version: "zero".to_owned(),
+            continuation: Some("not-a-token".to_owned()),
         }
     }
 
@@ -423,6 +641,100 @@ mod tests {
         .await
         .expect_err("modules:read must fail before replay input parsing");
         assert_eq!(forbidden, IndexReplayTransportPreparationError::Forbidden);
+    }
+
+    #[tokio::test]
+    async fn shadow_transport_authorizes_before_schema_and_continuation_parsing() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+
+        let missing = with_rbac_request_scope(None, async {
+            prepare_authorized_shadow_run(tenant_id, actor_id, malformed_shadow_run())
+        })
+        .await
+        .expect_err("missing authority must win over malformed Shadow input");
+        assert_eq!(
+            missing,
+            IndexReplayTransportPreparationError::MissingRequestAuthority
+        );
+
+        let forbidden = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            async {
+                prepare_authorized_shadow_run(tenant_id, actor_id, malformed_shadow_run())
+            },
+        )
+        .await
+        .expect_err("modules:read must fail before Shadow input parsing");
+        assert_eq!(forbidden, IndexReplayTransportPreparationError::Forbidden);
+    }
+
+    #[tokio::test]
+    async fn shadow_transport_accepts_only_schema_and_bounded_sealed_continuation() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let (_, schema, continuation) = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            async {
+                prepare_authorized_shadow_run(
+                    tenant_id,
+                    actor_id,
+                    IndexReplayShadowRunInput {
+                        module_name: "rustok-product".to_owned(),
+                        entity_name: "product".to_owned(),
+                        schema_version: "4".to_owned(),
+                        continuation: Some("sealed-token".to_owned()),
+                    },
+                )
+            },
+        )
+        .await
+        .expect("authorized Shadow input should parse");
+
+        assert_eq!(schema.module.as_str(), "rustok-product");
+        assert_eq!(schema.entity.as_str(), "product");
+        assert_eq!(schema.version.get(), 4);
+        assert_eq!(continuation.as_deref(), Some("sealed-token"));
+
+        let oversized = "x".repeat(MAX_CONTINUATION_BYTES + 1);
+        let error = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            async {
+                prepare_authorized_shadow_run(
+                    tenant_id,
+                    actor_id,
+                    IndexReplayShadowRunInput {
+                        module_name: "rustok-product".to_owned(),
+                        entity_name: "product".to_owned(),
+                        schema_version: "4".to_owned(),
+                        continuation: Some(oversized),
+                    },
+                )
+            },
+        )
+        .await
+        .expect_err("oversized Shadow continuation must fail closed");
+        assert_eq!(
+            error,
+            IndexReplayTransportPreparationError::InvalidInput {
+                field: "continuation"
+            }
+        );
     }
 
     #[tokio::test]

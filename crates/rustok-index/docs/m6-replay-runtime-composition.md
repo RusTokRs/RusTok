@@ -8,7 +8,7 @@ This composition freezes the complete immutable Index source/schema registries a
 - bounded durable replay runtime;
 - one module-work registration for due reconciliation execution.
 
-The server now wraps both replay execution surfaces in one request-bound operator: durable Full replay through `SharedIndexReplayRuntime` and side-effect-free Shadow replay through `SharedIndexReplayDryRunRuntime`. It does not add automatic replay-job scheduling. Public Shadow transport remains separate from runtime materialization and scheduler ownership.
+The server wraps both replay execution surfaces in one request-bound operator: durable Full replay through `SharedIndexReplayRuntime` and side-effect-free Shadow replay through `SharedIndexReplayDryRunRuntime`. It also publishes a separate schema-wide Shadow transport adapter that seals caller-carried continuation state. None of these boundaries add automatic replay-job scheduling.
 
 ## Composition order
 
@@ -19,23 +19,26 @@ The server now wraps both replay execution surfaces in one request-bound operato
 5. only complete source/schema composition creates `ModuleWorkRegistrations` for Index;
 6. it publishes `SharedIndexReplayRuntime` with ordinary and lifecycle-neutral interruptible run entry points;
 7. the server retrieves the already-materialized `SharedIndexReplayDryRunRuntime` and wraps Full plus Shadow behind `IndexReplayOperatorRuntime`;
-8. the server wraps reconciliation separately in its guarded operator runtime;
-9. GraphQL currently exposes only durable Full run/cancel commands; Shadow GraphQL transport remains a separate next slice;
-10. GraphQL schema initialization supplies the server-owned `StopHandle::is_stopping` probe to authorized durable replay run commands without making shutdown caller-controlled.
+8. the server materializes the deployment continuation keyring, then publishes `IndexReplayShadowTransportRuntime` and the source-page diagnosis runtime from that same keyring snapshot;
+9. the server wraps reconciliation separately in its guarded operator runtime;
+10. GraphQL exposes durable Full run/cancel plus schema-wide Shadow through the sealed transport adapter;
+11. GraphQL schema initialization supplies the server-owned `StopHandle::is_stopping` probe only to authorized durable replay run commands without making shutdown caller-controlled.
 
-An absent source registry publishes no replay runtime, no dry-run runtime, and no empty Index work registration. A source registry without the shared schema registry fails closed. Duplicate replay or reconciliation-work materialization also fails closed. Server composition also fails closed if a durable replay runtime exists without the dry-run runtime that the guarded Shadow route requires.
+An absent source registry publishes no replay runtime, no dry-run runtime, no Shadow transport runtime and no empty Index work registration. A source registry without the shared schema registry fails closed. Duplicate replay or reconciliation-work materialization also fails closed. Server composition fails closed if a durable replay runtime exists without the dry-run runtime that the guarded Shadow route requires.
 
 The Index materializer performs no SQL and calls neither `tokio::spawn` nor a polling loop. Later server bootstrap collects all module-work registrations, starts the single generic `ModuleWorkScheduler` only when registrations exist, and binds that scheduler to the same shared `StopHandle` lifecycle used by durable replay GraphQL execution.
 
 ## Replay operator and command boundary
 
-`IndexReplayOperatorRuntime` remains the only server-owned replay invocation authority. It requires an exact non-nil tenant/actor request context, a current request-scoped permission snapshot, and effective `modules:manage`.
+`IndexReplayOperatorRuntime` remains the server-owned replay invocation authority. It requires an exact non-nil tenant/actor request context, a current request-scoped permission snapshot, and effective `modules:manage`.
 
-Durable ordinary/interruptible run rejects cross-tenant requests before delegation and cancellation derives tenant only from the authorized context. `run_shadow` applies the same exact tenant and `modules:manage` guard before delegating to the side-effect-free dry-run runtime. Shadow has a separate typed operator error wrapper so the existing Full/cancel GraphQL error contract does not need to absorb an unexposed mode.
+Durable ordinary/interruptible run rejects cross-tenant requests before delegation and cancellation derives tenant only from the authorized context. `run_shadow` applies the same exact tenant and `modules:manage` guard before delegating to the side-effect-free dry-run runtime. Shadow keeps a separate typed operator error wrapper so the existing Full/cancel error contract is not reinterpreted.
 
-The current GraphQL transport authorizes before parsing caller schema/job input and delegates only durable Full run/cancel to this operator. Tenant, actor, worker identity, source name, database handles, scheduler controls, replay resource budgets, and shutdown state are not caller fields. The durable run mutation creates a server-owned worker identity and uses a fixed 100-row × 8-page chunk, per-page heartbeat, and 60-second lease.
+`IndexReplayShadowTransportRuntime` sits above that guarded operator. It owns no database handle, scheduler, job, checkpoint, lease, cancellation or retry state. It repeats exact-tenant authorization before opening continuation, derives tenant/schema/source scope from the frozen source registry, calls only `IndexReplayOperatorRuntime::run_shadow`, and seals any outgoing raw source cursor before returning a transport-safe outcome.
 
-Transport adapters must not call either `SharedIndexReplayRuntime` or `SharedIndexReplayDryRunRuntime` directly. See the durable server transport contract in `apps/server/docs/index-replay-graphql-transport.md` and the Shadow host boundary in `m6-bounded-replay-dry-run.md`.
+The GraphQL transport authorizes before parsing caller input. Durable Full uses a fixed 100-row × 8-page chunk, per-page heartbeat and 60-second lease. Schema-wide Shadow uses the same fixed 100-row × 8-page scan budget but no worker, heartbeat or lease. Its only resumable caller state is the authenticated confidential continuation token.
+
+Transport adapters must not call either `SharedIndexReplayRuntime` or `SharedIndexReplayDryRunRuntime` directly. See `apps/server/docs/index-replay-graphql-transport.md` and `m6-bounded-replay-dry-run.md`.
 
 ## In-page host interruption boundary
 
@@ -47,17 +50,20 @@ An interrupted page is not marked failed and does not manufacture a persisted ca
 
 GraphQL schema initialization resolves or atomically creates one `StopHandle` in shared server runtime state and retains a watch receiver even for API-only hosts. `runIndexReplay` reads only `StopHandle::is_stopping` and invokes the guarded interruptible operator. It never calls `StopHandle::stop`, and no shutdown field is accepted from GraphQL input.
 
+Schema-wide Shadow does not use this durable interruption path. It has no durable pending state; source calls retain the existing timeout boundary and a later invocation can resume only from a sealed continuation returned by a completed bounded call.
+
 The retained SQLite runner packet covers interruption before source scan and interruption after one mutation is durable but before checkpoint commit. The latter resumes as `Duplicate` on attempt 2 before completing the checkpoint/job. Actual GraphQL/process-shutdown execution remains maintainer-run.
 
 ## Reconciliation scheduling boundary
 
 The work registration added here is reconciliation-only. It discovers due pending or expired-running reconciliation jobs and delegates actual claim/takeover to `PostgresIndexReconciliationRunner`.
 
-It does not schedule replay/rebuild jobs, create a second task, own a database lease, or expose a scheduler handle through either operator runtime.
+It does not schedule replay/rebuild jobs, create a second task, own a database lease, or expose a scheduler handle through either replay transport.
 
 ## Explicitly open
 
-- authorization-first GraphQL transport for guarded Shadow replay, including caller-carried bounded resume state and canonical locale handling;
+- locale-safe continuation identity before exact-locale Shadow GraphQL transport;
+- execute/admit schema-wide Shadow GraphQL and continuation-key deployment evidence;
 - execute/admit retained replay interruption/restart evidence and end-to-end process-shutdown command evidence;
 - durable GraphQL command execution/admission evidence and any separately justified HTTP/CLI/admin surfaces;
 - automatic replay/rebuild job scheduling;

@@ -78,8 +78,7 @@ if (
   fail('packet order must remain host-a in-flight -> deterministic expiry -> host-b attempt-2 completion -> release host-a -> stale LeaseLost fence');
 }
 
-const modPath = 'crates/rustok-index/src/infrastructure/postgres/mod.rs';
-requireMarkers(modPath, [
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   '#[cfg(test)]\nmod source_replay_multihost_restart_tests;'.replace('\\n', '\n'),
 ]);
 
@@ -94,8 +93,7 @@ if (job.includes('distributed_consensus')) {
   fail(`${jobPath} must not introduce a second ownership mechanism for this evidence slice`);
 }
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
-requireMarkers(runnerPath, [
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs', [
   'IndexReplayRunError::LeaseLost',
   'checkpoint_lease_lost',
   'terminal_write_outcome',
@@ -118,7 +116,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Execute/admit retained multi-host reclaim evidence.',
   'Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.',
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
-  'Add authorization-first GraphQL transport for the guarded Shadow replay command.',
+  'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',
+  'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
   'Partition replay remains blocked',
 ]);
 

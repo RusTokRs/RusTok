@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked at `main@cbf01df654252e53013da60e5621274a2ce08497` and continued on
-`agent/index-replay-shadow-host-dispatch-20260808`.
+Status overlay rechecked at `main@488803a831e725ef0fbeaa8540f09458ee461b85` and continued on
+`agent/index-replay-shadow-graphql-transport-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -108,18 +108,22 @@ register a key3 Product source/factory. Runtime dual-read compatibility remains 
 
 ## M6 replay command transport
 
-`IndexReplayOperatorRuntime` remains the only server-owned replay invocation authority. It requires exact
-request-bound tenant/actor context and effective `modules:manage`, rejects cross-tenant run requests and derives
-cancel tenant from that context.
+`IndexReplayOperatorRuntime` remains the server-owned replay invocation authority. It requires exact request-bound
+tenant/actor context and effective `modules:manage`, rejects cross-tenant run requests and derives cancel tenant
+from that context.
 
-The guarded operator now retains both the durable `SharedIndexReplayRuntime` and the existing no-write
+The guarded operator retains both the durable `SharedIndexReplayRuntime` and the no-write
 `SharedIndexReplayDryRunRuntime`. `run_shadow` authorizes the exact dry-run request tenant through the same
 request-bound `modules:manage` snapshot before delegating to the side-effect-free runtime. It creates no replay
 job/checkpoint and exposes no lease, cancellation, scheduler or database handle.
 
-The GraphQL layer still exposes only source-complete schema-wide or exact-locale durable `runIndexReplay` plus
-`cancelIndexReplay`; Shadow transport is not exposed yet. Authorization occurs before parsing untrusted schema,
-locale or job input.
+The GraphQL layer now exposes three source-complete command surfaces:
+
+- schema-wide or exact-locale durable `runIndexReplay`;
+- schema-wide no-write `runIndexReplayShadow`;
+- durable `cancelIndexReplay`.
+
+Authorization occurs before parsing untrusted schema, durable locale, Shadow continuation or job input.
 
 Caller durable run input contains only module/entity/schema key plus one optional bounded locale. Tenant, actor,
 worker ID, source name, partition, scheduler handle, replay resource budget, stop handle and shutdown flag remain
@@ -128,8 +132,20 @@ exactly schema-wide; it is not rewritten from schema locale defaults. Each durab
 worker identity and applies fixed transport caps: 100 mutations per page, at most 8 pages, heartbeat every page
 and a 60-second lease.
 
-Retained command source evidence includes schema-wide command behavior, locale command canonicalization and a
-dedicated locale yield/isolation/fresh-runtime resume packet. GraphQL execution/admission remains maintainer-owned.
+Caller Shadow input contains only module/entity/schema key plus one optional bounded sealed continuation. It has
+no locale, source name, raw source cursor, worker, page/max-page budget, job, checkpoint, lease, cancellation,
+retry or scheduler fields. The server uses the same fixed 100-page-size / 8-page invocation budget, repeats exact
+tenant authorization, opens continuation through the deployment keyring under frozen tenant/schema/source scope,
+calls guarded `run_shadow`, and seals any outgoing cursor before GraphQL serialization.
+
+The current source continuation scope does not include locale identity, so Shadow transport is deliberately
+schema-wide. Exact-locale Shadow remains blocked until schema-wide and canonical locale continuations cannot be
+replayed across one another.
+
+Retained durable command source evidence includes schema-wide command behavior, locale command canonicalization
+and a dedicated locale yield/isolation/fresh-runtime resume packet. Shadow source evidence now retains
+authorization-first schema/continuation preparation and sealed non-durable resume routing. GraphQL execution and
+admission remain maintainer-owned.
 
 ## M6 replay graceful interruption and server lifecycle binding
 
@@ -245,13 +261,14 @@ PostgreSQL/process orchestration evidence remain maintainer-owned.
   bounded exact-key count, tenant/schema scope and uniqueness checks;
 - `Shadow` -> `SideEffectFreeScan`; this matches the existing `SharedIndexReplayDryRunRuntime` no-write boundary.
 
-The server host now guards `Shadow` through `IndexReplayOperatorRuntime::run_shadow`, using the same exact
-request-bound `modules:manage` authorization check as Full. This does not add a mode column to jobs/checkpoints, a
-second lease owner, retry state, partition dimension, targeted mutation executor or shadow persistence. See
-`m6-replay-mode-contract.md` and `m6-bounded-replay-dry-run.md`.
+The server guards `Shadow` through `IndexReplayOperatorRuntime::run_shadow`, using the same exact request-bound
+`modules:manage` authorization check as Full. Schema-wide GraphQL Shadow transport now sits on a separate sealed
+continuation adapter and does not reinterpret the durable `runIndexReplay` command or add a mode column to jobs or
+checkpoints.
 
-The explicit mode identity and Shadow host dispatch are source-complete. Public Shadow transport/admission remains
-open and maintainer execution is not claimed.
+The explicit mode identity, Shadow host dispatch and schema-wide Shadow GraphQL transport are source-complete.
+Exact-locale Shadow transport remains source-open behind locale-safe continuation identity. Maintainer execution
+and admission are not claimed.
 
 ## Remaining Storefront parity/evidence blockers
 
@@ -294,14 +311,16 @@ open and maintainer execution is not claimed.
 - [x] Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.
 - [x] Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.
 - [x] Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.
+- [x] Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.
+- [ ] Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
 - [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
+- [ ] Execute/admit schema-wide Shadow GraphQL transport and continuation-key deployment evidence.
 - [ ] Execute/admit retained graceful interruption/restart and GraphQL shutdown evidence.
 - [ ] Execute/admit retained dependency pending-future timeout evidence.
 - [ ] Execute/admit retained page lease-heartbeat evidence.
 - [ ] Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.
 - [ ] Execute/admit retained multi-host reclaim evidence.
-- [ ] Add authorization-first GraphQL transport for the guarded Shadow replay command.
 - [ ] Targeted execution remains separate until a bounded mutation-application contract over `IndexSource::load` exists.
 - [ ] Add partition replay scope only after a real partition-capable source contract exists.
 
@@ -339,17 +358,17 @@ M7 Storefront remains execution/admission-gated and must not gain a traffic swit
 
 The locale request/source/job/checkpoint/runner/GraphQL identity chain, dependency timeout set,
 page-duration/lease-heartbeat policy, deterministic multi-host/restart evidence, explicit Full/Targeted/Shadow
-mode identity and guarded Shadow host dispatch are source-complete. Their retained packets still require maintainer
-execution/admission.
+mode identity, guarded Shadow host dispatch and schema-wide Shadow GraphQL transport are source-complete. Their
+retained packets still require maintainer execution/admission.
 
 Partition replay remains blocked: no real partition-capable source contract can yet filter a partition before
 pagination, so do not merely populate `partition_key`.
 
-For source-only M6 continuation, the next independent boundary is authorization-first GraphQL transport for the
-guarded `Shadow` replay command. It must call `IndexReplayOperatorRuntime::run_shadow`, keep the existing durable
-`runIndexReplay` path as Full, keep any resume cursor caller-carried/non-durable, and must not expose job,
-checkpoint, lease, cancellation or retry controls for Shadow. Optional locale support should reuse the canonical
-source-scan locale contract rather than become mode-specific durable state.
+For source-only M6 continuation, the next independent boundary is locale-safe Shadow continuation identity before
+exact-locale GraphQL transport. The source continuation contract must distinguish schema-wide from canonical
+exact-locale scans while preserving tenant/schema/source binding and existing schema-wide continuation behavior.
+Only after that boundary should Shadow GraphQL accept locale and construct `IndexSourceScanRequest::for_locale`;
+it still must not create job, checkpoint, lease, cancellation or retry state.
 
 Targeted execution remains separate until the bounded mutation-application contract over `IndexSource::load` is
 defined.
