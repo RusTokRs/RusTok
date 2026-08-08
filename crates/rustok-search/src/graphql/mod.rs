@@ -1,9 +1,14 @@
+mod forum_projection_reconciliation;
 mod forum_storefront;
 mod mutation;
 mod query;
 mod rate_limit;
 mod types;
 
+pub use forum_projection_reconciliation::{
+    ForumSearchProjectionReconciliationQuery, GqlForumSearchProjectionDrift,
+    GqlForumSearchProjectionReconciliationStatus,
+};
 pub use forum_storefront::ForumStorefrontSearchQuery;
 pub use mutation::SearchMutationRoot;
 pub use query::SearchQueryRoot;
