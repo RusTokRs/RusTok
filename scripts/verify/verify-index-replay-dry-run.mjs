@@ -81,7 +81,7 @@ const replayRuntime = requireMarkers(replayRuntimePath, [
   'DryRun(#[from] IndexReplayDryRunRuntimeCompositionError)',
   'materialize_index_replay_dry_run_runtime(extensions)?;',
   'extensions.contains::<SharedIndexReplayDryRunRuntime>()',
-  'complete_registries_materialize_one_shared_replay_runtime',
+  'complete_registries_materialize_replay_and_module_work_registration',
 ]);
 for (const forbidden of ['tokio::spawn', '.execute(', '.begin()']) {
   if (replayRuntime.includes(forbidden)) {
@@ -104,14 +104,21 @@ requireMarkers('crates/rustok-index/src/application/source_timeout.rs', [
   'TimedIndexSource::new(source, DEFAULT_INDEX_SOURCE_CALL_TIMEOUT)',
 ]);
 
-const serverRuntimePath = 'apps/server/src/services/index_replay_runtime_composition.rs';
-const serverRuntime = read(serverRuntimePath);
-if (serverRuntime.includes('SharedIndexReplayDryRunRuntime')) {
-  fail(`${serverRuntimePath} must not expose the raw dry-run capability before a request-bound guard exists`);
+requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
+  'shadow: rustok_index::SharedIndexReplayDryRunRuntime',
+  'pub async fn run_shadow(',
+  'context.authorize_for(request.tenant_id())?;',
+  'self.shadow.run(request).await.map_err(Into::into)',
+  '.get::<rustok_index::SharedIndexReplayDryRunRuntime>()',
+  'IndexReplayOperatorRuntime::new(runtime, shadow)',
+]);
+const graphql = read('apps/server/src/graphql/index_replay.rs');
+if (graphql.includes('SharedIndexReplayDryRunRuntime') || graphql.includes('.run_shadow(')) {
+  fail('GraphQL must not bypass the guarded Shadow operator before the dedicated transport slice');
 }
 
 requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
-  'Status: `source_complete_host_guard_pending`',
+  'Status: `source_complete_transport_pending`',
   '`IndexReplayDryRunRequest`',
   '`SharedIndexReplayDryRunRuntime::run`',
   'one invocation budget from 1 through 1024 pages',
@@ -120,8 +127,10 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   '30-second source-call timeout',
   'Direct low-level `IndexSourceCatalog::register` usage',
   'No-write boundary',
-  'server-owned request-bound `modules:manage` delegation for dry-run invocation',
-  'canonical combined roadmap item',
+  'Server-owned host guard',
+  '`IndexReplayOperatorRuntime::run_shadow`',
+  'same request-bound `modules:manage` authorization boundary',
+  'GraphQL, HTTP, CLI, or admin transport surfaces for Shadow invocation',
   'maintainer-run',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
@@ -132,6 +141,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-dry-run.mjs'",
+  "'verify-index-replay-shadow-host-dispatch.mjs'",
 ]);
 
-console.log('[verify-index-replay-dry-run] OK');
+console.log('[verify-index-replay-dry-run] bounded no-write replay validation is now protected by the request-bound server operator while public transport remains separate');

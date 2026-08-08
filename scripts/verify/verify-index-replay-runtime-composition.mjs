@@ -27,6 +27,7 @@ const runtime = requireMarkers(runtimePath, [
   'pub enum IndexReplayRuntimeCompositionError',
   'AlreadyMaterialized',
   'MissingSchemaRegistry',
+  'DryRun(#[from] IndexReplayDryRunRuntimeCompositionError)',
   'ReconciliationScheduler(#[from] IndexReconciliationSchedulerCompositionError)',
   'pub fn materialize_postgres_index_replay_runtime(',
   'extensions.get::<SharedIndexSourceRegistry>().cloned()',
@@ -60,6 +61,11 @@ const serverPath = 'apps/server/src/services/index_replay_runtime_composition.rs
 const server = requireMarkers(serverPath, [
   'pub struct IndexReplayOperatorContext',
   'pub struct IndexReplayOperatorRuntime',
+  'inner: rustok_index::SharedIndexReplayRuntime',
+  'shadow: rustok_index::SharedIndexReplayDryRunRuntime',
+  'pub async fn run_shadow(',
+  'context.authorize_for(request.tenant_id())?;',
+  'self.shadow.run(request).await.map_err(Into::into)',
   'pub async fn run_interruptible<Check>(',
   'self.inner',
   '.run_interruptible(request, should_interrupt)',
@@ -69,8 +75,9 @@ const server = requireMarkers(serverPath, [
   'materialize_postgres_index_sources(extensions, db.clone())',
   'materialize_index_source_registry(extensions)',
   'materialize_postgres_index_replay_runtime(extensions, db.clone())',
-  'extensions.insert(IndexReplayOperatorRuntime::new(runtime))',
-  'reconciliation_operator::materialize_index_reconciliation_operator(extensions, db)?;',
+  '.get::<rustok_index::SharedIndexReplayDryRunRuntime>()',
+  'IndexReplayOperatorRuntime::new(runtime, shadow)',
+  'reconciliation_operator::materialize_index_reconciliation_operator(extensions, db.clone())?;',
 ]);
 for (const forbidden of ['tokio::spawn', 'tokio::time::sleep', 'loop {', 'StopHandle']) {
   if (server.includes(forbidden)) fail(`${serverPath} contains lifecycle marker ${forbidden}`);
@@ -109,7 +116,8 @@ requireMarkers('crates/rustok-index/docs/m6-reconciliation-host-scheduler.md', [
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-runtime-composition.mjs'",
+  "'verify-index-replay-shadow-host-dispatch.mjs'",
   "'verify-index-reconciliation-host-scheduler.mjs'",
 ]);
 
-console.log('[verify-index-replay-runtime-composition] shared replay runtime/operator expose a lifecycle-neutral interruptible path while scheduler composition remains unchanged');
+console.log('[verify-index-replay-runtime-composition] shared replay runtime/operator retain lifecycle-neutral Full execution and a guarded no-write Shadow route while scheduler composition remains unchanged');
