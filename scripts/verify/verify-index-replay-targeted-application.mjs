@@ -140,13 +140,12 @@ requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_application_host_guard_pending`.',
   '## Targeted mutation application',
   '`IndexReplayTargetedExecutor`',
-  'requested keys against the active schema',
+  'validates requested keys against the active schema',
   'Missing requested keys are allowed',
   'PostgreSQL/runtime materialization and request-bound server host',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
-  'requested Targeted keys against the active schema before source load',
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
