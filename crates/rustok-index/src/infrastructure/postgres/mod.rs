@@ -59,6 +59,8 @@ mod source_replay_locale_job_tests;
 mod source_replay_runner_tests;
 #[cfg(test)]
 mod source_replay_graceful_shutdown_tests;
+#[cfg(test)]
+mod source_replay_multihost_restart_tests;
 
 pub use drift_candidate_observer::{
     IndexDriftCandidateObserverCompositionError,
