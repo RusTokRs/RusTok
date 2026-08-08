@@ -80,8 +80,14 @@ pub enum IndexReplayOperatorError {
     Forbidden,
     #[error(transparent)]
     Replay(#[from] rustok_index::IndexReplayRunError),
+}
+
+#[derive(Debug, Error)]
+pub enum IndexReplayShadowOperatorError {
     #[error(transparent)]
-    Shadow(#[from] rustok_index::IndexReplayDryRunError),
+    Authorization(#[from] IndexReplayOperatorError),
+    #[error(transparent)]
+    DryRun(#[from] rustok_index::IndexReplayDryRunError),
 }
 
 /// Server-owned guarded operator boundary over the canonical Index replay runtimes.
@@ -119,7 +125,7 @@ impl IndexReplayOperatorRuntime {
         &self,
         context: IndexReplayOperatorContext,
         request: rustok_index::IndexReplayDryRunRequest,
-    ) -> Result<rustok_index::IndexReplayDryRunOutcome, IndexReplayOperatorError> {
+    ) -> Result<rustok_index::IndexReplayDryRunOutcome, IndexReplayShadowOperatorError> {
         context.authorize_for(request.tenant_id())?;
         self.shadow.run(request).await.map_err(Into::into)
     }
@@ -253,7 +259,7 @@ mod tests {
     use super::{
         IndexDriftDiagnosisOperatorRuntime, IndexDriftSourcePageDiagnosisRuntime,
         IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
-        materialize_index_replay_runtime,
+        IndexReplayShadowOperatorError, materialize_index_replay_runtime,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
@@ -442,7 +448,10 @@ mod tests {
         )
         .await
         .expect_err("modules:read must not invoke shadow replay");
-        assert!(matches!(forbidden, IndexReplayOperatorError::Forbidden));
+        assert!(matches!(
+            forbidden,
+            IndexReplayShadowOperatorError::Authorization(IndexReplayOperatorError::Forbidden)
+        ));
 
         let outcome = with_rbac_request_scope(
             Some(RbacRequestScope::new(
