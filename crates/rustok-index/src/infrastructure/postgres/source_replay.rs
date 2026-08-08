@@ -18,6 +18,7 @@ use super::{
     source_replay_job::{
         assert_active_replay_job_lease, IndexReplayJobError, IndexReplayJobLease,
     },
+    source_replay_timeout::{bounded_replay_checkpoint_commit, bounded_replay_mutation},
 };
 
 #[async_trait]
@@ -30,16 +31,19 @@ impl IndexReplayMutationSink for PostgresMutationStore {
     ) -> Result<IndexReplayMutationOutcome, IndexReplayFailure> {
         let delivery = MutationDelivery::from_event(source_name, mutation.clone())
             .map_err(classify_mutation_failure)?;
-        self.apply(registry, &delivery)
-            .await
-            .map(|outcome| match outcome {
-                MutationApplyOutcome::Applied { .. } => IndexReplayMutationOutcome::Applied,
-                MutationApplyOutcome::Duplicate { .. } => IndexReplayMutationOutcome::Duplicate,
-                MutationApplyOutcome::StaleIgnored { .. } => {
-                    IndexReplayMutationOutcome::StaleIgnored
-                }
-            })
-            .map_err(classify_mutation_failure)
+        bounded_replay_mutation(async {
+            self.apply(registry, &delivery)
+                .await
+                .map(|outcome| match outcome {
+                    MutationApplyOutcome::Applied { .. } => IndexReplayMutationOutcome::Applied,
+                    MutationApplyOutcome::Duplicate { .. } => IndexReplayMutationOutcome::Duplicate,
+                    MutationApplyOutcome::StaleIgnored { .. } => {
+                        IndexReplayMutationOutcome::StaleIgnored
+                    }
+                })
+                .map_err(classify_mutation_failure)
+        })
+        .await
     }
 }
 
@@ -144,60 +148,63 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
         checkpoint: &IndexReplayCheckpoint,
     ) -> Result<(), IndexReplayFailure> {
         validate_checkpoint_identity(&self.lease, checkpoint.key())?;
-        let transaction = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error))?;
-        let result = async {
-            let backend = transaction.get_database_backend();
-            ensure_supported_backend(backend)?;
-            assert_active_replay_job_lease(&transaction, &self.lease, backend)
-                .await
-                .map_err(classify_job_lease_failure)?;
-            let cursor = serde_json::to_value(checkpoint.cursor()).map_err(|error| {
-                checkpoint_contract_failure("checkpoint_cursor_invalid", error)
-            })?;
-            let mut values = checkpoint_key_values(checkpoint.key(), backend);
-            values.push(SqlValue::Json(Some(Box::new(cursor))));
-            values.push(optional_source_version_value(
-                checkpoint.source_version(),
-                backend,
-            )?);
-            values.push(
-                checkpoint
-                    .last_delivery_id()
-                    .map(str::to_owned)
-                    .into(),
-            );
-
-            transaction
-                .execute(Statement::from_sql_and_values(
-                    backend,
-                    upsert_checkpoint_sql(backend),
-                    values,
-                ))
+        bounded_replay_checkpoint_commit(async {
+            let transaction = self
+                .db
+                .begin()
                 .await
                 .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error))?;
-            Ok(())
-        }
-        .await;
-
-        match result {
-            Ok(()) => transaction
-                .commit()
-                .await
-                .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error)),
-            Err(error) => {
-                transaction
-                    .rollback()
+            let result = async {
+                let backend = transaction.get_database_backend();
+                ensure_supported_backend(backend)?;
+                assert_active_replay_job_lease(&transaction, &self.lease, backend)
                     .await
-                    .map_err(|rollback| {
-                        checkpoint_storage_failure("checkpoint_commit_rollback_failed", rollback)
-                    })?;
-                Err(error)
+                    .map_err(classify_job_lease_failure)?;
+                let cursor = serde_json::to_value(checkpoint.cursor()).map_err(|error| {
+                    checkpoint_contract_failure("checkpoint_cursor_invalid", error)
+                })?;
+                let mut values = checkpoint_key_values(checkpoint.key(), backend);
+                values.push(SqlValue::Json(Some(Box::new(cursor))));
+                values.push(optional_source_version_value(
+                    checkpoint.source_version(),
+                    backend,
+                )?);
+                values.push(
+                    checkpoint
+                        .last_delivery_id()
+                        .map(str::to_owned)
+                        .into(),
+                );
+
+                transaction
+                    .execute(Statement::from_sql_and_values(
+                        backend,
+                        upsert_checkpoint_sql(backend),
+                        values,
+                    ))
+                    .await
+                    .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error))?;
+                Ok(())
             }
-        }
+            .await;
+
+            match result {
+                Ok(()) => transaction
+                    .commit()
+                    .await
+                    .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error)),
+                Err(error) => {
+                    transaction
+                        .rollback()
+                        .await
+                        .map_err(|rollback| {
+                            checkpoint_storage_failure("checkpoint_commit_rollback_failed", rollback)
+                        })?;
+                    Err(error)
+                }
+            }
+        })
+        .await
     }
 }
 
