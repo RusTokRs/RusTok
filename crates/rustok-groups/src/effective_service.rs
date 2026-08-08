@@ -21,7 +21,9 @@ use crate::effective_membership_guard::{
 use crate::entities::{feature_binding, group, membership};
 use crate::error::{GroupsError, GroupsResult};
 use crate::membership_enforcement::resolve_group_membership_enforcement;
-use crate::membership_enforcement_transaction::reserve_group_write_for_update;
+use crate::membership_enforcement_transaction::{
+    reserve_group_write_for_update, resolve_group_membership_enforcement_for_update,
+};
 use crate::ports::{
     GroupAccessReadPort, GroupCommandPort, GroupMembershipReadPort, GroupSummaryReadPort,
 };
@@ -118,6 +120,12 @@ impl GroupsService {
         let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
+
+        // Joining changes membership lifecycle state and can advance the aggregate count/version.
+        // Serialize the group before evaluating enforcement so a suspension cannot commit between
+        // re-entry authorization and the membership write. The effective resolver then acquires the
+        // remaining Membership -> Enforcement locks in the canonical owner order.
+        reserve_group_write_for_update(&transaction, tenant_id, request.group_id).await?;
         let group_model = group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Id.eq(request.group_id))
@@ -128,7 +136,7 @@ impl GroupsService {
             return Err(GroupsError::Conflict("group is not active".to_string()));
         }
 
-        let effective = resolve_group_membership_enforcement(
+        let effective = resolve_group_membership_enforcement_for_update(
             &transaction,
             tenant_id,
             request.group_id,
@@ -136,10 +144,14 @@ impl GroupsService {
             Utc::now(),
         )
         .await?;
-        if effective.denied_reentry {
-            return Err(GroupsError::Forbidden(
-                "group membership is suspended or banned".to_string(),
-            ));
+        match effective.effective_status {
+            GroupMembershipEffectiveStatus::Suspended => {
+                return Err(GroupsError::MembershipSuspended);
+            }
+            GroupMembershipEffectiveStatus::LegacyBanned => {
+                return Err(GroupsError::MembershipBanned);
+            }
+            _ => {}
         }
 
         let existing = membership::Entity::find()
