@@ -313,7 +313,7 @@ fn optional_uuid(props: &Value, field: &str) -> ForumResult<Option<Uuid>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_api::{Action, Permission, Resource};
+    use rustok_api::Permission;
 
     fn security(permissions: Vec<Permission>) -> SecurityContext {
         SecurityContext::from_permission_snapshot(Some(Uuid::new_v4()), &permissions)
