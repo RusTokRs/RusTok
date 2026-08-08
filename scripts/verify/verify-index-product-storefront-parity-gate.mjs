@@ -23,7 +23,7 @@ const storefront = requireMarkers(storefrontPath, [
   'CatalogService::new(runtime_ctx.db_clone(), event_bus)',
   '.list_published_products_with_query(',
 ]);
-for (const forbidden of ['rustok_index', 'SharedIndexQueryRuntime', 'IndexQuery']) {
+for (const forbidden of ['rustok_index', 'SharedIndexQueryRuntime', 'execute_localized_query']) {
   if (storefront.includes(forbidden)) fail(`${storefrontPath} contains forbidden marker ${forbidden}`);
 }
 
@@ -32,21 +32,27 @@ const owner = requireMarkers(ownerPath, [
   'ProductStatus::Active',
   'Column::PublishedAt.is_not_null()',
   'product_channel_visibility_condition(',
+  'attribute_filters::load_catalog_attribute_filter_conditions(',
   'product_title_search_condition(',
   'let total = query.clone().count(&self.db).await?',
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
   'let pattern = format!("%{search}%");',
-  'FROM product_translations pt',
-  'pt.product_id = products.id',
   'pt.title LIKE $1',
+  '.order_by_asc(entities::product::Column::Id)',
+  '.order_by_desc(entities::product::Column::Id)',
 ]);
 const titleSearch = owner.slice(owner.indexOf('fn product_title_search_condition('));
 if (titleSearch.includes('pt.locale')) fail(`${ownerPath} title search became locale-scoped`);
 
-requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
-  'pub struct StorefrontProductListQuery',
-  'pub search: Option<String>',
-  'search: normalize_optional_text(search)',
+requireMarkers('crates/rustok-product/src/catalog_schema_read_port.rs', [
+  'ProductStorefrontAttributeFilterResolutionRequest',
+  'async fn resolve_storefront_attribute_filters(',
+  '"product.storefront_attribute_filter_resolution_unavailable"',
+]);
+requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', [
+  'pub enum ProductAttributeTermExpr',
+  'pub struct ProductResolvedAttributeFilter',
+  'product_attribute_localized_text_expr(',
 ]);
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
@@ -59,15 +65,17 @@ const productIndex = requireMarkers(productIndexPath, [
 if (productIndex.includes('SchemaVersion::new(3)')) fail(`${productIndexPath} restored historical key 3`);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `localized_runtime_and_text_pattern_source_complete_adapter_and_evidence_pending`',
-  'Generic `TextLike` — source complete',
-  '`FilterExpr::TextLike(FieldPath, String)`',
-  'no explicit search-length bound',
-  'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
+  'Status: `shadow_query_and_product_owned_eav_resolution_source_complete_execution_evidence_pending`',
+  'Mounted Storefront remains owner-native',
+  'Product-owned attribute-filter resolution — source complete',
+  '`ProductAttributeTermExpr`',
+  '`ProductCatalogSchemaReadPort`',
+  'Channel-less owner requests',
+  'shadow executor/equivalence harness',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
   'Status: `source_complete_materialized_rebuild_pending`',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native while adapter/search-bound/collation/evidence gates are pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; shadow query plus Product-owned EAV resolution are source-complete while execution/evidence gates remain pending');
