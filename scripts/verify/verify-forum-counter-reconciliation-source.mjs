@@ -35,6 +35,10 @@ for (const marker of [
   "pub const MAX_FORUM_COUNTER_RECONCILIATION_LIMIT: u64 = 500",
   "pub struct ForumCounterReconciliationService",
   "pub struct ForumCounterReconciliationReport",
+  "security: &SecurityContext",
+  "enforce_operations_scope(security)",
+  "enforce_scope(security, Resource::ForumCategories, Action::Manage)?",
+  "enforce_scope(security, Resource::ForumTopics, Action::Manage)",
   "ForumCounterDriftKind::TopicReplyCount",
   "ForumCounterDriftKind::CategoryTopicCount",
   "ForumCounterDriftKind::CategoryReplyCount",
@@ -88,7 +92,9 @@ for (const marker of [
   "Permission::FORUM_TOPICS_MANAGE",
   "categories_manage && topics_manage",
   "auth.tenant_id != tenant.id",
+  "SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)",
   "ForumCounterReconciliationService::new(db.clone())",
+  ".report(tenant.id, &security, requested_limit)",
 ]) {
   requireText(graphql, marker, `Forum reconciliation GraphQL boundary missing ${marker}`);
 }
@@ -132,6 +138,8 @@ for (const marker of [
   "forumCounterReconciliationReport(limit: Int)",
   "forum_categories:manage",
   "forum_topics:manage",
+  "Authorization is deliberately enforced twice",
+  "services::rbac::enforce_scope",
   "exactly two tenant-scoped aggregate queries inside one database snapshot",
   "REPEATABLE READ READ ONLY",
   "does **not** add a repair mutation",
