@@ -128,6 +128,8 @@ Source exists for:
   write lock protocol;
 - effective governance role/ownership commands with group-serialized actor-bound replay,
   deterministic membership/enforcement locks, owner-reference consistency and owner-clock authority;
+- executable governance/enforcement PostgreSQL evidence source for replay, actor binding, concurrent
+  role-versus-suspension serialization, revision fencing and platform owner recovery;
 - sealed effective public invitation/application services with compatibility module paths;
 - transaction-aware invitation/application writes using the group/membership/enforcement lock
   protocol;
@@ -144,8 +146,8 @@ Evidence still open:
 - executed native/GraphQL parity and schema/error-mapping evidence for direct enforcement;
 - executed localization suspension/expiry, native/GraphQL parity, and concurrent enforcement-vs-write
   evidence;
-- governance concurrency, replay/lost-response, suspension/expiry, platform-recovery and native/GraphQL
-  parity evidence;
+- maintainer execution of the governance/enforcement PostgreSQL evidence source plus remaining
+  governance suspension/expiry, stress/deadlock, SQLite and native/GraphQL parity evidence;
 - native/GraphQL parity, CAS, lifecycle, bulk-review, retry, recovery, security, and accessibility
   evidence for the broader module;
 - provider ACL integration and remote/degraded profiles;
@@ -362,6 +364,29 @@ receipt remain in one Groups transaction. The existing GraphQL governance transp
 Compilation, PostgreSQL/SQLite contention, replay/lost-response, suspension/expiry, platform recovery,
 governance concurrency and native/GraphQL parity evidence remain open.
 
+### Executable governance/enforcement PostgreSQL evidence source
+
+`apps/server/tests/groups_governance_enforcement_postgres.rs` now retains an ignored, schema-isolated
+PostgreSQL evidence source over the production Groups migrations and production governance/enforcement
+ports. It covers actor-bound lost-response replay after the actor becomes suspended, a concurrent
+role-change versus suspension race using the same prepared membership revision, and platform ownership
+recovery from a valid suspended current owner.
+
+The concurrency contract accepts only the two outcomes implied by group serialization: governance
+wins and makes the prepared suspension CAS stale, or suspension wins and the later governance command
+observes `groups.membership_suspended`. Both commands succeeding is forbidden, and the raced membership
+revision must advance by exactly one material change.
+
+The platform recovery fixture writes the already-defined moderation-owned enforcement projection shape
+directly because the neutral Moderation adapter is not part of this slice; the actual transfer still
+uses `GroupGovernanceCommandPort` and the production owner-clock resolver. This fixture is not adapter
+evidence and does not relax the adapter dependency/receipt gates.
+
+Status is **maintainer execution pending**. The executable source does not populate runtime
+`governance_concurrency` or other evidence fields until it is actually run on PostgreSQL. The handoff is
+documented in `docs/governance-enforcement-postgres-contract.md` and guarded by
+`scripts/verify/verify-groups-governance-enforcement-postgres.mjs`.
+
 ### Planned moderation adapter
 
 Initial mapping remains:
@@ -396,8 +421,9 @@ above rather than introduce a second Groups enforcement state path.
 
 1. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
 2. Convert provider ACL consumers and remote/degraded profiles.
-3. Produce direct-enforcement, localization, governance and adapter runtime, parity, concurrency,
-   security, migration and accessibility evidence.
+3. Execute and retain the governance/enforcement PostgreSQL evidence source, then produce remaining
+   direct-enforcement, localization, governance and adapter runtime, parity, concurrency, security,
+   migration and accessibility evidence.
 
 ## Degraded modes
 
@@ -425,9 +451,11 @@ cargo check -p rustok-groups --features graphql
 cargo check -p rustok-groups-admin --features ssr
 cargo check -p rustok-groups-storefront --features ssr
 cargo test -p rustok-groups
+RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://...' cargo test -p rustok-server --features mod-groups --test groups_governance_enforcement_postgres -- --ignored --nocapture
 node scripts/verify/verify-groups-boundary.mjs
 node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-governance-effective-authorization.mjs
+node scripts/verify/verify-groups-governance-enforcement-postgres.mjs
 node scripts/verify/verify-groups-invitations-boundary.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-application-policy-cas.mjs
