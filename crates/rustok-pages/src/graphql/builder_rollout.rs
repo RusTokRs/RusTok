@@ -11,7 +11,6 @@ const MODULE_SLUG: &str = "pages";
 
 #[derive(Clone, Debug, PartialEq, Eq, SimpleObject)]
 pub struct GqlPageBuilderRolloutSnapshot {
-    pub tenant_id: Uuid,
     pub tenant_slug: String,
     pub builder_enabled: bool,
     pub preview_enabled: bool,
@@ -23,7 +22,6 @@ pub struct GqlPageBuilderRolloutSnapshot {
 impl GqlPageBuilderRolloutSnapshot {
     fn new(tenant: &TenantContext, flags: BuilderCapabilityFlags) -> Self {
         Self {
-            tenant_id: tenant.id,
             tenant_slug: tenant.slug.clone(),
             builder_enabled: flags.builder_enabled,
             preview_enabled: flags.preview_enabled,
