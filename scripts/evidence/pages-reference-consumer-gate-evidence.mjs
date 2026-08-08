@@ -245,6 +245,13 @@ function validateBrowser(input, contract, head, artifactInput, deploymentDigest)
 function validateBoundedBodyRecord(value, label, expectedStatus = null) {
   const record = object(value, label);
   if (
+    !Number.isInteger(record.status) ||
+    record.status < 100 ||
+    record.status > 599
+  ) {
+    fail(`${label}.status is not a valid HTTP status`);
+  }
+  if (
     !Number.isInteger(record.response_body_bytes) ||
     record.response_body_bytes < 0 ||
     record.response_body_bytes > MAX_INPUT_BYTES
