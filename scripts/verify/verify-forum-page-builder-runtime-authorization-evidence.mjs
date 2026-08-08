@@ -89,8 +89,8 @@ for (const marker of [
   "rmSync(output, { force: true })",
   "sourceCommit = currentCommit()",
   "sourceHashes(contract)",
-  "stdout: stdout",
-  "stderr: stderr",
+  "stdout,",
+  "stderr,",
   "retained_raw_command_output: false",
   "runtime_authorization_execution_only: true",
   "deployed_server_fn_attestation_pending: true",
@@ -194,7 +194,8 @@ for (const marker of [
   requireContains(categoryVisibility, marker, `category visibility owner path missing ${marker}`);
 }
 for (const marker of [
-  'Database::connect("sqlite::memory:")',
+  "ForumModule.migrations()",
+  "SchemaManager::new(&db)",
   "forum_category_policies",
   "visibility_override",
   "authenticated",
