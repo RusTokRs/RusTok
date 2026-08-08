@@ -13,8 +13,6 @@ pub mod category_presentation;
 pub mod category_read_transport;
 pub mod constants;
 pub mod controllers;
-#[path = "services/counter_reconciliation.rs"]
-mod counter_reconciliation;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -54,11 +52,6 @@ pub use category_read_transport::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, category_read_audience_port_context,
 };
 pub use constants::*;
-pub use counter_reconciliation::{
-    DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, ForumCounterDrift, ForumCounterDriftKind,
-    ForumCounterReconciliationReport, ForumCounterReconciliationService,
-    MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
-};
 pub use dto::*;
 pub use entities::*;
 pub use error::{ForumError, ForumResult};
@@ -82,10 +75,10 @@ pub use reply_read_transport::{
 };
 pub use search_projection::ForumSearchProjectionSourceFactory;
 pub use services::{
-    CategoryService, FORUM_POSTING_POLICY_FACTS_CAPABILITY,
-    FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE, FORUM_POSTING_POLICY_PRECEDENCE,
-    ForkForumReplyBranchInput, ForumApprovedPostsFactPort, ForumCategoryAudiencePage,
-    ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
+    CategoryService, DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+    FORUM_POSTING_POLICY_FACTS_CAPABILITY, FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE,
+    FORUM_POSTING_POLICY_PRECEDENCE, ForkForumReplyBranchInput, ForumApprovedPostsFactPort,
+    ForumCategoryAudiencePage, ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyService, ForumCategoryAudienceReadService,
     ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
     ForumCategoryModerationAudiencePolicy, ForumCategoryModerationAudiencePolicyLayer,
@@ -93,7 +86,8 @@ pub use services::{
     ForumCategoryReplyCreateAudiencePolicyLayer, ForumCategoryReplyCreateAudiencePolicyService,
     ForumCategoryTopicCreateAudiencePolicy, ForumCategoryTopicCreateAudiencePolicyLayer,
     ForumCategoryTopicCreateAudiencePolicyService, ForumCategoryVisibilityPolicy,
-    ForumCategoryVisibilityPolicyService, ForumEventService,
+    ForumCategoryVisibilityPolicyService, ForumCounterDrift, ForumCounterDriftKind,
+    ForumCounterReconciliationReport, ForumCounterReconciliationService, ForumEventService,
     ForumModerationAudienceAuthorization, ForumModerationAudienceAuthorizationService,
     ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyCompositionRequest,
     ForumPostingPolicyDecision, ForumPostingPolicyDecisionReason,
@@ -128,8 +122,8 @@ pub use services::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, ForumUserTrustAudienceFactsPort,
     ForumUserTrustChange, ForumUserTrustRevision, ForumUserTrustRevisionPage,
     ForumUserTrustService, ForumUserTrustState, ForumVisibilityScopedReadStateService,
-    ForumWidgetContractService, ForumWidgetPreviewService, MAX_FORUM_POSTING_POLICY_FACTS,
-    MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
+    ForumWidgetContractService, ForumWidgetPreviewService, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+    MAX_FORUM_POSTING_POLICY_FACTS, MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
     MAX_FORUM_REPLY_RANGE_MOVE_REASON_LEN, MAX_FORUM_REPLY_RANGE_MOVE_REPLIES,
     MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES,
     MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS, MAX_FORUM_TOPIC_FORK_BODY_ROWS,
