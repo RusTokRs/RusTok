@@ -22,19 +22,22 @@
     "format": "pages_inline_edit_browser_execution_v1",
     "status": "browser_execution_passed_rollout_pending",
     "same_source_commit_required": true,
-    "same_origin_hash_required": true,
+    "same_api_origin_hash_required": true,
+    "same_admin_origin_hash_required": true,
     "deployment_digest_required": true,
     "tenant_rollout_must_be_unexecuted": true
   },
   "fixtures": {
-    "base_origin_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_BASE_ORIGIN",
+    "api_origin_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_API_ORIGIN",
+    "admin_origin_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ORIGIN",
     "operator_storage_state_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_OPERATOR_STORAGE_STATE",
     "tenant_slug_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_TENANT_SLUG",
     "page_id_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_PAGE_ID",
     "admin_route_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ROUTE",
     "common_headers_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_COMMON_HEADERS_JSON",
     "operator_requirements": [
-      "authenticated session",
+      "authenticated API session for the reviewed API origin",
+      "authenticated standalone admin session for the reviewed admin origin",
       "effective modules:manage",
       "effective pages:read",
       "Pages admin edit authority for the selected unpublished page"
