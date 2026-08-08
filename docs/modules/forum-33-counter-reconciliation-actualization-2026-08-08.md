@@ -25,6 +25,8 @@ forum_topics:manage
 
 Tenant identity is taken only from the trusted `TenantContext`. The query does not accept another tenant id and rejects an auth/tenant context mismatch.
 
+Authorization is deliberately enforced twice. GraphQL rejects missing manage permissions early for a clear transport error, then builds the exact `SecurityContext` from the authenticated permission snapshot. `ForumCounterReconciliationService` independently requires `ForumCategories/Manage` and `ForumTopics/Manage` through the existing Forum `services::rbac::enforce_scope` helper before opening a database snapshot. A future CLI or host adapter therefore cannot gain reconciliation access merely by bypassing the GraphQL resolver.
+
 ## Counter invariants
 
 The owner report checks the existing publication-accounting invariants without mutating them:
