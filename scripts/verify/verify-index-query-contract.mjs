@@ -83,6 +83,7 @@ const scripts = [
   'verify-index-product-storefront-parity-gate.mjs',
   'verify-index-product-storefront-localized-query-architecture.mjs',
   'verify-index-product-storefront-shadow-adapter.mjs',
+  'verify-index-product-storefront-shadow-executor.mjs',
   'verify-index-localized-query-contract.mjs',
   'verify-index-localized-query-postgres-fold.mjs',
   'verify-index-localized-query-runtime.mjs',
