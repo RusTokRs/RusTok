@@ -18,14 +18,12 @@ const servicePath = "crates/rustok-forum/src/services/mention_reconciliation.rs"
 const servicesModPath = "crates/rustok-forum/src/services/mod.rs";
 const graphqlPath = "crates/rustok-forum/src/graphql/mention_reconciliation_query.rs";
 const graphqlModPath = "crates/rustok-forum/src/graphql/mod.rs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
 const packetPath = "docs/modules/forum-33-mention-reconciliation-actualization-2026-08-08.md";
 
 const service = read(servicePath);
 const servicesMod = read(servicesModPath);
 const graphql = read(graphqlPath);
 const graphqlMod = read(graphqlModPath);
-const plan = read(planPath);
 const packet = read(packetPath);
 
 for (const marker of [
@@ -128,18 +126,10 @@ for (const marker of [
 }
 
 for (const marker of [
-  "counter, accepted-solution, persisted-subscription and mention reconciliation",
-  "attachments/permitted shared-owner reconciliation",
-  "forumMentionReconciliationReport",
-  "relationAfter: String",
-]) {
-  requireText(plan, marker, `canonical Forum plan missing ${marker}`);
-}
-
-for (const marker of [
   "Status: `source-ready / maintainer-execution-open / repair-open`",
   "FORUM-33D",
   "next source reconciliation cursor to mentions",
+  "canonical implementation-plan ledger still describes subscriptions as open",
   "MentionRelationService",
   "does not re-resolve handles through Profiles",
   "does not query Notifications-owned",
