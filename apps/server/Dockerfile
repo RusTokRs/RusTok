@@ -69,7 +69,8 @@ LABEL org.opencontainers.image.title="RusToK Server" \
       org.opencontainers.image.revision="${OCI_REVISION}" \
       org.opencontainers.image.licenses="BUSL-1.1"
 
-ENV RUST_BACKTRACE=1
+ENV RUST_BACKTRACE=1 \
+    RUSTOK_SOURCE_COMMIT=${OCI_REVISION}
 WORKDIR /app
 
 RUN apt-get update \

@@ -14,7 +14,8 @@ LABEL org.opencontainers.image.title="RusToK Server" \
       org.opencontainers.image.base.name="docker.io/library/debian:bookworm-20260713-slim" \
       org.opencontainers.image.base.digest="sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818"
 
-ENV RUST_BACKTRACE=1
+ENV RUST_BACKTRACE=1 \
+    RUSTOK_SOURCE_COMMIT=${OCI_REVISION}
 WORKDIR /app
 
 # Keep runtime packages reproducible and independent from moving Debian mirrors.
