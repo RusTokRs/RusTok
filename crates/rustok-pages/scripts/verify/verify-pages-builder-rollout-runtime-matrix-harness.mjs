@@ -113,6 +113,17 @@ for (const relativePath of contract.required_source_files ?? []) {
     failures.push(`required source file is missing: ${relativePath}`);
   }
 }
+for (const relativePath of [
+  "crates/rustok-pages/rustok-module.toml",
+  "apps/server/src/services/module_lifecycle.rs",
+  "apps/server/src/modules/manifest/mod.rs",
+  "crates/rustok-modules/src/settings.rs",
+  "crates/rustok-modules/src/lifecycle_writer.rs",
+]) {
+  if (!contract.required_source_files?.includes(relativePath)) {
+    failures.push(`production settings owner source is not hash-bound: ${relativePath}`);
+  }
+}
 for (const forbidden of [
   "tenant slugs",
   "tenant ids",
@@ -240,6 +251,7 @@ for (const key of [
   "admin_operator_storage_state_required",
   "production_tenant_modules_read_used",
   "production_update_module_settings_used",
+  "production_settings_owner_sources_hashed",
   "original_settings_restored_in_finally",
   "restore_semantically_verified",
   "server_owned_rollout_snapshot_checked_per_profile",
@@ -300,4 +312,4 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-rollout-runtime-matrix-harness] PASS source_ready=true execution=not_run gate_accepted=false targets=api+admin auth=split");
+console.log("[verify-pages-builder-rollout-runtime-matrix-harness] PASS source_ready=true execution=not_run gate_accepted=false targets=api+admin auth=split owner_sources=hash_bound");
