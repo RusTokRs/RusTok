@@ -5,6 +5,57 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::catalog_schema::AttributeValueType;
+use crate::error::{CommerceError, CommerceResult};
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ProductAttributeFilterValue {
+    Text(String),
+    Integer(i64),
+    Decimal(Decimal),
+    Boolean(bool),
+    Date(NaiveDate),
+    Datetime(DateTime<Utc>),
+    Option(String),
+}
+
+pub(crate) fn parse_product_attribute_filter_value(
+    code: &str,
+    value_type: AttributeValueType,
+    raw_value: &str,
+) -> CommerceResult<ProductAttributeFilterValue> {
+    match value_type {
+        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext => {
+            Ok(ProductAttributeFilterValue::Text(raw_value.to_string()))
+        }
+        AttributeValueType::Integer => raw_value
+            .parse::<i64>()
+            .map(ProductAttributeFilterValue::Integer)
+            .map_err(|_| invalid_typed_value(code, "integer", raw_value)),
+        AttributeValueType::Decimal => raw_value
+            .parse::<Decimal>()
+            .map(ProductAttributeFilterValue::Decimal)
+            .map_err(|_| invalid_typed_value(code, "decimal", raw_value)),
+        AttributeValueType::Boolean => match raw_value.to_ascii_lowercase().as_str() {
+            "true" | "1" => Ok(ProductAttributeFilterValue::Boolean(true)),
+            "false" | "0" => Ok(ProductAttributeFilterValue::Boolean(false)),
+            _ => Err(invalid_typed_value(code, "boolean", raw_value)),
+        },
+        AttributeValueType::Date => NaiveDate::parse_from_str(raw_value, "%Y-%m-%d")
+            .map(ProductAttributeFilterValue::Date)
+            .map_err(|_| invalid_typed_value(code, "date (YYYY-MM-DD)", raw_value)),
+        AttributeValueType::Datetime => DateTime::parse_from_rfc3339(raw_value)
+            .map(|value| ProductAttributeFilterValue::Datetime(value.with_timezone(&Utc)))
+            .map_err(|_| invalid_typed_value(code, "RFC3339 datetime", raw_value)),
+        AttributeValueType::Select | AttributeValueType::Multiselect => {
+            Ok(ProductAttributeFilterValue::Option(raw_value.to_string()))
+        }
+        AttributeValueType::Json => Err(CommerceError::Validation(format!(
+            "attribute {code} uses json and cannot be used in attribute_filters"
+        ))),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProductAttributeTermExpr {
@@ -195,6 +246,12 @@ fn hex_encode(value: &str) -> String {
     encoded
 }
 
+fn invalid_typed_value(code: &str, expected: &str, value: &str) -> CommerceError {
+    CommerceError::Validation(format!(
+        "attribute filter {code} expects {expected}, received `{value}`"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +271,23 @@ mod tests {
             product_attribute_boolean_term(attribute_id, true).unwrap(),
             "00000000-0000-0000-0000-000000000001|boolean||74727565"
         );
+    }
+
+    #[test]
+    fn shared_value_parser_keeps_owner_boolean_and_datetime_rules() {
+        assert_eq!(
+            parse_product_attribute_filter_value("flag", AttributeValueType::Boolean, "1").unwrap(),
+            ProductAttributeFilterValue::Boolean(true)
+        );
+        assert!(matches!(
+            parse_product_attribute_filter_value(
+                "released",
+                AttributeValueType::Datetime,
+                "2026-08-08T06:00:00+03:00"
+            )
+            .unwrap(),
+            ProductAttributeFilterValue::Datetime(_)
+        ));
     }
 
     #[test]
