@@ -15,6 +15,7 @@ use rustok_moderation::{
 };
 use sea_orm::DatabaseConnection;
 use serde_json::{Value as JsonValue, json};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const MODULE_SLUG: &str = "moderation";
@@ -113,6 +114,15 @@ impl ModerationRecoveryMutation {
                 "moderation rereview policy snapshot must be a JSON object",
             ));
         }
+        let request_hash = rereview_request_hash(
+            source_decision_id,
+            fresh_subject_revision,
+            rereview_reason.as_str(),
+            decision_kind,
+            reason_code,
+            &effect,
+            &policy_snapshot,
+        )?;
 
         let source_decision = ModerationReadPort::read_decision(
             &service,
@@ -150,6 +160,7 @@ impl ModerationRecoveryMutation {
             source_decision_id,
             fresh_subject_revision,
             rereview_reason.as_str(),
+            request_hash.as_str(),
         );
         let mut fresh_subject = source_case.subject.clone();
         fresh_subject.revision = fresh_subject_revision;
@@ -177,6 +188,7 @@ impl ModerationRecoveryMutation {
             source_case.id,
             source_decision_id,
             fresh_subject_revision,
+            request_hash.as_str(),
         )?;
 
         let assigned = ModerationCommandPort::assign_case(
@@ -380,6 +392,33 @@ fn parse_decision_effect(
     Ok(effect)
 }
 
+fn rereview_request_hash(
+    source_decision_id: Uuid,
+    fresh_subject_revision: i64,
+    rereview_reason: &str,
+    decision_kind: ModerationDecisionKind,
+    reason_code: ModerationReasonCode,
+    effect: &ModerationDecisionEffect,
+    policy_snapshot: &JsonValue,
+) -> Result<String> {
+    let payload = json!({
+        "version": 1,
+        "source_decision_id": source_decision_id,
+        "fresh_subject_revision": fresh_subject_revision,
+        "rereview_reason": rereview_reason,
+        "decision_kind": decision_kind,
+        "reason_code": reason_code,
+        "effect": effect,
+        "policy_snapshot": policy_snapshot,
+    });
+    let encoded = serde_json::to_vec(&payload).map_err(|_| {
+        <FieldError as GraphQLError>::internal_error(
+            "Moderation rereview request could not be normalized",
+        )
+    })?;
+    Ok(hex::encode(Sha256::digest(encoded)))
+}
+
 fn validate_rereview_source(
     source_case: &ModerationCaseRecord,
     decision_case_id: Uuid,
@@ -412,10 +451,12 @@ fn rereview_metadata(
     source_decision_id: Uuid,
     fresh_subject_revision: i64,
     reason: &str,
+    request_hash: &str,
 ) -> JsonValue {
     json!({
         "operator_rereview": {
             "root_idempotency_key": root_idempotency_key,
+            "request_hash": request_hash,
             "source_case_id": source_case.id,
             "source_decision_id": source_decision_id,
             "source_subject_revision": source_case.subject.revision,
@@ -431,6 +472,7 @@ fn require_owned_rereview_case(
     source_case_id: Uuid,
     source_decision_id: Uuid,
     fresh_subject_revision: i64,
+    request_hash: &str,
 ) -> Result<()> {
     let marker = case
         .metadata
@@ -444,6 +486,7 @@ fn require_owned_rereview_case(
 
     let expected = [
         ("root_idempotency_key", root_idempotency_key.to_string()),
+        ("request_hash", request_hash.to_string()),
         ("source_case_id", source_case_id.to_string()),
         ("source_decision_id", source_decision_id.to_string()),
         ("fresh_subject_revision", fresh_subject_revision.to_string()),
@@ -529,6 +572,36 @@ mod tests {
     }
 
     #[test]
+    fn rereview_request_hash_changes_with_decision_payload() {
+        let source_decision_id = Uuid::from_u128(3);
+        let effect = ModerationDecisionEffect::v1(
+            rustok_moderation::ModerationDecisionEffectAction::NoDomainMutation,
+        )
+        .unwrap();
+        let first = rereview_request_hash(
+            source_decision_id,
+            11,
+            "fresh review",
+            ModerationDecisionKind::Warning,
+            ModerationReasonCode::Other,
+            &effect,
+            &json!({"policy": 1}),
+        )
+        .unwrap();
+        let second = rereview_request_hash(
+            source_decision_id,
+            11,
+            "fresh review",
+            ModerationDecisionKind::Warning,
+            ModerationReasonCode::Other,
+            &effect,
+            &json!({"policy": 2}),
+        )
+        .unwrap();
+        assert_ne!(first, second);
+    }
+
+    #[test]
     fn rereview_metadata_proves_case_ownership() {
         let source_case_id = Uuid::from_u128(3);
         let source_decision_id = Uuid::from_u128(4);
@@ -558,16 +631,32 @@ mod tests {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
+        let request_hash = "request-hash";
         let case = ModerationCaseRecord {
             subject: ModerationSubjectRef {
                 revision: 11,
                 ..source_case.subject.clone()
             },
-            metadata: rereview_metadata(root, &source_case, source_decision_id, 11, "fresh review"),
+            metadata: rereview_metadata(
+                root,
+                &source_case,
+                source_decision_id,
+                11,
+                "fresh review",
+                request_hash,
+            ),
             ..source_case.clone()
         };
         assert!(
-            require_owned_rereview_case(&case, root, source_case_id, source_decision_id, 11).is_ok()
+            require_owned_rereview_case(
+                &case,
+                root,
+                source_case_id,
+                source_decision_id,
+                11,
+                request_hash,
+            )
+            .is_ok()
         );
         assert!(
             require_owned_rereview_case(
@@ -575,7 +664,8 @@ mod tests {
                 Uuid::from_u128(8),
                 source_case_id,
                 source_decision_id,
-                11
+                11,
+                request_hash,
             )
             .is_err()
         );
