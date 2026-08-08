@@ -87,6 +87,11 @@
       "id": "artifact_rollback_source",
       "program": "node",
       "args": ["crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"]
+    },
+    {
+      "id": "reference_gate_harness_source",
+      "program": "node",
+      "args": ["crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs"]
     }
   ],
   "focused_tests": [
