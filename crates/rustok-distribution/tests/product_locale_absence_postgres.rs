@@ -361,7 +361,7 @@ fn product_key(locale: &str) -> TestResult<EntityKey> {
             entity: EntityName::new("product")?,
             // Index core requires a numeric schema key; only this current Product contract is
             // registered by rustok-distribution.
-            version: SchemaVersion::new(3),
+            version: SchemaVersion::new(4),
         },
         entity_id: PRODUCT_ID,
         locale: Some(LocaleKey::new(locale)?),
