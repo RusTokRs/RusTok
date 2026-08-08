@@ -17,6 +17,13 @@ use crate::services::platform_composition::PlatformCompositionService;
 
 pub struct ModuleLifecycleService;
 
+#[derive(Clone, Debug)]
+pub struct ModuleLifecycleStateSnapshot {
+    pub module_slug: String,
+    pub enabled: bool,
+    pub settings: serde_json::Value,
+}
+
 #[derive(Debug, Error)]
 pub enum ModuleOperationRecoveryError {
     #[error("Module operation not found")]
@@ -26,11 +33,11 @@ pub enum ModuleOperationRecoveryError {
     #[error("Module operation is not retryable: {0}")]
     NotRetryable(String),
     #[error(
-        "Module operation state mismatch: requested enabled={requested_enabled}, current enabled={current_enabled}"
+        "Module operation override state mismatch: requested={requested_enabled}, current={current_enabled}"
     )]
     StateMismatch {
-        requested_enabled: bool,
-        current_enabled: bool,
+        requested_enabled: String,
+        current_enabled: String,
     },
     #[error("Module post-hook retry failed: {0}")]
     PostHookFailed(String),
@@ -114,7 +121,12 @@ impl ModuleLifecycleService {
             .toggle(tenant_id, module_slug, enabled, requested_by)
             .await
             .map_err(map_lifecycle_writer_error)?;
-        Ok(TenantModulesEntity::find_by_id(result.state.id)
+        let state = result.state.ok_or_else(|| {
+            ToggleModuleError::Policy(
+                "explicit module toggle did not persist a tenant override row".to_string(),
+            )
+        })?;
+        Ok(TenantModulesEntity::find_by_id(state.id)
             .one(db)
             .await?
             .ok_or_else(|| DbErr::RecordNotFound("tenant_modules.toggle_state".to_string()))?)
@@ -170,26 +182,45 @@ impl ModuleLifecycleService {
         operation_id: uuid::Uuid,
         requested_by: Option<String>,
         idempotency_key: uuid::Uuid,
-    ) -> Result<tenant_modules::Model, ModuleOperationRecoveryError> {
+    ) -> Result<ModuleLifecycleStateSnapshot, ModuleOperationRecoveryError> {
+        let plan = module_operation_recovery_plan(db, operation_id)
+            .await
+            .map_err(map_module_recovery_error)?;
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
-        let result = ModuleControlPlane::new(db.clone())
+        let writer = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
-            .with_corequisites(co_requisites)
+            .with_corequisites(co_requisites);
+        let result = writer
             .compensate_failed_operation(operation_id, requested_by, idempotency_key)
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
-        TenantModulesEntity::find_by_id(result.state.id)
-            .one(db)
-            .await?
-            .ok_or_else(|| {
-                ModuleOperationRecoveryError::Database(DbErr::RecordNotFound(
-                    "tenant_modules.compensation_state".to_string(),
-                ))
-            })
+        let policy = writer
+            .effective_policy(plan.tenant_id)
+            .await
+            .map_err(map_lifecycle_writer_recovery_error)?;
+        let (enabled, settings) = match result.state {
+            Some(state) => {
+                let state = TenantModulesEntity::find_by_id(state.id)
+                    .one(db)
+                    .await?
+                    .ok_or_else(|| {
+                        ModuleOperationRecoveryError::Database(DbErr::RecordNotFound(
+                            "tenant_modules.compensation_state".to_string(),
+                        ))
+                    })?;
+                (state.enabled, state.settings)
+            }
+            None => (policy.contains(&plan.module_slug), serde_json::json!({})),
+        };
+        Ok(ModuleLifecycleStateSnapshot {
+            module_slug: plan.module_slug,
+            enabled,
+            settings,
+        })
     }
 
     pub async fn update_module_settings(
@@ -399,11 +430,11 @@ fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationReco
             ModuleOperationRecoveryError::NotRetryable(reason)
         }
         ModulesRecoveryError::StateMismatch {
-            requested_enabled,
-            current_enabled,
+            requested_override_enabled,
+            current_override_enabled,
         } => ModuleOperationRecoveryError::StateMismatch {
-            requested_enabled,
-            current_enabled,
+            requested_enabled: override_state_label(requested_override_enabled).to_string(),
+            current_enabled: override_state_label(current_override_enabled).to_string(),
         },
         ModulesRecoveryError::PostHookFailed(error) => {
             ModuleOperationRecoveryError::PostHookFailed(error)
@@ -414,6 +445,14 @@ fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationReco
         ModulesRecoveryError::Persistence(error) => {
             ModuleOperationRecoveryError::Database(DbErr::Custom(error))
         }
+    }
+}
+
+fn override_state_label(value: Option<bool>) -> &'static str {
+    match value {
+        None => "inherit",
+        Some(true) => "enabled",
+        Some(false) => "disabled",
     }
 }
 

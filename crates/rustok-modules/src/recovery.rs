@@ -1,14 +1,19 @@
-use std::collections::HashSet;
-
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use thiserror::Error;
 
 use crate::{
     ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationIssue,
     ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,
     ModuleOperationRecoveryAction, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStatus,
+    ModuleOperationStatus, ModuleOperationStoreError, TenantModuleStateRecord,
+    TenantModuleStateRequest, TenantModuleStateStore,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ModuleOperationOverrideState {
+    pub previous_enabled: Option<bool>,
+    pub requested_enabled: Option<bool>,
+}
 
 /// Transport-neutral recovery view of a failed lifecycle operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +23,9 @@ pub struct ModuleOperationRecoveryPlan {
     pub module_slug: String,
     pub requested_enabled: bool,
     pub previous_effective_enabled: bool,
+    pub override_state_recorded: bool,
+    pub previous_override_enabled: Option<bool>,
+    pub requested_override_enabled: Option<bool>,
     pub status: ModuleOperationStatus,
     pub issue: ModuleOperationIssue,
     pub retryable: bool,
@@ -28,13 +36,17 @@ pub struct ModuleOperationRecoveryPlan {
 }
 
 impl ModuleOperationRecoveryPlan {
-    fn from_snapshot(operation: ModuleOperationSnapshot) -> Self {
+    fn from_snapshot(
+        operation: ModuleOperationSnapshot,
+        override_state: Option<ModuleOperationOverrideState>,
+    ) -> Self {
         let issue = match (operation.status, operation.error_message.as_deref()) {
             (ModuleOperationStatus::Failed, Some(message)) if message.starts_with("post-hook:") => {
                 ModuleOperationIssue::PostHookFailed
             }
             (ModuleOperationStatus::Failed, Some(message))
-                if message.starts_with("state-commit:") =>
+                if message.starts_with("state-commit:")
+                    || message.starts_with("recovery-state:") =>
             {
                 ModuleOperationIssue::OtherFailed
             }
@@ -44,7 +56,8 @@ impl ModuleOperationRecoveryPlan {
             (ModuleOperationStatus::Failed, _) => ModuleOperationIssue::OtherFailed,
             _ => ModuleOperationIssue::None,
         };
-        let retryable = issue.retryable();
+        let override_state_recorded = override_state.is_some();
+        let retryable = issue.retryable() && override_state_recorded;
         let recommended_action = if retryable {
             ModuleOperationRecoveryAction::RetryPostHook
         } else if issue == ModuleOperationIssue::PreHookFailed {
@@ -58,6 +71,9 @@ impl ModuleOperationRecoveryPlan {
             module_slug: operation.module_slug,
             requested_enabled: operation.requested_enabled,
             previous_effective_enabled: operation.previous_effective_enabled,
+            override_state_recorded,
+            previous_override_enabled: override_state.and_then(|state| state.previous_enabled),
+            requested_override_enabled: override_state.and_then(|state| state.requested_enabled),
             status: operation.status,
             issue,
             retryable,
@@ -74,7 +90,9 @@ pub struct ModulePostHookRetryRequest {
     pub operation_id: uuid::Uuid,
     pub requested_by: Option<String>,
     pub idempotency_key: uuid::Uuid,
-    pub effective_enabled_modules: HashSet<String>,
+    /// Exact persisted tenant override after the original state commit.
+    /// `None` means that no explicit tenant override row exists.
+    pub current_override_enabled: Option<bool>,
     pub current_settings: serde_json::Value,
 }
 
@@ -89,11 +107,11 @@ pub enum ModuleOperationRecoveryError {
     #[error("module operation is not retryable: {0}")]
     NotRetryable(String),
     #[error(
-        "module operation state mismatch: requested enabled={requested_enabled}, current enabled={current_enabled}"
+        "module operation override state mismatch: requested={requested_override_enabled:?}, current={current_override_enabled:?}"
     )]
     StateMismatch {
-        requested_enabled: bool,
-        current_enabled: bool,
+        requested_override_enabled: Option<bool>,
+        current_override_enabled: Option<bool>,
     },
     #[error("module post-hook retry failed: {0}")]
     PostHookFailed(String),
@@ -105,11 +123,17 @@ pub async fn module_operation_recovery_plan(
     db: &DatabaseConnection,
     operation_id: uuid::Uuid,
 ) -> Result<ModuleOperationRecoveryPlan, ModuleOperationRecoveryError> {
-    ModuleOperationJournal::find(db, operation_id)
+    let operation = ModuleOperationJournal::find(db, operation_id)
         .await
         .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?
-        .map(ModuleOperationRecoveryPlan::from_snapshot)
-        .ok_or(ModuleOperationRecoveryError::OperationNotFound)
+        .ok_or(ModuleOperationRecoveryError::OperationNotFound)?;
+    let override_state = operation_override_state(db, operation_id)
+        .await
+        .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    Ok(ModuleOperationRecoveryPlan::from_snapshot(
+        operation,
+        override_state,
+    ))
 }
 
 pub async fn failed_module_operation_recovery_plans(
@@ -117,15 +141,20 @@ pub async fn failed_module_operation_recovery_plans(
     tenant_id: uuid::Uuid,
     module_slug: Option<&str>,
 ) -> Result<Vec<ModuleOperationRecoveryPlan>, ModuleOperationRecoveryError> {
-    ModuleOperationJournal::failed_for_tenant(db, tenant_id, module_slug)
+    let operations = ModuleOperationJournal::failed_for_tenant(db, tenant_id, module_slug)
         .await
-        .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))
-        .map(|operations| {
-            operations
-                .into_iter()
-                .map(ModuleOperationRecoveryPlan::from_snapshot)
-                .collect()
-        })
+        .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    let mut plans = Vec::with_capacity(operations.len());
+    for operation in operations {
+        let override_state = operation_override_state(db, operation.id)
+            .await
+            .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+        plans.push(ModuleOperationRecoveryPlan::from_snapshot(
+            operation,
+            override_state,
+        ));
+    }
+    Ok(plans)
 }
 
 fn retry_operation_request(
@@ -166,6 +195,11 @@ pub async fn retry_failed_post_hook_operation(
     {
         return Ok(operation);
     }
+    if !plan.override_state_recorded {
+        return Err(ModuleOperationRecoveryError::NotRetryable(
+            "selected_intent_state_unavailable".to_string(),
+        ));
+    }
     if !plan.retryable {
         return Err(ModuleOperationRecoveryError::NotRetryable(
             plan.issue.to_string(),
@@ -176,13 +210,10 @@ pub async fn retry_failed_post_hook_operation(
             "unknown_module".to_string(),
         ));
     }
-    let current_enabled = request
-        .effective_enabled_modules
-        .contains(&plan.module_slug);
-    if current_enabled != plan.requested_enabled {
+    if request.current_override_enabled != plan.requested_override_enabled {
         return Err(ModuleOperationRecoveryError::StateMismatch {
-            requested_enabled: plan.requested_enabled,
-            current_enabled,
+            requested_override_enabled: plan.requested_override_enabled,
+            current_override_enabled: request.current_override_enabled,
         });
     }
 
@@ -194,7 +225,21 @@ pub async fn retry_failed_post_hook_operation(
             }
             error => ModuleOperationRecoveryError::Persistence(error.to_string()),
         })? {
-        ModuleOperationRecordOutcome::Recorded(operation) => operation,
+        ModuleOperationRecordOutcome::Recorded(operation) => {
+            if let Err(error) = record_operation_override_state(
+                db,
+                operation.id,
+                plan.previous_override_enabled,
+                plan.requested_override_enabled,
+            )
+            .await
+            {
+                let message = format!("recovery-state: {error}");
+                let _ = ModuleOperationJournal::mark_failed(db, operation.id, &message).await;
+                return Err(ModuleOperationRecoveryError::Persistence(error.to_string()));
+            }
+            operation
+        }
         ModuleOperationRecordOutcome::Replayed(operation) => return Ok(operation),
     };
     ModuleOperationJournal::mark_running(db, operation.id)
@@ -228,6 +273,139 @@ pub async fn retry_failed_post_hook_operation(
     Ok(operation)
 }
 
+pub(crate) async fn operation_override_state<C: ConnectionTrait>(
+    db: &C,
+    operation_id: uuid::Uuid,
+) -> Result<Option<ModuleOperationOverrideState>, ModuleOperationStoreError> {
+    let backend = db.get_database_backend();
+    let sql = match backend {
+        DbBackend::Postgres => {
+            "SELECT previous_override_enabled, requested_override_enabled \
+             FROM module_operation_override_states WHERE operation_id = $1 LIMIT 1"
+        }
+        _ => {
+            "SELECT previous_override_enabled, requested_override_enabled \
+             FROM module_operation_override_states WHERE operation_id = ?1 LIMIT 1"
+        }
+    };
+    db.query_one(Statement::from_sql_and_values(
+        backend,
+        sql,
+        vec![operation_id.into()],
+    ))
+    .await
+    .map_err(store_database_error)?
+    .map(|row| {
+        Ok(ModuleOperationOverrideState {
+            previous_enabled: row
+                .try_get("", "previous_override_enabled")
+                .map_err(store_database_error)?,
+            requested_enabled: row
+                .try_get("", "requested_override_enabled")
+                .map_err(store_database_error)?,
+        })
+    })
+    .transpose()
+}
+
+pub(crate) async fn record_operation_override_state<C: ConnectionTrait>(
+    db: &C,
+    operation_id: uuid::Uuid,
+    previous_override_enabled: Option<bool>,
+    requested_override_enabled: Option<bool>,
+) -> Result<(), ModuleOperationStoreError> {
+    let backend = db.get_database_backend();
+    let sql = match backend {
+        DbBackend::Postgres => {
+            "INSERT INTO module_operation_override_states \
+             (operation_id, previous_override_enabled, requested_override_enabled) \
+             VALUES ($1, $2, $3)"
+        }
+        _ => {
+            "INSERT INTO module_operation_override_states \
+             (operation_id, previous_override_enabled, requested_override_enabled) \
+             VALUES (?1, ?2, ?3)"
+        }
+    };
+    db.execute(Statement::from_sql_and_values(
+        backend,
+        sql,
+        vec![
+            operation_id.into(),
+            previous_override_enabled.into(),
+            requested_override_enabled.into(),
+        ],
+    ))
+    .await
+    .map_err(store_database_error)?;
+    Ok(())
+}
+
+pub(crate) async fn read_tenant_override_enabled<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: uuid::Uuid,
+    module_slug: &str,
+) -> Result<Option<bool>, ModuleOperationStoreError> {
+    let backend = db.get_database_backend();
+    let sql = match backend {
+        DbBackend::Postgres => {
+            "SELECT enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
+        }
+        _ => {
+            "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+        }
+    };
+    db.query_one(Statement::from_sql_and_values(
+        backend,
+        sql,
+        vec![tenant_id.into(), module_slug.into()],
+    ))
+    .await
+    .map_err(store_database_error)?
+    .map(|row| row.try_get("", "enabled").map_err(store_database_error))
+    .transpose()
+}
+
+pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: uuid::Uuid,
+    module_slug: &str,
+    requested_override_enabled: Option<bool>,
+) -> Result<Option<TenantModuleStateRecord>, ModuleOperationStoreError> {
+    let Some(enabled) = requested_override_enabled else {
+        let backend = db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Postgres => {
+                "DELETE FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2"
+            }
+            _ => "DELETE FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2",
+        };
+        db.execute(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![tenant_id.into(), module_slug.into()],
+        ))
+        .await
+        .map_err(store_database_error)?;
+        return Ok(None);
+    };
+
+    TenantModuleStateStore::persist(
+        db,
+        TenantModuleStateRequest {
+            tenant_id,
+            module_slug: module_slug.to_string(),
+            enabled,
+        },
+    )
+    .await
+    .map(Some)
+}
+
+fn store_database_error(error: impl std::fmt::Display) -> ModuleOperationStoreError {
+    ModuleOperationStoreError::Database(error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
@@ -251,19 +429,41 @@ mod tests {
         }
     }
 
+    fn override_state() -> ModuleOperationOverrideState {
+        ModuleOperationOverrideState {
+            previous_enabled: Some(false),
+            requested_enabled: Some(true),
+        }
+    }
+
     #[test]
-    fn only_post_hook_failures_are_retryable() {
-        let post_hook =
-            ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")));
+    fn only_post_hook_failures_with_selected_state_are_retryable() {
+        let post_hook = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("post-hook: timeout")),
+            Some(override_state()),
+        );
         assert_eq!(post_hook.issue, ModuleOperationIssue::PostHookFailed);
         assert!(post_hook.retryable);
+        assert!(post_hook.override_state_recorded);
         assert_eq!(
             post_hook.recommended_action,
             ModuleOperationRecoveryAction::RetryPostHook
         );
 
-        let pre_hook =
-            ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("pre-hook: denied")));
+        let legacy_post_hook =
+            ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")), None);
+        assert_eq!(legacy_post_hook.issue, ModuleOperationIssue::PostHookFailed);
+        assert!(!legacy_post_hook.retryable);
+        assert!(!legacy_post_hook.override_state_recorded);
+        assert_eq!(
+            legacy_post_hook.recommended_action,
+            ModuleOperationRecoveryAction::None
+        );
+
+        let pre_hook = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("pre-hook: denied")),
+            Some(override_state()),
+        );
         assert_eq!(pre_hook.issue, ModuleOperationIssue::PreHookFailed);
         assert!(!pre_hook.retryable);
         assert_eq!(
@@ -271,20 +471,35 @@ mod tests {
             ModuleOperationRecoveryAction::RepeatToggle
         );
 
-        let state_commit = ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some(
-            "state-commit: module lifecycle persistence failed",
-        )));
+        let state_commit = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("state-commit: module lifecycle persistence failed")),
+            Some(override_state()),
+        );
         assert_eq!(state_commit.issue, ModuleOperationIssue::OtherFailed);
         assert!(!state_commit.retryable);
         assert_eq!(
             state_commit.recommended_action,
             ModuleOperationRecoveryAction::None
         );
+
+        let recovery_state = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("recovery-state: persistence failed")),
+            Some(override_state()),
+        );
+        assert_eq!(recovery_state.issue, ModuleOperationIssue::OtherFailed);
+        assert!(!recovery_state.retryable);
+        assert_eq!(
+            recovery_state.recommended_action,
+            ModuleOperationRecoveryAction::None
+        );
     }
 
     #[test]
-    fn retry_attempt_preserves_original_previous_state_for_compensation() {
-        let plan = ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")));
+    fn retry_attempt_preserves_original_selected_predecessor_for_compensation() {
+        let plan = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("post-hook: timeout")),
+            Some(override_state()),
+        );
         let request =
             retry_operation_request(&plan, Some("retry-operator".to_string()), Uuid::new_v4());
 
@@ -293,10 +508,27 @@ mod tests {
             request.previous_effective_enabled,
             plan.previous_effective_enabled
         );
-        assert_ne!(
-            request.previous_effective_enabled,
-            request.requested_enabled
-        );
+        assert_eq!(plan.previous_override_enabled, Some(false));
+        assert_eq!(plan.requested_override_enabled, Some(true));
         assert_eq!(request.correlation_id, plan.operation_id.to_string());
+    }
+
+    #[test]
+    fn missing_override_state_is_distinct_from_inherited_predecessor() {
+        let legacy = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("post-hook: timeout")),
+            None,
+        );
+        let inherited = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("post-hook: timeout")),
+            Some(ModuleOperationOverrideState {
+                previous_enabled: None,
+                requested_enabled: Some(true),
+            }),
+        );
+
+        assert!(!legacy.override_state_recorded);
+        assert!(inherited.override_state_recorded);
+        assert_eq!(inherited.previous_override_enabled, None);
     }
 }

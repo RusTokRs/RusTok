@@ -3,12 +3,16 @@ use std::collections::HashSet;
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
 
+use crate::recovery::{
+    apply_tenant_override_enabled, read_tenant_override_enabled,
+    record_operation_override_state,
+};
 use crate::{
     ControlPlaneInfrastructure, ModuleEffectivePolicyTransitionCoordinator,
     ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
-    ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStatus, ModulePolicyRevisionTransition, ModuleToggleValidationError,
-    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
+    ModuleOperationRecord, ModuleOperationRecordOutcome, ModuleOperationRequest,
+    ModuleOperationSnapshot, ModuleOperationStatus, ModulePolicyRevisionTransition,
+    ModuleToggleValidationError, TenantModuleStateRecord, TenantModuleStateStore,
     validate_module_toggle,
 };
 
@@ -16,6 +20,8 @@ use crate::{
 pub struct ModuleLifecycleToggleRequest {
     pub tenant_id: uuid::Uuid,
     pub module_slug: String,
+    /// Lifecycle hook direction for this command. Recovery may restore an
+    /// inherited override while still running the inverse hook phase.
     pub enabled: bool,
     pub requested_by: Option<String>,
     pub correlation_id: Option<String>,
@@ -25,13 +31,20 @@ pub struct ModuleLifecycleToggleRequest {
     /// Ordinary dependency-order selection used only to validate sequential
     /// lifecycle transitions. Co-requisites must not create a second ordering graph.
     pub ordering_enabled_modules: HashSet<String>,
+    /// Exact tenant override before this command. `None` means inherit defaults.
+    pub previous_override_enabled: Option<bool>,
+    /// Exact tenant override to persist. `None` removes the explicit override.
+    pub requested_override_enabled: Option<bool>,
     pub current_settings: serde_json::Value,
     pub policy_transition: Option<ModulePolicyRevisionTransition>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModuleLifecycleToggleResult {
-    pub state: TenantModuleStateRecord,
+    /// Current explicit tenant row after the state commit. `None` means the
+    /// operation restored inherited/default selection by removing the row.
+    pub state: Option<TenantModuleStateRecord>,
+    pub override_enabled: Option<bool>,
     pub operation_id: Option<uuid::Uuid>,
 }
 
@@ -74,6 +87,7 @@ pub async fn execute_module_toggle(
         requested_by: request.requested_by.clone(),
         correlation_id: request
             .correlation_id
+            .clone()
             .unwrap_or_else(|| infrastructure.new_id().to_string()),
         idempotency_key: request.idempotency_key,
     };
@@ -92,18 +106,17 @@ pub async fn execute_module_toggle(
         request.enabled,
     )?;
     if previous_effective_enabled == request.enabled && request.policy_transition.is_none() {
-        let state = TenantModuleStateStore::persist(
+        let state = apply_tenant_override_enabled(
             db,
-            TenantModuleStateRequest {
-                tenant_id: request.tenant_id,
-                module_slug: request.module_slug,
-                enabled: request.enabled,
-            },
+            request.tenant_id,
+            &request.module_slug,
+            request.requested_override_enabled,
         )
         .await
         .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
         return Ok(ModuleLifecycleToggleResult {
             state,
+            override_enabled: request.requested_override_enabled,
             operation_id: None,
         });
     }
@@ -137,6 +150,13 @@ pub async fn execute_module_toggle(
             .await
             .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
     };
+    record_override_state_or_fail(
+        db,
+        operation.id,
+        request.previous_override_enabled,
+        request.requested_override_enabled,
+    )
+    .await?;
     ModuleOperationJournal::mark_running(db, operation.id)
         .await
         .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
@@ -163,44 +183,48 @@ pub async fn execute_module_toggle(
         return Err(ModuleLifecycleExecutionError::PreHook(message));
     }
 
-    let state_request = TenantModuleStateRequest {
-        tenant_id: request.tenant_id,
-        module_slug: request.module_slug.clone(),
-        enabled: request.enabled,
-    };
+    let requested_override_enabled = request.requested_override_enabled;
+    let module_slug = request.module_slug.clone();
     let policy_transition = request.policy_transition.clone();
     let tenant_id = request.tenant_id;
     let coordinator = policy_transition_coordinator;
     let state = match db
-        .transaction::<_, TenantModuleStateRecord, ModuleLifecycleExecutionError>(|transaction| {
-            Box::pin(async move {
-                let state = TenantModuleStateStore::persist(transaction, state_request)
+        .transaction::<_, Option<TenantModuleStateRecord>, ModuleLifecycleExecutionError>(
+            |transaction| {
+                Box::pin(async move {
+                    let state = apply_tenant_override_enabled(
+                        transaction,
+                        tenant_id,
+                        &module_slug,
+                        requested_override_enabled,
+                    )
                     .await
                     .map_err(|error| {
                         ModuleLifecycleExecutionError::Persistence(error.to_string())
                     })?;
-                ModuleOperationJournal::mark_committed(transaction, operation.id)
-                    .await
-                    .map_err(|error| {
-                        ModuleLifecycleExecutionError::Persistence(error.to_string())
-                    })?;
-                if let (Some(coordinator), Some(transition)) = (coordinator, policy_transition) {
-                    coordinator
-                        .publish_and_advance(
-                            transaction,
-                            tenant_id,
-                            None,
-                            "module.lifecycle",
-                            &transition,
-                        )
+                    ModuleOperationJournal::mark_committed(transaction, operation.id)
                         .await
                         .map_err(|error| {
-                            ModuleLifecycleExecutionError::PolicyTransition(error.to_string())
+                            ModuleLifecycleExecutionError::Persistence(error.to_string())
                         })?;
-                }
-                Ok(state)
-            })
-        })
+                    if let (Some(coordinator), Some(transition)) = (coordinator, policy_transition) {
+                        coordinator
+                            .publish_and_advance(
+                                transaction,
+                                tenant_id,
+                                None,
+                                "module.lifecycle",
+                                &transition,
+                            )
+                            .await
+                            .map_err(|error| {
+                                ModuleLifecycleExecutionError::PolicyTransition(error.to_string())
+                            })?;
+                    }
+                    Ok(state)
+                })
+            },
+        )
         .await
     {
         Ok(state) => state,
@@ -244,8 +268,30 @@ pub async fn execute_module_toggle(
 
     Ok(ModuleLifecycleToggleResult {
         state,
+        override_enabled: request.requested_override_enabled,
         operation_id: Some(operation.id),
     })
+}
+
+async fn record_override_state_or_fail(
+    db: &DatabaseConnection,
+    operation_id: uuid::Uuid,
+    previous_override_enabled: Option<bool>,
+    requested_override_enabled: Option<bool>,
+) -> Result<(), ModuleLifecycleExecutionError> {
+    if let Err(error) = record_operation_override_state(
+        db,
+        operation_id,
+        previous_override_enabled,
+        requested_override_enabled,
+    )
+    .await
+    {
+        let message = format!("recovery-state: {error}");
+        let _ = ModuleOperationJournal::mark_failed(db, operation_id, &message).await;
+        return Err(ModuleLifecycleExecutionError::Persistence(error.to_string()));
+    }
+    Ok(())
 }
 
 fn map_idempotency_store_error(
@@ -266,16 +312,25 @@ async fn replay_lifecycle_operation(
 ) -> Result<ModuleLifecycleToggleResult, ModuleLifecycleExecutionError> {
     match operation.status {
         ModuleOperationStatus::Committed => {
-            let state = TenantModuleStateStore::read(db, request.tenant_id, &request.module_slug)
-                .await
-                .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
-                .ok_or_else(|| {
-                    ModuleLifecycleExecutionError::Persistence(
-                        "committed lifecycle operation has no tenant state".to_string(),
-                    )
-                })?;
+            let override_enabled = read_tenant_override_enabled(
+                db,
+                request.tenant_id,
+                &request.module_slug,
+            )
+            .await
+            .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+            let state = if override_enabled.is_some() {
+                TenantModuleStateStore::read(db, request.tenant_id, &request.module_slug)
+                    .await
+                    .map_err(|error| {
+                        ModuleLifecycleExecutionError::Persistence(error.to_string())
+                    })?
+            } else {
+                None
+            };
             Ok(ModuleLifecycleToggleResult {
                 state,
+                override_enabled,
                 operation_id: Some(operation.id),
             })
         }
@@ -364,6 +419,18 @@ mod tests {
             .await
             .expect("module operations table");
         database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE module_operation_override_states (\
+                    operation_id TEXT PRIMARY KEY NOT NULL, \
+                    previous_override_enabled BOOLEAN, \
+                    requested_override_enabled BOOLEAN\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("module operation override states table");
+        database
     }
 
     #[tokio::test]
@@ -388,6 +455,8 @@ mod tests {
                 idempotency_key: None,
                 effective_enabled_modules: HashSet::new(),
                 ordering_enabled_modules: HashSet::new(),
+                previous_override_enabled: None,
+                requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
             },

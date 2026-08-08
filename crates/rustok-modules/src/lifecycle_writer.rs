@@ -172,10 +172,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         enabled: bool,
         requested_by: Option<String>,
     ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
-        self.toggle_with_operation_context(
+        self.apply_override_with_operation_context(
             tenant_id,
             module_slug,
             enabled,
+            Some(enabled),
             requested_by,
             None,
             None,
@@ -183,11 +184,12 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         .await
     }
 
-    async fn toggle_with_operation_context(
+    async fn apply_override_with_operation_context(
         &self,
         tenant_id: Uuid,
         module_slug: &str,
         enabled: bool,
+        requested_override_enabled: Option<bool>,
         requested_by: Option<String>,
         correlation_id: Option<String>,
         idempotency_key: Option<Uuid>,
@@ -196,10 +198,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             catalog,
             effective_enabled_modules,
             ordering_enabled_modules,
+            previous_override_enabled,
             current_settings,
             policy_transition,
         ) = self
-            .toggle_execution_context(tenant_id, module_slug, enabled)
+            .override_execution_context(tenant_id, module_slug, requested_override_enabled)
             .await?;
         let dispatcher = match (self.static_registry, self.artifact_executor) {
             (Some(registry), Some(executor)) => {
@@ -230,6 +233,8 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 idempotency_key,
                 effective_enabled_modules,
                 ordering_enabled_modules,
+                previous_override_enabled,
+                requested_override_enabled,
                 current_settings,
                 policy_transition,
             },
@@ -238,8 +243,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         .map_err(ModuleLifecycleDbWriterError::Lifecycle)
     }
 
-    /// Retries only a post-hook failure using the same owner-owned effective
-    /// policy, catalog, and dispatcher assembly as a normal lifecycle toggle.
+    /// Retries only a post-hook failure using the exact persisted tenant
+    /// override state committed by the original operation. Serving availability
+    /// may differ while Product co-requisites are staged and is not a retry gate.
     pub async fn retry_post_hook(
         &self,
         operation_id: Uuid,
@@ -249,8 +255,8 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let plan = module_operation_recovery_plan(&self.db, operation_id)
             .await
             .map_err(ModuleLifecycleDbWriterError::Recovery)?;
-        let (catalog, effective_enabled_modules, current_settings) = self
-            .execution_context(plan.tenant_id, &plan.module_slug)
+        let (catalog, current_override_enabled, current_settings) = self
+            .recovery_execution_context(plan.tenant_id, &plan.module_slug)
             .await?;
         let dispatcher = match (self.static_registry, self.artifact_executor) {
             (Some(registry), Some(executor)) => {
@@ -271,7 +277,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 operation_id,
                 requested_by,
                 idempotency_key,
-                effective_enabled_modules,
+                current_override_enabled,
                 current_settings,
             },
         )
@@ -279,10 +285,10 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         .map_err(ModuleLifecycleDbWriterError::Recovery)
     }
 
-    /// Compensates a committed operation only after the recovery contract
-    /// confirms that it failed in its post-hook and remains at the requested
-    /// effective state. The resulting reverse transition is a normal owner
-    /// lifecycle operation with its own journal record.
+    /// Compensates a post-hook failure only while the exact committed tenant
+    /// override still matches the original requested intent. The reverse
+    /// transition restores the original explicit override, including removing
+    /// the row when the predecessor was inherited/default selection.
     pub async fn compensate_failed_operation(
         &self,
         operation_id: Uuid,
@@ -302,15 +308,28 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 ModuleOperationRecoveryError::NotRetryable(plan.issue.as_str().to_string()),
             ));
         }
-        let (_, effective_enabled_modules, _) = self
-            .execution_context(plan.tenant_id, &plan.module_slug)
+        if !plan.override_state_recorded {
+            return Err(ModuleLifecycleDbWriterError::Recovery(
+                ModuleOperationRecoveryError::NotRetryable(
+                    "selected_intent_state_unavailable".to_string(),
+                ),
+            ));
+        }
+        let (
+            _,
+            current_override_enabled,
+            effective_enabled_modules,
+            _,
+        ) = self
+            .recovery_policy_context(plan.tenant_id, &plan.module_slug)
             .await?;
-        let current_enabled = effective_enabled_modules.contains(&plan.module_slug);
+        let current_effective_enabled = effective_enabled_modules.contains(&plan.module_slug);
+        let reverse_enabled = !plan.requested_enabled;
         let replay_request = ModuleOperationRequest {
             tenant_id: plan.tenant_id,
             module_slug: plan.module_slug.clone(),
-            requested_enabled: plan.previous_effective_enabled,
-            previous_effective_enabled: current_enabled,
+            requested_enabled: reverse_enabled,
+            previous_effective_enabled: current_effective_enabled,
             requested_by: requested_by.clone(),
             correlation_id: plan.operation_id.to_string(),
             idempotency_key: Some(idempotency_key),
@@ -321,28 +340,30 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .is_some()
         {
             return self
-                .toggle_with_operation_context(
+                .apply_override_with_operation_context(
                     plan.tenant_id,
                     &plan.module_slug,
-                    plan.previous_effective_enabled,
+                    reverse_enabled,
+                    plan.previous_override_enabled,
                     requested_by,
                     Some(plan.operation_id.to_string()),
                     Some(idempotency_key),
                 )
                 .await;
         }
-        if current_enabled != plan.requested_enabled {
+        if current_override_enabled != plan.requested_override_enabled {
             return Err(ModuleLifecycleDbWriterError::Recovery(
                 ModuleOperationRecoveryError::StateMismatch {
-                    requested_enabled: plan.requested_enabled,
-                    current_enabled,
+                    requested_override_enabled: plan.requested_override_enabled,
+                    current_override_enabled,
                 },
             ));
         }
-        self.toggle_with_operation_context(
+        self.apply_override_with_operation_context(
             plan.tenant_id,
             &plan.module_slug,
-            plan.previous_effective_enabled,
+            reverse_enabled,
+            plan.previous_override_enabled,
             requested_by,
             Some(plan.operation_id.to_string()),
             Some(idempotency_key),
@@ -709,30 +730,60 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         inputs
     }
 
-    async fn execution_context(
+    async fn recovery_execution_context(
         &self,
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<
-        (ModuleDefinitionCatalog, HashSet<String>, serde_json::Value),
+        (ModuleDefinitionCatalog, Option<bool>, serde_json::Value),
         ModuleLifecycleDbWriterError,
     > {
         let catalog = self.definition_catalog()?;
-        let effective_enabled_modules = self.effective_enabled_modules(tenant_id).await?;
+        let overrides = self.overrides(tenant_id).await?;
+        let current_override_enabled = override_enabled(&overrides, module_slug);
         let current_settings = self.settings(tenant_id, module_slug).await?;
-        Ok((catalog, effective_enabled_modules, current_settings))
+        Ok((catalog, current_override_enabled, current_settings))
     }
 
-    async fn toggle_execution_context(
+    async fn recovery_policy_context(
         &self,
         tenant_id: Uuid,
         module_slug: &str,
-        requested_enabled: bool,
+    ) -> Result<
+        (
+            ModuleDefinitionCatalog,
+            Option<bool>,
+            HashSet<String>,
+            serde_json::Value,
+        ),
+        ModuleLifecycleDbWriterError,
+    > {
+        let catalog = self.definition_catalog()?;
+        let overrides = self.overrides(tenant_id).await?;
+        let current_override_enabled = override_enabled(&overrides, module_slug);
+        let current_policy = self
+            .effective_policy_from_overrides(tenant_id, &catalog, overrides)
+            .await?;
+        let current_settings = self.settings(tenant_id, module_slug).await?;
+        Ok((
+            catalog,
+            current_override_enabled,
+            current_policy.into_enabled_modules(),
+            current_settings,
+        ))
+    }
+
+    async fn override_execution_context(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        requested_override_enabled: Option<bool>,
     ) -> Result<
         (
             ModuleDefinitionCatalog,
             HashSet<String>,
             HashSet<String>,
+            Option<bool>,
             serde_json::Value,
             Option<ModulePolicyRevisionTransition>,
         ),
@@ -740,6 +791,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     > {
         let catalog = self.definition_catalog()?;
         let overrides = self.overrides(tenant_id).await?;
+        let previous_override_enabled = override_enabled(&overrides, module_slug);
         let current_policy = self
             .effective_policy_from_overrides(tenant_id, &catalog, overrides.clone())
             .await?;
@@ -747,16 +799,21 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .ordering_policy_from_overrides(tenant_id, &catalog, overrides.clone())
             .await?;
         let mut next_overrides = overrides;
-        if let Some(override_value) = next_overrides
-            .iter_mut()
-            .find(|value| value.module_slug == module_slug)
-        {
-            override_value.enabled = requested_enabled;
-        } else {
-            next_overrides.push(TenantModuleOverride {
-                module_slug: module_slug.to_string(),
-                enabled: requested_enabled,
-            });
+        match requested_override_enabled {
+            Some(enabled) => {
+                if let Some(override_value) = next_overrides
+                    .iter_mut()
+                    .find(|value| value.module_slug == module_slug)
+                {
+                    override_value.enabled = enabled;
+                } else {
+                    next_overrides.push(TenantModuleOverride {
+                        module_slug: module_slug.to_string(),
+                        enabled,
+                    });
+                }
+            }
+            None => next_overrides.retain(|value| value.module_slug != module_slug),
         }
         let next_policy = self
             .effective_policy_from_overrides(tenant_id, &catalog, next_overrides)
@@ -781,6 +838,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             catalog,
             current_policy.into_enabled_modules(),
             ordering_policy.into_enabled_modules(),
+            previous_override_enabled,
             current_settings,
             policy_transition,
         ))
@@ -855,6 +913,13 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .transpose()
             .map(|settings| settings.unwrap_or_else(|| serde_json::json!({})))
     }
+}
+
+fn override_enabled(overrides: &[TenantModuleOverride], module_slug: &str) -> Option<bool> {
+    overrides
+        .iter()
+        .find(|value| value.module_slug == module_slug)
+        .map(|value| value.enabled)
 }
 
 #[derive(Debug, Error)]
