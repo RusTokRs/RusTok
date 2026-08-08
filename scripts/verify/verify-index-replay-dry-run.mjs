@@ -103,6 +103,12 @@ requireMarkers('crates/rustok-index/src/application/source_timeout.rs', [
   'const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";',
   'TimedIndexSource::new(source, DEFAULT_INDEX_SOURCE_CALL_TIMEOUT)',
 ]);
+requireMarkers('crates/rustok-index/src/application/source_continuation.rs', [
+  'locale: Option<LocaleKey>',
+  'pub fn for_locale(',
+  'IndexSourceContinuationError::LocaleScopeMismatch',
+  'schema_wide_and_exact_locale_continuations_cannot_cross_scopes',
+]);
 
 requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'shadow: rustok_index::SharedIndexReplayDryRunRuntime',
@@ -126,8 +132,8 @@ requireMarkers('apps/server/src/graphql/index_replay.rs', [
 ]);
 
 requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
-  'Status: `source_complete_schema_wide_transport_execution_pending`',
-  '`IndexReplayDryRunRequest`',
+  'Status: `source_complete_schema_wide_transport_locale_execution_pending`',
+  '`IndexReplayDryRunRequest` currently carries:',
   '`SharedIndexReplayDryRunRuntime::run`',
   'one invocation budget from 1 through 1024 pages',
   'complete `SchemaRegistry::validate_mutation` validity',
@@ -138,7 +144,8 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'Server-owned host guard',
   '`IndexReplayOperatorRuntime::run_shadow`',
   '`runIndexReplayShadow`',
-  'intentionally schema-wide',
+  'continuation scope now binds optional canonical locale identity',
+  'Exact-locale Shadow remains source-open only because the dry-run request/runtime and GraphQL adapter',
   'maintainer-run',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
@@ -153,4 +160,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-shadow-graphql-transport.mjs'",
 ]);
 
-console.log('[verify-index-replay-dry-run] bounded no-write validation stays Index-owned while schema-wide GraphQL resumes only through the sealed guarded Shadow adapter');
+console.log('[verify-index-replay-dry-run] bounded no-write validation stays schema-wide today while the one canonical continuation scope is ready for exact-locale execution');
