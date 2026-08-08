@@ -31,6 +31,7 @@ pub use catalog_schema_read_port::{
     ProductAttributeValuesRequest, ProductCatalogSchemaReadPort,
     ProductEffectiveFormAttributeProjection, ProductEffectiveFormProjection,
     ProductEffectiveFormRequest, ProductEffectiveFormSubject,
+    ProductStorefrontAttributeFilterResolutionRequest,
 };
 pub use error::{CommerceError, CommerceResult};
 pub use ports::*;
@@ -45,13 +46,14 @@ pub use services::{
     MAX_PRODUCT_SALES_CHANNEL_CONVERGENCE_ERROR_BYTES,
     MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE,
     MAX_PRODUCT_SALES_CHANNEL_RELATION_TARGETS, MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES,
-    ProductAttributeFilter, ProductCatalogSchemaService, ProductIndexLocaleRefreshRecord,
-    ProductIndexLocaleRefreshSource, ProductIndexRefreshCanonicalWriter, ProductIndexRefreshContract,
+    ProductAttributeFilter, ProductAttributeTermError, ProductAttributeTermExpr,
+    ProductCatalogSchemaService, ProductIndexLocaleRefreshRecord, ProductIndexLocaleRefreshSource,
+    ProductIndexRefreshCanonicalWriter, ProductIndexRefreshContract,
     ProductIndexRefreshContractTarget, ProductIndexRefreshEventFactory,
     ProductIndexRefreshPublicationError, ProductIndexRefreshRelayError,
     ProductIndexRefreshRelayStep, ProductIndexRefreshRelayStepOutcome,
     ProductIndexVariantRefreshRecord, ProductIndexVariantRefreshSource,
-    ProductSalesChannelIndexRelationConvergenceClaim,
+    ProductResolvedAttributeFilter, ProductSalesChannelIndexRelationConvergenceClaim,
     ProductSalesChannelIndexRelationConvergenceClaimOutcome,
     ProductSalesChannelIndexRelationConvergenceError,
     ProductSalesChannelIndexRelationConvergenceStore,
@@ -61,7 +63,11 @@ pub use services::{
     ProductSalesChannelIndexRelationFreshnessWriteOutcome, ProductSalesChannelIndexRelationRecord,
     ProductSalesChannelIndexRelationStore, ProductSalesChannelIndexRelationWriteOutcome,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
-    StorefrontProductSortBy, StorefrontProductSortDirection,
+    StorefrontProductSortBy, StorefrontProductSortDirection, product_attribute_boolean_term,
+    product_attribute_date_term, product_attribute_datetime_term, product_attribute_decimal_term,
+    product_attribute_integer_term, product_attribute_localized_presence_term,
+    product_attribute_localized_text_expr, product_attribute_localized_text_term,
+    product_attribute_option_term, product_attribute_text_term,
 };
 
 /// Typed marker proving that `ProductModule` participated in runtime extension registration.
