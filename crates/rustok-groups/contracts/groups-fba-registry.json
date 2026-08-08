@@ -41,7 +41,34 @@
         "stored_status": "compatibility_only",
         "legacy_banned_behavior": "deny_reentry",
         "expired_or_revoked_behavior": "fall_back_to_stored_membership_state",
-        "command_port": "not_published_in_this_slice"
+        "command_port": "GroupMembershipEnforcementCommandPort"
+      },
+      {
+        "name": "GroupMembershipEnforcementCommandPort",
+        "operations": [
+          "suspend_membership",
+          "revoke_membership_suspension"
+        ],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "actor": "user",
+        "authorization": "local_owner_admin_moderator_hierarchy_or_platform_groups_moderate_manage",
+        "self_target": "deny",
+        "owner_target": "deny_transfer_ownership_first",
+        "expected_revision": "group_memberships.revision",
+        "receipt_replay_order": "after_group_serialization_before_current_effective_authorization_and_revision_cas",
+        "receipt_identity": "tenant_group_actor_command_request_hash",
+        "lock_order": "group_then_memberships_uuid_order_then_enforcements_membership_id_order",
+        "direct_suspend_source_kind": "direct_local",
+        "direct_revoke_source": "active_direct_local_only",
+        "member_count_semantics": "stored_lifecycle_active_unchanged_by_enforcement",
+        "transactional_group_version": true,
+        "transactional_membership_revision": "database_enforcement_trigger",
+        "transactional_receipt": true,
+        "transactional_audit": true,
+        "transactional_semantic_event": true,
+        "transport_status": "rust_source_only"
       },
       {
         "name": "GroupAccessReadPort",
@@ -350,9 +377,18 @@
     "effective_clock": "groups_owner_utc_clock",
     "expiry_cleanup_dependency": false,
     "legacy_banned_behavior": "deny_reentry",
-    "access_path_integration": "open",
-    "invitation_application_provider_acl_integration": "open",
-    "direct_command_port": "not_published_in_this_slice",
+    "access_path_integration": "implemented_source",
+    "invitation_application_effective_integration": "implemented_source",
+    "provider_acl_integration": "open",
+    "direct_command_port": "implemented_source",
+    "direct_command_owner_mutation": "shared_with_future_moderation_adapter",
+    "member_count_semantics": "stored_lifecycle_active_unchanged_by_temporary_enforcement",
+    "group_version_on_enforcement_change": "increment_same_transaction",
+    "semantic_event_table": "group_domain_events",
+    "semantic_event_types": [
+      "groups.membership.suspended",
+      "groups.membership.suspension_revoked"
+    ],
     "moderation_adapter": "not_published_in_this_slice"
   },
   "localization": {
@@ -516,6 +552,16 @@
       "implicit_fallback": false
     },
     {
+      "name": "embedded_membership_enforcement_command_native",
+      "provider": "GroupMembershipEnforcementCommandService",
+      "status": "implemented_source",
+      "surfaces": [
+        "rust_command_port",
+        "shared_owner_mutation"
+      ],
+      "implicit_fallback": false
+    },
+    {
       "name": "embedded_localization_native",
       "provider": "GroupLocalizationService",
       "status": "implemented",
@@ -626,6 +672,7 @@
     "membership_application_native_no_bypass_static_boundary": "scripts/verify/verify-groups-application-native-no-bypass.mjs",
     "membership_application_bulk_review_static_boundary": "scripts/verify/verify-groups-application-bulk-review.mjs",
     "membership_enforcement_read_static_boundary": "scripts/verify/verify-groups-membership-enforcement-read-path.mjs",
+    "membership_enforcement_command_static_boundary": "scripts/verify/verify-groups-membership-enforcement-command.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
@@ -644,6 +691,9 @@
     "membership_application_bulk_review": null,
     "membership_enforcement_migration": null,
     "membership_enforcement_revision_runtime": null,
+    "membership_enforcement_command_runtime": null,
+    "membership_enforcement_command_concurrency": null,
+    "membership_enforcement_command_transport_parity": null,
     "membership_enforcement_access_path_integration": null,
     "governance_transport_parity": null,
     "governance_concurrency": null

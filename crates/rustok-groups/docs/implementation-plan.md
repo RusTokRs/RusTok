@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-groups
   - platform-community
-last_reviewed: 2026-07-23
+last_reviewed: 2026-08-08
 ---
 
 # `rustok-groups` canonical implementation plan
@@ -69,6 +69,9 @@ subject revision must conflict and must never be retargeted.
   application, management, governance, or provider ACL decisions.
 - Expiry is evaluated with the Groups owner clock and never depends on cleanup.
 - Corrupt or unsupported enforcement state fails closed.
+- `groups.member_count` is a stored lifecycle active count, not an owner-clock effective-enforcement
+  count. Temporary suspension/revocation never changes it; join/leave and other stored lifecycle
+  transitions remain its mutation owners.
 
 ### Commands, replay, and locking
 
@@ -80,7 +83,7 @@ After those required pre-replay locks, an identical receipt is returned before c
 authorization, CAS, lifecycle validation, or domain mutation. A changed request using the same key
 conflicts. Replay is never denied because membership authority changed after the original commit.
 
-For invitation/application effective authorization, the canonical membership lock sequence is:
+The canonical membership lock sequence is:
 
 ```text
 Group -> GroupMembership -> GroupMembershipEnforcement
@@ -88,12 +91,14 @@ Group -> GroupMembership -> GroupMembershipEnforcement
 
 PostgreSQL/MySQL use row locks. SQLite obtains writer serialization through a no-op update of the
 already resolved group before membership/enforcement reads. Authorization runs after receipt replay
-and owner locking but before the first domain mutation.
+and owner locking but before the first domain mutation. Direct enforcement commands lock actor and
+target memberships in deterministic UUID order and their enforcement rows in deterministic
+membership-ID order.
 
 Application CAS preserves existing application-before-group ordering where an application row
-already exists. Invitation/application identity locks do not create a cycle with the future
-enforcement command because that command will not lock invitation or application rows. Bulk review
-remains one transaction, audit, receipt, and result per item.
+already exists. Invitation/application identity locks do not create a cycle with enforcement because
+the enforcement command never locks invitation or application rows. Bulk review remains one
+transaction, audit, receipt, and result per item.
 
 ## Current implementation state
 
@@ -109,6 +114,12 @@ Source exists for:
   lifecycle, focused review, and bounded partial-result bulk review;
 - monotonic membership revision and bounded current enforcement projection;
 - owner-clock effective resolver and `GroupMembershipEnforcementReadPort`;
+- direct `GroupMembershipEnforcementCommandPort` suspend/revoke with expected-revision CAS,
+  receipt-first replay, hierarchy/owner protection, shared owner mutation, audit/events and bounded
+  direct-local provenance;
+- stored lifecycle active member-count semantics that remain independent from temporary owner-clock
+  suspension/expiry/revocation while every enforcement mutation still advances group version;
+- append-only membership suspend/revoke semantic events beside targeted invitation events;
 - effective core `GroupsService` for access, redaction, join/rejoin, membership listing, enabled
   features, and feature settings;
 - sealed effective public invitation/application services with compatibility module paths;
@@ -120,15 +131,15 @@ Source exists for:
 Evidence still open:
 
 - compilation and executed unit/integration tests;
-- PostgreSQL and SQLite migration/runtime evidence;
+- PostgreSQL and SQLite migration/runtime evidence, including the expanded append-only event ledger;
 - lock behavior and concurrent enforcement-change tests;
-- native/GraphQL parity, replay, CAS, lifecycle, bulk-review, retry, recovery, security, and
-  accessibility evidence;
+- direct enforcement replay, expected-revision contention, hierarchy, owner-protection, expiry,
+  revoke, lifecycle-count invariance, audit/event atomicity, security and transport parity evidence;
+- native/GraphQL parity, CAS, lifecycle, bulk-review, retry, recovery, security, and accessibility
+  evidence for the broader module;
 - localization and governance effective authorization;
 - provider ACL integration and remote/degraded profiles;
-- leave/member-count suspension/restoration semantics;
-- direct suspend/revoke command, shared owner mutation path, moderation adapter, and durable
-  moderation application orchestration.
+- neutral moderation adapter and durable moderation application orchestration.
 
 ## Program ledger
 
@@ -137,11 +148,11 @@ Evidence still open:
 | GROUPS-00 | in_progress | ADR, ownership map, phpFox parity, FFA/FBA contracts | executable architecture review |
 | GROUPS-01 | in_progress | module skeleton, manifest, RBAC, migrations, host composition | build/module validation |
 | GROUPS-02 | in_progress | identity, localization, visibility, join policy, features, audit/events | lifecycle/runtime/concurrency |
-| GROUPS-03 | in_progress | memberships, join/leave, roles, ownership transfer | remaining enforcement integration |
-| GROUPS-04 | in_progress | typed summary/membership/access/localization/invitation/application/governance ports | consumer/fallback runtime matrix |
+| GROUPS-03 | in_progress | memberships, join/leave, roles, ownership transfer, direct enforcement | remaining enforcement integration |
+| GROUPS-04 | in_progress | typed summary/membership/access/localization/invitation/application/governance/enforcement ports | consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, invitation acceptance/delivery | parity and Notifications evidence |
 | GROUPS-06 | in_progress | localized policy, CAS, lifecycle, focused/bulk review, FFA UX | profiles/events/parity/concurrency/accessibility |
-| GROUPS-07 | in_progress | revision, enforcement read model, effective core access, transactional invitation/application authorization | remaining owner paths, direct command, adapter, runtime/concurrency evidence |
+| GROUPS-07 | in_progress | revision, enforcement read/direct command, effective core access, transactional invitation/application authorization | moderation adapter, transport/runtime/concurrency evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and navigation | registry/degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum integration evidence |
 | GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner/privacy evidence |
@@ -183,10 +194,14 @@ management UX, legacy API deprecation, and executed parity/replay/race/security/
 - `group_membership_enforcements` stores one bounded current row per membership.
 - Effective state distinguishes missing, active, inactive, suspended, and legacy banned.
 - Future, expired, or revoked enforcement falls back to stored lifecycle immediately.
+- `groups.member_count` counts stored lifecycle-active memberships. Enforcement never changes the
+  stored status, so temporary suspend/revoke leaves the count unchanged and avoids requiring cleanup
+  to restore a time-driven counter at expiry.
 - No Groups dependency on moderation owner persistence exists.
 
-The database trigger bridge remains transitional. The final write architecture requires an explicit
-shared Groups enforcement command used by direct actions and the neutral moderation adapter.
+The database trigger bridge remains transitional for revision maintenance, but the owner write
+architecture now has an explicit shared Groups enforcement mutation used by the direct command and
+reserved for the neutral moderation adapter.
 
 ### Transactional invitation/application cutover
 
@@ -229,18 +244,40 @@ Transactional effective authorization preserves:
 - `groups.membership_already_active`;
 - `groups.application_policy_changed` for CAS mismatch.
 
-### Planned owner enforcement command
+Direct enforcement additionally exposes stable fail-closed errors:
 
-The next command slice adds `GroupMembershipEnforcementCommandPort` for one direct suspend/revoke
-operation with:
+- `groups.membership_enforcement_revision_conflict`;
+- `groups.membership_enforcement_owner_protected`;
+- `groups.membership_enforcement_self_target`;
+- `groups.membership_enforcement_already_suspended`;
+- `groups.membership_enforcement_not_active`;
+- `groups.membership_enforcement_source_conflict`.
 
+### Source-complete direct enforcement command
+
+`GroupMembershipEnforcementCommandPort` now owns one direct suspend/revoke operation with:
+
+- a real user actor and bounded idempotency key;
 - expected membership revision CAS;
-- owner/admin/moderator hierarchy and owner protection;
-- receipt-first replay and changed-hash conflict;
-- the same group/membership/enforcement lock order;
-- explicit restoration lifecycle state;
-- atomic membership revision, enforcement row, member count/group version, audit, event, and receipt;
-- a shared owner method callable by the later moderation adapter.
+- owner/admin/moderator hierarchy plus platform moderate/manage authority and hard owner protection;
+- receipt-first replay after the required group serialization lock, with actor/group/request binding;
+- deterministic membership/enforcement lock ordering;
+- canonical reason codes and optional owner-clock expiry;
+- stored lifecycle status preserved as restoration state;
+- direct-local provenance with no Moderation decision identity;
+- shared crate-private suspension/revocation owner mutations for the later neutral adapter;
+- trigger-owned membership revision advance plus explicit group-version advance;
+- unchanged stored lifecycle member count on temporary suspend/revoke;
+- atomic audit, exact append-only membership semantic event and command receipt;
+- direct revoke restricted to active direct-local suspension, so local moderation cannot erase a
+  moderation-decision enforcement row;
+- original suspension actor/source preserved when revoked; revoker identity is immutable audit/event
+  provenance.
+
+Migration `m20260808_000009_extend_group_domain_events_for_membership_enforcement` widens the
+append-only event ledger to exact invitation/membership event pairs on PostgreSQL and SQLite. SQLite
+rebuild preserves historical sequence/event IDs and reinstalls targeted-invitation plus immutability
+triggers. Downgrade fails while membership events exist instead of deleting append-only history.
 
 No bulk enforcement command is introduced before single-command runtime evidence.
 
@@ -248,19 +285,26 @@ No bulk enforcement command is introduced before single-command runtime evidence
 
 Initial mapping remains:
 
-- `GroupMembership` plus `SuspendSubject { effective_until }` maps to the shared Groups command;
-- identical decision ID/hash replays; changed hash conflicts;
-- subject revision, tenant, scope, effect version, hierarchy, and owner invariants are validated in
-  the Groups transaction;
+- `GroupMembership` plus `SuspendSubject { effective_until }` maps to the shared Groups owner
+  suspension mutation;
+- identical decision ID/hash replays before current subject reads; changed hash conflicts;
+- subject revision, tenant, group scope, effect version, hierarchy, owner invariants and immutable
+  decision provenance are validated in the Groups transaction;
+- the adapter uses `source_kind=moderation_decision` and stores only bounded decision UUID/hash plus
+  trusted actor provenance, never case/report/queue/policy data;
 - unsupported effects and account sanctions are rejected without mutation;
 - moderation records applied evidence only after a matching adapter result.
+
+The adapter is the next moderation-specific source slice and requires the neutral
+`rustok-moderation-api` dependency plus producer receipt integration. It must reuse the owner mutation
+above rather than introduce a second Groups enforcement state path.
 
 ### GROUPS-07 definition of done
 
 - no ownership leakage between Groups and moderation;
 - monotonic membership identity/revision evidence;
 - permanent, expiring, revoked, and restored enforcement across every owner path;
-- hierarchy, owner protection, tenant isolation, replay, stale revision, member count, and
+- hierarchy, owner protection, tenant isolation, replay, stale revision, lifecycle member-count, and
   concurrency evidence;
 - native/GraphQL parity for state and direct actions;
 - missing/timeout/retry/lost-response adapter behavior;
@@ -271,18 +315,18 @@ Initial mapping remains:
 
 1. Convert localization management authorization to the transaction-aware resolver.
 2. Convert governance role/ownership commands with owner protection and the same lock protocol.
-3. Define leave and member-count suspension/restoration semantics.
-4. Add one direct suspend/revoke command and shared owner mutation path.
-5. Add the neutral moderation subject adapter.
-6. Convert provider ACL consumers and remote/degraded profiles.
-7. Produce runtime, parity, concurrency, security, and accessibility evidence.
+3. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
+4. Convert provider ACL consumers and remote/degraded profiles.
+5. Produce direct-enforcement and adapter runtime, parity, concurrency, security, migration and
+   accessibility evidence.
 
 ## Degraded modes
 
 - Groups access unavailable: deny private content.
 - Corrupt enforcement row: invariant failure; never infer active.
 - Expired/revoked enforcement: owner-clock fallback without cleanup.
-- Active suspension: remove membership authority without hiding public content.
+- Active suspension: remove membership authority without hiding public content or changing the
+  stored lifecycle member count.
 - Legacy banned membership: deny re-entry.
 - Exact-locale policy unavailable: form unavailable; never choose another locale.
 - Policy CAS conflict: write no owner state and require reload.
@@ -309,6 +353,7 @@ node scripts/verify/verify-groups-application-policy-cas.mjs
 node scripts/verify/verify-groups-application-lifecycle.mjs
 node scripts/verify/verify-groups-application-bulk-review.mjs
 node scripts/verify/verify-groups-membership-enforcement-read-path.mjs
+node scripts/verify/verify-groups-membership-enforcement-command.mjs
 node scripts/verify/verify-groups-effective-membership-access.mjs
 node scripts/verify/verify-groups-effective-membership-invitations-applications.mjs
 npm run verify:i18n:ui

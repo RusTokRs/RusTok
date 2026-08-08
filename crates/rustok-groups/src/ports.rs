@@ -11,6 +11,10 @@ use crate::dto::{
     ReadGroupMembershipEnforcementRequest, ReadGroupMembershipRequest, ReadGroupRequest,
     SetGroupFeatureRequest, UpsertGroupTranslationRequest,
 };
+use crate::membership_enforcement_command::{
+    GroupMembershipEnforcementMutationResult, RevokeGroupMembershipSuspensionRequest,
+    SuspendGroupMembershipRequest,
+};
 
 #[async_trait]
 pub trait GroupSummaryReadPort: Send + Sync {
@@ -51,6 +55,26 @@ pub trait GroupMembershipEnforcementReadPort: Send + Sync {
         context: PortContext,
         request: ReadGroupMembershipEnforcementRequest,
     ) -> Result<GroupMembershipEffectiveState, PortError>;
+}
+
+/// Direct Groups-owned single-membership enforcement boundary.
+///
+/// The neutral Moderation adapter does not call this user-authorized port. It reuses the same
+/// crate-private owner mutation after its own trusted receipt/revision validation, preserving one
+/// Groups write path without pretending a service actor is a local moderator.
+#[async_trait]
+pub trait GroupMembershipEnforcementCommandPort: Send + Sync {
+    async fn suspend_membership(
+        &self,
+        context: PortContext,
+        request: SuspendGroupMembershipRequest,
+    ) -> Result<GroupMembershipEnforcementMutationResult, PortError>;
+
+    async fn revoke_membership_suspension(
+        &self,
+        context: PortContext,
+        request: RevokeGroupMembershipSuspensionRequest,
+    ) -> Result<GroupMembershipEnforcementMutationResult, PortError>;
 }
 
 #[async_trait]
@@ -122,6 +146,8 @@ pub trait GroupLocalizationCommandPort: Send + Sync {
 pub type SharedGroupSummaryReadPort = Arc<dyn GroupSummaryReadPort>;
 pub type SharedGroupMembershipReadPort = Arc<dyn GroupMembershipReadPort>;
 pub type SharedGroupMembershipEnforcementReadPort = Arc<dyn GroupMembershipEnforcementReadPort>;
+pub type SharedGroupMembershipEnforcementCommandPort =
+    Arc<dyn GroupMembershipEnforcementCommandPort>;
 pub type SharedGroupAccessReadPort = Arc<dyn GroupAccessReadPort>;
 pub type SharedGroupLocalizationReadPort = Arc<dyn GroupLocalizationReadPort>;
 pub type SharedGroupCommandPort = Arc<dyn GroupCommandPort>;
@@ -145,6 +171,7 @@ impl Default for GroupCapabilityDescriptor {
                 "GroupSummaryReadPort",
                 "GroupMembershipReadPort",
                 "GroupMembershipEnforcementReadPort",
+                "GroupMembershipEnforcementCommandPort",
                 "GroupAccessReadPort",
                 "GroupLocalizationReadPort",
                 "GroupInvitationReadPort",

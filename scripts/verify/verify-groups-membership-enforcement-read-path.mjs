@@ -9,9 +9,12 @@ const files = {
   dto: "crates/rustok-groups/src/dto.rs",
   ports: "crates/rustok-groups/src/ports.rs",
   service: "crates/rustok-groups/src/membership_enforcement.rs",
+  command: "crates/rustok-groups/src/membership_enforcement_command.rs",
   entities: "crates/rustok-groups/src/membership_enforcement_entities.rs",
   migration:
     "crates/rustok-groups/src/migrations/m20260723_000008_create_group_membership_enforcement_state.rs",
+  eventMigration:
+    "crates/rustok-groups/src/migrations/m20260808_000009_extend_group_domain_events_for_membership_enforcement.rs",
   migrationRegistry: "crates/rustok-groups/src/migrations/mod.rs",
   module: "crates/rustok-groups/src/lib.rs",
   registry: "crates/rustok-groups/contracts/groups-fba-registry.json",
@@ -54,10 +57,8 @@ if (failures.length === 0) {
     "GroupMembershipEnforcementReadPort",
     "read_membership_enforcement",
     "SharedGroupMembershipEnforcementReadPort",
+    "GroupMembershipEnforcementCommandPort",
   ]);
-  if (read(files.ports).includes("GroupMembershipEnforcementCommandPort")) {
-    failures.push(`${files.ports}: read-only slice must not publish enforcement commands`);
-  }
   requireMarkers(files.service, [
     "GroupMembershipEnforcementService",
     "resolve_group_membership_enforcement",
@@ -68,6 +69,8 @@ if (failures.length === 0) {
     "&effective_from <= evaluated_at",
     "evaluated_at < until",
     "moderation-driven enforcement decision identity is invalid",
+    "group owner reference and owner membership role disagree",
+    "membership.user_id == group_owner_user_id",
     "groups.membership_enforcement_forbidden",
     '"groups:access:read"',
     '"groups:moderate"',
@@ -81,10 +84,21 @@ if (failures.length === 0) {
     "policy_snapshot:",
     "appeal_id",
   ]) {
-    if (read(files.service).includes(forbidden) || read(files.entities).includes(forbidden)) {
-      failures.push(`Groups enforcement read boundary contains forbidden owner copy/import ${JSON.stringify(forbidden)}`);
+    if (
+      read(files.service).includes(forbidden) ||
+      read(files.command).includes(forbidden) ||
+      read(files.entities).includes(forbidden)
+    ) {
+      failures.push(`Groups enforcement boundary contains forbidden owner copy/import ${JSON.stringify(forbidden)}`);
     }
   }
+  requireMarkers(files.command, [
+    "GroupMembershipEnforcementCommandService",
+    "apply_membership_suspension_in_tx",
+    "revoke_membership_suspension_in_tx",
+    "expected_membership_revision",
+    "bump_group_version_without_member_count_change",
+  ]);
   requireMarkers(files.entities, [
     'table_name = "group_memberships"',
     "pub revision: i64",
@@ -110,28 +124,39 @@ if (failures.length === 0) {
     "groups_27_membership_enforcement_revision_bump",
     "groups_30_enforcement_membership_revision_insert",
   ]);
+  requireMarkers(files.eventMigration, [
+    "groups.membership.suspended",
+    "groups.membership.suspension_revoked",
+    "cannot downgrade Groups membership enforcement events while append-only membership events exist",
+  ]);
   requireMarkers(files.migrationRegistry, [
     "m20260723_000008_create_group_membership_enforcement_state",
+    "m20260808_000009_extend_group_domain_events_for_membership_enforcement",
   ]);
   requireMarkers(files.module, [
     "pub mod membership_enforcement;",
-    "pub mod membership_enforcement_entities;",
+    "mod membership_enforcement_command;",
     "GroupMembershipEnforcementService",
-    "module.migrations().len(), 8",
+    "GroupMembershipEnforcementCommandService",
+    "module.migrations().len(), 9",
   ]);
   requireMarkers(files.registry, [
     '"name": "GroupMembershipEnforcementReadPort"',
+    '"name": "GroupMembershipEnforcementCommandPort"',
     '"effective_clock": "groups_owner_utc_clock"',
     '"legacy_banned_behavior": "deny_reentry"',
-    '"command_port": "not_published_in_this_slice"',
-    '"access_path_integration": "open"',
+    '"direct_command_port": "implemented_source"',
+    '"access_path_integration": "implemented_source"',
+    '"moderation_adapter": "not_published_in_this_slice"',
   ]);
   requireMarkers(files.plan, [
-    "membership revision and read-only enforcement projection/resolver are source-complete",
+    "Source-complete direct enforcement command",
     "GroupMembershipEnforcementReadPort",
-    "status-only access-path conversion remains open",
+    "GroupMembershipEnforcementCommandPort",
+    "neutral moderation subject adapter",
     "GROUPS-07 | in_progress",
     "verify-groups-membership-enforcement-read-path.mjs",
+    "verify-groups-membership-enforcement-command.mjs",
   ]);
 }
 
@@ -142,5 +167,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Groups monotonic membership revision, bounded enforcement projection, owner-clock resolver, read port, and open integration gates passed source verification.",
+  "Groups monotonic membership revision, bounded enforcement projection, owner-clock resolver, direct command seam, and open moderation/runtime gates passed source verification.",
 );

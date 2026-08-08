@@ -48,6 +48,7 @@ mod invitations_legacy {
 }
 pub mod localization;
 pub mod membership_enforcement;
+mod membership_enforcement_command;
 pub mod membership_enforcement_entities;
 mod membership_enforcement_transaction;
 pub mod migrations;
@@ -118,6 +119,10 @@ pub use governance::*;
 pub use invitations::*;
 pub use localization::GroupLocalizationService;
 pub use membership_enforcement::GroupMembershipEnforcementService;
+pub use membership_enforcement_command::{
+    GroupMembershipEnforcementCommandService, GroupMembershipEnforcementMutationResult,
+    RevokeGroupMembershipSuspensionRequest, SuspendGroupMembershipRequest,
+};
 pub use policy_history::*;
 pub use ports::*;
 pub use targeted_invitations::*;
@@ -189,7 +194,7 @@ mod tests {
         assert_eq!(module.slug(), "groups");
         assert_eq!(module.name(), "Groups");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 8);
+        assert_eq!(module.migrations().len(), 9);
         assert_eq!(module.permissions().len(), 7);
     }
 
@@ -203,6 +208,11 @@ mod tests {
             descriptor
                 .ports
                 .contains(&"GroupMembershipEnforcementReadPort")
+        );
+        assert!(
+            descriptor
+                .ports
+                .contains(&"GroupMembershipEnforcementCommandPort")
         );
     }
 }

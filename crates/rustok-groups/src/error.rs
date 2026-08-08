@@ -19,6 +19,18 @@ pub enum GroupsError {
     ManagerRequired(String),
     #[error("the user is already an active group member")]
     MembershipAlreadyActive,
+    #[error("group membership enforcement expected revision is stale")]
+    MembershipEnforcementRevisionConflict,
+    #[error("the group owner cannot be suspended; transfer ownership first")]
+    MembershipEnforcementOwnerProtected,
+    #[error("a direct membership enforcement command cannot target its own actor")]
+    MembershipEnforcementSelfTarget,
+    #[error("the group membership already has an effective suspension")]
+    MembershipEnforcementAlreadySuspended,
+    #[error("the group membership does not have an effective suspension to revoke")]
+    MembershipEnforcementNotActive,
+    #[error("direct local enforcement cannot revoke moderation-decision enforcement")]
+    MembershipEnforcementSourceConflict,
     #[error("group state conflict: {0}")]
     Conflict(String),
     #[error("group persistence failed: {0}")]
@@ -59,6 +71,30 @@ impl From<GroupsError> for PortError {
             GroupsError::MembershipAlreadyActive => PortError::conflict(
                 "groups.membership_already_active",
                 "user is already an active group member",
+            ),
+            GroupsError::MembershipEnforcementRevisionConflict => PortError::conflict(
+                "groups.membership_enforcement_revision_conflict",
+                "group membership changed after the enforcement command was prepared",
+            ),
+            GroupsError::MembershipEnforcementOwnerProtected => PortError::forbidden(
+                "groups.membership_enforcement_owner_protected",
+                "group owner must transfer ownership before membership enforcement",
+            ),
+            GroupsError::MembershipEnforcementSelfTarget => PortError::forbidden(
+                "groups.membership_enforcement_self_target",
+                "direct membership enforcement cannot target the acting user",
+            ),
+            GroupsError::MembershipEnforcementAlreadySuspended => PortError::conflict(
+                "groups.membership_enforcement_already_suspended",
+                "group membership already has an effective suspension",
+            ),
+            GroupsError::MembershipEnforcementNotActive => PortError::conflict(
+                "groups.membership_enforcement_not_active",
+                "group membership does not have an effective suspension to revoke",
+            ),
+            GroupsError::MembershipEnforcementSourceConflict => PortError::forbidden(
+                "groups.membership_enforcement_source_conflict",
+                "direct local enforcement cannot revoke moderation-decision enforcement",
             ),
             GroupsError::Conflict(message) => PortError::conflict("groups.conflict", message),
             GroupsError::Persistence(message) => PortError::new(
