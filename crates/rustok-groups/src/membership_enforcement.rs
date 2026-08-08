@@ -14,6 +14,7 @@ use crate::dto::{
     GroupMembershipEffectiveState, GroupMembershipEnforcementSummary,
     ReadGroupMembershipEnforcementRequest,
 };
+use crate::entities::group;
 use crate::error::{GroupsError, GroupsResult};
 use crate::membership_enforcement_entities::{membership_enforcement, membership_state};
 use crate::ports::GroupMembershipEnforcementReadPort;
@@ -91,6 +92,26 @@ where
     let role = GroupRole::from_str(&membership.role).map_err(GroupsError::Invariant)?;
     let stored_status =
         GroupMembershipStatus::from_str(&membership.status).map_err(GroupsError::Invariant)?;
+
+    // Local authority derives from both the membership role and the canonical group owner pointer.
+    // Fail closed if those owner identities ever drift instead of letting a stray `role=owner`
+    // membership gain effective management authority.
+    let group_owner_user_id = group::Entity::find()
+        .filter(group::Column::TenantId.eq(tenant_id))
+        .filter(group::Column::Id.eq(group_id))
+        .one(connection)
+        .await?
+        .ok_or_else(|| {
+            GroupsError::Invariant(
+                "group membership references a missing Groups owner aggregate".to_string(),
+            )
+        })?
+        .owner_user_id;
+    if (role == GroupRole::Owner) != (membership.user_id == group_owner_user_id) {
+        return Err(GroupsError::Invariant(
+            "group owner reference and owner membership role disagree".to_string(),
+        ));
+    }
 
     let enforcement = membership_enforcement::Entity::find_by_id(membership.id)
         .filter(membership_enforcement::Column::TenantId.eq(tenant_id))
