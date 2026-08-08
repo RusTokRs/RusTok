@@ -21,6 +21,7 @@ const scripts = [
   'verify-index-schema-supersession.mjs',
   'verify-index-schema-scoped-source-event-id.mjs',
   'verify-index-source-replay-contract.mjs',
+  'verify-index-locale-source-scan.mjs',
   'verify-index-source-refresh-event.mjs',
   'verify-index-source-absence-watermark.mjs',
   'verify-index-source-continuation.mjs',
