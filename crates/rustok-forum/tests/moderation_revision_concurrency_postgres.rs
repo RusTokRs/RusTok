@@ -14,7 +14,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, Statement,
     TransactionTrait,
 };
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 use uuid::Uuid;
 
 use support::postgres::{PostgresForumTestDb, execute};
@@ -23,6 +23,7 @@ use support::{TestResult, test_error};
 const REVISION_CONFLICT: &str = "forum.moderation_subject_revision_conflict";
 const DATABASE_UNAVAILABLE: &str = "forum.moderation_database_unavailable";
 const MODERATION_ACTOR: &str = "rustok-moderation";
+const APPLY_OPERATION: &str = "apply_moderation_decision";
 
 #[derive(Clone, Copy)]
 struct RaceSeed {
@@ -73,8 +74,10 @@ async fn topic_translation_edit_fences_permanent_lock(
 
     let adapter = topic_adapter(database.peer().await?)?;
     let command = topic_lock_command(seed, reviewed_revision, Uuid::new_v4())?;
+    let decision_id = command.decision_id;
     let mut application = spawn_application(adapter.clone(), seed.tenant_id, command);
 
+    wait_for_processing_receipt(&database.db, seed.tenant_id, decision_id).await?;
     assert_application_waits_while_edit_owns_revision(&mut application, "topic").await?;
     edit.commit().await?;
 
@@ -90,8 +93,10 @@ async fn topic_translation_edit_fences_permanent_lock(
         "Concurrent topic edit"
     );
 
-    // A new delivery attempt against the same stale reviewed revision must deterministically
-    // resolve to the semantic revision conflict once the concurrent edit has committed.
+    // A new delivery against the same stale reviewed revision must deterministically resolve to
+    // the semantic revision conflict once the concurrent edit has committed. A fresh decision UUID
+    // avoids confusing the subject fence with the first call's owner-receipt state after a possible
+    // PostgreSQL serialization retry.
     let stale = topic_lock_command(seed, reviewed_revision, Uuid::new_v4())?;
     let stale_error = adapter
         .apply_moderation_decision(
@@ -128,8 +133,10 @@ async fn reply_body_edit_fences_hide_application(
 
     let adapter = reply_adapter(database.peer().await?)?;
     let command = reply_hide_command(seed, reviewed_revision, Uuid::new_v4())?;
+    let decision_id = command.decision_id;
     let mut application = spawn_application(adapter.clone(), seed.tenant_id, command);
 
+    wait_for_processing_receipt(&database.db, seed.tenant_id, decision_id).await?;
     assert_application_waits_while_edit_owns_revision(&mut application, "reply").await?;
     edit.commit().await?;
 
@@ -175,13 +182,45 @@ fn spawn_application(
     })
 }
 
+async fn wait_for_processing_receipt(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    decision_id: Uuid,
+) -> TestResult<()> {
+    for _ in 0..100 {
+        let row = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT status FROM owner_operation_receipts WHERE tenant_id = $1 AND owner_slug = 'forum' AND idempotency_key = $2 AND operation = $3",
+                vec![
+                    tenant_id.into(),
+                    decision_id.to_string().into(),
+                    APPLY_OPERATION.to_string().into(),
+                ],
+            ))
+            .await?;
+        if let Some(row) = row {
+            let status: String = row.try_get("", "status")?;
+            if status == "processing" {
+                return Ok(());
+            }
+            return Err(test_error(format!(
+                "Forum moderation receipt reached unexpected `{status}` state before concurrent edit commit"
+            )));
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+    Err(test_error(
+        "Forum moderation application did not reach the owner receipt boundary while edit transaction was open",
+    ))
+}
+
 async fn assert_application_waits_while_edit_owns_revision(
     application: &mut tokio::task::JoinHandle<
         Result<rustok_moderation_api::ModerationDecisionApplication, PortError>,
     >,
     label: &str,
 ) -> TestResult<()> {
-    tokio::task::yield_now().await;
     if let Ok(result) = timeout(Duration::from_millis(50), application).await {
         let completed = result?;
         return Err(test_error(format!(
