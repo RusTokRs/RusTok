@@ -117,6 +117,7 @@ const resolvers = [
   ["catalog_categories", "product_attribute_schemas", ".list_categories("],
   ["product_attribute_schemas", "product_effective_form", ".list_schemas("],
   ["product_effective_form", "product_attribute_values", ".read_effective_form("],
+  ["product_attribute_values", "storefront_catalog_search_options", ".read_product_attribute_values("],
 ];
 for (const [name, nextName, ownerCall] of resolvers) {
   const resolver = resolverSlice(commerceQuery, name, nextName);
@@ -162,13 +163,8 @@ const attributeValues = resolverSlice(
 );
 requireText(
   attributeValues,
-  "ProductCatalogSchemaService::new",
-  "productAttributeValues consumer cutover must remain explicit follow-up debt in this slice",
-);
-forbidText(
-  attributeValues,
-  ".read_product_attribute_values(",
-  "productAttributeValues must not be marked cut over before its consumer slice",
+  "rustok_product::ProductAttributeValuesRequest",
+  "productAttributeValues owner-port cutover must construct ProductAttributeValuesRequest",
 );
 
 if (!process.exitCode) {
