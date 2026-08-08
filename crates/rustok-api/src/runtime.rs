@@ -37,6 +37,49 @@ pub async fn is_tenant_module_enabled(
     .map(|row| row.is_some())
 }
 
+/// Returns the settings snapshot for one exact enabled tenant module.
+///
+/// This is the read-only counterpart to [`is_tenant_module_enabled`]. Internal
+/// GraphQL and native server-function adapters can consume the same persisted
+/// tenant-module control-plane snapshot without importing tenant persistence
+/// entities or inventing a parallel settings store. Disabled, foreign and
+/// missing rows fail closed to `None`.
+pub async fn tenant_module_settings(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    module_slug: &str,
+) -> Result<Option<serde_json::Value>, DbErr> {
+    let backend = db.get_database_backend();
+    let query = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 AND enabled = 1 LIMIT 1"
+        }
+        sea_orm::DbBackend::Postgres => {
+            "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1"
+        }
+        sea_orm::DbBackend::MySql => {
+            "SELECT CAST(settings AS CHAR) AS settings_json FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? AND enabled = true LIMIT 1"
+        }
+    };
+
+    let Some(row) = db
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            query,
+            vec![tenant_id.into(), module_slug.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let encoded: String = row.try_get("", "settings_json")?;
+    serde_json::from_str(&encoded).map(Some).map_err(|error| {
+        DbErr::Custom(format!(
+            "tenant module `{module_slug}` settings are not valid JSON: {error}"
+        ))
+    })
+}
+
 /// Immutable host configuration snapshot provided to internal server-function
 /// adapters. It keeps adapters independent of a framework-specific app context.
 #[derive(Clone, Debug)]
@@ -119,8 +162,7 @@ mod tests {
     use super::*;
     use sea_orm::Database;
 
-    #[tokio::test]
-    async fn tenant_module_enablement_is_exact_and_fail_closed() {
+    async fn runtime_module_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("runtime module evidence SQLite should connect");
@@ -130,13 +172,19 @@ CREATE TABLE tenant_modules (
     tenant_id TEXT NOT NULL,
     module_slug TEXT NOT NULL,
     enabled INTEGER NOT NULL,
+    settings TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (tenant_id, module_slug)
 );
 "#,
         )
         .await
         .expect("tenant_modules evidence table should create");
+        db
+    }
 
+    #[tokio::test]
+    async fn tenant_module_enablement_is_exact_and_fail_closed() {
+        let db = runtime_module_db().await;
         let tenant_id = Uuid::new_v4();
         let foreign_tenant_id = Uuid::new_v4();
         db.execute_unprepared(&format!(
@@ -167,6 +215,49 @@ CREATE TABLE tenant_modules (
             !is_tenant_module_enabled(&db, tenant_id, "missing")
                 .await
                 .expect("missing module lookup should succeed")
+        );
+    }
+
+    #[tokio::test]
+    async fn tenant_module_settings_returns_only_the_exact_enabled_row() {
+        let db = runtime_module_db().await;
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            r#"INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES
+             ('{tenant_id}', 'pages', 1, '{{"builder":{{"enabled":false,"preview":{{"enabled":false}},"properties":{{"enabled":true}},"publish":{{"enabled":false}}}}}}'),
+             ('{tenant_id}', 'forum', 0, '{{"builder":{{"enabled":true}}}}'),
+             ('{foreign_tenant_id}', 'pages', 1, '{{"builder":{{"enabled":true}}}}')"#
+        ))
+        .await
+        .expect("tenant module settings evidence rows should insert");
+
+        let settings = tenant_module_settings(&db, tenant_id, "pages")
+            .await
+            .expect("enabled Pages settings lookup should succeed")
+            .expect("enabled Pages row should expose settings");
+        assert_eq!(settings["builder"]["enabled"], false);
+        assert_eq!(settings["builder"]["preview"]["enabled"], false);
+        assert_eq!(settings["builder"]["properties"]["enabled"], true);
+        assert_eq!(settings["builder"]["publish"]["enabled"], false);
+
+        assert_eq!(
+            tenant_module_settings(&db, tenant_id, "forum")
+                .await
+                .expect("disabled Forum settings lookup should succeed"),
+            None
+        );
+        assert_eq!(
+            tenant_module_settings(&db, foreign_tenant_id, "forum")
+                .await
+                .expect("foreign module settings lookup should succeed"),
+            None
+        );
+        assert_eq!(
+            tenant_module_settings(&db, tenant_id, "missing")
+                .await
+                .expect("missing module settings lookup should succeed"),
+            None
         );
     }
 }
