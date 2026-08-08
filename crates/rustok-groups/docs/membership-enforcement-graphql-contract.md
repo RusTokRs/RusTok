@@ -1,6 +1,6 @@
 # Groups membership enforcement GraphQL contract
 
-Status: **source-ready with executable SQLite parity source / maintainer execution pending**
+Status: **source-ready with executable SQLite/PostgreSQL parity sources / maintainer execution pending**
 
 ## Scope
 
@@ -110,6 +110,18 @@ No synthetic owner result or direct enforcement-table mutation is used. The Grap
 
 This packet is **execution pending**. Its source does not populate `membership_enforcement_command_transport_parity` or promote any runtime gate until a maintainer runs it.
 
+## Executable PostgreSQL native/GraphQL parity source
+
+`apps/server/tests/groups_membership_enforcement_graphql_postgres.rs` mirrors the SQLite packet against PostgreSQL using a unique schema per execution. Every SeaORM pool connection receives the schema through startup options:
+
+```text
+options=-csearch_path=<schema>,public
+```
+
+The packet intentionally does not rely on session-local `SET search_path`. It applies the same production Groups migrations and repeats native-vs-final-GraphQL suspend, immutable replay, stale revision error extensions and revoke semantics for a local owner with no platform moderation permission.
+
+The PostgreSQL test is ignored unless `RUSTOK_GROUPS_TEST_POSTGRES_URL` is configured. Its source is **execution pending** and does not populate transport parity evidence before a maintainer runs it.
+
 ## No fallback
 
 The stable module manifest entrypoint remains `graphql_application_cas::GroupsMutationRoot`; the new enforcement mutation is composed inside that root. There is no implicit GraphQL-to-native, native-to-GraphQL, admin, remote, or legacy fallback path.
@@ -123,7 +135,8 @@ cargo check -p rustok-groups --features graphql
 cargo test -p rustok-groups --features graphql graphql_conflict_preserves_transport_and_owner_codes
 cargo test -p rustok-groups --features graphql graphql_unavailable_keeps_owner_code_and_retryability
 cargo test -p rustok-server --features mod-groups --test groups_membership_enforcement_graphql_sqlite -- --nocapture
+RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://...' cargo test -p rustok-server --features mod-groups --test groups_membership_enforcement_graphql_postgres -- --ignored --nocapture
 node scripts/verify/verify-groups-membership-enforcement-graphql.mjs
 ```
 
-No Cargo command, test, Node verifier, browser/schema execution, formatter, workflow or CI job was executed. PostgreSQL/native-GraphQL parity and executed SQLite replay/CAS/authorization/schema/error parity remain open.
+No Cargo command, test, Node verifier, browser/schema execution, formatter, workflow or CI job was executed. Executed SQLite/PostgreSQL replay/CAS/authorization/schema/error parity remains open.
