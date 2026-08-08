@@ -79,7 +79,7 @@ impl IndexReplayShadowTransportOutcome {
     }
 }
 
-/// Server-owned transport adapter for schema-wide Shadow replay.
+/// Server-owned transport adapter for schema-wide or exact-locale Shadow replay.
 ///
 /// Authorization runs before continuation parsing. The adapter owns no database connection,
 /// replay job, checkpoint, lease, cancellation state, retry state, scheduler, or worker handle.
@@ -103,10 +103,11 @@ impl IndexReplayShadowTransportRuntime {
         }
     }
 
-    pub async fn run_schema_wide(
+    pub async fn run(
         &self,
         context: IndexReplayOperatorContext,
         schema: rustok_index::SchemaRef,
+        locale: Option<rustok_index::LocaleKey>,
         continuation: Option<&str>,
         page_limit: usize,
         max_pages: usize,
@@ -119,11 +120,19 @@ impl IndexReplayShadowTransportRuntime {
             .continuation
             .as_ref()
             .ok_or(IndexReplayShadowTransportError::ContinuationUnavailable)?;
-        let scope = rustok_index::IndexSourceContinuationScope::from_registry(
-            context.tenant_id(),
-            schema.clone(),
-            &self.sources,
-        )?;
+        let scope = match locale.as_ref() {
+            Some(locale) => rustok_index::IndexSourceContinuationScope::for_locale(
+                context.tenant_id(),
+                schema.clone(),
+                locale.clone(),
+                &self.sources,
+            ),
+            None => rustok_index::IndexSourceContinuationScope::from_registry(
+                context.tenant_id(),
+                schema.clone(),
+                &self.sources,
+            ),
+        }?;
         let codec = keyring
             .resolve_codec()
             .await
@@ -131,13 +140,23 @@ impl IndexReplayShadowTransportRuntime {
         let cursor = continuation
             .map(|encoded| codec.open_encoded(&scope, encoded, Utc::now()))
             .transpose()?;
-        let request = rustok_index::IndexReplayDryRunRequest::new(
-            context.tenant_id(),
-            schema,
-            cursor,
-            page_limit,
-            max_pages,
-        )?;
+        let request = match locale {
+            Some(locale) => rustok_index::IndexReplayDryRunRequest::for_locale(
+                context.tenant_id(),
+                schema,
+                locale,
+                cursor,
+                page_limit,
+                max_pages,
+            ),
+            None => rustok_index::IndexReplayDryRunRequest::new(
+                context.tenant_id(),
+                schema,
+                cursor,
+                page_limit,
+                max_pages,
+            ),
+        }?;
         let outcome = self.operator.run_shadow(context, request).await?;
         let next_token = outcome
             .next_cursor()
