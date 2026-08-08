@@ -25,6 +25,7 @@ const scripts = [
   'verify-index-replay-locale-job-scope.mjs',
   'verify-index-replay-locale-checkpoint-worker.mjs',
   'verify-index-replay-locale-runner-graphql.mjs',
+  'verify-index-replay-locale-command-evidence.mjs',
   'verify-index-source-refresh-event.mjs',
   'verify-index-source-absence-watermark.mjs',
   'verify-index-source-continuation.mjs',
