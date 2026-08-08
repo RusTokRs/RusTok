@@ -1,7 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after core Product Storefront PostgreSQL packet merge `6e635d890503443622b41ebfe203c5d5682e7333` and continued on
-`agent/index-storefront-eav-equivalence-postgres-20260808`.
+Status overlay rechecked after Product Storefront EAV PostgreSQL packet merge
+`2098ab10cbac4741d83a06f49bb4de21a605b909` and continued on
+`agent/index-product-postgres-key4-actualize-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -16,7 +17,7 @@ required and is not claimed by source inspection.
 
 Source-complete:
 
-- one current 15-field Product schema on routing key `4`; lower keys historical only;
+- one current 15-field Product schema on routing key `4`; lower keys are historical storage identities only;
 - schema-scoped Product replay IDs, Product owner clock and canonical typed `attribute_terms`;
 - Product channel relation/freshness materialization;
 - localized entity identity fold, scoped cursor v3 and requested -> fallback projection;
@@ -28,20 +29,27 @@ Source-complete:
 - pure Storefront shadow builder consuming only `ProductResolvedAttributeFilter`;
 - non-serving owner-first `ProductStorefrontIndexShadowExecutor`;
 - current-key core Product Storefront owner-vs-shadow PostgreSQL packet source;
-- separate current-key Product Storefront EAV owner-vs-shadow PostgreSQL packet source.
+- separate current-key Product Storefront EAV owner-vs-shadow PostgreSQL packet source;
+- historical retained Product PostgreSQL fixtures actualized to current Product routing key `4` without a
+  key-3 runtime alias.
 
 The core packet retains localized projection/search, identity de-duplication, equal-timestamp ordering,
 page/count and public-channel scenarios. The EAV packet isolates Product term resolution/materialization and
 retains integer, localized requested/fallback, Select/Multiselect option code, direct option UUID and
 missing/nil option `Never` scenarios. Both remain source-only until maintainer execution.
 
-The core packet also records a public projection gap: owner uses `Untitled product`/empty handle when no
-requested/fallback translation exists, while generic localized Index returns null. Final Storefront
+Historical Product freshness, locale-absence, Channel convergence/identity-transition and linked-target
+recreate/availability/replay packets now target the same current Product key `4`. Their scenario semantics are
+unchanged; ProductVariant remains key `2` and SalesChannel remains key `1`.
+
+The core Storefront packet also records a public projection gap: owner uses `Untitled product`/empty handle
+when no requested/fallback translation exists, while generic localized Index returns null. Final Storefront
 projection must apply public placeholders only after Product page identity/order/count are fixed.
 
 ## Remaining Storefront parity/evidence blockers
 
-- execute/review both current-key Storefront PostgreSQL packets; source presence is not evidence admission;
+- execute/review both current-key Storefront PostgreSQL packets and the actualized retained Product packets;
+  source presence is not evidence admission;
 - owner title search has no explicit length bound vs Index `TextLike` 1024-byte bound;
 - owner/default PostgreSQL collation vs Index deterministic `COLLATE "C"`;
 - channel-less owner visibility cannot currently be represented exactly by `sales_channel_ids`;
@@ -51,14 +59,21 @@ projection must apply public placeholders only after Product page identity/order
 - shadow execution has no serving latency/deadline policy and must remain non-serving;
 - stale locale/readiness/admission/restart evidence still requires maintainer execution/extension.
 
-## Retained Product evidence debt
+## Retained Product evidence state
 
-Historical PostgreSQL packets must still be mechanically actualized to routing key `4` / current 15-field
-Product contract; never add a key-3 runtime alias. Keep those large fixture rewrites separate from the new
-Storefront packets.
+The retained Product PostgreSQL fixture set is now source-aligned on routing key `4`:
 
-After the current packets are executed, use observed evidence to decide the next correction/admission slice:
-search collation/bounds, placeholder projection, channel-less visibility, deep-page policy or restart/readiness.
+- Product locale absence;
+- Product materialized query freshness;
+- Product/Channel convergence;
+- Channel identity transitions;
+- linked-target delete/recreate;
+- linked-target availability equivalence;
+- linked-target replay/redelivery.
+
+`verify-index-product-postgres-key4-fixtures.mjs` prevents these packets from restoring Product key `3` while
+also pinning the current 15-field Product bridge and unchanged ProductVariant/SalesChannel target keys.
+Execution and evidence admission remain separate maintainer gates.
 
 ## M5 incremental ingestion
 
@@ -93,14 +108,15 @@ search collation/bounds, placeholder projection, channel-less visibility, deep-p
 - [x] Compose non-serving Product-owner + Index shadow executor.
 - [x] Retain current-key core owner-vs-shadow localized PostgreSQL packet source.
 - [x] Retain Product EAV owner-vs-shadow PostgreSQL packet source.
+- [x] Actualize historical retained Product PostgreSQL packets to routing key `4`.
 - [ ] Execute/review the core Storefront PostgreSQL packet.
 - [ ] Execute/review the EAV Storefront PostgreSQL packet.
+- [ ] Execute/review the actualized retained Product PostgreSQL packets.
 - [ ] Resolve/admit search-length and collation parity.
 - [ ] Resolve channel-less unrestricted visibility parity or keep that shape owner-native.
 - [ ] Decide authoritative deep-page policy.
 - [ ] Map no-localized-row nulls to owner public title/handle placeholders in final projection.
 - [ ] Batch-hydrate Taxonomy tag names after the Product page is fixed.
-- [ ] Actualize historical retained Product PostgreSQL packets to routing key `4`.
 - [ ] Extend folded linked paths only with dedicated target-availability evidence.
 - [ ] Execute/admit current replacement Product PostgreSQL evidence.
 - [ ] Stage/rebuild/promote Product key `4` for a tenant.
@@ -108,9 +124,10 @@ search collation/bounds, placeholder projection, channel-less visibility, deep-p
 
 ## Next source-code step
 
-Mechanically actualize historical retained Product PostgreSQL packets to current routing key `4` / 15-field
-fixtures without adding runtime compatibility. Keep that mechanical debt separate from Storefront parity.
-Do not execute tests or PostgreSQL packets in this implementation turn.
+Keep serving owner-native and resolve the next source-level parity mismatch: establish an authoritative Product
+Storefront title-search length contract compatible with bounded Index `TextLike`, then retain explicit
+PostgreSQL collation evidence. Do not silently truncate owner-valid input or weaken deterministic Index
+collation.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
