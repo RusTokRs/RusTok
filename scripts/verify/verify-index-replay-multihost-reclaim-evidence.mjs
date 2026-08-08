@@ -118,6 +118,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
   'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',
   'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
+  'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
+  'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
   'Partition replay remains blocked',
 ]);
 
