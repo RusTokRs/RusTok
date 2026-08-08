@@ -113,4 +113,11 @@ requireMarkers('crates/rustok-index/docs/m6-replay-multihost-reclaim-evidence.md
   'Production execution/admission remains maintainer-owned.',
 ]);
 
+requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+  'Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.',
+  'Execute/admit retained multi-host reclaim evidence.',
+  'next independent boundary is the explicit targeted/full/shadow rebuild-mode',
+  'Partition replay remains blocked',
+]);
+
 console.log('[verify-index-replay-multihost-reclaim-evidence] deterministic two-host reclaim keeps attempt-2 durable state authoritative and fences the late attempt-1 runner');
