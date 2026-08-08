@@ -1,0 +1,287 @@
+use rustok_api::{Action, Resource};
+use rustok_core::{PermissionScope, SecurityContext};
+use rustok_outbox::TransactionalEventBus;
+use sea_orm::DatabaseConnection;
+use serde_json::Value;
+use uuid::Uuid;
+
+use crate::dto::{
+    ForumReplyStreamWidgetPreview, ForumTopicDetailWidgetPreview, ForumTopicListWidgetPreview,
+    ForumWidgetPreviewPayload, ForumWidgetPreviewResponse, ListRepliesFilter,
+    PreviewForumWidgetInput, ValidateForumWidgetPropsInput,
+};
+use crate::error::{ForumError, ForumResult};
+use crate::services::widget_contract::{
+    FORUM_WIDGET_CONTRACT_VERSION, FORUM_WIDGET_TYPE_REPLY_STREAM,
+    FORUM_WIDGET_TYPE_TOPIC_DETAIL, FORUM_WIDGET_TYPE_TOPIC_LIST, ForumWidgetContractService,
+};
+use crate::services::{ReplyService, TopicService};
+use crate::state_machine::ReplyStatus;
+
+const TOPIC_DETAIL_PREVIEW_REPLIES: u64 = 20;
+
+/// Forum owner runtime for Page Builder widget previews.
+///
+/// All widget configuration crosses `ForumWidgetContractService` first. Data then comes only from
+/// Forum owner read services under the caller's exact security snapshot. The service never accepts
+/// tenant or actor identity inside widget props.
+pub struct ForumWidgetPreviewService {
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+}
+
+impl ForumWidgetPreviewService {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { db, event_bus }
+    }
+
+    pub async fn preview(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        input: PreviewForumWidgetInput,
+    ) -> ForumResult<ForumWidgetPreviewResponse> {
+        let validation = ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
+            widget_type: input.widget_type,
+            props: input.props,
+        });
+        let widget_type = validation.widget_type.clone();
+        if !validation.valid {
+            return Ok(ForumWidgetPreviewResponse {
+                widget_type,
+                data_contract_version: FORUM_WIDGET_CONTRACT_VERSION.to_string(),
+                valid: false,
+                normalized_props: validation.normalized_props,
+                issues: validation.issues,
+                payload: None,
+            });
+        }
+
+        let normalized_props = validation.normalized_props.clone();
+        let payload = match widget_type.as_str() {
+            FORUM_WIDGET_TYPE_TOPIC_LIST => ForumWidgetPreviewPayload::TopicList(
+                self.preview_topic_list(
+                    tenant_id,
+                    security,
+                    locale,
+                    fallback_locale,
+                    &normalized_props,
+                )
+                .await?,
+            ),
+            FORUM_WIDGET_TYPE_TOPIC_DETAIL => ForumWidgetPreviewPayload::TopicDetail(
+                self.preview_topic_detail(
+                    tenant_id,
+                    security,
+                    locale,
+                    fallback_locale,
+                    &normalized_props,
+                )
+                .await?,
+            ),
+            FORUM_WIDGET_TYPE_REPLY_STREAM => ForumWidgetPreviewPayload::ReplyStream(
+                self.preview_reply_stream(
+                    tenant_id,
+                    security,
+                    locale,
+                    fallback_locale,
+                    &normalized_props,
+                )
+                .await?,
+            ),
+            _ => {
+                return Err(ForumError::Validation(format!(
+                    "Unsupported normalized Forum widget type: {widget_type}"
+                )));
+            }
+        };
+
+        Ok(ForumWidgetPreviewResponse {
+            widget_type,
+            data_contract_version: FORUM_WIDGET_CONTRACT_VERSION.to_string(),
+            valid: true,
+            normalized_props,
+            issues: validation.issues,
+            payload: Some(payload),
+        })
+    }
+
+    async fn preview_topic_list(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        props: &Value,
+    ) -> ForumResult<ForumTopicListWidgetPreview> {
+        let category_id = optional_uuid(props, "category_id")?;
+        let page = required_u64(props, "page")?;
+        let per_page = required_u64(props, "per_page")?;
+        let include_pinned = required_bool(props, "include_pinned")?;
+        let sort = required_string(props, "sort")?;
+        let (items, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .list_widget_preview_with_locale_fallback(
+                tenant_id,
+                security,
+                category_id,
+                page,
+                per_page,
+                include_pinned,
+                sort,
+                locale,
+                fallback_locale,
+            )
+            .await?;
+
+        Ok(ForumTopicListWidgetPreview {
+            items,
+            total,
+            page,
+            per_page,
+            sort: sort.to_string(),
+            include_pinned,
+        })
+    }
+
+    async fn preview_topic_detail(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        props: &Value,
+    ) -> ForumResult<ForumTopicDetailWidgetPreview> {
+        let topic_id = required_uuid(props, "topic_id")?;
+        let include_replies = required_bool(props, "include_replies")?;
+        let requested_locale = props
+            .get("locale")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(locale);
+        let topic = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                security.clone(),
+                topic_id,
+                requested_locale,
+                fallback_locale,
+            )
+            .await?;
+
+        let (replies, replies_total) = if include_replies {
+            ReplyService::new(self.db.clone(), self.event_bus.clone())
+                .list_response_for_topic_by_statuses_with_locale_fallback(
+                    tenant_id,
+                    security,
+                    topic_id,
+                    ListRepliesFilter {
+                        locale: Some(requested_locale.to_string()),
+                        page: 1,
+                        per_page: TOPIC_DETAIL_PREVIEW_REPLIES,
+                    },
+                    fallback_locale,
+                    Some(&[ReplyStatus::Approved]),
+                )
+                .await?
+        } else {
+            (Vec::new(), 0)
+        };
+
+        Ok(ForumTopicDetailWidgetPreview {
+            topic,
+            replies,
+            replies_total,
+            include_replies,
+        })
+    }
+
+    async fn preview_reply_stream(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        props: &Value,
+    ) -> ForumResult<ForumReplyStreamWidgetPreview> {
+        let topic_id = required_uuid(props, "topic_id")?;
+        let page = required_u64(props, "page")?;
+        let per_page = required_u64(props, "per_page")?;
+        let approved_only = required_bool(props, "approved_only")?;
+        if !approved_only
+            && security.get_scope(Resource::ForumReplies, Action::Moderate) == PermissionScope::None
+        {
+            return Err(ForumError::forbidden(
+                "Forum widget preview requires forum_replies:moderate when approved_only=false",
+            ));
+        }
+
+        let statuses = approved_only.then_some([ReplyStatus::Approved]);
+        let (items, total) = ReplyService::new(self.db.clone(), self.event_bus.clone())
+            .list_response_for_topic_by_statuses_with_locale_fallback(
+                tenant_id,
+                security,
+                topic_id,
+                ListRepliesFilter {
+                    locale: Some(locale.to_string()),
+                    page,
+                    per_page,
+                },
+                fallback_locale,
+                statuses.as_ref().map(|values| values.as_slice()),
+            )
+            .await?;
+
+        Ok(ForumReplyStreamWidgetPreview {
+            topic_id: topic_id.to_string(),
+            items,
+            total,
+            page,
+            per_page,
+            approved_only,
+        })
+    }
+}
+
+fn required_string<'a>(props: &'a Value, field: &str) -> ForumResult<&'a str> {
+    props
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ForumError::Validation(format!("Normalized widget field `{field}` is missing")))
+}
+
+fn required_u64(props: &Value, field: &str) -> ForumResult<u64> {
+    props
+        .get(field)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ForumError::Validation(format!("Normalized widget field `{field}` is missing")))
+}
+
+fn required_bool(props: &Value, field: &str) -> ForumResult<bool> {
+    props
+        .get(field)
+        .and_then(Value::as_bool)
+        .ok_or_else(|| ForumError::Validation(format!("Normalized widget field `{field}` is missing")))
+}
+
+fn required_uuid(props: &Value, field: &str) -> ForumResult<Uuid> {
+    let value = required_string(props, field)?;
+    Uuid::parse_str(value).map_err(|_| {
+        ForumError::Validation(format!("Normalized widget field `{field}` is not a UUID"))
+    })
+}
+
+fn optional_uuid(props: &Value, field: &str) -> ForumResult<Option<Uuid>> {
+    props
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| {
+            Uuid::parse_str(value).map_err(|_| {
+                ForumError::Validation(format!("Normalized widget field `{field}` is not a UUID"))
+            })
+        })
+        .transpose()
+}
