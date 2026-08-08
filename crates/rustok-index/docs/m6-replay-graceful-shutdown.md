@@ -1,14 +1,20 @@
 # M6 replay graceful interruption and restart
 
-Status: `runner_source_complete_host_binding_execution_pending`.
+Status: `host_binding_source_complete_execution_pending`.
 
 ## Purpose
 
-The one-page replay worker already exposes cooperative interruption safe points around durable boundaries. This
-slice carries that contract through `PostgresIndexReplayRunner` without changing ordinary replay or persisted
-operator cancellation semantics.
+The one-page replay worker exposes cooperative interruption safe points around durable boundaries, and
+`PostgresIndexReplayRunner::run_interruptible` carries that contract through the lease/job/checkpoint state
+machine without changing ordinary replay or persisted operator cancellation semantics.
 
-`PostgresIndexReplayRunner::run_interruptible` accepts one host-owned synchronous probe. The probe is adapted to
+The shared Index replay runtime and guarded server operator now expose the same lifecycle-neutral interruptible
+entry point. The server GraphQL transport binds that entry point to the existing server-owned
+`StopHandle::is_stopping` probe; GraphQL input does not contain or control shutdown state.
+
+## Durable safe points
+
+`PostgresIndexReplayRunner::run_interruptible` adapts one synchronous boolean probe to
 `IndexReplayWorker::run_next_page_interruptible`, which checks it:
 
 1. after checkpoint readiness and before source scan;
@@ -31,6 +37,35 @@ The existing `PostgresIndexReplayRunner::run` remains unchanged and does not man
 Host interruption never sets `cancel_requested` and never publishes `failed`. User-requested cancellation keeps
 its existing contract and continues to be persisted through `request_cancel`.
 
+## Server lifecycle binding
+
+`SharedIndexReplayRuntime::run_interruptible` delegates only the boolean probe to the PostgreSQL runner; the
+Index crate does not import the server `StopHandle` type.
+
+`IndexReplayOperatorRuntime::run_interruptible` preserves the existing exact tenant/actor and effective
+`modules:manage` authorization before delegating the request/probe to the shared Index runtime. The operator also
+remains lifecycle-type neutral.
+
+`init_graphql_schema` resolves one shared `StopHandle` from `ServerRuntimeContext`. If no worker/module-work host
+created one yet, schema initialization atomically publishes one. Because all `ServerRuntimeContext` clones share
+the same typed-value map, later worker/module-work initialization reuses the same lifecycle handle.
+
+For API-only hosts schema initialization retains one `watch::Receiver<bool>` keepalive. That guarantees the
+existing `StopHandle::stop()` sender has a receiver and can publish the terminal stop value even when no
+background worker subscribed. The keepalive is private server state.
+
+`runIndexReplay` obtains the server-owned handle from GraphQL schema data only after request authorization/input
+preparation and calls:
+
+`IndexReplayOperatorRuntime::run_interruptible` -> `SharedIndexReplayRuntime::run_interruptible` ->
+`PostgresIndexReplayRunner::run_interruptible`
+
+with `|| stop_handle.is_stopping()` as the probe.
+
+The transport never calls `StopHandle::stop`; callers cannot supply the handle, stop value, probe, worker ID, or
+resource budgets. `cancelIndexReplay` remains on the existing persisted cancellation path and does not read or
+mutate shutdown state.
+
 ## Restart and redelivery
 
 An interruption before source scan performs no source work and leaves no checkpoint change. A new worker can
@@ -47,26 +82,24 @@ than introducing rollback or an unsafe synthetic checkpoint advance.
 
 ## Retained source evidence
 
-`source_replay_graceful_shutdown_tests.rs` retains deterministic SQLite source for two cases:
+`source_replay_graceful_shutdown_tests.rs` retains deterministic SQLite source for two runner-level cases:
 
 - interruption at the first safe point proves zero source scans, a pending lease-free job, no checkpoint, and
   successful attempt-2 restart;
 - interruption at the third safe point of a one-mutation page proves one durable entity/inbox receipt, no
   checkpoint, pending yield, then attempt-2 duplicate redelivery and successful checkpoint/job completion.
 
-The packet uses production Index migrations, source registry, mutation store, replay jobs, checkpoint store and
-runner state transitions. It has not been executed by the implementation agent.
+Source guards additionally retain the server binding chain, shared lifecycle handle reuse, API-host receiver
+keepalive, and the absence of shutdown controls in GraphQL input.
+
+The packet and actual server-shutdown path have not been executed by the implementation agent.
 
 ## Still open
 
-This slice does **not** yet connect a server `StopHandle` to `run_interruptible`. The next server-composition
-boundary must provide a host-owned stop probe without exposing it to GraphQL callers and without bypassing
-`IndexReplayOperatorRuntime` authority.
-
-Also still separate:
-
-- runtime execution/admission of this retained evidence;
-- GraphQL replay command execution/cancellation evidence;
+- execute/admit the retained runner interruption/restart evidence;
+- retain/execute an end-to-end GraphQL request that begins replay, triggers the server lifecycle stop signal, and
+  observes pending yield/restart without relying on timing-sensitive sleeps;
+- execute/admit GraphQL replay command/cancellation evidence;
 - locale/partition replay checkpoint scope;
 - explicit rebuild modes;
 - broader multi-host/timing evidence.
