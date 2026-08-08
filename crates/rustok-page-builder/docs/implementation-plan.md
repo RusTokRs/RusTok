@@ -181,6 +181,18 @@ Authenticated real-DOM authoring, dedicated authoring JS/WASM delivery, same-ori
 deterministic release composition and anonymous-authoring exclusion are source-ready. They remain
 execution/rollout work rather than open source architecture gaps.
 
+Forum is the second production consumer and its Page Builder source path is complete through canonical
+module metadata, Fly component/block registration, `ContributionAdapter`, owner preview and owner-backed
+property editing. Provider-neutral Page Builder host ports compose Forum only when tenant/module/RBAC
+admission succeeds; Forum persistence, visibility, widget schemas, validation and authorization remain
+Forum-owned. Exact-source browser, runtime authorization/visibility and deployed server-function
+attestation harnesses are retained source, but execution and observed tenant Wave evidence remain open.
+
+The explicit `pages_reference_consumer_gate` source contract now closes the former implicit blocker gap.
+It remains fail-closed with `accepted = false`, `execution_gate = pending`, provider health `unobserved`
+and no FFA/FBA promotion. The next Page Builder/Pages/Forum work is acceptance evidence, not connecting
+another production consumer architecture slice.
+
 ## Machine-readable contracts
 
 - `contracts/page-builder-service-boundary.json` records capability/preview ports and composition.
@@ -196,6 +208,9 @@ execution/rollout work rather than open source architecture gaps.
   isolated non-builder lifecycle and cache invalidation/read state.
 - `contracts/evidence/page-builder-admin-provider-status-source.json` records the admin provider-status
   and degraded-control source boundary without claiming observed health or execution.
+- `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` records the exact
+  Pages reference-consumer blocker used by Forum Wave evidence; source is ready while acceptance remains
+  maintainer-owned.
 - `scripts/verify/verify-page-builder-admin-provider-status.mjs` source-locks the provider status seam,
   fail-closed capability narrowing, server-preview control and Pages server/UI rollout-flag identity.
 - `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks reviewed runtime,
@@ -203,6 +218,9 @@ execution/rollout work rather than open source architecture gaps.
 - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs` forbids public legacy/default
   publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt, scenario-selection and
   non-builder lifecycle boundaries.
+- `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs` source-locks the Pages
+  gate identity, profile requirements, owner-read availability, Forum source state and no-live-claim
+  boundary.
 - `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs` source-locks exact
   contribution-schema binding, Pages ownership, optimistic metadata revision, registered draft and
   published surfaces, legacy-form absence and the absence of production Fly document writes.
@@ -220,14 +238,15 @@ execution/rollout work rather than open source architecture gaps.
 
 - **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection,
   typed rollback control, generation-aware Pages storefront/artifact readers, registered draft and
-  published Pages metadata properties, and the typed admin provider-status/degraded-control seam are
-  source-connected. Executed metadata conflict/isolation, observed provider-health, inline edit and
-  anonymous bundle evidence remain open.
+  published Pages metadata properties, typed admin provider-status/degraded-control seams, and the
+  Forum second-consumer host composition are source-connected. Executed metadata conflict/isolation,
+  observed provider-health, inline edit, anonymous bundle and Forum browser evidence remain open.
 - **FBA:** `boundary_ready` for preview, consumer-property contracts and policy-bound
   sanitization/materialization, and `service_and_public_transport_integrated` for Pages reviewed
-  publication and immutable rollback/repair continuity. The default-runtime lifecycle is removed and
-  source-level cache invalidation/read boundaries are connected; executed metadata/sanitizer/rollback/
-  repair/cache proof, observed provider health and rollout evidence remain open.
+  publication, immutable rollback/repair continuity and Forum owner-preserving contribution runtime
+  source. The default-runtime lifecycle is removed and source-level cache invalidation/read boundaries
+  are connected; executed Pages gate/sanitizer/rollback/repair/cache proof, Forum runtime evidence,
+  observed provider health and rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability,
   properties and publish contracts.
 - **Evidence:**
@@ -256,7 +275,9 @@ execution/rollout work rather than open source architecture gaps.
   - `crates/rustok-pages/admin/src/metadata_properties.rs`;
   - `crates/rustok-pages/admin/src/standalone_metadata.rs`;
   - `crates/rustok-pages/admin/src/lib.rs`;
+  - `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json`;
   - `crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json`;
+  - `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`;
   - `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
   - `crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
   - `crates/rustok-pages/src/dto/page.rs`;
@@ -295,14 +316,14 @@ execution/rollout work rather than open source architecture gaps.
 5. Supply and retain observed provider-health evidence from a real composition/runtime source, then
    exercise degraded publish-off, preview-off and unavailable/read-only behavior. The admin seam is
    source-ready; live SLO observation is not fabricated by Pages.
-6. Connect the next production consumer's concrete tenant-scoped store and contextual preview
-   renderer to the canonical composition root without consumer-local authorization or save-result
-   side channels.
-7. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
+6. Execute and accept `pages_reference_consumer_gate` against an exact reviewed source/deployment;
+   the gate source is ready but remains `accepted = false` until all required Pages profiles and
+   execution evidence are retained with owner sign-off and rollback decision.
+7. After the Pages gate is accepted, execute the retained Forum browser/runtime/deployment-attestation
+   packets and replace synthetic Forum Wave evidence with an observed tenant packet.
+8. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
    `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
-8. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
-   sanitizer identity, materialization, Pages publish/rollback/repair receipts, cache generation,
-   provider status and storefront read.
+9. Promote FFA/FBA only after observed Pages/Forum evidence and provider-health requirements are met.
 
 ## Verification
 
@@ -311,6 +332,11 @@ execution/rollout work rather than open source architecture gaps.
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`;
+- `node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs`;
+- `node scripts/verify/verify-forum-page-builder-browser-evidence-harness.mjs`;
+- `node scripts/verify/verify-forum-page-builder-runtime-authorization-evidence.mjs`;
+- `node scripts/verify/verify-forum-page-builder-serverfn-deployment-attestation.mjs`;
 - `node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
 - `node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
 - `cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport`;
@@ -334,5 +360,7 @@ These are execution cursors only. They were not run by this source-authoring sli
 - Consumer modules own property values, optimistic revisions, persistence, publication lifecycle,
   exact artifact manifests, rollback/repair, receipts, cache scope/key policy, concrete tenant-scoped
   ports and the live provider-health source when one exists for that composition.
+- Forum remains owner of Forum widget configuration/schema/validation, owner data reads, visibility and
+  authorization even when Page Builder hosts its contribution surfaces.
 - Cache/server infrastructure owns shared connection, byte storage and generation primitives only.
 - Host frameworks render or bind module surfaces and do not define provider-local contracts.
