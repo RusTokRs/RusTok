@@ -69,18 +69,131 @@ pub trait PageBuilderContributionPreviewPort: Send + Sync {
     ) -> PageBuilderContributionPreviewFuture;
 }
 
+pub type PageBuilderContributionPropertySchemaFuture = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    PageBuilderContributionPropertySchema,
+                    PageBuilderContributionPropertyError,
+                >,
+            > + 'static,
+    >,
+>;
+
+pub type PageBuilderContributionPropertyValidationFuture = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    PageBuilderContributionPropertyValidation,
+                    PageBuilderContributionPropertyError,
+                >,
+            > + 'static,
+    >,
+>;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderContributionPropertySchemaRequest {
+    pub provider: String,
+    pub component_type: String,
+    pub component_id: String,
+    pub property_schema: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderContributionPropertyValidationRequest {
+    pub provider: String,
+    pub component_type: String,
+    pub component_id: String,
+    pub property_schema: Value,
+    #[serde(default)]
+    pub props: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderContributionPropertySchema {
+    pub schema_id: String,
+    pub schema: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PageBuilderContributionPropertyIssue {
+    pub class: String,
+    pub code: String,
+    pub message: String,
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderContributionPropertyValidation {
+    pub valid: bool,
+    pub normalized_props: Value,
+    #[serde(default)]
+    pub issues: Vec<PageBuilderContributionPropertyIssue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageBuilderContributionPropertyError {
+    pub message: String,
+    pub stable_code: Option<String>,
+}
+
+impl PageBuilderContributionPropertyError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            stable_code: None,
+        }
+    }
+
+    pub fn with_stable_code(message: impl Into<String>, code: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            stable_code: Some(code.into()),
+        }
+    }
+}
+
+impl std::fmt::Display for PageBuilderContributionPropertyError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.stable_code.as_deref() {
+            Some(code) => write!(formatter, "{} ({code})", self.message),
+            None => formatter.write_str(&self.message),
+        }
+    }
+}
+
+impl std::error::Error for PageBuilderContributionPropertyError {}
+
+/// Owner-backed schema and normalization port for dynamic contribution properties.
+///
+/// The Page Builder host never persists owner data. It asks the provider for the current schema and
+/// normalized configuration, then writes only the validated `props` object through ordinary Fly
+/// commands. Owner transports must independently enforce tenant/module/RBAC admission.
+pub trait PageBuilderContributionPropertyPort: Send + Sync {
+    fn schema(
+        &self,
+        request: PageBuilderContributionPropertySchemaRequest,
+    ) -> PageBuilderContributionPropertySchemaFuture;
+
+    fn validate(
+        &self,
+        request: PageBuilderContributionPropertyValidationRequest,
+    ) -> PageBuilderContributionPropertyValidationFuture;
+}
+
 pub type PageBuilderRegistryInstaller =
     Arc<dyn Fn(&mut RegistrySet) -> Result<(), String> + Send + Sync>;
 
 /// One optional-domain extension supplied by the application composition root.
 ///
-/// The extension carries only public contribution metadata, Fly registry installation and an
-/// optional owner preview port. It contains no tenant policy, persistence or domain state.
+/// The extension carries only public contribution metadata, Fly registry installation and optional
+/// owner preview/property ports. It contains no tenant policy, persistence or domain state.
 #[derive(Clone)]
 pub struct PageBuilderContributionHostExtension {
     manifest: ModuleContributionManifest,
     registry_installer: PageBuilderRegistryInstaller,
     preview_port: Option<Arc<dyn PageBuilderContributionPreviewPort>>,
+    property_port: Option<Arc<dyn PageBuilderContributionPropertyPort>>,
 }
 
 impl PageBuilderContributionHostExtension {
@@ -92,6 +205,7 @@ impl PageBuilderContributionHostExtension {
             manifest,
             registry_installer: Arc::new(registry_installer),
             preview_port: None,
+            property_port: None,
         }
     }
 
@@ -100,6 +214,14 @@ impl PageBuilderContributionHostExtension {
         preview_port: Arc<dyn PageBuilderContributionPreviewPort>,
     ) -> Self {
         self.preview_port = Some(preview_port);
+        self
+    }
+
+    pub fn with_property_port(
+        mut self,
+        property_port: Arc<dyn PageBuilderContributionPropertyPort>,
+    ) -> Self {
+        self.property_port = Some(property_port);
         self
     }
 
@@ -271,6 +393,17 @@ impl PageBuilderContributionHostContext {
             .iter()
             .find(|extension| extension.owner_provider().trim() == provider)
             .and_then(|extension| extension.preview_port.clone())
+    }
+
+    pub fn property_port(
+        &self,
+        provider: &str,
+    ) -> Option<Arc<dyn PageBuilderContributionPropertyPort>> {
+        let provider = provider.trim();
+        self.extensions
+            .iter()
+            .find(|extension| extension.owner_provider().trim() == provider)
+            .and_then(|extension| extension.property_port.clone())
     }
 
     pub fn is_empty(&self) -> bool {
