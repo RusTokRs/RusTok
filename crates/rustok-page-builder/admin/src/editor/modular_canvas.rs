@@ -1,8 +1,8 @@
 use crate::editor::{
     AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
     ConsumerPropertiesPanel, ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel,
-    DynamicRuntimePanel, IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel,
-    PropertiesAssetsPanel, PublishScenarioSelectorPanel, ResponsiveStylePanel,
+    ContributionPreviewPanel, DynamicRuntimePanel, IsolatedAuthoringCanvas, PageManagerPanel,
+    PaletteLayersPanel, PropertiesAssetsPanel, PublishScenarioSelectorPanel, ResponsiveStylePanel,
     RuntimePublishGatePanel, RuntimeScenarioMatrixPanel, RuntimeScenarioPanel,
     RuntimeScenarioRegressionPanel, ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel,
     SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel,
@@ -68,6 +68,7 @@ pub fn AdminCanvas(
         .and_then(|facade| facade.consumer_properties())
         .or_else(|| use_context::<Arc<ConsumerPropertyEditorRuntime>>());
     let consumer_property_assembly = contribution_assembly.clone();
+    let contribution_preview_assembly = contribution_assembly.clone();
     let runtime = AdminEditorRuntime::new(
         controller,
         facade,
@@ -139,6 +140,7 @@ pub fn AdminCanvas(
     let canvas_runtime = runtime.clone();
     let capability_runtime = runtime.clone();
     let capability_provider_status = provider_status;
+    let contribution_preview_runtime = runtime.clone();
     let audit_runtime = runtime.clone();
     let gate_runtime = runtime.clone();
     let scenario_runtime = runtime.clone();
@@ -202,6 +204,10 @@ pub fn AdminCanvas(
                     <ConsumerPropertiesPanel
                         runtime=consumer_properties
                         contribution_assembly=consumer_property_assembly
+                    />
+                    <ContributionPreviewPanel
+                        runtime=contribution_preview_runtime
+                        contribution_assembly=contribution_preview_assembly
                     />
                     <SsrLocalePanel runtime=ssr_locale_runtime />
                     <SsrLocalePolicyPanel runtime=ssr_locale_policy_runtime />
