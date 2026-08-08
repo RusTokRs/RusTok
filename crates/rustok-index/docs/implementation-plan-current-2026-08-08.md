@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked at `main@ec9ff9e8303d0d42fd937eba4458b9c644c3fc73` and continued on
-`agent/index-replay-locale-runner-graphql-20260808`.
+Status overlay rechecked at `main@523b7fa6da9bed59743e4fed532e17095010eba7` and continued on
+`agent/index-replay-locale-command-evidence-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -123,7 +123,8 @@ exactly schema-wide; it is not rewritten from schema locale defaults. Each run c
 identity and applies fixed transport caps: 100 mutations per page, at most 8 pages, heartbeat every page and a
 60-second lease.
 
-GraphQL runtime execution/cancellation evidence remains maintainer-owned.
+Retained command source evidence now includes schema-wide command behavior, locale command canonicalization and
+a dedicated locale yield/isolation/fresh-runtime resume packet. GraphQL execution/admission remains maintainer-owned.
 
 ## M6 replay graceful interruption and server lifecycle binding
 
@@ -179,7 +180,7 @@ implementation agent. See `m6-replay-pending-future-timeouts.md`.
 
 ## M6 locale-scoped replay source state
 
-Locale replay is now split from partition/rebuild-mode work and tracked end-to-end instead of as one aggregate
+Locale replay is split from partition/rebuild-mode work and tracked end-to-end instead of as one aggregate
 future item.
 
 Already merged on reviewed `main`:
@@ -193,18 +194,25 @@ Already merged on reviewed `main`:
 - one-page worker resolves the exact runtime schema before checkpoint/source work, rejects locale scope for
   `LocaleMode::None`, and derives source scan plus checkpoint from the same request locale;
 - PostgreSQL checkpoint storage requires exact lease/checkpoint locale equality and persists canonical locale
-  while schema-wide checkpoints retain the historical empty locale string.
+  while schema-wide checkpoints retain the historical empty locale string;
+- optional locale is carried through the multi-page replay runner and GraphQL command transport;
+- ordinary and graceful runner paths derive the durable job lease from the same page locale scope;
+- terminal success binds the leased locale checkpoint instead of hard-coding the schema-wide empty locale;
+- GraphQL locale parsing remains authorization-first and locale omission remains exactly schema-wide.
 
 Current branch source-complete work:
 
-- Carry optional locale through the multi-page replay runner and GraphQL command transport;
-- use one runner helper for ordinary and graceful execution so durable job lease and page request share scope;
-- bind the terminal success checkpoint probe to `IndexReplayJobLease.locale` instead of hard-coding empty locale;
-- preserve schema-wide omission exactly and canonicalize GraphQL locale only after authorization;
-- retain partition as empty and keep targeted/full/shadow rebuild modes outside this contract.
+- Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.
+- force bounded `en-US` yield at the fixed 8-page GraphQL cap and retain cursor `8` on attempt 1;
+- complete a distinct `de` locale job without advancing the pending `en-US` checkpoint;
+- complete a distinct schema-wide job over the same stable owner events and prove inbox duplicate safety without
+  stealing the locale checkpoint;
+- rebuild distribution/runtime/operator/GraphQL composition over the same durable database and require the same
+  `en-US` job to resume as attempt 2, redeliver the final event as `Duplicate`, and commit its own completion;
+- retain exactly three job/checkpoint scopes at completion: schema-wide, `en-US` and `de`.
 
-Runtime execution/admission is still pending. In particular, no claim is made that the retained locale
-replay/restart command path has been executed against SQLite/PostgreSQL or admitted for deployment.
+The retained packet is source-complete but has not been executed. SQLite/PostgreSQL runtime execution and
+production admission remain maintainer-owned. See `m6-locale-replay-command-evidence.md`.
 
 ## Remaining Storefront parity/evidence blockers
 
@@ -242,6 +250,7 @@ replay/restart command path has been executed against SQLite/PostgreSQL or admit
 - [x] Add durable locale replay job scope and exact locale checkpoint identity.
 - [x] Carry locale through one-page replay worker/checkpoint storage with fail-closed `LocaleMode` admission.
 - [x] Carry optional locale through the multi-page replay runner and GraphQL command transport.
+- [x] Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
 - [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
 - [ ] Execute/admit retained graceful interruption/restart and GraphQL shutdown evidence.
@@ -284,15 +293,18 @@ replay/restart command path has been executed against SQLite/PostgreSQL or admit
 
 M7 Storefront remains execution/admission-gated and must not gain a traffic switch from source inspection alone.
 
-The locale request/source/job/checkpoint/runner/GraphQL identity chain is source-complete after this slice. The
-next M6 evidence boundary is retained end-to-end locale replay/restart execution through the real runner/command
-composition, proving exact locale resume and isolation from schema-wide/other-locale jobs without changing
-cancellation, heartbeat or graceful-stop semantics.
+The locale request/source/job/checkpoint/runner/GraphQL identity chain and deterministic command/restart evidence
+source are complete. The next locale action is maintainer execution/admission of the retained packet, not another
+scope abstraction.
 
-Partition is no longer grouped with locale. Add partition replay scope only after a real partition-capable source
+For source-only M6 continuation, the next independent boundary is to define/retain whole-page duration versus
+lease/heartbeat policy beyond the existing per-dependency timeout bounds. That work must preserve cancellation,
+graceful-stop and locale job/checkpoint identities.
+
+Partition remains separate and blocked. Add partition replay scope only after a real partition-capable source
 contract exists and can filter before pagination; do not merely populate `partition_key`. Explicit
- targeted/full/shadow rebuild modes remain a later separate contract and must not be smuggled into partition or
-locale evidence work.
+targeted/full/shadow rebuild modes remain a later separate contract and must not be smuggled into timeout,
+partition or locale evidence work.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
