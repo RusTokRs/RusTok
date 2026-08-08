@@ -14,8 +14,10 @@
     "video_disabled": true,
     "browser_predecessor_required": true,
     "predecessor_same_source_required": true,
-    "predecessor_same_origin_hash_required": true,
+    "predecessor_same_api_origin_hash_required": true,
+    "predecessor_same_admin_origin_hash_required": true,
     "predecessor_immutable_deployment_digest_required": true,
+    "api_and_admin_origins_must_be_distinct": true,
     "production_tenant_modules_read_used": true,
     "production_update_module_settings_used": true,
     "direct_sql_used": false,
@@ -71,5 +73,5 @@
     "owner_review_observed": false,
     "gate_accepted": false
   },
-  "next_cursor": "maintainer executes the four-profile matrix on the exact browser-predecessor source/deployment; successful output remains owner-review pending"
+  "next_cursor": "maintainer executes the four-profile matrix on the exact browser-predecessor source/API/admin deployment; successful output remains owner-review pending"
 }
