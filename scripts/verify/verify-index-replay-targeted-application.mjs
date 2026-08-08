@@ -24,8 +24,14 @@ const targeted = requireMarkers(targetedPath, [
   'pub struct IndexReplayTargetedExecutor<M>',
   'IndexReplayModeSelection::Targeted(request) => request',
   'IndexReplayTargetedError::WrongMode',
+  'let registered = self',
+  '.get(request.schema())',
+  'for (position, key) in request.keys().iter().enumerate()',
+  'key.entity_id.is_nil()',
+  '(LocaleMode::Required, false)',
+  '(LocaleMode::None, true)',
+  'IndexReplayTargetedError::InvalidTarget',
   'source_for_schema(request.schema())',
-  'self.schemas.get(request.schema()).is_none()',
   '.load(request)',
   'let mut event_ids = BTreeSet::<Uuid>::new();',
   'event_id.is_nil()',
@@ -35,11 +41,30 @@ const targeted = requireMarkers(targetedPath, [
   'missing_count: requested_count - mutation_count',
   'targeted_load_applies_only_returned_mutations_and_reports_missing_keys',
   'targeted_rejects_other_modes_without_source_or_mutation_execution',
+  'targeted_rejects_invalid_requested_entity_and_locale_scope_before_load',
   'targeted_preflights_nil_duplicate_and_schema_invalid_batches_before_writes',
   'targeted_exact_retry_replays_stable_event_ids_after_partial_failure',
   'RetryOnceSink::new(Uuid::from_u128(901))',
   'assert_eq!(retry.duplicate_count(), 1);',
 ]);
+const modeSelection = targeted.indexOf('IndexReplayModeSelection::Targeted(request) => request');
+const schemaAdmission = targeted.indexOf('let registered = self', modeSelection);
+const keyAdmission = targeted.indexOf('for (position, key) in request.keys().iter().enumerate()', schemaAdmission);
+const sourceResolution = targeted.indexOf('source_for_schema(request.schema())', keyAdmission);
+const load = targeted.indexOf('.load(request)', sourceResolution);
+const batchPreflight = targeted.indexOf('let mut event_ids = BTreeSet::<Uuid>::new();', load);
+const mutationWrite = targeted.indexOf('.apply_replay_mutation(self.schemas.as_ref(), &source_name, mutation)', batchPreflight);
+if (
+  modeSelection < 0 ||
+  schemaAdmission <= modeSelection ||
+  keyAdmission <= schemaAdmission ||
+  sourceResolution <= keyAdmission ||
+  load <= sourceResolution ||
+  batchPreflight <= load ||
+  mutationWrite <= batchPreflight
+) {
+  fail('Targeted order must remain mode -> active schema/key admission -> source -> load -> full batch preflight -> mutation writes');
+}
 for (const forbidden of [
   'DatabaseConnection',
   'PostgresMutationStore',
@@ -104,6 +129,7 @@ for (const forbidden of [
 requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
   'Status: `source_complete_host_guard_pending`.',
   '`IndexReplayTargetedExecutor`',
+  'requested key admission',
   'Missing requested keys',
   'does not infer deletion',
   'source-owned mutation event UUID',
@@ -114,11 +140,13 @@ requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_application_host_guard_pending`.',
   '## Targeted mutation application',
   '`IndexReplayTargetedExecutor`',
+  'requested keys against the active schema',
   'Missing requested keys are allowed',
   'PostgreSQL/runtime materialization and request-bound server host',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
+  'requested Targeted keys against the active schema before source load',
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
@@ -128,4 +156,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-targeted-application.mjs'",
 ]);
 
-console.log('[verify-index-replay-targeted-application] Targeted uses canonical bounded load plus stable replay mutation application and exact retry convergence without Full job/checkpoint ownership');
+console.log('[verify-index-replay-targeted-application] Targeted validates exact keys before load, preflights the whole batch, and converges exact retry without Full job/checkpoint ownership');
