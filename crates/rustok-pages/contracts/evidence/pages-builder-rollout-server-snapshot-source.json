@@ -1,0 +1,42 @@
+{
+  "format": "pages_builder_rollout_server_snapshot_source_v1",
+  "status": "trusted_server_snapshot_source_ready_ui_dispatch_binding_pending",
+  "prepared_on": "2026-08-08",
+  "source_base": "0ae8f7f4382a4218107c43a4e1e6f1e5b957a84e",
+  "source_contract": {
+    "server_endpoint": "/api/fn/pages/builder-rollout-flags",
+    "tenant_context_is_server_extracted": true,
+    "auth_context_is_server_extracted": true,
+    "auth_tenant_must_match_routed_tenant": true,
+    "pages_read_authority_required": true,
+    "settings_source": "rustok_api::tenant_module_settings",
+    "module_slug_is_fixed_to_pages": true,
+    "enabled_pages_row_required": true,
+    "raw_settings_are_not_returned": true,
+    "only_builder_capability_flags_are_returned": true,
+    "omitted_builder_keys_default_to_all_on_for_backward_compatibility": true,
+    "malformed_setting_types_fail_closed": true,
+    "invalid_flag_combinations_fail_closed": true,
+    "all_four_declared_profiles_have_source_tests": true,
+    "browser_supplied_flags_accepted": false,
+    "settings_mutation_added": false,
+    "pages_ui_facade_binding_complete": false,
+    "pages_ssr_dispatch_binding_complete": false,
+    "four_profile_runtime_matrix_executable": false,
+    "gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "validation": {
+    "tests_run": false,
+    "node_verifiers_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "database_run": false,
+    "http_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false
+  },
+  "next_cursor": "consume pages_builder_rollout_flags in the Pages admin workspace and independently re-read the trusted snapshot in authoritative Page Builder SSR dispatch"
+}
