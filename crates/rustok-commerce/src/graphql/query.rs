@@ -1834,7 +1834,7 @@ impl CommerceQuery {
     ) -> Result<Vec<GqlProductAttributeValue>> {
         require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         let tenant_id = product_query_tenant(ctx, tenant_id)?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
             "Permission denied: products:read required",
@@ -1842,10 +1842,33 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
-            .load_product_attribute_values(tenant_id, product_id, locale.trim())
+        let locale = locale.trim();
+        let port_context = product_schema_read_port_context(
+            ctx,
+            tenant_id,
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+            locale,
+            "product_attribute_values",
+        );
+        let schema_read_port = product_schema_read_port(
+            db,
+            event_bus,
+            &port_context,
+            "product_attribute_values",
+        )?;
+        schema_read_port
+            .read_product_attribute_values(
+                port_context.clone(),
+                rustok_product::ProductAttributeValuesRequest { product_id },
+            )
             .await
-            .map_err(|error| map_product_service_error(error, "product_query"))
+            .map_err(|error| {
+                FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "product_attribute_values",
+                ))
+            })
             .map(|items| items.into_iter().map(Into::into).collect())
     }
 

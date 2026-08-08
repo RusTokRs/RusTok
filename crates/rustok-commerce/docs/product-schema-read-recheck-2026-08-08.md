@@ -2,14 +2,14 @@
 
 ## Scope
 
-Rechecked the canonical ecommerce execution plan and the currently mounted Product GraphQL read paths against `main` at `dfddce9f57916a712d531db38e75c87e7c45e8cf`, then continued the Product schema-read cutover from `aaa496887fd1492f3feca8ac52261458ce25705e`.
+Rechecked the canonical ecommerce execution plan and the currently mounted Product GraphQL read paths against `main` at `dfddce9f57916a712d531db38e75c87e7c45e8cf`, then continued the Product schema-read cutover from `aaa496887fd1492f3feca8ac52261458ce25705e` through the current `main` line.
 
 The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`. This packet does not promote FBA/FFA or verification status and does not replace that plan.
 
 ## Recheck findings
 
-1. `ProductCatalogSchemaReadPort` publishes the effective-form aggregate capability added by PR #3182. The mounted `productEffectiveForm` resolver was still constructing `ProductCatalogSchemaService` directly and is cut over in the continuation slice below.
-2. The mounted `productAttributeValues` resolver still constructs `ProductCatalogSchemaService` directly. PR #3203 published the transport-neutral owner capability needed for its next consumer cutover.
+1. `ProductCatalogSchemaReadPort` publishes the effective-form aggregate capability added by PR #3182, and mounted `productEffectiveForm` is now cut over to that host-selected owner capability.
+2. PR #3203 published `ProductCatalogSchemaReadPort::read_product_attribute_values`; the mounted `productAttributeValues` resolver was still constructing `ProductCatalogSchemaService` directly and is cut over in the continuation slice below.
 3. `storefrontCatalogSearchOptions` remains a direct `ProductCatalogSchemaService` consumer and still needs an owner projection/cutover.
 4. The active `CommerceQueryRoot` mounts both `query::CommerceQuery` and `product_catalog::ProductCatalogQuery`. The newer `adminProductCatalog`/`storefrontProductCatalog` paths use `ProductCatalogReadRuntime`, while legacy mounted `product`/`products` roots in `query::CommerceQuery` still contain direct `CatalogService`/Product entity read paths. Therefore the broad ecommerce invariant requiring typed owner boundaries on every production path must remain open; source inspection does not justify a status promotion.
 
@@ -18,7 +18,7 @@ The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`
 - Published `ProductAttributeValuesRequest` and optional `ProductCatalogSchemaReadPort::read_product_attribute_values`.
 - Kept existing adapters source-compatible with a stable fail-closed `product.attribute_values_unavailable` default.
 - Implemented the in-process Product owner capability through `ProductCatalogSchemaService::load_product_attribute_values`, preserving canonical `PortContext` policy, tenant, locale, deadline, correlation, and stable public `PortError` mapping.
-- Extended `verify-product-catalog-schema-read-port.mjs` so the owner capability is locked in source while the mounted `productAttributeValues` consumer remains explicit follow-up debt.
+- Extended `verify-product-catalog-schema-read-port.mjs` so the owner capability is locked in source while the mounted consumer remained explicit follow-up debt.
 
 ## Effective-form continuation
 
@@ -28,13 +28,19 @@ The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`
 - Consume the Product-owned aggregate projection directly, so Commerce no longer reconstructs group labels, definitions, options, and missing-definition invariants for this resolver.
 - Extend the schema-read source guard to require the mounted effective-form owner-port path and forbid direct `ProductCatalogSchemaService` construction in it.
 
+## Attribute-values continuation
+
+- Cut mounted `productAttributeValues` to the host-selected `ProductCatalogSchemaReadPort::read_product_attribute_values` capability published in PR #3203.
+- Preserve current-tenant admission, `PRODUCTS_READ`, authenticated actor, trimmed locale, request channel, bounded deadline, and the shared correlation-aware Product GraphQL public error mapper.
+- Preserve the existing GraphQL response shape by mapping the Product-owned `ProductAttributeValueRecord` projection through the existing `GqlProductAttributeValue` conversion.
+- Extend the schema-read source guard to require `ProductAttributeValuesRequest`, the mounted owner-port call, and no direct `ProductCatalogSchemaService` construction in this resolver.
+
 ## Remaining execution order
 
-1. Cut mounted `productAttributeValues` to `ProductCatalogSchemaReadPort::read_product_attribute_values`.
-2. Publish/cut the owner projection needed by `storefrontCatalogSearchOptions`.
-3. Reconcile or retire the legacy mounted `product`/`products` GraphQL roots so direct Product service/entity reads no longer violate the every-production-path FBA invariant.
-4. Continue remaining Product schema writes and lifecycle command cutovers from the canonical ecommerce plan.
-5. Only after the source cutovers, run the plan-listed static, compile, parity, remote-profile, restart, and backend evidence before changing promotion status.
+1. Publish/cut the owner projection needed by `storefrontCatalogSearchOptions`.
+2. Reconcile or retire the legacy mounted `product`/`products` GraphQL roots so direct Product service/entity reads no longer violate the every-production-path FBA invariant.
+3. Continue remaining Product schema writes and lifecycle command cutovers from the canonical ecommerce plan.
+4. Only after the source cutovers, run the plan-listed static, compile, parity, remote-profile, restart, and backend evidence before changing promotion status.
 
 ## Verification state
 
