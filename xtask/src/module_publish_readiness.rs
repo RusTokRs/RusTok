@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "../../crates/rustok-build/src/module_manifest_contribution.rs"]
+mod module_manifest_contribution;
+
 pub(crate) fn validate_module_publish_readiness(
     manifest_path: &Path,
     slug: &str,
@@ -84,7 +87,7 @@ fn validate_module_contribution_manifest_contract(
     let path = module_root.join("rustok-module.toml");
     let source = fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {} for contribution validation", path.display()))?;
-    let Some(normalized) = rustok_module_manifest::normalize_module_contribution_manifest(&source)
+    let Some(normalized) = module_manifest_contribution::normalize_module_contribution_manifest(&source)
         .map_err(|error| anyhow::anyhow!("Module '{slug}' has invalid contribution metadata: {error}"))?
     else {
         return Ok(());
