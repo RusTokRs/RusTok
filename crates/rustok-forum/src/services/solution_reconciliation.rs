@@ -448,21 +448,24 @@ WITH bounded_stats AS (
     WHERE tenant_id = ?1
     ORDER BY user_id
     LIMIT ?2
+), expected_stats AS (
+    SELECT r.author_id AS user_id, COUNT(s.topic_id) AS expected_solution_count
+    FROM forum_solutions s
+    JOIN forum_replies r
+      ON r.tenant_id = s.tenant_id
+     AND r.topic_id = s.topic_id
+     AND r.id = s.reply_id
+     AND r.status = 'approved'
+    WHERE s.tenant_id = ?1
+      AND r.author_id IN (SELECT user_id FROM bounded_stats)
+    GROUP BY r.author_id
 )
 SELECT
     stats.user_id AS id,
     CAST(stats.solution_count AS INTEGER) AS stored_solution_count,
-    CAST(COUNT(s.topic_id) AS INTEGER) AS expected_solution_count
+    CAST(COALESCE(expected.expected_solution_count, 0) AS INTEGER) AS expected_solution_count
 FROM bounded_stats stats
-LEFT JOIN forum_replies r
-    ON r.tenant_id = ?1
-   AND r.author_id = stats.user_id
-   AND r.status = 'approved'
-LEFT JOIN forum_solutions s
-    ON s.tenant_id = r.tenant_id
-   AND s.topic_id = r.topic_id
-   AND s.reply_id = r.id
-GROUP BY stats.user_id, stats.solution_count
+LEFT JOIN expected_stats expected ON expected.user_id = stats.user_id
 ORDER BY stats.user_id
 "#;
 
@@ -474,21 +477,24 @@ WITH bounded_stats AS (
       AND user_id > ?2
     ORDER BY user_id
     LIMIT ?3
+), expected_stats AS (
+    SELECT r.author_id AS user_id, COUNT(s.topic_id) AS expected_solution_count
+    FROM forum_solutions s
+    JOIN forum_replies r
+      ON r.tenant_id = s.tenant_id
+     AND r.topic_id = s.topic_id
+     AND r.id = s.reply_id
+     AND r.status = 'approved'
+    WHERE s.tenant_id = ?1
+      AND r.author_id IN (SELECT user_id FROM bounded_stats)
+    GROUP BY r.author_id
 )
 SELECT
     stats.user_id AS id,
     CAST(stats.solution_count AS INTEGER) AS stored_solution_count,
-    CAST(COUNT(s.topic_id) AS INTEGER) AS expected_solution_count
+    CAST(COALESCE(expected.expected_solution_count, 0) AS INTEGER) AS expected_solution_count
 FROM bounded_stats stats
-LEFT JOIN forum_replies r
-    ON r.tenant_id = ?1
-   AND r.author_id = stats.user_id
-   AND r.status = 'approved'
-LEFT JOIN forum_solutions s
-    ON s.tenant_id = r.tenant_id
-   AND s.topic_id = r.topic_id
-   AND s.reply_id = r.id
-GROUP BY stats.user_id, stats.solution_count
+LEFT JOIN expected_stats expected ON expected.user_id = stats.user_id
 ORDER BY stats.user_id
 "#;
 
@@ -499,21 +505,24 @@ WITH bounded_stats AS (
     WHERE tenant_id = $1
     ORDER BY user_id
     LIMIT $2
+), expected_stats AS (
+    SELECT r.author_id AS user_id, COUNT(s.topic_id)::BIGINT AS expected_solution_count
+    FROM forum_solutions s
+    JOIN forum_replies r
+      ON r.tenant_id = s.tenant_id
+     AND r.topic_id = s.topic_id
+     AND r.id = s.reply_id
+     AND r.status = 'approved'
+    WHERE s.tenant_id = $1
+      AND r.author_id IN (SELECT user_id FROM bounded_stats)
+    GROUP BY r.author_id
 )
 SELECT
     stats.user_id AS id,
     stats.solution_count::BIGINT AS stored_solution_count,
-    COUNT(s.topic_id)::BIGINT AS expected_solution_count
+    COALESCE(expected.expected_solution_count, 0)::BIGINT AS expected_solution_count
 FROM bounded_stats stats
-LEFT JOIN forum_replies r
-    ON r.tenant_id = $1
-   AND r.author_id = stats.user_id
-   AND r.status = 'approved'
-LEFT JOIN forum_solutions s
-    ON s.tenant_id = r.tenant_id
-   AND s.topic_id = r.topic_id
-   AND s.reply_id = r.id
-GROUP BY stats.user_id, stats.solution_count
+LEFT JOIN expected_stats expected ON expected.user_id = stats.user_id
 ORDER BY stats.user_id
 "#;
 
@@ -525,21 +534,24 @@ WITH bounded_stats AS (
       AND user_id > $2
     ORDER BY user_id
     LIMIT $3
+), expected_stats AS (
+    SELECT r.author_id AS user_id, COUNT(s.topic_id)::BIGINT AS expected_solution_count
+    FROM forum_solutions s
+    JOIN forum_replies r
+      ON r.tenant_id = s.tenant_id
+     AND r.topic_id = s.topic_id
+     AND r.id = s.reply_id
+     AND r.status = 'approved'
+    WHERE s.tenant_id = $1
+      AND r.author_id IN (SELECT user_id FROM bounded_stats)
+    GROUP BY r.author_id
 )
 SELECT
     stats.user_id AS id,
     stats.solution_count::BIGINT AS stored_solution_count,
-    COUNT(s.topic_id)::BIGINT AS expected_solution_count
+    COALESCE(expected.expected_solution_count, 0)::BIGINT AS expected_solution_count
 FROM bounded_stats stats
-LEFT JOIN forum_replies r
-    ON r.tenant_id = $1
-   AND r.author_id = stats.user_id
-   AND r.status = 'approved'
-LEFT JOIN forum_solutions s
-    ON s.tenant_id = r.tenant_id
-   AND s.topic_id = r.topic_id
-   AND s.reply_id = r.id
-GROUP BY stats.user_id, stats.solution_count
+LEFT JOIN expected_stats expected ON expected.user_id = stats.user_id
 ORDER BY stats.user_id
 "#;
 
