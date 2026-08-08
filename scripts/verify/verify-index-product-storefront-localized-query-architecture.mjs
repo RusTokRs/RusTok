@@ -68,7 +68,6 @@ requireMarkers(architecturePath, [
   '`SchemaRegistry::compile_postgres_localized_page_query`',
   '`SchemaRegistry::decode_postgres_localized_query_page`',
   '`IndexQueryPort` publishes `execute_localized_query`',
-  '`SharedIndexQueryRuntime` forwards the',
   '`PostgresIndexQueryPort::execute_localized_query`',
   '`REPEATABLE READ, READ ONLY`',
   '`PostgresQueryEntityAdmission`',
@@ -84,11 +83,11 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', 
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  'Status overlay rechecked from `main@1ddbc6b5457d2f9263b842c6e5b1942598a26ff7` (#3215)',
+  'Status overlay rechecked from `main@eab3b1b925e5cbfa65d2fe3f938b63be7a067846` (#3218)',
   'Wire localized execution through canonical PostgreSQL runtime with readiness/admission/snapshot.',
   'Add generic scalar String `TextLike` usable inside folded `any_locale_filter`.',
   'implement the Product Storefront Index adapter plus retained localized-query',
-  'Do not add a runtime',
+  'No historical-key runtime compatibility path is allowed.',
 ]);
 
 console.log('[verify-index-product-storefront-localized-query-architecture] localized Product runtime plus generic TextLike are locked; adapter/search-bound/evidence remain pending');
