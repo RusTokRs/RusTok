@@ -181,23 +181,28 @@ async fn open_case_in_transaction(
         .exec(&receipt.transaction)
         .await?;
 
-    append_event(
-        &receipt.transaction,
-        tenant_id,
-        "case",
-        stored.id,
-        if created {
-            "case_opened"
-        } else {
-            "reports_attached"
-        },
-        serde_json::json!({
-            "created": created,
-            "report_ids": command.report_ids,
-            "deduplication_key": deduplication_key,
-            "subject_revision": stored.subject_revision,
-        }),
-    )
-    .await?;
+    // A deduplicated open with no reports is a pure admission/read outcome. Do not forge a
+    // `reports_attached` audit fact when there was nothing to attach. This also lets higher-level
+    // workflows inspect active-case ownership without mutating an unrelated case's audit stream.
+    if created || !command.report_ids.is_empty() {
+        append_event(
+            &receipt.transaction,
+            tenant_id,
+            "case",
+            stored.id,
+            if created {
+                "case_opened"
+            } else {
+                "reports_attached"
+            },
+            serde_json::json!({
+                "created": created,
+                "report_ids": command.report_ids,
+                "deduplication_key": deduplication_key,
+                "subject_revision": stored.subject_revision,
+            }),
+        )
+        .await?;
+    }
     map_case(stored)
 }
