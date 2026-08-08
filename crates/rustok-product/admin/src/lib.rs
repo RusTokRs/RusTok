@@ -10,6 +10,9 @@ mod lifecycle_retry_identity;
 mod model;
 #[path = "transport/product_lifecycle_graphql.rs"]
 mod product_lifecycle_graphql;
+#[path = "transport/product_schema_graphql.rs"]
+mod product_schema_graphql;
+mod schema_retry_identity;
 mod ui;
 
 pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
