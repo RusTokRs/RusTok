@@ -44,6 +44,7 @@ const scripts = [
   'verify-index-drift-source-page-graphql-transport.mjs',
   'verify-index-drift-candidate-contract.mjs',
   'verify-index-postgres-drift-candidate-reader.mjs',
+  'verify-index-query-equivalence-admission.mjs',
   'verify-index-drift-candidate-confirmation.mjs',
   'verify-index-confirmed-candidate-persistence.mjs',
   'verify-index-drift-finding-lifecycle.mjs',
