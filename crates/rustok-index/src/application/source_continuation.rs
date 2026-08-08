@@ -10,12 +10,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::SchemaRef;
+use crate::domain::{LocaleKey, SchemaRef};
 
 use super::{IndexSourceCursor, SharedIndexSourceRegistry};
 
-const CONTINUATION_DOMAIN: &[u8] = b"rustok-index-source-continuation-v1";
-const CONTINUATION_VERSION: u8 = 1;
+const CONTINUATION_DOMAIN: &[u8] = b"rustok-index-source-continuation";
 const KEY_BYTES: usize = 32;
 const NONCE_BYTES: usize = 12;
 const TAG_BYTES: usize = 16;
@@ -28,22 +27,44 @@ const MAX_PLAINTEXT_BYTES: usize = 10 * 1024;
 const MAX_DECODED_TOKEN_BYTES: usize = 12 * 1024;
 const MAX_ENCODED_TOKEN_BYTES: usize = 16 * 1024;
 
-/// Canonical tenant/schema/source identity to which a continuation token is sealed.
+/// Canonical tenant/schema/source/locale identity to which a continuation token is sealed.
 ///
 /// The scope can only be constructed from the frozen source registry. This prevents a transport
 /// from inventing a source name independently of the schema owner selected during composition.
+/// `locale = None` is the schema-wide scan identity; `Some(LocaleKey)` is one exact canonical locale.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexSourceContinuationScope {
     tenant_id: Uuid,
     schema: SchemaRef,
     owner_module: String,
     source_name: String,
+    locale: Option<LocaleKey>,
 }
 
 impl IndexSourceContinuationScope {
+    /// Construct the canonical schema-wide continuation scope.
     pub fn from_registry(
         tenant_id: Uuid,
         schema: SchemaRef,
+        sources: &SharedIndexSourceRegistry,
+    ) -> Result<Self, IndexSourceContinuationError> {
+        Self::from_registry_with_locale(tenant_id, schema, None, sources)
+    }
+
+    /// Construct the canonical exact-locale continuation scope.
+    pub fn for_locale(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: LocaleKey,
+        sources: &SharedIndexSourceRegistry,
+    ) -> Result<Self, IndexSourceContinuationError> {
+        Self::from_registry_with_locale(tenant_id, schema, Some(locale), sources)
+    }
+
+    fn from_registry_with_locale(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: Option<LocaleKey>,
         sources: &SharedIndexSourceRegistry,
     ) -> Result<Self, IndexSourceContinuationError> {
         if tenant_id.is_nil() {
@@ -57,6 +78,7 @@ impl IndexSourceContinuationScope {
             schema,
             owner_module: descriptor.owner_module().to_owned(),
             source_name: descriptor.source_name().to_owned(),
+            locale,
         })
     }
 
@@ -75,9 +97,13 @@ impl IndexSourceContinuationScope {
     pub fn source_name(&self) -> &str {
         &self.source_name
     }
+
+    pub fn locale(&self) -> Option<&LocaleKey> {
+        self.locale.as_ref()
+    }
 }
 
-/// Bounded encoded continuation value suitable for a future transport boundary.
+/// Bounded encoded continuation value suitable for a transport boundary.
 ///
 /// Debug deliberately reveals only length. Callers must use `as_str` explicitly when serializing
 /// the token and must never log it as an identifier.
@@ -119,11 +145,11 @@ impl fmt::Debug for IndexSourceContinuationToken {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ContinuationClaims {
-    contract_version: u8,
     tenant_id: Uuid,
     schema: SchemaRef,
     owner_module: String,
     source_name: String,
+    locale: Option<LocaleKey>,
     issued_at_unix_millis: i64,
     expires_at_unix_millis: i64,
     cursor: IndexSourceCursor,
@@ -133,6 +159,8 @@ struct ContinuationClaims {
 ///
 /// One active key is used for sealing. Every key retained in the bounded keyring can decrypt, so a
 /// key can be rotated without invalidating already-issued tokens until its maximum lifetime passes.
+/// The repository keeps one current unversioned envelope; superseded pre-release token formats are
+/// not decoded or retained as compatibility paths.
 #[derive(Clone)]
 pub struct IndexSourceContinuationCodec {
     active_key_id: String,
@@ -179,7 +207,7 @@ impl IndexSourceContinuationCodec {
         self.keys.len()
     }
 
-    /// Seal one raw source cursor under the canonical frozen source identity.
+    /// Seal one raw source cursor under the canonical frozen source and locale identity.
     pub fn seal(
         &self,
         scope: &IndexSourceContinuationScope,
@@ -202,11 +230,11 @@ impl IndexSourceContinuationCodec {
             .checked_add(lifetime_millis)
             .ok_or(IndexSourceContinuationError::TimestampOverflow)?;
         let claims = ContinuationClaims {
-            contract_version: CONTINUATION_VERSION,
             tenant_id: scope.tenant_id,
             schema: scope.schema.clone(),
             owner_module: scope.owner_module.clone(),
             source_name: scope.source_name.clone(),
+            locale: scope.locale.clone(),
             issued_at_unix_millis,
             expires_at_unix_millis,
             cursor: cursor.clone(),
@@ -229,7 +257,7 @@ impl IndexSourceContinuationCodec {
             .map_err(|_| IndexSourceContinuationError::InvalidKeyMaterial(self.active_key_id.clone()))?;
         let mut nonce = [0_u8; NONCE_BYTES];
         OsRng.fill_bytes(&mut nonce);
-        let aad = associated_data(CONTINUATION_VERSION, &self.active_key_id);
+        let aad = associated_data(&self.active_key_id);
         let ciphertext = cipher
             .encrypt(
                 (&nonce).into(),
@@ -241,9 +269,8 @@ impl IndexSourceContinuationCodec {
             .map_err(|_| IndexSourceContinuationError::EncryptionFailed)?;
         let key_id_bytes = self.active_key_id.as_bytes();
         let mut decoded = Vec::with_capacity(
-            2 + key_id_bytes.len() + NONCE_BYTES + ciphertext.len(),
+            1 + key_id_bytes.len() + NONCE_BYTES + ciphertext.len(),
         );
-        decoded.push(CONTINUATION_VERSION);
         decoded.push(key_id_bytes.len() as u8);
         decoded.extend_from_slice(key_id_bytes);
         decoded.extend_from_slice(&nonce);
@@ -282,18 +309,14 @@ impl IndexSourceContinuationCodec {
                 max: MAX_DECODED_TOKEN_BYTES,
             });
         }
-        if decoded.len() < 2 + 1 + NONCE_BYTES + TAG_BYTES {
+        if decoded.len() < 1 + 1 + NONCE_BYTES + TAG_BYTES {
             return Err(IndexSourceContinuationError::MalformedEnvelope);
         }
-        let version = decoded[0];
-        if version != CONTINUATION_VERSION {
-            return Err(IndexSourceContinuationError::UnsupportedVersion(version));
-        }
-        let key_id_len = decoded[1] as usize;
+        let key_id_len = decoded[0] as usize;
         if !(1..=MAX_KEY_ID_BYTES).contains(&key_id_len) {
             return Err(IndexSourceContinuationError::MalformedEnvelope);
         }
-        let key_id_end = 2_usize
+        let key_id_end = 1_usize
             .checked_add(key_id_len)
             .ok_or(IndexSourceContinuationError::MalformedEnvelope)?;
         let nonce_end = key_id_end
@@ -305,7 +328,7 @@ impl IndexSourceContinuationCodec {
         if decoded.len() < minimum_len {
             return Err(IndexSourceContinuationError::MalformedEnvelope);
         }
-        let key_id = std::str::from_utf8(&decoded[2..key_id_end])
+        let key_id = std::str::from_utf8(&decoded[1..key_id_end])
             .map_err(|_| IndexSourceContinuationError::MalformedEnvelope)?;
         validate_key_id(key_id)?;
         let key = self
@@ -316,7 +339,7 @@ impl IndexSourceContinuationCodec {
             .map_err(|_| IndexSourceContinuationError::InvalidKeyMaterial(key_id.to_owned()))?;
         let nonce = &decoded[key_id_end..nonce_end];
         let ciphertext = &decoded[nonce_end..];
-        let aad = associated_data(version, key_id);
+        let aad = associated_data(key_id);
         let plaintext = cipher
             .decrypt(
                 nonce.into(),
@@ -386,16 +409,12 @@ pub enum IndexSourceContinuationError {
     Base64(#[from] base64::DecodeError),
     #[error("Index source continuation envelope is malformed")]
     MalformedEnvelope,
-    #[error("Index source continuation version is unsupported: {0}")]
-    UnsupportedVersion(u8),
     #[error("Index source continuation encryption failed")]
     EncryptionFailed,
     #[error("Index source continuation token authentication failed")]
     InvalidToken,
     #[error("Index source continuation payload serialization failed")]
     Postcard(#[from] postcard::Error),
-    #[error("Index source continuation contract version does not match")]
-    ContractVersionMismatch,
     #[error("Index source continuation tenant does not match request scope")]
     TenantMismatch,
     #[error("Index source continuation schema does not match request scope")]
@@ -404,6 +423,8 @@ pub enum IndexSourceContinuationError {
     SourceOwnerMismatch,
     #[error("Index source continuation source name does not match the frozen source")]
     SourceNameMismatch,
+    #[error("Index source continuation locale scope does not match request scope")]
+    LocaleScopeMismatch,
     #[error("Index source continuation claims contain an invalid lifetime")]
     InvalidClaimsLifetime,
     #[error("Index source continuation token was issued too far in the future")]
@@ -417,9 +438,6 @@ fn validate_claims(
     expected_scope: &IndexSourceContinuationScope,
     now: DateTime<Utc>,
 ) -> Result<(), IndexSourceContinuationError> {
-    if claims.contract_version != CONTINUATION_VERSION {
-        return Err(IndexSourceContinuationError::ContractVersionMismatch);
-    }
     if claims.tenant_id != expected_scope.tenant_id {
         return Err(IndexSourceContinuationError::TenantMismatch);
     }
@@ -431,6 +449,9 @@ fn validate_claims(
     }
     if claims.source_name != expected_scope.source_name {
         return Err(IndexSourceContinuationError::SourceNameMismatch);
+    }
+    if claims.locale != expected_scope.locale {
+        return Err(IndexSourceContinuationError::LocaleScopeMismatch);
     }
     let lifetime = claims
         .expires_at_unix_millis
@@ -452,10 +473,9 @@ fn validate_claims(
     Ok(())
 }
 
-fn associated_data(version: u8, key_id: &str) -> Vec<u8> {
-    let mut aad = Vec::with_capacity(CONTINUATION_DOMAIN.len() + 2 + key_id.len());
+fn associated_data(key_id: &str) -> Vec<u8> {
+    let mut aad = Vec::with_capacity(CONTINUATION_DOMAIN.len() + 1 + key_id.len());
     aad.extend_from_slice(CONTINUATION_DOMAIN);
-    aad.push(version);
     aad.push(key_id.len() as u8);
     aad.extend_from_slice(key_id.as_bytes());
     aad
@@ -503,6 +523,17 @@ mod tests {
             schema: schema(),
             owner_module: "source-continuation".to_string(),
             source_name: "source-continuation-primary".to_string(),
+            locale: None,
+        }
+    }
+
+    fn locale_scope(tenant_id: Uuid, locale: &str) -> IndexSourceContinuationScope {
+        IndexSourceContinuationScope {
+            tenant_id,
+            schema: schema(),
+            owner_module: "source-continuation".to_string(),
+            source_name: "source-continuation-primary".to_string(),
+            locale: Some(LocaleKey::new(locale).unwrap()),
         }
     }
 
@@ -552,6 +583,41 @@ mod tests {
         assert!(matches!(
             codec.open(&other_schema, &token, now()),
             Err(IndexSourceContinuationError::SchemaMismatch)
+        ));
+    }
+
+    #[test]
+    fn schema_wide_and_exact_locale_continuations_cannot_cross_scopes() {
+        let tenant_id = Uuid::new_v4();
+        let schema_wide = scope(tenant_id);
+        let locale_alias = locale_scope(tenant_id, "EN-us");
+        let locale_canonical = locale_scope(tenant_id, "en-US");
+        let other_locale = locale_scope(tenant_id, "de");
+        assert_eq!(locale_alias.locale(), locale_canonical.locale());
+
+        let codec = codec("current", &[("current", 8)]);
+        let schema_wide_token = codec
+            .seal(&schema_wide, &cursor(), now(), Duration::from_secs(300))
+            .unwrap();
+        assert!(matches!(
+            codec.open(&locale_canonical, &schema_wide_token, now()),
+            Err(IndexSourceContinuationError::LocaleScopeMismatch)
+        ));
+
+        let locale_token = codec
+            .seal(&locale_alias, &cursor(), now(), Duration::from_secs(300))
+            .unwrap();
+        assert_eq!(
+            codec.open(&locale_canonical, &locale_token, now()).unwrap(),
+            cursor()
+        );
+        assert!(matches!(
+            codec.open(&schema_wide, &locale_token, now()),
+            Err(IndexSourceContinuationError::LocaleScopeMismatch)
+        ));
+        assert!(matches!(
+            codec.open(&other_locale, &locale_token, now()),
+            Err(IndexSourceContinuationError::LocaleScopeMismatch)
         ));
     }
 
