@@ -1,24 +1,25 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_core::ModuleRegistry;
 
 use crate::policy::{
-    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyInstallationFact,
-    ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
-    ModuleEffectivePolicyQuery, ModuleEffectivePolicyRuntimeInput,
+    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyCoRequisite,
+    ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyMaintenanceInput,
+    ModuleEffectivePolicyNodeReadinessInput, ModuleEffectivePolicyQuery,
+    ModuleEffectivePolicyRuntimeInput,
 };
 use crate::{
     ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
     ControlPlaneInfrastructure, ModuleDefinitionCatalog, ModuleDefinitionError,
-    ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy,
-    ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
-    ModuleExecutionDispatcher, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
-    ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecord,
-    ModuleOperationRecoveryError, ModuleOperationRequest, ModuleOperationStoreError,
-    ModulePolicyRevisionTransition, ModulePostHookRetryRequest, SeaOrmArtifactInstallationStore,
+    ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy, ModuleEffectivePolicyError,
+    ModuleEffectivePolicyTransitionCoordinator, ModuleExecutionDispatcher,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
+    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecoveryError,
+    ModuleOperationRequest, ModuleOperationStoreError, ModulePolicyRevisionTransition,
+    ModulePostHookRetryRequest, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModulePolicyRevisionConsumer, TenantModuleOverride, TenantModuleSettingsRecord,
     TenantModuleSettingsRequest, TenantModuleStateStore,
@@ -37,6 +38,7 @@ pub struct ModuleLifecycleDbWriter<'a> {
     static_registry: Option<&'a ModuleRegistry>,
     artifact_executor: Option<&'a dyn ArtifactLifecycleExecutor>,
     default_enabled_modules: Vec<String>,
+    co_requisites: Vec<ModuleEffectivePolicyCoRequisite>,
     settings_schema_validators: ArtifactSchemaValidatorCache,
 }
 
@@ -76,6 +78,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             static_registry: Some(registry),
             artifact_executor: None,
             default_enabled_modules,
+            co_requisites: Vec::new(),
             settings_schema_validators: ArtifactSchemaValidatorCache::default(),
         }
     }
@@ -97,6 +100,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             static_registry: Some(registry),
             artifact_executor: None,
             default_enabled_modules,
+            co_requisites: Vec::new(),
             settings_schema_validators: ArtifactSchemaValidatorCache::default(),
         }
     }
@@ -133,8 +137,32 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             static_registry: None,
             artifact_executor: Some(artifact_executor),
             default_enabled_modules,
+            co_requisites: Vec::new(),
             settings_schema_validators: ArtifactSchemaValidatorCache::default(),
         }
+    }
+
+    /// Adds deployment-admitted availability constraints to every effective
+    /// policy resolved by this lifecycle owner. The host-facing shape is only
+    /// a normalized selection map; the owner converts it to its typed policy
+    /// input without creating dependency or migration-order edges.
+    pub fn with_corequisites(
+        mut self,
+        co_requisites: BTreeMap<String, BTreeMap<String, String>>,
+    ) -> Self {
+        self.co_requisites = co_requisites
+            .into_iter()
+            .flat_map(|(module_slug, required_modules)| {
+                required_modules.into_iter().map(move |(required_module_slug, version_requirement)| {
+                    ModuleEffectivePolicyCoRequisite {
+                        module_slug: module_slug.clone(),
+                        required_module_slug,
+                        version_requirement,
+                    }
+                })
+            })
+            .collect();
+        self
     }
 
     pub async fn toggle(
@@ -164,7 +192,13 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         correlation_id: Option<String>,
         idempotency_key: Option<Uuid>,
     ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
-        let (catalog, effective_enabled_modules, current_settings, policy_transition) = self
+        let (
+            catalog,
+            effective_enabled_modules,
+            ordering_enabled_modules,
+            current_settings,
+            policy_transition,
+        ) = self
             .toggle_execution_context(tenant_id, module_slug, enabled)
             .await?;
         let dispatcher = match (self.static_registry, self.artifact_executor) {
@@ -195,6 +229,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 correlation_id,
                 idempotency_key,
                 effective_enabled_modules,
+                ordering_enabled_modules,
                 current_settings,
                 policy_transition,
             },
@@ -572,11 +607,33 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             maintenance,
             node_readiness,
         )
+        .with_corequisites(self.co_requisites.iter().cloned())
         .execute()
         .map_err(ModuleLifecycleDbWriterError::Policy)
     }
 
     async fn effective_policy_from_overrides(
+        &self,
+        tenant_id: Uuid,
+        catalog: &ModuleDefinitionCatalog,
+        overrides: Vec<TenantModuleOverride>,
+    ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
+        let runtime_inputs = self.runtime_policy_inputs(catalog, tenant_id).await;
+        ModuleEffectivePolicyQuery::new_with_context(
+            catalog,
+            self.default_enabled_modules.iter().cloned(),
+            overrides,
+            runtime_inputs,
+            None,
+            None,
+            None,
+        )
+        .with_corequisites(self.co_requisites.iter().cloned())
+        .execute()
+        .map_err(ModuleLifecycleDbWriterError::Policy)
+    }
+
+    async fn ordering_policy_from_overrides(
         &self,
         tenant_id: Uuid,
         catalog: &ModuleDefinitionCatalog,
@@ -675,6 +732,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         (
             ModuleDefinitionCatalog,
             HashSet<String>,
+            HashSet<String>,
             serde_json::Value,
             Option<ModulePolicyRevisionTransition>,
         ),
@@ -684,6 +742,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let overrides = self.overrides(tenant_id).await?;
         let current_policy = self
             .effective_policy_from_overrides(tenant_id, &catalog, overrides.clone())
+            .await?;
+        let ordering_policy = self
+            .ordering_policy_from_overrides(tenant_id, &catalog, overrides.clone())
             .await?;
         let mut next_overrides = overrides;
         if let Some(override_value) = next_overrides
@@ -719,6 +780,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         Ok((
             catalog,
             current_policy.into_enabled_modules(),
+            ordering_policy.into_enabled_modules(),
             current_settings,
             policy_transition,
         ))

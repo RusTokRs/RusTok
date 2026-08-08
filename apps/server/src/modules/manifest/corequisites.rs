@@ -1,4 +1,3 @@
-use rustok_modules::{ModuleEffectivePolicy, ModuleEffectivePolicyFact};
 use semver::{Version, VersionReq};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -29,31 +28,12 @@ struct StaticSelectionModule {
 
 impl ManifestManager {
     /// Returns package-owned co-requisite metadata for every installed static
-    /// module. Tenant policy uses this contract without changing dependency order.
+    /// module. The modules owner consumes this as availability input without
+    /// changing ordinary dependency or migration ordering.
     pub(crate) fn module_policy_corequisites(
         manifest: &ModulesManifest,
     ) -> Result<BTreeMap<String, BTreeMap<String, String>>, ManifestError> {
         module_policy_corequisites(manifest)
-    }
-
-    /// Fails closed when an owner-resolved tenant policy leaves an enabled
-    /// module without a required package co-requisite.
-    pub(crate) fn validate_effective_policy_corequisites(
-        policy: &ModuleEffectivePolicy,
-        co_requisites: &BTreeMap<String, BTreeMap<String, String>>,
-    ) -> Result<(), String> {
-        validate_effective_policy_corequisites(policy, co_requisites)
-    }
-
-    /// Validates a tenant intent write without imposing a second enable/disable
-    /// ordering graph. Effective availability is enforced separately.
-    pub(crate) fn validate_corequisite_toggle(
-        policy: &ModuleEffectivePolicy,
-        co_requisites: &BTreeMap<String, BTreeMap<String, String>>,
-        module_slug: &str,
-        enabled: bool,
-    ) -> Result<(), String> {
-        validate_corequisite_toggle(policy, co_requisites, module_slug, enabled)
     }
 }
 
@@ -74,111 +54,6 @@ fn module_policy_corequisites(
         }
     }
     Ok(policy)
-}
-
-/// Fails closed when the owner-resolved tenant policy leaves an enabled module
-/// without one of its package-declared co-requisites. This guard consumes the
-/// policy result; it does not rewrite ordinary dependency or migration order.
-fn validate_effective_policy_corequisites(
-    policy: &ModuleEffectivePolicy,
-    co_requisites: &ModulePolicyCoRequisites,
-) -> Result<(), String> {
-    for (consumer, required_modules) in co_requisites {
-        if !policy.contains(consumer) {
-            continue;
-        }
-        for (provider, version_requirement) in required_modules {
-            if !policy.contains(provider) {
-                return Err(format!(
-                    "module '{consumer}' requires effectively enabled co-requisite '{provider}'"
-                ));
-            }
-            validate_policy_provider_contract(
-                policy,
-                consumer,
-                provider,
-                version_requirement,
-            )?;
-        }
-    }
-    Ok(())
-}
-
-/// Tenant intent must remain sequentially orderable. Product can be staged
-/// before Inventory/Pricing are enabled because those owners ordinarily depend
-/// on Product; the externally visible effective-policy guard remains fail-closed
-/// until the whole owner set is available. Here we validate only the admitted
-/// owner definitions/version contract before persisting an enable intent.
-fn validate_corequisite_toggle(
-    policy: &ModuleEffectivePolicy,
-    co_requisites: &ModulePolicyCoRequisites,
-    module_slug: &str,
-    enabled: bool,
-) -> Result<(), String> {
-    if !enabled {
-        return Ok(());
-    }
-    if let Some(required_modules) = co_requisites.get(module_slug) {
-        for (provider, version_requirement) in required_modules {
-            validate_policy_provider_contract(
-                policy,
-                module_slug,
-                provider,
-                version_requirement,
-            )?;
-        }
-    }
-    Ok(())
-}
-
-fn validate_policy_provider_contract(
-    policy: &ModuleEffectivePolicy,
-    consumer: &str,
-    provider: &str,
-    raw_requirement: &str,
-) -> Result<(), String> {
-    let version = policy_definition_version(policy, provider).ok_or_else(|| {
-        format!(
-            "module '{consumer}' co-requisite '{provider}' has no effective-policy definition version"
-        )
-    })?;
-    let requirement = raw_requirement.trim();
-    if requirement.is_empty() {
-        return Ok(());
-    }
-    let requirement = VersionReq::parse(requirement).map_err(|_| {
-        format!(
-            "module '{consumer}' co-requisite '{provider}' has invalid version requirement '{}'",
-            raw_requirement.trim()
-        )
-    })?;
-    let version = Version::parse(version).map_err(|_| {
-        format!(
-            "module '{consumer}' co-requisite '{provider}' has invalid effective-policy version '{version}'"
-        )
-    })?;
-    if !requirement.matches(&version) {
-        return Err(format!(
-            "module '{consumer}' requires co-requisite '{provider}' version '{}', but effective policy has '{version}'",
-            raw_requirement.trim()
-        ));
-    }
-    Ok(())
-}
-
-fn policy_definition_version<'a>(
-    policy: &'a ModuleEffectivePolicy,
-    module_slug: &str,
-) -> Option<&'a str> {
-    policy
-        .decisions()
-        .find(|decision| decision.module_slug == module_slug)
-        .and_then(|decision| {
-            decision.facts.iter().find_map(|fact| match fact {
-                ModuleEffectivePolicyFact::Definition { version, .. } => Some(version.as_str()),
-                _ => None,
-            })
-        })
 }
 
 /// Validates deployment-selection co-requisites after ordinary static topology

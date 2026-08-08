@@ -108,22 +108,9 @@ impl ModuleLifecycleService {
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
-        let default_enabled = manifest.settings.default_enabled;
-        let current_policy = ModuleControlPlane::new(db.clone())
-            .effective_policy(registry, default_enabled.clone())
-            .resolve(tenant_id)
-            .await
-            .map_err(map_lifecycle_writer_error)?;
-        ManifestManager::validate_corequisite_toggle(
-            &current_policy,
-            &co_requisites,
-            module_slug,
-            enabled,
-        )
-        .map_err(ToggleModuleError::Policy)?;
-
         let result = ModuleControlPlane::new(db.clone())
-            .lifecycle(registry, default_enabled)
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
             .toggle(tenant_id, module_slug, enabled, requested_by)
             .await
             .map_err(map_lifecycle_writer_error)?;
@@ -163,8 +150,11 @@ impl ModuleLifecycleService {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
         let retry_operation = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
             .retry_post_hook(operation_id, requested_by, idempotency_key)
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
@@ -181,30 +171,14 @@ impl ModuleLifecycleService {
         requested_by: Option<String>,
         idempotency_key: uuid::Uuid,
     ) -> Result<tenant_modules::Model, ModuleOperationRecoveryError> {
-        let plan = module_operation_recovery_plan(db, operation_id)
-            .await
-            .map_err(map_module_recovery_error)?;
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
-        let default_enabled = manifest.settings.default_enabled;
-        let current_policy = ModuleControlPlane::new(db.clone())
-            .effective_policy(registry, default_enabled.clone())
-            .resolve(plan.tenant_id)
-            .await
-            .map_err(map_lifecycle_writer_recovery_error)?;
-        ManifestManager::validate_corequisite_toggle(
-            &current_policy,
-            &co_requisites,
-            &plan.module_slug,
-            plan.previous_effective_enabled,
-        )
-        .map_err(ModuleOperationRecoveryError::Policy)?;
-
         let result = ModuleControlPlane::new(db.clone())
-            .lifecycle(registry, default_enabled)
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
             .compensate_failed_operation(operation_id, requested_by, idempotency_key)
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
@@ -232,8 +206,10 @@ impl ModuleLifecycleService {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
         let writer = ModuleControlPlane::new(db.clone())
-            .lifecycle(registry, manifest.settings.default_enabled);
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites);
         writer
             .require_module_definition(module_slug)
             .map_err(map_lifecycle_writer_settings_error)?;
