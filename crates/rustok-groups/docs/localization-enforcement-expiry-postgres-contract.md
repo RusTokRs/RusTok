@@ -51,7 +51,7 @@ RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://...' \
 Source guard:
 
 ```bash
-node scripts/verify/verify-groups-localization-boundary.mjs
+node scripts/verify/verify-groups-localization-enforcement-expiry-postgres.mjs
 ```
 
 No Cargo command, test, Node verifier, formatter, migration execution, workflow, or CI job was run while adding this source.
