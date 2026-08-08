@@ -92,6 +92,42 @@ requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
   "GroupsApplicationCasMutation",
 ]);
 
+requireMarkers("apps/server/tests/groups_localization_enforcement_expiry_sqlite.rs", [
+  '#![cfg(feature = "mod-groups")]',
+  "tempfile::tempdir()",
+  "mode=rwc",
+  "rustok_groups::migrations::migrations()",
+  "GroupLocalizationService::new",
+  "GroupLocalizationReadPort::list_group_translations",
+  "GroupLocalizationCommandPort::upsert_group_translation",
+  "GroupMembershipEnforcementCommandPort::suspend_membership",
+  'assert_eq!(stored_status_during_suspension, "active")',
+  'assert_eq!(read_error.code, "groups.membership_suspended")',
+  'assert_eq!(write_error.code, "groups.membership_suspended")',
+  "failed suspended write must not create French translation",
+  "tokio::time::sleep",
+  "expired suspension should restore administrator management reads without cleanup",
+  "expired suspension should restore administrator management writes without cleanup",
+  "stored_revision_after_expiry, suspended.membership_revision",
+  "group_member_count",
+]);
+forbidMarkers("apps/server/tests/groups_localization_enforcement_expiry_sqlite.rs", [
+  "UPDATE group_membership_enforcements",
+  "DELETE FROM group_membership_enforcements",
+  "UPDATE group_memberships SET status",
+  "groups:manage",
+]);
+
+requireMarkers("crates/rustok-groups/docs/localization-enforcement-expiry-sqlite-contract.md", [
+  "executable source added / maintainer execution pending",
+  "stored membership lifecycle status remains `active`",
+  "groups.membership_suspended",
+  "no cleanup mutation",
+  "membership revision has not changed since the original suspension",
+  "localization_transport_parity",
+  "localization_concurrency",
+]);
+
 requireMarkers("crates/rustok-groups/admin/src/core.rs", [
   "prepare_group_translation_query",
   "prepare_upsert_group_translation",
@@ -187,4 +223,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups exact-locale localization, effective owner-clock authorization, shared writer reservation, stable GraphQL root, FBA, FFA, last-row, and no-fallback boundary checks passed.");
+console.log("Groups exact-locale localization, effective owner-clock authorization, SQLite suspension/expiry source, shared writer reservation, stable GraphQL root, FBA, FFA, last-row, and no-fallback boundary checks passed.");
