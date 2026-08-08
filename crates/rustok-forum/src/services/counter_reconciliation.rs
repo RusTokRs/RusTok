@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use rustok_api::{Action, Resource};
+use rustok_core::SecurityContext;
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
     IsolationLevel, Statement, TransactionTrait,
@@ -7,6 +9,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::rbac::enforce_scope;
 use crate::error::{ForumError, ForumResult};
 
 pub const DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT: u64 = 100;
@@ -65,7 +68,9 @@ impl ForumCounterReconciliationReport {
 /// The report deliberately performs no repair. A future write path must add the FORUM-33
 /// requirements for operator RBAC, dry-run, audit and durable idempotent job state before it can
 /// mutate any owner counter. This service is tenant-scoped and bounded independently for topics and
-/// categories so an operator request cannot turn into an unbounded table scan.
+/// categories so an operator request cannot turn into an unbounded table scan. The owner service
+/// itself requires both category and topic `Manage` scopes so future non-GraphQL adapters cannot
+/// bypass the operator boundary.
 ///
 /// Both aggregate reads are fenced by one database snapshot. PostgreSQL uses `REPEATABLE READ`
 /// with `READ ONLY`; SQLite uses one ordinary transaction whose first read establishes the snapshot.
@@ -81,6 +86,7 @@ impl ForumCounterReconciliationService {
     pub async fn report(
         &self,
         tenant_id: Uuid,
+        security: &SecurityContext,
         requested_limit: Option<u64>,
     ) -> ForumResult<ForumCounterReconciliationReport> {
         rustok_telemetry::metrics::record_module_entrypoint_call(
@@ -89,7 +95,10 @@ impl ForumCounterReconciliationService {
             "library",
         );
         let started_at = Instant::now();
-        let result = self.report_inner(tenant_id, requested_limit).await;
+        let result = match enforce_operations_scope(security) {
+            Ok(()) => self.report_inner(tenant_id, requested_limit).await,
+            Err(error) => Err(error),
+        };
         rustok_telemetry::metrics::record_span_duration(
             FORUM_COUNTER_RECONCILIATION_OPERATION,
             started_at.elapsed().as_secs_f64(),
@@ -230,6 +239,11 @@ impl ForumCounterReconciliationService {
     }
 }
 
+fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
+    enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
+    enforce_scope(security, Resource::ForumTopics, Action::Manage)
+}
+
 fn counter_statement(
     backend: DatabaseBackend,
     sqlite_sql: &str,
@@ -332,6 +346,7 @@ LIMIT $2
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_api::Permission;
 
     #[test]
     fn reconciliation_limit_is_bounded() {
@@ -361,5 +376,23 @@ mod tests {
             ForumCounterDriftKind::CategoryReplyCount.as_str(),
             "category_reply_count"
         );
+    }
+
+    #[test]
+    fn owner_report_requires_both_manage_scopes() {
+        let both = SecurityContext::from_permission_snapshot(
+            Some(Uuid::new_v4()),
+            &[
+                Permission::FORUM_CATEGORIES_MANAGE,
+                Permission::FORUM_TOPICS_MANAGE,
+            ],
+        );
+        assert!(enforce_operations_scope(&both).is_ok());
+
+        let topics_only = SecurityContext::from_permission_snapshot(
+            Some(Uuid::new_v4()),
+            &[Permission::FORUM_TOPICS_MANAGE],
+        );
+        assert!(enforce_operations_scope(&topics_only).is_err());
     }
 }
