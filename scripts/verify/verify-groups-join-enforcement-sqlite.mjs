@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 const testPath = "apps/server/tests/groups_join_enforcement_sqlite.rs";
+const postgresTestPath = "apps/server/tests/groups_join_enforcement_postgres.rs";
 const contractPath = "crates/rustok-groups/contracts/groups-effective-membership-access.json";
 const planPath = "crates/rustok-groups/docs/implementation-plan.md";
 
@@ -57,8 +58,8 @@ if (contract?.converted_source_paths?.join_and_rejoin !== "transaction_aware_eff
 if (contract?.evidence?.join_rejoin_sqlite_source !== testPath) {
   throw new Error("join/rejoin SQLite evidence source is not registered in the existing access contract");
 }
-if (contract?.evidence?.join_rejoin_postgresql_source !== null) {
-  throw new Error("PostgreSQL join/rejoin evidence must remain open until its source is added");
+if (contract?.evidence?.join_rejoin_postgresql_source !== postgresTestPath) {
+  throw new Error("join/rejoin PostgreSQL source must remain registered once present");
 }
 if (contract?.evidence?.join_rejoin_runtime !== null) {
   throw new Error("unexecuted join/rejoin runtime evidence must remain null");
