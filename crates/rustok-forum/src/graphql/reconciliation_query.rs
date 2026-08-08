@@ -33,6 +33,8 @@ pub struct GqlForumCounterReconciliationReport {
     pub topic_cursor: Option<Uuid>,
     pub category_cursor: Option<Uuid>,
     pub drift_count: i32,
+    /// True only when the current bounded page contains no detected drift. Whole-tenant clean
+    /// requires exhausting both cursor chains with every page clean.
     pub clean: bool,
     pub drifts: Vec<GqlForumCounterDrift>,
 }
@@ -47,6 +49,8 @@ impl ForumReconciliationQuery {
     /// `topic_after` and `category_after` are independent keyset cursors. Callers should echo each
     /// returned cursor into the corresponding `*_after` argument on the next page, including the
     /// cursor for a shape whose `has_more_*` flag is already false, so that shape is not rescanned.
+    /// `clean` describes only the current bounded page; whole-tenant clean requires exhausting both
+    /// cursor chains with every page clean.
     /// This is intentionally not a repair mutation. Repair remains closed until a write path can
     /// provide operator RBAC, dry-run, audit and durable idempotent job state.
     async fn forum_counter_reconciliation_report(
