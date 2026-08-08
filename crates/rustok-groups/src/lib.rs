@@ -39,6 +39,8 @@ pub mod graphql_invitations;
 #[cfg(feature = "graphql")]
 pub mod graphql_localization;
 #[cfg(feature = "graphql")]
+pub mod graphql_membership_enforcement;
+#[cfg(feature = "graphql")]
 pub mod graphql_policy_history;
 pub mod group_event_entities;
 pub mod invitation_entities;
