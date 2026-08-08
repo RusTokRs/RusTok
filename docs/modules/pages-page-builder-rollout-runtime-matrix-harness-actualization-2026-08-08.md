@@ -20,7 +20,12 @@ The maintainer-run Playwright harness is defined by:
 - `crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-harness-source.json`
 - `crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs`
 
-It requires an already passing Pages inline-edit browser evidence packet from the exact same source commit and origin. The immutable deployment RepoDigest is inherited from that predecessor so the rollout matrix cannot silently execute against a different deployment.
+It requires an already passing Pages inline-edit browser evidence packet from the exact same source commit. That predecessor already binds two reviewed origins, and this matrix preserves the split explicitly:
+
+- API origin: GraphQL `tenantModules`, `updateModuleSettings`, `pageBuilderRolloutSnapshot` and Pages-owned reads;
+- standalone admin origin: real Pages admin UI, authoritative Page Builder server-fn preview and `/builder/intents` preflight.
+
+The matrix API origin must hash to the predecessor `target.origin_sha256`; the admin origin must hash to `target.standalone_origin_sha256`; the two origins must be distinct. The immutable deployment RepoDigest is inherited from the same predecessor so the matrix cannot silently execute against another deployment.
 
 ## Production settings authority
 
@@ -56,18 +61,18 @@ The matrix covers exactly:
 
 Each profile checks the same production boundaries:
 
-1. `pageBuilderRolloutSnapshot` returns the exact persisted flags for the requested tenant and `providerHealthObserved=false`.
-2. Pages-owned list and selected-document GraphQL reads still succeed.
-3. The real Pages admin workspace exposes the expected provider control state and provider health stays `unobserved`.
-4. Preview behavior is checked against authoritative `/api/fn/pages/page-builder-capability` dispatch. `all_on` captures a real successful request in memory; `preview_off` and `builder_off` replay that exact request shape after their persisted settings are active and require the typed `capability disabled: preview` result.
-5. Disabled publish is checked through `/api/admin/pages/{page_id}/builder/intents` and must return `403 / FLY_CAPABILITY_DENIED / publish` before draft mutation.
+1. API-origin `pageBuilderRolloutSnapshot` returns the exact persisted flags for the requested tenant and `providerHealthObserved=false`.
+2. API-origin Pages-owned list and selected-document GraphQL reads still succeed.
+3. The real standalone Pages admin workspace exposes the expected provider control state and provider health stays `unobserved`.
+4. Preview behavior is checked against authoritative admin-origin `/api/fn/pages/page-builder-capability` dispatch. `all_on` captures a real successful request in memory; `preview_off` and `builder_off` replay that exact request shape after their persisted settings are active and require the typed `capability disabled: preview` result.
+5. Disabled publish is checked through admin-origin `/api/admin/pages/{page_id}/builder/intents` and must return `403 / FLY_CAPABILITY_DENIED / publish` before draft mutation.
 6. `builder_off` also requires a typed `properties` denial for a handcrafted `rename_page` browser intent.
 
 The `all_on` publish probe is deliberately non-mutating: it requires the publish capability to be enabled in the UI but does not send a Save intent or publish a document.
 
 ## Privacy and retained data
 
-The output retains only exact source identity, immutable deployment digest, hashes/sizes of external inputs, hashed fixture identities, response statuses/body sizes/body hashes, booleans, and the canonical hash of the original settings.
+The output retains only exact source identity, immutable deployment digest, hashes/sizes of external inputs, hashes of both target origins, hashed fixture identities, response statuses/body sizes/body hashes, booleans, and the canonical hash of the original settings.
 
 It does not retain tenant slugs or ids, page ids, admin routes, cookies, authorization headers, storage-state contents, tokens, session ids, raw module settings, raw GraphQL bodies, raw preview request/response bodies, raw browser-intent bodies, raw HTML, traces, screenshots, or videos.
 
@@ -92,7 +97,7 @@ A successful matrix packet remains an execution candidate for owner review. It d
 
 ## Maintainer execution
 
-After the exact-source browser predecessor and reviewed fixture inputs exist:
+After the exact-source browser predecessor and reviewed API/admin fixture inputs exist:
 
 ```bash
 cd apps/next-admin
