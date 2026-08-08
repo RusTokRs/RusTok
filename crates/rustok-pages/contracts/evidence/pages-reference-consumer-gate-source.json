@@ -10,6 +10,7 @@
   "source_recheck": {
     "main_base": "0f64eb62f9521e0c08027ab04433256429321c62",
     "rollout_owner_correction_base": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
+    "rollout_matrix_harness_base": "edd68d44d726085252a0c0b9ae426a3ec016032f",
     "pages_source_boundary": "complete_execution_pending",
     "page_builder_provider_status": "source_ready_health_unobserved",
     "plan_parity": "source_ready",
@@ -17,7 +18,7 @@
     "tenant_rollout_settings": "platform_read_seam_server_owner_graphql_all_bindings_source_ready",
     "trusted_rollout_server_snapshot": "pages_graphql_owner_ui_ssr_browser_intent_bindings_source_ready",
     "browser_intent_rollout_preflight": "source_ready_server_owned_flags",
-    "four_profile_runtime_matrix": "source_executable_evidence_pending",
+    "four_profile_runtime_matrix": "harness_source_ready_maintainer_execution_pending",
     "forum_second_consumer": {
       "contribution_metadata": "source_ready",
       "fly_adapter": "source_ready",
@@ -88,6 +89,7 @@
       "accepted authenticated inline authoring HTTP/browser evidence",
       "accepted anonymous storefront authoring-exclusion evidence",
       "accepted provider degraded-profile behavior without fabricated health",
+      "accepted four-profile rollout runtime matrix bound to the exact browser predecessor source/deployment with verified settings restoration",
       "accepted four-profile standalone browser-intent preflight behavior using server-owned rollout flags",
       "maintainer owner sign-off and explicit rollback decision"
     ],
@@ -112,6 +114,19 @@
     "owner_signoff_after_candidate": true,
     "rollback_decision_after_candidate": true
   },
+  "rollout_matrix_harness": {
+    "status": "source_ready_maintainer_execution_pending",
+    "contract": "crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json",
+    "config": "apps/next-admin/playwright.pages-builder-rollout-matrix.config.ts",
+    "spec": "apps/next-admin/tests/pages-builder-rollout-matrix/runtime-matrix.spec.ts",
+    "source_evidence": "crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-harness-source.json",
+    "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
+    "output_format": "pages_builder_rollout_runtime_matrix_v1",
+    "output_status": "four_profile_runtime_matrix_passed_owner_review_pending",
+    "automatic_acceptance": false,
+    "settings_restore_required": true,
+    "provider_health_claim": "unobserved"
+  },
   "current_boundary": {
     "source_gate": "ready",
     "execution_gate": "pending",
@@ -119,7 +134,7 @@
     "tenant_rollout_settings": "platform_read_seam_server_owner_graphql_all_bindings_source_ready",
     "trusted_rollout_server_snapshot": "pages_graphql_owner_ui_ssr_browser_intent_bindings_source_ready",
     "browser_intent_rollout_preflight": "source_ready_server_owned_flags",
-    "four_profile_runtime_matrix": "source_executable_evidence_pending",
+    "four_profile_runtime_matrix": "harness_source_ready_maintainer_execution_pending",
     "forum_wave_blocker": "pages_reference_consumer_gate",
     "provider_health": "unobserved",
     "ffa_fba_promotion": "not_claimed"
@@ -131,6 +146,7 @@
     "tenant_rollout_settings_guard": "crates/rustok-pages/scripts/verify/verify-pages-tenant-rollout-settings-runtime.mjs",
     "trusted_rollout_server_snapshot_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-server-snapshot.mjs",
     "rollout_binding_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs",
+    "rollout_matrix_harness_guard": "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "forbidden_claims": [
