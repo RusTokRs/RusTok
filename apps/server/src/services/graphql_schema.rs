@@ -103,14 +103,20 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
 }
 
 fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
-    let handle = if let Some(handle) = ctx.shared_get::<StopHandle>() {
-        handle
-    } else {
-        let (candidate, _initial_receiver) = StopHandle::new();
-        ctx.shared_insert_if_absent(candidate.clone());
-        ctx.shared_get::<StopHandle>()
-            .expect("StopHandle reservation must publish one shared lifecycle handle")
-    };
+    if let Some(handle) = ctx.shared_get::<StopHandle>() {
+        ctx.shared_insert_if_absent(IndexReplayStopKeepalive {
+            _receiver: handle.subscribe(),
+        });
+        return handle;
+    }
+
+    // Keep the candidate's initial receiver alive until a receiver for the actually published
+    // handle has been installed. This avoids a zero-receiver window if shutdown races schema init.
+    let (candidate, _initial_receiver) = StopHandle::new();
+    ctx.shared_insert_if_absent(candidate);
+    let handle = ctx
+        .shared_get::<StopHandle>()
+        .expect("StopHandle reservation must publish one shared lifecycle handle");
     ctx.shared_insert_if_absent(IndexReplayStopKeepalive {
         _receiver: handle.subscribe(),
     });
