@@ -1,5 +1,6 @@
 use super::*;
 
+// Shared source is mounted at crate root from ../../crates/rustok-build/src/module_manifest_contribution.rs.
 pub(crate) fn validate_module_publish_readiness(
     manifest_path: &Path,
     slug: &str,
