@@ -27,6 +27,8 @@ for (const marker of [
   "GroupMembershipEffectiveStatus::LegacyBanned",
   "effective_manager_role",
   "effective_governance_role",
+  "validate_platform_recovery_owner_state",
+  "current group owner effective membership is not recoverable",
   "validate_owner_identity",
   "effective_local_manager",
   "effective_current_owner",
@@ -81,6 +83,9 @@ if (port.new_owner_effective_state !== "active_required") {
 if (registry?.governance?.effective_authorization !== "implemented_source") {
   throw new Error("Groups governance effective authorization is not source-complete in registry");
 }
+if (registry?.governance?.platform_owner_recovery !== "may_transfer_away_from_suspended_current_owner") {
+  throw new Error("Groups governance platform recovery contract is not locked");
+}
 if (registry?.evidence?.governance_transport_parity !== null || registry?.evidence?.governance_concurrency !== null) {
   throw new Error("Unexecuted governance runtime evidence must remain null");
 }
@@ -89,6 +94,8 @@ for (const marker of [
   "Source-complete governance effective authorization",
   "tenant + group + actor + command + request hash",
   "effective-active new owner",
+  "suspended current owner",
+  "Corrupt enforcement row",
   "verify-groups-governance-effective-authorization.mjs",
   "governance concurrency",
 ]) {
