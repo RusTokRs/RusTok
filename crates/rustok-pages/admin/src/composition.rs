@@ -314,7 +314,7 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                         "Channels"
                         <input
                             class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                            prop:value=move || channel_slugs.get_untracked()
+                            prop:value=move || channel_slugs.get()
                             on:input=move |event| channel_slugs.set(event_target_value(&event))
                             placeholder="web, mobile"
                     />
