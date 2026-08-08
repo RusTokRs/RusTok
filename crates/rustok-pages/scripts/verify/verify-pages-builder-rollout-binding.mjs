@@ -90,7 +90,7 @@ for (const [key, expected] of Object.entries({
 for (const [key, value] of Object.entries(evidence.validation ?? {})) if (value !== false) failures.push(`evidence validation.${key} must remain false`);
 
 if (gate.accepted !== false) failures.push("Pages reference-consumer gate must remain unaccepted");
-if (gate.current_boundary?.four_profile_runtime_matrix !== "source_executable_evidence_pending") failures.push("runtime matrix must remain evidence pending");
+if (gate.current_boundary?.four_profile_runtime_matrix !== "harness_source_ready_maintainer_execution_pending") failures.push("runtime matrix harness must remain maintainer-execution pending");
 if (gate.current_boundary?.provider_health !== "unobserved") failures.push("provider health must remain unobserved");
 
 for (const marker of [
@@ -105,4 +105,4 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-rollout-binding] PASS bindings=ui+ssr+browser_intent owner=pages_graphql runtime_matrix=evidence_pending");
+console.log("[verify-pages-builder-rollout-binding] PASS bindings=ui+ssr+browser_intent owner=pages_graphql runtime_matrix_harness=maintainer_execution_pending");
