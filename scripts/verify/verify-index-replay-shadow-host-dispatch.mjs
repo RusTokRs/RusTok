@@ -45,18 +45,18 @@ const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
 const graphql = requireMarkers(graphqlPath, [
   'async fn run_index_replay(',
   '.run_interruptible(operator_context, request, || stop_handle.is_stopping())',
+  'async fn run_index_replay_shadow(',
+  '.get::<IndexReplayShadowTransportRuntime>()',
+  '.run_schema_wide(',
   'async fn cancel_index_replay(',
-  'prepare_authorized_run(',
 ]);
 for (const forbidden of [
-  'run_index_replay_shadow',
-  '.run_shadow(',
-  'IndexReplayDryRunRequest',
   'SharedIndexReplayDryRunRuntime',
-  'IndexReplayShadowOperatorError',
+  'IndexReplayDryRunRequest',
+  '.run_shadow(',
 ]) {
-  if (graphql.includes(forbidden)) {
-    fail(`${graphqlPath} must remain Full/cancel-only until the separate Shadow transport slice: ${forbidden}`);
+  if (graphql.split('\n#[cfg(test)]')[0].includes(forbidden)) {
+    fail(`${graphqlPath} must not bypass the sealed Shadow transport adapter: ${forbidden}`);
   }
 }
 
@@ -69,22 +69,23 @@ for (const forbidden of ['IndexReplayMode::Shadow', 'SideEffectFreeScan', 'Share
 }
 
 requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
-  'Status: `source_complete_transport_pending`',
+  'Status: `source_complete_schema_wide_transport_execution_pending`',
   '`IndexReplayOperatorRuntime::run_shadow`',
   'same request-bound `modules:manage` authorization boundary',
-  'GraphQL, HTTP, CLI, or admin transport surfaces',
-  'no durable replay job or checkpoint',
+  '`runIndexReplayShadow`',
+  'intentionally schema-wide',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_shadow_host_dispatch_transport_pending`.',
-  '`Shadow` host dispatch is now source-complete',
+  'Status: `source_complete_shadow_schema_wide_transport_locale_pending`.',
+  '`Shadow` host dispatch is source-complete',
   '`IndexReplayOperatorRuntime::run_shadow`',
-  'GraphQL transport remains separate',
+  '`runIndexReplayShadow` is now a dedicated transport',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
-  'Add authorization-first GraphQL transport for the guarded Shadow replay command.',
+  'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',
+  'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',
   'Targeted execution remains separate until a bounded mutation-application contract over `IndexSource::load` exists.',
 ]);
 
-console.log('[verify-index-replay-shadow-host-dispatch] Shadow replay is request-bound and modules:manage-guarded without changing Full durable ownership or exposing transport');
+console.log('[verify-index-replay-shadow-host-dispatch] Shadow host dispatch remains modules:manage-guarded and no-write while GraphQL uses only the sealed transport adapter');
