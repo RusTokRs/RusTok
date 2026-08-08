@@ -11,6 +11,7 @@ mod topic_slug_rename_model;
 mod topic_split_model;
 mod transport;
 mod ui;
+mod widget_preview_transport;
 
 pub use page_builder::{
     ForumContributionAdapter, ForumWidgetOwnerSchemaRef, ForumWidgetPropertyEditorModel,
@@ -19,3 +20,6 @@ pub use page_builder::{
     forum_widget_preview_contribution, register_forum_fly_widgets,
 };
 pub use ui::root::ForumAdmin;
+pub use widget_preview_transport::{
+    ForumWidgetPreviewTransportRequest, preview_forum_page_builder_widget,
+};
