@@ -116,7 +116,8 @@ requireMarkers('crates/rustok-index/docs/m6-replay-multihost-reclaim-evidence.md
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.',
   'Execute/admit retained multi-host reclaim evidence.',
-  'next independent boundary is the explicit targeted/full/shadow rebuild-mode',
+  'Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.',
+  'Add request-bound host dispatch for the existing side-effect-free Shadow replay surface.',
   'Partition replay remains blocked',
 ]);
 

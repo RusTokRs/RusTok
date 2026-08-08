@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked at `main@bb65b7f0d3b6d2663519260841097c0e0f5f6cb8` and continued on
-`agent/index-replay-multihost-reclaim-evidence-20260808`.
+Status overlay rechecked at `main@e91926363cfcdf6a91836358add1afdf94f65ffa` and continued on
+`agent/index-replay-mode-contract-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -229,6 +229,24 @@ Together with bounded resume, graceful duplicate-safe restart and fresh GraphQL 
 this closes the currently tracked source-only multi-host/restart boundary. Execution/admission and any required
 PostgreSQL/process orchestration evidence remain maintainer-owned.
 
+## M6 explicit replay mode contract
+
+`IndexReplayMode` now separates `Full`, `Targeted` and `Shadow` rebuild intent from locale and future partition
+scope. `IndexReplayModeSelection` maps those modes to non-aliasing execution surfaces:
+
+- `Full` -> `DurableScan`; this is the only mode admitted to the existing `PostgresIndexReplayRunner` and retains
+  the current fenced replay job/checkpoint, cancellation, locale and lease semantics;
+- `Targeted` -> `TargetedLoad`; construction owns the canonical `IndexSourceLoadRequest`, preserving the existing
+  bounded exact-key count, tenant/schema scope and uniqueness checks;
+- `Shadow` -> `SideEffectFreeScan`; this matches the existing `SharedIndexReplayDryRunRuntime` no-write boundary.
+
+The contract does not expose caller-controlled mode input yet and does not add a mode column to jobs/checkpoints,
+a second lease owner, retry state, partition dimension, targeted mutation executor or shadow persistence. See
+`m6-replay-mode-contract.md`.
+
+The explicit mode identity/routing contract is source-complete. Runtime dispatch/admission remains open and
+maintainer execution is not claimed.
+
 ## Remaining Storefront parity/evidence blockers
 
 - execute/admit the deterministic budgeted timeout packet and retain acceptable runtime latency/cancellation
@@ -268,6 +286,7 @@ PostgreSQL/process orchestration evidence remain maintainer-owned.
 - [x] Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.
 - [x] Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds.
 - [x] Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.
+- [x] Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
 - [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
 - [ ] Execute/admit retained graceful interruption/restart and GraphQL shutdown evidence.
@@ -275,8 +294,9 @@ PostgreSQL/process orchestration evidence remain maintainer-owned.
 - [ ] Execute/admit retained page lease-heartbeat evidence.
 - [ ] Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.
 - [ ] Execute/admit retained multi-host reclaim evidence.
+- [ ] Add request-bound host dispatch for the existing side-effect-free Shadow replay surface.
+- [ ] Targeted execution remains separate until a bounded mutation-application contract over `IndexSource::load` exists.
 - [ ] Add partition replay scope only after a real partition-capable source contract exists.
-- [ ] Add explicit targeted/full/shadow rebuild modes under a separate contract.
 
 ## M7 Product Storefront graph
 
@@ -311,16 +331,17 @@ PostgreSQL/process orchestration evidence remain maintainer-owned.
 M7 Storefront remains execution/admission-gated and must not gain a traffic switch from source inspection alone.
 
 The locale request/source/job/checkpoint/runner/GraphQL identity chain, dependency timeout set,
-page-duration/lease-heartbeat policy and deterministic multi-host/restart source evidence are complete. Their next
-actions are maintainer execution/admission rather than further ownership abstraction.
+page-duration/lease-heartbeat policy, deterministic multi-host/restart evidence and explicit Full/Targeted/Shadow
+mode identity are source-complete. Their retained packets still require maintainer execution/admission.
 
 Partition replay remains blocked: no real partition-capable source contract can yet filter a partition before
 pagination, so do not merely populate `partition_key`.
 
-For source-only M6 continuation, the next independent boundary is the explicit targeted/full/shadow rebuild-mode
-contract. That work must define mode identity and admission separately from locale/partition scope, preserve the
-existing fenced job/checkpoint semantics, and must not turn shadow/targeted modes into a second ownership or retry
-state machine.
+For source-only M6 continuation, the next independent boundary is request-bound host dispatch for the existing
+side-effect-free `Shadow` replay surface. It must reuse `SharedIndexReplayDryRunRuntime`, preserve authorization-first
+input parsing, keep `Full` routed to the existing durable runner, and must not introduce caller-controlled job,
+checkpoint, lease or retry state. Targeted execution remains separate until the bounded mutation-application
+contract over `IndexSource::load` is defined.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
