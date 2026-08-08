@@ -1,58 +1,48 @@
-use rustok_forum::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
-use sea_orm::{ConnectionTrait, Database};
+use rustok_core::MigrationSource;
+use rustok_forum::{ForumModule, ForumTopicVisibilityScope, ForumTopicVisibilityService};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-async fn setup() -> sea_orm::DatabaseConnection {
-    let db = Database::connect("sqlite::memory:")
+async fn setup() -> DatabaseConnection {
+    let url = format!(
+        "sqlite:file:forum_page_builder_visibility_{}?mode=memory&cache=shared",
+        Uuid::new_v4()
+    );
+    let mut options = ConnectOptions::new(url);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    let db = Database::connect(options)
         .await
         .expect("Forum Page Builder visibility evidence SQLite should connect");
+
     db.execute_unprepared(
         r#"
-PRAGMA foreign_keys = OFF;
-CREATE TABLE forum_categories (
+CREATE TABLE taxonomy_terms (
     id TEXT PRIMARY KEY NOT NULL,
     tenant_id TEXT NOT NULL,
-    parent_id TEXT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
-    icon TEXT NULL,
-    color TEXT NULL,
-    moderated INTEGER NOT NULL DEFAULT 0,
-    topic_count INTEGER NOT NULL DEFAULT 0,
-    reply_count INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL,
+    scope_type TEXT NOT NULL,
+    scope_value TEXT NOT NULL DEFAULT '',
+    canonical_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE forum_category_policies (
-    category_id TEXT PRIMARY KEY NOT NULL,
-    tenant_id TEXT NOT NULL,
-    allows_topics INTEGER NOT NULL DEFAULT 1,
-    visibility_override TEXT NULL,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE forum_topics (
-    id TEXT PRIMARY KEY NOT NULL,
-    tenant_id TEXT NOT NULL,
-    category_id TEXT NOT NULL,
-    author_id TEXT NULL,
-    status TEXT NOT NULL,
-    metadata TEXT NOT NULL DEFAULT '{}',
-    is_pinned INTEGER NOT NULL DEFAULT 0,
-    is_locked INTEGER NOT NULL DEFAULT 0,
-    reply_count INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_reply_at TEXT NULL
-);
-CREATE TABLE forum_topic_channel_access (
-    tenant_id TEXT NOT NULL,
-    topic_id TEXT NOT NULL,
-    channel_slug TEXT NOT NULL,
-    PRIMARY KEY (tenant_id, topic_id, channel_slug)
-);
+)
 "#,
     )
     .await
-    .expect("Forum Page Builder visibility evidence tables should create");
+    .expect("Forum Page Builder visibility taxonomy prerequisite should create");
+
+    let manager = SchemaManager::new(&db);
+    for migration in ForumModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("production Forum migration should apply to visibility evidence SQLite");
+    }
     db
 }
 
@@ -68,11 +58,13 @@ async fn page_builder_owner_visibility_preserves_category_floor_tenant_and_topic
 
     db.execute_unprepared(&format!(
         r#"
-INSERT INTO forum_categories (id, tenant_id, parent_id) VALUES
-    ('{public_category}', '{tenant_id}', NULL),
-    ('{private_category}', '{tenant_id}', NULL),
-    ('{private_child_category}', '{tenant_id}', '{private_category}'),
-    ('{foreign_private_category}', '{foreign_tenant_id}', NULL);
+INSERT INTO forum_categories
+    (id, tenant_id, parent_id, position, moderated, topic_count, reply_count)
+VALUES
+    ('{public_category}', '{tenant_id}', NULL, 0, 0, 0, 0),
+    ('{private_category}', '{tenant_id}', NULL, 1, 0, 0, 0),
+    ('{private_child_category}', '{tenant_id}', '{private_category}', 2, 0, 0, 0),
+    ('{foreign_private_category}', '{foreign_tenant_id}', NULL, 0, 0, 0, 0);
 INSERT INTO forum_category_policies
     (category_id, tenant_id, allows_topics, visibility_override)
 VALUES
@@ -90,12 +82,14 @@ VALUES
     let foreign_topic = Uuid::new_v4();
     db.execute_unprepared(&format!(
         r#"
-INSERT INTO forum_topics (id, tenant_id, category_id, status) VALUES
-    ('{public_topic}', '{tenant_id}', '{public_category}', 'open'),
-    ('{private_topic}', '{tenant_id}', '{private_category}', 'open'),
-    ('{private_child_topic}', '{tenant_id}', '{private_child_category}', 'open'),
-    ('{closed_public_topic}', '{tenant_id}', '{public_category}', 'closed'),
-    ('{foreign_topic}', '{foreign_tenant_id}', '{foreign_private_category}', 'open');
+INSERT INTO forum_topics
+    (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
+VALUES
+    ('{public_topic}', '{tenant_id}', '{public_category}', 'open', '{{}}', 0, 0, 0),
+    ('{private_topic}', '{tenant_id}', '{private_category}', 'open', '{{}}', 0, 0, 0),
+    ('{private_child_topic}', '{tenant_id}', '{private_child_category}', 'open', '{{}}', 0, 0, 0),
+    ('{closed_public_topic}', '{tenant_id}', '{public_category}', 'closed', '{{}}', 0, 0, 0),
+    ('{foreign_topic}', '{foreign_tenant_id}', '{foreign_private_category}', 'open', '{{}}', 0, 0, 0);
 "#,
     ))
     .await
