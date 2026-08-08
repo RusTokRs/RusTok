@@ -117,7 +117,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.',
   'Execute/admit retained multi-host reclaim evidence.',
   'Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.',
-  'Add request-bound host dispatch for the existing side-effect-free Shadow replay surface.',
+  'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
+  'Add authorization-first GraphQL transport for the guarded Shadow replay command.',
   'Partition replay remains blocked',
 ]);
 
