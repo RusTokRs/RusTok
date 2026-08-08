@@ -91,6 +91,7 @@ const scripts = [
   'verify-index-localized-query-runtime.mjs',
   'verify-index-localized-identity-order.mjs',
   'verify-index-text-like-filter.mjs',
+  'verify-index-product-postgres-key4-fixtures.mjs',
   'verify-index-product-materialized-query-freshness-postgres-harness.mjs',
   'verify-index-product-channel-convergence-postgres-harness.mjs',
   'verify-index-product-channel-identity-transitions-postgres-harness.mjs',

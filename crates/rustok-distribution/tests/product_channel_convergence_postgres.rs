@@ -501,7 +501,7 @@ fn product_schema_ref() -> TestResult<SchemaRef> {
     Ok(SchemaRef {
         module: ModuleName::new("rustok-product")?,
         entity: EntityName::new("product")?,
-        version: SchemaVersion::new(3),
+        version: SchemaVersion::new(4),
     })
 }
 
@@ -686,7 +686,7 @@ FROM index_entities
 WHERE tenant_id = $1
   AND module_name = 'rustok-product'
   AND entity_name = 'product'
-  AND schema_version = 3
+  AND schema_version = 4
   AND entity_id = $2
   AND locale_key = 'en'
   AND is_deleted = FALSE

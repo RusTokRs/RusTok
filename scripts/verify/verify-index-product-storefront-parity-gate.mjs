@@ -87,19 +87,37 @@ const productIndex = requireMarkers(productIndexPath, [
 ]);
 if (productIndex.includes('SchemaVersion::new(3)')) fail(`${productIndexPath} restored historical key 3`);
 
+requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs', [
+  'product_locale_absence_postgres.rs',
+  'product_materialized_query_freshness_postgres.rs',
+  'product_channel_convergence_postgres.rs',
+  'product_channel_identity_transitions_postgres.rs',
+  'product_linked_target_recreate_postgres.rs',
+  'product_linked_target_availability_equivalence_postgres.rs',
+  'product_linked_target_replay_redelivery_postgres.rs',
+  "source.includes('SchemaVersion::new(3)')",
+  'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
+]);
+
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `core_and_eav_postgres_packets_source_complete_execution_pending`',
+  'Status: `core_eav_and_retained_key4_packets_source_complete_execution_pending`',
   'Mounted Storefront remains owner-native',
   'Core PostgreSQL packet — source complete, execution pending',
   'EAV PostgreSQL packet — source complete, execution pending',
+  'Historical retained Product packets — key 4 source actualized',
   'routing key `4`',
   'missing option code',
   'nil option UUID',
   'placeholder',
+  'ProductVariant stays on key',
+  'SalesChannel stays on key',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
   'Status: `source_complete_materialized_rebuild_pending`',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
+requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-index-product-postgres-key4-fixtures.mjs'",
+]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; current-key core and EAV owner-vs-shadow PostgreSQL packets are retained in source while execution/admission and policy gates remain pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; Storefront core/EAV and retained Product PostgreSQL packets are source-aligned on key 4 while execution/admission and policy gates remain pending');

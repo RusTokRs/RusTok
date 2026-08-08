@@ -57,7 +57,7 @@ requireMarkers("test", [
   "product.index_revision",
   "'all'",
   "'[]'::jsonb",
-  "SchemaVersion::new(3)",
+  "SchemaVersion::new(4)",
   "translation insertion between observations must reject the snapshot pair",
   "IndexDriftDependencyFailureKind::Retryable",
   '"index_drift_source_changed_during_capture"',
@@ -66,6 +66,7 @@ requireMarkers("test", [
 
 for (const forbidden of [
   "SchemaVersion::INITIAL",
+  "SchemaVersion::new(3)",
   "SequencedSource",
   "FixedProvider",
   "register_index_source_absence_provider",
@@ -73,7 +74,7 @@ for (const forbidden of [
   "tokio::time::timeout(Duration::from_secs(0)",
 ]) {
   if (content.test.includes(forbidden)) {
-    throw new Error(`Product absence PostgreSQL harness contains forbidden shortcut or legacy key: ${forbidden}`);
+    throw new Error(`Product absence PostgreSQL harness contains forbidden shortcut or historical key: ${forbidden}`);
   }
 }
 

@@ -385,7 +385,7 @@ fn product_schema_ref() -> TestResult<SchemaRef> {
         entity: EntityName::new("product")?,
         // Index core still requires one positive numeric routing/storage key. Distribution registers
         // only this current Product contract.
-        version: SchemaVersion::new(3),
+        version: SchemaVersion::new(4),
     })
 }
 
@@ -456,7 +456,7 @@ FROM index_entities
 WHERE tenant_id = $1
   AND module_name = 'rustok-product'
   AND entity_name = 'product'
-  AND schema_version = 3
+  AND schema_version = 4
   AND entity_id = $2
   AND locale_key = $3
   AND is_deleted = FALSE
