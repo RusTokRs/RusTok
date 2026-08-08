@@ -25,7 +25,7 @@ use crate::services::{
     product_attribute_option_term, product_attribute_text_term,
 };
 use crate::services::write_transaction::{
-    ProductWriteTransaction, current_product_operation_id,
+    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
 };
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
@@ -109,13 +109,14 @@ impl ProductCatalogSchemaService {
             DomainEvent::ProductAttributeCreated { attribute_id },
         )
         .await?;
-        txn.commit().await?;
-
-        Ok(ProductAttributeRecord {
+        let result = ProductAttributeRecord {
             id: attribute_id,
             code: input.code,
             value_type: input.value_type,
-        })
+        };
+        record_product_operation_result(&result)?;
+        txn.commit().await?;
+        Ok(result)
     }
 
     pub async fn create_attribute_option(
@@ -183,12 +184,14 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
-        txn.commit().await?;
-        Ok(ProductAttributeOptionRecord {
+        let result = ProductAttributeOptionRecord {
             id: option_id,
             attribute_id: input.attribute_id,
             code: input.code,
-        })
+        };
+        record_product_operation_result(&result)?;
+        txn.commit().await?;
+        Ok(result)
     }
 
     pub(crate) async fn admit_schema_operation_receipt<T: Serialize>(
