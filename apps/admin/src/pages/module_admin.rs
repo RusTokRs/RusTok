@@ -65,17 +65,17 @@ pub fn ModuleAdminPage() -> impl IntoView {
                     (_, Some(page)) => {
                         let route_segment_value = route_segment.get();
                         let subpath_value = module_subpath.get();
-                        let rendered_page = (page.render)();
+                        let page_for_render = page.clone();
+                        let enabled = enabled_modules.modules.get();
                         let rendered_page = if page.module_slug == "pages" {
-                            let enabled = enabled_modules.modules.get();
                             view! {
                                 <PageBuilderContributionScope enabled_modules=enabled>
-                                    {rendered_page}
+                                    {(page_for_render.render)()}
                                 </PageBuilderContributionScope>
                             }
                             .into_any()
                         } else {
-                            rendered_page
+                            (page_for_render.render)()
                         };
                         view! {
                             <div class="space-y-6">
