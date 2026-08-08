@@ -1,24 +1,24 @@
 # M6 cooperative replay-page interruption
 
-Status: `source_complete_runner_probe_pending`
+Status: `worker_and_runner_source_complete_host_binding_pending`
 
 ## Purpose
 
 `IndexReplayWorker` exposes an interruptible one-page execution path without changing the
-existing replay API. The ordinary `run_next_page` method delegates to the same implementation
-with a no-op probe, while a later lease-aware runner can call
-`run_next_page_interruptible`.
+existing ordinary replay API. `run_next_page` delegates to the same implementation with a no-op
+probe, while `PostgresIndexReplayRunner::run_interruptible` now supplies a host-owned probe to
+`run_next_page_interruptible` under the exact active replay lease.
 
-The caller-owned probe returns a machine-bounded result:
+The probe returns a machine-bounded result:
 
 - `Ok(false)` continues execution;
 - `Ok(true)` returns `IndexReplayError::Interrupted`;
 - `Err(IndexReplayFailure)` returns `IndexReplayError::InterruptionCheckFailed` with only the
   existing bounded retryable/permanent dependency code.
 
-The worker does not impose a deadline on the probe future itself. A production caller must keep
-that probe bounded and must not attach raw database, transport, request, tenant, or stack text to
-its result.
+The one-page worker does not impose a deadline on the probe future itself. The runner adapter uses
+a synchronous boolean host probe, so it does not introduce another pending dependency future at
+these safe points.
 
 ## Safe interruption boundaries
 
@@ -35,48 +35,62 @@ An interruption never commits the page checkpoint. If interruption occurs after 
 mutations were already persisted, the next run scans the same page again. Existing inbox
 deduplication and monotonic source-version guards remain the safety owner for that redelivery.
 
+## Runner integration
+
+The original `source_replay_runner.rs` ordinary run/cancel path remains unchanged. A nested runner
+extension adds `PostgresIndexReplayRunner::run_interruptible` and reuses the same source resolution,
+job acquisition, heartbeat, mutation store, checkpoint store, completion and pending-yield helpers.
+
+When a page returns `Interrupted`, the runner checks persisted cancellation first. If no operator
+cancel won the race, the runner uses the fenced pending-yield transition rather than failure or
+terminal cancellation. The job keeps its UUID, clears lease ownership, preserves the last committed
+checkpoint, records no failure details, and can be claimed as a new attempt.
+
+The retained runner-level SQLite packet proves both pre-scan yield/restart and the durable-mutation / missing-checkpoint redelivery window where attempt 2 observes `Duplicate` before completion.
+
 ## Interaction with merged M6 slices
 
-Production Product, ProductVariant, SalesChannel, and future canonical sources are already
-registered through the 30-second source-call timeout wrapper. The pre-scan safe point therefore
-combines with a bounded production source future; this interruption contract does not replace the
-source timeout.
+Production Product, ProductVariant, SalesChannel, and future canonical sources are registered
+through the 30-second source-call timeout wrapper. The pre-scan safe point therefore combines with
+a bounded production source future; interruption does not replace the source timeout.
 
 The bounded replay dry-run remains a separate no-write validation capability. It does not call
 this worker and does not claim cancellation, checkpoint, or mutation interruption semantics.
 
-Mutation-sink and checkpoint-store futures are not preempted by this slice. The worker can observe
-interruption only before starting the next mutation or checkpoint commit, not while one of those
-operations is already pending.
+Mutation-sink and checkpoint-store futures are not preempted. Interruption is observed only before
+starting the next mutation or checkpoint commit, not while one of those operations is already
+pending.
 
 ## Ownership boundaries
 
-This slice is database and runtime neutral. It does not:
+The one-page worker remains database and runtime neutral. It does not:
 
 - read `index_jobs` or interpret `cancel_requested`;
-- bind the probe to an active replay lease;
 - terminalize a replay job as cancelled;
 - create a PostgreSQL cancellation probe;
 - interrupt a source, mutation, checkpoint, or probe future already in progress;
 - add a timer, polling loop, scheduler, task, or graceful-shutdown owner;
 - change source, mutation, checkpoint, cursor, event identity, migration, or table shape.
 
-The PostgreSQL runner must later derive the probe from the exact active
-`(tenant_id, job_id, worker_id, attempt_count)` lease, classify probe storage failures through a
-bounded code, and preserve its existing fenced cancellation transition.
+The PostgreSQL runner extension owns lease-aware state transitions around interruption, but the
+server lifecycle still does not supply its `StopHandle` to this path. `SharedIndexReplayRuntime`,
+`IndexReplayOperatorRuntime`, and GraphQL therefore remain on ordinary replay execution until the
+next host-composition slice.
 
-The canonical combined roadmap item for in-page interruption/timeouts, dry-run, and
-targeted/full/shadow rebuild modes remains open because runner binding, pending-future handling,
-rebuild modes, and retained PostgreSQL evidence are still absent.
+The canonical roadmap item remains partially open for actual server stop binding, pending-future
+timeout handling, explicit rebuild modes, locale/partition scope, and retained execution evidence.
 
 ## Source evidence
 
 Focused source scenarios retain:
 
-- interruption before source scan with no source, mutation, or checkpoint write;
-- interruption immediately before checkpoint commit after one durable mutation, followed by
+- worker interruption before source scan with no source, mutation, or checkpoint write;
+- worker interruption immediately before checkpoint commit after one durable mutation, followed by
   duplicate-safe replay and checkpoint completion;
-- bounded retryable interruption-probe failure before source access.
+- bounded retryable interruption-probe failure before source access;
+- runner interruption before scan yielding the durable job back to `pending`;
+- runner interruption after durable mutation / before checkpoint commit, followed by attempt-2
+  duplicate redelivery and successful completion.
 
 Formatting, Cargo checks/tests, JavaScript verifiers, PostgreSQL cancellation/lease races, restart
 scenarios, workflows, and CI are maintainer-run and were not executed by the implementation agent.
