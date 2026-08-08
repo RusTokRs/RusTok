@@ -1,12 +1,16 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
-  "status": "product_lifecycle_collaboration_contained_unvalidated",
-  "source_base_revision": "c4cd6e281e6a40122843617e0471edc8f589f931",
+  "generated_at": "2026-08-08",
+  "status": "product_lifecycle_corequisites_declared_unvalidated",
+  "source_base_revision": "bb65b7f0d3b6d2663519260841097c0e0f5f6cb8",
   "scope": "Product create/delete transaction collaboration with Inventory and Pricing owners",
   "module_topology": {
     "product_dependencies": [
       "taxonomy"
+    ],
+    "product_co_requisites": [
+      "inventory",
+      "pricing"
     ],
     "inventory_dependencies": [
       "product"
@@ -15,7 +19,9 @@
       "product"
     ],
     "ordinary_reverse_dependencies_forbidden": true,
-    "reason": "Declaring Inventory or Pricing as ordinary Product dependencies would create a module dependency cycle",
+    "co_requisites_are_ordering_dependencies": false,
+    "co_requisite_control_plane_enforcement_proven": false,
+    "reason": "Inventory and Pricing remain ordinary Product dependents; Product declares them only as deployment co-requisites to avoid a dependency-order cycle",
     "default_enabled_bundle": [
       "product",
       "pricing",
@@ -58,13 +64,15 @@
   },
   "decision": {
     "containment_complete": true,
+    "corequisite_contract_declared": true,
     "dependency_contract_resolved": false,
-    "next_slice": "Choose and implement a control-plane co-requisite contract or host-injected transaction participant ports; prove Product write behavior when optional modules are selected outside the default ecommerce bundle",
+    "next_slice": "Teach the static module control plane to consume Product co-requisites during deployment selection without adding dependency-order edges; then prove non-default Product write activation and rollback",
     "do_not": [
       "add inventory or pricing to Product ordinary module dependencies",
       "move Inventory or Pricing ORM entities into Product",
       "replace atomic owner collaboration with unproven best-effort post-commit writes",
-      "claim standalone Product write activation"
+      "claim standalone Product write activation",
+      "claim co-requisite enforcement before the control plane consumes the contract"
     ]
   },
   "validation": {
@@ -75,6 +83,7 @@
     "workflow_checks_run": false,
     "ci_run": false,
     "standalone_activation_proven": false,
+    "non_default_deployment_selection_proven": false,
     "transaction_rollback_proven": false
   }
 }

@@ -1,18 +1,29 @@
 # Product lifecycle owner collaboration
 
-Status: contained source boundary, unresolved activation contract, unvalidated.
+Status: deployment co-requisite contract declared, control-plane enforcement pending, unvalidated.
 
 ## Problem
 
 Product creation persists Product-owned variants and also accepts initial inventory and price input. The first Inventory and Pricing rows must commit or roll back with the Product write. Current source performs that collaboration through owner-owned, transaction-aware bootstrap services.
 
-The module graph cannot represent this by adding ordinary Product dependencies:
+The ordinary module graph cannot represent the collaboration by adding reverse Product dependencies:
 
 - Inventory depends on Product;
 - Pricing depends on Product;
-- making Product depend on either owner would create a dependency cycle.
+- making Product ordinarily depend on either owner would create a dependency-order cycle.
 
-The default ecommerce deployment currently enables Product, Pricing, and Inventory together, but that does not prove Product write behavior for every optional-module selection.
+The default ecommerce deployment enables Product, Pricing, and Inventory together, but relying on that bundle implicitly leaves non-default deployment selection underspecified.
+
+## Selected source contract
+
+Product now declares Inventory and Pricing in `rustok-module.toml` under `[co_requisites]` with explicit version requirements. A co-requisite is a deployment-selection constraint, not an ordinary dependency edge:
+
+- it says the owner implementation must be present in the selected deployment whenever Product lifecycle writes are available;
+- it must not participate in dependency or migration ordering;
+- it must not be copied into `ProductModule::dependencies()`;
+- it therefore does not create `Product -> Inventory -> Product` or `Product -> Pricing -> Product` cycles.
+
+This slice only declares and source-locks that contract. The current module control plane does not yet consume `[co_requisites]`; deployment enforcement and non-default selection evidence remain the next implementation step. Until that enforcement exists, the canonical ecommerce dependency-contract item must remain open.
 
 ## Current contained boundary
 
@@ -44,31 +55,31 @@ This is a native transaction collaboration contract, not a GraphQL, REST, gRPC, 
 
 ## Guarded invariants
 
-`scripts/verify/verify-product-lifecycle-collaboration.mjs` requires:
+`scripts/verify/verify-product-lifecycle-collaboration.mjs` source-locks that:
 
 - Product's ordinary module dependency remains Taxonomy only;
-- Inventory and Pricing continue to depend on Product;
+- Product declares Inventory and Pricing as package co-requisites with bounded version requirements;
+- Inventory and Pricing continue to depend ordinarily on Product;
 - the default deployment bundle contains Product, Pricing, and Inventory;
 - Product uses the exact owner bootstrap services and operations;
 - Product does not import foreign owner entities or query known foreign tables directly;
 - the owner services remain explicitly transaction-aware;
-- evidence remains unvalidated and does not claim standalone activation.
+- control-plane co-requisite enforcement and standalone/non-default activation evidence remain unvalidated.
 
-## Open architecture decision
+## Next implementation slice
 
-Choose one design before calling the dependency contract resolved:
+Teach the static module control plane to parse and validate package co-requisites during deployment selection without feeding them into dependency ordering. The control plane must reject a selected Product module when an admitted Inventory or Pricing co-requisite is absent or version-incompatible, while preserving the existing ordinary reverse dependencies owned by Inventory and Pricing.
 
-1. add a control-plane co-requisite concept that affects module selection without creating dependency-order cycles; or
-2. publish host-injected transaction participant ports through a neutral contract crate and compose embedded Inventory/Pricing adapters without changing atomicity.
+After source enforcement exists, retain maintainer-run evidence for:
 
-The selected design must prove:
-
-- Product write startup and activation for non-default module selections;
+- default and non-default module selections;
 - clean migration ordering;
-- create/delete rollback across all three owners;
+- Product create/delete rollback across all three owners;
 - no silent post-commit partial state;
 - no ordinary cyclic dependency;
 - no Product ownership of Inventory or Pricing persistence.
+
+Host-injected transaction participant ports remain a future alternative if Product lifecycle writes need a remote/distributed collaboration profile; they are not required to describe the current embedded atomic contract.
 
 ## Evidence
 
@@ -76,4 +87,4 @@ Source evidence is stored at:
 
 `crates/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json`
 
-No tests, Cargo commands, formatting, verifier execution, workflow checks, standalone activation, or transaction rollback evidence are claimed by this source wave.
+No tests, Cargo commands, formatting, verifier execution, workflow checks, standalone activation, non-default deployment selection, or transaction rollback evidence are claimed by this source wave.
