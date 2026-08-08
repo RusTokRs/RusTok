@@ -4,7 +4,7 @@ use tokio::time::timeout;
 
 use crate::IndexReplayFailure;
 
-/// Canonical upper bound for one replay mutation persistence call or one replay checkpoint commit.
+/// Canonical upper bound for one replay storage dependency future.
 ///
 /// This is an outer future bound, not a claim that the underlying database operation is rolled back
 /// or cancelled after the future is dropped. Replay correctness must therefore continue to rely on
@@ -13,6 +13,7 @@ use crate::IndexReplayFailure;
 const DEFAULT_INDEX_REPLAY_STORAGE_FUTURE_TIMEOUT: Duration = Duration::from_secs(30);
 
 const INDEX_REPLAY_MUTATION_TIMEOUT_CODE: &str = "index_replay_mutation_timeout";
+const INDEX_REPLAY_CHECKPOINT_READ_TIMEOUT_CODE: &str = "index_replay_checkpoint_read_timeout";
 const INDEX_REPLAY_CHECKPOINT_COMMIT_TIMEOUT_CODE: &str =
     "index_replay_checkpoint_commit_timeout";
 
@@ -24,6 +25,21 @@ where
         DEFAULT_INDEX_REPLAY_STORAGE_FUTURE_TIMEOUT,
         INDEX_REPLAY_MUTATION_TIMEOUT_CODE,
         "mutation",
+        future,
+    )
+    .await
+}
+
+pub(super) async fn bounded_replay_checkpoint_read<T, F>(
+    future: F,
+) -> Result<T, IndexReplayFailure>
+where
+    F: Future<Output = Result<T, IndexReplayFailure>>,
+{
+    bounded_replay_storage_future(
+        DEFAULT_INDEX_REPLAY_STORAGE_FUTURE_TIMEOUT,
+        INDEX_REPLAY_CHECKPOINT_READ_TIMEOUT_CODE,
+        "checkpoint_read",
         future,
     )
     .await
@@ -90,6 +106,21 @@ mod tests {
 
         assert_eq!(failure.kind(), IndexReplayFailureKind::Retryable);
         assert_eq!(failure.code(), INDEX_REPLAY_MUTATION_TIMEOUT_CODE);
+    }
+
+    #[tokio::test]
+    async fn pending_checkpoint_read_future_times_out_as_retryable() {
+        let failure = bounded_replay_storage_future(
+            Duration::from_millis(1),
+            INDEX_REPLAY_CHECKPOINT_READ_TIMEOUT_CODE,
+            "checkpoint_read",
+            pending::<Result<(), IndexReplayFailure>>(),
+        )
+        .await
+        .expect_err("pending replay checkpoint read should hit the outer timeout");
+
+        assert_eq!(failure.kind(), IndexReplayFailureKind::Retryable);
+        assert_eq!(failure.code(), INDEX_REPLAY_CHECKPOINT_READ_TIMEOUT_CODE);
     }
 
     #[tokio::test]
