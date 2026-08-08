@@ -49,6 +49,66 @@ pub struct NotificationInboxReconcilePage {
     pub has_more: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationInboxReconcileInspectionPage {
+    pub scanned: u16,
+    pub unavailable: u16,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+struct RawNotificationInboxReconcilePage {
+    rows: Vec<notification::Model>,
+    next_cursor: Option<String>,
+    has_more: bool,
+}
+
+async fn load_raw_page(
+    db: &DatabaseConnection,
+    request: &NotificationInboxReconcileRequest,
+) -> NotificationResult<RawNotificationInboxReconcilePage> {
+    let cursor = request
+        .cursor
+        .as_deref()
+        .map(decode_inbox_cursor)
+        .transpose()?;
+    let limit = request.bounded_limit();
+
+    let mut select = notification::Entity::find()
+        .filter(notification::Column::TenantId.eq(request.tenant_id))
+        .filter(notification::Column::RecipientId.eq(request.recipient_id))
+        .filter(notification::Column::State.ne(NotificationState::Archived));
+    if let Some(cursor) = cursor {
+        select = select.filter(
+            Condition::any()
+                .add(notification::Column::CreatedAt.lt(cursor.created_at.to_owned()))
+                .add(
+                    Condition::all()
+                        .add(notification::Column::CreatedAt.eq(cursor.created_at))
+                        .add(notification::Column::Id.lt(cursor.id)),
+                ),
+        );
+    }
+
+    let mut rows = select
+        .order_by_desc(notification::Column::CreatedAt)
+        .order_by_desc(notification::Column::Id)
+        .limit(limit + 1)
+        .all(db)
+        .await?;
+    let has_more = rows.len() > limit as usize;
+    rows.truncate(limit as usize);
+    let next_cursor = has_more
+        .then(|| rows.last().map(encode_inbox_cursor))
+        .flatten();
+
+    Ok(RawNotificationInboxReconcilePage {
+        rows,
+        next_cursor,
+        has_more,
+    })
+}
+
 /// Rechecks one bounded exact-recipient inbox page and archives rows that are no longer available.
 ///
 /// Raw rows are selected outside foreign owner calls. Each row then reuses the existing open-time
@@ -75,49 +135,52 @@ impl NotificationInboxReconcileService {
         }
     }
 
+    /// Runs the same bounded current-policy check as reconciliation without mutating owner state.
+    ///
+    /// The inspection returns counts and continuation metadata only. It does not expose notification
+    /// identity, source target data, route data or delivery state, and it never archives a row.
+    pub async fn inspect_page(
+        &self,
+        request: NotificationInboxReconcileRequest,
+    ) -> NotificationResult<NotificationInboxReconcileInspectionPage> {
+        validate_request(&request)?;
+        let raw = load_raw_page(&self.db, &request).await?;
+        let scanned = raw.rows.len() as u16;
+        let mut unavailable = 0_u16;
+
+        for stored in raw.rows {
+            match self
+                .open
+                .authorize_open(NotificationInboxOpenRequest {
+                    tenant_id: request.tenant_id,
+                    recipient_id: request.recipient_id,
+                    notification_id: stored.id,
+                })
+                .await?
+            {
+                NotificationInboxOpenDecision::Allowed { .. } => {}
+                NotificationInboxOpenDecision::Unavailable => unavailable += 1,
+            }
+        }
+
+        Ok(NotificationInboxReconcileInspectionPage {
+            scanned,
+            unavailable,
+            next_cursor: raw.next_cursor,
+            has_more: raw.has_more,
+        })
+    }
+
     pub async fn reconcile_page(
         &self,
         request: NotificationInboxReconcileRequest,
     ) -> NotificationResult<NotificationInboxReconcilePage> {
         validate_request(&request)?;
-        let cursor = request
-            .cursor
-            .as_deref()
-            .map(decode_inbox_cursor)
-            .transpose()?;
-        let limit = request.bounded_limit();
-
-        let mut select = notification::Entity::find()
-            .filter(notification::Column::TenantId.eq(request.tenant_id))
-            .filter(notification::Column::RecipientId.eq(request.recipient_id))
-            .filter(notification::Column::State.ne(NotificationState::Archived));
-        if let Some(cursor) = cursor {
-            select = select.filter(
-                Condition::any()
-                    .add(notification::Column::CreatedAt.lt(cursor.created_at.to_owned()))
-                    .add(
-                        Condition::all()
-                            .add(notification::Column::CreatedAt.eq(cursor.created_at))
-                            .add(notification::Column::Id.lt(cursor.id)),
-                    ),
-            );
-        }
-
-        let mut rows = select
-            .order_by_desc(notification::Column::CreatedAt)
-            .order_by_desc(notification::Column::Id)
-            .limit(limit + 1)
-            .all(&self.db)
-            .await?;
-        let has_more = rows.len() > limit as usize;
-        rows.truncate(limit as usize);
-        let next_cursor = has_more
-            .then(|| rows.last().map(encode_inbox_cursor))
-            .flatten();
-        let scanned = rows.len() as u16;
+        let raw = load_raw_page(&self.db, &request).await?;
+        let scanned = raw.rows.len() as u16;
         let mut archived = 0_u16;
 
-        for stored in rows {
+        for stored in raw.rows {
             let identity = NotificationInboxStateRequest {
                 tenant_id: request.tenant_id,
                 recipient_id: request.recipient_id,
@@ -147,8 +210,8 @@ impl NotificationInboxReconcileService {
         Ok(NotificationInboxReconcilePage {
             scanned,
             archived,
-            next_cursor,
-            has_more,
+            next_cursor: raw.next_cursor,
+            has_more: raw.has_more,
         })
     }
 }
