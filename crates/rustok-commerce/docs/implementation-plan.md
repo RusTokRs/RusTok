@@ -239,11 +239,17 @@ These are source-contract defects, not verification-only tasks.
   and `PRODUCTS_READ` admission, authenticated actor, trimmed locale, request channel,
   bounded deadline, the existing GraphQL projection, and the shared stable Product
   GraphQL public error mapper.
-- [ ] Cut remaining mounted Product schema read `storefrontCatalogSearchOptions`, schema
-  writes, REST delete/publish/unpublish lifecycle commands, and remaining GraphQL Product
-  lifecycle operations over to host-composed Product owner ports. Direct Product entities,
-  `CatalogService`, and `ProductCatalogSchemaService` remain explicit source debt;
-  repeatable lifecycle commands need an explicit caller idempotency contract before cutover.
+- [x] Cut mounted GraphQL `storefrontCatalogSearchOptions` to the host-selected
+  `ProductCatalogSchemaReadPort` using its existing `list_categories` and
+  `list_attributes` capabilities, preserving storefront-channel admission, required
+  trimmed locale, current-tenant scope, service actor, request channel, bounded deadline,
+  exact category/attribute option projection semantics, and the shared stable Product
+  GraphQL public error mapper.
+- [ ] Cut remaining Product schema writes, REST delete/publish/unpublish lifecycle
+  commands, and remaining GraphQL Product lifecycle operations over to host-composed
+  Product owner ports. Direct Product entities, `CatalogService`, and remaining
+  write-side `ProductCatalogSchemaService` usage remain explicit source debt; repeatable
+  lifecycle commands need an explicit caller idempotency contract before cutover.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -872,13 +878,17 @@ Source inspection is not execution evidence.
 - [x] Publish the optional Product schema-directory read capability on the host-selected
   Product read runtime and cut `productAttributes`, `catalogCategories`, and
   `productAttributeSchemas` away from direct `ProductCatalogSchemaService` construction;
-  search-option schema reads and Product writes remain open.
+  Product schema writes and lifecycle operations remain open.
 - [x] Cut mounted `productEffectiveForm` to the host-selected Product schema read port,
   preserving tenant/permission/actor/channel/locale/deadline context and moving aggregate
   reconstruction plus invariant handling back behind the Product owner boundary.
 - [x] Cut mounted `productAttributeValues` to the host-selected Product schema read port,
   preserving tenant/permission/actor/channel/locale/deadline context, the existing GraphQL
   projection, and shared stable Product public error mapping.
+- [x] Cut mounted `storefrontCatalogSearchOptions` to existing Product schema-directory
+  owner capabilities while preserving storefront admission, current tenant, required
+  locale, request channel/deadline context, exact option projection, and stable public
+  owner errors without adding a redundant Product port method.
 
 ## Change rules
 
