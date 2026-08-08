@@ -30,6 +30,7 @@ pub struct CommerceHttpRuntime {
     order_admin_command_runtime: rustok_order::OrderAdminCommandRuntime,
     payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
     payment_admin_read_runtime: rustok_payment::PaymentAdminReadRuntime,
+    payment_admin_collection_command_runtime: rustok_payment::PaymentAdminCollectionCommandRuntime,
     product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     product_catalog_command_runtime: rustok_product::ProductCatalogCommandRuntime,
     #[cfg(feature = "marketplace-financial")]
@@ -92,6 +93,12 @@ impl CommerceHttpRuntime {
         self.payment_admin_read_runtime.read_port()
     }
 
+    fn payment_admin_collection_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_payment::PaymentAdminCollectionCommandPort> {
+        self.payment_admin_collection_command_runtime.command_port()
+    }
+
     fn product_catalog_read_port(
         &self,
     ) -> std::sync::Arc<dyn rustok_product::ProductCatalogReadPort> {
@@ -126,6 +133,9 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require TransactionalEventBus in HostRuntimeContext"
                 )
             })?;
+        let payment_provider_registry = runtime
+            .shared_get::<PaymentProviderRegistry>()
+            .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
         let shipping_option_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceShippingOptionReadRuntime>()
             .ok_or_else(|| {
@@ -164,6 +174,14 @@ impl CommerceHttpRuntime {
         let payment_admin_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
             .unwrap_or_else(|| rustok_payment::PaymentAdminReadRuntime::in_process(runtime.db_clone()));
+        let payment_admin_collection_command_runtime = runtime
+            .shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentAdminCollectionCommandRuntime::in_process(
+                    runtime.db_clone(),
+                    payment_provider_registry.clone(),
+                )
+            });
         let product_catalog_read_runtime = runtime
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
             .ok_or_else(|| {
@@ -189,9 +207,7 @@ impl CommerceHttpRuntime {
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
-            payment_provider_registry: runtime
-                .shared_get::<PaymentProviderRegistry>()
-                .unwrap_or_else(PaymentProviderRegistry::with_manual_provider),
+            payment_provider_registry,
             fulfillment_provider_registry: runtime
                 .shared_get::<FulfillmentProviderRegistry>()
                 .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
@@ -201,6 +217,7 @@ impl CommerceHttpRuntime {
             order_admin_command_runtime,
             payment_order_read_runtime,
             payment_admin_read_runtime,
+            payment_admin_collection_command_runtime,
             product_catalog_read_runtime,
             product_catalog_command_runtime,
             #[cfg(feature = "marketplace-financial")]
