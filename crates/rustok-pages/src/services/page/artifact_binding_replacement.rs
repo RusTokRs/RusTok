@@ -20,7 +20,7 @@ use crate::error::{PagesError, PagesResult};
 use crate::services::page_builder_artifact::PageBuilderArtifactService;
 
 use super::helpers::{apply_transition, enforce_expected_version};
-use super::publish_manifest::{is_sha256, rebuild_source_provenance_hash};
+use super::publish_manifest::{RebuildSourceProvenance, is_sha256, rebuild_source_provenance_hash};
 use super::{PAGE_KIND, PageService, PageTransition};
 
 pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT: &str =
@@ -36,6 +36,16 @@ pub const PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY: &str =
 const PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT: &str = "page_rollback_operation_v1";
 const MAX_REPLACEMENT_IDEMPOTENCY_KEY_BYTES: usize = 191;
 const MAX_SEQUENTIAL_RECOVERY_ACTIVATIONS: usize = 256;
+
+struct ArtifactBindingReplacementRequest<'a> {
+    tenant_id: Uuid,
+    page_id: Uuid,
+    rebuild_operation_id: Uuid,
+    expected_version: i32,
+    expected_current_artifact_id: Uuid,
+    idempotency_key: &'a str,
+    request_hash: &'a str,
+}
 
 impl PageService {
     /// Activates one exact rebuilt immutable artifact for its locale in one owner transaction.
@@ -97,13 +107,15 @@ impl PageService {
         {
             ensure_same_request(
                 &operation,
-                tenant_id,
-                page_id,
-                input.rebuild_operation_id,
-                input.expected_version,
-                input.expected_current_artifact_id,
-                idempotency_key.as_str(),
-                request_hash.as_str(),
+                ArtifactBindingReplacementRequest {
+                    tenant_id,
+                    page_id,
+                    rebuild_operation_id: input.rebuild_operation_id,
+                    expected_version: input.expected_version,
+                    expected_current_artifact_id: input.expected_current_artifact_id,
+                    idempotency_key: idempotency_key.as_str(),
+                    request_hash: request_hash.as_str(),
+                },
             )?;
             let result = result_from_record(operation, true)?;
             txn.commit().await?;
@@ -262,7 +274,7 @@ impl PageService {
             replacement_artifact_hash: Set(replacement.artifact_hash),
             replacement_materialization_hash: Set(rebuild.rebuilt_materialization_hash),
             result_version: Set(updated_page.version),
-            replaced_at: Set(timestamp.clone()),
+            replaced_at: Set(timestamp),
             created_at: Set(timestamp),
         }
         .insert(&txn)
@@ -782,25 +794,18 @@ async fn find_operation_for_rebuild_in_tx(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn ensure_same_request(
     operation: &page_artifact_binding_replacement_operation::Model,
-    tenant_id: Uuid,
-    page_id: Uuid,
-    rebuild_operation_id: Uuid,
-    expected_version: i32,
-    expected_current_artifact_id: Uuid,
-    idempotency_key: &str,
-    request_hash: &str,
+    request: ArtifactBindingReplacementRequest<'_>,
 ) -> PagesResult<()> {
     verify_replacement_operation(operation)?;
-    if operation.tenant_id != tenant_id
-        || operation.page_id != page_id
-        || operation.rebuild_operation_id != rebuild_operation_id
-        || operation.expected_version != expected_version
-        || operation.expected_current_artifact_id != expected_current_artifact_id
-        || operation.idempotency_key != idempotency_key
-        || operation.request_hash != request_hash
+    if operation.tenant_id != request.tenant_id
+        || operation.page_id != request.page_id
+        || operation.rebuild_operation_id != request.rebuild_operation_id
+        || operation.expected_version != request.expected_version
+        || operation.expected_current_artifact_id != request.expected_current_artifact_id
+        || operation.idempotency_key != request.idempotency_key
+        || operation.request_hash != request.request_hash
     {
         return Err(replacement_idempotency_conflict(
             "idempotency key is bound to another artifact binding replacement request",
@@ -865,23 +870,23 @@ fn verify_rebuild_source(source: &page_publish_rebuild_source::Model) -> PagesRe
             ));
         }
     }
-    let expected = rebuild_source_provenance_hash(
-        source.operation_id,
-        source.tenant_id,
-        source.page_id,
-        source.page_body_id,
-        source.locale.as_str(),
-        source.source_format.as_str(),
-        source.source_revision.as_str(),
-        source.artifact_id,
-        source.sanitized_hash.as_str(),
-        source.source_hash.as_str(),
-        source.review_hash.as_str(),
-        source.artifact_hash.as_str(),
-        source.materialization_hash.as_str(),
-        &source.materialization_identity,
-        &source.runtime_snapshots,
-    )
+    let expected = rebuild_source_provenance_hash(RebuildSourceProvenance {
+        operation_id: source.operation_id,
+        tenant_id: source.tenant_id,
+        page_id: source.page_id,
+        page_body_id: source.page_body_id,
+        locale: source.locale.as_str(),
+        source_format: source.source_format.as_str(),
+        source_revision: source.source_revision.as_str(),
+        artifact_id: source.artifact_id,
+        sanitized_hash: source.sanitized_hash.as_str(),
+        source_hash: source.source_hash.as_str(),
+        review_hash: source.review_hash.as_str(),
+        artifact_hash: source.artifact_hash.as_str(),
+        materialization_hash: source.materialization_hash.as_str(),
+        materialization_identity: &source.materialization_identity,
+        runtime_snapshots: &source.runtime_snapshots,
+    })
     .map_err(|error| replacement_target_invalid(error.to_string()))?;
     if expected != source.provenance_hash {
         return Err(replacement_target_invalid(

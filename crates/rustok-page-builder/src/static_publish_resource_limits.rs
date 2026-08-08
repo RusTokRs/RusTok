@@ -279,11 +279,11 @@ fn component_observation(
             {
                 return (component_count, max_component_depth);
             }
-            if let ComponentNode::Object(component) = node {
-                if let ComponentChildren::Nodes(children) = &component.components {
-                    for child in children.iter().rev() {
-                        stack.push((child, depth.saturating_add(1)));
-                    }
+            if let ComponentNode::Object(component) = node
+                && let ComponentChildren::Nodes(children) = &component.components
+            {
+                for child in children.iter().rev() {
+                    stack.push((child, depth.saturating_add(1)));
                 }
             }
         }

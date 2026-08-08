@@ -122,11 +122,11 @@ impl ComponentPatch {
         if self.clear_style {
             component.style = None;
         } else {
-            if !self.remove_style_properties.is_empty() {
-                if let Some(Value::Object(style)) = component.style.as_mut() {
-                    for property in self.remove_style_properties {
-                        style.remove(&property);
-                    }
+            if !self.remove_style_properties.is_empty()
+                && let Some(Value::Object(style)) = component.style.as_mut()
+            {
+                for property in self.remove_style_properties {
+                    style.remove(&property);
                 }
             }
             if let Some(style) = self.style {

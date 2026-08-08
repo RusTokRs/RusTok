@@ -15,7 +15,7 @@ use rustok_api::is_valid_module_slug;
 use rustok_build_source::{
     ArchiveLimits, CasArchiveError, CasArchivePublishReceipt, CasArchivePublisher,
 };
-use rustok_storage::{DigestObjectKey, ObjectScope, StorageConfig, StorageRuntime};
+use rustok_storage::{StorageConfig, StorageRuntime};
 use sea_orm::DatabaseConnection;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,6 @@ const AUTHORING_BUILD_DISK_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const AUTHORING_BUILD_PROCESS_LIMIT: u16 = 64;
 const AUTHORING_BUILD_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
 const AUTHORING_BUILD_WALL_CLOCK_MS: u64 = 30 * 60 * 1_000;
-const AUTHORING_PUBLICATION_BUNDLE_NAMESPACE: &str = "module-publish-bundle";
 const AUTHORING_PUBLICATION_OWNERSHIP: &str = "third_party";
 const AUTHORING_PUBLICATION_TRUST_LEVEL: &str = "sandboxed";
 
@@ -195,16 +194,11 @@ impl SeaOrmModuleAuthoringPublishService {
 
     async fn store_bundle(
         &self,
+        storage_key: &str,
         bundle: &[u8],
-    ) -> Result<(String, String), ModuleAuthoringPublishError> {
-        let checksum = hex::encode(Sha256::digest(bundle));
-        let key = DigestObjectKey::sha256(
-            AUTHORING_PUBLICATION_BUNDLE_NAMESPACE,
-            ObjectScope::Platform,
-            &checksum,
-        )?
-        .to_string();
-        let path = Path::from(key.as_str());
+        checksum_sha256: &str,
+    ) -> Result<(), ModuleAuthoringPublishError> {
+        let path = Path::from(storage_key);
         let mut options = self.storage.put_options(MODULE_PUBLISH_BUNDLE_CONTENT_TYPE);
         options.mode = PutMode::Create;
         let created = match self
@@ -231,12 +225,12 @@ impl SeaOrmModuleAuthoringPublishService {
                 .await
                 .map_err(|error| ModuleAuthoringPublishError::Storage(error.to_string()))?;
             if existing.len() != bundle.len()
-                || hex::encode(Sha256::digest(existing.as_ref())) != checksum
+                || hex::encode(Sha256::digest(existing.as_ref())) != checksum_sha256
             {
                 return Err(ModuleAuthoringPublishError::BundleCollision);
             }
         }
-        Ok((key, checksum))
+        Ok(())
     }
 }
 
@@ -391,23 +385,40 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
         if !validation.errors.is_empty() {
             return Err(ModuleAuthoringPublishError::InvalidBundle(validation));
         }
-        let (bundle_storage_key, bundle_checksum_sha256) = self.store_bundle(&bundle).await?;
+        let bundle_checksum_sha256 = hex::encode(Sha256::digest(&bundle));
         let request_id = self
             .governance
             .create_publish_request(Self::create_command(&command)?)
             .await?;
         let actor_principal = author_principal(&command.context.actor_id);
-        self.governance
-            .attach_publish_artifact(ModulePublishArtifactAttachCommand {
-                request_id: request_id.clone(),
-                actor_principal: actor_principal.clone(),
-                artifact_storage_key: bundle_storage_key.clone(),
-                checksum_sha256: bundle_checksum_sha256.clone(),
-                artifact_size: i64::try_from(bundle.len())
-                    .map_err(|_| ModuleAuthoringPublishError::InvalidCommand)?,
-                content_type: MODULE_PUBLISH_BUNDLE_CONTENT_TYPE.to_string(),
-            })
+        let artifact_command = ModulePublishArtifactAttachCommand {
+            request_id: request_id.clone(),
+            actor_principal: actor_principal.clone(),
+            actor_can_manage_modules: false,
+            checksum_sha256: bundle_checksum_sha256.clone(),
+            artifact_size: i64::try_from(bundle.len())
+                .map_err(|_| ModuleAuthoringPublishError::InvalidCommand)?,
+            content_type: MODULE_PUBLISH_BUNDLE_CONTENT_TYPE.to_string(),
+        };
+        let upload_slot = self
+            .governance
+            .prepare_publish_artifact_upload(&artifact_command)
             .await?;
+        if !upload_slot.artifact_already_attached {
+            self.store_bundle(
+                &upload_slot.artifact_storage_key,
+                &bundle,
+                &bundle_checksum_sha256,
+            )
+            .await?;
+        }
+        let attached = self
+            .governance
+            .attach_publish_artifact(artifact_command)
+            .await?;
+        if attached.artifact_storage_key != upload_slot.artifact_storage_key {
+            return Err(ModuleAuthoringPublishError::BundleCollision);
+        }
         let stage = self
             .governance
             .stage_platform_build(ModulePublishPlatformBuildStageCommand {
@@ -433,7 +444,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             stage_created: stage.created,
             validation_job_id: validation_job.validation_job_id,
             validation_queued: validation_job.queued,
-            bundle_storage_key,
+            bundle_storage_key: attached.artifact_storage_key,
             bundle_checksum_sha256,
             bundle_bytes: bundle.len() as u64,
         })

@@ -71,7 +71,8 @@ pub use policy::{
 };
 pub use progress::{
     JobProgressRecord, ProviderProgressRecord, ProviderProjectionFreshness,
-    RequiredProviderProgressRecord, TranslationProgressService,
+    RequiredProviderProgressRecord, ReviewerQueueInput, ReviewerQueueRecord, ReviewerWorkloadInput,
+    ReviewerWorkloadRecord, TranslationProgressService,
 };
 pub use public_error::{
     TranslationPublicError, TranslationPublicErrorKind, map_translation_public_error,

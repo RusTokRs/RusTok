@@ -32,10 +32,10 @@ impl ProjectDocument {
     pub fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator) {
         let mut used = BTreeSet::new();
         self.project.visit_components(|component, _, _| {
-            if let Some(id) = component.id() {
-                if !id.is_empty() {
-                    used.insert(id.to_string());
-                }
+            if let Some(id) = component.id()
+                && !id.is_empty()
+            {
+                used.insert(id.to_string());
             }
         });
         self.project.ensure_stable_ids(generator, &mut used);
@@ -266,10 +266,10 @@ impl ComponentNode {
         match self {
             Self::Opaque(value) => replace_value_references(value, mapping),
             Self::Object(object) => {
-                if let Some(id) = object.id.as_mut() {
-                    if let Some(replacement) = mapping.get(id) {
-                        *id = replacement.clone();
-                    }
+                if let Some(id) = object.id.as_mut()
+                    && let Some(replacement) = mapping.get(id)
+                {
+                    *id = replacement.clone();
                 }
                 replace_map_references(&mut object.attributes, mapping);
                 if let Some(style) = object.style.as_mut() {

@@ -8,7 +8,8 @@ admin host.
 ## Responsibilities
 
 - Render policy, versioned glossary, Translation Memory, bounded interchange,
-  target, inventory, progress, and reviewed workflow operations.
+  target, inventory, progress, reviewed workflow, and reviewer workload
+  operations.
 - Use the host-provided GraphQL executor, tenant identity, authentication, and
   `next-intl` locale.
 - Keep the selected workbench tab, glossary, and memory entry in the typed
@@ -20,15 +21,15 @@ admin host.
 
 ## Interactions
 
-The package executes the same 39 module-owned operations as
+The package executes the same 41 module-owned operations as
 `rustok-translation-admin`, including exact/contextual memory lookup and
 revision-guarded retention, tombstone, purge, immutable job export, and atomic
 item import through canonical QA, plus machine-translation estimate, generation,
 status, cancellation, and recovery controls, revision-guarded
-assignment/unassignment, blocked-item retry, job cancellation, and owner-apply
-recovery. It never reads owner tables and never performs cross-protocol mutation
-fallback. `apps/next-admin` contributes only the route, GraphQL executor
-injection, and shell composition.
+assignment/unassignment, bounded reviewer queue and workload reads, blocked-item
+retry, job cancellation, and owner-apply recovery. It never reads owner tables
+and never performs cross-protocol mutation fallback. `apps/next-admin`
+contributes only the route, GraphQL executor injection, and shell composition.
 
 ## Entry points
 

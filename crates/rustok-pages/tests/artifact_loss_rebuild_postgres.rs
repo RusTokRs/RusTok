@@ -280,7 +280,7 @@ async fn explicit_rebuild_reproduces_missing_source_artifact_from_retained_prove
     let mut expected_rebuilt = canonical_artifact.clone();
     expected_rebuilt.id = rebuilt_record.id;
     expected_rebuilt.instance_key = rebuilt_record.instance_key.clone();
-    expected_rebuilt.created_at = rebuilt_record.created_at.clone();
+    expected_rebuilt.created_at = rebuilt_record.created_at;
     assert_eq!(rebuilt_record, expected_rebuilt);
 
     let receipt = page_artifact_rebuild_operation::Entity::find_by_id(rebuilt.operation_id)

@@ -26,6 +26,18 @@ use super::{PAGE_KIND, PageService, PageTransition};
 const PAGE_ROLLBACK_OPERATION_FORMAT: &str = "page_rollback_operation_v1";
 const MAX_ROLLBACK_IDEMPOTENCY_KEY_BYTES: usize = 191;
 
+struct RollbackOperationInsert {
+    tenant_id: Uuid,
+    page_id: Uuid,
+    idempotency_key: String,
+    request_hash: String,
+    target_publish_operation_id: Uuid,
+    source_artifact_set_hash: String,
+    target_artifact_set_hash: String,
+    result_version: i32,
+    rolled_back_at: chrono::DateTime<Utc>,
+}
+
 impl PageService {
     /// Restores the previous distinct immutable publish artifact set in one transaction.
     ///
@@ -145,15 +157,17 @@ impl PageService {
 
         let operation = insert_rollback_operation_in_tx(
             &txn,
-            tenant_id,
-            page_id,
-            idempotency_key,
-            request_hash,
-            target_operation.id,
-            source_artifact_set_hash,
-            target_artifact_set_hash,
-            rolled_back_page.version,
-            now,
+            RollbackOperationInsert {
+                tenant_id,
+                page_id,
+                idempotency_key,
+                request_hash,
+                target_publish_operation_id: target_operation.id,
+                source_artifact_set_hash,
+                target_artifact_set_hash,
+                result_version: rolled_back_page.version,
+                rolled_back_at: now,
+            },
         )
         .await?;
         let result = rollback_result_from_record(operation, false)?;
@@ -316,31 +330,22 @@ async fn find_rollback_operation_in_tx(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn insert_rollback_operation_in_tx(
     txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    page_id: Uuid,
-    idempotency_key: String,
-    request_hash: String,
-    target_publish_operation_id: Uuid,
-    source_artifact_set_hash: String,
-    target_artifact_set_hash: String,
-    result_version: i32,
-    rolled_back_at: chrono::DateTime<Utc>,
+    input: RollbackOperationInsert,
 ) -> PagesResult<page_rollback_operation::Model> {
-    let timestamp: sea_orm::prelude::DateTimeWithTimeZone = rolled_back_at.into();
+    let timestamp: sea_orm::prelude::DateTimeWithTimeZone = input.rolled_back_at.into();
     page_rollback_operation::ActiveModel {
         id: Set(Uuid::new_v4()),
-        tenant_id: Set(tenant_id),
-        page_id: Set(page_id),
-        idempotency_key: Set(idempotency_key),
-        request_hash: Set(request_hash),
-        target_publish_operation_id: Set(target_publish_operation_id),
-        source_artifact_set_hash: Set(source_artifact_set_hash),
-        target_artifact_set_hash: Set(target_artifact_set_hash),
-        result_version: Set(result_version),
-        rolled_back_at: Set(timestamp.clone()),
+        tenant_id: Set(input.tenant_id),
+        page_id: Set(input.page_id),
+        idempotency_key: Set(input.idempotency_key),
+        request_hash: Set(input.request_hash),
+        target_publish_operation_id: Set(input.target_publish_operation_id),
+        source_artifact_set_hash: Set(input.source_artifact_set_hash),
+        target_artifact_set_hash: Set(input.target_artifact_set_hash),
+        result_version: Set(input.result_version),
+        rolled_back_at: Set(timestamp),
         created_at: Set(timestamp),
     }
     .insert(txn)

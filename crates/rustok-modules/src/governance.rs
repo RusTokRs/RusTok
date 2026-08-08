@@ -1,5 +1,6 @@
 //! Owner contracts for registry governance transitions.
 
+use rustok_storage::{DigestObjectKey, ObjectScope};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value,
@@ -16,6 +17,7 @@ use crate::build::{
     ModuleBuildValidationOutcome, ModuleBuildValidationProfile, SeaOrmModuleBuildService,
 };
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
+use crate::marketplace::{ModuleMarketplaceEntry, ModuleMarketplaceVersion};
 use crate::marketplace_content::ModuleMarketplaceContentProjection;
 
 /// Stable reason-code vocabulary for a release yank.
@@ -89,6 +91,8 @@ pub const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
     "manual_override",
     "other",
 ];
+
+const REGISTRY_PUBLISH_ARTIFACT_NAMESPACE: &str = "registry-publish-artifact";
 
 /// Explicit reasons why an external prebuilt artifact cannot provide a
 /// reproducible source identity. Absence is a reviewable trust fact, never an
@@ -281,6 +285,14 @@ pub struct ModuleRemoteValidationTerminalCommand {
     pub reason_code: Option<String>,
 }
 
+/// Canonical transport-neutral outcome of a remote validation lease
+/// transition. The registry owner, rather than a host database read, is the
+/// source of the reported stage state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleRemoteValidationStageTransition {
+    pub status: String,
+}
+
 /// Host-authenticated request for one eligible remote validation lease. The
 /// owner selects and claims a stage atomically; the host owns runner transport
 /// authentication and artifact download URL construction.
@@ -351,6 +363,8 @@ pub struct ModuleGovernanceOwnerSnapshot {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleGovernanceRequestSnapshot {
     pub id: String,
+    pub slug: String,
+    pub version: String,
     pub status: String,
     pub artifact_origin: String,
     pub requested_by_principal: serde_json::Value,
@@ -450,6 +464,71 @@ pub struct ModuleGovernanceAction {
     pub reason_code_required: bool,
     pub reason_codes: Vec<String>,
     pub destructive: bool,
+}
+
+/// Authenticated host facts used solely to constrain the actions exposed by a
+/// request-scoped governance projection. The owner still reloads the durable
+/// request and owner binding before deriving the action list.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceActorContext {
+    pub principal: serde_json::Value,
+    pub can_manage_modules: bool,
+}
+
+/// Exact durable permissions for an authenticated governance actor. Hosts use
+/// these facts to authorize mutations without reading registry request or
+/// owner-binding persistence models.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceRequestAuthorizationSnapshot {
+    pub can_manage: bool,
+    pub can_review: bool,
+}
+
+/// Owner-derived next operation for an exact publish request. The owner owns
+/// the lifecycle decision; transports map this semantic operation onto their
+/// own routes and presentation text without reinterpreting durable state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleGovernancePublishRequestNextAction {
+    UploadArtifact,
+    UploadArtifactRevision,
+    TriggerValidation,
+    PollStatus,
+    StageExternalPrebuilt,
+    StagePlatformBuild,
+    StageAlloyRelease,
+    FinalizePublication,
+    Resume,
+    RetryRejected,
+}
+
+/// Complete owner-derived public status projection for one exact publish
+/// request. This is deliberately request-scoped and contains all lifecycle
+/// interpretation required by status transports, including override guidance
+/// and the semantic next operation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernancePublishRequestStatusSnapshot {
+    pub request: ModuleGovernanceRequestSnapshot,
+    pub authorization: ModuleGovernanceRequestAuthorizationSnapshot,
+    pub effective_publisher_principal: Option<serde_json::Value>,
+    pub rejected_retry_allowed: bool,
+    pub follow_up_gates: Vec<ModuleGovernanceGateSnapshot>,
+    pub validation_stages: Vec<ModuleGovernanceValidationStageSnapshot>,
+    pub approval_override_required: bool,
+    pub approval_override_reason_codes: Vec<String>,
+    pub approval_override_warning: Option<String>,
+    pub governance_actions: Vec<ModuleGovernanceAction>,
+    pub accepted: bool,
+    pub next_action: Option<ModuleGovernancePublishRequestNextAction>,
+}
+
+/// Host-only delivery facts for an uploaded publish artifact. This narrow
+/// projection deliberately stays separate from the public status snapshot so
+/// storage topology never becomes a status transport field.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernancePublishArtifactDownloadSnapshot {
+    pub storage_key: String,
+    pub content_type: String,
 }
 
 /// Complete registry lifecycle projection for one module slug. All policy and
@@ -692,22 +771,35 @@ pub struct ModuleAlloyAuthoredStageResult {
     pub created: bool,
 }
 
-/// Metadata of bytes the host has durably stored before asking the owner to
-/// attach that artifact to a publish request. Object storage remains a host
-/// adapter; request state, retry cleanup, and audit facts remain owner-owned.
+/// Metadata of bytes that a host has hashed before asking the owner for an
+/// upload slot and then attaching the artifact. The owner derives the storage
+/// key from the checksum; a host can never select an object location.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishArtifactAttachCommand {
     pub request_id: String,
     pub actor_principal: serde_json::Value,
-    pub artifact_storage_key: String,
+    /// An authenticated host fact. It narrows the owner authorization decision
+    /// but never replaces owner binding or requester identity checks.
+    pub actor_can_manage_modules: bool,
     pub checksum_sha256: String,
     pub artifact_size: i64,
     pub content_type: String,
 }
 
+/// Owner-issued, content-addressed upload destination for one exact artifact
+/// checksum. Replays never overwrite bytes: an already attached slot may be
+/// reused only when all immutable artifact metadata matches.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernancePublishArtifactUploadSlot {
+    pub request_id: String,
+    pub artifact_storage_key: String,
+    pub artifact_already_attached: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishArtifactAttachResult {
     pub request_id: String,
+    pub artifact_storage_key: String,
     pub previous_storage_key: Option<String>,
     pub reuploaded_after_changes_requested: bool,
 }
@@ -1241,7 +1333,6 @@ impl ModuleAlloyAuthoredStageCommand {
 impl ModulePublishArtifactAttachCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
-            || self.artifact_storage_key.trim().is_empty()
             || !is_sha256_hex(&self.checksum_sha256)
             || self.artifact_size < 0
             || self.content_type.trim().is_empty()
@@ -1406,6 +1497,25 @@ pub struct SeaOrmModuleGovernanceService {
     infrastructure: ControlPlaneInfrastructure,
 }
 
+#[derive(Debug)]
+struct RegistryMarketplaceReleaseProjection {
+    id: String,
+    slug: String,
+    version: String,
+    status: String,
+    publisher_principal: serde_json::Value,
+    checksum_sha256: Option<String>,
+    default_locale: String,
+    published_at: String,
+}
+
+#[derive(Debug)]
+struct RegistryMarketplaceTranslationProjection {
+    locale: String,
+    name: String,
+    description: String,
+}
+
 impl SeaOrmModuleGovernanceService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self::with_infrastructure(db, ControlPlaneInfrastructure::default())
@@ -1416,6 +1526,100 @@ impl SeaOrmModuleGovernanceService {
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
         Self { db, infrastructure }
+    }
+
+    /// Projects durable registry releases onto host-supplied marketplace
+    /// entries. The host provides only its static catalog facts; release
+    /// versions, trusted artifact references, localized metadata, and
+    /// publisher identity remain registry-owner reads.
+    pub async fn apply_marketplace_projection(
+        &self,
+        entries: Vec<ModuleMarketplaceEntry>,
+        preferred_locale: Option<&str>,
+        fallback_locale: Option<&str>,
+    ) -> Result<Vec<ModuleMarketplaceEntry>, ModuleGovernanceError> {
+        let releases = self.marketplace_release_projections().await?;
+        if releases.is_empty() {
+            return Ok(entries);
+        }
+
+        let artifact_contracts = self
+            .published_artifact_contracts()
+            .await?
+            .into_iter()
+            .map(|contract| (contract.release_id, contract.artifact))
+            .collect::<std::collections::HashMap<_, _>>();
+        if releases.iter().any(|release| {
+            release.status == "active" && !artifact_contracts.contains_key(&release.id)
+        }) {
+            return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+        }
+
+        let mut releases_by_slug =
+            std::collections::HashMap::<String, Vec<RegistryMarketplaceReleaseProjection>>::new();
+        for release in releases {
+            releases_by_slug
+                .entry(release.slug.clone())
+                .or_default()
+                .push(release);
+        }
+
+        let mut projected = entries;
+        for entry in &mut projected {
+            let Some(releases) = releases_by_slug.get(&entry.slug) else {
+                continue;
+            };
+
+            let mut versions = releases
+                .iter()
+                .map(|release| ModuleMarketplaceVersion {
+                    version: release.version.clone(),
+                    changelog: None,
+                    yanked: release.status == "yanked",
+                    published_at: Some(release.published_at.clone()),
+                    checksum_sha256: release.checksum_sha256.clone(),
+                    signature_present: false,
+                    artifact: artifact_contracts.get(&release.id).cloned(),
+                })
+                .collect::<Vec<_>>();
+            versions.sort_by(|left, right| {
+                left.yanked
+                    .cmp(&right.yanked)
+                    .then_with(|| right.published_at.cmp(&left.published_at))
+                    .then_with(|| marketplace_version_desc(&left.version, &right.version))
+                    .then_with(|| right.version.cmp(&left.version))
+            });
+
+            if let Some(active_release) = releases.iter().find(|release| release.status == "active")
+            {
+                let metadata = self
+                    .marketplace_release_metadata(
+                        &active_release.id,
+                        preferred_locale,
+                        fallback_locale.or(Some(active_release.default_locale.as_str())),
+                    )
+                    .await?;
+                if let Ok(content) = ModuleMarketplaceContentProjection::try_new(
+                    &metadata.name,
+                    &metadata.description,
+                ) {
+                    entry.name = content.name;
+                    entry.description = content.description;
+                }
+                entry.latest_version = active_release.version.clone();
+                entry.publisher = Some(marketplace_principal_label(
+                    &active_release.publisher_principal,
+                )?);
+                entry.checksum_sha256 = active_release.checksum_sha256.clone();
+                entry.update_available = entry
+                    .installed_version
+                    .as_ref()
+                    .is_some_and(|installed_version| installed_version != &entry.latest_version);
+            }
+            entry.versions = versions;
+        }
+
+        Ok(projected)
     }
 
     /// Loads the complete owner-derived registry lifecycle projection for one
@@ -1452,7 +1656,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT id, status, artifact_origin, \
+                    "SELECT id, slug, version, status, artifact_origin, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
                             CAST(publisher_principal AS TEXT) AS publisher_principal, \
                             CAST(approved_by_principal AS TEXT) AS approved_by_principal, \
@@ -1593,6 +1797,316 @@ impl SeaOrmModuleGovernanceService {
         }))
     }
 
+    /// Loads the exact durable owner binding for one module slug. Host
+    /// adapters use this narrow query for authorization and transport mapping
+    /// instead of reading `registry_module_owners` themselves.
+    pub async fn owner_binding_snapshot(
+        &self,
+        slug: &str,
+    ) -> Result<Option<ModuleGovernanceOwnerSnapshot>, ModuleGovernanceError> {
+        let slug = slug.trim();
+        if slug.is_empty() {
+            return Err(ModuleGovernanceError::InvalidOwnerBindingQuery);
+        }
+        let backend = self.db.get_database_backend();
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
+                            CAST(bound_by_principal AS TEXT) AS bound_by_principal, \
+                            bound_at, updated_at \
+                     FROM registry_module_owners WHERE slug = {} LIMIT 1",
+                    placeholder(backend, 1)
+                ),
+                vec![slug.into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        row.as_ref().map(map_governance_owner_snapshot).transpose()
+    }
+
+    /// Loads the exact host-only artifact-delivery facts for one publish
+    /// request. A request without an attached artifact is intentionally
+    /// indistinguishable from an absent request to a download transport.
+    pub async fn publish_artifact_download_snapshot(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<ModuleGovernancePublishArtifactDownloadSnapshot>, ModuleGovernanceError>
+    {
+        let request_id = request_id.trim();
+        if request_id.is_empty() {
+            return Err(ModuleGovernanceError::InvalidPublishArtifactDownloadQuery);
+        }
+        let backend = self.db.get_database_backend();
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT artifact_storage_key, artifact_content_type \
+                     FROM registry_publish_requests WHERE id = {} LIMIT 1",
+                    placeholder(backend, 1)
+                ),
+                vec![request_id.into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let Some(storage_key) = optional_column::<String>(&row, "artifact_storage_key")?
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return Ok(None);
+        };
+        let content_type = optional_column::<String>(&row, "artifact_content_type")?
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        Ok(Some(ModuleGovernancePublishArtifactDownloadSnapshot {
+            storage_key,
+            content_type,
+        }))
+    }
+
+    /// Loads the complete owner-derived status projection for one exact
+    /// publish request. Unlike [`Self::lifecycle_snapshot`], this method never
+    /// substitutes the latest request for the module slug.
+    pub async fn publish_request_status_snapshot(
+        &self,
+        request_id: &str,
+        actor: Option<&ModuleGovernanceActorContext>,
+    ) -> Result<Option<ModuleGovernancePublishRequestStatusSnapshot>, ModuleGovernanceError> {
+        let request_id = request_id.trim();
+        if request_id.is_empty() {
+            return Err(ModuleGovernanceError::InvalidPublishRequestStatusQuery);
+        }
+
+        let backend = self.db.get_database_backend();
+        let mark = |position| placeholder(backend, position);
+        let request_row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT slug, id, version, status, artifact_origin, \
+                            CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
+                            CAST(publisher_principal AS TEXT) AS publisher_principal, \
+                            CAST(approved_by_principal AS TEXT) AS approved_by_principal, \
+                            CAST(rejected_by_principal AS TEXT) AS rejected_by_principal, \
+                            rejection_reason, \
+                            CAST(changes_requested_by_principal AS TEXT) AS changes_requested_by_principal, \
+                            changes_requested_reason, changes_requested_reason_code, \
+                            changes_requested_at, \
+                            CAST(held_by_principal AS TEXT) AS held_by_principal, \
+                            held_reason, held_reason_code, held_at, held_from_status, \
+                            CAST(validation_warnings AS TEXT) AS validation_warnings, \
+                            CAST(validation_errors AS TEXT) AS validation_errors, \
+                            validated_at, approved_at, created_at, updated_at, published_at \
+                     FROM registry_publish_requests WHERE id = {} LIMIT 1",
+                    mark(1)
+                ),
+                vec![request_id.into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        let Some(request_row) = request_row else {
+            return Ok(None);
+        };
+        let slug: String = required_column(&request_row, "slug")?;
+        let request = map_governance_request_row(&request_row)?;
+
+        let owner_row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
+                            CAST(bound_by_principal AS TEXT) AS bound_by_principal, \
+                            bound_at, updated_at \
+                     FROM registry_module_owners WHERE slug = {} LIMIT 1",
+                    mark(1)
+                ),
+                vec![slug.into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        let owner_binding = owner_row
+            .as_ref()
+            .map(map_governance_owner_snapshot)
+            .transpose()?;
+        let stage_rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT stage_key, status, detail, attempt_number, updated_at, \
+                            started_at, finished_at \
+                     FROM registry_validation_stages WHERE request_id = {} \
+                     ORDER BY attempt_number DESC, created_at DESC",
+                    mark(1)
+                ),
+                vec![request.snapshot.id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        let validation_stages =
+            derive_governance_validation_stages(Some(&request), &[], &stage_rows)?;
+        let follow_up_gates =
+            derive_governance_follow_up_gates(Some(&request), &[], &validation_stages)?;
+        let approval_override_required = request.snapshot.status == "approved"
+            && validation_stages
+                .iter()
+                .any(|stage| !stage.status.eq_ignore_ascii_case("passed"));
+        let pending_stage_labels = governance_pending_stage_labels(&validation_stages);
+        let next_action =
+            publish_request_next_action(&request.snapshot, approval_override_required)?;
+        let approval_override_warning = approval_override_required.then(|| {
+            format!(
+                "Approval override is required because these follow-up validation stages are not passed yet: {}. Live approve must include both reason and reason_code ({}).",
+                pending_stage_labels.join(", "),
+                REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
+            )
+        });
+        let authorization = ModuleGovernanceRequestAuthorizationSnapshot {
+            can_manage: governance_actor_can_manage_request(
+                &request.snapshot,
+                owner_binding.as_ref(),
+                actor,
+            ),
+            can_review: governance_actor_can_review_request(owner_binding.as_ref(), actor),
+        };
+        let effective_publisher_principal = owner_binding
+            .as_ref()
+            .map(|owner| owner.owner_principal.clone())
+            .or_else(|| request.snapshot.publisher_principal.clone())
+            .or_else(|| actor.map(|actor| actor.principal.clone()));
+        let rejected_retry_allowed = if request.snapshot.status == "rejected" {
+            let latest_event_type = self
+                .db
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT event_type FROM registry_governance_events \
+                         WHERE request_id = {} ORDER BY created_at DESC LIMIT 1",
+                        mark(1)
+                    ),
+                    vec![request.snapshot.id.clone().into()],
+                ))
+                .await
+                .map_err(store_error)?
+                .map(|row| required_column::<String>(&row, "event_type"))
+                .transpose()?;
+            governance_rejected_request_can_retry(
+                latest_event_type.as_deref(),
+                request.snapshot.rejection_reason.as_deref(),
+            )
+        } else {
+            false
+        };
+        let governance_actions = derive_governance_request_actions(
+            &request.snapshot,
+            &authorization,
+            approval_override_required,
+        );
+        let accepted = request.snapshot.status != "rejected";
+
+        Ok(Some(ModuleGovernancePublishRequestStatusSnapshot {
+            request: request.snapshot,
+            authorization,
+            effective_publisher_principal,
+            rejected_retry_allowed,
+            follow_up_gates,
+            validation_stages: validation_stages.clone(),
+            approval_override_required,
+            approval_override_reason_codes: REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
+            approval_override_warning,
+            governance_actions,
+            accepted,
+            next_action,
+        }))
+    }
+
+    /// Authorizes and derives the immutable content-addressed destination for
+    /// one publish-artifact upload. The host may hash and deliver bytes, but
+    /// cannot select a request state, grant itself upload authority, or
+    /// construct an object key.
+    pub async fn prepare_publish_artifact_upload(
+        &self,
+        command: &ModulePublishArtifactAttachCommand,
+    ) -> Result<ModuleGovernancePublishArtifactUploadSlot, ModuleGovernanceError> {
+        command.validate()?;
+        let actor = ModuleGovernanceActorContext {
+            principal: command.actor_principal.clone(),
+            can_manage_modules: command.actor_can_manage_modules,
+        };
+        let snapshot = self
+            .publish_request_status_snapshot(&command.request_id, Some(&actor))
+            .await?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let owner_binding = self.owner_binding_snapshot(&snapshot.request.slug).await?;
+        let can_manage = governance_actor_can_manage_request(
+            &snapshot.request,
+            owner_binding.as_ref(),
+            Some(&actor),
+        );
+        let artifact_storage_key = registry_publish_artifact_storage_key(&command.checksum_sha256)?;
+
+        if matches!(
+            snapshot.request.status.as_str(),
+            "draft" | "changes_requested"
+        ) {
+            if !can_manage {
+                return Err(ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized);
+            }
+            return Ok(ModuleGovernancePublishArtifactUploadSlot {
+                request_id: snapshot.request.id,
+                artifact_storage_key,
+                artifact_already_attached: false,
+            });
+        }
+
+        if !can_manage {
+            return Err(ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized);
+        }
+        let backend = self.db.get_database_backend();
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type \
+                     FROM registry_publish_requests WHERE id = {} LIMIT 1",
+                    placeholder(backend, 1)
+                ),
+                vec![snapshot.request.id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let existing_storage_key = optional_column::<String>(&row, "artifact_storage_key")?;
+        let existing_checksum = optional_column::<String>(&row, "artifact_checksum_sha256")?;
+        let existing_size = optional_column::<i64>(&row, "artifact_size")?;
+        let existing_content_type = optional_column::<String>(&row, "artifact_content_type")?;
+        if existing_storage_key.as_deref() == Some(artifact_storage_key.as_str())
+            && existing_checksum.as_deref() == Some(command.checksum_sha256.as_str())
+            && existing_size == Some(command.artifact_size)
+            && existing_content_type.as_deref() == Some(command.content_type.as_str())
+        {
+            return Ok(ModuleGovernancePublishArtifactUploadSlot {
+                request_id: snapshot.request.id,
+                artifact_storage_key,
+                artifact_already_attached: true,
+            });
+        }
+
+        Err(ModuleGovernanceError::PublishRequestArtifactReplayConflict)
+    }
+
     /// Creates a draft publish request, default-locale metadata, and audit fact
     /// atomically. Authorization remains a host concern.
     pub async fn create_publish_request(
@@ -1683,13 +2197,15 @@ impl SeaOrmModuleGovernanceService {
         Ok(request_id)
     }
 
-    /// Attaches host-stored artifact bytes to an eligible request. All durable
-    /// status, validation-reset, and audit mutations share this transaction.
+    /// Attaches bytes already placed in an owner-issued slot to an eligible
+    /// request. The command is re-authorized immediately before the durable
+    /// state transition, so a slot preflight cannot become a write bypass.
     pub async fn attach_publish_artifact(
         &self,
         command: ModulePublishArtifactAttachCommand,
     ) -> Result<ModulePublishArtifactAttachResult, ModuleGovernanceError> {
-        command.validate()?;
+        let upload_slot = self.prepare_publish_artifact_upload(&command).await?;
+        let artifact_storage_key = upload_slot.artifact_storage_key;
         let tx = self.db.begin().await.map_err(store_error)?;
         let backend = tx.get_database_backend();
         let mark = |n| placeholder(backend, n);
@@ -1707,7 +2223,7 @@ impl SeaOrmModuleGovernanceService {
         if matches!(
             status.as_str(),
             "submitted" | "validating" | "approved" | "published"
-        ) && existing_storage_key.as_deref() == Some(command.artifact_storage_key.as_str())
+        ) && existing_storage_key.as_deref() == Some(artifact_storage_key.as_str())
             && request
                 .try_get::<Option<String>>("", "artifact_checksum_sha256")
                 .map_err(store_error)?
@@ -1726,6 +2242,7 @@ impl SeaOrmModuleGovernanceService {
             tx.commit().await.map_err(store_error)?;
             return Ok(ModulePublishArtifactAttachResult {
                 request_id: command.request_id,
+                artifact_storage_key,
                 previous_storage_key: existing_storage_key,
                 reuploaded_after_changes_requested: false,
             });
@@ -1773,7 +2290,7 @@ impl SeaOrmModuleGovernanceService {
         tx.execute(Statement::from_sql_and_values(
             backend,
             format!("UPDATE registry_publish_requests SET status = 'submitted', artifact_storage_key = {}, artifact_checksum_sha256 = {}, artifact_size = {}, artifact_content_type = {}, submitted_at = {now}, validation_warnings = {}, validation_errors = {}, approved_by_principal = NULL, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, approved_at = NULL, published_at = NULL, updated_at = {now} WHERE id = {} AND status IN ('draft', 'changes_requested')", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)),
-            vec![command.artifact_storage_key.clone().into(), command.checksum_sha256.clone().into(), command.artifact_size.into(), command.content_type.clone().into(), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), command.request_id.clone().into()],
+            vec![artifact_storage_key.clone().into(), command.checksum_sha256.clone().into(), command.artifact_size.into(), command.content_type.clone().into(), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), command.request_id.clone().into()],
         )).await.map_err(store_error)?;
         if reuploaded {
             for table in ["registry_validation_stages", "registry_validation_jobs"] {
@@ -1802,6 +2319,7 @@ impl SeaOrmModuleGovernanceService {
         tx.commit().await.map_err(store_error)?;
         Ok(ModulePublishArtifactAttachResult {
             request_id: command.request_id,
+            artifact_storage_key,
             previous_storage_key,
             reuploaded_after_changes_requested: reuploaded,
         })
@@ -4789,7 +5307,7 @@ impl SeaOrmModuleGovernanceService {
     pub async fn heartbeat_remote_validation_stage(
         &self,
         command: ModuleRemoteValidationHeartbeatCommand,
-    ) -> Result<(), ModuleGovernanceError> {
+    ) -> Result<ModuleRemoteValidationStageTransition, ModuleGovernanceError> {
         command.validate()?;
         let now = self.infrastructure.now();
         let expires_at = now
@@ -4832,7 +5350,9 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if updated.rows_affected() == 1 {
-            return Ok(());
+            return Ok(ModuleRemoteValidationStageTransition {
+                status: "running".to_string(),
+            });
         }
         let stage = self
             .db
@@ -5281,12 +5801,12 @@ impl SeaOrmModuleGovernanceService {
     }
 
     /// Completes a remote lease and emits the terminal stage and follow-up gate
-    /// facts in the same transaction. Returns the durable stage ID for a host
-    /// adapter that needs to shape a transport response.
+    /// facts in the same transaction. Returns the canonical terminal state for
+    /// a host adapter that needs to shape a transport response.
     pub async fn complete_remote_validation_stage(
         &self,
         command: ModuleRemoteValidationTerminalCommand,
-    ) -> Result<String, ModuleGovernanceError> {
+    ) -> Result<ModuleRemoteValidationStageTransition, ModuleGovernanceError> {
         command.validate()?;
         let tx = self
             .db
@@ -5459,7 +5979,9 @@ impl SeaOrmModuleGovernanceService {
         tx.commit()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        Ok(stage_id)
+        Ok(ModuleRemoteValidationStageTransition {
+            status: terminal_status.to_string(),
+        })
     }
 
     /// Publishes an approved request as one durable governance transition.
@@ -6452,6 +6974,146 @@ impl SeaOrmModuleGovernanceService {
             })
             .collect()
     }
+
+    async fn marketplace_release_projections(
+        &self,
+    ) -> Result<Vec<RegistryMarketplaceReleaseProjection>, ModuleGovernanceError> {
+        let backend = self.db.get_database_backend();
+        let rows = self
+            .db
+            .query_all(Statement::from_string(
+                backend,
+                "SELECT id, slug, version, status, \
+                        CAST(publisher_principal AS TEXT) AS publisher_principal, \
+                        checksum_sha256, default_locale, published_at \
+                 FROM registry_module_releases \
+                 ORDER BY published_at DESC, id DESC"
+                    .to_string(),
+            ))
+            .await
+            .map_err(store_error)?;
+        rows.into_iter()
+            .map(|row| {
+                let raw_principal = required_column::<String>(&row, "publisher_principal")?;
+                let publisher_principal = serde_json::from_str(&raw_principal).map_err(|_| {
+                    ModuleGovernanceError::Store(
+                        "registry release publisher principal is not valid JSON".to_string(),
+                    )
+                })?;
+                Ok(RegistryMarketplaceReleaseProjection {
+                    id: required_column(&row, "id")?,
+                    slug: required_column(&row, "slug")?,
+                    version: required_column(&row, "version")?,
+                    status: required_column(&row, "status")?,
+                    publisher_principal,
+                    checksum_sha256: optional_column(&row, "checksum_sha256")?,
+                    default_locale: required_column(&row, "default_locale")?,
+                    published_at: required_timestamp(&row, "published_at")?,
+                })
+            })
+            .collect()
+    }
+
+    async fn marketplace_release_metadata(
+        &self,
+        release_id: &str,
+        preferred_locale: Option<&str>,
+        fallback_locale: Option<&str>,
+    ) -> Result<RegistryMarketplaceTranslationProjection, ModuleGovernanceError> {
+        let backend = self.db.get_database_backend();
+        let mark = |position| placeholder(backend, position);
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT locale, name, description \
+                     FROM registry_module_release_translations \
+                     WHERE release_id = {} ORDER BY locale ASC",
+                    mark(1)
+                ),
+                vec![release_id.to_string().into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        let translations = rows
+            .into_iter()
+            .map(|row| {
+                Ok(RegistryMarketplaceTranslationProjection {
+                    locale: required_column(&row, "locale")?,
+                    name: required_column(&row, "name")?,
+                    description: required_column(&row, "description")?,
+                })
+            })
+            .collect::<Result<Vec<_>, ModuleGovernanceError>>()?;
+        marketplace_translation_for_locales(&translations, preferred_locale, fallback_locale)
+            .ok_or_else(|| {
+                ModuleGovernanceError::Store(
+                    "active registry release is missing metadata translations".to_string(),
+                )
+            })
+    }
+}
+
+fn marketplace_translation_for_locales(
+    translations: &[RegistryMarketplaceTranslationProjection],
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+) -> Option<RegistryMarketplaceTranslationProjection> {
+    let candidates = rustok_api::build_locale_candidates(
+        [
+            preferred_locale,
+            fallback_locale,
+            Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+        ],
+        true,
+    );
+    for candidate in candidates {
+        if let Some(translation) = translations
+            .iter()
+            .find(|translation| rustok_api::locale_tags_match(&translation.locale, &candidate))
+        {
+            return Some(RegistryMarketplaceTranslationProjection {
+                locale: translation.locale.clone(),
+                name: translation.name.clone(),
+                description: translation.description.clone(),
+            });
+        }
+    }
+    translations
+        .first()
+        .map(|translation| RegistryMarketplaceTranslationProjection {
+            locale: translation.locale.clone(),
+            name: translation.name.clone(),
+            description: translation.description.clone(),
+        })
+}
+
+fn marketplace_principal_label(
+    principal: &serde_json::Value,
+) -> Result<String, ModuleGovernanceError> {
+    principal
+        .get("display_label")
+        .or_else(|| principal.get("subject"))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| principal.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            ModuleGovernanceError::Store(
+                "registry release publisher principal has no stable display label".to_string(),
+            )
+        })
+}
+
+fn marketplace_version_desc(left: &str, right: &str) -> std::cmp::Ordering {
+    match (Version::parse(left), Version::parse(right)) {
+        (Ok(left), Ok(right)) => right.cmp(&left),
+        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+        (Err(_), Err(_)) => std::cmp::Ordering::Equal,
+    }
 }
 
 impl ModuleReleaseYankCommand {
@@ -7116,6 +7778,8 @@ fn map_governance_request_row(
     Ok(GovernanceRequestRow {
         snapshot: ModuleGovernanceRequestSnapshot {
             id: required_column(row, "id")?,
+            slug: required_column(row, "slug")?,
+            version: required_column(row, "version")?,
             status: required_column(row, "status")?,
             artifact_origin: required_column(row, "artifact_origin")?,
             requested_by_principal: required_json_text(row, "requested_by_principal")?,
@@ -7392,6 +8056,242 @@ fn derive_governance_follow_up_gates(
         }
     }
     Ok(gates)
+}
+
+fn derive_governance_request_actions(
+    request: &ModuleGovernanceRequestSnapshot,
+    authorization: &ModuleGovernanceRequestAuthorizationSnapshot,
+    approval_override_required: bool,
+) -> Vec<ModuleGovernanceAction> {
+    let can_manage = authorization.can_manage;
+    let can_review = authorization.can_review;
+    let mut actions = Vec::new();
+
+    if can_manage && matches!(request.status.as_str(), "draft" | "changes_requested") {
+        actions.push(governance_action(
+            "upload_artifact",
+            false,
+            false,
+            &[],
+            false,
+        ));
+    }
+    if can_manage && matches!(request.status.as_str(), "artifact_uploaded" | "submitted") {
+        actions.push(governance_action("validate", false, false, &[], false));
+    }
+    if can_review && request.status == "approved" {
+        actions.push(governance_action(
+            "approve",
+            approval_override_required,
+            approval_override_required,
+            if approval_override_required {
+                REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+            } else {
+                &[]
+            },
+            false,
+        ));
+        actions.push(governance_action(
+            "request_changes",
+            true,
+            true,
+            REGISTRY_REQUEST_CHANGES_REASON_CODES,
+            false,
+        ));
+    }
+    if can_review
+        && matches!(
+            request.status.as_str(),
+            "submitted" | "approved" | "changes_requested"
+        )
+    {
+        actions.push(governance_action(
+            "hold",
+            true,
+            true,
+            REGISTRY_HOLD_REASON_CODES,
+            false,
+        ));
+    }
+    if can_review && request.status == "on_hold" {
+        actions.push(governance_action(
+            "resume",
+            true,
+            true,
+            REGISTRY_RESUME_REASON_CODES,
+            false,
+        ));
+    }
+    if can_review
+        && !matches!(
+            request.status.as_str(),
+            "rejected" | "published" | "on_hold"
+        )
+    {
+        actions.push(governance_action(
+            "reject",
+            true,
+            true,
+            REGISTRY_REJECT_REASON_CODES,
+            true,
+        ));
+    }
+    actions
+}
+
+fn governance_actor_can_manage_request(
+    request: &ModuleGovernanceRequestSnapshot,
+    owner_binding: Option<&ModuleGovernanceOwnerSnapshot>,
+    actor: Option<&ModuleGovernanceActorContext>,
+) -> bool {
+    actor.is_some_and(|actor| {
+        actor.can_manage_modules
+            || principal_matches_governance_actor(
+                owner_binding.map(|owner| &owner.owner_principal),
+                &actor.principal,
+            )
+            || (owner_binding.is_none()
+                && (principal_matches_governance_actor(
+                    Some(&request.requested_by_principal),
+                    &actor.principal,
+                ) || principal_matches_governance_actor(
+                    request.publisher_principal.as_ref(),
+                    &actor.principal,
+                )))
+    })
+}
+
+fn governance_actor_can_review_request(
+    owner_binding: Option<&ModuleGovernanceOwnerSnapshot>,
+    actor: Option<&ModuleGovernanceActorContext>,
+) -> bool {
+    actor.is_some_and(|actor| {
+        actor.can_manage_modules
+            || principal_matches_governance_actor(
+                owner_binding.map(|owner| &owner.owner_principal),
+                &actor.principal,
+            )
+    })
+}
+
+fn governance_pending_stage_labels(
+    validation_stages: &[ModuleGovernanceValidationStageSnapshot],
+) -> Vec<String> {
+    validation_stages
+        .iter()
+        .filter(|stage| !stage.status.eq_ignore_ascii_case("passed"))
+        .map(|stage| format!("{} ({})", stage.key, stage.status.to_ascii_lowercase()))
+        .collect()
+}
+
+fn governance_rejected_request_can_retry(
+    latest_event_type: Option<&str>,
+    rejection_reason: Option<&str>,
+) -> bool {
+    matches!(latest_event_type, Some("validation_failed"))
+        || rejection_reason
+            .is_some_and(|reason| !reason.trim().starts_with("Governance rejection reason:"))
+}
+
+fn publish_request_next_action(
+    request: &ModuleGovernanceRequestSnapshot,
+    approval_override_required: bool,
+) -> Result<Option<ModuleGovernancePublishRequestNextAction>, ModuleGovernanceError> {
+    if request.status == "approved" {
+        if !approval_override_required {
+            return Ok(Some(
+                ModuleGovernancePublishRequestNextAction::FinalizePublication,
+            ));
+        }
+        let artifact_origin = ModulePublicationArtifactOrigin::parse(&request.artifact_origin)
+            .ok_or_else(|| {
+                ModuleGovernanceError::InvalidLifecycleArtifactOrigin(
+                    request.artifact_origin.clone(),
+                )
+            })?;
+        let stage_action = match artifact_origin {
+            ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+                ModuleGovernancePublishRequestNextAction::StageExternalPrebuilt
+            }
+            ModulePublicationArtifactOrigin::PlatformBuilt => {
+                ModuleGovernancePublishRequestNextAction::StagePlatformBuild
+            }
+            ModulePublicationArtifactOrigin::AlloyAuthored => {
+                ModuleGovernancePublishRequestNextAction::StageAlloyRelease
+            }
+        };
+        return Ok(Some(stage_action));
+    }
+
+    let next_action = match request.status.as_str() {
+        "draft" => ModuleGovernancePublishRequestNextAction::UploadArtifact,
+        "changes_requested" => ModuleGovernancePublishRequestNextAction::UploadArtifactRevision,
+        "artifact_uploaded" | "submitted" => {
+            ModuleGovernancePublishRequestNextAction::TriggerValidation
+        }
+        "validating" => ModuleGovernancePublishRequestNextAction::PollStatus,
+        "on_hold" => ModuleGovernancePublishRequestNextAction::Resume,
+        "rejected" => ModuleGovernancePublishRequestNextAction::RetryRejected,
+        "published" => return Ok(None),
+        status => {
+            return Err(ModuleGovernanceError::InvalidPublishRequestStatus(
+                status.to_string(),
+            ));
+        }
+    };
+
+    Ok(Some(next_action))
+}
+
+fn principal_matches_governance_actor(
+    persisted_principal: Option<&serde_json::Value>,
+    actor_principal: &serde_json::Value,
+) -> bool {
+    let Some(persisted_principal) = persisted_principal else {
+        return false;
+    };
+    let persisted_user_id = governance_principal_user_id(persisted_principal);
+    let actor_user_id = governance_principal_user_id(actor_principal);
+    if let (Some(persisted_user_id), Some(actor_user_id)) = (persisted_user_id, actor_user_id) {
+        return persisted_user_id == actor_user_id;
+    }
+
+    governance_principal_subject(persisted_principal)
+        .zip(governance_principal_subject(actor_principal))
+        .is_some_and(|(persisted_subject, actor_subject)| persisted_subject == actor_subject)
+        || governance_principal_label(persisted_principal)
+            .zip(governance_principal_label(actor_principal))
+            .is_some_and(|(persisted_label, actor_label)| persisted_label == actor_label)
+}
+
+fn governance_principal_user_id(principal: &serde_json::Value) -> Option<&str> {
+    (principal.get("kind").and_then(serde_json::Value::as_str) == Some("user"))
+        .then(|| {
+            principal
+                .get("user_id")
+                .or_else(|| principal.get("id"))
+                .and_then(serde_json::Value::as_str)
+        })
+        .flatten()
+}
+
+fn governance_principal_subject(principal: &serde_json::Value) -> Option<&str> {
+    principal.as_str().or_else(|| {
+        principal
+            .get("subject")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+    })
+}
+
+fn governance_principal_label(principal: &serde_json::Value) -> Option<&str> {
+    principal.as_str().or_else(|| {
+        principal
+            .get("legacy_label")
+            .or_else(|| principal.get("display_label"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+    })
 }
 
 fn derive_governance_actions(
@@ -7772,6 +8672,21 @@ fn is_sha256_hex(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn registry_publish_artifact_storage_key(
+    checksum_sha256: &str,
+) -> Result<String, ModuleGovernanceError> {
+    if !is_sha256_hex(checksum_sha256) {
+        return Err(ModuleGovernanceError::InvalidPublishArtifactAttachCommand);
+    }
+    DigestObjectKey::sha256(
+        REGISTRY_PUBLISH_ARTIFACT_NAMESPACE,
+        ObjectScope::Platform,
+        checksum_sha256,
+    )
+    .map(|key| key.to_string())
+    .map_err(|error| ModuleGovernanceError::Store(error.to_string()))
 }
 
 fn valid_publication_translations(
@@ -8543,6 +9458,14 @@ fn validation_stage_transition_allowed(
 pub enum ModuleGovernanceError {
     #[error("registry lifecycle query requires a module slug")]
     InvalidLifecycleQuery,
+    #[error("registry owner-binding query requires a module slug")]
+    InvalidOwnerBindingQuery,
+    #[error("registry publish-artifact download query requires a request ID")]
+    InvalidPublishArtifactDownloadQuery,
+    #[error("registry publish-request status query requires a request ID")]
+    InvalidPublishRequestStatusQuery,
+    #[error("registry publish request has an unsupported status '{0}'")]
+    InvalidPublishRequestStatus(String),
     #[error("registry publish request identity conflicts with its immutable create command")]
     PublishRequestCreationConflict,
     #[error("registry lifecycle contains unsupported artifact origin `{0}`")]
@@ -8682,6 +9605,12 @@ pub enum ModuleGovernanceError {
     PublishedRequestMissingIdempotencyRecord,
     #[error("registry publish request in status `{0}` cannot accept an artifact")]
     PublishRequestCannotAttachArtifact(String),
+    #[error("actor is not authorized to upload an artifact for this registry publish request")]
+    PublishRequestArtifactUploadUnauthorized,
+    #[error(
+        "registry publish artifact replay does not match the already attached immutable artifact"
+    )]
+    PublishRequestArtifactReplayConflict,
     #[error("registry publish request in status `{0}` cannot accept publication evidence")]
     PublishRequestCannotRecordPublicationEvidence(String),
     #[error("registry publish request in status `{0}` cannot accept validation-stage updates")]
@@ -8809,6 +9738,8 @@ mod tests {
     ) -> ModuleGovernanceRequestSnapshot {
         ModuleGovernanceRequestSnapshot {
             id: "request-1".to_string(),
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
             status: status.to_string(),
             artifact_origin: artifact_origin.to_string(),
             requested_by_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
@@ -8978,6 +9909,323 @@ mod tests {
             ModuleGovernanceError::InvalidLifecycleArtifactOrigin(origin)
                 if origin == "unknown_origin"
         ));
+    }
+
+    #[test]
+    fn publish_status_next_action_is_owner_derived_and_finishes_after_required_stages_pass() {
+        let request = governance_request_snapshot("approved", "external_prebuilt");
+        assert_eq!(
+            publish_request_next_action(&request, true).expect("pending stage action"),
+            Some(ModuleGovernancePublishRequestNextAction::StageExternalPrebuilt)
+        );
+        assert_eq!(
+            publish_request_next_action(&request, false).expect("completed stage action"),
+            Some(ModuleGovernancePublishRequestNextAction::FinalizePublication)
+        );
+
+        let changes_requested =
+            governance_request_snapshot("changes_requested", "external_prebuilt");
+        assert_eq!(
+            publish_request_next_action(&changes_requested, false).expect("revision action"),
+            Some(ModuleGovernancePublishRequestNextAction::UploadArtifactRevision)
+        );
+
+        let invalid = governance_request_snapshot("unknown", "external_prebuilt");
+        assert!(matches!(
+            publish_request_next_action(&invalid, false),
+            Err(ModuleGovernanceError::InvalidPublishRequestStatus(status)) if status == "unknown"
+        ));
+    }
+
+    #[tokio::test]
+    async fn request_follow_up_projection_is_request_scoped_and_actor_filtered() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        let owner = serde_json::json!({
+            "kind": "user",
+            "user_id": "owner-1",
+            "subject": "user:owner-1",
+            "display_label": "user:owner-1"
+        })
+        .to_string();
+        for statement in [
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, artifact_origin TEXT NOT NULL,\
+                requested_by_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
+                approved_by_principal TEXT NULL, rejected_by_principal TEXT NULL, rejection_reason TEXT NULL,\
+                changes_requested_by_principal TEXT NULL, changes_requested_reason TEXT NULL,\
+                changes_requested_reason_code TEXT NULL, changes_requested_at TEXT NULL,\
+                held_by_principal TEXT NULL, held_reason TEXT NULL, held_reason_code TEXT NULL,\
+                held_at TEXT NULL, held_from_status TEXT NULL, validation_warnings TEXT NOT NULL,\
+                validation_errors TEXT NOT NULL, validated_at TEXT NULL, approved_at TEXT NULL,\
+                artifact_storage_key TEXT NULL, artifact_checksum_sha256 TEXT NULL,\
+                artifact_size INTEGER NULL, artifact_content_type TEXT NULL,\
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT NULL\
+             )",
+            "CREATE TABLE registry_module_owners (\
+                slug TEXT PRIMARY KEY, owner_principal TEXT NOT NULL, bound_by_principal TEXT NOT NULL,\
+                bound_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_validation_stages (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, stage_key TEXT NOT NULL, status TEXT NOT NULL,\
+                detail TEXT NOT NULL, attempt_number INTEGER NOT NULL, updated_at TEXT NOT NULL,\
+                started_at TEXT NULL, finished_at TEXT NULL, created_at TEXT NOT NULL\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("schema");
+        }
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_publish_requests (\
+                    id, slug, version, status, artifact_origin, requested_by_principal, publisher_principal,\
+                    validation_warnings, validation_errors, validated_at, created_at, updated_at\
+                 ) VALUES (?, ?, '1.0.0', 'approved', 'external_prebuilt', ?, ?, '[]', '[]', ?, ?, ?)"
+                    .to_string(),
+                vec![
+                    "request-1".into(),
+                    "sample_module".into(),
+                    owner.clone().into(),
+                    owner.clone().into(),
+                    "2026-08-08T00:00:00Z".into(),
+                    "2026-08-08T00:00:00Z".into(),
+                    "2026-08-08T00:00:00Z".into(),
+                ],
+            ))
+            .await
+            .expect("request fixture");
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_module_owners (\
+                    slug, owner_principal, bound_by_principal, bound_at, updated_at\
+                 ) VALUES (?, ?, ?, ?, ?)"
+                    .to_string(),
+                vec![
+                    "sample_module".into(),
+                    owner.clone().into(),
+                    owner.clone().into(),
+                    "2026-08-08T00:00:00Z".into(),
+                    "2026-08-08T00:00:00Z".into(),
+                ],
+            ))
+            .await
+            .expect("owner fixture");
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_validation_stages (\
+                    id, request_id, stage_key, status, detail, attempt_number, updated_at, created_at\
+                 ) VALUES (?, ?, 'security_policy_review', 'failed', ?, 1, ?, ?)"
+                    .to_string(),
+                vec![
+                    "stage-1".into(),
+                    "request-1".into(),
+                    "Manual review found a policy gap.".into(),
+                    "2026-08-08T00:00:00Z".into(),
+                    "2026-08-08T00:00:00Z".into(),
+                ],
+            ))
+            .await
+            .expect("stage fixture");
+
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let owner_actor = ModuleGovernanceActorContext {
+            principal: serde_json::from_str(&owner).expect("owner principal"),
+            can_manage_modules: false,
+        };
+        let status = service
+            .publish_request_status_snapshot("request-1", Some(&owner_actor))
+            .await
+            .expect("owner status projection")
+            .expect("request status projection");
+        assert_eq!(status.request.slug, "sample_module");
+        assert_eq!(status.request.version, "1.0.0");
+        assert!(status.accepted);
+        assert!(status.authorization.can_manage);
+        assert!(status.authorization.can_review);
+        assert!(status.approval_override_required);
+        assert_eq!(
+            status.next_action,
+            Some(ModuleGovernancePublishRequestNextAction::StageExternalPrebuilt)
+        );
+        assert_eq!(
+            status.approval_override_reason_codes,
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            status
+                .approval_override_warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains("security_policy_review (failed)"))
+        );
+        assert_eq!(status.validation_stages.len(), 1);
+        assert_eq!(status.validation_stages[0].key, "security_policy_review");
+        assert_eq!(status.validation_stages[0].status, "failed");
+        assert_eq!(
+            status
+                .governance_actions
+                .iter()
+                .map(|action| action.key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["approve", "request_changes", "hold", "reject"]
+        );
+
+        let anonymous = service
+            .publish_request_status_snapshot("request-1", None)
+            .await
+            .expect("anonymous status projection")
+            .expect("request status projection");
+        assert!(!anonymous.authorization.can_manage);
+        assert!(!anonymous.authorization.can_review);
+        assert!(anonymous.governance_actions.is_empty());
+
+        let unrelated_actor = ModuleGovernanceActorContext {
+            principal: serde_json::json!({
+                "kind": "user",
+                "user_id": "other",
+                "subject": "user:other",
+                "display_label": "user:other"
+            }),
+            can_manage_modules: false,
+        };
+        let denied = service
+            .publish_request_status_snapshot("request-1", Some(&unrelated_actor))
+            .await
+            .expect("denied projection")
+            .expect("request projection");
+        assert!(!denied.authorization.can_manage);
+        assert!(!denied.authorization.can_review);
+        assert!(denied.governance_actions.is_empty());
+
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_requests SET status = 'draft', artifact_storage_key = NULL, \
+                 artifact_checksum_sha256 = NULL, artifact_size = NULL, artifact_content_type = NULL \
+                 WHERE id = 'request-1'"
+                    .to_string(),
+            ))
+            .await
+            .expect("draft fixture");
+        let checksum = "a".repeat(64);
+        let upload = ModulePublishArtifactAttachCommand {
+            request_id: "request-1".to_string(),
+            actor_principal: owner_actor.principal.clone(),
+            actor_can_manage_modules: false,
+            checksum_sha256: checksum.clone(),
+            artifact_size: 7,
+            content_type: "application/wasm".to_string(),
+        };
+        let slot = service
+            .prepare_publish_artifact_upload(&upload)
+            .await
+            .expect("owner upload slot");
+        assert!(!slot.artifact_already_attached);
+        assert_eq!(
+            slot.artifact_storage_key,
+            format!("registry-publish-artifact/objects/platform/sha256/aa/aa/{checksum}")
+        );
+
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_requests SET status = 'submitted', artifact_storage_key = ?, \
+                 artifact_checksum_sha256 = ?, artifact_size = ?, artifact_content_type = ? \
+                 WHERE id = 'request-1'"
+                    .to_string(),
+                vec![
+                    slot.artifact_storage_key.clone().into(),
+                    checksum.clone().into(),
+                    7_i64.into(),
+                    "application/wasm".into(),
+                ],
+            ))
+            .await
+            .expect("attached fixture");
+        let replay = service
+            .prepare_publish_artifact_upload(&upload)
+            .await
+            .expect("idempotent upload slot");
+        assert!(replay.artifact_already_attached);
+        assert_eq!(replay.artifact_storage_key, slot.artifact_storage_key);
+
+        let mut mismatch = upload.clone();
+        mismatch.checksum_sha256 = "b".repeat(64);
+        assert_eq!(
+            service.prepare_publish_artifact_upload(&mismatch).await,
+            Err(ModuleGovernanceError::PublishRequestArtifactReplayConflict)
+        );
+        let mut unauthorized = upload;
+        unauthorized.actor_principal = unrelated_actor.principal;
+        assert_eq!(
+            service.prepare_publish_artifact_upload(&unauthorized).await,
+            Err(ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized)
+        );
+    }
+
+    #[tokio::test]
+    async fn artifact_download_snapshot_exposes_only_attached_delivery_facts() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE registry_publish_requests (\
+                    id TEXT PRIMARY KEY, artifact_storage_key TEXT NULL, artifact_content_type TEXT NULL\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("schema");
+        for statement in [
+            "INSERT INTO registry_publish_requests (id, artifact_storage_key, artifact_content_type) \
+             VALUES ('attached', 'registry/publish/attached.wasm', 'application/wasm')",
+            "INSERT INTO registry_publish_requests (id, artifact_storage_key, artifact_content_type) \
+             VALUES ('draft', NULL, NULL)",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("fixture");
+        }
+
+        let service = SeaOrmModuleGovernanceService::new(database);
+        let attached = service
+            .publish_artifact_download_snapshot("attached")
+            .await
+            .expect("download projection")
+            .expect("attached artifact");
+        assert_eq!(attached.storage_key, "registry/publish/attached.wasm");
+        assert_eq!(attached.content_type, "application/wasm");
+        assert!(
+            service
+                .publish_artifact_download_snapshot("draft")
+                .await
+                .expect("draft projection")
+                .is_none()
+        );
+        assert!(
+            service
+                .publish_artifact_download_snapshot("missing")
+                .await
+                .expect("missing projection")
+                .is_none()
+        );
     }
 
     #[test]
@@ -9404,7 +10652,7 @@ mod tests {
             ModulePublishArtifactAttachCommand {
                 request_id: "request-1".to_string(),
                 actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
-                artifact_storage_key: "registry/request-1".to_string(),
+                actor_can_manage_modules: false,
                 checksum_sha256: "SHA256:ABC".to_string(),
                 artifact_size: 1,
                 content_type: "application/octet-stream".to_string(),
@@ -9519,6 +10767,102 @@ mod tests {
             .validate(),
             Err(ModuleGovernanceError::InvalidValidationStageReasonCode(_))
         ));
+    }
+
+    #[test]
+    fn rejected_request_retry_policy_stays_owner_derived() {
+        assert!(governance_rejected_request_can_retry(
+            Some("validation_failed"),
+            Some("Governance rejection reason: validation failed"),
+        ));
+        assert!(governance_rejected_request_can_retry(
+            None,
+            Some("Validation job failed before bundle checks: missing artifact"),
+        ));
+        assert!(!governance_rejected_request_can_retry(
+            Some("request_rejected"),
+            Some("Governance rejection reason: owner mismatch"),
+        ));
+    }
+
+    #[tokio::test]
+    async fn marketplace_projection_reads_yanked_release_versions_in_the_owner() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_module_releases (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                status TEXT NOT NULL, publisher_principal TEXT NOT NULL,\
+                checksum_sha256 TEXT NULL, default_locale TEXT NOT NULL,\
+                published_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_module_release_artifacts (\
+                release_id TEXT PRIMARY KEY, artifact JSON NOT NULL, descriptor JSON NOT NULL\
+             )",
+            "INSERT INTO registry_module_releases (\
+                id, slug, version, status, publisher_principal, checksum_sha256, default_locale, published_at\
+             ) VALUES (\
+                'release-1', 'sample_module', '1.0.0', 'yanked',\
+                '{\"subject\":\"publisher\"}',\
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',\
+                'en', datetime('now')\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("schema or fixture");
+        }
+
+        let entry = serde_json::from_value::<ModuleMarketplaceEntry>(serde_json::json!({
+            "slug": "sample_module",
+            "name": "Static name",
+            "latest_version": "0.9.0",
+            "description": "Static description retained without an active release.",
+            "source": "local",
+            "kind": "optional",
+            "category": "tools",
+            "tags": [],
+            "icon_url": null,
+            "banner_url": null,
+            "screenshots": [],
+            "crate_name": "sample-module",
+            "dependencies": [],
+            "ownership": "third_party",
+            "trust_level": "unverified",
+            "rustok_min_version": null,
+            "rustok_max_version": null,
+            "publisher": null,
+            "checksum_sha256": null,
+            "signature_present": false,
+            "versions": [],
+            "has_admin_ui": false,
+            "has_storefront_ui": false,
+            "ui_classification": "no_ui",
+            "registry_lifecycle": null,
+            "compatible": true,
+            "recommended_admin_surfaces": [],
+            "showcase_admin_surfaces": [],
+            "settings_schema": {},
+            "installed": false,
+            "installed_version": null,
+            "update_available": false
+        }))
+        .expect("marketplace entry");
+
+        let projected = SeaOrmModuleGovernanceService::new(database)
+            .apply_marketplace_projection(vec![entry], Some("en-US"), Some("en"))
+            .await
+            .expect("owner projection");
+        assert_eq!(projected.len(), 1);
+        assert_eq!(projected[0].latest_version, "0.9.0");
+        assert_eq!(projected[0].versions.len(), 1);
+        assert_eq!(projected[0].versions[0].version, "1.0.0");
+        assert!(projected[0].versions[0].yanked);
     }
 
     #[tokio::test]
@@ -9683,6 +11027,13 @@ mod tests {
         )
         .expect("owner JSON");
         assert_eq!(owner["id"], "next");
+        let owner_snapshot = SeaOrmModuleGovernanceService::new(database.clone())
+            .owner_binding_snapshot("sample_module")
+            .await
+            .expect("owner binding projection")
+            .expect("owner binding");
+        assert_eq!(owner_snapshot.owner_principal["id"], "next");
+        assert_eq!(owner_snapshot.bound_by_principal["id"], "operator");
         let event = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,

@@ -297,15 +297,15 @@ async fn load_cached_page_artifact(
         })?;
     let artifact = CachedPublishedLandingArtifact::from(artifact);
 
-    if let (Some(cache), Some(cache_key)) = (runtime.cache(), cache_key) {
-        if let Err(error) = cache.put_json(cache_key, &artifact).await {
-            tracing::warn!(
-                %error,
-                %tenant_id,
-                %page_id,
-                "Pages artifact cache fill failed"
-            );
-        }
+    if let (Some(cache), Some(cache_key)) = (runtime.cache(), cache_key)
+        && let Err(error) = cache.put_json(cache_key, &artifact).await
+    {
+        tracing::warn!(
+            %error,
+            %tenant_id,
+            %page_id,
+            "Pages artifact cache fill failed"
+        );
     }
     Ok(artifact)
 }

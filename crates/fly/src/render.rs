@@ -232,10 +232,10 @@ fn render_component(
 
     output.push('<');
     output.push_str(tag);
-    if policy.emit_style_hooks {
-        if let Some(component_id) = component_id {
-            write_attribute(output, "data-fly-style-id", component_id);
-        }
+    if policy.emit_style_hooks
+        && let Some(component_id) = component_id
+    {
+        write_attribute(output, "data-fly-style-id", component_id);
     }
     if policy.instrument_components {
         if let Some(component_id) = component_id {
@@ -267,24 +267,24 @@ fn render_component(
         let Some(value) = scalar_string(value) else {
             continue;
         };
-        if let Some(kind) = UrlAttributeKind::for_attribute(&name) {
-            if !url_allowed(&value, kind, policy) {
-                continue;
-            }
+        if let Some(kind) = UrlAttributeKind::for_attribute(&name)
+            && !url_allowed(&value, kind, policy)
+        {
+            continue;
         }
         write_attribute(output, &name, &value);
     }
 
-    if !policy.emit_style_hooks {
-        if let Some(style) = component.style.as_ref().and_then(Value::as_object) {
-            let declarations = style
-                .iter()
-                .filter_map(|(name, value)| safe_style(name, value))
-                .collect::<Vec<_>>()
-                .join(";");
-            if !declarations.is_empty() {
-                write_attribute(output, "style", &declarations);
-            }
+    if !policy.emit_style_hooks
+        && let Some(style) = component.style.as_ref().and_then(Value::as_object)
+    {
+        let declarations = style
+            .iter()
+            .filter_map(|(name, value)| safe_style(name, value))
+            .collect::<Vec<_>>()
+            .join(";");
+        if !declarations.is_empty() {
+            write_attribute(output, "style", &declarations);
         }
     }
 

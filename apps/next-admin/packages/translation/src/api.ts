@@ -20,6 +20,8 @@ import type {
   Proposal,
   ProviderProgress,
   RequiredProviderProgress,
+  ReviewerQueueItem,
+  ReviewerWorkload,
   Retry,
   TranslationOperation,
   TranslationPolicy,
@@ -64,6 +66,10 @@ const JOB_FIELDS =
   'id sourceLocale targetLocale glossary { glossaryId revision } status revision';
 const INTERCHANGE_DOCUMENT_FIELDS =
   'schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue sourceHash required maxCharacters protectedTokens } }';
+const REVIEWER_QUEUE_FIELDS =
+  'item { id jobId ownerSlug resourceKind resourceId subresourceId status assignee { kind id } sourceDigest revision } proposalId proposalRevision submittedAt';
+const REVIEWER_WORKLOAD_FIELDS =
+  'jobId assignee { kind id } openItems missingItems draftItems inReviewItems approvedItems applyingItems rebaseRequiredItems blockedItems sourceCharacters';
 
 type RequestContext = {
   graphql: AdminGraphqlExecutor;
@@ -355,6 +361,42 @@ export async function executeTranslationOperation(
         { jobId: operation.jobId }
       );
       return { kind: 'job_progress', value: data.translationJobProgress };
+    }
+    case 'read_reviewer_queue': {
+      const input = {
+        jobId: operation.jobId,
+        assignee: operation.assignee ?? null,
+        includeUnassigned: operation.includeUnassigned,
+        limit: operation.limit
+      };
+      const data = await request<
+        { input: typeof input },
+        { translationReviewerQueue: ReviewerQueueItem[] }
+      >(
+        context,
+        `query TranslationReviewerQueue($input: TranslationReviewerQueueInput!) {
+          translationReviewerQueue(input: $input) { ${REVIEWER_QUEUE_FIELDS} }
+        }`,
+        { input }
+      );
+      return { kind: 'reviewer_queue', value: data.translationReviewerQueue };
+    }
+    case 'read_reviewer_workload': {
+      const input = { jobId: operation.jobId };
+      const data = await request<
+        { input: typeof input },
+        { translationReviewerWorkload: ReviewerWorkload[] }
+      >(
+        context,
+        `query TranslationReviewerWorkload($input: TranslationReviewerWorkloadInput!) {
+          translationReviewerWorkload(input: $input) { ${REVIEWER_WORKLOAD_FIELDS} }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'reviewer_workload',
+        value: data.translationReviewerWorkload
+      };
     }
     case 'export_job': {
       const input = {

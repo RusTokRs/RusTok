@@ -13,7 +13,8 @@ use crate::model::{
     MachineTranslationAttempt, MachineTranslationDiagnostic, MachineTranslationUsage, MemoryEntry,
     MemoryMatchEvidence, MemoryMatchKind, MemoryMutation, MemoryRetentionPolicy, MemorySuggestion,
     Proposal, ProposalOrigin, ProposalValue, ProviderProgress, QaIssue, RequiredProviderProgress,
-    Retry, TranslationPolicy, TranslationResourceIdentity, TranslationTarget,
+    Retry, ReviewerQueueItem, ReviewerWorkload, TranslationPolicy, TranslationResourceIdentity,
+    TranslationTarget,
 };
 use crate::model::{TranslationAdminOperation, TranslationAdminResponse};
 
@@ -167,12 +168,12 @@ async fn dispatch(
         ExportTranslationJobInput, GenerateMachineProposalInput, ImportTranslationItemInput,
         MemoryListInput, MemoryLookupInput, ProposalValue, PurgeMemoryEntryInput,
         RecoverApplyInput, RecoverMachineOperationInput, ReplaceGlossaryTermsInput,
-        ReplaceRequiredTargetLocalesInput, RetryItemInput, SaveProposalInput,
-        SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
-        TombstoneMemoryEntryInput, TranslationGlossaryService, TranslationInventoryService,
-        TranslationMachineControlService, TranslationMachineService, TranslationMemoryService,
-        TranslationPolicyService, TranslationProgressService, TranslationWorkflowService,
-        UnassignItemInput, UpdateGlossaryInput,
+        ReplaceRequiredTargetLocalesInput, RetryItemInput, ReviewerQueueInput,
+        ReviewerWorkloadInput, SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput,
+        SubmitProposalInput, TombstoneMemoryEntryInput, TranslationGlossaryService,
+        TranslationInventoryService, TranslationMachineControlService, TranslationMachineService,
+        TranslationMemoryService, TranslationPolicyService, TranslationProgressService,
+        TranslationWorkflowService, UnassignItemInput, UpdateGlossaryInput,
     };
 
     let policy = || TranslationPolicyService::new(database.clone(), tenant_locale_policies.clone());
@@ -321,6 +322,44 @@ async fn dispatch(
                     .await
                     .map_err(public_error)?,
             ))
+        }
+        TranslationAdminOperation::ReadReviewerQueue {
+            job_id,
+            assignee,
+            include_unassigned,
+            limit,
+        } => TranslationAdminResponse::ReviewerQueue(
+            progress()
+                .list_reviewer_queue(
+                    context,
+                    ReviewerQueueInput {
+                        job_id: parse_uuid(&job_id, "job_id")?,
+                        assignee: assignee.map(map_actor_input),
+                        include_unassigned,
+                        limit,
+                    },
+                )
+                .await
+                .map_err(public_error)?
+                .into_iter()
+                .map(map_reviewer_queue_item)
+                .collect(),
+        ),
+        TranslationAdminOperation::ReadReviewerWorkload { job_id } => {
+            TranslationAdminResponse::ReviewerWorkloads(
+                progress()
+                    .list_reviewer_workload(
+                        context,
+                        ReviewerWorkloadInput {
+                            job_id: parse_uuid(&job_id, "job_id")?,
+                        },
+                    )
+                    .await
+                    .map_err(public_error)?
+                    .into_iter()
+                    .map(map_reviewer_workload)
+                    .collect(),
+            )
         }
         TranslationAdminOperation::ExportJob { job_id, max_items } => {
             TranslationAdminResponse::InterchangeDocument(map_interchange_document(
@@ -1428,6 +1467,33 @@ fn map_item(value: rustok_translation::JobItemRecord) -> JobItem {
 }
 
 #[cfg(feature = "ssr")]
+fn map_reviewer_queue_item(value: rustok_translation::ReviewerQueueRecord) -> ReviewerQueueItem {
+    ReviewerQueueItem {
+        item: map_item(value.item),
+        proposal_id: value.proposal_id.to_string(),
+        proposal_revision: value.proposal_revision,
+        submitted_at: value.submitted_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_reviewer_workload(value: rustok_translation::ReviewerWorkloadRecord) -> ReviewerWorkload {
+    ReviewerWorkload {
+        job_id: value.job_id.to_string(),
+        assignee: value.assignee.map(map_actor),
+        open_items: value.open_items,
+        missing_items: value.missing_items,
+        draft_items: value.draft_items,
+        in_review_items: value.in_review_items,
+        approved_items: value.approved_items,
+        applying_items: value.applying_items,
+        rebase_required_items: value.rebase_required_items,
+        blocked_items: value.blocked_items,
+        source_characters: value.source_characters,
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_actor(value: rustok_api::PortActor) -> Actor {
     Actor {
         kind: match value.kind {
@@ -2458,10 +2524,7 @@ mod tests {
             .count(runtime.db())
             .await
             .unwrap();
-        let proposal_count = proposal::Entity::find()
-            .count(runtime.db())
-            .await
-            .unwrap();
+        let proposal_count = proposal::Entity::find().count(runtime.db()).await.unwrap();
         let response = execute_http_ok(
             &runtime,
             &auth,
@@ -2490,10 +2553,7 @@ mod tests {
             operation_count
         );
         assert_eq!(
-            proposal::Entity::find()
-                .count(runtime.db())
-                .await
-                .unwrap(),
+            proposal::Entity::find().count(runtime.db()).await.unwrap(),
             proposal_count
         );
         let response = execute_http_ok(
@@ -2986,6 +3046,42 @@ mod tests {
             panic!("expected proposal response");
         };
         assert_eq!(submitted.status, "in_review");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadReviewerQueue {
+                job_id: job.id.clone(),
+                assignee: None,
+                include_unassigned: true,
+                limit: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::ReviewerQueue(queue) = response else {
+            panic!("expected reviewer queue response");
+        };
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].item.id, item.id);
+        assert_eq!(queue[0].proposal_id, draft.id);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadReviewerWorkload {
+                job_id: job.id.clone(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::ReviewerWorkloads(workloads) = response else {
+            panic!("expected reviewer workload response");
+        };
+        assert_eq!(workloads.len(), 1);
+        assert!(workloads[0].assignee.is_none());
+        assert_eq!(workloads[0].open_items, 1);
+        assert_eq!(workloads[0].in_review_items, 1);
 
         let response = execute_http_ok(
             &runtime,

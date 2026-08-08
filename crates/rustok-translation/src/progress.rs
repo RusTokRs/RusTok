@@ -4,7 +4,10 @@ use std::{
 };
 
 use chrono::{DateTime, FixedOffset, Utc};
-use rustok_api::{Action, PortCallPolicy, PortContext, Resource, TenantLocale};
+use rustok_api::{
+    Action, PortActor, PortCallPolicy, PortContext, Resource, TenantLocale,
+    manifest_hash::hash_manifest,
+};
 use rustok_core::{PermissionScope, SecurityContext, generate_id};
 use rustok_tenant::TenantLocalePolicyPort;
 use rustok_translation_targets::{
@@ -13,8 +16,8 @@ use rustok_translation_targets::{
     TranslationTargetProgressRequest, TranslationTargetRegistry,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
     sea_query::{Expr, OnConflict},
 };
 use serde::Serialize;
@@ -23,7 +26,13 @@ use uuid::Uuid;
 use crate::{
     TranslationError, TranslationPolicyFreshness, TranslationPolicyService, TranslationResult,
     entities::{apply_receipt, job, job_item, job_progress, proposal, provider_checkpoint},
+    workflow::{
+        JobItemRecord, actor_kind_value, assignment_actor, item_record, validate_workflow_actor,
+    },
 };
+
+const MAX_REVIEWER_QUEUE_LIMIT: u16 = 200;
+const MAX_REVIEWER_WORKLOAD_ITEMS: usize = 500;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobProgressRecord {
@@ -54,6 +63,42 @@ pub struct JobProgressRecord {
     pub translated_characters: u64,
     pub revision: i64,
     pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewerQueueInput {
+    pub job_id: Uuid,
+    pub assignee: Option<PortActor>,
+    pub include_unassigned: bool,
+    pub limit: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewerQueueRecord {
+    pub item: JobItemRecord,
+    pub proposal_id: Uuid,
+    pub proposal_revision: i64,
+    pub submitted_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewerWorkloadInput {
+    pub job_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewerWorkloadRecord {
+    pub job_id: Uuid,
+    pub assignee: Option<PortActor>,
+    pub open_items: u64,
+    pub missing_items: u64,
+    pub draft_items: u64,
+    pub in_review_items: u64,
+    pub approved_items: u64,
+    pub applying_items: u64,
+    pub rebase_required_items: u64,
+    pub blocked_items: u64,
+    pub source_characters: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +172,141 @@ impl TranslationProgressService {
             .await?
             .ok_or(TranslationError::JobProgressNotFound)?;
         progress_record(model)
+    }
+
+    pub async fn list_reviewer_queue(
+        &self,
+        context: PortContext,
+        input: ReviewerQueueInput,
+    ) -> TranslationResult<Vec<ReviewerQueueRecord>> {
+        let tenant_id = authorize_progress(&context, PortCallPolicy::read(), Action::Read)?;
+        if input.limit == 0 || input.limit > MAX_REVIEWER_QUEUE_LIMIT {
+            return Err(TranslationError::InvalidRequest(format!(
+                "reviewer queue limit must be between 1 and {MAX_REVIEWER_QUEUE_LIMIT}"
+            )));
+        }
+        if let Some(assignee) = input.assignee.as_ref() {
+            validate_workflow_actor(assignee)?;
+        }
+        ensure_job(&self.database, tenant_id, input.job_id).await?;
+
+        let mut query = job_item::Entity::find()
+            .filter(job_item::Column::TenantId.eq(tenant_id))
+            .filter(job_item::Column::JobId.eq(input.job_id))
+            .filter(job_item::Column::Status.eq("in_review"));
+        if let Some(assignee) = input.assignee.as_ref() {
+            query = query
+                .filter(job_item::Column::AssignedActorKind.eq(actor_kind_value(&assignee.kind)))
+                .filter(job_item::Column::AssignedActorId.eq(&assignee.id));
+        } else if !input.include_unassigned {
+            query = query
+                .filter(job_item::Column::AssignedActorKind.is_not_null())
+                .filter(job_item::Column::AssignedActorId.is_not_null());
+        }
+        let items = query
+            .order_by_asc(job_item::Column::UpdatedAt)
+            .order_by_asc(job_item::Column::Id)
+            .limit(u64::from(input.limit))
+            .all(&self.database)
+            .await?;
+        let proposal_ids = items
+            .iter()
+            .filter_map(|item| item.current_proposal_id)
+            .collect::<Vec<_>>();
+        let proposals = if proposal_ids.is_empty() {
+            BTreeMap::new()
+        } else {
+            proposal::Entity::find()
+                .filter(proposal::Column::TenantId.eq(tenant_id))
+                .filter(proposal::Column::Id.is_in(proposal_ids))
+                .all(&self.database)
+                .await?
+                .into_iter()
+                .map(|proposal| (proposal.id, proposal))
+                .collect()
+        };
+
+        items
+            .into_iter()
+            .map(|item| {
+                let proposal_id = item.current_proposal_id.ok_or_else(|| {
+                    TranslationError::InvalidProgressSource(
+                        "in-review job item has no current proposal".to_string(),
+                    )
+                })?;
+                let proposal = proposals.get(&proposal_id).ok_or_else(|| {
+                    TranslationError::InvalidProgressSource(
+                        "in-review job item references a missing current proposal".to_string(),
+                    )
+                })?;
+                let submitted_at = proposal.submitted_at.ok_or_else(|| {
+                    TranslationError::InvalidProgressSource(
+                        "in-review job item current proposal has not been submitted".to_string(),
+                    )
+                })?;
+                if proposal.item_id != item.id || proposal.approved_at.is_some() {
+                    return Err(TranslationError::InvalidProgressSource(
+                        "in-review job item current proposal does not match review state"
+                            .to_string(),
+                    ));
+                }
+                Ok(ReviewerQueueRecord {
+                    proposal_id,
+                    proposal_revision: proposal.proposal_revision,
+                    submitted_at,
+                    item: item_record(item)?,
+                })
+            })
+            .collect()
+    }
+
+    pub async fn list_reviewer_workload(
+        &self,
+        context: PortContext,
+        input: ReviewerWorkloadInput,
+    ) -> TranslationResult<Vec<ReviewerWorkloadRecord>> {
+        let tenant_id = authorize_progress(&context, PortCallPolicy::read(), Action::Read)?;
+        ensure_job(&self.database, tenant_id, input.job_id).await?;
+        let items = job_item::Entity::find()
+            .filter(job_item::Column::TenantId.eq(tenant_id))
+            .filter(job_item::Column::JobId.eq(input.job_id))
+            .order_by_asc(job_item::Column::Id)
+            .limit((MAX_REVIEWER_WORKLOAD_ITEMS + 1) as u64)
+            .all(&self.database)
+            .await?;
+        if items.len() > MAX_REVIEWER_WORKLOAD_ITEMS {
+            return Err(TranslationError::InvalidRequest(format!(
+                "reviewer workload is bounded to {MAX_REVIEWER_WORKLOAD_ITEMS} job items"
+            )));
+        }
+
+        let mut workloads = BTreeMap::<(String, String), ReviewerWorkloadRecord>::new();
+        for item in items {
+            let assignee = assignment_actor(&item)?;
+            let Some(open) = reviewer_workload_open(&item)? else {
+                continue;
+            };
+            let workload = workloads
+                .entry(reviewer_workload_key(&assignee))
+                .or_insert_with(|| ReviewerWorkloadRecord {
+                    job_id: input.job_id,
+                    assignee,
+                    open_items: 0,
+                    missing_items: 0,
+                    draft_items: 0,
+                    in_review_items: 0,
+                    approved_items: 0,
+                    applying_items: 0,
+                    rebase_required_items: 0,
+                    blocked_items: 0,
+                    source_characters: 0,
+                });
+            reviewer_workload_count(workload, open)?;
+            let source_characters = source_character_count(&validated_source_snapshot(&item)?)?;
+            workload.source_characters =
+                checked_progress_add(workload.source_characters, source_characters)?;
+        }
+        Ok(workloads.into_values().collect())
     }
 
     pub async fn rebuild_job_progress(
@@ -307,6 +487,74 @@ fn aggregate_freshness(targets: &[ProviderProgressRecord]) -> ProviderProjection
     }
 }
 
+#[derive(Clone, Copy)]
+enum ReviewerWorkloadState {
+    Missing,
+    Draft,
+    InReview,
+    Approved,
+    Applying,
+    RebaseRequired,
+    Blocked,
+}
+
+fn reviewer_workload_open(
+    item: &job_item::Model,
+) -> TranslationResult<Option<ReviewerWorkloadState>> {
+    match item.status.as_str() {
+        "missing" => Ok(Some(ReviewerWorkloadState::Missing)),
+        "draft" => Ok(Some(ReviewerWorkloadState::Draft)),
+        "in_review" => Ok(Some(ReviewerWorkloadState::InReview)),
+        "approved" => Ok(Some(ReviewerWorkloadState::Approved)),
+        "applying" => Ok(Some(ReviewerWorkloadState::Applying)),
+        "stale" | "conflict" => Ok(Some(ReviewerWorkloadState::RebaseRequired)),
+        "blocked" => Ok(Some(ReviewerWorkloadState::Blocked)),
+        "applied" | "excluded" | "cancelled" => Ok(None),
+        status => Err(TranslationError::InvalidProgressSource(format!(
+            "unknown job item status `{status}`"
+        ))),
+    }
+}
+
+fn reviewer_workload_count(
+    workload: &mut ReviewerWorkloadRecord,
+    state: ReviewerWorkloadState,
+) -> TranslationResult<()> {
+    workload.open_items = checked_progress_add(workload.open_items, 1)?;
+    match state {
+        ReviewerWorkloadState::Missing => {
+            workload.missing_items = checked_progress_add(workload.missing_items, 1)?;
+        }
+        ReviewerWorkloadState::Draft => {
+            workload.draft_items = checked_progress_add(workload.draft_items, 1)?;
+        }
+        ReviewerWorkloadState::InReview => {
+            workload.in_review_items = checked_progress_add(workload.in_review_items, 1)?;
+        }
+        ReviewerWorkloadState::Approved => {
+            workload.approved_items = checked_progress_add(workload.approved_items, 1)?;
+        }
+        ReviewerWorkloadState::Applying => {
+            workload.applying_items = checked_progress_add(workload.applying_items, 1)?;
+        }
+        ReviewerWorkloadState::RebaseRequired => {
+            workload.rebase_required_items =
+                checked_progress_add(workload.rebase_required_items, 1)?;
+        }
+        ReviewerWorkloadState::Blocked => {
+            workload.blocked_items = checked_progress_add(workload.blocked_items, 1)?;
+        }
+    }
+    Ok(())
+}
+
+fn reviewer_workload_key(assignee: &Option<PortActor>) -> (String, String) {
+    match assignee {
+        None => (String::new(), String::new()),
+        Some(actor) => (actor_kind_value(&actor.kind).to_string(), actor.id.clone()),
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct ProgressCounts {
     total_items: i64,
@@ -408,16 +656,7 @@ where
     let mut counts = ProgressCounts::default();
     let mut source_items = Vec::with_capacity(items.len());
     for item in &items {
-        let snapshot: TranslationResourceSnapshot =
-            serde_json::from_value(item.source_snapshot.clone())?;
-        snapshot
-            .validate()
-            .map_err(|error| TranslationError::InvalidProgressSource(error.to_string()))?;
-        if rustok_api::manifest_hash::hash_manifest(&snapshot)? != item.source_digest {
-            return Err(TranslationError::InvalidProgressSource(
-                "job item source snapshot digest does not match".to_string(),
-            ));
-        }
+        let snapshot = validated_source_snapshot(item)?;
         let current_proposal = item
             .current_proposal_id
             .and_then(|proposal_id| proposals.get(&proposal_id));
@@ -543,11 +782,13 @@ fn count_item(
             "progress evidence contains an unknown field key".to_string(),
         ));
     }
+    let source_characters = source_character_count(snapshot)?;
+    add(
+        &mut counts.source_characters,
+        i64::try_from(source_characters).map_err(|_| TranslationError::ProgressOverflow)?,
+    )?;
     let mut required_complete = true;
     for field in &snapshot.fields {
-        let source_characters = i64::try_from(field.source_value.chars().count())
-            .map_err(|_| TranslationError::ProgressOverflow)?;
-        add(&mut counts.source_characters, source_characters)?;
         let (total, applied, approved) = if field.descriptor.required {
             (
                 &mut counts.required_units,
@@ -589,6 +830,30 @@ fn count_item(
         add(&mut counts.complete_resources, 1)?;
     }
     Ok(())
+}
+
+pub(crate) fn validated_source_snapshot(
+    item: &job_item::Model,
+) -> TranslationResult<TranslationResourceSnapshot> {
+    let snapshot: TranslationResourceSnapshot =
+        serde_json::from_value(item.source_snapshot.clone())?;
+    snapshot
+        .validate()
+        .map_err(|error| TranslationError::InvalidProgressSource(error.to_string()))?;
+    if hash_manifest(&snapshot)? != item.source_digest {
+        return Err(TranslationError::InvalidProgressSource(
+            "job item source snapshot digest does not match".to_string(),
+        ));
+    }
+    Ok(snapshot)
+}
+
+fn source_character_count(snapshot: &TranslationResourceSnapshot) -> TranslationResult<u64> {
+    snapshot.fields.iter().try_fold(0_u64, |total, field| {
+        let count = u64::try_from(field.source_value.chars().count())
+            .map_err(|_| TranslationError::ProgressOverflow)?;
+        checked_progress_add(total, count)
+    })
 }
 
 async fn persist_progress<C>(

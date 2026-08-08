@@ -1,63 +1,73 @@
 use super::*;
+use crate::modules::{CatalogManifestModule, CatalogModuleVersion};
 use rustok_modules::{
-    ModuleMarketplaceContentProjection, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
+    ModuleGovernanceActorContext, ModuleGovernanceOwnerSnapshot,
+    ModuleGovernancePublishArtifactDownloadSnapshot, ModuleGovernancePublishRequestStatusSnapshot,
+    ModuleGovernanceRequestSnapshot, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
 };
+use std::collections::HashMap;
+
+fn map_owner_binding_snapshot(owner: ModuleGovernanceOwnerSnapshot) -> RegistryModuleOwnerSnapshot {
+    RegistryModuleOwnerSnapshot {
+        owner: RegistryPrincipalRef::from_json_value(&owner.owner_principal),
+        bound_by: RegistryPrincipalRef::from_json_value(&owner.bound_by_principal),
+        bound_at: owner.bound_at,
+        updated_at: owner.updated_at,
+    }
+}
+
+fn map_owner_request_snapshot(
+    request: ModuleGovernanceRequestSnapshot,
+) -> RegistryPublishRequestSnapshot {
+    RegistryPublishRequestSnapshot {
+        id: request.id,
+        slug: request.slug,
+        version: request.version,
+        status: request.status,
+        artifact_origin: request.artifact_origin,
+        requested_by: RegistryPrincipalRef::from_json_value(&request.requested_by_principal),
+        publisher: request
+            .publisher_principal
+            .as_ref()
+            .map(RegistryPrincipalRef::from_json_value),
+        approved_by: request
+            .approved_by_principal
+            .as_ref()
+            .map(RegistryPrincipalRef::from_json_value),
+        rejected_by: request
+            .rejected_by_principal
+            .as_ref()
+            .map(RegistryPrincipalRef::from_json_value),
+        rejection_reason: request.rejection_reason,
+        changes_requested_by: request
+            .changes_requested_by_principal
+            .as_ref()
+            .map(RegistryPrincipalRef::from_json_value),
+        changes_requested_reason: request.changes_requested_reason,
+        changes_requested_reason_code: request.changes_requested_reason_code,
+        changes_requested_at: request.changes_requested_at,
+        held_by: request
+            .held_by_principal
+            .as_ref()
+            .map(RegistryPrincipalRef::from_json_value),
+        held_reason: request.held_reason,
+        held_reason_code: request.held_reason_code,
+        held_at: request.held_at,
+        held_from_status: request.held_from_status,
+        warnings: request.warnings,
+        errors: request.errors,
+        created_at: request.created_at,
+        updated_at: request.updated_at,
+        published_at: request.published_at,
+    }
+}
 
 pub(crate) fn map_owner_lifecycle_snapshot(
     snapshot: rustok_modules::ModuleGovernanceLifecycleSnapshot,
 ) -> RegistryModuleLifecycleSnapshot {
     RegistryModuleLifecycleSnapshot {
-        owner_binding: snapshot
-            .owner_binding
-            .map(|owner| RegistryModuleOwnerSnapshot {
-                owner: RegistryPrincipalRef::from_json_value(&owner.owner_principal),
-                bound_by: RegistryPrincipalRef::from_json_value(&owner.bound_by_principal),
-                bound_at: owner.bound_at,
-                updated_at: owner.updated_at,
-            }),
-        latest_request: snapshot
-            .latest_request
-            .map(|request| RegistryPublishRequestSnapshot {
-                id: request.id,
-                status: request.status,
-                artifact_origin: request.artifact_origin,
-                requested_by: RegistryPrincipalRef::from_json_value(
-                    &request.requested_by_principal,
-                ),
-                publisher: request
-                    .publisher_principal
-                    .as_ref()
-                    .map(RegistryPrincipalRef::from_json_value),
-                approved_by: request
-                    .approved_by_principal
-                    .as_ref()
-                    .map(RegistryPrincipalRef::from_json_value),
-                rejected_by: request
-                    .rejected_by_principal
-                    .as_ref()
-                    .map(RegistryPrincipalRef::from_json_value),
-                rejection_reason: request.rejection_reason,
-                changes_requested_by: request
-                    .changes_requested_by_principal
-                    .as_ref()
-                    .map(RegistryPrincipalRef::from_json_value),
-                changes_requested_reason: request.changes_requested_reason,
-                changes_requested_reason_code: request.changes_requested_reason_code,
-                changes_requested_at: request.changes_requested_at,
-                held_by: request
-                    .held_by_principal
-                    .as_ref()
-                    .map(RegistryPrincipalRef::from_json_value),
-                held_reason: request.held_reason,
-                held_reason_code: request.held_reason_code,
-                held_at: request.held_at,
-                held_from_status: request.held_from_status,
-                warnings: request.warnings,
-                errors: request.errors,
-                created_at: request.created_at,
-                updated_at: request.updated_at,
-                published_at: request.published_at,
-            }),
+        owner_binding: snapshot.owner_binding.map(map_owner_binding_snapshot),
+        latest_request: snapshot.latest_request.map(map_owner_request_snapshot),
         latest_release: snapshot
             .latest_release
             .map(|release| RegistryModuleReleaseSnapshot {
@@ -151,7 +161,112 @@ pub(crate) fn map_owner_lifecycle_snapshot(
     }
 }
 
+fn map_owner_request_status_snapshot(
+    snapshot: ModuleGovernancePublishRequestStatusSnapshot,
+) -> RegistryPublishRequestStatusSnapshot {
+    RegistryPublishRequestStatusSnapshot {
+        request: map_owner_request_snapshot(snapshot.request),
+        authorization: RegistryPublishRequestAuthorizationSnapshot {
+            can_manage: snapshot.authorization.can_manage,
+            can_review: snapshot.authorization.can_review,
+        },
+        effective_publisher_principal: snapshot.effective_publisher_principal,
+        rejected_retry_allowed: snapshot.rejected_retry_allowed,
+        follow_up_gates: snapshot
+            .follow_up_gates
+            .into_iter()
+            .map(|gate| RegistryFollowUpGateSnapshot {
+                key: gate.key,
+                status: gate.status,
+                detail: gate.detail,
+                updated_at: gate.updated_at,
+            })
+            .collect(),
+        validation_stages: snapshot
+            .validation_stages
+            .into_iter()
+            .map(|stage| RegistryValidationStageSnapshot {
+                key: stage.key,
+                status: stage.status,
+                detail: stage.detail,
+                attempt_number: stage.attempt_number,
+                updated_at: stage.updated_at,
+                started_at: stage.started_at,
+                finished_at: stage.finished_at,
+            })
+            .collect(),
+        approval_override_required: snapshot.approval_override_required,
+        approval_override_reason_codes: snapshot.approval_override_reason_codes,
+        approval_override_warning: snapshot.approval_override_warning,
+        governance_actions: snapshot
+            .governance_actions
+            .into_iter()
+            .map(|action| RegistryGovernanceActionSnapshot {
+                key: action.key,
+                reason_required: action.reason_required,
+                reason_code_required: action.reason_code_required,
+                reason_codes: action.reason_codes,
+                destructive: action.destructive,
+            })
+            .collect(),
+        accepted: snapshot.accepted,
+        next_action: snapshot.next_action,
+    }
+}
+
 impl RegistryGovernanceService {
+    /// Maps canonical owner marketplace facts onto the host's public registry
+    /// transport shape. This adapter performs no registry reads or policy
+    /// derivation; the module owner owns the durable release projection.
+    pub async fn apply_catalog_projection(
+        &self,
+        modules: Vec<CatalogManifestModule>,
+        preferred_locale: Option<&str>,
+        fallback_locale: Option<&str>,
+    ) -> anyhow::Result<Vec<CatalogManifestModule>> {
+        let entries = modules
+            .iter()
+            .map(catalog_entry_for_owner_projection)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let projected = self
+            .release_service()
+            .apply_marketplace_projection(entries, preferred_locale, fallback_locale)
+            .await
+            .map_err(anyhow::Error::new)?;
+        let projected_by_slug = projected
+            .into_iter()
+            .map(|entry| (entry.slug.clone(), entry))
+            .collect::<HashMap<_, _>>();
+
+        let mut modules = modules;
+        for module in &mut modules {
+            let Some(entry) = projected_by_slug.get(&module.slug) else {
+                continue;
+            };
+            if !entry.latest_version.is_empty() {
+                module.version = Some(entry.latest_version.clone());
+                module.name = Some(entry.name.clone());
+                module.description = Some(entry.description.clone());
+                module.publisher = entry.publisher.clone();
+                module.checksum_sha256 = entry.checksum_sha256.clone();
+            }
+            module.versions = entry
+                .versions
+                .iter()
+                .map(|version| CatalogModuleVersion {
+                    version: version.version.clone(),
+                    changelog: version.changelog.clone(),
+                    yanked: version.yanked,
+                    published_at: version.published_at.clone(),
+                    checksum_sha256: version.checksum_sha256.clone(),
+                    signature: None,
+                    artifact: version.artifact.clone(),
+                })
+                .collect();
+        }
+        Ok(modules)
+    }
+
     pub async fn yank_release(
         &self,
         slug: &str,
@@ -199,15 +314,22 @@ impl RegistryGovernanceService {
         reason: &str,
         reason_code: &str,
         authority: &RegistryAuthority,
-    ) -> anyhow::Result<registry_module_owner::Model> {
-        let existing = self.registry_slug_owner(slug).await?.ok_or_else(|| {
-            not_found_error(format!(
-                "Registry owner binding for slug '{slug}' was not found"
-            ))
-        })?;
+    ) -> anyhow::Result<RegistryModuleOwnerSnapshot> {
+        let existing = self
+            .release_service()
+            .owner_binding_snapshot(slug)
+            .await
+            .map_err(anyhow::Error::new)?
+            .map(map_owner_binding_snapshot)
+            .ok_or_else(|| {
+                not_found_error(format!(
+                    "Registry owner binding for slug '{slug}' was not found"
+                ))
+            })?;
         self.ensure_authority_can_transfer_registry_owner(
             authority,
             &existing,
+            slug,
             "transfer ownership",
         )
         .await?;
@@ -218,7 +340,7 @@ impl RegistryGovernanceService {
                 slug
             )));
         }
-        if principal_matches_ref(&existing.owner_principal, new_owner) {
+        if existing.owner == *new_owner {
             return Err(conflict_error(format!(
                 "Registry owner for slug '{}' is already bound to '{}'",
                 slug,
@@ -242,103 +364,11 @@ impl RegistryGovernanceService {
             })
             .await
             .map_err(anyhow::Error::new)?;
-        RegistryModuleOwnerEntity::find_by_id(slug)
-            .one(&self.db)
+        self.release_service()
+            .owner_binding_snapshot(slug)
             .await?
+            .map(map_owner_binding_snapshot)
             .ok_or_else(|| anyhow!("transferred registry owner binding disappeared"))
-    }
-
-    pub async fn apply_catalog_projection(
-        &self,
-        modules: Vec<CatalogManifestModule>,
-        preferred_locale: Option<&str>,
-        fallback_locale: Option<&str>,
-    ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-        let releases = RegistryModuleReleaseEntity::find()
-            .order_by_desc(registry_module_release::Column::PublishedAt)
-            .all(&self.db)
-            .await?;
-
-        if releases.is_empty() {
-            return Ok(modules);
-        }
-        let artifact_contracts = self
-            .release_service()
-            .published_artifact_contracts()
-            .await
-            .map_err(anyhow::Error::new)?
-            .into_iter()
-            .map(|contract| (contract.release_id, contract.artifact))
-            .collect::<HashMap<_, _>>();
-        if releases.iter().any(|release| {
-            release.status == RegistryModuleReleaseStatus::Active
-                && !artifact_contracts.contains_key(&release.id)
-        }) {
-            return Err(anyhow!(
-                "active registry release is missing its immutable artifact contract"
-            ));
-        }
-
-        let mut release_map: HashMap<String, Vec<registry_module_release::Model>> = HashMap::new();
-        for release in releases {
-            release_map
-                .entry(release.slug.clone())
-                .or_default()
-                .push(release);
-        }
-
-        let mut projected = modules;
-        for module in &mut projected {
-            let Some(releases) = release_map.get(&module.slug) else {
-                continue;
-            };
-
-            let mut versions = releases
-                .iter()
-                .map(|release| CatalogModuleVersion {
-                    version: release.version.clone(),
-                    changelog: None,
-                    yanked: release.status == RegistryModuleReleaseStatus::Yanked,
-                    published_at: Some(release.published_at.to_rfc3339()),
-                    checksum_sha256: release.checksum_sha256.clone(),
-                    signature: None,
-                    artifact: artifact_contracts.get(&release.id).cloned(),
-                })
-                .collect::<Vec<_>>();
-            versions.sort_by(|left, right| {
-                left.yanked
-                    .cmp(&right.yanked)
-                    .then_with(|| right.published_at.cmp(&left.published_at))
-                    .then_with(|| compare_semver_desc(&left.version, &right.version))
-                    .then_with(|| right.version.cmp(&left.version))
-            });
-
-            if let Some(latest_active) = releases
-                .iter()
-                .find(|release| release.status == RegistryModuleReleaseStatus::Active)
-            {
-                let metadata = load_release_metadata(
-                    &self.db,
-                    &latest_active.id,
-                    preferred_locale,
-                    fallback_locale.or(Some(latest_active.default_locale.as_str())),
-                )
-                .await?;
-                module.version = Some(latest_active.version.clone());
-                if let Ok(content) = ModuleMarketplaceContentProjection::try_new(
-                    &metadata.name,
-                    &metadata.description,
-                ) {
-                    module.name = Some(content.name);
-                    module.description = Some(content.description);
-                }
-                module.publisher = Some(principal_display_label(&latest_active.publisher));
-                module.checksum_sha256 = latest_active.checksum_sha256.clone();
-            }
-            module.versions = versions;
-        }
-
-        Ok(projected)
     }
 
     pub async fn lifecycle_snapshot(
@@ -353,51 +383,46 @@ impl RegistryGovernanceService {
         Ok(snapshot.map(map_owner_lifecycle_snapshot))
     }
 
-    pub async fn publish_request_follow_up_snapshot(
+    /// Loads one exact owner-derived publish status projection. The adapter
+    /// maps owner facts into the server transport shape without querying
+    /// registry persistence or deriving lifecycle policy.
+    pub async fn publish_request_status_snapshot_for_authority(
         &self,
-        request: &registry_publish_request::Model,
-    ) -> anyhow::Result<RegistryPublishRequestFollowUpSnapshot> {
-        self.publish_request_follow_up_snapshot_for_authority(request, None)
+        request_id: &str,
+        authority: Option<&RegistryAuthority>,
+    ) -> anyhow::Result<Option<RegistryPublishRequestStatusSnapshot>> {
+        let actor = authority.map(|authority| ModuleGovernanceActorContext {
+            principal: authority.principal.to_json_value(),
+            can_manage_modules: authority.can_manage_modules,
+        });
+        self.release_service()
+            .publish_request_status_snapshot(request_id, actor.as_ref())
             .await
+            .map_err(anyhow::Error::new)
+            .map(|snapshot| snapshot.map(map_owner_request_status_snapshot))
     }
 
-    pub async fn publish_request_follow_up_snapshot_for_authority(
+    /// Resolves only the owner-managed artifact delivery facts required by the
+    /// storage host. It intentionally does not expose a SeaORM request model.
+    pub async fn publish_artifact_download_snapshot(
         &self,
-        request: &registry_publish_request::Model,
-        authority: Option<&RegistryAuthority>,
-    ) -> anyhow::Result<RegistryPublishRequestFollowUpSnapshot> {
-        let validation_stage_rows = self.validation_stage_rows(&request.id).await?;
-        let validation_stages =
-            derive_validation_stage_snapshots(Some(request), &[], &validation_stage_rows);
-        let follow_up_gates =
-            derive_follow_up_gate_snapshots(Some(request), &[], &validation_stages);
-        let approval_override_required = request.status == RegistryPublishRequestStatus::Approved
-            && validation_stages
-                .iter()
-                .any(|stage| !stage.status.eq_ignore_ascii_case("passed"));
-        let governance_actions = if let Some(authority) = authority {
-            let owner = self.registry_slug_owner(&request.slug).await?;
-            publish_request_governance_actions_for_authority(
-                request,
-                owner.as_ref(),
-                &validation_stages,
-                approval_override_required,
-                authority,
-            )
-        } else {
-            publish_request_governance_actions(
-                request,
-                &validation_stages,
-                approval_override_required,
-            )
-        };
-
-        Ok(RegistryPublishRequestFollowUpSnapshot {
-            follow_up_gates,
-            validation_stages,
-            approval_override_required,
-            governance_actions,
-        })
+        request_id: &str,
+    ) -> anyhow::Result<Option<RegistryPublishArtifactDownloadSnapshot>> {
+        self.release_service()
+            .publish_artifact_download_snapshot(request_id)
+            .await
+            .map_err(anyhow::Error::new)
+            .map(|snapshot| {
+                snapshot.map(
+                    |ModuleGovernancePublishArtifactDownloadSnapshot {
+                         storage_key,
+                         content_type,
+                     }| RegistryPublishArtifactDownloadSnapshot {
+                        storage_key,
+                        content_type,
+                    },
+                )
+            })
     }
 
     pub(crate) async fn ensure_authority_can_create_publish_request(
@@ -417,43 +442,43 @@ impl RegistryGovernanceService {
         )))
     }
 
-    pub(crate) async fn ensure_authority_can_manage_publish_request(
+    pub(crate) async fn authorized_publish_request_status_snapshot(
         &self,
+        request_id: &str,
         authority: &RegistryAuthority,
-        request: &registry_publish_request::Model,
+        required_permission: RegistryPublishRequestPermission,
         action: &str,
-    ) -> anyhow::Result<()> {
-        let owner = self.registry_slug_owner(&request.slug).await?;
-        if authority_can_manage_publish_request(authority, request, owner.as_ref()) {
-            return Ok(());
+    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+        let snapshot = self
+            .publish_request_status_snapshot_for_authority(request_id, Some(authority))
+            .await?
+            .ok_or_else(|| {
+                not_found_error(format!(
+                    "Registry publish request '{request_id}' was not found"
+                ))
+            })?;
+        let permitted = match required_permission {
+            RegistryPublishRequestPermission::Manage => snapshot.authorization.can_manage,
+            RegistryPublishRequestPermission::Review => snapshot.authorization.can_review,
+        };
+        if permitted {
+            return Ok(snapshot);
         }
 
+        let requirement = match required_permission {
+            RegistryPublishRequestPermission::Manage => {
+                "management actions require either MODULES_MANAGE, the current persisted owner binding, or (before owner binding exists) the original requester identity"
+            }
+            RegistryPublishRequestPermission::Review => {
+                "review actions require either MODULES_MANAGE or the current persisted owner binding"
+            }
+        };
         Err(forbidden_error(format!(
-            "Principal '{}' is not allowed to {} registry publish request '{}' for slug '{}'; management actions require either MODULES_MANAGE, the current persisted owner binding, or (before owner binding exists) the original requester identity",
+            "Principal '{}' is not allowed to {} registry publish request '{}' for slug '{}'; {requirement}",
             authority_actor(authority),
             action,
-            request.id,
-            request.slug
-        )))
-    }
-
-    pub(crate) async fn ensure_authority_can_review_publish_request(
-        &self,
-        authority: &RegistryAuthority,
-        request: &registry_publish_request::Model,
-        action: &str,
-    ) -> anyhow::Result<()> {
-        let owner = self.registry_slug_owner(&request.slug).await?;
-        if authority_can_review_publish_request(authority, owner.as_ref()) {
-            return Ok(());
-        }
-
-        Err(forbidden_error(format!(
-            "Principal '{}' is not allowed to {} registry publish request '{}' for slug '{}'; review actions require either MODULES_MANAGE or the current persisted owner binding",
-            authority_actor(authority),
-            action,
-            request.id,
-            request.slug
+            snapshot.request.id,
+            snapshot.request.slug
         )))
     }
 
@@ -480,7 +505,8 @@ impl RegistryGovernanceService {
     pub(crate) async fn ensure_authority_can_transfer_registry_owner(
         &self,
         authority: &RegistryAuthority,
-        binding: &registry_module_owner::Model,
+        binding: &RegistryModuleOwnerSnapshot,
+        slug: &str,
         action: &str,
     ) -> anyhow::Result<()> {
         if authority_can_transfer_registry_owner(authority, binding) {
@@ -491,24 +517,8 @@ impl RegistryGovernanceService {
             "Principal '{}' is not allowed to {} for slug '{}'; owner transfer requires either MODULES_MANAGE or the current persisted owner binding",
             authority_actor(authority),
             action,
-            binding.slug
+            slug
         )))
-    }
-
-    pub(crate) async fn resolve_effective_publisher(
-        &self,
-        request: &registry_publish_request::Model,
-        authority: &RegistryAuthority,
-    ) -> anyhow::Result<String> {
-        if let Some(owner) = self.registry_slug_owner(&request.slug).await? {
-            return Ok(principal_display_label(&owner.owner_principal));
-        }
-
-        if let Some(publisher) = optional_principal_display_label(&request.publisher_principal) {
-            return Ok(publisher);
-        }
-
-        Ok(authority.principal.label().to_string())
     }
 
     async fn registry_slug_owner(
@@ -519,6 +529,58 @@ impl RegistryGovernanceService {
             .one(&self.db)
             .await?)
     }
+}
+
+fn catalog_entry_for_owner_projection(
+    module: &CatalogManifestModule,
+) -> anyhow::Result<rustok_modules::ModuleMarketplaceEntry> {
+    let settings_schema = serde_json::from_value(serde_json::to_value(&module.settings_schema)?)?;
+    Ok(rustok_modules::ModuleMarketplaceEntry {
+        slug: module.slug.clone(),
+        name: module.name.clone().unwrap_or_default(),
+        latest_version: module.version.clone().unwrap_or_default(),
+        description: module.description.clone().unwrap_or_default(),
+        source: module.source.clone(),
+        kind: if module.required { "core" } else { "optional" }.to_string(),
+        category: module.category.clone().unwrap_or_default(),
+        tags: module.tags.clone(),
+        icon_url: module.icon_url.clone(),
+        banner_url: module.banner_url.clone(),
+        screenshots: module.screenshots.clone(),
+        crate_name: module.crate_name.clone(),
+        dependencies: module.depends_on.clone(),
+        ownership: module.ownership.clone(),
+        trust_level: module.trust_level.clone(),
+        rustok_min_version: module.rustok_min_version.clone(),
+        rustok_max_version: module.rustok_max_version.clone(),
+        publisher: module.publisher.clone(),
+        checksum_sha256: module.checksum_sha256.clone(),
+        signature_present: module.signature.is_some(),
+        versions: module
+            .versions
+            .iter()
+            .map(|version| rustok_modules::ModuleMarketplaceVersion {
+                version: version.version.clone(),
+                changelog: version.changelog.clone(),
+                yanked: version.yanked,
+                published_at: version.published_at.clone(),
+                checksum_sha256: version.checksum_sha256.clone(),
+                signature_present: version.signature.is_some(),
+                artifact: version.artifact.clone(),
+            })
+            .collect(),
+        has_admin_ui: module.has_admin_ui,
+        has_storefront_ui: module.has_storefront_ui,
+        ui_classification: module.ui_classification.clone(),
+        registry_lifecycle: None,
+        compatible: true,
+        recommended_admin_surfaces: module.recommended_admin_surfaces.clone(),
+        showcase_admin_surfaces: module.showcase_admin_surfaces.clone(),
+        settings_schema,
+        installed: false,
+        installed_version: None,
+        update_available: false,
+    })
 }
 
 pub fn release_status_label(status: RegistryModuleReleaseStatus) -> &'static str {

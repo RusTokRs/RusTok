@@ -10,10 +10,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolver,
-    ArtifactMcpCapabilityBrokerResolver, ArtifactRuntime, ArtifactRuntimeLifecycleExecutor,
-    ModuleControlPlane, ModuleEffectivePolicy, ResolvingArtifactCapabilityBroker,
-    SeaOrmArtifactSecretHandlePolicy, SharedArtifactBindingExecutor,
+    ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolver, ArtifactRuntime,
+    ArtifactRuntimeLifecycleExecutor, ModuleControlPlane, ModuleEffectivePolicy,
+    ResolvingArtifactCapabilityBroker, SharedArtifactBindingExecutor,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, SandboxRuntime};
 use rustok_sandbox_transport::GrpcRhaiExecutor;
@@ -105,7 +104,7 @@ pub async fn compose_artifact_binding_executor(
         mcp_audit,
     );
     let control_plane = ModuleControlPlane::new(ctx.db_clone());
-    let secret_policy = SeaOrmArtifactSecretHandlePolicy::new(ctx.db_clone());
+    let secret_policy = control_plane.artifact_secret_handle_policy();
     let resolver = ArtifactCapabilityBrokerResolverRouter::new()
         .route(
             data_capability,
@@ -126,10 +125,7 @@ pub async fn compose_artifact_binding_executor(
         .and_then(|router| {
             router.route(
                 mcp_capability,
-                Arc::new(ArtifactMcpCapabilityBrokerResolver::new(
-                    ctx.db_clone(),
-                    mcp_invoker,
-                )),
+                Arc::new(control_plane.artifact_mcp_capability(mcp_invoker)),
             )
         })
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))?;

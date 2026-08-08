@@ -50,6 +50,8 @@ mod tests {
             "translationMemorySuggestions",
             "machineTranslationOperationStatus",
             "translationJobProgress",
+            "translationReviewerQueue",
+            "translationReviewerWorkload",
             "exportTranslationJob",
             "translationRequiredProviderProgress",
             "replaceTranslationPolicy",

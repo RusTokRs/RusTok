@@ -13,7 +13,6 @@ use crate::services::marketplace_catalog::{
     MarketplaceCatalogQuery, MarketplaceProviderHealthStatus, marketplace_catalog_from_context,
 };
 use crate::services::platform_composition::PlatformCompositionService;
-use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Clone)]
@@ -27,39 +26,52 @@ impl ServerMarketplaceCatalog {
         Self { runtime, registry }
     }
 
-    async fn projected_modules(
+    async fn projected_entries(
         &self,
         query: &ModuleMarketplaceQuery,
-    ) -> Result<
-        (
-            Vec<CatalogManifestModule>,
-            Vec<crate::modules::InstalledManifestModule>,
-        ),
-        ModuleMarketplaceError,
-    > {
+    ) -> Result<Vec<ModuleMarketplaceEntry>, ModuleMarketplaceError> {
         let manifest = PlatformCompositionService::active_manifest(self.runtime.db())
             .await
             .map_err(|_| ModuleMarketplaceError::Unavailable)?;
-        let installed = ManifestManager::installed_modules(&manifest);
         let provider_query = MarketplaceCatalogQuery {
             search: query.search.clone(),
             category: query.category.clone(),
             tag: query.tag.clone(),
         };
-        let modules = marketplace_catalog_from_context(&self.runtime)
-            .list_modules(&manifest, &self.registry, &provider_query)
-            .await
-            .map_err(|_| ModuleMarketplaceError::Unavailable)?;
-        let modules = RegistryGovernanceService::new(self.runtime.db_clone())
-            .apply_catalog_projection(
-                modules,
-                query.preferred_locale.as_deref(),
-                query.fallback_locale.as_deref(),
-            )
-            .await
-            .map_err(|_| ModuleMarketplaceError::Unavailable)?;
-        Ok((modules, installed))
+        project_marketplace_catalog_entries(
+            &self.runtime,
+            &manifest,
+            &self.registry,
+            &provider_query,
+            query.preferred_locale.as_deref(),
+            query.fallback_locale.as_deref(),
+        )
+        .await
     }
+}
+
+pub(crate) async fn project_marketplace_catalog_entries(
+    runtime: &ServerRuntimeContext,
+    manifest: &crate::modules::ModulesManifest,
+    registry: &ModuleRegistry,
+    query: &MarketplaceCatalogQuery,
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+) -> Result<Vec<ModuleMarketplaceEntry>, ModuleMarketplaceError> {
+    let installed = ManifestManager::installed_modules(manifest);
+    let modules = marketplace_catalog_from_context(runtime)
+        .list_modules(manifest, registry, query)
+        .await
+        .map_err(|_| ModuleMarketplaceError::Unavailable)?;
+    let entries = modules
+        .into_iter()
+        .map(|module| map_catalog_entry(module, registry, &installed))
+        .collect::<Result<Vec<_>, _>>()?;
+    rustok_modules::ModuleControlPlane::new(runtime.db_clone())
+        .release()
+        .apply_marketplace_projection(entries, preferred_locale, fallback_locale)
+        .await
+        .map_err(|_| ModuleMarketplaceError::Unavailable)
 }
 
 #[async_trait]
@@ -68,13 +80,12 @@ impl ModuleMarketplaceCatalog for ServerMarketplaceCatalog {
         &self,
         query: ModuleMarketplaceQuery,
     ) -> Result<Vec<ModuleMarketplaceEntry>, ModuleMarketplaceError> {
-        let (modules, installed) = self.projected_modules(&query).await?;
+        let modules = self.projected_entries(&query).await?;
         let source = normalized_filter(query.source.as_deref());
         let trust_level = normalized_filter(query.trust_level.as_deref());
         let limit = query.limit.clamp(1, MODULE_MARKETPLACE_MAX_LIMIT) as usize;
         let mut entries = Vec::new();
-        for module in modules {
-            let entry = map_catalog_entry(module, &self.registry, &installed)?;
+        for entry in modules {
             if entry.kind != "optional"
                 || (query.only_compatible && !entry.compatible && !entry.installed)
                 || (query.installed_only && !entry.installed)
@@ -115,18 +126,18 @@ impl ModuleMarketplaceCatalog for ServerMarketplaceCatalog {
         else {
             return Ok(None);
         };
-        let mut projected = RegistryGovernanceService::new(self.runtime.db_clone())
-            .apply_catalog_projection(
-                vec![module],
+        let entry = map_catalog_entry(module, &self.registry, &installed)?;
+        let mut entry = rustok_modules::ModuleControlPlane::new(self.runtime.db_clone())
+            .release()
+            .apply_marketplace_projection(
+                vec![entry],
                 preferred_locale.as_deref(),
                 fallback_locale.as_deref(),
             )
             .await
-            .map_err(|_| ModuleMarketplaceError::Unavailable)?;
-        let Some(module) = projected.pop() else {
-            return Ok(None);
-        };
-        let mut entry = map_catalog_entry(module, &self.registry, &installed)?;
+            .map_err(|_| ModuleMarketplaceError::Unavailable)?
+            .pop()
+            .ok_or(ModuleMarketplaceError::InvalidContract)?;
         if entry.kind != "optional" {
             return Ok(None);
         }

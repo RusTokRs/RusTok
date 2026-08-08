@@ -107,10 +107,10 @@ pub(crate) const PUBLISH_MANIFEST_DB_ERROR_PREFIX: &str = "PAGE_PUBLISH_OPERATIO
 
 impl From<DbErr> for PagesError {
     fn from(error: DbErr) -> Self {
-        if let DbErr::Custom(message) = &error {
-            if let Some(detail) = message.strip_prefix(PUBLISH_MANIFEST_DB_ERROR_PREFIX) {
-                return Self::PublishOperationIntegrity(detail.trim().to_string());
-            }
+        if let DbErr::Custom(message) = &error
+            && let Some(detail) = message.strip_prefix(PUBLISH_MANIFEST_DB_ERROR_PREFIX)
+        {
+            return Self::PublishOperationIntegrity(detail.trim().to_string());
         }
         Self::Database(error)
     }

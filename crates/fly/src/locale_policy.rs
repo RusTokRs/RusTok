@@ -160,14 +160,14 @@ pub fn materialize_project_locale_context(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
     let requested_locale = requested_source.as_deref().and_then(normalize_locale_tag);
-    if let Some(source) = requested_source.as_deref() {
-        if requested_locale.is_none() {
-            diagnostics.push(locale_policy_diagnostic(
-                ValidationSeverity::Warning,
-                "runtime_locale_invalid",
-                format!("runtime locale `{source}` is invalid and was replaced by project policy"),
-            ));
-        }
+    if let Some(source) = requested_source.as_deref()
+        && requested_locale.is_none()
+    {
+        diagnostics.push(locale_policy_diagnostic(
+            ValidationSeverity::Warning,
+            "runtime_locale_invalid",
+            format!("runtime locale `{source}` is invalid and was replaced by project policy"),
+        ));
     }
     let mut active_locale = requested_locale;
     let mut default_locale_applied = false;
@@ -211,10 +211,10 @@ pub fn materialize_project_locale_context(
         .map(runtime_locale_list)
         .unwrap_or_default();
     fallback_locales.extend(policy.fallback_locales.iter().cloned());
-    if let Some(default_locale) = policy.default_locale.as_deref() {
-        if active_locale.as_deref() != Some(default_locale) {
-            fallback_locales.push(default_locale.to_string());
-        }
+    if let Some(default_locale) = policy.default_locale.as_deref()
+        && active_locale.as_deref() != Some(default_locale)
+    {
+        fallback_locales.push(default_locale.to_string());
     }
     let mut seen = BTreeSet::new();
     fallback_locales.retain(|locale| {

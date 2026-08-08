@@ -25,6 +25,8 @@ typed transport contract shared by its native and GraphQL runtime profiles.
   selection. No entry is selected implicitly.
 - Expose bounded immutable job export and atomic per-item import through the
   module-owned interchange service and canonical QA path.
+- Expose bounded reviewer queue and workload reads derived from current job-item
+  and proposal evidence without introducing an admin-owned workflow store.
 - Keep Translation business rules in `rustok-translation`.
 - Consume owner content only through the Translation module's neutral provider
   registry.
@@ -40,11 +42,12 @@ tables.
 
 - `TranslationAdmin`
 
-The package-internal typed boundary contains 39 operations. Native and GraphQL
+The package-internal typed boundary contains 41 operations. Native and GraphQL
 adapters cover the same set, and the workbench exposes the machine-translation
 estimate, generation, status, cancellation, and recovery flow alongside
-revision-guarded assignment/unassignment, blocked-item retry, job cancellation,
-and owner-apply recovery. GraphQL documents are validated against the
+revision-guarded assignment/unassignment, bounded reviewer queue and workload
+reads, blocked-item retry, job cancellation, and owner-apply recovery. GraphQL
+documents are validated against the
 module-owned schema so the host cannot bypass or redefine the rendered module
 surface.
 

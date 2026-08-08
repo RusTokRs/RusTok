@@ -18,6 +18,8 @@ use crate::{
     PagesModule, PatchPageMetadataInput,
 };
 
+const TRANSLATION_TARGET_MIGRATION: &str = "m20260806_000014_add_translation_target_support";
+
 async fn setup() -> (DatabaseConnection, Arc<PageService>) {
     let database = setup_test_db().await;
     let manager = SchemaManager::new(&database);
@@ -45,10 +47,12 @@ async fn translation_target_schema_supports_up_down_up() {
         .await
         .expect("outbox migration should apply");
     let mut migrations = PagesModule.migrations();
-    let translation_target_migration = migrations
-        .pop()
+    let translation_target_index = migrations
+        .iter()
+        .position(|migration| migration.name() == TRANSLATION_TARGET_MIGRATION)
         .expect("Pages translation target migration should be registered");
-    for migration in migrations {
+    let translation_target_migration = migrations.remove(translation_target_index);
+    for migration in migrations.into_iter().take(translation_target_index) {
         migration
             .up(&manager)
             .await

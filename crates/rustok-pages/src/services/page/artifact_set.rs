@@ -16,7 +16,7 @@ use crate::error::{PagesError, PagesResult};
 use crate::services::PageBuilderArtifactService;
 
 use super::artifact_binding_replacement::PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT;
-use super::publish_manifest::{is_sha256, rebuild_source_provenance_hash};
+use super::publish_manifest::{RebuildSourceProvenance, is_sha256, rebuild_source_provenance_hash};
 
 const PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT: &str = "page_rollback_operation_v1";
 const MAX_RECOVERED_ACTIVATION_PREFIX: usize = 256;
@@ -652,23 +652,23 @@ fn verify_rebuild_source_for_rollback(
             ));
         }
     }
-    let expected = rebuild_source_provenance_hash(
-        source.operation_id,
-        source.tenant_id,
-        source.page_id,
-        source.page_body_id,
-        source.locale.as_str(),
-        source.source_format.as_str(),
-        source.source_revision.as_str(),
-        source.artifact_id,
-        source.sanitized_hash.as_str(),
-        source.source_hash.as_str(),
-        source.review_hash.as_str(),
-        source.artifact_hash.as_str(),
-        source.materialization_hash.as_str(),
-        &source.materialization_identity,
-        &source.runtime_snapshots,
-    )
+    let expected = rebuild_source_provenance_hash(RebuildSourceProvenance {
+        operation_id: source.operation_id,
+        tenant_id: source.tenant_id,
+        page_id: source.page_id,
+        page_body_id: source.page_body_id,
+        locale: source.locale.as_str(),
+        source_format: source.source_format.as_str(),
+        source_revision: source.source_revision.as_str(),
+        artifact_id: source.artifact_id,
+        sanitized_hash: source.sanitized_hash.as_str(),
+        source_hash: source.source_hash.as_str(),
+        review_hash: source.review_hash.as_str(),
+        artifact_hash: source.artifact_hash.as_str(),
+        materialization_hash: source.materialization_hash.as_str(),
+        materialization_identity: &source.materialization_identity,
+        runtime_snapshots: &source.runtime_snapshots,
+    })
     .map_err(|error| PagesError::rollback_target_unavailable(error.to_string()))?;
     if expected != source.provenance_hash {
         return Err(PagesError::rollback_target_unavailable(

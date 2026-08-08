@@ -23,9 +23,12 @@ mod tests {
         Entity as RegistryValidationStageEntity, RegistryValidationStageStatus,
     };
     use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
+    use crate::services::registry_remote_transitions::{
+        RemoteTerminalOutcome, finish_remote_validation_stage_atomic,
+    };
     use chrono::{Duration, Utc};
     use rustok_migrations::Migrator;
-    use rustok_storage::{LocalStorageConfig, StorageRuntime};
+    use rustok_storage::{DigestObjectKey, LocalStorageConfig, ObjectScope, StorageRuntime};
     use rustok_test_utils::db::{setup_test_db, setup_test_db_with_migrations};
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
@@ -262,26 +265,6 @@ mod tests {
     }
 
     #[test]
-    fn rejected_publish_request_can_retry_after_validation_failure() {
-        assert!(rejected_publish_request_can_retry(
-            Some("validation_failed"),
-            Some("Validation job failed before bundle checks: missing artifact"),
-        ));
-        assert!(rejected_publish_request_can_retry(
-            None,
-            Some("Validation job failed before bundle checks: missing artifact"),
-        ));
-    }
-
-    #[test]
-    fn rejected_publish_request_cannot_retry_after_manual_governance_reject() {
-        assert!(!rejected_publish_request_can_retry(
-            Some("request_rejected"),
-            Some("Governance rejection reason: owner mismatch"),
-        ));
-    }
-
-    #[test]
     fn normalize_required_reason_rejects_blank_values() {
         let error = normalize_required_reason("   ", "Registry publish reject")
             .expect_err("blank reason should be rejected");
@@ -302,87 +285,6 @@ mod tests {
         assert_eq!(reason, "Needs manual review");
     }
 
-    #[test]
-    fn derive_follow_up_gate_snapshots_reads_latest_gate_events() {
-        let now = Utc::now();
-        let mut request = sample_publish_request_model();
-        request.status = RegistryPublishRequestStatus::Approved;
-        request.validated_at = Some(now);
-        let events = vec![
-            registry_governance_event::Model {
-                id: "rge_compile".to_string(),
-                slug: "blog".to_string(),
-                request_id: Some(request.id.clone()),
-                release_id: None,
-                event_type: "follow_up_gate_queued".to_string(),
-                actor: principal_json("xtask:module-publish"),
-                publisher: None,
-                details: serde_json::json!({
-                    "stage_key": "compile_smoke",
-                    "status": "pending",
-                    "detail": "Compile smoke still runs outside the current registry validator."
-                }),
-                created_at: now,
-            },
-            registry_governance_event::Model {
-                id: "rge_tests".to_string(),
-                slug: "blog".to_string(),
-                request_id: Some(request.id.clone()),
-                release_id: None,
-                event_type: "follow_up_gate_failed".to_string(),
-                actor: principal_json("governance:moderator"),
-                publisher: None,
-                details: serde_json::json!({
-                    "stage_key": "targeted_tests",
-                    "status": "failed",
-                    "detail": "Targeted tests failed in CI."
-                }),
-                created_at: now,
-            },
-        ];
-
-        let validation_stages = derive_validation_stage_snapshots(Some(&request), &events, &[]);
-        let snapshots =
-            derive_follow_up_gate_snapshots(Some(&request), &events, &validation_stages);
-
-        assert_eq!(snapshots.len(), 2);
-        assert_eq!(
-            snapshots
-                .iter()
-                .find(|gate| gate.key == "compile_smoke")
-                .map(|gate| gate.status.as_str()),
-            Some("pending")
-        );
-        assert_eq!(
-            snapshots
-                .iter()
-                .find(|gate| gate.key == "targeted_tests")
-                .map(|gate| gate.status.as_str()),
-            Some("failed")
-        );
-        assert!(
-            snapshots
-                .iter()
-                .all(|gate| gate.key != "security_policy_review")
-        );
-    }
-
-    #[test]
-    fn derive_follow_up_gate_snapshots_selects_security_gate_for_external_prebuilt() {
-        let now = Utc::now();
-        let mut request = sample_publish_request_model();
-        request.status = RegistryPublishRequestStatus::Approved;
-        request.artifact_origin = "external_prebuilt".to_string();
-        request.validated_at = Some(now);
-
-        let validation_stages = derive_validation_stage_snapshots(Some(&request), &[], &[]);
-        let snapshots = derive_follow_up_gate_snapshots(Some(&request), &[], &validation_stages);
-
-        assert_eq!(snapshots.len(), 1);
-        assert_eq!(snapshots[0].key, "security_policy_review");
-        assert_eq!(snapshots[0].status, "pending");
-    }
-
     #[tokio::test]
     async fn validate_publish_request_queues_single_active_validation_job() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -397,10 +299,7 @@ mod tests {
             .unwrap();
         assert!(queued.queued);
         assert!(queued.validation_job_id.is_some());
-        assert_eq!(
-            queued.request.status,
-            RegistryPublishRequestStatus::Validating
-        );
+        assert_eq!(queued.status.request.status, "validating");
 
         let jobs = RegistryValidationJobEntity::find()
             .filter(registry_validation_job::Column::RequestId.eq(request.id.clone()))
@@ -416,10 +315,7 @@ mod tests {
             .await
             .unwrap();
         assert!(!second.queued);
-        assert_eq!(
-            second.request.status,
-            RegistryPublishRequestStatus::Validating
-        );
+        assert_eq!(second.status.request.status, "validating");
         assert_eq!(second.validation_job_id, queued.validation_job_id);
 
         let jobs = RegistryValidationJobEntity::find()
@@ -446,10 +342,7 @@ mod tests {
             .unwrap();
 
         assert!(queued.queued);
-        assert_eq!(
-            queued.request.status,
-            RegistryPublishRequestStatus::Validating
-        );
+        assert_eq!(queued.status.request.status, "validating");
 
         let jobs = RegistryValidationJobEntity::find()
             .filter(registry_validation_job::Column::RequestId.eq(request.id))
@@ -602,17 +495,16 @@ mod tests {
             Utc::now() - Duration::seconds(5),
         )
         .await;
-        let service = RegistryGovernanceService::new(db);
-
-        let error = service
-            .complete_remote_validation_stage(
-                "rvc_expired",
-                "worker-1",
-                Some("Compile smoke passed."),
-                Some("local_runner_passed"),
-            )
-            .await
-            .expect_err("expired claim should be rejected");
+        let error = finish_remote_validation_stage_atomic(
+            &db,
+            "rvc_expired",
+            "worker-1",
+            RemoteTerminalOutcome::Passed,
+            Some("Compile smoke passed."),
+            Some("local_runner_passed"),
+        )
+        .await
+        .expect_err("expired claim should be rejected");
 
         assert!(
             error
@@ -634,31 +526,28 @@ mod tests {
             Utc::now() + Duration::minutes(5),
         )
         .await;
-        let service = RegistryGovernanceService::new(db.clone());
+        let completed = finish_remote_validation_stage_atomic(
+            &db,
+            "rvc_duplicate",
+            "worker-1",
+            RemoteTerminalOutcome::Passed,
+            Some("Compile smoke passed."),
+            Some("local_runner_passed"),
+        )
+        .await
+        .expect("first completion should succeed");
+        assert_eq!(completed.status, "passed");
 
-        let completed = service
-            .complete_remote_validation_stage(
-                "rvc_duplicate",
-                "worker-1",
-                Some("Compile smoke passed."),
-                Some("local_runner_passed"),
-            )
-            .await
-            .expect("first completion should succeed");
-        assert_eq!(
-            completed.stage.status,
-            RegistryValidationStageStatus::Passed
-        );
-
-        let error = service
-            .complete_remote_validation_stage(
-                "rvc_duplicate",
-                "worker-1",
-                Some("Compile smoke passed again."),
-                Some("local_runner_passed"),
-            )
-            .await
-            .expect_err("duplicate completion should be rejected");
+        let error = finish_remote_validation_stage_atomic(
+            &db,
+            "rvc_duplicate",
+            "worker-1",
+            RemoteTerminalOutcome::Passed,
+            Some("Compile smoke passed again."),
+            Some("local_runner_passed"),
+        )
+        .await
+        .expect_err("duplicate completion should be rejected");
 
         assert!(
             error
@@ -852,10 +741,15 @@ mod tests {
         artifact_json: String,
     ) -> registry_publish_request::Model {
         let mut request = insert_publish_request(db, status).await;
-        let artifact_storage_key =
-            registry_artifact_storage_key(&request.id, request.created_at).unwrap();
         let artifact_bytes = bytes::Bytes::from(artifact_json.into_bytes());
         let artifact_checksum_sha256 = hex::encode(sha2::Sha256::digest(&artifact_bytes));
+        let artifact_storage_key = DigestObjectKey::sha256(
+            "registry-publish-artifact",
+            ObjectScope::Platform,
+            &artifact_checksum_sha256,
+        )
+        .unwrap()
+        .to_string();
         use object_store::ObjectStoreExt;
         storage
             .objects

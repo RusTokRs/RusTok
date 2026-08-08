@@ -237,8 +237,31 @@ export type JobItem = {
   resourceId: string;
   subresourceId: string | null;
   status: string;
+  assignee: Actor | null;
+  sourceDigest: string;
   revision: number;
   [key: string]: unknown;
+};
+
+export type ReviewerQueueItem = {
+  item: JobItem;
+  proposalId: string;
+  proposalRevision: number;
+  submittedAt: string;
+};
+
+export type ReviewerWorkload = {
+  jobId: string;
+  assignee: Actor | null;
+  openItems: number;
+  missingItems: number;
+  draftItems: number;
+  inReviewItems: number;
+  approvedItems: number;
+  applyingItems: number;
+  rebaseRequiredItems: number;
+  blockedItems: number;
+  sourceCharacters: number;
 };
 
 export type Proposal = {
@@ -457,6 +480,14 @@ export type TranslationOperation =
       idempotencyKey: string;
     }
   | { kind: 'read_job_progress'; jobId: string }
+  | {
+      kind: 'read_reviewer_queue';
+      jobId: string;
+      assignee?: Actor | null;
+      includeUnassigned: boolean;
+      limit: number;
+    }
+  | { kind: 'read_reviewer_workload'; jobId: string }
   | { kind: 'export_job'; jobId: string; maxItems: number }
   | {
       kind: 'import_item';
@@ -588,6 +619,8 @@ export type TranslationResponse =
   | { kind: 'memory_mutation'; value: MemoryMutation }
   | { kind: 'job'; value: Job }
   | { kind: 'job_progress'; value: JobProgress }
+  | { kind: 'reviewer_queue'; value: ReviewerQueueItem[] }
+  | { kind: 'reviewer_workload'; value: ReviewerWorkload[] }
   | { kind: 'interchange_document'; value: InterchangeDocument }
   | { kind: 'provider_progress'; value: ProviderProgress }
   | { kind: 'required_progress'; value: RequiredProviderProgress }

@@ -13,13 +13,13 @@ use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEvent
 use rustok_pages::{
     PAGES_CACHE_ENTITY_KIND, PageCacheError, PageCacheGenerationSnapshot,
     PageCacheInvalidationCause, PageCacheInvalidationEventHandler, PageCacheInvalidationPort,
-    PageCacheInvalidationReceipt, PageCacheInvalidationRequest, PageCacheScope, PagesCacheReadPort,
-    PagesCacheReadRuntime, PagesCacheInvalidationRuntime, PagesModule, page_cache_key,
-    storefront_pages_cache_key,
+    PageCacheInvalidationReceipt, PageCacheInvalidationRequest, PageCacheScope,
+    PagesCacheInvalidationRuntime, PagesCacheReadPort, PagesCacheReadRuntime, PagesModule,
+    page_cache_key, storefront_pages_cache_key,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
-    QueryResult, Statement, TransactionTrait,
+    Statement, TransactionTrait,
 };
 use sea_orm_migration::SchemaManager;
 use serde_json::{Value, json};
@@ -30,6 +30,17 @@ const PUBLISH_IDEMPOTENCY_KEY: &str = "pages-postgres-publish-v1";
 const ROLLBACK_IDEMPOTENCY_KEY: &str = "pages-postgres-rollback-v1";
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+
+struct CacheRotationRefillInput<'a> {
+    handler: &'a PageCacheInvalidationEventHandler,
+    reads: &'a PagesCacheReadRuntime,
+    port: &'a DurableCachePort,
+    envelope: &'a EventEnvelope,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    operation: &'a str,
+    expected_receipt_count: usize,
+}
 
 struct TestDatabase {
     control: DatabaseConnection,
@@ -229,16 +240,16 @@ async fn publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_r
     );
     let publish_envelope =
         read_published_envelope(&db, publish_event_id, tenant_id, page_id).await?;
-    let publish_generations = rotate_and_refill(
-        &handler,
-        &reads,
-        cache_port.as_ref(),
-        &publish_envelope,
+    let publish_generations = rotate_and_refill(CacheRotationRefillInput {
+        handler: &handler,
+        reads: &reads,
+        port: cache_port.as_ref(),
+        envelope: &publish_envelope,
         tenant_id,
         page_id,
-        "publish",
-        1,
-    )
+        operation: "publish",
+        expected_receipt_count: 1,
+    })
     .await?;
     assert_eq!(publish_generations, PageCacheGenerationSnapshot::new(4, 6, 8));
 
@@ -272,16 +283,16 @@ async fn publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_r
     );
     let rollback_envelope =
         read_published_envelope(&db, rollback_event_id, tenant_id, page_id).await?;
-    let rollback_generations = rotate_and_refill(
-        &handler,
-        &reads,
-        cache_port.as_ref(),
-        &rollback_envelope,
+    let rollback_generations = rotate_and_refill(CacheRotationRefillInput {
+        handler: &handler,
+        reads: &reads,
+        port: cache_port.as_ref(),
+        envelope: &rollback_envelope,
         tenant_id,
         page_id,
-        "rollback",
-        2,
-    )
+        operation: "rollback",
+        expected_receipt_count: 2,
+    })
     .await?;
     assert_eq!(rollback_generations, PageCacheGenerationSnapshot::new(5, 7, 9));
     assert_eq!(read_page_version(&db, tenant_id, page_id).await?, 3);
@@ -497,99 +508,97 @@ async fn read_published_envelope(
 }
 
 async fn rotate_and_refill(
-    handler: &PageCacheInvalidationEventHandler,
-    reads: &PagesCacheReadRuntime,
-    port: &DurableCachePort,
-    envelope: &EventEnvelope,
-    tenant_id: Uuid,
-    page_id: Uuid,
-    operation: &str,
-    expected_receipt_count: usize,
+    input: CacheRotationRefillInput<'_>,
 ) -> TestResult<PageCacheGenerationSnapshot> {
-    let before = reads.generation_snapshot(tenant_id).await?;
-    let storefront_variant = format!("{operation}|home|en|en|web");
-    let artifact_variant = format!("{operation}|en|en|web");
+    let before = input.reads.generation_snapshot(input.tenant_id).await?;
+    let storefront_variant = format!("{}|home|en|en|web", input.operation);
+    let artifact_variant = format!("{}|en|en|web", input.operation);
     let old_storefront_key =
-        storefront_pages_cache_key(tenant_id, before, &storefront_variant)?;
+        storefront_pages_cache_key(input.tenant_id, before, &storefront_variant)?;
     let old_artifact_key = page_cache_key(
         PageCacheScope::Artifact,
-        tenant_id,
-        page_id,
+        input.tenant_id,
+        input.page_id,
         before.artifact,
         &artifact_variant,
     )?;
-    let old_storefront = json!({"operation": operation, "generation": "before"});
-    let old_artifact = json!({"operation": operation, "generation": "before"});
-    reads
+    let old_storefront = json!({"operation": input.operation, "generation": "before"});
+    let old_artifact = json!({"operation": input.operation, "generation": "before"});
+    input
+        .reads
         .put_json(old_storefront_key.clone(), &old_storefront)
         .await?;
-    reads
+    input
+        .reads
         .put_json(old_artifact_key.clone(), &old_artifact)
         .await?;
 
-    handler.handle(envelope).await?;
-    let after = reads.generation_snapshot(tenant_id).await?;
+    input.handler.handle(input.envelope).await?;
+    let after = input.reads.generation_snapshot(input.tenant_id).await?;
     assert_eq!(after.route, before.route + 1);
     assert_eq!(after.page, before.page + 1);
     assert_eq!(after.artifact, before.artifact + 1);
 
-    let (recorded_generations, requests, receipts) = port.recorded();
+    let (recorded_generations, requests, receipts) = input.port.recorded();
     assert_eq!(recorded_generations, after);
-    assert_eq!(requests.len(), expected_receipt_count);
-    assert_eq!(receipts.len(), expected_receipt_count);
+    assert_eq!(requests.len(), input.expected_receipt_count);
+    assert_eq!(receipts.len(), input.expected_receipt_count);
     let request = requests
         .last()
         .ok_or_else(|| std::io::Error::other("cache invalidation request is missing"))?;
     let receipt = receipts
         .last()
         .ok_or_else(|| std::io::Error::other("cache invalidation receipt is missing"))?;
-    assert_eq!(request.event_id, envelope.id);
-    assert_eq!(request.correlation_id, envelope.correlation_id);
+    assert_eq!(request.event_id, input.envelope.id);
+    assert_eq!(request.correlation_id, input.envelope.correlation_id);
     assert_eq!(request.cause, PageCacheInvalidationCause::Published);
-    assert_eq!(receipt.event_id, envelope.id);
-    assert_eq!(receipt.correlation_id, envelope.correlation_id);
+    assert_eq!(receipt.event_id, input.envelope.id);
+    assert_eq!(receipt.correlation_id, input.envelope.correlation_id);
     assert_eq!(receipt.route_generation, Some(after.route));
     assert_eq!(receipt.page_generation, Some(after.page));
     assert_eq!(receipt.artifact_generation, Some(after.artifact));
 
-    let new_storefront_key = storefront_pages_cache_key(tenant_id, after, &storefront_variant)?;
+    let new_storefront_key =
+        storefront_pages_cache_key(input.tenant_id, after, &storefront_variant)?;
     let new_artifact_key = page_cache_key(
         PageCacheScope::Artifact,
-        tenant_id,
-        page_id,
+        input.tenant_id,
+        input.page_id,
         after.artifact,
         &artifact_variant,
     )?;
     assert_ne!(new_storefront_key, old_storefront_key);
     assert_ne!(new_artifact_key, old_artifact_key);
     assert_eq!(
-        reads.get_json::<Value>(&new_storefront_key).await?,
+        input.reads.get_json::<Value>(&new_storefront_key).await?,
         None
     );
-    assert_eq!(reads.get_json::<Value>(&new_artifact_key).await?, None);
+    assert_eq!(input.reads.get_json::<Value>(&new_artifact_key).await?, None);
 
-    let refilled_storefront = json!({"operation": operation, "generation": "after"});
-    let refilled_artifact = json!({"operation": operation, "generation": "after"});
-    reads
+    let refilled_storefront = json!({"operation": input.operation, "generation": "after"});
+    let refilled_artifact = json!({"operation": input.operation, "generation": "after"});
+    input
+        .reads
         .put_json(new_storefront_key.clone(), &refilled_storefront)
         .await?;
-    reads
+    input
+        .reads
         .put_json(new_artifact_key.clone(), &refilled_artifact)
         .await?;
     assert_eq!(
-        reads.get_json::<Value>(&new_storefront_key).await?,
+        input.reads.get_json::<Value>(&new_storefront_key).await?,
         Some(refilled_storefront)
     );
     assert_eq!(
-        reads.get_json::<Value>(&new_artifact_key).await?,
+        input.reads.get_json::<Value>(&new_artifact_key).await?,
         Some(refilled_artifact)
     );
     assert_eq!(
-        reads.get_json::<Value>(&old_storefront_key).await?,
+        input.reads.get_json::<Value>(&old_storefront_key).await?,
         Some(old_storefront)
     );
     assert_eq!(
-        reads.get_json::<Value>(&old_artifact_key).await?,
+        input.reads.get_json::<Value>(&old_artifact_key).await?,
         Some(old_artifact)
     );
     Ok(after)
@@ -700,6 +709,3 @@ async fn scoped_connection(
         .await?;
     Ok(db)
 }
-
-#[allow(dead_code)]
-fn _query_result_type_guard(_: QueryResult) {}

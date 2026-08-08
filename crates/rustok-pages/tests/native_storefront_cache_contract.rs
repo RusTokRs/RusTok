@@ -175,13 +175,12 @@ where
         None
     };
 
-    if let (Some(cache_runtime), Some(cache_key)) = (cache_runtime, cache_key.as_ref()) {
-        if let Ok(Some(cached)) = cache_runtime
+    if let (Some(cache_runtime), Some(cache_key)) = (cache_runtime, cache_key.as_ref())
+        && let Ok(Some(cached)) = cache_runtime
             .get_json::<StorefrontSnapshot>(cache_key)
             .await
-        {
-            return Ok(cached);
-        }
+    {
+        return Ok(cached);
     }
 
     let data = load_source().await?;

@@ -1,10 +1,9 @@
 use rustok_modules::{
     ModuleControlPlane, ModuleGovernanceError, ModuleRemoteValidationHeartbeatCommand,
-    ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
+    ModuleRemoteValidationStageTransition, ModuleRemoteValidationTerminalCommand,
+    ModuleRemoteValidationTerminalOutcome,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-
-use crate::models::registry_validation_stage;
+use sea_orm::DatabaseConnection;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RemoteTerminalOutcome {
@@ -31,7 +30,7 @@ pub async fn heartbeat_remote_validation_stage_atomic(
     claim_id: &str,
     runner_id: &str,
     lease_ttl_ms: u64,
-) -> Result<registry_validation_stage::Model, RegistryRemoteTransitionError> {
+) -> Result<ModuleRemoteValidationStageTransition, RegistryRemoteTransitionError> {
     ModuleControlPlane::new(db.clone())
         .publication()
         .heartbeat_remote_validation_stage(ModuleRemoteValidationHeartbeatCommand {
@@ -40,9 +39,7 @@ pub async fn heartbeat_remote_validation_stage_atomic(
             lease_ttl_ms,
         })
         .await
-        .map_err(map_owner_remote_lease_error)?;
-
-    load_stage_by_claim(db, claim_id, "Heartbeat").await
+        .map_err(map_owner_remote_lease_error)
 }
 
 pub async fn finish_remote_validation_stage_atomic(
@@ -52,8 +49,8 @@ pub async fn finish_remote_validation_stage_atomic(
     outcome: RemoteTerminalOutcome,
     detail: Option<&str>,
     reason_code: Option<&str>,
-) -> Result<registry_validation_stage::Model, RegistryRemoteTransitionError> {
-    let stage_id = ModuleControlPlane::new(db.clone())
+) -> Result<ModuleRemoteValidationStageTransition, RegistryRemoteTransitionError> {
+    ModuleControlPlane::new(db.clone())
         .publication()
         .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
             claim_id: claim_id.to_string(),
@@ -66,34 +63,7 @@ pub async fn finish_remote_validation_stage_atomic(
             reason_code: reason_code.map(|value| value.trim().to_ascii_lowercase()),
         })
         .await
-        .map_err(map_owner_remote_lease_error)?;
-
-    registry_validation_stage::Entity::find_by_id(stage_id)
-        .one(db)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| {
-            RegistryRemoteTransitionError::Internal(
-                "Terminal update succeeded but registry validation stage disappeared".to_string(),
-            )
-        })
-}
-
-async fn load_stage_by_claim(
-    db: &DatabaseConnection,
-    claim_id: &str,
-    operation: &str,
-) -> Result<registry_validation_stage::Model, RegistryRemoteTransitionError> {
-    registry_validation_stage::Entity::find()
-        .filter(registry_validation_stage::Column::ClaimId.eq(claim_id))
-        .one(db)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| {
-            RegistryRemoteTransitionError::Internal(format!(
-                "{operation} succeeded but registry validation stage disappeared"
-            ))
-        })
+        .map_err(map_owner_remote_lease_error)
 }
 
 fn map_owner_remote_lease_error(error: ModuleGovernanceError) -> RegistryRemoteTransitionError {
@@ -114,8 +84,4 @@ fn map_owner_remote_lease_error(error: ModuleGovernanceError) -> RegistryRemoteT
         }
         _ => RegistryRemoteTransitionError::Internal(error.to_string()),
     }
-}
-
-fn internal(error: impl std::fmt::Display) -> RegistryRemoteTransitionError {
-    RegistryRemoteTransitionError::Internal(error.to_string())
 }

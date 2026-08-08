@@ -26,11 +26,10 @@ use crate::modules::ManifestManager;
 use crate::services::dashboard_user_activity;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
-use crate::services::marketplace_catalog::marketplace_catalog_from_context;
+use crate::services::marketplace_catalog_adapter::project_marketplace_catalog_entries;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ModuleOperationRecoveryError};
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::rbac_service::RbacService;
-use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::registry_principal::RegistryPrincipalRef;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
@@ -345,20 +344,6 @@ fn registry_module_lifecycle_from_snapshot(
     }
 }
 
-fn settings_schema_fields(
-    schema: &HashMap<String, crate::modules::ModuleSettingSpec>,
-) -> Vec<ModuleSettingField> {
-    let mut keys = schema.keys().cloned().collect::<Vec<_>>();
-    keys.sort();
-    keys.into_iter()
-        .filter_map(|key| {
-            schema
-                .get(&key)
-                .map(|spec| ModuleSettingField::from_spec(key, spec))
-        })
-        .collect()
-}
-
 fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> FieldError {
     match error {
         ModuleOperationRecoveryError::OperationNotFound => {
@@ -469,22 +454,22 @@ struct MarketplaceProjectionLocales<'a> {
 }
 
 async fn load_marketplace_catalog(
-    db: &DatabaseConnection,
     runtime_ctx: &ServerRuntimeContext,
     manifest: &crate::modules::ModulesManifest,
     registry: &ModuleRegistry,
     query: &MarketplaceCatalogQuery,
     locales: MarketplaceProjectionLocales<'_>,
-) -> Result<Vec<crate::modules::CatalogManifestModule>> {
-    let modules = marketplace_catalog_from_context(runtime_ctx)
-        .list_modules(manifest, registry, query)
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-    RegistryGovernanceService::new(db.clone())
-        .apply_catalog_projection(modules, locales.preferred, locales.fallback)
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
+) -> Result<Vec<rustok_modules::ModuleMarketplaceEntry>> {
+    project_marketplace_catalog_entries(
+        runtime_ctx,
+        manifest,
+        registry,
+        query,
+        locales.preferred,
+        locales.fallback,
+    )
+    .await
+    .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
 }
 
 #[derive(Default)]
@@ -551,9 +536,8 @@ impl RootQuery {
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let query = MarketplaceCatalogQuery::default();
-        let catalog_by_slug: HashMap<String, crate::modules::CatalogManifestModule> =
+        let catalog_by_slug: HashMap<String, rustok_modules::ModuleMarketplaceEntry> =
             load_marketplace_catalog(
-                db,
                 runtime_ctx,
                 &manifest,
                 registry,
@@ -613,7 +597,7 @@ impl RootQuery {
                         .map(|entry| entry.showcase_admin_surfaces.clone())
                         .unwrap_or_default(),
                     settings_schema: catalog_entry
-                        .map(|entry| settings_schema_fields(&entry.settings_schema))
+                        .map(|entry| owner_settings_schema_fields(entry.settings_schema.clone()))
                         .unwrap_or_default(),
                 }
             })

@@ -36,6 +36,7 @@ import { registerAdminModule } from '@/modules/registry';
 import { executeTranslationOperation } from './api';
 import { translationNavItems } from './nav';
 import type {
+  Actor,
   ActorKind,
   Glossary,
   GlossaryConcept,
@@ -44,6 +45,8 @@ import type {
   MemoryEntry,
   MemoryRetentionPolicy,
   MemorySuggestion,
+  ReviewerQueueItem,
+  ReviewerWorkload,
   TranslationAdminPageProps,
   TranslationOperation,
   TranslationPolicy,
@@ -101,6 +104,18 @@ export function TranslationAdminPage({
   const [sourceLocale, setSourceLocale] = React.useState('en');
   const [targetLocale, setTargetLocale] = React.useState('de');
   const [jobId, setJobId] = React.useState('');
+  const [reviewerAssigneeKind, setReviewerAssigneeKind] =
+    React.useState<ActorKind>('USER');
+  const [reviewerAssigneeId, setReviewerAssigneeId] = React.useState('');
+  const [reviewerIncludeUnassigned, setReviewerIncludeUnassigned] =
+    React.useState(true);
+  const [reviewerQueueLimit, setReviewerQueueLimit] = React.useState('50');
+  const [reviewerQueue, setReviewerQueue] = React.useState<ReviewerQueueItem[]>(
+    []
+  );
+  const [reviewerWorkload, setReviewerWorkload] = React.useState<
+    ReviewerWorkload[]
+  >([]);
   const [maxExportItems, setMaxExportItems] = React.useState('200');
   const [exportDocument, setExportDocument] = React.useState('');
   const [importDocument, setImportDocument] = React.useState('');
@@ -266,6 +281,12 @@ export function TranslationAdminPage({
         if (response.kind === 'job') {
           setJobId(response.value.id);
           setJobRevision(String(response.value.revision));
+        }
+        if (response.kind === 'reviewer_queue') {
+          setReviewerQueue(response.value);
+        }
+        if (response.kind === 'reviewer_workload') {
+          setReviewerWorkload(response.value);
         }
         if (response.kind === 'item') {
           setJobId(response.value.jobId);
@@ -642,6 +663,184 @@ export function TranslationAdminPage({
                   >
                     {t('action.rebuildProgress')}
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className='xl:col-span-2'>
+              <CardHeader>
+                <CardTitle>{t('jobs.reviewers')}</CardTitle>
+                <CardDescription>
+                  {t('jobs.reviewersDescription')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='space-y-5'>
+                <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+                  <div className='space-y-2'>
+                    <Label htmlFor='translation-reviewer-kind'>
+                      {t('field.assigneeKind')}
+                    </Label>
+                    <Select
+                      value={reviewerAssigneeKind}
+                      onValueChange={(value) =>
+                        setReviewerAssigneeKind(parseActorKind(value))
+                      }
+                    >
+                      <SelectTrigger id='translation-reviewer-kind' className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='USER'>
+                          {t('field.assigneeUser')}
+                        </SelectItem>
+                        <SelectItem value='SERVICE'>
+                          {t('field.assigneeService')}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <TextInput
+                    id='translation-reviewer-id'
+                    label={t('field.assigneeId')}
+                    value={reviewerAssigneeId}
+                    onChange={setReviewerAssigneeId}
+                  />
+                  <TextInput
+                    id='translation-reviewer-queue-limit'
+                    label={t('field.reviewerQueueLimit')}
+                    value={reviewerQueueLimit}
+                    onChange={setReviewerQueueLimit}
+                  />
+                  <label className='flex items-center gap-2 pt-8 text-sm'>
+                    <Checkbox
+                      checked={reviewerIncludeUnassigned}
+                      onCheckedChange={(checked) =>
+                        setReviewerIncludeUnassigned(checked === true)
+                      }
+                    />
+                    {t('field.includeUnassigned')}
+                  </label>
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  <Button
+                    variant='outline'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(() => ({
+                        kind: 'read_reviewer_queue',
+                        jobId: required(jobId, 'job_id'),
+                        assignee: optionalActor(
+                          reviewerAssigneeKind,
+                          reviewerAssigneeId
+                        ),
+                        includeUnassigned: reviewerIncludeUnassigned,
+                        limit: reviewerQueueItemLimit(reviewerQueueLimit)
+                      }))
+                    }
+                  >
+                    {t('action.readReviewerQueue')}
+                  </Button>
+                  <Button
+                    variant='secondary'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(() => ({
+                        kind: 'read_reviewer_workload',
+                        jobId: required(jobId, 'job_id')
+                      }))
+                    }
+                  >
+                    {t('action.readReviewerWorkload')}
+                  </Button>
+                </div>
+                <div className='grid gap-5 xl:grid-cols-2'>
+                  <div className='space-y-2'>
+                    <h3 className='text-sm font-medium'>{t('field.queueItems')}</h3>
+                    {reviewerQueue.length === 0 ? (
+                      <EmptyState message={t('jobs.reviewersEmpty')} />
+                    ) : (
+                      <div className='overflow-x-auto rounded-xl border'>
+                        <table className='w-full text-sm' data-testid='translation-reviewer-queue'>
+                          <thead className='bg-muted/50 text-muted-foreground text-left text-xs uppercase tracking-wide'>
+                            <tr>
+                              <th className='px-3 py-2'>{t('field.itemId')}</th>
+                              <th className='px-3 py-2'>{t('field.reviewer')}</th>
+                              <th className='px-3 py-2'>{t('field.status')}</th>
+                              <th className='px-3 py-2'>{t('field.submittedAt')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className='divide-y'>
+                            {reviewerQueue.map((entry) => (
+                              <tr key={entry.proposalId}>
+                                <td className='px-3 py-2 font-mono text-xs'>
+                                  {entry.item.id}
+                                </td>
+                                <td className='px-3 py-2'>
+                                  {entry.item.assignee
+                                    ? actorLabel(entry.item.assignee)
+                                    : t('field.unassigned')}
+                                </td>
+                                <td className='px-3 py-2'>{entry.item.status}</td>
+                                <td className='text-muted-foreground whitespace-nowrap px-3 py-2 text-xs'>
+                                  {entry.submittedAt}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                  <div className='space-y-2'>
+                    <h3 className='text-sm font-medium'>
+                      {t('action.readReviewerWorkload')}
+                    </h3>
+                    {reviewerWorkload.length === 0 ? (
+                      <EmptyState message={t('jobs.reviewersEmpty')} />
+                    ) : (
+                      <div className='overflow-x-auto rounded-xl border'>
+                        <table className='w-full text-sm' data-testid='translation-reviewer-workload'>
+                          <thead className='bg-muted/50 text-muted-foreground text-left text-xs uppercase tracking-wide'>
+                            <tr>
+                              <th className='px-3 py-2'>{t('field.reviewer')}</th>
+                              <th className='px-3 py-2'>{t('field.openItems')}</th>
+                              <th className='px-3 py-2'>{t('field.inReviewItems')}</th>
+                              <th className='px-3 py-2'>{t('field.approvedItems')}</th>
+                              <th className='px-3 py-2'>{t('field.rebaseRequiredItems')}</th>
+                              <th className='px-3 py-2'>{t('field.blockedItems')}</th>
+                              <th className='px-3 py-2'>{t('field.sourceCharacters')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className='divide-y'>
+                            {reviewerWorkload.map((workload) => (
+                              <tr
+                                key={
+                                  workload.assignee
+                                    ? `${workload.assignee.kind}:${workload.assignee.id}`
+                                    : 'unassigned'
+                                }
+                              >
+                                <td className='px-3 py-2'>
+                                  {workload.assignee
+                                    ? actorLabel(workload.assignee)
+                                    : t('field.unassigned')}
+                                </td>
+                                <td className='px-3 py-2'>{workload.openItems}</td>
+                                <td className='px-3 py-2'>{workload.inReviewItems}</td>
+                                <td className='px-3 py-2'>{workload.approvedItems}</td>
+                                <td className='px-3 py-2'>
+                                  {workload.rebaseRequiredItems}
+                                </td>
+                                <td className='px-3 py-2'>{workload.blockedItems}</td>
+                                <td className='px-3 py-2'>
+                                  {workload.sourceCharacters}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -2563,6 +2762,23 @@ function exportItemLimit(value: string): number {
   return parsed;
 }
 
+function reviewerQueueItemLimit(value: string): number {
+  const parsed = positiveInteger(value, 'reviewer_queue_limit');
+  if (parsed > 200) {
+    throw new Error('reviewer_queue_limit: must be between 1 and 200');
+  }
+  return parsed;
+}
+
+function optionalActor(kind: ActorKind, id: string): Actor | undefined {
+  const normalized = id.trim();
+  return normalized ? { kind, id: normalized } : undefined;
+}
+
+function actorLabel(actor: Actor): string {
+  return `${actor.kind.toLowerCase()}:${actor.id}`;
+}
+
 function parseImportItem(value: string): ImportItemInput {
   const document = objectValue(
     JSON.parse(required(value, 'import_document', false)),
@@ -2710,6 +2926,10 @@ function errorMessage(error: unknown): string {
 function receiptKey(kind: TranslationResponse['kind']): string {
   return kind === 'job_progress'
     ? 'jobProgress'
+    : kind === 'reviewer_queue'
+      ? 'reviewerQueue'
+      : kind === 'reviewer_workload'
+        ? 'reviewerWorkload'
     : kind === 'interchange_document'
       ? 'interchangeExport'
       : kind === 'provider_progress'
@@ -2796,6 +3016,10 @@ function responseFacts(response: TranslationResponse): Array<[string, string]> {
         ['Applied items', String(response.value.appliedItems)],
         ['Blocked items', String(response.value.blockedItems)]
       ];
+    case 'reviewer_queue':
+      return [['Queue items', String(response.value.length)]];
+    case 'reviewer_workload':
+      return [['Reviewers', String(response.value.length)]];
     case 'interchange_document':
       return [
         ['Job ID', response.value.jobId],

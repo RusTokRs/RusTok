@@ -2,7 +2,7 @@ use async_graphql::{Context, Object, Result};
 use rustok_api::Action;
 use uuid::Uuid;
 
-use crate::{MemoryListInput, MemoryLookupInput};
+use crate::{MemoryListInput, MemoryLookupInput, ReviewerQueueInput, ReviewerWorkloadInput};
 
 use super::{
     context::{read_port_context, require_translation_permission, runtime, translation_error},
@@ -11,8 +11,9 @@ use super::{
         TranslationGlossary, TranslationGlossarySummary, TranslationInterchangeDocument,
         TranslationJobProgress, TranslationMemoryEntry, TranslationMemorySuggestion,
         TranslationPolicy, TranslationProviderProgress, TranslationRequiredProviderProgress,
-        TranslationTargetDescriptor, parse_field_key, parse_locale, parse_owner_slug,
-        parse_resource_kind,
+        TranslationReviewerQueueInput, TranslationReviewerQueueItem, TranslationReviewerWorkload,
+        TranslationReviewerWorkloadInput, TranslationTargetDescriptor, parse_field_key,
+        parse_locale, parse_owner_slug, parse_resource_kind,
     },
 };
 
@@ -163,6 +164,47 @@ impl TranslationQuery {
             .read_job_progress(context, job_id)
             .await
             .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn translation_reviewer_queue(
+        &self,
+        ctx: &Context<'_>,
+        input: TranslationReviewerQueueInput,
+    ) -> Result<Vec<TranslationReviewerQueueItem>> {
+        let context = read_port_context(ctx, "reviewer-queue")?;
+        runtime(ctx)?
+            .progress_service()
+            .list_reviewer_queue(
+                context,
+                ReviewerQueueInput {
+                    job_id: input.job_id,
+                    assignee: input.assignee.map(Into::into),
+                    include_unassigned: input.include_unassigned,
+                    limit: input.limit,
+                },
+            )
+            .await
+            .map(|records| records.into_iter().map(Into::into).collect())
+            .map_err(translation_error)
+    }
+
+    async fn translation_reviewer_workload(
+        &self,
+        ctx: &Context<'_>,
+        input: TranslationReviewerWorkloadInput,
+    ) -> Result<Vec<TranslationReviewerWorkload>> {
+        let context = read_port_context(ctx, "reviewer-workload")?;
+        runtime(ctx)?
+            .progress_service()
+            .list_reviewer_workload(
+                context,
+                ReviewerWorkloadInput {
+                    job_id: input.job_id,
+                },
+            )
+            .await
+            .map(|records| records.into_iter().map(Into::into).collect())
             .map_err(translation_error)
     }
 

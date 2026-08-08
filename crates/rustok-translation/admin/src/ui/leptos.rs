@@ -11,9 +11,9 @@ use rustok_ui_core::UiRouteContext;
 use crate::core::{self, ProposalCommand, TranslationAdminTab, operation_receipt_view_model};
 use crate::i18n::t;
 use crate::model::{
-    ActorKind, Glossary, GlossarySummary, MemoryEntry, MemorySuggestion, TranslationAdminOperation,
-    TranslationAdminResponse, TranslationAdminTransportContext, TranslationPolicy,
-    TranslationTarget,
+    ActorKind, Glossary, GlossarySummary, MemoryEntry, MemorySuggestion, ReviewerQueueItem,
+    ReviewerWorkload, TranslationAdminOperation, TranslationAdminResponse,
+    TranslationAdminTransportContext, TranslationPolicy, TranslationTarget,
 };
 use crate::transport;
 
@@ -467,6 +467,12 @@ fn JobsTab(
     let (glossary_id, set_glossary_id) = signal(String::new());
     let (glossary_revision, set_glossary_revision) = signal(String::new());
     let (job_id, set_job_id) = signal(String::new());
+    let (reviewer_assignee_kind, set_reviewer_assignee_kind) = signal("user".to_string());
+    let (reviewer_assignee_id, set_reviewer_assignee_id) = signal(String::new());
+    let (reviewer_include_unassigned, set_reviewer_include_unassigned) = signal(true);
+    let (reviewer_queue_limit, set_reviewer_queue_limit) = signal("50".to_string());
+    let (reviewer_queue, set_reviewer_queue) = signal(Vec::<ReviewerQueueItem>::new());
+    let (reviewer_workloads, set_reviewer_workloads) = signal(Vec::<ReviewerWorkload>::new());
     let (max_export_items, set_max_export_items) = signal("200".to_string());
     let (export_document, set_export_document) = signal(String::new());
     let (import_document, set_import_document) = signal(String::new());
@@ -532,6 +538,110 @@ fn JobsTab(
         "translation.action.rebuildProgress",
         "Rebuild projection",
     );
+    let reviewer_title = t(
+        locale.as_deref(),
+        "translation.jobs.reviewers",
+        "Reviewer queue and workload",
+    );
+    let reviewer_description = t(
+        locale.as_deref(),
+        "translation.jobs.reviewersDescription",
+        "Review work is derived from submitted, unapproved proposals and current assignments.",
+    );
+    let reviewer_queue_label = t(
+        locale.as_deref(),
+        "translation.action.readReviewerQueue",
+        "Load reviewer queue",
+    );
+    let reviewer_workload_label = t(
+        locale.as_deref(),
+        "translation.action.readReviewerWorkload",
+        "Load workload",
+    );
+    let reviewer_workload_button_label = reviewer_workload_label.clone();
+    let reviewer_kind_label = t(
+        locale.as_deref(),
+        "translation.field.assigneeKind",
+        "Assignee kind",
+    );
+    let reviewer_id_label = t(
+        locale.as_deref(),
+        "translation.field.assigneeId",
+        "Assignee ID",
+    );
+    let reviewer_user_label = t(locale.as_deref(), "translation.field.assigneeUser", "User");
+    let reviewer_service_label = t(
+        locale.as_deref(),
+        "translation.field.assigneeService",
+        "Service",
+    );
+    let reviewer_limit_label = t(
+        locale.as_deref(),
+        "translation.field.reviewerQueueLimit",
+        "Queue limit",
+    );
+    let include_unassigned_label = t(
+        locale.as_deref(),
+        "translation.field.includeUnassigned",
+        "Include unassigned",
+    );
+    let reviewer_label = t(locale.as_deref(), "translation.field.reviewer", "Reviewer");
+    let queue_item_label = t(
+        locale.as_deref(),
+        "translation.field.queueItems",
+        "Queue items",
+    );
+    let item_label = t(locale.as_deref(), "translation.field.itemId", "Item ID");
+    let status_label = t(locale.as_deref(), "translation.field.status", "Status");
+    let submitted_at_label = t(
+        locale.as_deref(),
+        "translation.field.submittedAt",
+        "Submitted at",
+    );
+    let open_items_label = t(
+        locale.as_deref(),
+        "translation.field.openItems",
+        "Open items",
+    );
+    let in_review_items_label = t(
+        locale.as_deref(),
+        "translation.field.inReviewItems",
+        "In review",
+    );
+    let approved_items_label = t(
+        locale.as_deref(),
+        "translation.field.approvedItems",
+        "Approved",
+    );
+    let rebase_required_label = t(
+        locale.as_deref(),
+        "translation.field.rebaseRequiredItems",
+        "Rebase required",
+    );
+    let blocked_items_label = t(
+        locale.as_deref(),
+        "translation.field.blockedItems",
+        "Blocked items",
+    );
+    let source_characters_label = t(
+        locale.as_deref(),
+        "translation.field.sourceCharacters",
+        "Source characters",
+    );
+    let unassigned_label = t(
+        locale.as_deref(),
+        "translation.field.unassigned",
+        "Unassigned",
+    );
+    let reviewer_empty_label = t(
+        locale.as_deref(),
+        "translation.jobs.reviewersEmpty",
+        "No reviewer data has been loaded.",
+    );
+    let workload_reviewer_label = reviewer_label.clone();
+    let queue_unassigned_label = unassigned_label.clone();
+    let workload_unassigned_label = unassigned_label.clone();
+    let workload_empty_label = reviewer_empty_label.clone();
     let interchange_title = t(
         locale.as_deref(),
         "translation.jobs.interchange",
@@ -613,6 +723,44 @@ fn JobsTab(
                 set_outcome,
                 Callback::new(move |_| {
                     set_rebuild_key.set(core::new_idempotency_key("rebuild-job-progress"));
+                }),
+            );
+        }
+    };
+    let reviewer_queue_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::read_reviewer_queue_operation(core::ReviewerQueueOperationInput {
+                    job_id: &job_id.get_untracked(),
+                    assignee_kind: &reviewer_assignee_kind.get_untracked(),
+                    assignee_id: &reviewer_assignee_id.get_untracked(),
+                    include_unassigned: reviewer_include_unassigned.get_untracked(),
+                    limit: &reviewer_queue_limit.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::ReviewerQueue(queue) = response {
+                        set_reviewer_queue.set(queue);
+                    }
+                }),
+            );
+        }
+    };
+    let reviewer_workload_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::read_reviewer_workload_operation(&job_id.get_untracked()),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::ReviewerWorkloads(workloads) = response {
+                        set_reviewer_workloads.set(workloads);
+                    }
                 }),
             );
         }
@@ -704,6 +852,154 @@ fn JobsTab(
                     <Show when=move || busy.get()>
                         <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
                     </Show>
+                </CardContent>
+            </Card>
+
+            <Card class="xl:col-span-2">
+                <CardHeader>
+                    <CardTitle>{reviewer_title}</CardTitle>
+                    <CardDescription>{reviewer_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-5">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div class="space-y-2">
+                            <Label r#for="reviewer_assignee_kind">{reviewer_kind_label}</Label>
+                            <Select
+                                options=vec![
+                                    SelectOption::new("user", reviewer_user_label),
+                                    SelectOption::new("service", reviewer_service_label),
+                                ]
+                                value=reviewer_assignee_kind
+                                set_value=set_reviewer_assignee_kind
+                                id="reviewer_assignee_kind"
+                                name="reviewer_assignee_kind"
+                            />
+                        </div>
+                        <div class="space-y-2">
+                            <Label r#for="reviewer_assignee_id">{reviewer_id_label}</Label>
+                            <Input value=reviewer_assignee_id set_value=set_reviewer_assignee_id id="reviewer_assignee_id" name="reviewer_assignee_id" />
+                        </div>
+                        <div class="space-y-2">
+                            <Label required=true r#for="reviewer_queue_limit">{reviewer_limit_label}</Label>
+                            <Input value=reviewer_queue_limit set_value=set_reviewer_queue_limit id="reviewer_queue_limit" name="reviewer_queue_limit" />
+                        </div>
+                        <label class="flex items-center gap-2 pt-8 text-sm text-foreground">
+                            <Checkbox checked=reviewer_include_unassigned set_checked=set_reviewer_include_unassigned name="reviewer_include_unassigned" />
+                            {include_unassigned_label}
+                        </label>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(reviewer_queue_action)>{reviewer_queue_label}</Button>
+                        <Button variant=ButtonVariant::Secondary on_click=Box::new(reviewer_workload_action)>{reviewer_workload_button_label}</Button>
+                    </div>
+                    <div class="grid gap-5 xl:grid-cols-2">
+                        <div class="space-y-2">
+                            <h3 class="text-sm font-medium text-foreground">{queue_item_label}</h3>
+                            {move || {
+                                let queue = reviewer_queue.get();
+                                if queue.is_empty() {
+                                    view! {
+                                        <p class="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                                            {reviewer_empty_label.clone()}
+                                        </p>
+                                    }
+                                    .into_any()
+                                } else {
+                                    let unassigned_label = queue_unassigned_label.clone();
+                                    view! {
+                                        <div class="overflow-x-auto rounded-xl border border-border">
+                                            <table class="w-full text-sm">
+                                                <thead class="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                                    <tr>
+                                                        <th class="px-3 py-2">{item_label.clone()}</th>
+                                                        <th class="px-3 py-2">{reviewer_label.clone()}</th>
+                                                        <th class="px-3 py-2">{status_label.clone()}</th>
+                                                        <th class="px-3 py-2">{submitted_at_label.clone()}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="divide-y divide-border">
+                                                    {queue.into_iter().map(move |entry| {
+                                                        let assignee = entry.item.assignee.map(|actor| {
+                                                            let kind = match actor.kind {
+                                                                ActorKind::User => "user",
+                                                                ActorKind::Service => "service",
+                                                            };
+                                                            format!("{kind}:{}", actor.id)
+                                                        }).unwrap_or_else(|| unassigned_label.clone());
+                                                        view! {
+                                                            <tr>
+                                                                <td class="px-3 py-2 font-mono text-xs">{entry.item.id}</td>
+                                                                <td class="px-3 py-2">{assignee}</td>
+                                                                <td class="px-3 py-2">{entry.item.status}</td>
+                                                                <td class="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">{entry.submitted_at}</td>
+                                                            </tr>
+                                                        }
+                                                    }).collect_view()}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                    .into_any()
+                                }
+                            }}
+                        </div>
+                        <div class="space-y-2">
+                            <h3 class="text-sm font-medium text-foreground">{reviewer_workload_label}</h3>
+                            {move || {
+                                let workloads = reviewer_workloads.get();
+                                if workloads.is_empty() {
+                                    view! {
+                                        <p class="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                                            {workload_empty_label.clone()}
+                                        </p>
+                                    }
+                                    .into_any()
+                                } else {
+                                    let unassigned_label = workload_unassigned_label.clone();
+                                    view! {
+                                        <div class="overflow-x-auto rounded-xl border border-border">
+                                            <table class="w-full text-sm">
+                                                <thead class="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                                    <tr>
+                                                        <th class="px-3 py-2">{workload_reviewer_label.clone()}</th>
+                                                        <th class="px-3 py-2">{open_items_label.clone()}</th>
+                                                        <th class="px-3 py-2">{in_review_items_label.clone()}</th>
+                                                        <th class="px-3 py-2">{approved_items_label.clone()}</th>
+                                                        <th class="px-3 py-2">{rebase_required_label.clone()}</th>
+                                                        <th class="px-3 py-2">{blocked_items_label.clone()}</th>
+                                                        <th class="px-3 py-2">{source_characters_label.clone()}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="divide-y divide-border">
+                                                    {workloads.into_iter().map(move |workload| {
+                                                        let assignee = workload.assignee.map(|actor| {
+                                                            let kind = match actor.kind {
+                                                                ActorKind::User => "user",
+                                                                ActorKind::Service => "service",
+                                                            };
+                                                            format!("{kind}:{}", actor.id)
+                                                        }).unwrap_or_else(|| unassigned_label.clone());
+                                                        view! {
+                                                            <tr>
+                                                                <td class="px-3 py-2">{assignee}</td>
+                                                                <td class="px-3 py-2">{workload.open_items}</td>
+                                                                <td class="px-3 py-2">{workload.in_review_items}</td>
+                                                                <td class="px-3 py-2">{workload.approved_items}</td>
+                                                                <td class="px-3 py-2">{workload.rebase_required_items}</td>
+                                                                <td class="px-3 py-2">{workload.blocked_items}</td>
+                                                                <td class="px-3 py-2">{workload.source_characters}</td>
+                                                            </tr>
+                                                        }
+                                                    }).collect_view()}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                    .into_any()
+                                }
+                            }}
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 

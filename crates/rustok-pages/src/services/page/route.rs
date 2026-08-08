@@ -58,6 +58,16 @@ struct CurrentPublishedRoute {
     slug: String,
 }
 
+struct RedirectAliasRequest<'a> {
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &'a str,
+    slug: &'a str,
+    target_page_id: Uuid,
+    target_locale: &'a str,
+    reason: &'a str,
+}
+
 pub struct PageRouteService {
     db: DatabaseConnection,
 }
@@ -368,13 +378,15 @@ pub(super) async fn record_published_slug_redirects_in_tx(
         }
         record_redirect_alias_in_tx(
             txn,
-            tenant_id,
-            page_id,
-            &locale,
-            &old_slug,
-            page_id,
-            &locale,
-            PUBLISHED_SLUG_CHANGE_REASON,
+            RedirectAliasRequest {
+                tenant_id,
+                page_id,
+                locale: &locale,
+                slug: &old_slug,
+                target_page_id: page_id,
+                target_locale: &locale,
+                reason: PUBLISHED_SLUG_CHANGE_REASON,
+            },
         )
         .await?;
     }
@@ -384,20 +396,14 @@ pub(super) async fn record_published_slug_redirects_in_tx(
 
 async fn record_redirect_alias_in_tx(
     txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    page_id: Uuid,
-    locale: &str,
-    slug: &str,
-    target_page_id: Uuid,
-    target_locale: &str,
-    reason: &str,
+    request: RedirectAliasRequest<'_>,
 ) -> PagesResult<Uuid> {
-    let locale = normalize_locale(locale)?;
-    let slug = normalize_slug(slug)?;
-    let target_locale = normalize_locale(target_locale)?;
-    let reason = normalize_alias_reason(reason)?;
+    let locale = normalize_locale(request.locale)?;
+    let slug = normalize_slug(request.slug)?;
+    let target_locale = normalize_locale(request.target_locale)?;
+    let reason = normalize_alias_reason(request.reason)?;
     let aliases = page_route_alias::Entity::find()
-        .filter(page_route_alias::Column::TenantId.eq(tenant_id))
+        .filter(page_route_alias::Column::TenantId.eq(request.tenant_id))
         .filter(page_route_alias::Column::Locale.eq(&locale))
         .filter(page_route_alias::Column::Slug.eq(&slug))
         .all(txn)
@@ -408,12 +414,12 @@ async fn record_redirect_alias_in_tx(
             let alias_id = Uuid::new_v4();
             page_route_alias::ActiveModel {
                 id: Set(alias_id),
-                tenant_id: Set(tenant_id),
-                page_id: Set(page_id),
+                tenant_id: Set(request.tenant_id),
+                page_id: Set(request.page_id),
                 locale: Set(locale),
                 slug: Set(slug),
                 disposition: Set(ROUTE_DISPOSITION_REDIRECT.to_string()),
-                target_page_id: Set(Some(target_page_id)),
+                target_page_id: Set(Some(request.target_page_id)),
                 target_locale: Set(Some(target_locale)),
                 reason: Set(reason),
                 created_at: Set(Utc::now().into()),
@@ -423,9 +429,9 @@ async fn record_redirect_alias_in_tx(
             Ok(alias_id)
         }
         [alias]
-            if alias.page_id == page_id
+            if alias.page_id == request.page_id
                 && alias.disposition == ROUTE_DISPOSITION_REDIRECT
-                && alias.target_page_id == Some(target_page_id)
+                && alias.target_page_id == Some(request.target_page_id)
                 && alias.target_locale.as_deref() == Some(target_locale.as_str())
                 && alias.reason == reason =>
         {

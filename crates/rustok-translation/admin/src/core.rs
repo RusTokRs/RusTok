@@ -303,6 +303,24 @@ pub fn operation_receipt_view_model(
                 ),
             ],
         },
+        TranslationAdminResponse::ReviewerQueue(queue) => OperationReceiptViewModel {
+            title_key: "translation.receipt.reviewerQueue",
+            fallback_title: "Reviewer queue",
+            facts: vec![fact(
+                "translation.field.queueItems",
+                "Queue items",
+                queue.len().to_string(),
+            )],
+        },
+        TranslationAdminResponse::ReviewerWorkloads(workloads) => OperationReceiptViewModel {
+            title_key: "translation.receipt.reviewerWorkload",
+            fallback_title: "Reviewer workload",
+            facts: vec![fact(
+                "translation.field.reviewers",
+                "Reviewers",
+                workloads.len().to_string(),
+            )],
+        },
         TranslationAdminResponse::InterchangeDocument(document) => OperationReceiptViewModel {
             title_key: "translation.receipt.interchangeExport",
             fallback_title: "Interchange document exported",
@@ -903,6 +921,63 @@ pub fn read_job_progress_operation(
     job_id: &str,
 ) -> Result<TranslationAdminOperation, CommandInputError> {
     Ok(TranslationAdminOperation::ReadJobProgress {
+        job_id: required_text("job_id", job_id)?,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ReviewerQueueOperationInput<'a> {
+    pub job_id: &'a str,
+    pub assignee_kind: &'a str,
+    pub assignee_id: &'a str,
+    pub include_unassigned: bool,
+    pub limit: &'a str,
+}
+
+pub fn read_reviewer_queue_operation(
+    input: ReviewerQueueOperationInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let limit = parse_u16("reviewer_queue_limit", input.limit)?;
+    if limit == 0 || limit > 200 {
+        return Err(CommandInputError {
+            field: "reviewer_queue_limit",
+            message: "must be between 1 and 200".to_string(),
+        });
+    }
+    let assignee_kind = normalize_ui_text(input.assignee_kind);
+    let assignee_id = normalize_ui_text(input.assignee_id);
+    let assignee = match (assignee_kind.as_deref(), assignee_id) {
+        (None, None) => None,
+        (Some(kind), Some(id)) => Some(Actor {
+            kind: parse_actor_kind(kind)?,
+            id,
+        }),
+        (None, Some(_)) => {
+            return Err(CommandInputError {
+                field: "assignee_kind",
+                message: "is required when assignee_id is set".to_string(),
+            });
+        }
+        (Some(_), None) => {
+            return Err(CommandInputError {
+                field: "assignee_id",
+                message: "is required when assignee_kind is set".to_string(),
+            });
+        }
+    };
+
+    Ok(TranslationAdminOperation::ReadReviewerQueue {
+        job_id: required_text("job_id", input.job_id)?,
+        assignee,
+        include_unassigned: input.include_unassigned,
+        limit,
+    })
+}
+
+pub fn read_reviewer_workload_operation(
+    job_id: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::ReadReviewerWorkload {
         job_id: required_text("job_id", job_id)?,
     })
 }
@@ -1670,6 +1745,70 @@ mod tests {
             .unwrap_err()
             .field,
             "minimum_similarity_basis_points"
+        );
+    }
+
+    #[test]
+    fn reviewer_queue_and_workload_reads_validate_their_explicit_scope() {
+        let operation = read_reviewer_queue_operation(ReviewerQueueOperationInput {
+            job_id: "job-1",
+            assignee_kind: "user",
+            assignee_id: "reviewer-1",
+            include_unassigned: true,
+            limit: "50",
+        })
+        .unwrap();
+        assert!(matches!(
+            operation,
+            TranslationAdminOperation::ReadReviewerQueue {
+                assignee: Some(Actor {
+                    kind: ActorKind::User,
+                    id,
+                }),
+                include_unassigned: true,
+                limit: 50,
+                ..
+            } if id == "reviewer-1"
+        ));
+        assert!(matches!(
+            read_reviewer_workload_operation("job-1").unwrap(),
+            TranslationAdminOperation::ReadReviewerWorkload { job_id } if job_id == "job-1"
+        ));
+        assert_eq!(
+            read_reviewer_queue_operation(ReviewerQueueOperationInput {
+                job_id: "job-1",
+                assignee_kind: "",
+                assignee_id: "reviewer-1",
+                include_unassigned: false,
+                limit: "50",
+            })
+            .unwrap_err()
+            .field,
+            "assignee_kind"
+        );
+        assert_eq!(
+            read_reviewer_queue_operation(ReviewerQueueOperationInput {
+                job_id: "job-1",
+                assignee_kind: "user",
+                assignee_id: "",
+                include_unassigned: false,
+                limit: "50",
+            })
+            .unwrap_err()
+            .field,
+            "assignee_id"
+        );
+        assert_eq!(
+            read_reviewer_queue_operation(ReviewerQueueOperationInput {
+                job_id: "job-1",
+                assignee_kind: "",
+                assignee_id: "",
+                include_unassigned: false,
+                limit: "201",
+            })
+            .unwrap_err()
+            .field,
+            "reviewer_queue_limit"
         );
     }
 

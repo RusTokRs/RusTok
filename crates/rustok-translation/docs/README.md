@@ -217,15 +217,16 @@ locale, permission, deadline, and idempotency evidence and never reads an owner
 table. Both adapters share Translation's redacted public-error classification.
 Its six-tab Leptos `core/transport/ui` workbench is manifest-mounted in
 `apps/admin`; the matching `@rustok/translation-admin` package is mounted by
-the Next host through a thin client wrapper and uses the same 39-operation
+the Next host through a thin client wrapper and uses the same 41-operation
 GraphQL contract. The Workflow surface includes a non-billable conservative
 machine-translation estimate derived from AI-owned tenant routing and immutable
 price snapshots before proposal generation, along with generation, status,
 cancellation, and recovery controls. It also provides revision-guarded
-assignment/unassignment, blocked-item retry, job cancellation, and owner-apply
-recovery. The Jobs surface provides bounded immutable snapshot export and atomic
-per-item import through canonical QA. Both clients use `memory_entry_id` for
-explicit memory selection and never auto-select the first entry.
+assignment/unassignment, bounded reviewer queue and workload reads, blocked-item
+retry, job cancellation, and owner-apply recovery. The Jobs surface provides
+bounded immutable snapshot export and atomic per-item import through canonical
+QA. Both clients use `memory_entry_id` for explicit memory selection and never
+auto-select the first entry.
 
 ## Verification
 

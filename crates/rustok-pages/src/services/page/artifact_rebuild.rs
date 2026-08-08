@@ -19,7 +19,7 @@ use crate::entities::{page_artifact_rebuild_operation, page_publish_rebuild_sour
 use crate::error::{PagesError, PagesResult};
 use crate::services::page_builder_artifact::{CompiledLandingArtifact, PageBuilderArtifactService};
 
-use super::publish_manifest::{is_sha256, rebuild_source_provenance_hash};
+use super::publish_manifest::{RebuildSourceProvenance, is_sha256, rebuild_source_provenance_hash};
 use super::PageService;
 
 pub const PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT: &str = "page_artifact_rebuild_operation_v1";
@@ -300,23 +300,23 @@ fn verify_source(source: &page_publish_rebuild_source::Model) -> PagesResult<()>
             ));
         }
     }
-    let expected = rebuild_source_provenance_hash(
-        source.operation_id,
-        source.tenant_id,
-        source.page_id,
-        source.page_body_id,
-        source.locale.as_str(),
-        source.source_format.as_str(),
-        source.source_revision.as_str(),
-        source.artifact_id,
-        source.sanitized_hash.as_str(),
-        source.source_hash.as_str(),
-        source.review_hash.as_str(),
-        source.artifact_hash.as_str(),
-        source.materialization_hash.as_str(),
-        &source.materialization_identity,
-        &source.runtime_snapshots,
-    )
+    let expected = rebuild_source_provenance_hash(RebuildSourceProvenance {
+        operation_id: source.operation_id,
+        tenant_id: source.tenant_id,
+        page_id: source.page_id,
+        page_body_id: source.page_body_id,
+        locale: source.locale.as_str(),
+        source_format: source.source_format.as_str(),
+        source_revision: source.source_revision.as_str(),
+        artifact_id: source.artifact_id,
+        sanitized_hash: source.sanitized_hash.as_str(),
+        source_hash: source.source_hash.as_str(),
+        review_hash: source.review_hash.as_str(),
+        artifact_hash: source.artifact_hash.as_str(),
+        materialization_hash: source.materialization_hash.as_str(),
+        materialization_identity: &source.materialization_identity,
+        runtime_snapshots: &source.runtime_snapshots,
+    })
     .map_err(|error| rebuild_source_invalid(error.to_string()))?;
     if expected != source.provenance_hash {
         return Err(rebuild_source_invalid("retained provenance hash mismatch"));

@@ -58,7 +58,6 @@ use crate::services::registry_governance::{
     RegistryExternalPrebuiltStageInput, RegistryFollowUpGateSnapshot,
     RegistryGovernanceActionSnapshot, RegistryGovernanceError, RegistryGovernanceService,
     RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot, release_status_label,
-    request_status_label, validation_stage_status_label,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
@@ -247,7 +246,7 @@ async fn publish(
                 dry_run: false,
                 accepted: true,
                 request_id: Some(created.id.clone()),
-                status: Some(request_status_label(created.status).to_string()),
+                status: Some(created.status),
                 slug: created.slug,
                 version: created.version,
                 warnings,
@@ -308,58 +307,42 @@ async fn publish_status(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
 ) -> Result<Json<RegistryPublishStatusResponse>, Error> {
     let governance = RegistryGovernanceService::new(ctx.db_clone());
-    let request = governance
-        .get_publish_request(&request_id)
-        .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
-        .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = optional_authority_from_auth(&headers, auth)?;
-    let follow_up = governance
-        .publish_request_follow_up_snapshot_for_authority(&request, authority.as_ref())
+    let snapshot = governance
+        .publish_request_status_snapshot_for_authority(&request_id, authority.as_ref())
         .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to load registry publish request follow-up stages: {error}"
-            ))
-        })?;
-    let mut warnings = deserialize_message_list(&request.validation_warnings);
-    let next_step =
-        publish_request_status_next_step(&request, &request_id, &follow_up.validation_stages);
-    if follow_up.approval_override_required {
-        warnings.push(approval_override_warning_message(
-            &follow_up.validation_stages,
-        ));
+        .map_err(map_registry_governance_error)?
+        .ok_or(Error::NotFound)?;
+    let next_step = publish_status_next_step(&snapshot.request.id, snapshot.next_action.as_ref());
+    let mut warnings = snapshot.request.warnings;
+    if let Some(warning) = snapshot.approval_override_warning {
+        warnings.push(warning);
     }
 
     Ok(Json(RegistryPublishStatusResponse {
         schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
-        request_id: request.id,
-        slug: request.slug,
-        version: request.version,
-        status: request_status_label(request.status.clone()).to_string(),
-        artifact_origin: request.artifact_origin.clone(),
-        accepted: publish_request_accepted(&request.status),
+        request_id: snapshot.request.id,
+        slug: snapshot.request.slug,
+        version: snapshot.request.version,
+        status: snapshot.request.status,
+        artifact_origin: snapshot.request.artifact_origin,
+        accepted: snapshot.accepted,
         warnings,
-        errors: deserialize_message_list(&request.validation_errors),
-        follow_up_gates: follow_up
+        errors: snapshot.request.errors,
+        follow_up_gates: snapshot
             .follow_up_gates
             .into_iter()
             .map(publish_status_follow_up_gate)
             .collect(),
-        validation_stages: follow_up
+        validation_stages: snapshot
             .validation_stages
             .iter()
             .map(publish_status_validation_stage)
             .collect(),
-        approval_override_required: follow_up.approval_override_required,
-        approval_override_reason_codes: REGISTRY_APPROVE_OVERRIDE_REASON_CODES
-            .iter()
-            .map(|value| (*value).to_string())
-            .collect(),
-        governance_actions: follow_up
+        approval_override_required: snapshot.approval_override_required,
+        approval_override_reason_codes: snapshot.approval_override_reason_codes,
+        governance_actions: snapshot
             .governance_actions
             .into_iter()
             .map(publish_status_governance_action)
@@ -423,7 +406,7 @@ async fn upload_publish_artifact(
         .shared_get::<rustok_storage::StorageRuntime>()
         .ok_or_else(|| Error::Message("StorageRuntime not initialized".to_string()))?;
 
-    let request = RegistryGovernanceService::new(ctx.db_clone())
+    let snapshot = RegistryGovernanceService::new(ctx.db_clone())
         .with_storage(storage)
         .upload_publish_artifact(
             &request_id,
@@ -442,14 +425,14 @@ async fn upload_publish_artifact(
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "publish".to_string(),
             dry_run: false,
-            accepted: publish_request_accepted(&request.status),
-            request_id: Some(request.id.clone()),
-            status: Some(request_status_label(request.status.clone()).to_string()),
-            slug: request.slug,
-            version: request.version,
-            warnings: deserialize_message_list(&request.validation_warnings),
-            errors: deserialize_message_list(&request.validation_errors),
-            next_step: publish_request_next_step(&request.status, &request_id),
+            accepted: snapshot.accepted,
+            request_id: Some(snapshot.request.id.clone()),
+            status: Some(snapshot.request.status),
+            slug: snapshot.request.slug,
+            version: snapshot.request.version,
+            warnings: snapshot.request.warnings,
+            errors: snapshot.request.errors,
+            next_step: publish_status_next_step(&request_id, snapshot.next_action.as_ref()),
         }),
     ))
 }
@@ -502,19 +485,17 @@ async fn stage_external_prebuilt(
         )));
     }
     let governance = RegistryGovernanceService::new(ctx.db_clone());
-    let existing = governance
-        .get_publish_request(&request_id)
+    let snapshot = governance
+        .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
         .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
+        .map_err(map_registry_governance_error)?
         .ok_or(Error::NotFound)?;
     if request.dry_run {
         return Ok(Json(RegistryExternalPrebuiltStageResponse {
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             request_id,
-            slug: existing.slug,
-            version: existing.version,
+            slug: snapshot.request.slug,
+            version: snapshot.request.version,
             status: "dry_run".to_string(),
             staging_id: None,
             created: false,
@@ -546,9 +527,9 @@ async fn stage_external_prebuilt(
     Ok(Json(RegistryExternalPrebuiltStageResponse {
         schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
         request_id,
-        slug: existing.slug,
-        version: existing.version,
-        status: request_status_label(existing.status).to_string(),
+        slug: snapshot.request.slug,
+        version: snapshot.request.version,
+        status: snapshot.request.status,
         staging_id: Some(staged.staging_id),
         created: staged.created,
         dry_run: false,
@@ -615,19 +596,17 @@ async fn stage_platform_build(
             Error::Unauthorized("Platform build staging requires authentication".into())
         })?;
     let governance = RegistryGovernanceService::new(ctx.db_clone());
-    let existing = governance
-        .get_publish_request(&request_id)
+    let snapshot = governance
+        .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
         .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
+        .map_err(map_registry_governance_error)?
         .ok_or(Error::NotFound)?;
     if request.dry_run {
         return Ok(Json(RegistryPlatformBuildStageResponse {
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             request_id,
-            slug: existing.slug,
-            version: existing.version,
+            slug: snapshot.request.slug,
+            version: snapshot.request.version,
             status: "dry_run".to_string(),
             staging_id: None,
             created: false,
@@ -654,9 +633,9 @@ async fn stage_platform_build(
     Ok(Json(RegistryPlatformBuildStageResponse {
         schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
         request_id,
-        slug: existing.slug,
-        version: existing.version,
-        status: request_status_label(existing.status).to_string(),
+        slug: snapshot.request.slug,
+        version: snapshot.request.version,
+        status: snapshot.request.status,
         staging_id: Some(staged.staging_id),
         created: staged.created,
         dry_run: false,
@@ -704,24 +683,18 @@ async fn download_publish_artifact(
         ));
     }
 
-    let request = RegistryGovernanceService::new(ctx.db_clone())
-        .get_publish_request(&request_id)
+    let artifact = RegistryGovernanceService::new(ctx.db_clone())
+        .publish_artifact_download_snapshot(&request_id)
         .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
+        .map_err(map_registry_governance_error)?
         .ok_or(Error::NotFound)?;
-    let storage_key = request
-        .artifact_storage_key
-        .clone()
-        .ok_or_else(|| Error::NotFound)?;
     let storage = ctx
         .shared_get::<rustok_storage::StorageRuntime>()
         .ok_or_else(|| Error::Message("StorageRuntime not initialized".to_string()))?;
 
     if let Some(download_url) = storage
         .signed_download_url(
-            &object_store::path::Path::from(storage_key.as_str()),
+            &object_store::path::Path::from(artifact.storage_key.as_str()),
             std::time::Duration::from_secs(300),
         )
         .await
@@ -734,7 +707,9 @@ async fn download_publish_artifact(
 
     let bytes = storage
         .objects
-        .get(&object_store::path::Path::from(storage_key.as_str()))
+        .get(&object_store::path::Path::from(
+            artifact.storage_key.as_str(),
+        ))
         .await
         .map_err(|error| Error::Message(format!("Failed to read registry artifact: {error}")))?
         .bytes()
@@ -742,14 +717,9 @@ async fn download_publish_artifact(
         .map_err(|error| {
             Error::Message(format!("Failed to read registry artifact body: {error}"))
         })?;
-    let content_type = request
-        .artifact_content_type
-        .as_deref()
-        .unwrap_or("application/octet-stream");
-
     Response::builder()
         .status(StatusCode::OK)
-        .header(axum::http::header::CONTENT_TYPE, content_type)
+        .header(axum::http::header::CONTENT_TYPE, artifact.content_type)
         .header(CACHE_CONTROL, "private, no-store")
         .body(Body::from(bytes))
         .map_err(|error| {
@@ -798,17 +768,15 @@ async fn validate_publish_request_step(
 ) -> Result<impl IntoResponse, Error> {
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
-    let existing = RegistryGovernanceService::new(ctx.db_clone())
-        .get_publish_request(&request_id)
-        .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
-        .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry validation operations")?;
 
     if request.dry_run {
+        let snapshot = RegistryGovernanceService::new(ctx.db_clone())
+            .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
+            .await
+            .map_err(map_registry_governance_error)?
+            .ok_or(Error::NotFound)?;
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
@@ -819,8 +787,8 @@ async fn validate_publish_request_step(
                 accepted: true,
                 request_id: Some(request_id),
                 status: Some("dry_run".to_string()),
-                slug: existing.slug,
-                version: existing.version,
+                slug: snapshot.request.slug,
+                version: snapshot.request.version,
                 warnings: vec!["Dry-run preview only. Re-run with dry_run=false to execute publish validation outside the upload path.".to_string()],
                 errors: Vec::new(),
                 next_step: Some("Use the same endpoint with dry_run=false after artifact upload completes.".to_string()),
@@ -833,10 +801,8 @@ async fn validate_publish_request_step(
         .validate_publish_request(&request_id, &authority)
         .await
         .map_err(map_registry_governance_error)?;
-    let validated = validation.request;
-    let status_code = if validated.status
-        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Validating
-    {
+    let validated = validation.status;
+    let status_code = if validated.request.status == "validating" {
         StatusCode::ACCEPTED
     } else {
         StatusCode::OK
@@ -848,14 +814,14 @@ async fn validate_publish_request_step(
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "validate".to_string(),
             dry_run: false,
-            accepted: publish_request_accepted(&validated.status),
-            request_id: Some(validated.id.clone()),
-            status: Some(request_status_label(validated.status.clone()).to_string()),
-            slug: validated.slug,
-            version: validated.version,
-            warnings: deserialize_message_list(&validated.validation_warnings),
-            errors: deserialize_message_list(&validated.validation_errors),
-            next_step: publish_request_next_step(&validated.status, &validated.id),
+            accepted: validated.accepted,
+            request_id: Some(validated.request.id.clone()),
+            status: Some(validated.request.status),
+            slug: validated.request.slug,
+            version: validated.request.version,
+            warnings: validated.request.warnings,
+            errors: validated.request.errors,
+            next_step: publish_status_next_step(&request_id, validated.next_action.as_ref()),
         }),
     ))
 }
@@ -895,17 +861,15 @@ async fn report_validation_stage(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     validate_validation_stage_report_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db_clone())
-        .get_publish_request(&request_id)
-        .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
-        .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry validation stage reporting")?;
 
     if request.dry_run {
+        let snapshot = RegistryGovernanceService::new(ctx.db_clone())
+            .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
+            .await
+            .map_err(map_registry_governance_error)?
+            .ok_or(Error::NotFound)?;
         let mut warnings = Vec::new();
         let normalized_status = request.status.trim().to_ascii_lowercase();
         if matches!(normalized_status.as_str(), "passed" | "failed" | "blocked")
@@ -931,8 +895,8 @@ async fn report_validation_stage(
                 accepted: true,
                 request_id: Some(request_id),
                 status: Some(normalized_status),
-                slug: existing.slug,
-                version: existing.version,
+                slug: snapshot.request.slug,
+                version: snapshot.request.version,
                 warnings,
                 errors: Vec::new(),
                 next_step: Some(
@@ -963,10 +927,10 @@ async fn report_validation_stage(
             action: "validation_stage".to_string(),
             dry_run: false,
             accepted: true,
-            request_id: Some(result.request.id.clone()),
-            status: Some(validation_stage_status_label(result.stage.status).to_string()),
-            slug: result.request.slug,
-            version: result.request.version,
+            request_id: Some(result.status.request.id.clone()),
+            status: Some(result.stage.status),
+            slug: result.status.request.slug,
+            version: result.status.request.version,
             warnings: Vec::new(),
             errors: Vec::new(),
             next_step: Some(format!(
@@ -1014,35 +978,25 @@ async fn approve_publish_request(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     validate_publish_approve_request(&request)?;
     let governance = RegistryGovernanceService::new(ctx.db_clone());
-    let existing = governance
-        .get_publish_request(&request_id)
-        .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
-        .ok_or(Error::NotFound)?;
-    let follow_up = governance
-        .publish_request_follow_up_snapshot(&existing)
-        .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to load registry publish request follow-up stages: {error}"
-            ))
-        })?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry publish approval")?;
 
     if request.dry_run {
+        let snapshot = governance
+            .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
+            .await
+            .map_err(map_registry_governance_error)?
+            .ok_or(Error::NotFound)?;
         let mut warnings = vec![String::from(
             "Dry-run preview only. Re-run with dry_run=false to finalize the publish request.",
         )];
-        let next_step = if follow_up.approval_override_required {
-            warnings.push(approval_override_warning_message(
-                &follow_up.validation_stages,
-            ));
+        let next_step = if snapshot.approval_override_required {
+            if let Some(warning) = snapshot.approval_override_warning {
+                warnings.push(warning);
+            }
             Some(approval_override_next_step(
-                &existing.id,
-                &follow_up.validation_stages,
+                &snapshot.request.id,
+                &snapshot.validation_stages,
             ))
         } else {
             Some(
@@ -1060,8 +1014,8 @@ async fn approve_publish_request(
                 accepted: true,
                 request_id: Some(request_id),
                 status: Some("dry_run".to_string()),
-                slug: existing.slug,
-                version: existing.version,
+                slug: snapshot.request.slug,
+                version: snapshot.request.version,
                 warnings,
                 errors: Vec::new(),
                 next_step,
@@ -1087,14 +1041,14 @@ async fn approve_publish_request(
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "approve".to_string(),
             dry_run: false,
-            accepted: publish_request_accepted(&approved.status),
-            request_id: Some(approved.id.clone()),
-            status: Some(request_status_label(approved.status.clone()).to_string()),
-            slug: approved.slug,
-            version: approved.version,
-            warnings: deserialize_message_list(&approved.validation_warnings),
-            errors: deserialize_message_list(&approved.validation_errors),
-            next_step: publish_request_next_step(&approved.status, &approved.id),
+            accepted: approved.accepted,
+            request_id: Some(approved.request.id.clone()),
+            status: Some(approved.request.status),
+            slug: approved.request.slug,
+            version: approved.request.version,
+            warnings: approved.request.warnings,
+            errors: approved.request.errors,
+            next_step: publish_status_next_step(&request_id, approved.next_action.as_ref()),
         }),
     ))
 }
@@ -1134,17 +1088,15 @@ async fn reject_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_reject_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db_clone())
-        .get_publish_request(&request_id)
-        .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
-        .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry publish rejection")?;
 
     if request.dry_run {
+        let snapshot = RegistryGovernanceService::new(ctx.db_clone())
+            .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
+            .await
+            .map_err(map_registry_governance_error)?
+            .ok_or(Error::NotFound)?;
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
@@ -1155,8 +1107,8 @@ async fn reject_publish_request(
                 accepted: true,
                 request_id: Some(request_id),
                 status: Some("dry_run".to_string()),
-                slug: existing.slug,
-                version: existing.version,
+                slug: snapshot.request.slug,
+                version: snapshot.request.version,
                 warnings: warnings
                     .into_iter()
                     .chain(std::iter::once(
@@ -1206,14 +1158,14 @@ async fn reject_publish_request(
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "reject".to_string(),
             dry_run: false,
-            accepted: publish_request_accepted(&rejected.status),
-            request_id: Some(rejected.id.clone()),
-            status: Some(request_status_label(rejected.status.clone()).to_string()),
-            slug: rejected.slug,
-            version: rejected.version,
+            accepted: rejected.accepted,
+            request_id: Some(rejected.request.id.clone()),
+            status: Some(rejected.request.status),
+            slug: rejected.request.slug,
+            version: rejected.request.version,
             warnings,
-            errors: deserialize_message_list(&rejected.validation_errors),
-            next_step: publish_request_next_step(&rejected.status, &rejected.id),
+            errors: rejected.request.errors,
+            next_step: publish_status_next_step(&request_id, rejected.next_action.as_ref()),
         }),
     ))
 }
@@ -1253,17 +1205,15 @@ async fn request_changes_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_request_changes_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db_clone())
-        .get_publish_request(&request_id)
-        .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
-        .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry request-changes operations")?;
 
     if request.dry_run {
+        let snapshot = RegistryGovernanceService::new(ctx.db_clone())
+            .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
+            .await
+            .map_err(map_registry_governance_error)?
+            .ok_or(Error::NotFound)?;
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
@@ -1274,8 +1224,8 @@ async fn request_changes_publish_request(
                 accepted: true,
                 request_id: Some(request_id),
                 status: Some("dry_run".to_string()),
-                slug: existing.slug,
-                version: existing.version,
+                slug: snapshot.request.slug,
+                version: snapshot.request.version,
                 warnings: warnings
                     .into_iter()
                     .chain(std::iter::once(
@@ -1326,14 +1276,14 @@ async fn request_changes_publish_request(
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "request_changes".to_string(),
             dry_run: false,
-            accepted: publish_request_accepted(&updated.status),
-            request_id: Some(updated.id.clone()),
-            status: Some(request_status_label(updated.status.clone()).to_string()),
-            slug: updated.slug,
-            version: updated.version,
+            accepted: updated.accepted,
+            request_id: Some(updated.request.id.clone()),
+            status: Some(updated.request.status),
+            slug: updated.request.slug,
+            version: updated.request.version,
             warnings,
-            errors: deserialize_message_list(&updated.validation_errors),
-            next_step: publish_request_next_step(&updated.status, &updated.id),
+            errors: updated.request.errors,
+            next_step: publish_status_next_step(&request_id, updated.next_action.as_ref()),
         }),
     ))
 }
@@ -1373,17 +1323,15 @@ async fn hold_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_hold_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db_clone())
-        .get_publish_request(&request_id)
-        .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
-        .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry hold operations")?;
 
     if request.dry_run {
+        let snapshot = RegistryGovernanceService::new(ctx.db_clone())
+            .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
+            .await
+            .map_err(map_registry_governance_error)?
+            .ok_or(Error::NotFound)?;
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
@@ -1394,8 +1342,8 @@ async fn hold_publish_request(
                 accepted: true,
                 request_id: Some(request_id),
                 status: Some("dry_run".to_string()),
-                slug: existing.slug,
-                version: existing.version,
+                slug: snapshot.request.slug,
+                version: snapshot.request.version,
                 warnings: warnings
                     .into_iter()
                     .chain(std::iter::once(
@@ -1444,14 +1392,14 @@ async fn hold_publish_request(
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "hold".to_string(),
             dry_run: false,
-            accepted: publish_request_accepted(&updated.status),
-            request_id: Some(updated.id.clone()),
-            status: Some(request_status_label(updated.status.clone()).to_string()),
-            slug: updated.slug,
-            version: updated.version,
+            accepted: updated.accepted,
+            request_id: Some(updated.request.id.clone()),
+            status: Some(updated.request.status),
+            slug: updated.request.slug,
+            version: updated.request.version,
             warnings,
-            errors: deserialize_message_list(&updated.validation_errors),
-            next_step: publish_request_next_step(&updated.status, &updated.id),
+            errors: updated.request.errors,
+            next_step: publish_status_next_step(&request_id, updated.next_action.as_ref()),
         }),
     ))
 }
@@ -1491,17 +1439,15 @@ async fn resume_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_resume_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db_clone())
-        .get_publish_request(&request_id)
-        .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to load registry publish request: {error}"))
-        })?
-        .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry resume operations")?;
 
     if request.dry_run {
+        let snapshot = RegistryGovernanceService::new(ctx.db_clone())
+            .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
+            .await
+            .map_err(map_registry_governance_error)?
+            .ok_or(Error::NotFound)?;
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
@@ -1512,8 +1458,8 @@ async fn resume_publish_request(
                 accepted: true,
                 request_id: Some(request_id),
                 status: Some("dry_run".to_string()),
-                slug: existing.slug,
-                version: existing.version,
+                slug: snapshot.request.slug,
+                version: snapshot.request.version,
                 warnings: warnings
                     .into_iter()
                     .chain(std::iter::once(
@@ -1564,14 +1510,14 @@ async fn resume_publish_request(
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "resume".to_string(),
             dry_run: false,
-            accepted: publish_request_accepted(&updated.status),
-            request_id: Some(updated.id.clone()),
-            status: Some(request_status_label(updated.status.clone()).to_string()),
-            slug: updated.slug,
-            version: updated.version,
+            accepted: updated.accepted,
+            request_id: Some(updated.request.id.clone()),
+            status: Some(updated.request.status),
+            slug: updated.request.slug,
+            version: updated.request.version,
             warnings,
-            errors: deserialize_message_list(&updated.validation_errors),
-            next_step: publish_request_next_step(&updated.status, &updated.id),
+            errors: updated.request.errors,
+            next_step: publish_status_next_step(&request_id, updated.next_action.as_ref()),
         }),
     ))
 }
@@ -1675,7 +1621,7 @@ async fn heartbeat_remote_validation_stage(
         Json(RegistryRunnerMutationResponse {
             accepted: true,
             claim_id,
-            status: validation_stage_status_label(stage.status).to_string(),
+            status: stage.status,
             warnings: Vec::new(),
         }),
     ))
@@ -1732,7 +1678,7 @@ async fn complete_remote_validation_stage(
         Json(RegistryRunnerMutationResponse {
             accepted: true,
             claim_id,
-            status: validation_stage_status_label(stage.status).to_string(),
+            status: stage.status,
             warnings: Vec::new(),
         }),
     ))
@@ -1789,7 +1735,7 @@ async fn fail_remote_validation_stage(
         Json(RegistryRunnerMutationResponse {
             accepted: true,
             claim_id,
-            status: validation_stage_status_label(stage.status).to_string(),
+            status: stage.status,
             warnings: Vec::new(),
         }),
     ))
@@ -1960,7 +1906,7 @@ async fn transfer_owner(
             })?;
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
         let authority = authority_from_auth(&headers, auth, "Registry owner transfer operations")?;
-        let binding = RegistryGovernanceService::new(ctx.db_clone())
+        RegistryGovernanceService::new(ctx.db_clone())
             .transfer_registry_slug_owner(
                 &request.slug,
                 &crate::services::registry_principal::RegistryPrincipalRef::user(
@@ -1983,7 +1929,7 @@ async fn transfer_owner(
                 accepted: true,
                 request_id: None,
                 status: Some("owner_transferred".to_string()),
-                slug: binding.slug,
+                slug: request.slug,
                 version: String::new(),
                 warnings,
                 errors: Vec::new(),
@@ -2539,15 +2485,6 @@ fn validate_owner_transfer_request(
     Ok(warnings)
 }
 
-fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
-    value
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|item| item.as_str().map(ToString::to_string))
-        .collect()
-}
-
 fn reject_legacy_registry_headers(headers: &HeaderMap) -> Result<(), Error> {
     if headers.contains_key(LEGACY_REGISTRY_ACTOR_HEADER)
         || headers.contains_key(LEGACY_REGISTRY_PUBLISHER_HEADER)
@@ -2684,109 +2621,57 @@ fn runner_claim_payload(
     }
 }
 
-fn publish_request_accepted(
-    status: &crate::models::registry_publish_request::RegistryPublishRequestStatus,
-) -> bool {
-    !matches!(
-        status,
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::Rejected
-    )
-}
-
-fn publish_request_next_step(
-    status: &crate::models::registry_publish_request::RegistryPublishRequestStatus,
+fn publish_status_next_step(
     request_id: &str,
+    next_action: Option<&rustok_modules::ModuleGovernancePublishRequestNextAction>,
 ) -> Option<String> {
-    match status {
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::Draft => {
+    match next_action? {
+        rustok_modules::ModuleGovernancePublishRequestNextAction::UploadArtifact => {
             Some(registry_publish_artifact_path().replace("{request_id}", request_id))
         }
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::ArtifactUploaded
-        | crate::models::registry_publish_request::RegistryPublishRequestStatus::Submitted => {
-            Some(format!(
-                "Trigger artifact validation via POST {}",
-                registry_publish_validate_path().replace("{request_id}", request_id)
-            ))
-        }
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::Validating => {
-            Some(format!(
-                "Poll {} for the latest publish lifecycle status.",
-                registry_publish_status_path().replace("{request_id}", request_id)
-            ))
-        }
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved => {
-            Some(format!(
-                "Finalize the validated publish request via POST {}",
-                registry_publish_approve_path().replace("{request_id}", request_id)
-            ))
-        }
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::ChangesRequested => {
+        rustok_modules::ModuleGovernancePublishRequestNextAction::UploadArtifactRevision => {
             Some(format!(
                 "Upload a fresh artifact revision via PUT {} before re-running validation.",
                 registry_publish_artifact_path().replace("{request_id}", request_id)
             ))
         }
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::OnHold => {
+        rustok_modules::ModuleGovernancePublishRequestNextAction::TriggerValidation => Some(format!(
+            "Trigger artifact validation via POST {}",
+            registry_publish_validate_path().replace("{request_id}", request_id)
+        )),
+        rustok_modules::ModuleGovernancePublishRequestNextAction::PollStatus => Some(format!(
+            "Poll {} for the latest publish lifecycle status.",
+            registry_publish_status_path().replace("{request_id}", request_id)
+        )),
+        rustok_modules::ModuleGovernancePublishRequestNextAction::StageExternalPrebuilt => {
             Some(format!(
-                "Resume the held publish request via POST {} when the blocking condition is cleared.",
-                registry_publish_resume_path().replace("{request_id}", request_id)
+                "Stage approved external provenance and quarantine evidence via POST {} before final publication.",
+                registry_publish_external_stage_path().replace("{request_id}", request_id)
             ))
         }
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::Rejected => {
-            Some(format!(
-                "If the request was rejected by automated validation, fix the artifact and retry via POST {}; otherwise create a new publish request after governance review resolves the rejection.",
-                registry_publish_validate_path().replace("{request_id}", request_id)
-            ))
-        }
-        crate::models::registry_publish_request::RegistryPublishRequestStatus::Published => None,
-    }
-}
-
-fn publish_request_status_next_step(
-    request: &crate::models::registry_publish_request::Model,
-    request_id: &str,
-    validation_stages: &[RegistryValidationStageSnapshot],
-) -> Option<String> {
-    if request.status
-        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
-        && request.artifact_origin == "external_prebuilt"
-    {
-        return Some(format!(
-            "Stage approved external provenance and quarantine evidence via POST {} before final publication.",
-            registry_publish_external_stage_path().replace("{request_id}", request_id)
-        ));
-    }
-
-    if request.status
-        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
-        && request.artifact_origin == "platform_built"
-    {
-        return Some(format!(
+        rustok_modules::ModuleGovernancePublishRequestNextAction::StagePlatformBuild => Some(format!(
             "Bind the completed tenant-scoped platform build via POST {} before final publication.",
             registry_publish_platform_build_stage_path().replace("{request_id}", request_id)
-        ));
-    }
-
-    if request.status
-        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
-        && request.artifact_origin == "alloy_authored"
-    {
-        return Some(
+        )),
+        rustok_modules::ModuleGovernancePublishRequestNextAction::StageAlloyRelease => Some(
             "Stage the reviewed Alloy source through POST /api/alloy/scripts/{id}/releases/stage before final publication."
                 .to_string(),
-        );
+        ),
+        rustok_modules::ModuleGovernancePublishRequestNextAction::FinalizePublication => {
+            Some(format!(
+                "Finalize the validated publish request via POST {}",
+                registry_publish_approve_path().replace("{request_id}", request_id)
+            ))
+        }
+        rustok_modules::ModuleGovernancePublishRequestNextAction::Resume => Some(format!(
+            "Resume the held publish request via POST {} when the blocking condition is cleared.",
+            registry_publish_resume_path().replace("{request_id}", request_id)
+        )),
+        rustok_modules::ModuleGovernancePublishRequestNextAction::RetryRejected => Some(format!(
+            "If the request was rejected by automated validation, fix the artifact and retry via POST {}; otherwise create a new publish request after governance review resolves the rejection.",
+            registry_publish_validate_path().replace("{request_id}", request_id)
+        )),
     }
-
-    if request.status
-        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
-        && validation_stages
-            .iter()
-            .any(|stage| !stage.status.eq_ignore_ascii_case("passed"))
-    {
-        return Some(approval_override_next_step(request_id, validation_stages));
-    }
-
-    publish_request_next_step(&request.status, request_id)
 }
 
 fn approval_override_next_step(
@@ -2798,16 +2683,6 @@ fn approval_override_next_step(
         registry_publish_stage_report_path().replace("{request_id}", request_id),
         REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", "),
         approval_override_stage_labels(validation_stages).join(", ")
-    )
-}
-
-fn approval_override_warning_message(
-    validation_stages: &[RegistryValidationStageSnapshot],
-) -> String {
-    format!(
-        "Approval override is required because these follow-up validation stages are not passed yet: {}. Live approve must include both reason and reason_code ({}).",
-        approval_override_stage_labels(validation_stages).join(", "),
-        REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
     )
 }
 
@@ -2898,6 +2773,9 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
 fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::Error) -> Error {
     match error {
         ModuleGovernanceError::InvalidLifecycleQuery
+        | ModuleGovernanceError::InvalidOwnerBindingQuery
+        | ModuleGovernanceError::InvalidPublishArtifactDownloadQuery
+        | ModuleGovernanceError::InvalidPublishRequestStatusQuery
         | ModuleGovernanceError::InvalidYankCommand
         | ModuleGovernanceError::InvalidYankReasonCode(_)
         | ModuleGovernanceError::InvalidOwnerTransferCommand
@@ -2939,6 +2817,9 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         ModuleGovernanceError::PublicationEvidenceAuthorityReserved => {
             http_error(HttpError::forbidden("forbidden", error.to_string()))
         }
+        ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized => {
+            http_error(HttpError::forbidden("forbidden", error.to_string()))
+        }
         ModuleGovernanceError::ReleaseNotFound
         | ModuleGovernanceError::OwnerBindingNotFound
         | ModuleGovernanceError::PublishRequestNotFound
@@ -2946,7 +2827,8 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::ValidationStageNotFound
         | ModuleGovernanceError::RemoteValidationLeaseNotFound => Error::NotFound,
         ModuleGovernanceError::Store(_)
-        | ModuleGovernanceError::InvalidLifecycleArtifactOrigin(_) => {
+        | ModuleGovernanceError::InvalidLifecycleArtifactOrigin(_)
+        | ModuleGovernanceError::InvalidPublishRequestStatus(_) => {
             tracing::error!(error = %source, "Registry governance owner store error");
             Error::InternalServerError
         }
@@ -2962,6 +2844,7 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::PublishRequestCannotBePublished(_)
         | ModuleGovernanceError::PublishedRequestMissingRelease
         | ModuleGovernanceError::PublishRequestCannotAttachArtifact(_)
+        | ModuleGovernanceError::PublishRequestArtifactReplayConflict
         | ModuleGovernanceError::PublishRequestCannotRecordPublicationEvidence(_)
         | ModuleGovernanceError::PublishRequestCannotReportValidationStage(_)
         | ModuleGovernanceError::PublishRequestCannotQueueValidation(_)

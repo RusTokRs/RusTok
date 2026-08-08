@@ -316,7 +316,7 @@ async fn rebuilt_bytes_and_activation_cache_rotate_only_after_committed_events_o
     let mut expected_rebuilt = canonical_snapshot.clone();
     expected_rebuilt.id = rebuilt_record.id;
     expected_rebuilt.instance_key = rebuilt_record.instance_key.clone();
-    expected_rebuilt.created_at = rebuilt_record.created_at.clone();
+    expected_rebuilt.created_at = rebuilt_record.created_at;
     assert_eq!(rebuilt_record, expected_rebuilt);
     assert_eq!(
         page_published_landing_artifact::Entity::find_by_id(binding_before.page_body_id)

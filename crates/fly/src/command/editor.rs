@@ -85,10 +85,10 @@ impl FlyEditor {
 
     pub fn apply(&mut self, command: EditorCommand) -> FlyResult<ValidationReport> {
         if let EditorCommand::Select { component_id } = &command {
-            if let Some(id) = component_id.as_deref() {
-                if !self.document.contains_component(id) {
-                    return Err(FlyError::ComponentNotFound(id.to_string()));
-                }
+            if let Some(id) = component_id.as_deref()
+                && !self.document.contains_component(id)
+            {
+                return Err(FlyError::ComponentNotFound(id.to_string()));
             }
             self.selection = component_id.clone();
             return Ok(self.validate());
@@ -170,15 +170,14 @@ impl FlyEditor {
                 new_parent_id,
                 index,
             } => {
-                if let Some(parent_id) = new_parent_id.as_deref() {
-                    if parent_id == component_id
-                        || document.is_component_descendant_of(parent_id, component_id)
-                    {
-                        return Err(FlyError::RecursiveMove {
-                            component: component_id.clone(),
-                            parent: parent_id.to_string(),
-                        });
-                    }
+                if let Some(parent_id) = new_parent_id.as_deref()
+                    && (parent_id == component_id
+                        || document.is_component_descendant_of(parent_id, component_id))
+                {
+                    return Err(FlyError::RecursiveMove {
+                        component: component_id.clone(),
+                        parent: parent_id.to_string(),
+                    });
                 }
 
                 let previous_location = document.component_location(component_id);

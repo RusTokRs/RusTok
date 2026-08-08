@@ -7,8 +7,9 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::model::{
-    Actor, ActorKind, JobItem, MemoryRetentionPolicy, ProposalOrigin, TranslationAdminOperation,
-    TranslationAdminResponse, TranslationAdminTransportContext, TranslationResourceIdentity,
+    Actor, ActorKind, JobItem, MemoryRetentionPolicy, ProposalOrigin, ReviewerQueueItem,
+    TranslationAdminOperation, TranslationAdminResponse, TranslationAdminTransportContext,
+    TranslationResourceIdentity,
 };
 
 pub type TransportError = GraphqlHttpError;
@@ -31,6 +32,8 @@ const MEMORY_MUTATION_FIELDS: &str =
 const JOB_FIELDS: &str =
     "id sourceLocale targetLocale glossary { glossaryId revision } status revision";
 const INTERCHANGE_DOCUMENT_FIELDS: &str = "schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue sourceHash required maxCharacters protectedTokens } }";
+const REVIEWER_QUEUE_FIELDS: &str = "item { id jobId ownerSlug resourceKind resourceId subresourceId status assignee { kind id } sourceDigest revision } proposalId proposalRevision submittedAt";
+const REVIEWER_WORKLOAD_FIELDS: &str = "jobId assignee { kind id } openItems missingItems draftItems inReviewItems approvedItems applyingItems rebaseRequiredItems blockedItems sourceCharacters";
 
 pub async fn execute(
     context: TranslationAdminTransportContext,
@@ -76,6 +79,15 @@ pub async fn execute(
         TranslationAdminOperation::ReadJobProgress { .. }
         | TranslationAdminOperation::RebuildJobProgress { .. } => Ok(
             TranslationAdminResponse::JobProgress(field_value(&data, field)?),
+        ),
+        TranslationAdminOperation::ReadReviewerQueue { .. } => {
+            let queue: Vec<GraphqlReviewerQueueItem> = field_value(&data, field)?;
+            Ok(TranslationAdminResponse::ReviewerQueue(
+                queue.into_iter().map(Into::into).collect(),
+            ))
+        }
+        TranslationAdminOperation::ReadReviewerWorkload { .. } => Ok(
+            TranslationAdminResponse::ReviewerWorkloads(field_value(&data, field)?),
         ),
         TranslationAdminOperation::ExportJob { .. } => Ok(
             TranslationAdminResponse::InterchangeDocument(field_value(&data, field)?),
@@ -207,6 +219,29 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
             format!("query TranslationJobProgress($jobId: UUID!) {{ translationJobProgress(jobId: $jobId) {{ {JOB_PROGRESS_FIELDS} }} }}"),
             json!({ "jobId": job_id }),
             "translationJobProgress",
+        ),
+        TranslationAdminOperation::ReadReviewerQueue {
+            job_id,
+            assignee,
+            include_unassigned,
+            limit,
+        } => (
+            format!("query TranslationReviewerQueue($input: TranslationReviewerQueueInput!) {{ translationReviewerQueue(input: $input) {{ {REVIEWER_QUEUE_FIELDS} }} }}"),
+            json!({ "input": {
+                "jobId": job_id,
+                "assignee": assignee.as_ref().map(|actor| json!({
+                    "kind": actor_kind_name(actor.kind),
+                    "id": actor.id,
+                })),
+                "includeUnassigned": include_unassigned,
+                "limit": limit,
+            }}),
+            "translationReviewerQueue",
+        ),
+        TranslationAdminOperation::ReadReviewerWorkload { job_id } => (
+            format!("query TranslationReviewerWorkload($input: TranslationReviewerWorkloadInput!) {{ translationReviewerWorkload(input: $input) {{ {REVIEWER_WORKLOAD_FIELDS} }} }}"),
+            json!({ "input": { "jobId": job_id } }),
+            "translationReviewerWorkload",
         ),
         TranslationAdminOperation::ExportJob { job_id, max_items } => (
             format!(
@@ -790,6 +825,26 @@ impl From<GraphqlJobItem> for JobItem {
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GraphqlReviewerQueueItem {
+    item: GraphqlJobItem,
+    proposal_id: String,
+    proposal_revision: i64,
+    submitted_at: String,
+}
+
+impl From<GraphqlReviewerQueueItem> for ReviewerQueueItem {
+    fn from(value: GraphqlReviewerQueueItem) -> Self {
+        Self {
+            item: value.item.into(),
+            proposal_id: value.proposal_id,
+            proposal_revision: value.proposal_revision,
+            submitted_at: value.submitted_at,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -832,6 +887,18 @@ mod tests {
                 limit: 10,
             },
             TranslationAdminOperation::ReadJobProgress {
+                job_id: "00000000-0000-0000-0000-000000000001".to_string(),
+            },
+            TranslationAdminOperation::ReadReviewerQueue {
+                job_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                assignee: Some(Actor {
+                    kind: ActorKind::User,
+                    id: "reviewer-1".to_string(),
+                }),
+                include_unassigned: true,
+                limit: 50,
+            },
+            TranslationAdminOperation::ReadReviewerWorkload {
                 job_id: "00000000-0000-0000-0000-000000000001".to_string(),
             },
             TranslationAdminOperation::ExportJob {

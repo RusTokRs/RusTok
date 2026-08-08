@@ -253,6 +253,15 @@ pub enum TranslationAdminOperation {
     ReadJobProgress {
         job_id: String,
     },
+    ReadReviewerQueue {
+        job_id: String,
+        assignee: Option<Actor>,
+        include_unassigned: bool,
+        limit: u16,
+    },
+    ReadReviewerWorkload {
+        job_id: String,
+    },
     ExportJob {
         job_id: String,
         max_items: u16,
@@ -528,6 +537,8 @@ impl TranslationAdminOperation {
             | Self::ReadMemoryEntry { .. }
             | Self::LookupMemory { .. }
             | Self::ReadJobProgress { .. }
+            | Self::ReadReviewerQueue { .. }
+            | Self::ReadReviewerWorkload { .. }
             | Self::ExportJob { .. }
             | Self::ReadProviderProgress { .. }
             | Self::ReadRequiredProviderProgress { .. }
@@ -549,6 +560,8 @@ pub enum TranslationAdminResponse {
     MemorySuggestions(Vec<MemorySuggestion>),
     MemoryMutation(MemoryMutation),
     JobProgress(JobProgress),
+    ReviewerQueue(Vec<ReviewerQueueItem>),
+    ReviewerWorkloads(Vec<ReviewerWorkload>),
     InterchangeDocument(InterchangeDocument),
     ProviderProgress(ProviderProgress),
     RequiredProviderProgress(RequiredProviderProgress),
@@ -707,6 +720,31 @@ pub struct JobItem {
     pub assignee: Option<Actor>,
     pub source_digest: String,
     pub revision: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewerQueueItem {
+    pub item: JobItem,
+    pub proposal_id: String,
+    pub proposal_revision: i64,
+    pub submitted_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewerWorkload {
+    pub job_id: String,
+    pub assignee: Option<Actor>,
+    pub open_items: u64,
+    pub missing_items: u64,
+    pub draft_items: u64,
+    pub in_review_items: u64,
+    pub approved_items: u64,
+    pub applying_items: u64,
+    pub rebase_required_items: u64,
+    pub blocked_items: u64,
+    pub source_characters: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1075,6 +1113,18 @@ mod tests {
                 revision: None,
             },
             TranslationAdminOperation::ReadJobProgress {
+                job_id: "job-1".to_string(),
+            },
+            TranslationAdminOperation::ReadReviewerQueue {
+                job_id: "job-1".to_string(),
+                assignee: Some(Actor {
+                    kind: ActorKind::User,
+                    id: "reviewer-1".to_string(),
+                }),
+                include_unassigned: true,
+                limit: 50,
+            },
+            TranslationAdminOperation::ReadReviewerWorkload {
                 job_id: "job-1".to_string(),
             },
             TranslationAdminOperation::ExportJob {

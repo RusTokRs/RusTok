@@ -13,8 +13,8 @@ use crate::{
     GlossaryVariant, JobItemRecord, JobProgressRecord, JobRecord, MachineCancellationRecord,
     MachineProposalRecord, MemoryEntryRecord, MemoryMatchEvidence, MemoryMatchKind,
     MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, ProposalOrigin, ProposalRecord,
-    ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord,
-    TranslationInterchangeDocument as InterchangeDocument,
+    ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord, ReviewerQueueRecord,
+    ReviewerWorkloadRecord, TranslationInterchangeDocument as InterchangeDocument,
     TranslationInterchangeField as InterchangeField, TranslationInterchangeItem as InterchangeItem,
     TranslationInventoryRebuildResult, TranslationInventorySyncResult, TranslationPolicyFreshness,
     TranslationPolicyRecord,
@@ -293,6 +293,21 @@ pub struct AddTranslationJobItemInput {
     pub job_id: Uuid,
     pub identity: TranslationResourceIdentityInput,
     pub idempotency_key: String,
+}
+
+#[derive(InputObject)]
+pub struct TranslationReviewerQueueInput {
+    pub job_id: Uuid,
+    pub assignee: Option<TranslationActorInput>,
+    #[graphql(default = false)]
+    pub include_unassigned: bool,
+    #[graphql(default = 50)]
+    pub limit: u16,
+}
+
+#[derive(InputObject)]
+pub struct TranslationReviewerWorkloadInput {
+    pub job_id: Uuid,
 }
 
 #[derive(InputObject)]
@@ -883,6 +898,58 @@ impl From<JobItemRecord> for TranslationJobItem {
             assignee: value.assignee.map(Into::into),
             source_digest: value.source_digest,
             revision: value.revision,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationReviewerQueueItem {
+    pub item: TranslationJobItem,
+    pub proposal_id: Uuid,
+    pub proposal_revision: i64,
+    pub submitted_at: DateTime<FixedOffset>,
+}
+
+impl From<ReviewerQueueRecord> for TranslationReviewerQueueItem {
+    fn from(value: ReviewerQueueRecord) -> Self {
+        Self {
+            item: value.item.into(),
+            proposal_id: value.proposal_id,
+            proposal_revision: value.proposal_revision,
+            submitted_at: value.submitted_at,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationReviewerWorkload {
+    pub job_id: Uuid,
+    pub assignee: Option<TranslationActor>,
+    pub open_items: u64,
+    pub missing_items: u64,
+    pub draft_items: u64,
+    pub in_review_items: u64,
+    pub approved_items: u64,
+    pub applying_items: u64,
+    pub rebase_required_items: u64,
+    pub blocked_items: u64,
+    pub source_characters: u64,
+}
+
+impl From<ReviewerWorkloadRecord> for TranslationReviewerWorkload {
+    fn from(value: ReviewerWorkloadRecord) -> Self {
+        Self {
+            job_id: value.job_id,
+            assignee: value.assignee.map(Into::into),
+            open_items: value.open_items,
+            missing_items: value.missing_items,
+            draft_items: value.draft_items,
+            in_review_items: value.in_review_items,
+            approved_items: value.approved_items,
+            applying_items: value.applying_items,
+            rebase_required_items: value.rebase_required_items,
+            blocked_items: value.blocked_items,
+            source_characters: value.source_characters,
         }
     }
 }

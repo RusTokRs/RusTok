@@ -109,7 +109,7 @@ This is the active cross-cutting implementation plan. As of 2026-08-03:
   target discovery, policy, job/provider progress, inventory
   synchronization/rebuild, and every implemented workflow command. Its
   capability-owned runtime factory consumes only neutral typed host values.
-  `rustok-translation-admin` adds one typed 39-operation transport contract,
+  `rustok-translation-admin` adds one typed 41-operation transport contract,
   SSR/hydrate native `#[server]` execution over `HostRuntimeContext`,
   CSR/headless execution through `rustok-graphql`, and the module-owned Leptos
   workbench. The matching `@rustok/translation-admin` package renders the Next
@@ -120,8 +120,9 @@ This is the active cross-cutting implementation plan. As of 2026-08-03:
   Memory list/read/lookup/retention/tombstone/purge operations, bounded
   interchange export/import, and non-billable machine estimation plus machine
   proposal generation/status/cancellation/recovery. Both workbenches also
-  expose the same revision-guarded item assignment/unassignment, blocked-item
-  retry, job cancellation, and owner-apply recovery commands.
+  expose the same revision-guarded item assignment/unassignment, bounded
+  reviewer queue and workload reads, blocked-item retry, job cancellation, and
+  owner-apply recovery commands.
   Live browser, accessibility, module-disablement, and authenticated transport
   evidence remain open;
 - deterministic QA now runs on proposal save, review submission, and approval.
@@ -944,8 +945,8 @@ mutation of transaction history.
 
 The current GraphQL control plane and the `rustok-translation-admin` native
 adapter expose policy, progress, inventory, reviewed workflow, versioned
-glossary, Translation Memory, and bounded interchange operations through one
-39-operation client
+glossary, Translation Memory, bounded interchange, and derived reviewer queue
+and workload operations through one 41-operation client
 contract. The manifest publishes its module-owned six-tab Leptos workbench,
 while `@rustok/translation-admin` renders the matching Next workbench through
 the same GraphQL contract. Both keep glossary and memory selection in
@@ -1346,7 +1347,9 @@ Deliverables:
   candidates and explainable deterministic ranking;
 - [x] configurable per-entry retention, revision-guarded tombstone/purge,
   GraphQL/native transport, and Leptos/Next administration;
-- [ ] owner-deletion propagation and automated retention enforcement;
+- [x] owner-deletion propagation and automated retention enforcement, with
+  revision-guarded tombstone/purge work, durable system receipts, legal-hold
+  exclusion, and file-backed independent-worker recovery evidence;
 - [x] glossary scopes, preferred/allowed/forbidden/do-not-translate terms,
   bounded conflicts, append-only revision snapshots, immutable job binding,
   GraphQL/native transport, and Leptos/Next operator parity;
@@ -1356,10 +1359,16 @@ Deliverables:
 - [x] assignment/unassignment, blocked-item retry, job cancellation, and
   owner-apply recovery controls with revision/attempt guards in both
   workbenches;
-- [ ] comments/notes, reviewer queues, and workload views;
-- [ ] bounded import/export with validation, object-storage expiry, and conflict
-  reports;
-- [ ] progress dashboards and projection rebuild/repair operations;
+- [x] bounded reviewer queues and workload views derived from current
+  tenant-scoped workflow evidence, with explicit queue/workload limits,
+  assignee filtering, unassigned work, and GraphQL/native/Leptos/Next parity;
+- [ ] comments/notes;
+- [x] bounded direct import/export with immutable owner evidence, per-item
+  validation/conflict outcomes, and GraphQL/native/Leptos/Next parity;
+- [ ] object-storage-backed interchange artifacts with expiry and aggregate
+  conflict reports;
+- [x] progress dashboards, transactional projection upkeep, and idempotent
+  rebuild/repair operations across GraphQL/native/Leptos/Next surfaces;
 - [ ] provider/event lag and workflow observability.
 
 Done when a translation can round-trip through manual editing, memory,

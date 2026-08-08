@@ -322,8 +322,69 @@ registry, installation, tenant-intent, or marketplace success responses. The
 native module catalog and registry lifecycle reads now consume the owner-backed
 `SharedModuleMarketplaceCatalog` and governance lifecycle snapshot. The admin
 workspace/Cargo scanner, local catalog synthesis, canonical hashing,
-dependency/build planning, and direct registry SQL have been deleted. Broader
-transport parity evidence remains Phase 7 work.
+dependency/build planning, and direct registry SQL have been deleted. The
+governance owner also projects durable release metadata onto the shared
+marketplace DTO; GraphQL and the public registry adapter now map that DTO and
+do not read release or translation tables. Broader transport parity evidence
+remains Phase 7 work.
+
+The public publish-status path now uses the owner-scoped
+`ModuleGovernancePublishRequestStatusSnapshot` for the exact publish request
+and approval previews. The status snapshot supplies request identity,
+warnings/errors, accepted state,
+approval-override guidance, and the semantic next action in addition to
+persisted validation stages, follow-up gates, and actor-visible actions. The
+server supplies only authenticated principal/permission context and maps the
+semantic action to its HTTP route/text; it cannot substitute lifecycle facts
+from another request with the same slug or recreate lifecycle policy from a
+SeaORM model. Once all required follow-up stages pass, an approved request now
+resolves to final publication rather than repeatedly suggesting the completed
+stage operation.
+Operator staging adapters also invoke the external-prebuilt and platform-build
+owner commands directly and use the same status snapshot for their response
+identity/status in dry-run and committed paths. They no longer issue a
+server-local publish-request existence preflight or post-command model read and
+preserve the owner `not_found` contract at the HTTP edge.
+Creation and upload now use that exact status projection for their committed
+responses as well. Before an upload, the owner authenticates the actor against
+the durable request/binding facts and returns only a SHA-256-derived immutable
+slot. The host uses conditional object creation, rehashes a collision before it
+can become a replay, and attaches the same metadata through the owner. It never
+constructs an artifact key from a server model or deletes a prior object inline;
+retention-aware owner policy is the only cleanup authority. The platform
+authoring producer uses the same slot, preventing a second artifact-storage
+write path.
+Validation enqueue, manual validation-stage reporting, and all live decisions
+also map their committed response from the exact owner status projection; the
+server no longer rebuilds acceptance, errors, or next-step guidance from a
+post-command request model.
+Remote-runner heartbeat and terminal-completion adapters now receive the
+owner-issued `ModuleRemoteValidationStageTransition` instead of loading a
+server validation-stage model after the lease transition. The duplicate
+registry-governance remote-runner mutation adapter has been removed, so the
+owner-routed transition path is the only implementation.
+The owner status projection now also returns durable actor-specific
+`can_manage` and `can_review` facts. Live validation, validation-stage report,
+and moderation adapters authorize from those facts instead of server-local
+publish-request or owner-binding reads; unauthenticated status projections
+carry no governance actions. It also supplies rejected-request retry
+eligibility, effective publisher identity, and latest validation-stage facts,
+removing server publish-request model reads from every live operation on an
+existing request.
+The artifact-download adapter likewise receives only a host-only owner snapshot
+of attached storage key and content type. It treats a missing or unattached
+artifact as unavailable and does not expose storage topology through the public
+publish-status contract.
+Validation-queue and validation-stage dry-run previews likewise load only the
+exact owner status snapshot after authenticated authority is established; they
+do not preflight a server request model. Their live commands remain delegated
+to owner-authorized mutation services.
+Approve, reject, request-changes, hold, and resume previews use the same
+snapshot; approval override warning text and pending-stage facts stay
+owner-derived rather than reconstructed by the HTTP adapter.
+The owner-transfer adapter likewise uses an exact owner binding snapshot for
+authorization and its post-command result, rather than reading or exposing a
+server SeaORM binding model.
 
 Platform build active/history/release reads and rollback are now also
 host-composed through `rustok_build::SharedBuildControl`. The server supplies
@@ -743,11 +804,12 @@ object names and explicit prefix/operation grants. Small reads and writes use
 at most 44 KiB decoded base64; large writes use durable owner-owned upload
 sessions with ordered 44 KiB chunks, final size/SHA-256 verification, expiry
 reaping, and retention-GC hand-off before private-object publication. It never exposes
-physical storage identity. The server also registers `platform.secrets` through
-`SeaOrmArtifactSecretHandlePolicy`; it repeats exact installation, lifecycle,
-capability-revision, explicit-grant, and derived-scope validation immediately
-before the logical binding read. MCP and every other unregistered capability
-remain default-deny until their owner deployment adapters are available.
+physical storage identity. The server registers `platform.secrets` through
+`ModuleControlPlane::artifact_secret_handle_policy`; it repeats exact
+installation, lifecycle, capability-revision, explicit-grant, and
+derived-scope validation immediately before the logical binding read. MCP and
+every other unregistered capability remain default-deny until their owner
+deployment adapters are available.
 
 `resolve_granted_artifact_capability` is the shared gate for every dynamic
 owner route. It resolves the exact immutable installation, applies active
@@ -755,7 +817,7 @@ admission, tenant lifecycle, uninstall state, durable policy revision, and the
 named explicit grant before a broker is constructed. The concrete
 `SeaOrmArtifactDataCapabilityBrokerResolver`,
 `SeaOrmArtifactDataObjectCapabilityBrokerResolver`,
-`SeaOrmArtifactSecretCapabilityBrokerResolver`, and
+`SeaOrmArtifactSecretCapabilityBrokerResolver`, and the facade-constructed
 `ArtifactMcpCapabilityBrokerResolver` derive their scopes only from that exact
 result. The sandbox host already enforces data operation/prefix, logical-secret,
 object-data prefix/operation, logical-secret, and MCP server/tool grant

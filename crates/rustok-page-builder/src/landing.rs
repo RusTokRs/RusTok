@@ -148,10 +148,10 @@ fn push_registry_issue(
     report: &mut RegistryCompatibilityReport,
     issue: Option<RegistryCompatibilityIssue>,
 ) {
-    if let Some(issue) = issue {
-        if !report.issues.contains(&issue) {
-            report.issues.push(issue);
-        }
+    if let Some(issue) = issue
+        && !report.issues.contains(&issue)
+    {
+        report.issues.push(issue);
     }
 }
 

@@ -159,15 +159,15 @@ pub fn materialize_project_translations(
             diagnostic.message = format!("translation `{}`: {}", entry.id, diagnostic.message);
             diagnostics.push(diagnostic);
         }
-        if materialized.resolved_values > 0 {
-            if let Some(value) = materialized.context.get("value") {
-                translated.insert(entry.id.clone(), value.clone());
-                resolved_translations = resolved_translations.saturating_add(1);
-                if materialized.fallback_values > 0 {
-                    fallback_translations = fallback_translations.saturating_add(1);
-                }
-                continue;
+        if materialized.resolved_values > 0
+            && let Some(value) = materialized.context.get("value")
+        {
+            translated.insert(entry.id.clone(), value.clone());
+            resolved_translations = resolved_translations.saturating_add(1);
+            if materialized.fallback_values > 0 {
+                fallback_translations = fallback_translations.saturating_add(1);
             }
+            continue;
         }
         unresolved_translations = unresolved_translations.saturating_add(1);
     }
@@ -306,12 +306,12 @@ fn validate_translation_identity(entry: &TranslationEntry) -> FlyResult<()> {
             )));
         }
     }
-    if let Some(fallback_locale) = entry.fallback_locale.as_deref() {
-        if normalize_locale_tag(fallback_locale).is_none() {
-            return Err(FlyError::Decode(format!(
-                "translation `{id}` fallback locale `{fallback_locale}` is invalid"
-            )));
-        }
+    if let Some(fallback_locale) = entry.fallback_locale.as_deref()
+        && normalize_locale_tag(fallback_locale).is_none()
+    {
+        return Err(FlyError::Decode(format!(
+            "translation `{id}` fallback locale `{fallback_locale}` is invalid"
+        )));
     }
     Ok(())
 }

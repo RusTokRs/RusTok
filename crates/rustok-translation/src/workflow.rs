@@ -2001,7 +2001,7 @@ fn actor_kind(context: &PortContext) -> &'static str {
     actor_kind_value(&context.actor.kind)
 }
 
-fn actor_kind_value(kind: &PortActorKind) -> &'static str {
+pub(crate) fn actor_kind_value(kind: &PortActorKind) -> &'static str {
     match kind {
         PortActorKind::User => "user",
         PortActorKind::Service => "service",
@@ -2026,7 +2026,7 @@ fn validate_expected_revision(revision: i64) -> TranslationResult<()> {
     Ok(())
 }
 
-fn validate_workflow_actor(actor: &rustok_api::PortActor) -> TranslationResult<()> {
+pub(crate) fn validate_workflow_actor(actor: &rustok_api::PortActor) -> TranslationResult<()> {
     let id = actor.id.trim();
     if id.is_empty() || id.len() > 191 || id != actor.id {
         return Err(TranslationError::InvalidWorkflowActor);
@@ -2061,7 +2061,9 @@ fn validate_retry_reason(reason: &str) -> TranslationResult<()> {
     Ok(())
 }
 
-fn assignment_actor(item: &job_item::Model) -> TranslationResult<Option<rustok_api::PortActor>> {
+pub(crate) fn assignment_actor(
+    item: &job_item::Model,
+) -> TranslationResult<Option<rustok_api::PortActor>> {
     match (&item.assigned_actor_kind, &item.assigned_actor_id) {
         (None, None) => Ok(None),
         (Some(kind), Some(id)) => Ok(Some(workflow_actor(kind, id)?)),
@@ -2944,7 +2946,7 @@ fn replay_job(model: job::Model, request_hash: &str) -> TranslationResult<JobRec
     })
 }
 
-fn item_record(model: job_item::Model) -> TranslationResult<JobItemRecord> {
+pub(crate) fn item_record(model: job_item::Model) -> TranslationResult<JobItemRecord> {
     let assignee = assignment_actor(&model)?;
     Ok(JobItemRecord {
         id: model.id,

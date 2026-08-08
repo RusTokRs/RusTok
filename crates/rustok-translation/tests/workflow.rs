@@ -25,10 +25,10 @@ use rustok_translation::{
     GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossaryTermPolicy, GlossaryVariant,
     ImportTranslationItemInput, MemoryListInput, MemoryLookupInput, MemoryMatchKind,
     MemoryRetentionPolicy, ProposalOrigin, ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput,
-    ReplaceGlossaryTermsInput, RetryItemInput, SaveProposalInput, SetMemoryRetentionInput,
-    SubmitProposalInput, TombstoneMemoryEntryInput, TranslationError, TranslationGlossaryService,
-    TranslationMemoryService, TranslationProgressService, TranslationWorkflowService,
-    UnassignItemInput,
+    ReplaceGlossaryTermsInput, RetryItemInput, ReviewerQueueInput, ReviewerWorkloadInput,
+    SaveProposalInput, SetMemoryRetentionInput, SubmitProposalInput, TombstoneMemoryEntryInput,
+    TranslationError, TranslationGlossaryService, TranslationMemoryService,
+    TranslationProgressService, TranslationWorkflowService, UnassignItemInput,
     entities::{
         apply_operation, apply_receipt, apply_recovery, assignment, cancellation, job, job_item,
         job_progress, memory_entry, memory_receipt, proposal, retry,
@@ -517,6 +517,50 @@ async fn create_approved_item(
         .await
         .unwrap();
     (item.id, proposal.id)
+}
+
+async fn submit_item(
+    service: &TranslationWorkflowService,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    item_id: Uuid,
+    suffix: &str,
+) -> Uuid {
+    let proposal = service
+        .save_proposal(
+            user_write_context(
+                tenant_id,
+                actor_id,
+                Action::Update,
+                &format!("save-reviewer-{suffix}"),
+            ),
+            SaveProposalInput {
+                item_id,
+                origin: ProposalOrigin::Manual,
+                values: vec![ProposalValue {
+                    key: FieldKey::new("title").unwrap(),
+                    value: format!("Translated {suffix}"),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .submit_proposal(
+            user_write_context(
+                tenant_id,
+                actor_id,
+                Action::Update,
+                &format!("submit-reviewer-{suffix}"),
+            ),
+            SubmitProposalInput {
+                item_id,
+                proposal_id: proposal.id,
+            },
+        )
+        .await
+        .unwrap();
+    proposal.id
 }
 
 #[tokio::test]
@@ -1812,6 +1856,182 @@ async fn progress_rebuild_repairs_drift_is_idempotent_and_tenant_isolated() {
         .await
         .unwrap_err();
     assert!(matches!(error, TranslationError::JobNotFound));
+}
+
+#[tokio::test]
+async fn reviewer_queue_and_workload_are_assignment_scoped_and_bounded() {
+    let (database, service, tenant_id) = fixture().await;
+    let progress_service = TranslationProgressService::new(
+        database.clone(),
+        Arc::new(TranslationTargetRegistry::default()),
+        Arc::new(TestTenantLocalePolicies),
+    );
+    let (approved_item_id, _) =
+        create_approved_item(&service, tenant_id, "reviewer-approved").await;
+    let job_id = job_item::Entity::find_by_id(approved_item_id)
+        .one(&database)
+        .await
+        .unwrap()
+        .unwrap()
+        .job_id;
+
+    let unassigned_item = service
+        .add_item(
+            write_context(tenant_id, "add-reviewer-unassigned"),
+            AddItemInput {
+                job_id,
+                identity: identity("asset-reviewer-unassigned"),
+            },
+        )
+        .await
+        .unwrap();
+    let assigned_item = service
+        .add_item(
+            write_context(tenant_id, "add-reviewer-assigned"),
+            AddItemInput {
+                job_id,
+                identity: identity("asset-reviewer-assigned"),
+            },
+        )
+        .await
+        .unwrap();
+    let reviewer_id = Uuid::new_v4();
+    service
+        .assign_item(
+            user_write_context(
+                tenant_id,
+                Uuid::new_v4(),
+                Action::Manage,
+                "assign-reviewer-item",
+            ),
+            AssignItemInput {
+                item_id: assigned_item.id,
+                expected_revision: assigned_item.revision,
+                assignee: PortActor::user(reviewer_id.to_string()),
+            },
+        )
+        .await
+        .unwrap();
+    let unassigned_proposal = submit_item(
+        &service,
+        tenant_id,
+        Uuid::new_v4(),
+        unassigned_item.id,
+        "unassigned",
+    )
+    .await;
+    let assigned_proposal = submit_item(
+        &service,
+        tenant_id,
+        reviewer_id,
+        assigned_item.id,
+        "assigned",
+    )
+    .await;
+
+    let reviewer = PortActor::user(reviewer_id.to_string());
+    let assigned_queue = progress_service
+        .list_reviewer_queue(
+            read_context(tenant_id),
+            ReviewerQueueInput {
+                job_id,
+                assignee: Some(reviewer.clone()),
+                include_unassigned: false,
+                limit: 50,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(assigned_queue.len(), 1);
+    assert_eq!(assigned_queue[0].item.id, assigned_item.id);
+    assert_eq!(assigned_queue[0].proposal_id, assigned_proposal);
+    assert_eq!(assigned_queue[0].item.assignee, Some(reviewer.clone()));
+
+    let all_queue = progress_service
+        .list_reviewer_queue(
+            read_context(tenant_id),
+            ReviewerQueueInput {
+                job_id,
+                assignee: None,
+                include_unassigned: true,
+                limit: 50,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(all_queue.len(), 2);
+    assert!(
+        all_queue
+            .iter()
+            .any(|item| item.proposal_id == unassigned_proposal)
+    );
+    assert!(
+        all_queue
+            .iter()
+            .any(|item| item.proposal_id == assigned_proposal)
+    );
+
+    let assigned_only_queue = progress_service
+        .list_reviewer_queue(
+            read_context(tenant_id),
+            ReviewerQueueInput {
+                job_id,
+                assignee: None,
+                include_unassigned: false,
+                limit: 50,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(assigned_only_queue.len(), 1);
+    assert_eq!(assigned_only_queue[0].item.id, assigned_item.id);
+
+    let invalid_limit = progress_service
+        .list_reviewer_queue(
+            read_context(tenant_id),
+            ReviewerQueueInput {
+                job_id,
+                assignee: None,
+                include_unassigned: true,
+                limit: 0,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(invalid_limit, TranslationError::InvalidRequest(_)));
+
+    let workloads = progress_service
+        .list_reviewer_workload(read_context(tenant_id), ReviewerWorkloadInput { job_id })
+        .await
+        .unwrap();
+    assert_eq!(workloads.len(), 2);
+    let unassigned = workloads
+        .iter()
+        .find(|workload| workload.assignee.is_none())
+        .unwrap();
+    assert_eq!(unassigned.open_items, 2);
+    assert_eq!(unassigned.in_review_items, 1);
+    assert_eq!(unassigned.approved_items, 1);
+    assert_eq!(unassigned.source_characters, 8);
+    let assigned = workloads
+        .iter()
+        .find(|workload| workload.assignee.as_ref() == Some(&reviewer))
+        .unwrap();
+    assert_eq!(assigned.open_items, 1);
+    assert_eq!(assigned.in_review_items, 1);
+    assert_eq!(assigned.approved_items, 0);
+    assert_eq!(assigned.source_characters, 4);
+
+    let other_tenant_id = Uuid::new_v4();
+    seed_tenant(&database, other_tenant_id).await;
+    let isolated = progress_service
+        .list_reviewer_workload(
+            read_context(other_tenant_id),
+            ReviewerWorkloadInput { job_id },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(isolated, TranslationError::JobNotFound));
 }
 
 #[tokio::test]

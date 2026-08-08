@@ -758,7 +758,7 @@ adapter and must not be used as artifact identity or durable policy state.
   policy revision, and requires the named capability's explicit grant.
   `SeaOrmArtifactDataCapabilityBrokerResolver`,
   `SeaOrmArtifactDataObjectCapabilityBrokerResolver`,
-  `SeaOrmArtifactSecretCapabilityBrokerResolver`, and
+  `SeaOrmArtifactSecretCapabilityBrokerResolver`, and the facade-constructed
   `ArtifactMcpCapabilityBrokerResolver` then derive their data-adjacent scopes
   only from that result. The sandbox host checks data and object-data
   prefix/operation, logical-secret, and MCP server/tool constraints before a route runs. The
@@ -874,8 +874,9 @@ adapter and must not be used as artifact identity or durable policy state.
   event-subscription projector, and binding idempotency store; server runtime,
   outbox projection, and routed artifact HTTP no longer construct those owner
   adapters directly. It also owns construction of the logical secret-binding
-  service, dynamic `platform.secrets` capability resolver, and host-only
-  exact-revision secret-use service, so callers cannot bypass their distinct
+  service, dynamic `platform.secrets` capability resolver, host-only
+  exact-revision secret-use service, and default secret-handle policy, so
+  callers cannot bypass their distinct
   authorization ports or create a sandbox-visible secret-value broker directly.
   RBAC permission evaluation remains a separate RBAC-owner
   authorization adapter. `EffectivePolicyService` likewise owns the
@@ -1418,12 +1419,12 @@ migrations or arbitrary SQL.
   Value-consuming secret use now passes through the host-only exact-revision
   service described below; `platform.secrets` itself remains handle-only so it
   cannot become a value-exfiltration capability. The production server
-  registers that route with `SeaOrmArtifactSecretHandlePolicy`, which repeats
+  registers that route with `ModuleControlPlane::artifact_secret_handle_policy`, which repeats
   exact installation, lifecycle, policy-revision, explicit-grant, and
   owner-derived-scope validation immediately before the binding read. Event
   delivery remains durable owner-queued ingress into admitted bindings rather
   than an outbound guest capability. `platform.mcp` is now composed through
-  the MCP owner with the stable `rustok` alias, exact artifact-derived service
+  `ModuleControlPlane` and the MCP owner with the stable `rustok` alias, exact artifact-derived service
   identity, existing access-policy contract, and fail-closed durable audit. It
   exposes only the read-only registry tool surface; external aliases require
   explicit host-owned adapters and cannot be supplied by artifacts.
@@ -1665,9 +1666,30 @@ Focused verification on 2026-08-06 passed `cargo test --locked -p rustok-modules
 event-contract release artifact. The control-plane write-path, strict OCI
 transport, and lifecycle-bypass verifiers also pass; the last now proves the
 obsolete direct toggle helper is absent rather than allowing a migration-only
-exception. The server-adapter check remains an environment follow-up: this host
-exhausts virtual memory while compiling the unrelated `rustok-admin` crate
-before the selected adapter test binary can run.
+exception.
+
+Focused verification on 2026-08-08 passed `cargo test --locked -p
+rustok-modules --lib` (191 tests) after the owner facade took over production
+construction of the policy-revision cursor, secret-handle policy,
+`platform.mcp` capability resolver, exact request-scoped governance follow-up
+projection, and the public publish-status projection. Its regression tests
+cover durable failed-stage facts, approval override, actor filtering, request
+identity, semantic next-action selection, final-publication guidance after the
+required stages pass, host-only attached-artifact delivery facts, and the
+owner-authorized content-addressed artifact-upload slot including exact replay
+and actor rejection, owner-issued remote runner transition results,
+actor-specific authorization, and owner-derived rejected-request retry and
+publisher facts. `cargo check --locked -p rustok-modules` also passed for the
+current owner/server cutover. Both default and `--no-default-features`
+`cargo check --locked -p rustok-server` attempts exceeded ten minutes without
+diagnostic output after the local build cache was cleared, so they do not count
+as passing server checks. The unrelated dirty `rustok-translation` source still
+contains its earlier unresolved `hash_manifest` reference in
+`crates/rustok-translation/src/progress.rs`; no foreign translation code was
+changed here. The matching `cargo test` target still cannot reach its test
+binary on this host: the unrelated `rustok-storefront` and `rustok-admin`
+cdylib links exhaust linker memory (`LNK1102`). These are environment/worktree
+constraints, not passing server tests.
 
 ## Phase 4 - Isolated Rust Module Build Worker
 
@@ -2548,7 +2570,67 @@ multi-node reconciliation path consumed by those transports.
 - [x] Move marketplace list/detail reads to the host-composed
   `SharedModuleMarketplaceCatalog`. GraphQL and native admin consume the same
   owner DTO, and detail lifecycle metadata is mapped directly from the owner
-  snapshot without transport-local stage or moderation fallbacks.
+  snapshot without transport-local stage or moderation fallbacks. The durable
+  registry-release projection that enriches static catalog entries with
+  localized active metadata, canonical artifact references, yanked versions,
+  and publisher identity is now also an owner query on
+  `SeaOrmModuleGovernanceService`. GraphQL and the public registry HTTP adapter
+  map those canonical facts into their transport shapes and no longer query
+  registry release or translation tables. The public publish-status projection
+  is likewise owner-scoped by exact request ID: request identity,
+  warnings/errors, acceptance, approval-override guidance, semantic next
+  action, validation stages, gates, and actor-visible actions are derived from
+  durable registry facts in `rustok-modules`; the HTTP adapter supplies
+  authenticated actor facts and maps the semantic action to its route/text
+  without publish-request SQL or policy reconstruction. The same exact status
+  projection serves approval previews, removing the duplicate focused
+  follow-up read path. After all required stages pass, an approved request
+  resolves to final publication rather than repeating a completed stage
+  operation.
+  External-prebuilt and platform-build staging similarly dispatch directly to
+  owner commands and reuse the same exact status snapshot for dry-run and
+  committed response identity/status, rather than a server-local
+  publish-request existence or post-command model read; the canonical owner
+  `not_found` error reaches the HTTP mapper.
+  Creation and artifact upload also return the canonical exact status
+  projection. Upload derives its destination through an owner-authorized,
+  SHA-256 content-addressed slot; the host conditionally creates the object,
+  rehashes an existing collision, and may never select a storage key or delete
+  a prior artifact inline. Exact retry metadata reuses the attached slot, while
+  a mismatch fails before storage attachment. The platform-authoring producer
+  uses the same slot contract, leaving retention-aware owner policy as the only
+  historical-object cleanup authority.
+  Validation enqueue, manual validation-stage reporting, and approve/reject/
+  request-changes/hold/resume responses all consume the exact owner status
+  projection after their mutation. The HTTP adapter no longer reads an updated
+  request model to reconstruct acceptance, errors, or next-step guidance.
+  Remote-runner heartbeat and terminal-completion responses likewise use the
+  owner-issued `ModuleRemoteValidationStageTransition` and never reread a
+  server validation-stage model. The duplicate registry-governance remote
+  runner mutation adapter was deleted; only the owner-routed transition path
+  remains.
+  That exact owner status projection now carries authenticated `can_manage`
+  and `can_review` facts. Live validation, validation-stage reporting, and
+  moderation authorize through them rather than server-local publish-request
+  or owner-binding reads; unauthenticated status projections expose no
+  governance actions. The projection also supplies rejected-request retry
+  eligibility, effective publisher identity, and latest validation-stage facts,
+  so every live operation on an existing request avoids server
+  publish-request-model reads after its owner status lookup.
+  The artifact-download adapter uses a separate host-only owner projection for
+  attached storage key and content type, treating missing/unattached artifacts
+  as unavailable without exposing storage topology through the public status
+  contract or reading a server request model.
+  Validation-queue and validation-stage dry-run previews also obtain request
+  identity only from the authenticated exact owner status snapshot; their live
+  commands remain owner-authorized mutation paths rather than server-local
+  request preflights.
+  Approve, reject, request-changes, hold, and resume previews follow the same
+  path; approval override warning text and pending-stage facts remain owner
+  derived rather than HTTP-local policy.
+  Owner transfer obtains its exact binding snapshot through the owner before
+  authorization and after the mutation, with no server owner-table read or
+  persistence-model response in that operation.
 - [ ] Map canonical codes/details without reconstructing issue/retry taxonomy.
 - [ ] Require typed actor, tenant, permission, idempotency, and revision inputs.
 - [x] Keep subscriptions/build events as transport adapters over owner events.

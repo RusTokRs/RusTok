@@ -72,7 +72,12 @@ selection.
   approved/applied units, completed resources, and character workload.
   `TranslationProgressService` provides tenant-isolated reads and a
   Manage-authorized deterministic rebuild that verifies source/proposal
-  digests and owner receipt evidence.
+  digests and owner receipt evidence. Reviewer queue and workload reads derive
+  directly from tenant-scoped job-item and proposal evidence: the queue contains
+  only submitted, unapproved current proposals for `in_review` items, while
+  workload groups nonterminal work by current assignee, including unassigned
+  work. Both reads fail closed on inconsistent workflow evidence and enforce
+  explicit queue and workload bounds.
 - Media, Taxonomy, Blog category, Navigation menu, and Pages metadata are registered owner
   providers with durable change-cursor repair and exact-locale aggregate
   coverage. Taxonomy applies term `name`, review-only `slug`, and optional
@@ -157,8 +162,8 @@ selection.
   package for the same control plane: one typed operation/response contract, an
   SSR/hydrate native `#[server]` adapter over `HostRuntimeContext`, and a
   CSR/headless GraphQL adapter over `rustok-graphql`. Both paths cover the same
-  39 operations, including the six glossary and six memory operations,
-  bounded job export and atomic item import, plus
+  41 operations, including the six glossary and six memory operations,
+  bounded job export and atomic item import, reviewer queue/workload reads, plus
   non-billable machine-translation estimation, machine-proposal generation,
   status, cancellation, and recovery. Both module-owned workbenches expose the
   same machine workflow controls plus revision-guarded assignment/unassignment,
@@ -173,9 +178,10 @@ selection.
   owner-service paths used by the host. Runtime evidence covers policy,
   glossary lifecycle, bounded interchange, assignment, manual proposal
   save/submit/review/apply, deterministic QA rejection, cancellation, retry,
-  unknown-outcome apply recovery, job progress and rebuild, Translation Memory
-  lookup/lifecycle, inventory sync/full rebuild, provider/required-target
-  progress, and machine generation/status/cancellation/audited recovery through
+  unknown-outcome apply recovery, job progress and rebuild, reviewer queue and
+  workload reads, Translation Memory lookup/lifecycle, inventory sync/full
+  rebuild, provider/required-target progress, and machine generation/status/
+  cancellation/audited recovery through
   a deterministic neutral `MachineTranslationPort` factory. It also covers
   degraded machine-provider health, cross-tenant isolation, mismatched
   extracted host contexts, empty idempotency keys, and fail-closed missing
@@ -300,9 +306,9 @@ selection.
     denial;
   - registered native HTTP server-function tests execute policy, glossaries,
     bounded interchange, assignment, manual workflow/apply, QA rejection,
-    cancellation, retry, apply recovery, job progress, Translation Memory,
-    inventory rebuild, provider/required-target progress, and machine
-    generation/status/cancellation/recovery with URL-encoded requests and
+    cancellation, retry, apply recovery, job progress, reviewer queue/workload,
+    Translation Memory, inventory rebuild, provider/required-target progress,
+    and machine generation/status/cancellation/recovery with URL-encoded requests and
     extracted authenticated host contexts; negative evidence includes invalid
     bounds, stale source rejection, cross-tenant isolation, context mismatch,
     idempotency validation, owner failure, unknown outcome, degraded machine
@@ -334,8 +340,8 @@ selection.
    production-database multi-replica evidence.
 2. Registered native HTTP server-function parity is runtime-verified for
    recovery, assignment, cancellation, retry, policy, glossaries, Translation
-   Memory, QA, progress, inventory, interchange, and manual workflow
-   operations.
+   Memory, QA, progress, reviewer queue/workload, inventory, interchange, and
+   manual workflow operations.
 3. File-backed independent-pool and separate-process evidence is complete for
    automated Translation Memory retention: duplicate replica claims converge
    on one revision/receipt, a crash after claim is reclaimed, and successive

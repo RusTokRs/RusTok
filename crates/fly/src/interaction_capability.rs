@@ -139,49 +139,46 @@ pub fn validate_interaction_capabilities(
 ) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
     visit_project_components(&document.project, |component, visit| {
-        if let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() {
-            if let Ok(ComponentAction::ProviderAction {
+        if let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned()
+            && let Ok(ComponentAction::ProviderAction {
                 provider,
                 action,
                 input,
             }) = serde_json::from_value::<ComponentAction>(raw)
-            {
-                validate_provider_interaction(
-                    registry,
-                    InteractionCapabilityUse {
-                        kind: InteractionCapabilityKind::Action,
-                        provider: &provider,
-                        operation: &action,
-                        input: &input,
-                        missing_policy: policy.provider_actions,
-                        component_id: component.id.as_deref(),
-                        canonical_path: visit.path(),
-                    },
-                    &mut diagnostics,
-                );
-            }
+        {
+            validate_provider_interaction(
+                registry,
+                InteractionCapabilityUse {
+                    kind: InteractionCapabilityKind::Action,
+                    provider: &provider,
+                    operation: &action,
+                    input: &input,
+                    missing_policy: policy.provider_actions,
+                    component_id: component.id.as_deref(),
+                    canonical_path: visit.path(),
+                },
+                &mut diagnostics,
+            );
         }
 
-        if let Some(raw) = component.extensions.get(FLY_FORM_FIELD).cloned() {
-            if let Ok(form) = serde_json::from_value::<ComponentForm>(raw) {
-                if let (Some(provider), Some(action)) =
-                    (form.provider.as_deref(), form.action.as_deref())
-                {
-                    validate_provider_interaction(
-                        registry,
-                        InteractionCapabilityUse {
-                            kind: InteractionCapabilityKind::Form,
-                            provider,
-                            operation: action,
-                            input: &form.input,
-                            missing_policy: policy.provider_forms,
-                            component_id: component.id.as_deref(),
-                            canonical_path: visit.path(),
-                        },
-                        &mut diagnostics,
-                    );
-                }
-            }
+        if let Some(raw) = component.extensions.get(FLY_FORM_FIELD).cloned()
+            && let Ok(form) = serde_json::from_value::<ComponentForm>(raw)
+            && let (Some(provider), Some(action)) =
+                (form.provider.as_deref(), form.action.as_deref())
+        {
+            validate_provider_interaction(
+                registry,
+                InteractionCapabilityUse {
+                    kind: InteractionCapabilityKind::Form,
+                    provider,
+                    operation: action,
+                    input: &form.input,
+                    missing_policy: policy.provider_forms,
+                    component_id: component.id.as_deref(),
+                    canonical_path: visit.path(),
+                },
+                &mut diagnostics,
+            );
         }
     });
     diagnostics

@@ -1,32 +1,17 @@
-#![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
-
 use anyhow::{Context, anyhow};
-use object_store::path::Path;
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match};
+use object_store::{ObjectStoreExt, PutMode, path::Path};
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
-use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-};
+use rustok_storage::StorageRuntime;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::models::registry_governance_event::{self, Entity as RegistryGovernanceEventEntity};
 use crate::models::registry_module_owner::{self, Entity as RegistryModuleOwnerEntity};
 use crate::models::registry_module_release::{
     self, Entity as RegistryModuleReleaseEntity, RegistryModuleReleaseStatus,
 };
-use crate::models::registry_module_release_translation::{
-    self as registry_module_release_translation, Entity as RegistryModuleReleaseTranslationEntity,
-};
-use crate::models::registry_publish_request::{
-    self, Entity as RegistryPublishRequestEntity, RegistryPublishRequestStatus,
-};
-use crate::models::registry_validation_stage::{
-    self, Entity as RegistryValidationStageEntity, RegistryValidationStageStatus,
-};
-use crate::modules::{CatalogManifestModule, CatalogModuleVersion};
+use crate::models::registry_publish_request::{self, RegistryPublishRequestStatus};
+use crate::models::registry_validation_stage::{self, RegistryValidationStageStatus};
 use crate::services::marketplace_catalog::{RegistryPublishArtifactOrigin, RegistryPublishRequest};
 use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
 use thiserror::Error;
@@ -34,9 +19,6 @@ use thiserror::Error;
 pub use rustok_modules::MODULE_PUBLISH_ARTIFACT_MAX_BYTES;
 const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
     &["compile_smoke", "targeted_tests", "security_policy_review"];
-const PLATFORM_BUILT_VALIDATION_FOLLOW_UP_GATES: &[&str] = &["compile_smoke", "targeted_tests"];
-const EXTERNAL_PREBUILT_VALIDATION_FOLLOW_UP_GATES: &[&str] = &["security_policy_review"];
-const ALLOY_AUTHORED_VALIDATION_FOLLOW_UP_GATES: &[&str] = &["security_policy_review"];
 pub use rustok_modules::REGISTRY_APPROVE_OVERRIDE_REASON_CODES;
 pub use rustok_modules::REGISTRY_HOLD_REASON_CODES;
 pub use rustok_modules::REGISTRY_OWNER_TRANSFER_REASON_CODES;
@@ -126,15 +108,15 @@ pub struct RegistryGovernanceService {
 
 #[derive(Debug, Clone)]
 pub struct RegistryValidationQueueResult {
-    pub request: registry_publish_request::Model,
+    pub status: RegistryPublishRequestStatusSnapshot,
     pub queued: bool,
     pub validation_job_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct RegistryValidationStageMutationResult {
-    pub request: registry_publish_request::Model,
-    pub stage: registry_validation_stage::Model,
+pub struct RegistryValidationStageReportResult {
+    pub status: RegistryPublishRequestStatusSnapshot,
+    pub stage: RegistryValidationStageSnapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -159,6 +141,8 @@ pub struct RegistryRemoteValidationClaim {
 #[derive(Debug, Clone)]
 pub struct RegistryPublishRequestSnapshot {
     pub id: String,
+    pub slug: String,
+    pub version: String,
     pub status: String,
     pub artifact_origin: String,
     pub requested_by: RegistryPrincipalRef,
@@ -273,17 +257,37 @@ pub struct RegistryModuleLifecycleSnapshot {
 }
 
 #[derive(Debug, Clone)]
-pub struct RegistryPublishRequestFollowUpSnapshot {
+pub struct RegistryPublishRequestStatusSnapshot {
+    pub request: RegistryPublishRequestSnapshot,
+    pub authorization: RegistryPublishRequestAuthorizationSnapshot,
+    pub effective_publisher_principal: Option<serde_json::Value>,
+    pub rejected_retry_allowed: bool,
     pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
     pub validation_stages: Vec<RegistryValidationStageSnapshot>,
     pub approval_override_required: bool,
+    pub approval_override_reason_codes: Vec<String>,
+    pub approval_override_warning: Option<String>,
     pub governance_actions: Vec<RegistryGovernanceActionSnapshot>,
+    pub accepted: bool,
+    pub next_action: Option<rustok_modules::ModuleGovernancePublishRequestNextAction>,
 }
 
 #[derive(Debug, Clone)]
-struct RegistryLocalizedMetadata {
-    name: String,
-    description: String,
+pub struct RegistryPublishRequestAuthorizationSnapshot {
+    pub can_manage: bool,
+    pub can_review: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RegistryPublishRequestPermission {
+    Manage,
+    Review,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryPublishArtifactDownloadSnapshot {
+    pub storage_key: String,
+    pub content_type: String,
 }
 
 pub mod publishing;
@@ -296,14 +300,6 @@ pub mod validation;
 pub use publishing::request_status_label;
 pub use releases::release_status_label;
 pub use validation::validation_stage_status_label;
-
-pub(crate) use publishing::{
-    publish_request_governance_actions, publish_request_governance_actions_for_authority,
-};
-pub(crate) use validation::{
-    compare_semver_desc, derive_follow_up_gate_snapshots, derive_validation_stage_snapshots,
-    validation_stage_details_value,
-};
 
 impl RegistryGovernanceService {
     pub fn new(db: DatabaseConnection) -> Self {
@@ -331,67 +327,60 @@ impl RegistryGovernanceService {
 
     async fn store_registry_artifact(
         &self,
-        request: &registry_publish_request::Model,
+        artifact_storage_key: &str,
         artifact: &RegistryArtifactUpload,
-    ) -> anyhow::Result<StoredRegistryArtifact> {
-        let artifact_storage_key = registry_artifact_storage_key(&request.id, request.created_at)?;
-        self.require_storage()?
+        checksum_sha256: &str,
+    ) -> anyhow::Result<()> {
+        let storage = self.require_storage()?;
+        let mut options = storage.put_options(&artifact.content_type);
+        options.mode = PutMode::Create;
+        let created = match storage
             .objects
             .put_opts(
-                &Path::from(artifact_storage_key.as_str()),
+                &Path::from(artifact_storage_key),
                 artifact.bytes.clone().into(),
-                self.require_storage()?.put_options(&artifact.content_type),
+                options,
             )
+            .await
+        {
+            Ok(_) => true,
+            Err(
+                object_store::Error::AlreadyExists { .. }
+                | object_store::Error::Precondition { .. },
+            ) => false,
+            Err(error) => {
+                return Err(anyhow!(error).context(format!(
+                    "failed to store registry artifact at '{artifact_storage_key}'"
+                )));
+            }
+        };
+        if created {
+            return Ok(());
+        }
+
+        let existing = storage
+            .objects
+            .get(&Path::from(artifact_storage_key))
+            .await
+            .with_context(|| {
+                format!("failed to read existing registry artifact at '{artifact_storage_key}'")
+            })?
+            .bytes()
             .await
             .with_context(|| {
                 format!(
-                    "failed to store registry artifact for request '{}' at '{}'",
-                    request.id, artifact_storage_key
+                    "failed to read existing registry artifact body at '{artifact_storage_key}'"
                 )
             })?;
+        if existing.len() != artifact.bytes.len()
+            || hex::encode(Sha256::digest(existing.as_ref())) != checksum_sha256
+        {
+            return Err(conflict_error(format!(
+                "immutable registry artifact slot '{artifact_storage_key}' contains different bytes"
+            )));
+        }
 
-        Ok(StoredRegistryArtifact {
-            artifact_storage_key,
-            artifact_size: artifact.bytes.len() as i64,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct StoredRegistryArtifact {
-    artifact_storage_key: String,
-    artifact_size: i64,
-}
-
-fn registry_artifact_storage_key(
-    request_id: &str,
-    created_at: chrono::DateTime<chrono::Utc>,
-) -> anyhow::Result<String> {
-    let digest = Sha256::digest(request_id.as_bytes());
-    let mut identity = [0_u8; 16];
-    identity.copy_from_slice(&digest[..16]);
-    ObjectKey::chronological(
-        "registry-artifact",
-        ObjectZone::Objects,
-        ObjectScope::Platform,
-        created_at,
-        Uuid::from_bytes(identity),
-        "crate",
-    )
-    .map(|key| key.to_string())
-    .map_err(Into::into)
-}
-
-fn registry_artifact_download_path(request_id: &str) -> String {
-    format!("/v2/catalog/publish/{request_id}/artifact/download")
-}
-
-fn validation_follow_up_gates_for_origin(artifact_origin: &str) -> &'static [&'static str] {
-    match artifact_origin {
-        "platform_built" => PLATFORM_BUILT_VALIDATION_FOLLOW_UP_GATES,
-        "external_prebuilt" => EXTERNAL_PREBUILT_VALIDATION_FOLLOW_UP_GATES,
-        "alloy_authored" => ALLOY_AUTHORED_VALIDATION_FOLLOW_UP_GATES,
-        _ => &[],
+        Ok(())
     }
 }
 
@@ -404,83 +393,6 @@ fn follow_up_gate_detail(gate: &str) -> &'static str {
         }
         _ => "External follow-up gate is still pending.",
     }
-}
-
-async fn load_release_translation_rows<C>(
-    db: &C,
-    release_id: &str,
-) -> anyhow::Result<Vec<registry_module_release_translation::Model>>
-where
-    C: ConnectionTrait,
-{
-    Ok(RegistryModuleReleaseTranslationEntity::find()
-        .filter(registry_module_release_translation::Column::ReleaseId.eq(release_id))
-        .order_by_asc(registry_module_release_translation::Column::Locale)
-        .all(db)
-        .await?)
-}
-
-fn resolve_registry_metadata<T, FName, FDescription, FLocale>(
-    translations: &[T],
-    preferred_locale: Option<&str>,
-    fallback_locale: Option<&str>,
-    locale_of: FLocale,
-    name_of: FName,
-    description_of: FDescription,
-) -> Option<RegistryLocalizedMetadata>
-where
-    FLocale: Fn(&T) -> &str,
-    FName: Fn(&T) -> &str,
-    FDescription: Fn(&T) -> &str,
-{
-    let candidates = build_locale_candidates(
-        [
-            preferred_locale,
-            fallback_locale,
-            Some(PLATFORM_FALLBACK_LOCALE),
-        ],
-        true,
-    );
-
-    for candidate in candidates {
-        if let Some(translation) = translations
-            .iter()
-            .find(|translation| locale_tags_match(locale_of(translation), &candidate))
-        {
-            return Some(RegistryLocalizedMetadata {
-                name: name_of(translation).to_string(),
-                description: description_of(translation).to_string(),
-            });
-        }
-    }
-
-    translations
-        .first()
-        .map(|translation| RegistryLocalizedMetadata {
-            name: name_of(translation).to_string(),
-            description: description_of(translation).to_string(),
-        })
-}
-
-async fn load_release_metadata<C>(
-    db: &C,
-    release_id: &str,
-    preferred_locale: Option<&str>,
-    fallback_locale: Option<&str>,
-) -> anyhow::Result<RegistryLocalizedMetadata>
-where
-    C: ConnectionTrait,
-{
-    let translations = load_release_translation_rows(db, release_id).await?;
-    resolve_registry_metadata(
-        &translations,
-        preferred_locale,
-        fallback_locale,
-        |translation| translation.locale.as_str(),
-        |translation| translation.name.as_str(),
-        |translation| translation.description.as_str(),
-    )
-    .ok_or_else(|| anyhow!("Registry release '{release_id}' is missing metadata translations"))
 }
 
 pub(crate) fn principal_from_json(value: &serde_json::Value) -> RegistryPrincipalRef {
@@ -524,74 +436,6 @@ fn authority_actor(authority: &RegistryAuthority) -> &str {
     authority.principal.label()
 }
 
-#[allow(dead_code)]
-fn governance_event_payload(details: &serde_json::Value) -> RegistryGovernanceEventPayload {
-    let warnings = details
-        .get("warnings")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|value| value.as_str().map(ToString::to_string))
-        .collect();
-    let errors = details
-        .get("errors")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|value| value.as_str().map(ToString::to_string))
-        .collect();
-    let attempt_number = details
-        .get("attempt_number")
-        .and_then(serde_json::Value::as_i64)
-        .map(|value| value as i32);
-
-    let owner_transition = details
-        .get("owner_transition")
-        .and_then(serde_json::Value::as_object)
-        .map(|transition| RegistryOwnerTransitionPayload {
-            previous_owner: transition
-                .get("previous_owner")
-                .map(RegistryPrincipalRef::from_json_value),
-            new_owner: transition
-                .get("new_owner")
-                .map(RegistryPrincipalRef::from_json_value),
-            bound_by: transition
-                .get("bound_by")
-                .map(RegistryPrincipalRef::from_json_value),
-        });
-
-    RegistryGovernanceEventPayload {
-        reason: details
-            .get("reason")
-            .and_then(serde_json::Value::as_str)
-            .map(ToString::to_string),
-        reason_code: details
-            .get("reason_code")
-            .and_then(serde_json::Value::as_str)
-            .map(ToString::to_string),
-        detail: details
-            .get("detail")
-            .and_then(serde_json::Value::as_str)
-            .map(ToString::to_string),
-        version: details
-            .get("version")
-            .and_then(serde_json::Value::as_str)
-            .map(ToString::to_string),
-        stage_key: details
-            .get("stage_key")
-            .and_then(serde_json::Value::as_str)
-            .map(ToString::to_string),
-        attempt_number,
-        owner_transition,
-        warnings,
-        errors,
-        mode: details
-            .get("mode")
-            .and_then(serde_json::Value::as_str)
-            .map(ToString::to_string),
-    }
-}
-
 fn authority_can_create_publish_request(
     authority: &RegistryAuthority,
     owner: Option<&registry_module_owner::Model>,
@@ -601,32 +445,6 @@ fn authority_can_create_publish_request(
             principal_matches_ref(&owner.owner_principal, &authority.principal)
         })
         || owner.is_none() && authority.principal.is_user()
-}
-
-fn authority_can_manage_publish_request(
-    authority: &RegistryAuthority,
-    request: &registry_publish_request::Model,
-    owner: Option<&registry_module_owner::Model>,
-) -> bool {
-    let principal_matches_request =
-        principal_matches_ref(&request.requested_by, &authority.principal)
-            || optional_principal_matches_ref(&request.publisher_principal, &authority.principal);
-    let principal_matches_owner = owner
-        .is_some_and(|owner| principal_matches_ref(&owner.owner_principal, &authority.principal));
-
-    authority.can_manage_modules
-        || principal_matches_owner
-        || (owner.is_none() && principal_matches_request)
-}
-
-fn authority_can_review_publish_request(
-    authority: &RegistryAuthority,
-    owner: Option<&registry_module_owner::Model>,
-) -> bool {
-    authority.can_manage_modules
-        || owner.is_some_and(|owner| {
-            principal_matches_ref(&owner.owner_principal, &authority.principal)
-        })
 }
 
 fn authority_can_manage_release(
@@ -643,10 +461,9 @@ fn authority_can_manage_release(
 
 fn authority_can_transfer_registry_owner(
     authority: &RegistryAuthority,
-    binding: &registry_module_owner::Model,
+    binding: &RegistryModuleOwnerSnapshot,
 ) -> bool {
-    authority.can_manage_modules
-        || principal_matches_ref(&binding.owner_principal, &authority.principal)
+    authority.can_manage_modules || binding.owner == authority.principal
 }
 
 pub(crate) fn normalize_reason_code(

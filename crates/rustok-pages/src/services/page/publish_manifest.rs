@@ -33,6 +33,24 @@ struct PreparedPublishArtifactManifest {
     provenance_hash: String,
 }
 
+pub(super) struct RebuildSourceProvenance<'a> {
+    pub(super) operation_id: Uuid,
+    pub(super) tenant_id: Uuid,
+    pub(super) page_id: Uuid,
+    pub(super) page_body_id: Uuid,
+    pub(super) locale: &'a str,
+    pub(super) source_format: &'a str,
+    pub(super) source_revision: &'a str,
+    pub(super) artifact_id: Uuid,
+    pub(super) sanitized_hash: &'a str,
+    pub(super) source_hash: &'a str,
+    pub(super) review_hash: &'a str,
+    pub(super) artifact_hash: &'a str,
+    pub(super) materialization_hash: &'a str,
+    pub(super) materialization_identity: &'a Value,
+    pub(super) runtime_snapshots: &'a Value,
+}
+
 pub(crate) async fn persist_publish_manifest_after_save<C>(
     db: &C,
     operation: &page_publish_operation::Model,
@@ -155,23 +173,23 @@ where
 
         let source_revision = body.updated_at.to_string();
         let sanitized_hash = sanitized.sanitized_hash().to_string();
-        let provenance_hash = rebuild_source_provenance_hash(
-            operation.id,
-            operation.tenant_id,
-            operation.page_id,
-            body.id,
-            body.locale.as_str(),
-            body.format.as_str(),
-            source_revision.as_str(),
-            artifact.id,
-            sanitized_hash.as_str(),
-            artifact.source_hash.as_str(),
-            operation.review_hash.as_str(),
-            artifact.artifact_hash.as_str(),
-            materialization_hash.as_str(),
-            &materialization_identity,
-            &runtime_snapshots,
-        )?;
+        let provenance_hash = rebuild_source_provenance_hash(RebuildSourceProvenance {
+            operation_id: operation.id,
+            tenant_id: operation.tenant_id,
+            page_id: operation.page_id,
+            page_body_id: body.id,
+            locale: body.locale.as_str(),
+            source_format: body.format.as_str(),
+            source_revision: source_revision.as_str(),
+            artifact_id: artifact.id,
+            sanitized_hash: sanitized_hash.as_str(),
+            source_hash: artifact.source_hash.as_str(),
+            review_hash: operation.review_hash.as_str(),
+            artifact_hash: artifact.artifact_hash.as_str(),
+            materialization_hash: materialization_hash.as_str(),
+            materialization_identity: &materialization_identity,
+            runtime_snapshots: &runtime_snapshots,
+        })?;
 
         rows.push(PreparedPublishArtifactManifest {
             locale: binding.locale,
@@ -230,7 +248,7 @@ where
             artifact_id: Set(row.artifact_id),
             artifact_hash: Set(row.artifact_hash.clone()),
             materialization_hash: Set(Some(row.materialization_hash.clone())),
-            created_at: Set(operation.created_at.clone()),
+            created_at: Set(operation.created_at),
         }
         .insert(db)
         .await?;
@@ -254,7 +272,7 @@ where
             materialization_identity: Set(row.materialization_identity),
             runtime_snapshots: Set(row.runtime_snapshots),
             provenance_hash: Set(row.provenance_hash),
-            created_at: Set(operation.created_at.clone()),
+            created_at: Set(operation.created_at),
         }
         .insert(db)
         .await?;
@@ -262,41 +280,26 @@ where
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn rebuild_source_provenance_hash(
-    operation_id: Uuid,
-    tenant_id: Uuid,
-    page_id: Uuid,
-    page_body_id: Uuid,
-    locale: &str,
-    source_format: &str,
-    source_revision: &str,
-    artifact_id: Uuid,
-    sanitized_hash: &str,
-    source_hash: &str,
-    review_hash: &str,
-    artifact_hash: &str,
-    materialization_hash: &str,
-    materialization_identity: &Value,
-    runtime_snapshots: &Value,
+    source: RebuildSourceProvenance<'_>,
 ) -> PagesResult<String> {
-    let materialization_identity_hash = stable_hash(materialization_identity)?;
-    let runtime_snapshots_hash = stable_hash(runtime_snapshots)?;
+    let materialization_identity_hash = stable_hash(source.materialization_identity)?;
+    let runtime_snapshots_hash = stable_hash(source.runtime_snapshots)?;
     stable_hash(&(
         PAGE_PUBLISH_REBUILD_SOURCE_FORMAT,
-        operation_id,
-        tenant_id,
-        page_id,
-        page_body_id,
-        locale,
-        source_format,
-        source_revision,
-        artifact_id,
-        sanitized_hash,
-        source_hash,
-        review_hash,
-        artifact_hash,
-        materialization_hash,
+        source.operation_id,
+        source.tenant_id,
+        source.page_id,
+        source.page_body_id,
+        source.locale,
+        source.source_format,
+        source.source_revision,
+        source.artifact_id,
+        source.sanitized_hash,
+        source.source_hash,
+        source.review_hash,
+        source.artifact_hash,
+        source.materialization_hash,
         materialization_identity_hash.as_str(),
         runtime_snapshots_hash.as_str(),
     ))

@@ -94,12 +94,12 @@ consumer whose result type is `()`. The resulting receipt contains only logical
 reference, revision, and purpose; resolver keys, values, and consumer output are
 not serializable through this boundary.
 The production server registers this capability through
-`SeaOrmArtifactSecretHandlePolicy`. The dynamic resolver first checks the exact
-active installation and durable grant, and the policy repeats that check
-immediately before the binding read so a lifecycle or capability-revision
-change cannot leave a stale broker authorized. The repeated check derives the
-tenant/module/data-contract/policy scope from owner installation state; neither
-the guest nor a secret resolver supplies it.
+`ModuleControlPlane::artifact_secret_handle_policy`. The dynamic resolver first
+checks the exact active installation and durable grant, and the policy repeats
+that check immediately before the binding read so a lifecycle or
+capability-revision change cannot leave a stale broker authorized. The repeated
+check derives the tenant/module/data-contract/policy scope from owner
+installation state; neither the guest nor a secret resolver supplies it.
 
 `OciDistributionArtifactRegistry` resolves only digest-pinned references. It
 requires the returned manifest digest to match the requested reference, reads
@@ -346,7 +346,62 @@ owner-generated diagnostics rather than caller or runner output.
 catalog. The host composes local and configured remote providers behind
 `SharedModuleMarketplaceCatalog`; native and GraphQL adapters consume that same
 handle and may not scan the workspace or synthesize catalog state. Registry
-detail reads attach `ModuleGovernanceLifecycleSnapshot`, whose owner service
+release projection also belongs to `SeaOrmModuleGovernanceService`: it enriches
+host-supplied static facts only with durable localized active metadata, canonical
+artifact references, yanked versions, and publisher identity. GraphQL and the
+public registry adapter map its owner DTO without reading registry tables.
+The same owner exposes one request-scoped publish-status snapshot for public
+status and approval-preview paths. The status projection loads only the
+addressed immutable request, includes its identity,
+warnings, errors, acceptance fact, override guidance, and semantic next action,
+and derives validation stages, gates, override requirements, and actor-visible
+actions from durable facts. It never substitutes a newer request for the same
+slug. The server supplies only authenticated principal/permission facts and
+maps a semantic next action to its own route and response text; it does not
+read a publish-request persistence model or recreate lifecycle policy.
+The external-prebuilt and platform-build staging responses reuse that same
+snapshot for request identity and status in both dry-run and committed paths;
+they do not query a server SeaORM publish-request model before or after the
+owner staging command.
+Creation and artifact-upload responses use the same exact owner status
+projection after their mutation. Artifact upload first asks the owner to
+authorize and issue a digest-derived immutable slot; the host conditionally
+creates or rehashes the object at that slot and then asks the owner to attach
+the same metadata. The host cannot choose a storage key or delete a prior
+artifact inline. Exact retries reuse the attached content-addressed object;
+retention-aware owner policy, not an upload adapter, governs historical-object
+cleanup. The platform-authoring producer follows this identical slot contract.
+Validation enqueue, manual validation-stage reporting, and every live decision
+(approve, reject, request changes, hold, resume) likewise return that exact
+owner status projection after their command. HTTP no longer reconstructs
+acceptance, errors, or the next action from an updated SeaORM request model.
+Remote-runner heartbeat and terminal-completion adapters likewise return the
+owner-issued `ModuleRemoteValidationStageTransition`; they do not read a
+server validation-stage model after the lease transition. The former duplicate
+registry-governance remote-transition adapter was removed, leaving one
+owner-routed runner mutation path.
+The same owner status projection carries authenticated `can_manage` and
+`can_review` facts derived from the durable request and owner binding. Live
+validate, validation-stage report, and moderation mutations authorize through
+those facts rather than server-local publish-request or owner-binding reads;
+an unauthenticated status projection exposes no governance actions. It also
+supplies owner-derived rejected-request retry eligibility, effective publisher
+identity, and the latest stage facts required for approval-override evidence,
+so live adapters no longer read a publish-request persistence model after the
+owner status lookup.
+Artifact download uses a separate host-only owner snapshot containing only the
+attached storage key and content type. It intentionally treats an absent or
+unattached request as unavailable and never adds storage topology to public
+publish-status DTOs.
+Validation-queue and validation-stage dry-run previews likewise use the exact
+owner status snapshot after authentication instead of preflighting a server
+request persistence model.
+Approve, reject, request-changes, hold, and resume previews follow the same
+rule; approval override text and pending-stage facts remain owner-derived.
+Owner-transfer adapters obtain the exact durable binding through the same owner
+service before and after a transfer. They no longer read the owner-binding
+table or return its persistence model from the server boundary.
+Detail reads attach `ModuleGovernanceLifecycleSnapshot`, whose owner service
 derives moderation policy, validation gates, events, and available governance
 actions from durable registry state. A missing catalog handle or unsupported
 durable artifact origin fails closed.

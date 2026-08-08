@@ -152,17 +152,17 @@ fn field_schema(
             Value::String(json_schema_type(kind).to_string()),
         );
     }
-    if kind == ContextValueKind::Array {
-        if let Some(item_kind) = item_kind {
-            let mut items = Map::new();
-            if item_kind != ContextValueKind::Any {
-                items.insert(
-                    "type".to_string(),
-                    Value::String(json_schema_type(item_kind).to_string()),
-                );
-            }
-            schema.insert("items".to_string(), Value::Object(items));
+    if kind == ContextValueKind::Array
+        && let Some(item_kind) = item_kind
+    {
+        let mut items = Map::new();
+        if item_kind != ContextValueKind::Any {
+            items.insert(
+                "type".to_string(),
+                Value::String(json_schema_type(item_kind).to_string()),
+            );
         }
+        schema.insert("items".to_string(), Value::Object(items));
     }
     if let Some(default) = default {
         schema.insert("default".to_string(), default.clone());

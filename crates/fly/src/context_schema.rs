@@ -232,17 +232,17 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
     let mut defaults_applied = 0usize;
 
     for field in &catalog.fields {
-        if resolve_context_path(&context, &field.path).is_none() {
-            if let Some(default) = field.default.clone() {
-                match set_context_path(&mut context, &field.path, default) {
-                    Ok(()) => defaults_applied = defaults_applied.saturating_add(1),
-                    Err(error) => diagnostics.push(context_diagnostic(
-                        ValidationSeverity::Warning,
-                        "runtime_context_default_failed",
-                        &field.path,
-                        format!("field `{}` default could not be applied: {error}", field.id),
-                    )),
-                }
+        if resolve_context_path(&context, &field.path).is_none()
+            && let Some(default) = field.default.clone()
+        {
+            match set_context_path(&mut context, &field.path, default) {
+                Ok(()) => defaults_applied = defaults_applied.saturating_add(1),
+                Err(error) => diagnostics.push(context_diagnostic(
+                    ValidationSeverity::Warning,
+                    "runtime_context_default_failed",
+                    &field.path,
+                    format!("field `{}` default could not be applied: {error}", field.id),
+                )),
             }
         }
     }
@@ -481,19 +481,18 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
             }
             if let (ContextValueKind::Array, Some(item_kind), Value::Array(items)) =
                 (field.kind, field.item_kind, default)
+                && items.iter().any(|item| !item_kind.accepts(item))
             {
-                if items.iter().any(|item| !item_kind.accepts(item)) {
-                    diagnostics.push(context_diagnostic(
-                        ValidationSeverity::Error,
-                        "runtime_context_default_item_type_mismatch",
-                        &field.path,
-                        format!(
-                            "field `{}` default contains items that are not {}",
-                            field.id,
-                            item_kind.as_str()
-                        ),
-                    ));
-                }
+                diagnostics.push(context_diagnostic(
+                    ValidationSeverity::Error,
+                    "runtime_context_default_item_type_mismatch",
+                    &field.path,
+                    format!(
+                        "field `{}` default contains items that are not {}",
+                        field.id,
+                        item_kind.as_str()
+                    ),
+                ));
             }
         }
     }
@@ -1035,13 +1034,12 @@ fn validate_field_identity(field: &ContextFieldDefinition) -> FlyResult<()> {
         }
         if let (ContextValueKind::Array, Some(item_kind), Value::Array(items)) =
             (field.kind, field.item_kind, default)
+            && items.iter().any(|item| !item_kind.accepts(item))
         {
-            if items.iter().any(|item| !item_kind.accepts(item)) {
-                return Err(FlyError::Decode(format!(
-                    "runtime context field default contains items that are not {}",
-                    item_kind.as_str()
-                )));
-            }
+            return Err(FlyError::Decode(format!(
+                "runtime context field default contains items that are not {}",
+                item_kind.as_str()
+            )));
         }
     }
     Ok(())

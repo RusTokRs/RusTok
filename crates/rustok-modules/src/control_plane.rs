@@ -8,30 +8,31 @@ use crate::{
     ArtifactDataExportAuthorizer, ArtifactDataPurgeAuthorizer, ArtifactDataQuotaPolicy,
     ArtifactDataSnapshotAuthorizer, ArtifactDataSnapshotCollectionAuthorizer,
     ArtifactDataSnapshotRetentionAuthorizer, ArtifactEventDeliveryConfig,
-    ArtifactEventDeliveryError, ArtifactLifecycleExecutor, ArtifactScheduleDeliveryConfig,
-    ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer,
-    ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer, ControlPlaneInfrastructure,
-    ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
-    ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
-    ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
-    ModuleLifecycleDbWriter, ModuleStaticDistributionAuthorizer,
-    ModuleStaticDistributionReleaseAuthorizer, ModuleStaticDistributionReleaseVerifier,
-    ModuleStaticDistributionRolloutAuthorizer, ModuleStaticDistributionTopologyResolver,
-    ModuleStaticDistributionWorkerAuthorizer, ModuleStaticPromotionAuthorizer,
-    SeaOrmArtifactBindingIdempotencyStore, SeaOrmArtifactDataCapabilityBrokerResolver,
-    SeaOrmArtifactDataExportService, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
-    SeaOrmArtifactDataObjectGcService, SeaOrmArtifactDataPurgeService,
-    SeaOrmArtifactDataSnapshotCollectionService, SeaOrmArtifactDataSnapshotRetentionService,
-    SeaOrmArtifactDataSnapshotService, SeaOrmArtifactEventSubscriptionProjector,
-    SeaOrmArtifactExecutionObserver, SeaOrmArtifactInstallationStore,
-    SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
-    SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretService,
-    SeaOrmArtifactSecretUseService, SeaOrmModuleArtifactSecurityResolver,
-    SeaOrmModuleArtifactSecurityService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
-    SeaOrmModuleGovernanceService, SeaOrmModulePolicyRevisionConsumer,
-    SeaOrmModulePromotionService, SeaOrmModuleStaticDistributionReleaseService,
-    SeaOrmModuleStaticDistributionRolloutService, SeaOrmModuleStaticDistributionService,
-    SeaOrmModuleStaticDistributionWorkerService, StorageArtifactBlobStore,
+    ArtifactEventDeliveryError, ArtifactLifecycleExecutor, ArtifactMcpCapabilityBrokerResolver,
+    ArtifactMcpInvoker, ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError,
+    ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer,
+    ArtifactSecretValueConsumer, ControlPlaneInfrastructure, ModuleArtifactSecurityAuthorizer,
+    ModuleDefinitionCatalog, ModuleDefinitionError, ModuleEffectivePolicy,
+    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyMaintenanceInput,
+    ModuleEffectivePolicyNodeReadinessInput, ModuleLifecycleDbWriter,
+    ModuleStaticDistributionAuthorizer, ModuleStaticDistributionReleaseAuthorizer,
+    ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRolloutAuthorizer,
+    ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionWorkerAuthorizer,
+    ModuleStaticPromotionAuthorizer, SeaOrmArtifactBindingIdempotencyStore,
+    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataExportService,
+    SeaOrmArtifactDataObjectCapabilityBrokerResolver, SeaOrmArtifactDataObjectGcService,
+    SeaOrmArtifactDataPurgeService, SeaOrmArtifactDataSnapshotCollectionService,
+    SeaOrmArtifactDataSnapshotRetentionService, SeaOrmArtifactDataSnapshotService,
+    SeaOrmArtifactEventSubscriptionProjector, SeaOrmArtifactExecutionObserver,
+    SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
+    SeaOrmArtifactScheduleDeliveryQueue, SeaOrmArtifactSecretCapabilityBrokerResolver,
+    SeaOrmArtifactSecretHandlePolicy, SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
+    SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,
+    SeaOrmModuleBuildService, SeaOrmModuleCompositionService, SeaOrmModuleGovernanceService,
+    SeaOrmModulePolicyRevisionConsumer, SeaOrmModulePromotionService,
+    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionRolloutService,
+    SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
+    StorageArtifactBlobStore,
 };
 use rustok_storage::StorageRuntime;
 
@@ -498,6 +499,22 @@ impl ModuleControlPlane {
         A: ArtifactSecretHandleAuthorizer + Clone,
     {
         SeaOrmArtifactSecretCapabilityBrokerResolver::new(self.db.clone(), authorizer)
+    }
+
+    /// Returns the owner policy that authorizes sandbox-visible secret-handle
+    /// acquisition against the exact admitted installation and policy revision.
+    pub fn artifact_secret_handle_policy(&self) -> SeaOrmArtifactSecretHandlePolicy {
+        SeaOrmArtifactSecretHandlePolicy::new(self.db.clone())
+    }
+
+    /// Returns the owner resolver for `platform.mcp`. The host supplies only
+    /// its audited, alias-bound invocation port; installation scope and grants
+    /// remain owner-derived inside the resolver.
+    pub fn artifact_mcp_capability<I>(&self, invoker: I) -> ArtifactMcpCapabilityBrokerResolver<I>
+    where
+        I: ArtifactMcpInvoker + Clone,
+    {
+        ArtifactMcpCapabilityBrokerResolver::new(self.db.clone(), invoker)
     }
 
     /// Composes a host-only secret value-use boundary. The selected consumer is
