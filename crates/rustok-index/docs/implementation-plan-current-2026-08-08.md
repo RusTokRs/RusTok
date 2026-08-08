@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product-owned Storefront filter resolution merge `215389fcac0e086d7015453d7712fc341d6b722f` and continued on
-`agent/index-storefront-owner-terms-20260808`.
+Status overlay rechecked after Product-owned term translation merge `9a684becf802904baec3e860eb2178c689a0253c` and continued on
+`agent/index-storefront-shadow-executor-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -25,12 +25,18 @@ Source-complete:
 - bounded generic String `TextLike` for all-translations title matching;
 - localized Product-ID tie-break direction matching owner Asc/Desc ordering;
 - Product-owned public Storefront attribute-filter -> neutral canonical term resolution;
-- pure crate-local Storefront shadow builder that consumes only `ProductResolvedAttributeFilter` and
-  translates `Term/And/Or/Not/Never` into Index root predicates.
+- pure Storefront shadow builder consuming only `ProductResolvedAttributeFilter`;
+- non-serving owner-first `ProductStorefrontIndexShadowExecutor` over host-selected Product and Index
+  runtimes.
 
-`Never` maps to a bind-free false predicate by negating the current Product schema's required/non-null `id`
-invariant. The builder validates owner/resolver filter count and code identity before translating terms, so
-arbitrary consumer-built `FilterExpr` values can no longer cross the Product ownership boundary.
+The shadow executor first calls the authoritative Product read port. Only after owner success does it resolve
+Product EAV metadata, build the localized Index query and call `execute_localized_query`. Projected failures
+remain data in the shadow result and cannot replace the successful owner result.
+
+For channel-scoped comparison the caller must supply a trusted current slug/UUID pair; the executor checks
+presence/non-empty/non-nil only and does not independently prove their correspondence. Built-in comparison
+covers ordered Product IDs, exact count and `has_more` only. Full field/search/tag equivalence is still
+retained PostgreSQL evidence debt.
 
 ## Remaining Storefront parity blockers
 
@@ -38,15 +44,26 @@ arbitrary consumer-built `FilterExpr` values can no longer cross the Product own
 - owner/default PostgreSQL collation vs Index deterministic `COLLATE "C"`;
 - channel-less owner visibility cannot currently be represented exactly by `sales_channel_ids`;
 - owner page depth exceeds Index bounded offset depth;
-- localized Taxonomy tag names must be hydrated after Product page identity/count is fixed.
+- localized Taxonomy tag names must be hydrated after Product page identity/count is fixed;
+- shadow execution has no serving latency/deadline policy and must remain non-serving.
 
 ## Retained Product evidence debt
 
 Historical PostgreSQL packets must be actualized to routing key `4` / current 15-field Product contract;
-never add a key-3 runtime alias. Localized Storefront retained equivalence must cover requested/fallback/
-third-locale projection and search, wildcard behavior, scalar and localized EAV terms, Select/Multiselect
-option code and UUID inputs, missing option `Never`, channel membership, equal timestamp Asc/Desc ties,
-pagination/count, stale locale exclusion, readiness/admission and restart.
+never add a key-3 runtime alias.
+
+The next localized Storefront PostgreSQL packet must run owner and shadow execution side-by-side and cover:
+
+- requested/fallback/neither localized projection;
+- third-locale/all-translations title search and wildcard semantics;
+- duplicate locale matches yielding one identity/count;
+- scalar and localized EAV terms;
+- Select/Multiselect option code, UUID and missing-option `Never` behavior;
+- trusted public-channel membership;
+- equal timestamp Asc/Desc Product-ID ties;
+- pagination and exact count;
+- stale locale exclusion, readiness/admission and replay/restart behavior;
+- explicit search-bound and collation evidence.
 
 ## M5 incremental ingestion
 
@@ -78,7 +95,7 @@ pagination/count, stale locale exclusion, readiness/admission and restart.
 - [x] Product Storefront Index shadow/evidence query builder.
 - [x] Product-owned Storefront attribute-filter resolution to neutral canonical term expressions.
 - [x] Wire Product term expressions into the shadow builder.
-- [ ] Compose non-serving Product-owner + Index shadow executor.
+- [x] Compose non-serving Product-owner + Index shadow executor.
 - [ ] Retain owner-vs-Index localized PostgreSQL equivalence packet.
 - [ ] Resolve/admit search-length and collation parity.
 - [ ] Resolve channel-less unrestricted visibility parity or keep that shape owner-native.
@@ -88,14 +105,14 @@ pagination/count, stale locale exclusion, readiness/admission and restart.
 - [ ] Extend folded linked paths only with dedicated target-availability evidence.
 - [ ] Execute/admit current replacement Product PostgreSQL evidence.
 - [ ] Stage/rebuild/promote Product key `4` for a tenant.
-- [ ] Move Storefront traffic only after every parity/readiness/freshness/restart gate passes.
+- [ ] Move Storefront traffic only after every parity/readiness/freshness/restart/latency gate passes.
 
 ## Next source-code step
 
-Compose a non-serving **shadow executor/equivalence boundary**. It must retrieve the host-selected Product
-schema read port, call `resolve_storefront_attribute_filters`, feed those owner-owned results to the shadow
-builder, execute through `execute_localized_query`, and retain owner-vs-Index evidence without changing
-mounted Storefront behavior. Taxonomy hydration remains after Product page selection.
+Build the retained Product Storefront localized PostgreSQL **owner-vs-shadow equivalence packet/harness** on
+current routing key `4`. It must exercise the actual Product owner list and the non-serving shadow executor,
+record identity/order/count and projected field evidence, and keep unresolved search/channel/deep-page cases
+explicitly fail-closed. Taxonomy hydration remains a post-page evidence step.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
