@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     IndexReplayError, IndexReplayFailureKind, IndexReplayPageRequest, IndexReplayPageStatus,
-    IndexReplayWorker, IndexSourceError, IndexSourceFailureKind, SchemaRef, SchemaRegistry,
-    SharedIndexSourceRegistry,
+    IndexReplayWorker, IndexSourceError, IndexSourceFailureKind, LocaleKey, SchemaRef,
+    SchemaRegistry, SharedIndexSourceRegistry,
 };
 
 use super::{
@@ -42,6 +42,50 @@ impl IndexReplayRunRequest {
         heartbeat_every_pages: usize,
         lease_duration: Duration,
     ) -> Result<Self, IndexReplayRunError> {
+        Self::new_scoped(
+            tenant_id,
+            schema,
+            None,
+            worker_id,
+            page_limit,
+            max_pages,
+            heartbeat_every_pages,
+            lease_duration,
+        )
+    }
+
+    pub fn for_locale(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: LocaleKey,
+        worker_id: impl Into<String>,
+        page_limit: usize,
+        max_pages: usize,
+        heartbeat_every_pages: usize,
+        lease_duration: Duration,
+    ) -> Result<Self, IndexReplayRunError> {
+        Self::new_scoped(
+            tenant_id,
+            schema,
+            Some(locale),
+            worker_id,
+            page_limit,
+            max_pages,
+            heartbeat_every_pages,
+            lease_duration,
+        )
+    }
+
+    fn new_scoped(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: Option<LocaleKey>,
+        worker_id: impl Into<String>,
+        page_limit: usize,
+        max_pages: usize,
+        heartbeat_every_pages: usize,
+        lease_duration: Duration,
+    ) -> Result<Self, IndexReplayRunError> {
         if !(1..=MAX_PAGES_PER_RUN).contains(&max_pages) {
             return Err(IndexReplayRunError::InvalidMaxPages {
                 actual: max_pages,
@@ -54,8 +98,11 @@ impl IndexReplayRunRequest {
                 max: max_pages,
             });
         }
-        let page_request = IndexReplayPageRequest::new(tenant_id, schema, page_limit)
-            .map_err(IndexReplayRunError::InvalidPageRequest)?;
+        let page_request = match locale {
+            Some(locale) => IndexReplayPageRequest::for_locale(tenant_id, schema, locale, page_limit),
+            None => IndexReplayPageRequest::new(tenant_id, schema, page_limit),
+        }
+        .map_err(IndexReplayRunError::InvalidPageRequest)?;
         Ok(Self {
             page_request,
             worker_id: worker_id.into(),
@@ -67,6 +114,10 @@ impl IndexReplayRunRequest {
 
     pub fn page_request(&self) -> &IndexReplayPageRequest {
         &self.page_request
+    }
+
+    pub fn locale(&self) -> Option<&LocaleKey> {
+        self.page_request.locale()
     }
 
     pub fn worker_id(&self) -> &str {
@@ -220,13 +271,7 @@ impl PostgresIndexReplayRunner {
             })?
             .source_name()
             .to_owned();
-        let lease_request = IndexReplayJobLeaseRequest::new(
-            request.page_request().tenant_id(),
-            request.page_request().schema().clone(),
-            source_name,
-            request.worker_id().to_owned(),
-            request.lease_duration(),
-        )?;
+        let lease_request = lease_request_for_run(&request, source_name)?;
         let job_store = PostgresIndexReplayJobStore::new(self.db.clone());
         let lease = match job_store.acquire(&lease_request).await? {
             IndexReplayJobAcquireOutcome::Busy => {
@@ -350,6 +395,29 @@ enum TerminalWriteOutcome {
     Cancelled,
 }
 
+fn lease_request_for_run(
+    request: &IndexReplayRunRequest,
+    source_name: String,
+) -> Result<IndexReplayJobLeaseRequest, IndexReplayRunError> {
+    match request.locale() {
+        Some(locale) => Ok(IndexReplayJobLeaseRequest::for_locale(
+            request.page_request().tenant_id(),
+            request.page_request().schema().clone(),
+            locale.clone(),
+            source_name,
+            request.worker_id().to_owned(),
+            request.lease_duration(),
+        )?),
+        None => Ok(IndexReplayJobLeaseRequest::new(
+            request.page_request().tenant_id(),
+            request.page_request().schema().clone(),
+            source_name,
+            request.worker_id().to_owned(),
+            request.lease_duration(),
+        )?),
+    }
+}
+
 fn empty_outcome(
     status: IndexReplayRunStatus,
     job_id: Option<Uuid>,
@@ -469,6 +537,13 @@ async fn finish_success(
     values.push(lease.schema().module.as_str().to_owned().into());
     values.push(lease.schema().entity.as_str().to_owned().into());
     values.push(i64::from(lease.schema().version.get()).into());
+    values.push(
+        lease
+            .locale()
+            .map(|locale| locale.as_str().to_owned())
+            .unwrap_or_default()
+            .into(),
+    );
     let updated = db
         .execute(Statement::from_sql_and_values(
             backend,
@@ -640,7 +715,7 @@ fn finish_success_sql(backend: DbBackend) -> String {
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
-        "UPDATE index_jobs SET state = 'succeeded', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE AND EXISTS (SELECT 1 FROM index_checkpoints AS checkpoint WHERE checkpoint.tenant_id = {prefix}1 AND checkpoint.checkpoint_kind = 'rebuild' AND checkpoint.source_name = {prefix}5 AND checkpoint.module_name = {prefix}6 AND checkpoint.entity_name = {prefix}7 AND checkpoint.schema_version = {prefix}8 AND checkpoint.locale_key = '' AND checkpoint.partition_key = '' AND {complete_cursor})"
+        "UPDATE index_jobs SET state = 'succeeded', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE AND EXISTS (SELECT 1 FROM index_checkpoints AS checkpoint WHERE checkpoint.tenant_id = {prefix}1 AND checkpoint.checkpoint_kind = 'rebuild' AND checkpoint.source_name = {prefix}5 AND checkpoint.module_name = {prefix}6 AND checkpoint.entity_name = {prefix}7 AND checkpoint.schema_version = {prefix}8 AND checkpoint.locale_key = {prefix}9 AND checkpoint.partition_key = '' AND {complete_cursor})"
     )
 }
 
@@ -697,4 +772,62 @@ pub enum IndexReplayRunError {
         #[source]
         error: Box<IndexReplayError>,
     },
+}
+
+#[cfg(test)]
+mod locale_scope_tests {
+    use super::*;
+
+    fn product_schema() -> SchemaRef {
+        SchemaRef {
+            module: crate::ModuleName::new("rustok-product").unwrap(),
+            entity: crate::EntityName::new("product").unwrap(),
+            version: crate::SchemaVersion::new(4),
+        }
+    }
+
+    #[test]
+    fn locale_run_request_keeps_page_job_and_terminal_checkpoint_scope_identical() {
+        let request = IndexReplayRunRequest::for_locale(
+            Uuid::new_v4(),
+            product_schema(),
+            LocaleKey::new("EN-us").unwrap(),
+            "locale-runner-test",
+            100,
+            8,
+            1,
+            Duration::from_secs(60),
+        )
+        .unwrap();
+
+        assert_eq!(request.locale().map(LocaleKey::as_str), Some("en-US"));
+        let lease_request = lease_request_for_run(&request, "product-postgres-primary".to_owned())
+            .unwrap();
+        assert_eq!(lease_request.locale().map(LocaleKey::as_str), Some("en-US"));
+
+        let postgres = finish_success_sql(DbBackend::Postgres);
+        assert!(postgres.contains("checkpoint.locale_key = $9"));
+        assert!(postgres.contains("checkpoint.partition_key = ''"));
+        let sqlite = finish_success_sql(DbBackend::Sqlite);
+        assert!(sqlite.contains("checkpoint.locale_key = ?9"));
+        assert!(sqlite.contains("checkpoint.partition_key = ''"));
+    }
+
+    #[test]
+    fn schema_run_request_preserves_empty_locale_identity() {
+        let request = IndexReplayRunRequest::new(
+            Uuid::new_v4(),
+            product_schema(),
+            "schema-runner-test",
+            100,
+            8,
+            1,
+            Duration::from_secs(60),
+        )
+        .unwrap();
+        assert!(request.locale().is_none());
+        let lease_request = lease_request_for_run(&request, "product-postgres-primary".to_owned())
+            .unwrap();
+        assert!(lease_request.locale().is_none());
+    }
 }
