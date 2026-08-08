@@ -11,7 +11,8 @@ const files = {
   pageGraphql: "apps/server/src/graphql/index_drift_source_page_diagnosis.rs",
   doc: "crates/rustok-index/docs/m6-source-continuation-codec.md",
   serverDoc: "crates/rustok-index/docs/m6-source-continuation-server-keyring.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-08.md",
+  agents: "AGENTS.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };
 
@@ -37,18 +38,20 @@ requireMarkers("applicationMod", [
   "IndexSourceContinuationToken",
 ]);
 requireMarkers("source", [
-  'b"rustok-index-source-continuation-v1"',
-  "const CONTINUATION_VERSION: u8 = 1;",
+  'b"rustok-index-source-continuation"',
   "const KEY_BYTES: usize = 32;",
   "const NONCE_BYTES: usize = 12;",
   "const MAX_KEYS: usize = 16;",
   "const MAX_LIFETIME_MILLIS: u128 = 15 * 60 * 1_000;",
   "const MAX_CLOCK_SKEW_MILLIS: i64 = 30 * 1_000;",
   "pub struct IndexSourceContinuationScope",
+  "locale: Option<LocaleKey>",
   "pub fn from_registry(",
+  "pub fn for_locale(",
   ".source_for_schema(&schema)",
   "descriptor.owner_module()",
   "descriptor.source_name()",
+  "pub fn locale(&self) -> Option<&LocaleKey>",
   "pub struct IndexSourceContinuationToken(String);",
   "pub struct IndexSourceContinuationCodec",
   "keys: Arc<BTreeMap<String, [u8; KEY_BYTES]>>",
@@ -57,6 +60,8 @@ requireMarkers("source", [
   "pub fn seal(",
   "pub fn open_encoded(",
   "validate_claims(&claims, expected_scope, now)?;",
+  "claims.locale != expected_scope.locale",
+  "IndexSourceContinuationError::LocaleScopeMismatch",
   "IndexSourceContinuationError::TenantMismatch",
   "IndexSourceContinuationError::SchemaMismatch",
   "IndexSourceContinuationError::SourceOwnerMismatch",
@@ -65,6 +70,7 @@ requireMarkers("source", [
   "IndexSourceContinuationError::Expired",
   "IndexSourceContinuationError::KeyUnavailable",
   "sealed_cursor_round_trips_only_under_exact_scope",
+  "schema_wide_and_exact_locale_continuations_cannot_cross_scopes",
   "tampering_fails_authentication",
   "rotation_decodes_retained_old_key_and_rejects_removed_key",
   "token_and_codec_debug_do_not_expose_secret_material",
@@ -78,9 +84,17 @@ for (const forbidden of [
   "async_graphql",
   "std::env",
   "SecretResolverRegistry",
+  "CONTINUATION_VERSION",
+  "LEGACY_CONTINUATION",
+  "ContinuationClaimsV1",
+  "ContinuationClaimsV2",
+  "UnsupportedVersion",
+  "ContractVersionMismatch",
+  "-continuation-v1",
+  "-continuation-v2",
 ]) {
   if (production.includes(forbidden)) {
-    throw new Error(`source continuation codec contains forbidden dependency: ${forbidden}`);
+    throw new Error(`source continuation codec contains forbidden dependency/legacy marker: ${forbidden}`);
   }
 }
 
@@ -138,27 +152,33 @@ for (const forbidden of [
 }
 
 requireMarkers("doc", [
-  "Status: `source_complete_owner_execution_pending`.",
+  "Status: `source_complete_locale_scope_owner_execution_pending`.",
+  "one current unversioned continuation envelope",
   "AES-256-GCM",
   "fresh 96-bit operating-system nonce",
   "canonical owner module",
   "canonical source name",
+  "exact canonical `LocaleKey`",
+  "A schema-wide token cannot open",
+  "There is no internal continuation version byte",
   "between 1 second and 15 minutes",
   "A token naming a removed key fails closed",
-  "diagnoseIndexSourcePage",
   "No tests, verifiers, formatting, Cargo checks",
 ]);
 requireMarkers("serverDoc", [
   "Status: `source_complete_owner_execution_pending`.",
+  "single current unversioned continuation envelope",
   "SecretRef",
   "exactly 32 bytes",
-  "diagnose_source_page_sealed",
-  "diagnoseIndexSourcePage",
+  "Key rotation preserves cryptographic key continuity only",
+]);
+requireMarkers("agents", [
+  "Unreleased tokens, cursors, envelopes, and other repository-owned serialized",
+  "Delete prior-format readers, writers, version bytes/tags, compatibility fixtures,",
+  "Do not introduce `V1`/`V2` claim structs",
 ]);
 requireMarkers("plan", [
-  "M6 authenticated and confidential source continuation codec",
-  "M6 server-owned source continuation keyring and sealed page boundary",
-  "M6 bounded GraphQL sealed source-page diagnosis transport",
+  "Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.",
 ]);
 requireMarkers("aggregate", ["'verify-index-source-continuation.mjs'"]);
 
@@ -171,4 +191,4 @@ for (const claim of [
   }
 }
 
-console.log("Index confidential source continuation contract verified");
+console.log("Index confidential source continuation contract verified with canonical schema-wide/exact-locale scope and no legacy format family");

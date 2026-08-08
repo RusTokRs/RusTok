@@ -1,0 +1,37 @@
+{
+  "format": "pages_builder_rollout_binding_source_v1",
+  "status": "server_owner_ui_ssr_and_browser_intent_binding_source_ready_runtime_matrix_pending",
+  "prepared_on": "2026-08-08",
+  "source_base": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
+  "source_contract": {
+    "ui_workspace_loads_server_owned_flags": true,
+    "ui_facade_provider_status_uses_loaded_flags": true,
+    "ui_facade_provider_health_remains_unobserved": true,
+    "authoritative_ssr_rereads_server_owned_snapshot_per_request": true,
+    "authoritative_ssr_verifies_snapshot_tenant_slug": true,
+    "authoritative_ssr_composes_handlers_from_server_owned_flags": true,
+    "standalone_browser_intent_fetches_server_owned_snapshot": true,
+    "standalone_browser_intent_narrows_role_capabilities_before_draft_dispatch": true,
+    "browser_rollout_flags_are_authoritative": false,
+    "standalone_admin_host_runtime_context_required": false,
+    "hardcoded_all_on_consumer_binding_present": false,
+    "four_profiles_source_exercisable": true,
+    "runtime_matrix_harness_source_ready": true,
+    "four_profile_runtime_evidence_retained": false,
+    "gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "validation": {
+    "tests_run": false,
+    "node_verifiers_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "database_run": false,
+    "http_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false
+  },
+  "next_cursor": "maintainer executes the bounded exact-source four-profile runtime matrix and retains owner-review-pending evidence"
+}

@@ -1,8 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after replay graceful-runner merge
-`9b1bd76ba264939566e66158e35cefab7419ce4c` and continued on
-`agent/index-replay-stop-handle-binding-20260808`.
+Status overlay rechecked at `main@92f3bec486c1c3e98b300aff0d96cf5800790971` and continued on
+`agent/index-replay-shadow-locale-execution-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -109,19 +108,57 @@ register a key3 Product source/factory. Runtime dual-read compatibility remains 
 
 ## M6 replay command transport
 
-`IndexReplayOperatorRuntime` remains the only server-owned replay invocation authority. It requires exact
-request-bound tenant/actor context and effective `modules:manage`, rejects cross-tenant run requests and derives
-cancel tenant from that context.
+`IndexReplayOperatorRuntime` remains the server-owned replay invocation authority. It requires exact request-bound
+tenant/actor context and effective `modules:manage`, rejects cross-tenant run requests and derives cancel tenant
+from that context.
 
-The GraphQL layer exposes source-complete schema-wide `runIndexReplay` / `cancelIndexReplay` commands without
-calling `SharedIndexReplayRuntime`, source adapters or PostgreSQL directly. Authorization occurs before parsing
-untrusted schema/job input.
+The guarded operator retains both the durable `SharedIndexReplayRuntime` and the no-write
+`SharedIndexReplayDryRunRuntime`. `run_shadow` authorizes the exact dry-run request tenant through the same
+request-bound `modules:manage` snapshot before delegating to the side-effect-free runtime. It creates no replay
+job/checkpoint and exposes no lease, cancellation, scheduler or database handle.
 
-Caller input contains no tenant, actor, worker ID, source name, locale/partition, scheduler handle, replay
-resource budget, stop handle or shutdown flag. Each run creates a server-owned worker identity and applies fixed
-transport caps: 100 mutations per page, at most 8 pages, heartbeat every page and a 60-second lease.
+The GraphQL layer exposes three source-complete command surfaces:
 
-GraphQL runtime execution/cancellation evidence remains maintainer-owned.
+- schema-wide or exact-locale durable `runIndexReplay`;
+- schema-wide or exact-locale no-write `runIndexReplayShadow`;
+- durable `cancelIndexReplay`.
+
+Authorization occurs before parsing untrusted schema, Full/Shadow locale, Shadow continuation or job input.
+
+Caller durable run input contains only module/entity/schema key plus one optional bounded locale. Tenant, actor,
+worker ID, source name, partition, scheduler handle, replay resource budget, stop handle and shutdown flag remain
+server-owned or unavailable. Locale is canonicalized through `LocaleKey` after authorization. Omission remains
+exactly schema-wide; it is not rewritten from schema locale defaults. Each durable run creates a server-owned
+worker identity and applies fixed transport caps: 100 mutations per page, at most 8 pages, heartbeat every page
+and a 60-second lease.
+
+Caller Shadow input contains only module/entity/schema key plus one optional bounded locale and one optional
+bounded sealed continuation. It has no source name, raw source cursor, worker, page/max-page budget, job,
+checkpoint, lease, cancellation, retry or scheduler fields. Locale is canonicalized through the same `LocaleKey`
+contract only after request-bound authorization. The server uses the same fixed 100-page-size / 8-page invocation
+budget, repeats exact tenant authorization, and derives one exact frozen continuation/dry-run scope:
+
+- schema-wide -> `IndexSourceContinuationScope::from_registry` + `IndexReplayDryRunRequest::new`;
+- exact locale -> `IndexSourceContinuationScope::for_locale` + `IndexReplayDryRunRequest::for_locale`.
+
+Incoming continuation is opened under that scope before a raw source cursor is reconstructed. The no-write runtime
+rejects exact-locale execution for `LocaleMode::None`, constructs every actual scan through the matching
+`IndexSourceScanRequest::new` or `for_locale`, calls the existing source registry, and seals any outgoing cursor
+under the same scope before GraphQL serialization.
+
+The source continuation contract includes canonical locale identity in encrypted claims. Schema-wide scope is
+`locale = None`; exact-locale scope is `Some(LocaleKey)`. Opening requires exact locale equality in addition to
+tenant/schema/source binding, so schema-wide and exact-locale tokens cannot cross scopes and different locales
+cannot exchange tokens.
+
+The continuation format is one current unversioned repository-owned envelope. The previous pre-release shape was
+replaced in place; there is no version byte, `contract_version`, `V1`/`V2` claim family, or fallback decoder.
+
+Retained durable command source evidence includes schema-wide command behavior, locale command canonicalization
+and a dedicated locale yield/isolation/fresh-runtime resume packet. Shadow source evidence now retains
+authorization-first schema/locale/continuation preparation, exact schema-wide/locale dry-run scope selection,
+`LocaleMode` fail-closed admission, sealed non-durable resume routing and locale-safe continuation identity.
+Schema-wide/exact-locale Shadow execution and admission remain maintainer-owned.
 
 ## M6 replay graceful interruption and server lifecycle binding
 
@@ -133,25 +170,117 @@ An `IndexReplayError::Interrupted` first preserves any persisted cancellation ra
 job is yielded back to `pending`, lease ownership is cleared, no failure payload is recorded, and the last
 committed checkpoint is preserved.
 
-A retained deterministic SQLite packet covers both important restart windows:
+Retained source evidence covers both runner and command boundaries:
 
-- host stop before scan: zero source calls/checkpoint changes, then attempt 2 completes normally;
-- host stop after one mutation is durable but before checkpoint commit: the first attempt yields with no
-  checkpoint, then attempt 2 scans the same page, records the stable delivery as `Duplicate`, commits the
-  checkpoint and succeeds.
+- runner-level SQLite evidence covers stop before scan and the harder durable-mutation-before-checkpoint window,
+  where attempt 2 replays the stable delivery as `Duplicate` before checkpoint/job completion;
+- GraphQL schema-data evidence runs the real `IndexReplayMutation` with request-scoped RBAC, coordinates source
+  scan through `Notify`, invokes the shared `StopHandle::stop()`, requires GraphQL `YIELDED` plus an uncancelled
+  lease-free pending attempt-1 job with no checkpoint/mutation, then constructs fresh runtime/operator/GraphQL
+  state over the same SQLite database and requires the same job to complete as attempt 2.
 
-The host binding is also source-complete:
+The GraphQL packet uses no wall-clock sleeps or polling and intentionally does **not** claim full HTTP/process
+bootstrap execution. Production schema lifecycle reservation/keepalive remains separately source-guarded.
 
-1. `SharedIndexReplayRuntime::run_interruptible` forwards only a lifecycle-neutral boolean probe;
-2. `IndexReplayOperatorRuntime::run_interruptible` preserves exact tenant/actor + `modules:manage` authorization;
-3. GraphQL schema initialization resolves or atomically publishes the one shared server `StopHandle`;
-4. API-only hosts retain a private watch receiver so the existing `StopHandle::stop()` can publish the terminal
-   value even when no background worker subscribed;
-5. `runIndexReplay` samples only `StopHandle::is_stopping` through the guarded operator/runtime chain;
-6. GraphQL never receives a shutdown field and never calls `.stop()`;
-7. `cancelIndexReplay` remains the separate persisted cancellation state machine.
+Neither retained shutdown packet nor a full process-shutdown replay scenario has been executed or admitted by
+the implementation agent.
 
-Actual process-shutdown execution evidence has **not** been run or admitted.
+## M6 replay dependency timeouts and page lease-heartbeat policy
+
+Production replay now has a bounded outer observation window for every dependency phase that can otherwise remain
+pending inside one page:
+
+- production source scan: 30 seconds through the canonical `IndexSource` timeout wrapper;
+- checkpoint read transaction: 30 seconds with `index_replay_checkpoint_read_timeout`;
+- one replay mutation persistence call: 30 seconds with `index_replay_mutation_timeout`;
+- checkpoint commit transaction: 30 seconds with `index_replay_checkpoint_commit_timeout`.
+
+These are observation bounds, not rollback guarantees. Dropping a timed-out future does not prove that an
+underlying database operation was cancelled. Stable delivery identity, inbox deduplication, monotonic source
+versions, durable checkpoint reads and active-lease fencing remain authoritative.
+
+A coarse whole-page timeout is deliberately not added because it could mask the precise dependency failure code.
+Instead, `IndexReplayRunRequest` now requires at least a 60-second lease and both ordinary/graceful runners
+maintain an active page lease every one third of the configured lease duration. The server-owned 60-second lease
+therefore heartbeats a still-running page every 20 seconds. Existing page-count heartbeat cadence remains intact.
+
+Checkpoint-read bounding closes the remaining replay data-plane future that could otherwise remain pending while
+lease heartbeats continued. The timeout helper still owns no `StopHandle`, persisted cancellation or retry/requeue
+policy. Persisted cancellation is rechecked before terminal page failure; graceful shutdown remains worker
+safe-point-only.
+
+Retained source assertions and guards are complete but have **not** been executed/admitted by the implementation
+agent. See `m6-replay-pending-future-timeouts.md` and `m6-replay-page-lease-heartbeat.md`.
+
+## M6 locale-scoped replay source state
+
+Locale replay is split from partition/rebuild-mode work and tracked end-to-end instead of as one aggregate
+future item.
+
+Merged source-complete chain:
+
+- generic `IndexSourceScanRequest` accepts optional canonical `LocaleKey` and validates returned mutation scope;
+- current Product PostgreSQL replay scans honor exact locale before pagination while preserving the schema-wide
+  `(product_id, locale)` path;
+- durable replay jobs support explicit locale scope through the locale job migration, canonical locale request
+  contract, lease identity, advisory locking, active-job lookup and locale-specific completion probe;
+- one-page replay requests/checkpoint keys carry the same optional canonical locale;
+- one-page worker resolves the exact runtime schema before checkpoint/source work, rejects locale scope for
+  `LocaleMode::None`, and derives source scan plus checkpoint from the same request locale;
+- PostgreSQL checkpoint storage requires exact lease/checkpoint locale equality and persists canonical locale
+  while schema-wide checkpoints retain the historical empty locale string;
+- optional locale is carried through the multi-page replay runner and GraphQL command transport;
+- ordinary and graceful runner paths derive the durable job lease from the same page locale scope;
+- terminal success binds the leased locale checkpoint instead of hard-coding the schema-wide empty locale;
+- GraphQL locale parsing remains authorization-first and locale omission remains exactly schema-wide;
+- retained GraphQL/runtime/runner evidence forces bounded `en-US` yield, completes distinct `de` and schema-wide
+  jobs, rebuilds runtime composition and resumes the same `en-US` job as attempt 2 with duplicate-safe redelivery;
+- final evidence retains exactly three job/checkpoint scopes: schema-wide, `en-US` and `de`.
+
+The retained locale packet is source-complete but has not been executed. SQLite/PostgreSQL runtime execution and
+production admission remain maintainer-owned. See `m6-locale-replay-command-evidence.md`.
+
+## M6 multi-host/restart retained source state
+
+The replay ownership/restart chain includes one deterministic concurrent reclaim packet in addition to the
+existing sequential and fresh-runtime restart evidence.
+
+`source_replay_multihost_restart_tests.rs` retains two distinct `PostgresIndexReplayRunner` instances over one
+durable database and one stable source. Host A acquires attempt 1 and blocks inside source scan; the fixture moves
+only that persisted lease expiry into the past; host B then reclaims the same job through the ordinary runner as
+attempt 2 and completes it before host A is released.
+
+When host A resumes, the stable delivery remains duplicate-safe but its checkpoint path is fenced by the replaced
+owner/attempt identity and returns `IndexReplayRunError::LeaseLost`. The packet requires final durable state to
+remain exactly one succeeded attempt-2 job, one complete checkpoint, one applied inbox delivery and one materialized
+entity. Host A cannot overwrite success with failure/pending/cancelled or advance a stale checkpoint.
+
+The packet uses `Notify` rather than sleeps/polling and does not directly create/claim/finish jobs or write
+checkpoints. The only clock seam is deterministic expiry of the already-running attempt-1 lease. See
+`m6-replay-multihost-reclaim-evidence.md`.
+
+Together with bounded resume, graceful duplicate-safe restart and fresh GraphQL locale runtime reconstruction,
+this closes the currently tracked source-only multi-host/restart boundary. Execution/admission and any required
+PostgreSQL/process orchestration evidence remain maintainer-owned.
+
+## M6 explicit replay mode contract
+
+`IndexReplayMode` separates `Full`, `Targeted` and `Shadow` rebuild intent from locale and future partition scope.
+`IndexReplayModeSelection` maps those modes to non-aliasing execution surfaces:
+
+- `Full` -> `DurableScan`; this is the only mode admitted to the existing `PostgresIndexReplayRunner` and retains
+  the current fenced replay job/checkpoint, cancellation, locale and lease semantics;
+- `Targeted` -> `TargetedLoad`; construction owns the canonical `IndexSourceLoadRequest`, preserving the existing
+  bounded exact-key count, tenant/schema scope and uniqueness checks;
+- `Shadow` -> `SideEffectFreeScan`; this matches the existing `SharedIndexReplayDryRunRuntime` no-write boundary.
+
+The server guards `Shadow` through `IndexReplayOperatorRuntime::run_shadow`, using the same exact request-bound
+`modules:manage` authorization check as Full. Schema-wide/exact-locale GraphQL Shadow transport sits on one sealed
+continuation adapter and does not reinterpret the durable `runIndexReplay` command or add a mode column to jobs or
+checkpoints.
+
+The explicit mode identity, Shadow host dispatch, schema-wide/exact-locale Shadow GraphQL transport and
+locale-safe Shadow continuation identity are source-complete. Maintainer execution and admission are not claimed.
 
 ## Remaining Storefront parity/evidence blockers
 
@@ -180,14 +309,33 @@ Actual process-shutdown execution evidence has **not** been run or admitted.
 - [x] Bounded replay, durable jobs/leases/checkpoints and cancellation.
 - [x] Reconciliation, drift diagnosis and targeted repair source.
 - [x] Real-migration repair PostgreSQL harness and retained-evidence admission tooling.
-- [x] Guarded schema-wide replay run/cancel GraphQL command transport with server-owned bounded run policy.
+- [x] Guarded replay run/cancel GraphQL command transport with server-owned bounded run policy.
 - [x] Carry a host-owned interruption probe through replay runner safe points and retain duplicate-safe restart evidence source.
 - [x] Bind the shared server `StopHandle::is_stopping` signal through guarded replay runtime/operator composition without caller shutdown controls.
+- [x] Retain deterministic GraphQL StopHandle -> pending -> fresh-runtime attempt-2 completion evidence source without sleeps/polling.
+- [x] Bound replay checkpoint-read/mutation/checkpoint-commit pending futures with retryable timeout identities and preserve cancel/lease precedence.
+- [x] Define canonical locale-scoped source scan and make current Product filter before pagination.
+- [x] Add durable locale replay job scope and exact locale checkpoint identity.
+- [x] Carry locale through one-page replay worker/checkpoint storage with fail-closed `LocaleMode` admission.
+- [x] Carry optional locale through the multi-page replay runner and GraphQL command transport.
+- [x] Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.
+- [x] Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds.
+- [x] Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.
+- [x] Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.
+- [x] Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.
+- [x] Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.
+- [x] Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.
+- [x] Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
 - [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
-- [ ] Execute/admit retained graceful interruption/restart evidence and process-shutdown binding.
-- [ ] Complete remaining multi-host/restart evidence beyond existing convergence/replay packets.
-- [ ] Add locale/partition replay checkpoint dimensions and explicit rebuild modes under separate contracts.
+- [ ] Execute/admit schema-wide/exact-locale Shadow GraphQL transport and continuation-key deployment evidence.
+- [ ] Execute/admit retained graceful interruption/restart and GraphQL shutdown evidence.
+- [ ] Execute/admit retained dependency pending-future timeout evidence.
+- [ ] Execute/admit retained page lease-heartbeat evidence.
+- [ ] Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.
+- [ ] Execute/admit retained multi-host reclaim evidence.
+- [ ] Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.
+- [ ] Add partition replay scope only after a real partition-capable source contract exists.
 
 ## M7 Product Storefront graph
 
@@ -220,13 +368,22 @@ Actual process-shutdown execution evidence has **not** been run or admitted.
 ## Next source-code boundary
 
 M7 Storefront remains execution/admission-gated and must not gain a traffic switch from source inspection alone.
-The next independent M6 source slice is retained end-to-end shutdown command evidence: drive an authorized replay
-command through the real GraphQL/schema/operator chain, flip the shared `StopHandle` deterministically without
-sleep/timing polling, and prove the job yields `pending` and resumes with duplicate-safe semantics.
 
-If that cannot be retained deterministically without inventing a test-only lifecycle path, move instead to the
-separate pending-future timeout boundary. Locale/partition checkpoint scope and explicit rebuild modes remain
-later contracts.
+The locale request/source/job/checkpoint/runner/GraphQL identity chain, dependency timeout set,
+page-duration/lease-heartbeat policy, deterministic multi-host/restart evidence, explicit Full/Targeted/Shadow
+mode identity, guarded Shadow host dispatch, schema-wide/exact-locale Shadow GraphQL transport and locale-safe
+source continuation identity are source-complete. Their retained packets still require maintainer
+execution/admission.
+
+Partition replay remains blocked: no real partition-capable source contract can yet filter a partition before
+pagination, so do not merely populate `partition_key`.
+
+For source-only M6 continuation, the next independent boundary is the bounded Targeted mutation-application
+contract over the canonical `IndexSource::load` path. Reuse `IndexReplayModeSelection::Targeted` and its validated
+`IndexSourceLoadRequest`; define one bounded mutation-application invocation without creating or aliasing Full scan
+jobs/checkpoints, leases, cancellation, scheduler ownership, retry/requeue state, partition scope, or another mode
+selector. Authorization and tenant ownership must remain request-bound before any untrusted target parsing or
+source execution.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

@@ -38,10 +38,6 @@ const REVISION_CONFLICT: &str = "REVISION_CONFLICT";
 #[cfg(feature = "ssr")]
 const PAGE_BUILDER_PORT_DEADLINE: Duration = Duration::from_secs(15);
 
-fn pages_builder_capability_flags() -> BuilderCapabilityFlags {
-    BuilderCapabilityFlags::default()
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PagesBuilderSaveSnapshot {
     pub token: Option<String>,
@@ -57,6 +53,7 @@ type SavedHandler = Arc<dyn Fn(PageMutationResult, Value) + Send + Sync>;
 pub struct PagesBuilderFacade {
     snapshot: SnapshotProvider,
     on_saved: SavedHandler,
+    provider_flags: Option<BuilderCapabilityFlags>,
 }
 
 impl PagesBuilderFacade {
@@ -67,7 +64,13 @@ impl PagesBuilderFacade {
         Self {
             snapshot: Arc::new(snapshot),
             on_saved: Arc::new(on_saved),
+            provider_flags: None,
         }
+    }
+
+    pub fn with_provider_flags(mut self, provider_flags: BuilderCapabilityFlags) -> Self {
+        self.provider_flags = Some(provider_flags);
+        self
     }
 }
 
@@ -89,9 +92,9 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
     }
 
     fn provider_status(&self) -> Option<PageBuilderAdminProviderStatus> {
-        Some(PageBuilderAdminProviderStatus::unobserved(
-            pages_builder_capability_flags(),
-        ))
+        self.provider_flags
+            .clone()
+            .map(PageBuilderAdminProviderStatus::unobserved)
     }
 }
 
@@ -242,6 +245,18 @@ async fn dispatch_pages_page_builder_capability(
 
     let token = required_snapshot_value(snapshot.token, "access token")?;
     let tenant_slug = required_snapshot_value(snapshot.tenant_slug, "tenant")?;
+    let trusted_rollout = crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
+        Some(token.clone()),
+        Some(tenant_slug.clone()),
+    )
+    .await
+    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    if tenant_slug != trusted_rollout.tenant_slug {
+        return Err(PageBuilderAdminFacadeError::new(format!(
+            "Pages tenant `{tenant_slug}` does not match routed tenant `{}`",
+            trusted_rollout.tenant_slug
+        )));
+    }
     let verified_user = leptos_auth::api::fetch_current_user(token.clone(), tenant_slug.clone())
         .await
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
@@ -286,7 +301,7 @@ async fn dispatch_pages_page_builder_capability(
         on_saved,
     };
     let expected_capability = request.capability();
-    let handlers = compose_fly_page_builder_handlers(store, renderer, pages_builder_capability_flags())
+    let handlers = compose_fly_page_builder_handlers(store, renderer, trusted_rollout.flags)
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
     let response = handlers
         .handle(&context, &auth, request)

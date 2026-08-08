@@ -14,6 +14,14 @@ entry_type = "ProductModule"
 [dependencies]
 taxonomy = { version_req = ">=0.1.0" }
 
+# Product lifecycle writes use Inventory- and Pricing-owned transaction-aware
+# bootstrap contracts. These are deployment co-requisites, not ordering
+# dependencies: both owners already depend on Product, so adding ordinary
+# reverse dependencies here would create a module cycle.
+[co_requisites]
+inventory = { version_req = ">=0.1.0" }
+pricing = { version_req = ">=0.1.0" }
+
 [provides.admin_ui]
 leptos_crate = "rustok-product-admin"
 route_segment = "product"

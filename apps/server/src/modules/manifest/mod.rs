@@ -1,3 +1,4 @@
+mod corequisites;
 pub mod plans;
 pub mod types;
 pub mod validation;
@@ -9,6 +10,7 @@ pub use plans::*;
 pub use types::*;
 pub use validation::*;
 
+use corequisites::validate_default_corequisite_selection;
 use crate::error::{Error as ServerError, Result as ServerResult};
 use rustok_api::module_registry_contract::{
     ManifestModuleContract, ModuleRegistryContractError, RegistryModuleContract,
@@ -457,6 +459,15 @@ impl ManifestManager {
         Ok(())
     }
 
+    /// Validates deployment-only co-requisites after the ordinary package and
+    /// registry topology is known. This is intentionally separate from
+    /// `validate` so module installation order remains acyclic.
+    pub fn validate_deployment_selection(
+        manifest: &ModulesManifest,
+    ) -> Result<(), ManifestError> {
+        validate_default_corequisite_selection(manifest)
+    }
+
     pub fn validate_with_registry(
         manifest: &ModulesManifest,
         registry: &ModuleRegistry,
@@ -510,6 +521,7 @@ pub fn validate_registry_vs_manifest(registry: &ModuleRegistry) -> ServerResult<
     })?;
 
     ManifestManager::validate(&manifest)
+        .and_then(|_| ManifestManager::validate_deployment_selection(&manifest))
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, registry))
         .map_err(|error| {
             ServerError::BadRequest(format!("modules.toml validation failed: {error}"))

@@ -106,8 +106,11 @@ impl ModuleLifecycleService {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
+            .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
         let result = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
             .toggle(tenant_id, module_slug, enabled, requested_by)
             .await
             .map_err(map_lifecycle_writer_error)?;
@@ -147,8 +150,11 @@ impl ModuleLifecycleService {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
         let retry_operation = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
             .retry_post_hook(operation_id, requested_by, idempotency_key)
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
@@ -168,8 +174,11 @@ impl ModuleLifecycleService {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
         let result = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
             .compensate_failed_operation(operation_id, requested_by, idempotency_key)
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
@@ -197,8 +206,10 @@ impl ModuleLifecycleService {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
         let writer = ModuleControlPlane::new(db.clone())
-            .lifecycle(registry, manifest.settings.default_enabled);
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites);
         writer
             .require_module_definition(module_slug)
             .map_err(map_lifecycle_writer_settings_error)?;

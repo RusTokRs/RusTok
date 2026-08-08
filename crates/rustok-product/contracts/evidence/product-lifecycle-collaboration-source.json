@@ -1,12 +1,16 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
-  "status": "product_lifecycle_collaboration_contained_unvalidated",
-  "source_base_revision": "c4cd6e281e6a40122843617e0471edc8f589f931",
+  "generated_at": "2026-08-08",
+  "status": "product_lifecycle_owner_corequisite_policy_identity_source_complete_unvalidated",
+  "source_base_revision": "d7eb11aa73e41bd7ada51c03cb798dc332a10a2b",
   "scope": "Product create/delete transaction collaboration with Inventory and Pricing owners",
   "module_topology": {
     "product_dependencies": [
       "taxonomy"
+    ],
+    "product_co_requisites": [
+      "inventory",
+      "pricing"
     ],
     "inventory_dependencies": [
       "product"
@@ -15,7 +19,17 @@
       "product"
     ],
     "ordinary_reverse_dependencies_forbidden": true,
-    "reason": "Declaring Inventory or Pricing as ordinary Product dependencies would create a module dependency cycle",
+    "co_requisites_are_ordering_dependencies": false,
+    "static_default_selection_enforcement_source_complete": true,
+    "tenant_lifecycle_corequisite_guard_source_complete": true,
+    "effective_policy_corequisite_guard_source_complete": true,
+    "canonical_policy_revision_corequisite_identity_source_complete": true,
+    "owner_corequisite_decision_explanation_source_complete": true,
+    "lifecycle_ordering_separated_from_corequisite_availability_source_complete": true,
+    "staged_intent_recovery_semantics_source_complete": false,
+    "co_requisite_control_plane_execution_proven": false,
+    "tenant_lifecycle_corequisite_execution_proven": false,
+    "reason": "The modules owner now hashes normalized Product co-requisites into canonical effective-policy revision/cache identity and explains availability separately from ordinary lifecycle ordering; staged retry/compensation predecessor semantics remain open",
     "default_enabled_bundle": [
       "product",
       "pricing",
@@ -58,13 +72,21 @@
   },
   "decision": {
     "containment_complete": true,
+    "corequisite_contract_declared": true,
+    "static_default_selection_enforcement_source_complete": true,
+    "tenant_lifecycle_corequisite_guard_source_complete": true,
+    "effective_policy_corequisite_guard_source_complete": true,
+    "canonical_policy_revision_corequisite_identity_source_complete": true,
+    "owner_corequisite_decision_explanation_source_complete": true,
+    "lifecycle_ordering_separated_from_corequisite_availability_source_complete": true,
     "dependency_contract_resolved": false,
-    "next_slice": "Choose and implement a control-plane co-requisite contract or host-injected transaction participant ports; prove Product write behavior when optional modules are selected outside the default ecommerce bundle",
+    "next_slice": "Separate persisted tenant selected-intent predecessor/current state from effective availability in post-hook retry and compensation while retaining canonical co-requisite-aware policy revision identity",
     "do_not": [
       "add inventory or pricing to Product ordinary module dependencies",
       "move Inventory or Pricing ORM entities into Product",
       "replace atomic owner collaboration with unproven best-effort post-commit writes",
-      "claim standalone Product write activation"
+      "claim standalone Product write activation",
+      "reuse effective availability as the staged tenant-intent recovery predecessor"
     ]
   },
   "validation": {
@@ -74,7 +96,13 @@
     "verifiers_run": false,
     "workflow_checks_run": false,
     "ci_run": false,
+    "static_default_selection_execution_proven": false,
+    "tenant_lifecycle_execution_proven": false,
+    "effective_policy_guard_execution_proven": false,
+    "policy_cache_identity_execution_proven": false,
+    "staged_intent_recovery_execution_proven": false,
     "standalone_activation_proven": false,
+    "non_default_deployment_selection_proven": false,
     "transaction_rollback_proven": false
   }
 }

@@ -71,13 +71,18 @@ for (const required of [
   requireText(lib, required, "Product schema write public export");
 }
 
-// Publication is intentionally separate from the Commerce consumer cutover. Keep the
-// remaining direct construction visible so the canonical task cannot be falsely closed.
-requireText(
+forbidText(
   commerceMutations,
   "ProductCatalogSchemaService::new",
-  "Commerce schema-write consumer debt remains explicit",
+  "mounted Commerce schema writes must not regress to direct Product service construction",
 );
+for (const required of [
+  "ProductCatalogSchemaWritePort",
+  ".schema_write_port()",
+  "product.schema_write_port_unavailable",
+]) {
+  requireText(commerceMutations, required, "mounted Commerce schema-write owner boundary");
+}
 
 if (failures.length) {
   console.error("Product catalog schema write port source verification failed:");
@@ -85,4 +90,4 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Product publishes a typed schema-write capability with write-context policy; Commerce consumer cutover remains explicit debt");
+console.log("✔ Product publishes the typed schema-write capability and mounted Commerce resolves it from host composition without direct Product service construction");

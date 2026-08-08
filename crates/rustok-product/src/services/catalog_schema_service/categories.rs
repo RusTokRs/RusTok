@@ -11,7 +11,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
-use crate::services::write_transaction::ProductWriteTransaction;
+use crate::services::write_transaction::{
+    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
+};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 
@@ -23,7 +25,7 @@ impl ProductCatalogSchemaService {
         input: CreateCatalogCategoryInput,
     ) -> CommerceResult<CatalogCategoryRecord> {
         input.validate()?;
-        let category_id = generate_id();
+        let category_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         if input.kind == CatalogCategoryKind::Virtual {
@@ -119,15 +121,16 @@ impl ProductCatalogSchemaService {
             DomainEvent::CatalogCategoryCreated { category_id },
         )
         .await?;
-        txn.commit().await?;
-
-        Ok(CatalogCategoryRecord {
+        let result = CatalogCategoryRecord {
             id: category_id,
             code: input.code,
             slug: input.slug,
             path,
             kind: input.kind,
-        })
+        };
+        record_product_operation_result(&result)?;
+        txn.commit().await?;
+        Ok(result)
     }
 
     pub async fn list_categories(
@@ -169,7 +172,7 @@ impl ProductCatalogSchemaService {
         input.validate()?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_structural_category(&txn, tenant_id, input.category_id).await?;
-        let group_id = generate_id();
+        let group_id = current_product_operation_id().unwrap_or_else(generate_id);
         txn.execute(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
@@ -198,13 +201,14 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
-        txn.commit().await?;
-
-        Ok(ProductAttributeGroupRecord {
+        let result = ProductAttributeGroupRecord {
             id: group_id,
             owner_id: input.category_id,
             code: input.code,
-        })
+        };
+        record_product_operation_result(&result)?;
+        txn.commit().await?;
+        Ok(result)
     }
 
     pub async fn set_category_schema_mode(
@@ -263,6 +267,7 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
+        record_product_operation_result(&())?;
         txn.commit().await?;
         Ok(())
     }
@@ -329,6 +334,7 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
+        record_product_operation_result(&())?;
         txn.commit().await?;
         Ok(())
     }

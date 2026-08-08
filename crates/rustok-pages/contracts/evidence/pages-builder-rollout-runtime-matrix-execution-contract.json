@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "module": "pages",
+  "packet": "pages-builder-rollout-runtime-matrix",
+  "status": "source_ready_maintainer_execution_pending",
+  "runner": {
+    "kind": "playwright",
+    "working_directory": "apps/next-admin",
+    "config": "playwright.pages-builder-rollout-matrix.config.ts",
+    "spec": "tests/pages-builder-rollout-matrix/runtime-matrix.spec.ts",
+    "command": [
+      "npx",
+      "--no-install",
+      "playwright",
+      "test",
+      "--config",
+      "playwright.pages-builder-rollout-matrix.config.ts"
+    ]
+  },
+  "predecessor": {
+    "environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_BROWSER_EVIDENCE",
+    "format": "pages_inline_edit_browser_execution_v1",
+    "status": "browser_execution_passed_rollout_pending",
+    "same_source_commit_required": true,
+    "same_api_origin_hash_required": true,
+    "same_admin_origin_hash_required": true,
+    "deployment_digest_required": true,
+    "tenant_rollout_must_be_unexecuted": true
+  },
+  "fixtures": {
+    "api_origin_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_API_ORIGIN",
+    "admin_origin_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ORIGIN",
+    "api_storage_state_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_API_STORAGE_STATE",
+    "admin_storage_state_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_STORAGE_STATE",
+    "tenant_slug_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_TENANT_SLUG",
+    "page_id_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_PAGE_ID",
+    "admin_route_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ROUTE",
+    "common_headers_environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_COMMON_HEADERS_JSON",
+    "operator_requirements": [
+      "authenticated API session for the reviewed API origin",
+      "authenticated standalone admin session for the reviewed admin origin",
+      "effective modules:manage on the API session",
+      "effective pages:read on both routed sessions",
+      "Pages admin edit authority for the selected unpublished page on the standalone admin session"
+    ]
+  },
+  "settings_authority": {
+    "read_operation": "tenantModules",
+    "write_operation": "updateModuleSettings",
+    "module_slug": "pages",
+    "direct_sql_allowed": false,
+    "raw_database_access_allowed": false,
+    "snapshot_original_settings_before_first_profile": true,
+    "preserve_non_builder_settings": true,
+    "restore_original_settings_in_finally": true,
+    "verify_semantic_restore_after_finally": true
+  },
+  "profiles": [
+    {
+      "id": "all_on",
+      "flags": {
+        "builder_enabled": true,
+        "preview_enabled": true,
+        "properties_enabled": true,
+        "publish_enabled": true
+      },
+      "provider_state": "unobserved",
+      "preview_ui": "enabled",
+      "preview_ssr": "pass",
+      "properties_ui": "enabled",
+      "publish_dry": "enabled_no_mutating_request"
+    },
+    {
+      "id": "publish_off",
+      "flags": {
+        "builder_enabled": true,
+        "preview_enabled": true,
+        "properties_enabled": true,
+        "publish_enabled": false
+      },
+      "provider_state": "degraded",
+      "preview_ui": "enabled",
+      "preview_ssr": "pass",
+      "properties_ui": "enabled",
+      "publish_dry": "typed_browser_intent_denial"
+    },
+    {
+      "id": "preview_off",
+      "flags": {
+        "builder_enabled": true,
+        "preview_enabled": false,
+        "properties_enabled": true,
+        "publish_enabled": false
+      },
+      "provider_state": "degraded",
+      "preview_ui": "disabled",
+      "preview_ssr": "typed_capability_disabled",
+      "properties_ui": "enabled",
+      "publish_dry": "typed_browser_intent_denial"
+    },
+    {
+      "id": "builder_off",
+      "flags": {
+        "builder_enabled": false,
+        "preview_enabled": false,
+        "properties_enabled": false,
+        "publish_enabled": false
+      },
+      "provider_state": "unavailable",
+      "preview_ui": "disabled",
+      "preview_ssr": "typed_capability_disabled",
+      "properties_ui": "disabled_with_typed_browser_intent_denial",
+      "publish_dry": "typed_browser_intent_denial"
+    }
+  ],
+  "common_requirements": {
+    "provider_health_observed": false,
+    "pages_owned_list_read": "pass",
+    "pages_owned_document_read": "pass",
+    "rollout_snapshot_flags_match_profile": true,
+    "rollout_snapshot_tenant_matches_requested_tenant": true,
+    "browser_supplied_rollout_flags_used": false,
+    "raw_settings_retained": false,
+    "raw_preview_request_or_response_retained": false,
+    "raw_browser_intent_response_retained": false
+  },
+  "output": {
+    "environment": "RUSTOK_PAGES_ROLLOUT_MATRIX_OUTPUT",
+    "default_path": "target/pages-builder-rollout-runtime-matrix.json",
+    "format": "pages_builder_rollout_runtime_matrix_v1",
+    "status": "four_profile_runtime_matrix_passed_owner_review_pending",
+    "atomic_replace": true,
+    "automatic_gate_acceptance": false,
+    "automatic_source_mutation": false,
+    "automatic_ffa_fba_promotion": false
+  },
+  "required_source_files": [
+    "crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json",
+    "crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-harness-source.json",
+    "apps/next-admin/playwright.pages-builder-rollout-matrix.config.ts",
+    "apps/next-admin/tests/pages-builder-rollout-matrix/runtime-matrix.spec.ts",
+    "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
+    "crates/rustok-pages/rustok-module.toml",
+    "crates/rustok-page-builder/src/rollout.rs",
+    "crates/rustok-page-builder/admin/src/provider_status.rs",
+    "crates/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/rustok-pages/admin/src/builder.rs",
+    "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
+    "crates/rustok-pages/admin/src/composition.rs",
+    "crates/rustok-pages/admin/src/contribution_browser_intent.rs",
+    "apps/admin/src/main.rs",
+    "apps/server/src/graphql/queries.rs",
+    "apps/server/src/graphql/mutations.rs",
+    "apps/server/src/services/module_lifecycle.rs",
+    "apps/server/src/modules/manifest/mod.rs",
+    "crates/rustok-modules/src/settings.rs",
+    "crates/rustok-modules/src/lifecycle_writer.rs",
+    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+    "docs/modules/pages-page-builder-rollout-runtime-matrix-harness-actualization-2026-08-08.md"
+  ],
+  "forbidden_retained_data": [
+    "tenant slugs",
+    "tenant ids",
+    "page ids",
+    "admin routes",
+    "authorization headers",
+    "cookies",
+    "storage state contents",
+    "session ids",
+    "access tokens",
+    "refresh tokens",
+    "raw module settings",
+    "raw GraphQL request or response bodies",
+    "raw Page Builder preview request or response bodies",
+    "raw browser intent response bodies",
+    "raw HTML",
+    "traces",
+    "screenshots",
+    "videos"
+  ],
+  "not_claimed": [
+    "owner sign-off",
+    "rollback keep decision",
+    "pages_reference_consumer_gate accepted",
+    "observed provider SLO health",
+    "Forum Wave accepted",
+    "FFA promoted",
+    "FBA promoted"
+  ]
+}

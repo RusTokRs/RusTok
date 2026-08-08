@@ -9,7 +9,9 @@ use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
-use crate::services::write_transaction::ProductWriteTransaction;
+use crate::services::write_transaction::{
+    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
+};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 
@@ -21,7 +23,7 @@ impl ProductCatalogSchemaService {
         input: CreateProductAttributeSchemaInput,
     ) -> CommerceResult<ProductAttributeSchemaRecord> {
         input.validate()?;
-        let schema_id = generate_id();
+        let schema_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         txn.execute(Statement::from_sql_and_values(
@@ -64,12 +66,13 @@ impl ProductCatalogSchemaService {
             DomainEvent::ProductAttributeSchemaCreated { schema_id },
         )
         .await?;
-        txn.commit().await?;
-
-        Ok(ProductAttributeSchemaRecord {
+        let result = ProductAttributeSchemaRecord {
             id: schema_id,
             code: input.code,
-        })
+        };
+        record_product_operation_result(&result)?;
+        txn.commit().await?;
+        Ok(result)
     }
 
     pub async fn list_schemas(
@@ -107,7 +110,7 @@ impl ProductCatalogSchemaService {
         input.validate()?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_schema(&txn, tenant_id, input.schema_id).await?;
-        let group_id = generate_id();
+        let group_id = current_product_operation_id().unwrap_or_else(generate_id);
         txn.execute(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
@@ -136,12 +139,14 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
-        txn.commit().await?;
-        Ok(ProductAttributeGroupRecord {
+        let result = ProductAttributeGroupRecord {
             id: group_id,
             owner_id: input.schema_id,
             code: input.code,
-        })
+        };
+        record_product_operation_result(&result)?;
+        txn.commit().await?;
+        Ok(result)
     }
 
     pub async fn bind_schema_attribute(
@@ -203,6 +208,7 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
+        record_product_operation_result(&())?;
         txn.commit().await?;
         Ok(())
     }

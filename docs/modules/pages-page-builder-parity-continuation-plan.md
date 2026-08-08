@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-08  
-Status: source-parity-current / pages-repeated-artifact-loss-recovery-source-ready / provider-degraded-controls-source-ready / contribution-registry-version-parity-source-ready / contribution-module-metadata-generation-source-ready / shared-contribution-tooling-source-ready / forum-second-consumer-discovery-source-ready / forum-fly-adapter-open / observed-health-open / execution-browser-rollout-pending
+Status: source-parity-current / pages-repeated-artifact-loss-recovery-source-ready / provider-degraded-controls-source-ready / contribution-registry-version-parity-source-ready / contribution-module-metadata-generation-source-ready / shared-contribution-tooling-source-ready / forum-runtime-composition-source-ready / forum-evidence-harness-source-ready / pages-reference-consumer-gate-source-ready / observed-health-open / execution-browser-rollout-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` document, publication, artifact, routing, cache, authenticated inline-authoring and deterministic deployment boundaries
 
 ## Source-of-truth policy
@@ -15,8 +15,8 @@ Pages and Page Builder remain one vertical pipeline with explicit owners:
 - Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy, public reads, authenticated inline grants/save transport and the module-owned authoring asset HTTP contract.
 - Pages admin owns the optional same-origin authoring launch control and consumes build-generated contribution metadata.
 - Platform build tooling owns the reusable parsing/normalization contract for canonical module contribution metadata; it does not own runtime registry policy.
-- Forum owns Forum category/topic/reply lifecycle, visibility, widget contracts, widget validation and widget authorization even when its Page Builder contribution metadata is discovered through shared tooling.
-- Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer, artifact producer contracts and reusable real-DOM inline adapter/session.
+- Forum owns Forum category/topic/reply lifecycle, visibility, widget contracts, widget validation and widget authorization even when its Page Builder contribution metadata and Fly identities are composed through shared tooling.
+- Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer, artifact producer contracts, reusable real-DOM inline adapter/session and provider-neutral contribution host seams.
 - Navigation and SEO own their resolved payloads.
 - Hosts own route admission, CSP and HTTP composition, not Pages/Forum domain persistence, route policy, asset policy or launch policy.
 - Release engineering owns deterministic composition and durable evidence, not runtime authorization or persistence.
@@ -34,18 +34,27 @@ The recheck includes all relevant merged source after the former PR #3063 cursor
 - the existing `fly-ui` contribution path already has separate admin/storefront factories, tenant/permission/capability/provider-policy/provider-health filtering, and duplicate/missing-provider/missing-dependency/cycle diagnostics;
 - PR #3205 restored exact owner/target provider versions and fail-closed manifest-routed provider-version admission;
 - PR #3215 moved the Pages reference-consumer declaration into canonical `rustok-module.toml` and generated the version-pinned runtime manifest at build time;
-- PR #3222 moved generic contribution parsing/normalization into platform `rustok-build` tooling and reused it from Pages generation plus module publish readiness.
+- PR #3222 moved generic contribution parsing/normalization into platform `rustok-build` tooling and reused it from Pages generation plus module publish readiness;
+- PR #3227 onboarded Forum as the second production consumer through canonical shared contribution metadata;
+- PR #3239 added the real Forum Fly component/block registry and `ContributionAdapter`;
+- PR #3247 composed Forum-owned preview reads through provider-neutral Page Builder host ports on the real Pages admin route;
+- PR #3254 completed owner-backed Forum widget property schema/validation and normalized Fly property patching;
+- PR #3264 retained the exact-source Forum browser evidence harness without executing it;
+- PR #3266 retained direct Forum runtime authorization/visibility evidence source without executing it;
+- PR #3274 retained deployed native server-function attestation source without executing it;
+- PR #3320 made the existing `pages_reference_consumer_gate` blocker explicit as a machine-readable fail-closed source contract and bound Forum Wave source evidence to it.
 
-The current source slice advances the shared-tooling cursor to the second production consumer without changing Pages persistence, publication or runtime registry ownership:
+The current Forum contribution/runtime source boundary is now complete without changing Forum persistence, visibility, widget validation or authorization ownership:
 
-- Forum is selected because its persistence, authorization and preview/widget ownership are already explicit: Forum owns topic/reply lifecycle and visibility plus `ForumWidgetContractService`, while Page Builder remains optional composition/authoring infrastructure;
-- `crates/rustok-forum/rustok-module.toml` now declares one canonical owner-provider discovery contribution, `rustok.forum.widget-catalog`, through the same `[fba.builder_consumer.contribution_manifest]` shape used by shared tooling;
-- the Forum discovery contribution is permission-gated by `forum_topics:read`, capability-gated by `preview`, points at the existing Forum-owned catalog/validation endpoints and derives exact owner version from `[module].version` through the shared normalizer;
-- the previous `topic_detail` schema-id drift is corrected from `forum.topic_list.v1` to the distinct `forum.topic_detail.v1` identity;
-- the contribution is deliberately discovery-only: `blocks = []`, no renderers, no property editors, no storefront contribution and `adapter_state = "pending"` because Forum has no real Fly component registry or `ContributionAdapter` yet;
-- `xtask module validate forum` therefore exercises the shared module-metadata/publish-readiness boundary without a Forum-local parser or generator;
-- Forum admin receives no new `fly-ui` or Page Builder UI dependency and this slice introduces no Cargo dependency/lockfile change;
-- source guards require the discovery-only boundary and reject premature renderer/property-editor/storefront claims.
+- `crates/rustok-forum/rustok-module.toml` declares complementary `rustok.forum.widget-catalog` and `rustok.forum.widget-preview` contributions through the shared `[fba.builder_consumer.contribution_manifest]` shape;
+- `forum.topic_list`, `forum.topic_detail` and `forum.reply_stream` have real Fly block/component identities;
+- owner schema references remain metadata-only while actual schemas and validation stay behind `ForumWidgetContractService`;
+- `adapter_state = "fly_contract_ready"`, `preview_data_state = "owner_preview_transport_ready"` and `property_data_state = "owner_property_editor_ready"` are the current source states;
+- preview renderer admission is capability-separated from tree/property admission so `preview_off` does not erase otherwise-authorized property editing;
+- Forum owner preview rechecks tenant/module/RBAC/visibility and performs bounded owner reads;
+- owner-backed property editing validates only through the Forum owner contract and patches normalized object props through ordinary Fly history;
+- browser, runtime-authorization and deployed-attestation harnesses exist but remain unexecuted;
+- observed Forum Wave remains blocked by `pages_reference_consumer_gate`, whose source contract is ready but whose acceptance remains `false` until maintainer execution evidence is retained.
 
 Rechecked Page Builder Phase 9 source state:
 
@@ -54,17 +63,30 @@ Rechecked Page Builder Phase 9 source state:
 - [x] Filter by tenant, permission, capability, provider policy and health.
 - [x] Duplicate, missing-provider, missing-dependency, cycle and provider-version diagnostics.
 - [x] Generalize canonical contribution metadata parsing/normalization into platform build tooling and module publish validation.
-- [x] Onboard Forum as the second production consumer to canonical shared contribution discovery metadata.
-- [ ] Define and connect the real Forum Fly component/block/adapter runtime before advertising non-empty Forum blocks/renderers/property editors.
+- [x] Onboard Forum as the second production consumer to canonical shared contribution metadata.
+- [x] Define and connect the real Forum Fly component/block/adapter runtime.
+- [x] Connect Forum owner preview through provider-neutral Page Builder host ports.
+- [x] Connect Forum owner-backed property editing without moving owner validation/persistence into Page Builder.
+- [x] Retain browser/runtime/deployment evidence harness source without claiming execution.
+- [x] Define the machine-readable Pages reference-consumer gate source contract.
+- [ ] Execute and accept the Pages reference-consumer gate with exact-source deployment and runtime/browser evidence.
+- [ ] Execute Forum browser/runtime/deployment evidence and retain observed tenant Wave only after the Pages gate is accepted.
 
-The next contribution source cursor is the real Forum Fly adapter/component-registry slice. It must preserve Forum-owned persistence, visibility, widget validation and authorization rather than creating a second domain authority. Real provider health remains a separate open composition/runtime cursor because the repository still has no authoritative live Page Builder SLO observation source. Execution evidence remains maintainer-owned.
+No new source architecture gap is identified in the Pages/Forum composition by this reconciliation. Real provider health remains a separate open composition/runtime cursor because the repository still has no authoritative live Page Builder SLO observation source. Execution evidence remains maintainer-owned.
 
-Detailed evidence for the 2026-08-08 contribution slices is retained in:
+Detailed evidence for the 2026-08-08 contribution and gate slices is retained in:
 
 - `docs/modules/pages-page-builder-contribution-parity-actualization-2026-08-08.md`;
 - `docs/modules/pages-page-builder-module-metadata-contribution-generation-2026-08-08.md`;
 - `docs/modules/pages-page-builder-shared-contribution-tooling-2026-08-08.md`;
-- `docs/modules/forum-page-builder-contribution-metadata-actualization-2026-08-08.md`.
+- `docs/modules/forum-page-builder-contribution-metadata-actualization-2026-08-08.md`;
+- `docs/modules/forum-page-builder-fly-adapter-actualization-2026-08-08.md`;
+- `docs/modules/forum-page-builder-owner-preview-actualization-2026-08-08.md`;
+- `docs/modules/forum-page-builder-owner-properties-actualization-2026-08-08.md`;
+- `docs/modules/forum-page-builder-browser-evidence-harness-actualization-2026-08-08.md`;
+- `docs/modules/forum-page-builder-runtime-authorization-evidence-actualization-2026-08-08.md`;
+- `docs/modules/forum-page-builder-serverfn-deployment-attestation-actualization-2026-08-08.md`;
+- `docs/modules/pages-page-builder-reference-consumer-gate-actualization-2026-08-08.md`.
 
 ## Rechecked merged cursor
 
@@ -118,7 +140,12 @@ No build, workflow, Docker, HTTP or browser execution is claimed.
 - `contribution-registry-version-parity-source-ready` — contribution owner/target provider versions are pinned and fail closed on missing/mismatched versions.
 - `contribution-module-metadata-generation-source-ready` — Pages contribution declarations and property schema are generated from canonical module metadata at build time.
 - `shared-contribution-tooling-source-ready` — canonical contribution parsing/normalization is shared by platform build tooling, Pages generation and module publish readiness.
-- `forum-second-consumer-discovery-source-ready` — Forum uses the same canonical contribution metadata/publish-validation boundary while truthfully keeping its Fly adapter pending.
+- `forum-second-consumer-discovery-source-ready` — historical discovery checkpoint; superseded by the runtime-composition markers below.
+- `forum-fly-adapter-source-ready` — Forum Fly component/block registration and `ContributionAdapter` are source-ready.
+- `forum-owner-preview-source-ready` — Forum owner preview transport and Pages host composition are source-ready.
+- `forum-owner-properties-source-ready` — Forum owner-backed property schema/validation and normalized Fly patching are source-ready.
+- `forum-evidence-harness-source-ready` — Forum browser/runtime/deployment evidence harnesses exist but remain unexecuted.
+- `pages-reference-consumer-gate-source-ready` — the blocker used by Forum Wave evidence is explicit and fail-closed; acceptance remains pending.
 
 ## Current parity state
 
@@ -136,9 +163,9 @@ Execution evidence remains pending.
 
 Pages owns one canonical contribution declaration in `rustok-module.toml`. Its build script materializes the version-pinned Fly manifest and metadata property schema into `OUT_DIR`; runtime consumes only generated Rust/JSON and retains no TOML dependency or handwritten descriptor tree.
 
-Generic parsing, provider/version injection, capability admission and nested provider validation live once in `rustok-build` tooling and are reused by Pages build generation and `xtask` publish readiness. Forum is now the second production consumer of that canonical metadata boundary: its owner-provider widget-catalog discovery entry is normalized/publish-validated without a Forum-local parser or new runtime dependency.
+Generic parsing, provider/version injection, capability admission and nested provider validation live once in `rustok-build` tooling and are reused by Pages build generation and `xtask` publish readiness. Forum is the second production consumer of that canonical metadata boundary and now also has real Fly component/block identities plus adapter, owner preview and owner property paths composed through provider-neutral Page Builder host seams.
 
-Forum runtime contribution assembly remains intentionally open. The source does not yet contain Forum Fly component/block definitions or an adapter, so the Forum manifest advertises no blocks/renderers/property editors/storefront contribution.
+Forum persistence, visibility, widget schemas, validation and authorization remain Forum-owned. Page Builder receives only the bounded contribution/preview/property contracts required for composition. Browser/runtime/deployment evidence harnesses exist but execution remains pending.
 
 ### Public locale, route and cache authority: source-ready
 
@@ -273,7 +300,11 @@ Page Builder provider flags can only narrow an already authorized capability set
 
 ### Contribution registry version parity: source-ready
 
-Admin/storefront assembly, policy filters and structural diagnostics are source-ready. Owner and target provider versions are exact and fail closed on missing/mismatched contribution metadata. Pages supplies those identities through canonical metadata and the shared build normalizer rather than a handwritten runtime manifest. Forum now supplies canonical owner-provider discovery metadata through the same normalizer but does not yet claim runtime adapter surfaces.
+Admin/storefront assembly, policy filters and structural diagnostics are source-ready. Owner and target provider versions are exact and fail closed on missing/mismatched contribution metadata. Pages supplies those identities through canonical metadata and the shared build normalizer rather than a handwritten runtime manifest. Forum supplies canonical metadata plus real adapter/preview/property runtime source through the same owner-preserving composition boundary.
+
+### Pages reference-consumer gate: source-ready / acceptance-open
+
+`crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` defines the exact blocker already referenced by Forum Wave evidence. It requires the Pages `1.1` Page Builder contract, `all_on`, `publish_off`, `preview_off` and `builder_off` profiles, Pages-owned reads in every profile and the existing source guards plus maintainer execution evidence. The source packet remains `accepted = false`, `execution_gate = pending`, `provider_health = unobserved` and `ffa_fba_promotion = not_claimed`.
 
 ## Parity matrix
 
@@ -283,7 +314,8 @@ Admin/storefront assembly, policy filters and structural diagnostics are source-
 | Reviewed publish and immutable rollback | Complete | DB/runtime execution pending |
 | Repeated immutable-artifact loss recovery | Source-ready | Repair/rollback execution pending |
 | Canonical contribution metadata generation | Source-ready (Pages + shared tooling) | Execution pending |
-| Forum second-consumer contribution discovery | Source-ready | Fly adapter/runtime/browser pending |
+| Forum contribution/runtime composition | Source-ready (metadata + Fly adapter + owner preview + owner properties) | Browser/runtime/deployment evidence pending |
+| Pages reference-consumer gate | Source-ready | Maintainer acceptance pending |
 | Public locale fallback | Source-ready | Native/GraphQL execution pending |
 | Published aliases, tombstones and history import | Source-ready | SQLite/PostgreSQL/host execution pending |
 | Host canonical/redirect/gone response | Source-ready | HTTP/SSR execution pending |
@@ -322,7 +354,7 @@ These exact phrases are retained only because earlier static guards consume the 
 
 ## Boundaries
 
-The historical deployment slice remains unchanged; the 2026-08-08 reconciliation additionally restores contribution version parity, moves Pages contribution authority to canonical module metadata, centralizes metadata normalization in platform build tooling and onboards Forum to discovery-only shared metadata.
+The historical deployment slice remains unchanged; the current reconciliation additionally restores contribution version parity, moves Pages contribution authority to canonical module metadata, centralizes metadata normalization in platform build tooling, completes the Forum second-consumer adapter/preview/property source path and defines the Pages reference-consumer gate source contract.
 
 It does not:
 
@@ -335,26 +367,30 @@ It does not:
 - add runtime build tooling to `apps/server/Dockerfile.release`;
 - add a TOML parser to Pages or Forum admin/WASM runtime;
 - make platform build tooling a runtime contribution registry or tenant policy owner;
-- claim a Forum Fly block, renderer, property editor, storefront adapter or observed Wave before such runtime source exists;
+- move Forum schema, validation, persistence, visibility or authorization into Page Builder;
+- claim Forum browser/runtime/deployment harness execution or an observed Wave;
+- claim the Pages reference-consumer gate is accepted;
 - claim verifier, Cargo, npm, Trunk, WASM, server, Docker, workflow, HTTP, browser or rollout execution;
 - fabricate Page Builder provider-health observations;
 - promote FFA or FBA.
 
 ## Next cursor
 
-Source continuation:
+Source architecture for the Pages reference consumer and Forum second-consumer composition is complete at this cursor. The next work is evidence and acceptance rather than another adapter architecture slice:
 
-1. Define real Forum Fly component/block identities and adapter behavior against the existing Forum-owned widget catalog, then connect runtime contribution assembly without moving Forum persistence/authorization into Page Builder.
-2. Keep current Pages repair/recovery and Page Builder degraded-control source boundaries unchanged while Forum adapter work proceeds.
-3. Connect real provider-health observation only after an authoritative Page Builder SLO source exists.
+1. Maintainer executes and accepts `pages_reference_consumer_gate` against an exact reviewed source/deployment, retaining metadata-isolation, sanitizer/resource-limit, cache-generation, authenticated-authoring, anonymous-exclusion and degraded-profile evidence.
+2. After the Pages gate is accepted, execute the retained Forum browser/runtime/deployment-attestation packets and replace synthetic Forum Wave evidence with an observed tenant packet.
+3. Connect real provider-health observation only after an authoritative Page Builder SLO source exists; until then health remains `unobserved`.
+4. Promote FFA/FBA only after the corresponding observed evidence is reviewed and accepted.
 
-Maintainer-owned execution evidence remains pending for the contribution-generation/tooling, Forum adapter/rollout, release, browser, database and recovery slices.
+Maintainer-owned execution evidence remains pending for the contribution/tooling, Pages gate, Forum rollout, release, browser, database and recovery slices.
 
 ## Maintainer validation
 
 Suggested commands, intentionally not run in this slice:
 
 ```bash
+node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs
 node scripts/verify/verify-fly-ui-contributions.mjs
 node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs

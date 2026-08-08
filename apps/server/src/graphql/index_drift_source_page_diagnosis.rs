@@ -328,16 +328,15 @@ fn map_continuation_error(error: rustok_index::IndexSourceContinuationError) -> 
         | Error::PlaintextTooLarge { .. }
         | Error::Base64(_)
         | Error::MalformedEnvelope
-        | Error::UnsupportedVersion(_)
         | Error::InvalidKeyId(_)
         | Error::KeyUnavailable(_)
         | Error::InvalidToken
         | Error::Postcard(_)
-        | Error::ContractVersionMismatch
         | Error::TenantMismatch
         | Error::SchemaMismatch
         | Error::SourceOwnerMismatch
         | Error::SourceNameMismatch
+        | Error::LocaleScopeMismatch
         | Error::InvalidClaimsLifetime
         | Error::IssuedAtInFuture => continuation_input_error("INDEX_SOURCE_CONTINUATION_INVALID"),
         _ => <FieldError as GraphQLError>::internal_error(

@@ -5,16 +5,16 @@ Status: `source_complete_owner_execution_pending`
 This slice composes the existing one-page replay worker, fenced rebuild jobs, mutation
 store, and lease-bound checkpoint store into one bounded PostgreSQL runner. It includes
 durable cancellation requests, between-page terminal cancellation, a separate host-probed
-in-page interruption path, and server-owned graceful-shutdown binding through the guarded
-replay command. It does not add a scheduler, background task, automatic retry/backoff,
-dry-run, or production source adapter.
+in-page interruption path, server-owned graceful-shutdown binding through the guarded
+replay command, and time-based in-page lease maintenance. It does not add a scheduler,
+background task, automatic retry/backoff, dry-run, or production source adapter.
 
 ## Request bounds
 
 `IndexReplayRunRequest` fixes one invocation to:
 
 - one non-nil tenant and exact `SchemaRef`;
-- one bounded worker identity and whole-second lease duration;
+- one bounded worker identity and whole-second lease duration of at least 60 seconds;
 - a source page limit already constrained to 1 through 1000;
 - 1 through 1024 pages per invocation;
 - a heartbeat cadence from 1 through the invocation page budget.
@@ -22,6 +22,12 @@ dry-run, or production source adapter.
 The source name is never caller supplied. `PostgresIndexReplayRunner` resolves the exact
 owner from `SharedIndexSourceRegistry` before acquiring the durable job. The job request
 therefore uses the same source identity as page execution and checkpoint persistence.
+
+The 60-second minimum is the page-duration lease floor. Production source calls and replay
+checkpoint-read/mutation/checkpoint-commit futures each have a canonical 30-second outer
+observation bound. Long pages keep their lease alive every one third of the configured lease
+while preserving those dependency-specific timeout identities; see
+`m6-replay-page-lease-heartbeat.md`.
 
 ## Ordinary execution order
 
@@ -31,17 +37,18 @@ For an acquired `IndexReplayJobLease`, ordinary `PostgresIndexReplayRunner::run`
 2. observes and terminalizes a previously requested cancellation before each page;
 3. executes no more than the requested page budget through
    `IndexReplayWorker::run_next_page`;
-4. extends the lease between pages at the requested completed-page cadence;
-5. observes cancellation again after heartbeat and after every completed page;
-6. accumulates applied, duplicate, stale, mutation, page, and heartbeat counts;
-7. calls fenced terminal success only after the one-page worker persisted a JSON `null`
+4. while a page is pending, extends the active lease every one third of the lease duration;
+5. also extends the lease between pages at the requested completed-page cadence;
+6. observes cancellation again after boundary heartbeat and after every completed page;
+7. accumulates applied, duplicate, stale, mutation, page, and both boundary/in-page heartbeat counts;
+8. calls fenced terminal success only after the one-page worker persisted a JSON `null`
    cursor;
-8. when the page budget ends with continuation, atomically returns the same job to
+9. when the page budget ends with continuation, atomically returns the same job to
    `pending`, clears lease ownership, and makes it immediately claimable for resume.
 
 A persisted cancellation requested during ordinary execution is still observed after the
-current page's idempotent mutations and checkpoint are durable. This existing user-cancel
-contract is intentionally unchanged by host interruption work.
+current page's idempotent mutations and checkpoint are durable. In-page lease heartbeats do
+not inspect or reinterpret `cancel_requested`; the existing user-cancel contract is unchanged.
 
 ## Host-probed in-page interruption
 
@@ -49,6 +56,10 @@ contract is intentionally unchanged by host interruption work.
 same job/checkpoint/mutation stores. It adapts a host-owned probe to
 `IndexReplayWorker::run_next_page_interruptible`, whose safe points are before source scan,
 before every mutation, and before checkpoint commit.
+
+The interruptible page future is awaited through the same time-based lease-maintenance helper
+as ordinary replay. Lease ownership can therefore stay valid during a long page without
+turning the heartbeat into a shutdown or cancellation probe.
 
 If the worker returns `IndexReplayError::Interrupted`, the runner first preserves any
 persisted cancellation race. Otherwise it uses the ordinary fenced pending-yield transition:
@@ -115,12 +126,27 @@ A running cancellation request survives lease expiry and reclaim. The next owner
 persisted flag before reading the source and terminalizes the job with the incremented
 attempt fence.
 
+If an in-page heartbeat itself loses the lease, page execution fails closed through the
+existing `IndexReplayRunError::LeaseLost` path. The runner does not manufacture a checkpoint,
+rollback, retry or terminal state after losing ownership.
+
+The retained multi-host packet now proves the concurrent form of that fence. Host A remains
+blocked inside a real page future while the evidence fixture expires its lease. A distinct
+host B runner reclaims the same job as attempt 2 and completes it. When host A is released,
+its late stable delivery is duplicate-safe and its stale checkpoint path returns
+`IndexReplayRunError::LeaseLost`; attempt-2 durable state remains authoritative. See
+`m6-replay-multihost-reclaim-evidence.md`.
+
 ## Failure boundary
 
 Source, mutation, and checkpoint failures are recorded as one bounded
 `index.replay_page_failed` terminal job error with an `index_replay_run_failure_v1`
 detail object containing only the dependency code and retryable classification. No raw
 database, transport, or source-domain message is persisted.
+
+Checkpoint read, mutation persistence and checkpoint commit each retain their own retryable
+30-second timeout code. There is deliberately no generic whole-page timeout that could mask
+one of those dependency identities.
 
 Cancellation takes precedence when it races with page failure. Checkpoint failures
 classified as `checkpoint_lease_lost`, heartbeat loss, terminal completion loss, yield
@@ -131,22 +157,24 @@ Host interruption is not a page failure and does not enter this failure path.
 
 ## Still open
 
-- execute/admit retained interruption/restart and end-to-end server-shutdown evidence;
-- automatic bounded retry/backoff and dead-letter scheduling;
+- execute/admit retained interruption/restart, page lease-heartbeat, multi-host reclaim and end-to-end server-shutdown evidence;
+- automatic bounded retry/backoff and dead-letter scheduling remains a separate owner policy;
 - operator-visible scheduler health and metrics;
 - explicit targeted/full/shadow rebuild modes;
-- locale and partition checkpoint dimensions;
-- retained PostgreSQL cancellation, crash, lease-expiry, restart, timing, and
-  multi-instance evidence beyond current focused packets.
+- partition replay scope only after a real partition-capable source contract exists;
+- retained PostgreSQL/process-level cancellation, crash, lease-expiry, restart and timing evidence beyond the deterministic SQLite packets where deployment admission requires it.
 
-The guarded schema-wide GraphQL run/cancel command transport and server `StopHandle` observation
-are source-complete; execution evidence remains maintainer-owned.
+The guarded schema/locale GraphQL run/cancel command transport, locale checkpoint identity,
+server `StopHandle` observation, in-page lease maintenance and source-only multi-host reclaim
+fencing are complete; execution evidence remains maintainer-owned.
 
 ## Owner validation
 
 ```bash
 node scripts/verify/verify-index-replay-multipage-runner.mjs
 node scripts/verify/verify-index-replay-graceful-shutdown.mjs
+node scripts/verify/verify-index-replay-page-lease-heartbeat.mjs
+node scripts/verify/verify-index-replay-multihost-reclaim-evidence.mjs
 node scripts/verify/verify-index-replay-job-leases.mjs
 node scripts/verify/verify-index-source-replay-contract.mjs
 cargo check -p rustok-index --all-targets

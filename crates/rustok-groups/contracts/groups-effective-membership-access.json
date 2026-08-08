@@ -20,8 +20,15 @@
     "secret_group_summary_non_disclosure": "effective_membership_resolver",
     "membership_list_authorization": "effective_membership_resolver",
     "enabled_feature_visibility": "effective_membership_resolver",
-    "join_and_rejoin": "effective_membership_resolver",
-    "feature_settings_authorization": "effective_membership_resolver"
+    "join_and_rejoin": "transaction_aware_effective_membership",
+    "leave_group": "transaction_aware_effective_membership",
+    "feature_settings_authorization": "effective_membership_resolver",
+    "invitation_management_and_acceptance": "transaction_aware_effective_membership",
+    "membership_application_read_submit_reopen_review": "transaction_aware_effective_membership",
+    "localization_management_authorization": "transaction_aware_effective_manager",
+    "governance_authorization": "transaction_aware_effective_manager",
+    "direct_suspend_revoke_commands": "GroupMembershipEnforcementCommandPort",
+    "forum_audience_provider_acl": "GroupMembershipEnforcementReadPort via ServerForumAudienceGroupFactsPort"
   },
   "access_semantics": {
     "public_read_during_suspension": "preserved",
@@ -30,7 +37,10 @@
     "post_comment_invite_moderate_manage_transfer_during_suspension": "denied",
     "join_during_active_suspension": "denied",
     "join_for_legacy_banned_status": "denied",
+    "leave_during_active_suspension": "allowed_preserves_enforcement_projection",
+    "leave_for_legacy_banned_status": "denied_preserves_ban",
     "expired_or_revoked_enforcement": "falls_back_to_stored_group_membership_lifecycle",
+    "temporary_enforcement_member_count": "stored_lifecycle_count_unchanged",
     "platform_groups_manage": "explicit_bypass"
   },
   "wire_compatibility": {
@@ -42,18 +52,39 @@
       "groups.access.denied"
     ]
   },
+  "external_provider_consumers": {
+    "forum_audience_group_facts": {
+      "status": "source_delivered_execution_pending",
+      "adapter": "apps/server/src/services/forum_audience_group_facts.rs",
+      "runtime_composition": "apps/server/src/services/module_event_dispatcher.rs",
+      "owner_port": "rustok_groups::GroupMembershipEnforcementReadPort",
+      "positive_fact": "owner_computed_active_member_only",
+      "suspended_fact": "false",
+      "expiry": "groups_owner_clock_without_cleanup",
+      "storage_bypass": false,
+      "owner_backed_runtime_source": "apps/server/src/services/forum_audience_group_facts/owner_backed_tests.rs",
+      "sqlite_source": true,
+      "postgres_source": true,
+      "upstream_contract": "crates/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json"
+    }
+  },
   "remaining_paths": [
-    "invitation_management_and_acceptance",
-    "membership_application_read_submit_reopen_review",
-    "localization_management_authorization",
-    "governance_authorization",
-    "provider_specific_acl_adapters",
-    "member_count_suspend_restore_transitions",
-    "direct_suspend_revoke_commands",
+    "additional_provider_specific_acl_adapters",
+    "remote_and_degraded_provider_profiles",
     "moderation_subject_adapter"
   ],
   "evidence": {
     "static_guard": "scripts/verify/verify-groups-effective-membership-access.mjs",
+    "join_rejoin_static_guard": "scripts/verify/verify-groups-join-enforcement-authorization.mjs",
+    "join_rejoin_sqlite_source": "apps/server/tests/groups_join_enforcement_sqlite.rs",
+    "join_rejoin_postgresql_source": "apps/server/tests/groups_join_enforcement_postgres.rs",
+    "join_rejoin_runtime": null,
+    "leave_static_guard": "scripts/verify/verify-groups-leave-enforcement-authorization.mjs",
+    "leave_sqlite_source": null,
+    "leave_postgresql_source": null,
+    "leave_runtime": null,
+    "provider_acl_static_guard": "scripts/verify/verify-groups-membership-enforcement-access-path-integration.mjs",
+    "provider_acl_forum_audience_source": "crates/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json",
     "cargo_check": null,
     "unit_tests": null,
     "postgresql_runtime": null,

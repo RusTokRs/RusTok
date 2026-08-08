@@ -1,4 +1,8 @@
-use std::ops::Deref;
+use std::{
+    future::Future,
+    ops::Deref,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
     error::{CommerceError, CommerceResult},
@@ -8,21 +12,96 @@ use crate::{
     },
 };
 use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{TransactionalEventBus, idempotency};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, ExecResult,
     QueryResult, Statement, TransactionTrait,
 };
+use serde::Serialize;
+use serde_json::Value;
 use uuid::Uuid;
+
+#[derive(Clone)]
+struct ProductOperationReceipt {
+    lease: idempotency::Lease,
+    response_json: Arc<Mutex<Option<Value>>>,
+}
+
+tokio::task_local! {
+    static PRODUCT_OPERATION_RECEIPT: ProductOperationReceipt;
+}
+
+/// Bind one Product owner receipt to the current async write execution.
+///
+/// The scope is intentionally task-local: the shared `ProductCatalogSchemaService`
+/// stays stateless across concurrent callers, while `ProductWriteTransaction::begin`
+/// captures the receipt only for the explicitly wrapped owner command. The concrete
+/// owner write method records its actual result before commit, so transaction-derived
+/// fields such as category path never need a preflight read outside the owner transaction.
+pub(crate) async fn with_product_operation_receipt<F, T>(
+    lease: idempotency::Lease,
+    future: F,
+) -> T
+where
+    F: Future<Output = T>,
+{
+    PRODUCT_OPERATION_RECEIPT
+        .scope(
+            ProductOperationReceipt {
+                lease,
+                response_json: Arc::new(Mutex::new(None)),
+            },
+            future,
+        )
+        .await
+}
+
+/// The receipt operation UUID is also a stable Product-owned resource identity
+/// for create operations that opt into durable owner replay.
+pub(crate) fn current_product_operation_id() -> Option<Uuid> {
+    PRODUCT_OPERATION_RECEIPT
+        .try_with(|receipt| receipt.lease.operation_id)
+        .ok()
+}
+
+/// Record the actual owner result that must be committed into the active receipt.
+///
+/// Direct internal Product callers have no receipt scope, so this is intentionally a
+/// no-op for them. Receipt-scoped callers must record one result before transaction
+/// commit; a missing or poisoned result slot fails closed and rolls back the owner write.
+pub(crate) fn record_product_operation_result<T: Serialize>(value: &T) -> CommerceResult<()> {
+    let response_json = serde_json::to_value(value).map_err(|error| {
+        CommerceError::Database(DbErr::Custom(format!(
+            "product owner receipt result encoding failed: {error}"
+        )))
+    })?;
+
+    match PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {
+        let mut slot = receipt.response_json.lock().map_err(|_| {
+            CommerceError::Database(DbErr::Custom(
+                "product owner receipt result slot is unavailable".to_string(),
+            ))
+        })?;
+        *slot = Some(response_json);
+        Ok(())
+    }) {
+        Ok(result) => result,
+        Err(_) => Ok(()),
+    }
+}
 
 /// Owns one product write transaction and its transactional outbox publisher.
 ///
 /// Product entity changes and domain events must use the same database
 /// transaction. The wrapper makes publishing through any non-transactional
 /// transport unavailable to product write paths before the transaction commits.
+/// When a Product owner receipt scope is active, terminal success is completed
+/// in this same transaction before commit using the actual result recorded by the
+/// owner write method.
 pub(crate) struct ProductWriteTransaction {
     transaction: DatabaseTransaction,
     event_bus: TransactionalEventBus,
+    operation_receipt: Option<ProductOperationReceipt>,
 }
 
 impl ProductWriteTransaction {
@@ -30,9 +109,11 @@ impl ProductWriteTransaction {
         db: &DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> CommerceResult<Self> {
+        let operation_receipt = PRODUCT_OPERATION_RECEIPT.try_with(Clone::clone).ok();
         Ok(Self {
             transaction: db.begin().await?,
             event_bus,
+            operation_receipt,
         })
     }
 
@@ -114,6 +195,36 @@ impl ProductWriteTransaction {
     }
 
     pub(crate) async fn commit(self) -> CommerceResult<()> {
+        if let Some(receipt) = self.operation_receipt.as_ref() {
+            let response_json = receipt
+                .response_json
+                .lock()
+                .map_err(|_| {
+                    CommerceError::Database(DbErr::Custom(
+                        "product owner receipt result slot is unavailable".to_string(),
+                    ))
+                })?
+                .clone()
+                .ok_or_else(|| {
+                    CommerceError::Database(DbErr::Custom(
+                        "product owner receipt result was not recorded before commit".to_string(),
+                    ))
+                })?;
+            idempotency::complete(&self.transaction, receipt.lease, &response_json)
+                .await
+                .map_err(|error| {
+                    tracing::error!(
+                        operation_id = %receipt.lease.operation_id,
+                        internal_code = %error.code,
+                        retryable = error.retryable,
+                        "Product owner receipt completion failed inside write transaction"
+                    );
+                    CommerceError::Database(DbErr::Custom(format!(
+                        "product owner receipt completion failed: {}",
+                        error.code
+                    )))
+                })?;
+        }
         self.transaction.commit().await?;
         Ok(())
     }

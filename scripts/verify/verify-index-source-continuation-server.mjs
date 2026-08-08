@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const files = {
   keyring: "apps/server/src/services/index_source_continuation_runtime.rs",
   page: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
+  shadow: "apps/server/src/services/index_replay_shadow_transport.rs",
   composition: "apps/server/src/services/index_replay_runtime_composition.rs",
   exactGraphql: "apps/server/src/graphql/index_drift_diagnosis.rs",
   pageGraphql: "apps/server/src/graphql/index_drift_source_page_diagnosis.rs",
@@ -108,9 +109,38 @@ if (sealed.includes("IndexSourceCursor") || sealed.includes("next_cursor(&self)"
   throw new Error("sealed page method must not expose a raw cursor type");
 }
 
+requireMarkers("shadow", [
+  "pub struct IndexReplayShadowTransportRuntime",
+  "locale: Option<rustok_index::LocaleKey>",
+  "context.authorize_for(context.tenant_id())?;",
+  "IndexSourceContinuationScope::for_locale(",
+  "IndexSourceContinuationScope::from_registry(",
+  ".resolve_codec()",
+  "codec.open_encoded(&scope, encoded, Utc::now())",
+  "IndexReplayDryRunRequest::for_locale(",
+  "IndexReplayDryRunRequest::new(",
+  "self.operator.run_shadow(context, request).await?;",
+  "codec.seal(&scope, cursor, Utc::now(), keyring.lifetime())",
+]);
+const shadowProduction = content.shadow.split("\n#[cfg(test)]")[0];
+for (const forbidden of [
+  "DatabaseConnection",
+  "IndexSourceContinuationKeyringRuntime>()",
+  "extensions.insert(keyring)",
+  "tokio::spawn",
+  ".execute(",
+]) {
+  if (shadowProduction.includes(forbidden)) {
+    throw new Error(`Shadow continuation adapter contains forbidden capability: ${forbidden}`);
+  }
+}
+
 requireMarkers("composition", [
   '#[path = "index_source_continuation_runtime.rs"]',
+  '#[path = "index_replay_shadow_transport.rs"]',
   "source_continuation_runtime::materialize_index_source_continuation_keyring()",
+  "materialize_index_replay_shadow_transport(",
+  "continuation.clone()",
   "materialize_index_drift_source_page_diagnosis(",
   "continuation,",
 ]);
@@ -118,7 +148,7 @@ if (
   content.composition.includes("extensions.insert(continuation)") ||
   content.composition.includes("extensions.insert(keyring)")
 ) {
-  throw new Error("continuation keyring must remain private to the page runtime");
+  throw new Error("continuation keyring must remain private to sealed server runtimes");
 }
 
 for (const forbidden of [
@@ -177,6 +207,7 @@ requireMarkers("plan", [
 requireMarkers("aggregate", [
   "'verify-index-source-continuation-server.mjs'",
   "'verify-index-drift-source-page-graphql-transport.mjs'",
+  "'verify-index-replay-shadow-graphql-transport.mjs'",
 ]);
 
-console.log("Index server sealed source continuation contract verified");
+console.log("Index server sealed source continuation contract verified for drift-page plus schema-wide/exact-locale Shadow consumers");

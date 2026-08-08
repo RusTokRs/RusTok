@@ -1,0 +1,28 @@
+{
+  "format": "pages_builder_rollout_binding_review_source_v1",
+  "status": "source_review_complete_execution_not_run",
+  "prepared_on": "2026-08-08",
+  "base": "488803a831e725ef0fbeaa8540f09458ee461b85",
+  "review": {
+    "provider_flags_clone_semantics_checked": true,
+    "ui_flags_server_owned": true,
+    "ssr_flags_reread_per_request": true,
+    "tenant_slug_binding_checked": true,
+    "browser_flags_authoritative": false,
+    "hardcoded_all_on_binding_present": false,
+    "unrelated_reactive_channel_change_reverted": true,
+    "runtime_evidence_claimed": false,
+    "provider_health_claimed_observed": false
+  },
+  "execution": {
+    "tests_run": false,
+    "node_verifiers_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "database_run": false,
+    "http_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false,
+    "git_diff_check_run": false
+  }
+}

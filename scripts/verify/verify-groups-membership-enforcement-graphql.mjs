@@ -139,14 +139,19 @@ for (const marker of [
 for (const marker of [
   "Transport boundary",
   "Owner-only business semantics",
-  "Executable SQLite native/GraphQL parity source",
-  "Executable PostgreSQL native/GraphQL parity source",
+  "Consolidated parity contract",
+  "Suspend and same-key replay",
+  "Fresh stale-CAS parity",
+  "Revoke and same-key replay",
+  "Historical suspension replay after revoke",
+  "Final owner state",
+  "SQLite source",
+  "PostgreSQL source",
   "No fallback",
   "graphql_application_cas::GroupsMutationRoot",
   "GroupMembershipEnforcementCommandPort",
   "domainCode",
   "retryable",
-  "platform-wide GraphQL transport classification",
   "membership_enforcement_command_transport_parity",
   "execution pending",
   "options=-csearch_path=<schema>,public",
@@ -165,34 +170,38 @@ for (const marker of [
   "GroupsQueryRoot::default()",
   "GroupsMutationRoot::default()",
   "HostRuntimeContext::new(db)",
-  "AuthContext",
-  "TenantContext",
   "permissions: Vec::new()",
+  "GroupMembershipEnforcementMutationResult",
+  "PortErrorKind::Conflict",
   "GroupMembershipEnforcementCommandPort::suspend_membership",
   "GroupMembershipEnforcementCommandPort::revoke_membership_suspension",
   "suspendGroupMembership",
   "revokeGroupMembershipSuspension",
-  "graphql-suspend",
-  "graphql-stale",
-  "graphql-revoke",
-  "replayed",
+  "native_suspend_replay.replayed",
+  "native_revoke_replay.replayed",
+  "native_suspend_after_revoke.replayed",
+  "graphql_stale_error.message, native_stale.message",
   'Some("BAD_USER_INPUT".to_string())',
   'Some("groups.membership_enforcement_revision_conflict".to_string())',
-  "domainCode",
-  "retryable",
-  "native_suspend.member_count",
-  "native_revoke.member_count",
-  "version > native_suspend.group_version",
-  "version > native_revoke.group_version",
+  'extension_json(graphql_stale_error, "domainCode")',
+  'extension_json(graphql_stale_error, "retryable")',
+  "native_revoke.group_version, native_suspend.group_version + 1",
+  "native_final, graphql_final",
+  "native_final.4, 3",
+  'native_final.6, "direct_local"',
+  "native_final.7, 1",
 ]) {
   requireText(sqliteParity, marker, `Groups enforcement GraphQL SQLite parity source is missing ${marker}`);
 }
 
 for (const forbidden of [
+  "GroupsMembershipEnforcementMutation::default()",
+  "groups:moderate",
   "UPDATE group_membership_enforcements",
   "INSERT INTO group_membership_enforcements",
   "GroupMembershipEffectiveState {",
   "rustok_moderation::",
+  "MembershipEnforcementProvenance",
 ]) {
   if (sqliteParity.includes(forbidden)) {
     throw new Error(`Groups enforcement GraphQL SQLite parity source contains shortcut ${forbidden}`);
@@ -211,33 +220,45 @@ for (const marker of [
   "GroupsMutationRoot::default()",
   "HostRuntimeContext::new(db)",
   "permissions: Vec::new()",
+  "GroupMembershipEnforcementMutationResult",
+  "PortErrorKind::Conflict",
   "GroupMembershipEnforcementCommandPort::suspend_membership",
   "GroupMembershipEnforcementCommandPort::revoke_membership_suspension",
   "suspendGroupMembership",
   "revokeGroupMembershipSuspension",
   "postgres-graphql-suspend",
-  "postgres-graphql-stale",
+  "postgres-graphql-stale-suspend",
   "postgres-graphql-revoke",
+  "native_suspend_replay.replayed",
+  "native_revoke_replay.replayed",
+  "native_suspend_after_revoke.replayed",
+  "graphql_stale_error.message, native_stale.message",
   'Some("BAD_USER_INPUT".to_string())',
   'Some("groups.membership_enforcement_revision_conflict".to_string())',
-  "domainCode",
-  "retryable",
-  "native_suspend.member_count",
-  "native_revoke.member_count",
+  'extension_json(graphql_stale_error, "domainCode")',
+  'extension_json(graphql_stale_error, "retryable")',
+  "native_revoke.group_version, native_suspend.group_version + 1",
+  "native_final, graphql_final",
+  "native_final.4, 3",
+  'native_final.6, "direct_local"',
+  "native_final.7, 1",
 ]) {
   requireText(postgresParity, marker, `Groups enforcement GraphQL PostgreSQL parity source is missing ${marker}`);
 }
 
 for (const forbidden of [
   "SET search_path",
+  "GroupsMembershipEnforcementMutation::default()",
+  "groups:moderate",
   "UPDATE group_membership_enforcements",
   "INSERT INTO group_membership_enforcements",
   "GroupMembershipEffectiveState {",
   "rustok_moderation::",
+  "MembershipEnforcementProvenance",
 ]) {
   if (postgresParity.includes(forbidden)) {
     throw new Error(`Groups enforcement GraphQL PostgreSQL parity source contains shortcut ${forbidden}`);
   }
 }
 
-console.log("Groups membership enforcement GraphQL source and SQLite/PostgreSQL parity guard passed");
+console.log("Groups membership enforcement GraphQL source and consolidated SQLite/PostgreSQL parity guard passed");

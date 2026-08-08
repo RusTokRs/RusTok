@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use rustok_api::manifest_hash::hash_manifest;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -17,6 +18,19 @@ use crate::{
 pub struct TenantModuleOverride {
     pub module_slug: String,
     pub enabled: bool,
+}
+
+/// Deployment-admitted availability requirement evaluated by effective policy.
+///
+/// Co-requisites deliberately do not participate in dependency or migration
+/// ordering. Hosts supply this normalized owner input separately from the
+/// definition catalog's ordinary `dependencies` edges.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleEffectivePolicyCoRequisite {
+    pub module_slug: String,
+    pub required_module_slug: String,
+    pub version_requirement: String,
 }
 
 /// Canonical channel state supplied by the channel owner at a policy boundary.
@@ -89,6 +103,13 @@ pub enum ModuleEffectivePolicyFact {
         module_slug: String,
         enabled: bool,
     },
+    CoRequisite {
+        module_slug: String,
+        version_requirement: String,
+        version: String,
+        enabled: bool,
+        compatible: bool,
+    },
     ArtifactInstallation {
         installation_id: uuid::Uuid,
         scope: ModuleInstallationScope,
@@ -148,6 +169,8 @@ pub enum ModuleEffectivePolicyDenialReason {
     CapabilityPolicyUnavailable,
     ExecutorUnavailable,
     DependencyUnavailable { module_slug: String },
+    CoRequisiteUnavailable { module_slug: String },
+    CoRequisiteVersionMismatch { module_slug: String },
     RegistryReleaseUnavailable,
     SecurityStateUnavailable,
     Quarantined,
@@ -230,6 +253,8 @@ pub enum ModuleEffectivePolicyError {
     RevisionEncoding(String),
     #[error("effective module policy cache identity is invalid: {0}")]
     InvalidCacheIdentity(String),
+    #[error("effective module policy co-requisite input is invalid: {0}")]
+    InvalidCoRequisiteInput(String),
     #[error("effective module policy channel input is invalid: {0}")]
     InvalidChannelInput(String),
     #[error("effective module policy maintenance input is invalid: {0}")]
@@ -409,6 +434,7 @@ pub(crate) struct ModuleEffectivePolicyQuery<'a> {
     default_enabled: Vec<String>,
     tenant_overrides: Vec<TenantModuleOverride>,
     runtime_inputs: Vec<ModuleEffectivePolicyRuntimeInput>,
+    co_requisites: Vec<ModuleEffectivePolicyCoRequisite>,
     channel: Option<ModuleEffectivePolicyChannelInput>,
     maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
     node_readiness: Option<ModuleEffectivePolicyNodeReadinessInput>,
@@ -492,10 +518,19 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
             default_enabled: default_enabled.into_iter().collect(),
             tenant_overrides: tenant_overrides.into_iter().collect(),
             runtime_inputs: runtime_inputs.into_iter().collect(),
+            co_requisites: Vec::new(),
             channel,
             maintenance,
             node_readiness,
         }
+    }
+
+    pub(crate) fn with_corequisites(
+        mut self,
+        co_requisites: impl IntoIterator<Item = ModuleEffectivePolicyCoRequisite>,
+    ) -> Self {
+        self.co_requisites = co_requisites.into_iter().collect();
+        self
     }
 
     /// Resolves the immutable core set, selected optional defaults, and tenant
@@ -505,6 +540,7 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
         validate_channel_input(self.channel.as_ref())?;
         validate_maintenance_input(self.maintenance.as_ref())?;
         validate_node_readiness_input(self.node_readiness.as_ref(), None)?;
+        let co_requisites = normalize_corequisites(self.catalog, self.co_requisites)?;
         let channel = self.channel;
         let mut maintenance = self.maintenance;
         let mut node_readiness = self.node_readiness;
@@ -532,6 +568,7 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
             &default_enabled,
             &tenant_overrides,
             &runtime_inputs,
+            &co_requisites,
             channel.as_ref(),
             maintenance.as_ref(),
             None,
@@ -542,6 +579,7 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
             &default_enabled,
             &tenant_overrides,
             &runtime_inputs,
+            &co_requisites,
             channel.as_ref(),
             maintenance.as_ref(),
             node_readiness.as_ref(),
@@ -785,16 +823,52 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                     (!missing.is_empty()).then(|| (definition.slug.clone(), missing))
                 })
                 .collect::<Vec<_>>();
-            if unavailable_dependencies.is_empty() {
+            let unavailable_corequisites = co_requisites
+                .iter()
+                .filter(|co_requisite| enabled.contains(&co_requisite.module_slug))
+                .filter_map(|co_requisite| {
+                    let provider_enabled = enabled.contains(&co_requisite.required_module_slug);
+                    let compatible = corequisite_version_compatible(self.catalog, co_requisite);
+                    (!provider_enabled || !compatible).then(|| {
+                        (
+                            co_requisite.module_slug.clone(),
+                            co_requisite.required_module_slug.clone(),
+                            provider_enabled,
+                            compatible,
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+            if unavailable_dependencies.is_empty() && unavailable_corequisites.is_empty() {
                 break;
             }
             for (module_slug, dependencies) in unavailable_dependencies {
-                enabled.remove(&module_slug);
-                denial_reasons.entry(module_slug).or_default().extend(
-                    dependencies.into_iter().map(|module_slug| {
-                        ModuleEffectivePolicyDenialReason::DependencyUnavailable { module_slug }
-                    }),
-                );
+                if enabled.remove(&module_slug) {
+                    denial_reasons.entry(module_slug).or_default().extend(
+                        dependencies.into_iter().map(|module_slug| {
+                            ModuleEffectivePolicyDenialReason::DependencyUnavailable { module_slug }
+                        }),
+                    );
+                }
+            }
+            for (module_slug, required_module_slug, provider_enabled, compatible) in
+                unavailable_corequisites
+            {
+                if !enabled.remove(&module_slug) {
+                    continue;
+                }
+                let reason = if !provider_enabled {
+                    ModuleEffectivePolicyDenialReason::CoRequisiteUnavailable {
+                        module_slug: required_module_slug,
+                    }
+                } else if !compatible {
+                    ModuleEffectivePolicyDenialReason::CoRequisiteVersionMismatch {
+                        module_slug: required_module_slug,
+                    }
+                } else {
+                    unreachable!("unavailable co-requisite must have a denial cause")
+                };
+                denial_reasons.entry(module_slug).or_default().push(reason);
             }
         }
 
@@ -891,6 +965,27 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                         enabled: enabled.contains(&dependency.slug),
                     }
                 }));
+                facts.extend(
+                    co_requisites
+                        .iter()
+                        .filter(|co_requisite| co_requisite.module_slug == definition.slug)
+                        .map(|co_requisite| {
+                            let provider = self
+                                .catalog
+                                .get(&co_requisite.required_module_slug)
+                                .expect("co-requisite provider was normalized against the catalog");
+                            ModuleEffectivePolicyFact::CoRequisite {
+                                module_slug: co_requisite.required_module_slug.clone(),
+                                version_requirement: co_requisite.version_requirement.clone(),
+                                version: provider.version.clone(),
+                                enabled: enabled.contains(&co_requisite.required_module_slug),
+                                compatible: corequisite_version_compatible(
+                                    self.catalog,
+                                    co_requisite,
+                                ),
+                            }
+                        }),
+                );
                 let module_denial_reasons = denial_reasons
                     .get(&definition.slug)
                     .cloned()
@@ -967,6 +1062,7 @@ struct EffectivePolicyRevisionInput<'a> {
     default_enabled: &'a [String],
     tenant_overrides: &'a [TenantModuleOverride],
     runtime_inputs: &'a [ModuleEffectivePolicyRuntimeInput],
+    co_requisites: &'a [ModuleEffectivePolicyCoRequisite],
     channel: Option<&'a ModuleEffectivePolicyChannelInput>,
     maintenance: Option<&'a ModuleEffectivePolicyMaintenanceInput>,
     node_readiness: Option<&'a ModuleEffectivePolicyNodeReadinessInput>,
@@ -977,22 +1073,117 @@ fn effective_policy_revision(
     default_enabled: &[String],
     tenant_overrides: &[TenantModuleOverride],
     runtime_inputs: &[ModuleEffectivePolicyRuntimeInput],
+    co_requisites: &[ModuleEffectivePolicyCoRequisite],
     channel: Option<&ModuleEffectivePolicyChannelInput>,
     maintenance: Option<&ModuleEffectivePolicyMaintenanceInput>,
     node_readiness: Option<&ModuleEffectivePolicyNodeReadinessInput>,
 ) -> Result<String, ModuleEffectivePolicyError> {
     let digest = hash_manifest(&EffectivePolicyRevisionInput {
-        contract: "rustok.module_effective_policy",
+        contract: "rustok.module_effective_policy.v2",
         catalog,
         default_enabled,
         tenant_overrides,
         runtime_inputs,
+        co_requisites,
         channel,
         maintenance,
         node_readiness,
     })
     .map_err(|error| ModuleEffectivePolicyError::RevisionEncoding(error.to_string()))?;
     Ok(format!("sha256:{digest}"))
+}
+
+fn normalize_corequisites(
+    catalog: &ModuleDefinitionCatalog,
+    co_requisites: Vec<ModuleEffectivePolicyCoRequisite>,
+) -> Result<Vec<ModuleEffectivePolicyCoRequisite>, ModuleEffectivePolicyError> {
+    let mut normalized = BTreeMap::<(String, String), String>::new();
+    for co_requisite in co_requisites {
+        let module_slug = co_requisite.module_slug.trim().to_string();
+        let required_module_slug = co_requisite.required_module_slug.trim().to_string();
+        let version_requirement = co_requisite.version_requirement.trim().to_string();
+        if !valid_text(&module_slug, 128) || !valid_text(&required_module_slug, 128) {
+            return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(
+                "module slugs must be non-empty and at most 128 characters".to_string(),
+            ));
+        }
+        if module_slug == required_module_slug {
+            return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                "module '{module_slug}' cannot require itself as a co-requisite"
+            )));
+        }
+        let module = catalog.get(&module_slug).ok_or_else(|| {
+            ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                "co-requisite consumer '{module_slug}' is absent from the active definition catalog"
+            ))
+        })?;
+        let provider = catalog.get(&required_module_slug).ok_or_else(|| {
+            ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                "co-requisite provider '{required_module_slug}' is absent from the active definition catalog"
+            ))
+        })?;
+        if module
+            .dependencies
+            .iter()
+            .any(|dependency| dependency.slug == required_module_slug)
+        {
+            return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                "module '{module_slug}' declares '{required_module_slug}' as both an ordinary dependency and a co-requisite"
+            )));
+        }
+        if !version_requirement.is_empty() {
+            VersionReq::parse(&version_requirement).map_err(|_| {
+                ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                    "module '{module_slug}' co-requisite '{required_module_slug}' has invalid version requirement '{version_requirement}'"
+                ))
+            })?;
+            Version::parse(&provider.version).map_err(|_| {
+                ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                    "co-requisite provider '{required_module_slug}' has invalid module version '{}'",
+                    provider.version
+                ))
+            })?;
+        }
+        let key = (module_slug.clone(), required_module_slug.clone());
+        if let Some(existing) = normalized.get(&key) {
+            if existing != &version_requirement {
+                return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                    "module '{module_slug}' has conflicting co-requisite requirements for '{required_module_slug}'"
+                )));
+            }
+            continue;
+        }
+        normalized.insert(key, version_requirement);
+    }
+    Ok(normalized
+        .into_iter()
+        .map(
+            |((module_slug, required_module_slug), version_requirement)| {
+                ModuleEffectivePolicyCoRequisite {
+                    module_slug,
+                    required_module_slug,
+                    version_requirement,
+                }
+            },
+        )
+        .collect())
+}
+
+fn corequisite_version_compatible(
+    catalog: &ModuleDefinitionCatalog,
+    co_requisite: &ModuleEffectivePolicyCoRequisite,
+) -> bool {
+    if co_requisite.version_requirement.is_empty() {
+        return true;
+    }
+    let provider = catalog
+        .get(&co_requisite.required_module_slug)
+        .expect("co-requisite provider was normalized against the catalog");
+    let requirement = VersionReq::parse(&co_requisite.version_requirement)
+        .expect("co-requisite version requirement was normalized");
+    let version = Version::parse(&provider.version)
+        .expect("co-requisite provider version was normalized");
+    requirement.matches(&version)
 }
 
 fn validate_channel_input(
@@ -1147,18 +1338,18 @@ fn valid_text(value: &str, max_chars: usize) -> bool {
 mod tests {
     use super::{
         ModuleEffectivePolicyChannelBinding, ModuleEffectivePolicyChannelInput,
-        ModuleEffectivePolicyDenialReason, ModuleEffectivePolicyFact,
-        ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyMaintenanceInput,
-        ModuleEffectivePolicyNodeReadinessInput, ModuleEffectivePolicyQuery,
-        ModuleEffectivePolicyRuntimeInput, ModulePolicyRevisionApplyOutcome,
-        ModulePolicyRevisionGate, ModulePolicyRevisionGateError, ModulePolicyRevisionTransition,
-        TenantModuleOverride,
+        ModuleEffectivePolicyCoRequisite, ModuleEffectivePolicyDenialReason,
+        ModuleEffectivePolicyFact, ModuleEffectivePolicyInstallationFact,
+        ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
+        ModuleEffectivePolicyQuery, ModuleEffectivePolicyRuntimeInput,
+        ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate, ModulePolicyRevisionGateError,
+        ModulePolicyRevisionTransition, TenantModuleOverride,
     };
     use crate::{
         ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactRegistryReleaseStatus,
         ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus, ModuleDefinition,
         ModuleDefinitionCatalog, ModuleDefinitionKind, ModuleDefinitionSource,
-        ModuleInstallationScope, ModulesModule,
+        ModuleDependencyConstraint, ModuleInstallationScope, ModulesModule,
     };
     use rustok_core::ModuleRegistry;
     use uuid::Uuid;
@@ -1550,6 +1741,77 @@ mod tests {
     }
 
     #[test]
+    fn corequisites_are_revisioned_explainable_availability_not_dependency_edges() {
+        let catalog = corequisite_catalog();
+        let co_requisites = vec![
+            ModuleEffectivePolicyCoRequisite {
+                module_slug: "product".to_string(),
+                required_module_slug: "inventory".to_string(),
+                version_requirement: ">=0.1.0".to_string(),
+            },
+            ModuleEffectivePolicyCoRequisite {
+                module_slug: "product".to_string(),
+                required_module_slug: "pricing".to_string(),
+                version_requirement: ">=0.1.0".to_string(),
+            },
+        ];
+        let staged = ModuleEffectivePolicyQuery::new(
+            &catalog,
+            ["taxonomy".to_string(), "product".to_string()],
+            [],
+            [],
+        )
+        .with_corequisites(co_requisites.clone())
+        .execute()
+        .expect("staged policy");
+        let product = staged.decision("product");
+        assert!(!product.enabled);
+        assert!(product.denial_reasons.iter().any(|reason| matches!(
+            reason,
+            ModuleEffectivePolicyDenialReason::CoRequisiteUnavailable { module_slug }
+                if module_slug == "inventory"
+        )));
+        assert!(product.facts.iter().any(|fact| matches!(
+            fact,
+            ModuleEffectivePolicyFact::CoRequisite {
+                module_slug,
+                enabled: false,
+                compatible: true,
+                ..
+            } if module_slug == "inventory"
+        )));
+
+        let complete = ModuleEffectivePolicyQuery::new(
+            &catalog,
+            [
+                "taxonomy".to_string(),
+                "product".to_string(),
+                "inventory".to_string(),
+                "pricing".to_string(),
+            ],
+            [],
+            [],
+        )
+        .with_corequisites(co_requisites)
+        .execute()
+        .expect("complete policy");
+        assert!(complete.contains("product"));
+        assert!(complete.contains("inventory"));
+        assert!(complete.contains("pricing"));
+        assert_ne!(staged.policy_revision(), complete.policy_revision());
+        assert_eq!(
+            catalog
+                .get("product")
+                .expect("product definition")
+                .dependencies
+                .iter()
+                .map(|dependency| dependency.slug.as_str())
+                .collect::<Vec<_>>(),
+            vec!["taxonomy"]
+        );
+    }
+
+    #[test]
     fn cache_identity_requires_exact_tenant_and_policy_revision() {
         let catalog = ModuleDefinitionCatalog::from_static_registry(
             &ModuleRegistry::new().register(ModulesModule),
@@ -1670,6 +1932,41 @@ mod tests {
                 status: ModuleArtifactRegistryReleaseStatus::Yanked
             }
         )));
+    }
+
+    fn corequisite_catalog() -> ModuleDefinitionCatalog {
+        let mut catalog = ModuleDefinitionCatalog::default();
+        for (slug, dependencies) in [
+            ("taxonomy", Vec::<&str>::new()),
+            ("product", vec!["taxonomy"]),
+            ("inventory", vec!["product"]),
+            ("pricing", vec!["product"]),
+        ] {
+            catalog
+                .insert(ModuleDefinition {
+                    slug: slug.to_string(),
+                    version: "0.1.0".to_string(),
+                    kind: ModuleDefinitionKind::Optional,
+                    source: ModuleDefinitionSource::PlatformNative {
+                        distribution_version: "0.1.0".to_string(),
+                    },
+                    dependencies: dependencies
+                        .into_iter()
+                        .map(|dependency| ModuleDependencyConstraint {
+                            slug: dependency.to_string(),
+                            version_requirement: "*".to_string(),
+                        })
+                        .collect(),
+                    permissions: Vec::new(),
+                    settings_schema_digest: None,
+                    schema_documents: Vec::new(),
+                    bindings: Vec::new(),
+                    ui: Vec::new(),
+                    capabilities: Vec::new(),
+                })
+                .expect("corequisite definition");
+        }
+        catalog
     }
 
     fn artifact_catalog() -> ModuleDefinitionCatalog {

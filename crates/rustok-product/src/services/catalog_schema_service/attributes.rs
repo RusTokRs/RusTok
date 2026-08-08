@@ -5,7 +5,10 @@ use super::{
     ProductCatalogSchemaService, load_attribute_write_definition, map_schema_resolution_error,
     uuid_filter_values, validate_locale,
 };
+use rustok_api::PortError;
+use rustok_outbox::idempotency;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement};
+use serde::Serialize;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -21,9 +24,13 @@ use crate::services::{
     product_attribute_integer_term, product_attribute_localized_text_expr,
     product_attribute_option_term, product_attribute_text_term,
 };
-use crate::services::write_transaction::ProductWriteTransaction;
+use crate::services::write_transaction::{
+    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
+};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
+
+const PRODUCT_SCHEMA_RECEIPT_OWNER: &str = "product";
 
 impl ProductCatalogSchemaService {
     pub async fn create_attribute(
@@ -33,7 +40,7 @@ impl ProductCatalogSchemaService {
         input: CreateProductAttributeInput,
     ) -> CommerceResult<ProductAttributeRecord> {
         input.validate()?;
-        let attribute_id = generate_id();
+        let attribute_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         txn.execute(Statement::from_sql_and_values(
@@ -102,13 +109,14 @@ impl ProductCatalogSchemaService {
             DomainEvent::ProductAttributeCreated { attribute_id },
         )
         .await?;
-        txn.commit().await?;
-
-        Ok(ProductAttributeRecord {
+        let result = ProductAttributeRecord {
             id: attribute_id,
             code: input.code,
             value_type: input.value_type,
-        })
+        };
+        record_product_operation_result(&result)?;
+        txn.commit().await?;
+        Ok(result)
     }
 
     pub async fn create_attribute_option(
@@ -132,7 +140,7 @@ impl ProductCatalogSchemaService {
             ));
         }
 
-        let option_id = generate_id();
+        let option_id = current_product_operation_id().unwrap_or_else(generate_id);
         txn.execute(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
@@ -176,12 +184,40 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
-        txn.commit().await?;
-        Ok(ProductAttributeOptionRecord {
+        let result = ProductAttributeOptionRecord {
             id: option_id,
             attribute_id: input.attribute_id,
             code: input.code,
-        })
+        };
+        record_product_operation_result(&result)?;
+        txn.commit().await?;
+        Ok(result)
+    }
+
+    pub(crate) async fn admit_schema_operation_receipt<T: Serialize>(
+        &self,
+        tenant_id: Uuid,
+        idempotency_key: &str,
+        operation: &str,
+        request: &T,
+    ) -> Result<idempotency::Admission, PortError> {
+        idempotency::admit(
+            &self.db,
+            tenant_id,
+            PRODUCT_SCHEMA_RECEIPT_OWNER,
+            idempotency_key,
+            operation,
+            request,
+        )
+        .await
+    }
+
+    pub(crate) async fn fail_schema_operation_receipt(
+        &self,
+        lease: idempotency::Lease,
+        error: &PortError,
+    ) -> Result<(), PortError> {
+        idempotency::fail(&self.db, lease, error).await
     }
 
     pub async fn list_attributes(

@@ -6,6 +6,8 @@ mod drift_diagnosis_operator;
 mod source_continuation_runtime;
 #[path = "index_drift_source_page_diagnosis.rs"]
 mod drift_source_page_diagnosis;
+#[path = "index_replay_shadow_transport.rs"]
+mod replay_shadow_transport;
 
 pub use drift_diagnosis_operator::{
     IndexDriftDiagnosisOperatorError, IndexDriftDiagnosisOperatorRuntime,
@@ -17,6 +19,10 @@ pub use drift_source_page_diagnosis::{
 pub use reconciliation_operator::{
     IndexReconciliationOperatorContext, IndexReconciliationOperatorError,
     IndexReconciliationOperatorRuntime,
+};
+pub use replay_shadow_transport::{
+    IndexReplayShadowTransportError, IndexReplayShadowTransportOutcome,
+    IndexReplayShadowTransportRuntime,
 };
 
 use std::fmt;
@@ -82,19 +88,32 @@ pub enum IndexReplayOperatorError {
     Replay(#[from] rustok_index::IndexReplayRunError),
 }
 
-/// Server-owned guarded operator boundary over the canonical Index replay runtime.
+#[derive(Debug, Error)]
+pub enum IndexReplayShadowOperatorError {
+    #[error(transparent)]
+    Authorization(#[from] IndexReplayOperatorError),
+    #[error(transparent)]
+    DryRun(#[from] rustok_index::IndexReplayDryRunError),
+}
+
+/// Server-owned guarded operator boundary over the canonical Index replay runtimes.
 ///
 /// Transport adapters must provide an exact request-bound tenant/actor context. The boundary
-/// accepts only `modules:manage`, rejects cross-tenant requests before database access, and exposes
-/// no connection, source registry, scheduler, or worker-spawn handle.
+/// accepts only `modules:manage`, rejects cross-tenant requests before execution, and exposes no
+/// connection, source registry, scheduler, or worker-spawn handle. Durable full replay and
+/// side-effect-free shadow replay remain separate execution surfaces behind the same guard.
 #[derive(Clone)]
 pub struct IndexReplayOperatorRuntime {
     inner: rustok_index::SharedIndexReplayRuntime,
+    shadow: rustok_index::SharedIndexReplayDryRunRuntime,
 }
 
 impl IndexReplayOperatorRuntime {
-    fn new(inner: rustok_index::SharedIndexReplayRuntime) -> Self {
-        Self { inner }
+    fn new(
+        inner: rustok_index::SharedIndexReplayRuntime,
+        shadow: rustok_index::SharedIndexReplayDryRunRuntime,
+    ) -> Self {
+        Self { inner, shadow }
     }
 
     pub async fn run(
@@ -104,6 +123,17 @@ impl IndexReplayOperatorRuntime {
     ) -> Result<rustok_index::IndexReplayRunOutcome, IndexReplayOperatorError> {
         context.authorize_for(request.page_request().tenant_id())?;
         self.inner.run(request).await.map_err(Into::into)
+    }
+
+    /// Runs the existing side-effect-free replay dry-run capability through the same exact
+    /// request-bound authorization boundary as durable full replay.
+    pub async fn run_shadow(
+        &self,
+        context: IndexReplayOperatorContext,
+        request: rustok_index::IndexReplayDryRunRequest,
+    ) -> Result<rustok_index::IndexReplayDryRunOutcome, IndexReplayShadowOperatorError> {
+        context.authorize_for(request.tenant_id())?;
+        self.shadow.run(request).await.map_err(Into::into)
     }
 
     /// Runs replay through the same authorization boundary while sampling one host-owned
@@ -149,9 +179,9 @@ impl fmt::Debug for IndexReplayOperatorRuntime {
 ///
 /// This function performs no database I/O and starts no worker. It invokes selected source
 /// factories only to construct adapters, freezes the complete source catalog, binds the immutable
-/// schema/source registries to the host database, and publishes the guarded bounded replay,
-/// reconciliation, exact-entity drift diagnosis, and one-page source-candidate diagnosis
-/// capabilities through `ModuleRuntimeExtensions`.
+/// schema/source registries to the host database, and publishes the guarded bounded full/shadow
+/// replay, reconciliation, exact-entity drift diagnosis, one-page source-candidate diagnosis, and
+/// sealed schema-wide Shadow transport capabilities through `ModuleRuntimeExtensions`.
 pub(crate) fn materialize_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
@@ -183,7 +213,15 @@ pub(crate) fn materialize_index_replay_runtime(
             ServerError::Message(format!("Index replay runtime composition failed: {error}"))
         })?;
     if let Some(runtime) = runtime {
-        extensions.insert(IndexReplayOperatorRuntime::new(runtime));
+        let shadow = extensions
+            .get::<rustok_index::SharedIndexReplayDryRunRuntime>()
+            .cloned()
+            .ok_or_else(|| {
+                ServerError::Message(
+                    "Index replay shadow runtime is missing after replay composition".to_string(),
+                )
+            })?;
+        extensions.insert(IndexReplayOperatorRuntime::new(runtime, shadow));
     }
     reconciliation_operator::materialize_index_reconciliation_operator(extensions, db.clone())?;
     drift_diagnosis_operator::materialize_index_drift_diagnosis_operator(extensions, db)?;
@@ -198,6 +236,10 @@ pub(crate) fn materialize_index_replay_runtime(
     } else {
         None
     };
+    replay_shadow_transport::materialize_index_replay_shadow_transport(
+        extensions,
+        continuation.clone(),
+    )?;
     drift_source_page_diagnosis::materialize_index_drift_source_page_diagnosis(
         extensions,
         continuation,
@@ -213,11 +255,12 @@ mod tests {
         MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule, UserRole,
     };
     use rustok_index::{
-        EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema, IndexSource,
+        EntityName, FieldCardinality, FieldName, IndexField, IndexModule,
+        IndexReplayDryRunRequest, IndexReplayDryRunStatus, IndexSchema, IndexSource,
         IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
         IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
-        SharedIndexReplayRuntime, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
-        register_index_schema_source, register_index_source,
+        SharedIndexReplayDryRunRuntime, SharedIndexReplayRuntime, SharedIndexSchemaRegistry,
+        SharedIndexSourceRegistry, register_index_schema_source, register_index_source,
     };
     use sea_orm::Database;
     use sea_orm_migration::MigrationTrait;
@@ -226,6 +269,7 @@ mod tests {
     use super::{
         IndexDriftDiagnosisOperatorRuntime, IndexDriftSourcePageDiagnosisRuntime,
         IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
+        IndexReplayShadowOperatorError, IndexReplayShadowTransportRuntime,
         materialize_index_replay_runtime,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
@@ -337,7 +381,9 @@ mod tests {
             .expect("missing sources should remain optional");
         assert!(!extensions.contains::<SharedIndexSourceRegistry>());
         assert!(!extensions.contains::<SharedIndexReplayRuntime>());
+        assert!(!extensions.contains::<SharedIndexReplayDryRunRuntime>());
         assert!(!extensions.contains::<IndexReplayOperatorRuntime>());
+        assert!(!extensions.contains::<IndexReplayShadowTransportRuntime>());
         assert!(!extensions.contains::<IndexDriftDiagnosisOperatorRuntime>());
         assert!(!extensions.contains::<IndexDriftSourcePageDiagnosisRuntime>());
     }
@@ -359,18 +405,82 @@ mod tests {
             .expect("complete replay runtime should compose");
         assert!(extensions.contains::<SharedIndexSourceRegistry>());
         assert!(extensions.contains::<SharedIndexReplayRuntime>());
+        assert!(extensions.contains::<SharedIndexReplayDryRunRuntime>());
         assert!(extensions.contains::<IndexReplayOperatorRuntime>());
+        assert!(extensions.contains::<IndexReplayShadowTransportRuntime>());
         assert!(extensions.contains::<IndexDriftDiagnosisOperatorRuntime>());
         assert!(extensions.contains::<IndexDriftSourcePageDiagnosisRuntime>());
 
         let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
         assert!(host.shared_get::<IndexReplayOperatorRuntime>().is_some());
+        assert!(host.shared_get::<IndexReplayShadowTransportRuntime>().is_some());
         assert!(host
             .shared_get::<IndexDriftDiagnosisOperatorRuntime>()
             .is_some());
         assert!(host
             .shared_get::<IndexDriftSourcePageDiagnosisRuntime>()
             .is_some());
+    }
+
+    #[tokio::test]
+    async fn shadow_dispatch_reuses_request_bound_modules_manage_guard() {
+        let registry = ModuleRegistry::new()
+            .register(IndexModule)
+            .register(DemoReplayModule);
+        let mut extensions = rustok_distribution::build_runtime_extensions(&registry)
+            .expect("source schema composition should build");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+        materialize_index_replay_runtime(&mut extensions, db)
+            .expect("complete replay runtime should compose");
+        let runtime = extensions
+            .get::<IndexReplayOperatorRuntime>()
+            .cloned()
+            .expect("guarded replay operator runtime");
+
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReplayOperatorContext::new(tenant_id, actor_id).unwrap();
+        let request = IndexReplayDryRunRequest::new(
+            tenant_id,
+            demo_schema().reference,
+            None,
+            10,
+            1,
+        )
+        .unwrap();
+
+        let forbidden = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            runtime.run_shadow(context, request.clone()),
+        )
+        .await
+        .expect_err("modules:read must not invoke shadow replay");
+        assert!(matches!(
+            forbidden,
+            IndexReplayShadowOperatorError::Authorization(IndexReplayOperatorError::Forbidden)
+        ));
+
+        let outcome = with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            runtime.run_shadow(context, request),
+        )
+        .await
+        .expect("modules:manage should invoke side-effect-free shadow replay");
+        assert_eq!(outcome.status(), IndexReplayDryRunStatus::Complete);
+        assert_eq!(outcome.pages_scanned(), 1);
+        assert_eq!(outcome.mutation_count(), 0);
     }
 
     #[tokio::test]

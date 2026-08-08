@@ -8,11 +8,11 @@ use sha2::{Digest, Sha256};
 use std::time::Duration;
 use uuid::Uuid;
 
-use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogSchemaService};
+use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogSchemaWritePort};
 
 use super::super::{
-    PRODUCT_MODULE_SLUG as MODULE_SLUG, map_product_service_error, product_mutation_actor,
-    require_commerce_permission, types::*,
+    PRODUCT_MODULE_SLUG as MODULE_SLUG, product_mutation_actor, require_commerce_permission,
+    types::*,
 };
 use super::helpers::*;
 
@@ -109,6 +109,24 @@ fn product_command_context(
     Ok(context)
 }
 
+fn product_schema_write_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    product_id: Option<Uuid>,
+    idempotency_key: String,
+    operation: &'static str,
+) -> Result<PortContext> {
+    product_command_context(
+        ctx,
+        tenant_id,
+        user_id,
+        product_id,
+        idempotency_key,
+        operation,
+    )
+}
+
 fn product_command_port_error(
     context: &PortContext,
     error: PortError,
@@ -158,6 +176,29 @@ fn product_command_port_error(
         extensions.set("code", code);
         extensions.set("retryable", error.retryable);
         extensions.set("correlation_id", context.correlation_id.clone());
+    })
+}
+
+fn product_schema_write_port(
+    ctx: &Context<'_>,
+    context: &PortContext,
+) -> Result<std::sync::Arc<dyn ProductCatalogSchemaWritePort>> {
+    let runtime = product_command_runtime(ctx)?;
+    runtime.schema_write_port().ok_or_else(|| {
+        tracing::error!(
+            profile = runtime.profile().as_str(),
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            code = "product.schema_write_port_unavailable",
+            "Product GraphQL schema-write capability is unavailable"
+        );
+        async_graphql::Error::new("Product data is temporarily unavailable").extend_with(
+            |_, extensions| {
+                extensions.set("code", "PRODUCT_TEMPORARILY_UNAVAILABLE");
+                extensions.set("retryable", true);
+                extensions.set("correlation_id", context.correlation_id.clone());
+            },
+        )
     })
 }
 
@@ -330,6 +371,7 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         locale: String,
         input: CreateProductAttributeInput,
     ) -> Result<bool> {
@@ -340,50 +382,51 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        service
-            .create_attribute(
-                tenant_id,
-                user_id,
-                rustok_product::services::CreateProductAttributeInput {
-                    code: input.code,
-                    value_type: parse_attribute_value_type(&input.value_type)?,
-                    scope: "product".to_string(),
-                    is_localized: input.is_localized,
-                    is_filterable: input.is_filterable,
-                    is_searchable: input.is_searchable,
-                    is_sortable: input.is_sortable,
-                    is_comparable: false,
-                    show_on_storefront: input.show_on_storefront,
-                    show_in_admin_grid: true,
-                    search_weight: 0,
-                    filter_display: None,
-                    facet_mode: None,
-                    position: 0,
-                    validation: serde_json::Value::Object(Default::default()),
-                    default_value: None,
-                    metadata: serde_json::Value::Object(Default::default()),
-                    translations: vec![rustok_product::services::AttributeTranslationInput {
-                        locale,
-                        label: input.label,
-                        help_text: input.help_text,
-                        facet_label: None,
-                        seo_label: None,
-                    }],
-                },
-            )
+        let domain_input = rustok_product::services::CreateProductAttributeInput {
+            code: input.code,
+            value_type: parse_attribute_value_type(&input.value_type)?,
+            scope: "product".to_string(),
+            is_localized: input.is_localized,
+            is_filterable: input.is_filterable,
+            is_searchable: input.is_searchable,
+            is_sortable: input.is_sortable,
+            is_comparable: false,
+            show_on_storefront: input.show_on_storefront,
+            show_in_admin_grid: true,
+            search_weight: 0,
+            filter_display: None,
+            facet_mode: None,
+            position: 0,
+            validation: serde_json::Value::Object(Default::default()),
+            default_value: None,
+            metadata: serde_json::Value::Object(Default::default()),
+            translations: vec![rustok_product::services::AttributeTranslationInput {
+                locale,
+                label: input.label,
+                help_text: input.help_text,
+                facet_label: None,
+                seo_label: None,
+            }],
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "create_attribute",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .create_attribute(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
-
+            .map_err(|error| product_command_port_error(&port_context, error, "create_attribute"))?;
         Ok(true)
     }
 
     async fn create_product_attribute_option(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         locale: String,
         input: CreateProductAttributeOptionInput,
     ) -> Result<bool> {
@@ -394,31 +437,37 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
-            .create_attribute_option(
-                tenant_id,
-                user_id,
-                rustok_product::services::CreateProductAttributeOptionInput {
-                    attribute_id: input.attribute_id,
-                    code: input.code,
-                    position: input.position,
-                    metadata: serde_json::Value::Object(Default::default()),
-                    translations: vec![rustok_product::services::AttributeOptionTranslationInput {
-                        locale,
-                        label: input.label,
-                    }],
-                },
-            )
+        let domain_input = rustok_product::services::CreateProductAttributeOptionInput {
+            attribute_id: input.attribute_id,
+            code: input.code,
+            position: input.position,
+            metadata: serde_json::Value::Object(Default::default()),
+            translations: vec![rustok_product::services::AttributeOptionTranslationInput {
+                locale,
+                label: input.label,
+            }],
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "create_attribute_option",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .create_attribute_option(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "create_attribute_option")
+            })?;
         Ok(true)
     }
 
     async fn create_catalog_category(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         locale: String,
         input: CreateCatalogCategoryInput,
     ) -> Result<bool> {
@@ -429,40 +478,41 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        service
-            .create_category(
-                tenant_id,
-                user_id,
-                rustok_product::services::CreateCatalogCategoryInput {
-                    parent_id: input.parent_id,
-                    code: input.code,
-                    slug: input.slug,
-                    kind: parse_catalog_category_kind(&input.kind)?,
-                    position: 0,
-                    rule_config: serde_json::Value::Object(Default::default()),
-                    metadata: serde_json::Value::Object(Default::default()),
-                    translations: vec![rustok_product::services::CategoryTranslationInput {
-                        locale,
-                        name: input.name,
-                        description: input.description,
-                        meta_title: None,
-                        meta_description: None,
-                    }],
-                },
-            )
+        let domain_input = rustok_product::services::CreateCatalogCategoryInput {
+            parent_id: input.parent_id,
+            code: input.code,
+            slug: input.slug,
+            kind: parse_catalog_category_kind(&input.kind)?,
+            position: 0,
+            rule_config: serde_json::Value::Object(Default::default()),
+            metadata: serde_json::Value::Object(Default::default()),
+            translations: vec![rustok_product::services::CategoryTranslationInput {
+                locale,
+                name: input.name,
+                description: input.description,
+                meta_title: None,
+                meta_description: None,
+            }],
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "create_category",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .create_category(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
-
+            .map_err(|error| product_command_port_error(&port_context, error, "create_category"))?;
         Ok(true)
     }
 
     async fn create_product_attribute_schema(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         locale: String,
         input: CreateProductAttributeSchemaInput,
     ) -> Result<bool> {
@@ -473,33 +523,34 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        service
-            .create_schema(
-                tenant_id,
-                user_id,
-                rustok_product::services::CreateProductAttributeSchemaInput {
-                    code: input.code,
-                    metadata: serde_json::Value::Object(Default::default()),
-                    translations: vec![rustok_product::services::SchemaTranslationInput {
-                        locale,
-                        name: input.name,
-                        description: input.description,
-                    }],
-                },
-            )
+        let domain_input = rustok_product::services::CreateProductAttributeSchemaInput {
+            code: input.code,
+            metadata: serde_json::Value::Object(Default::default()),
+            translations: vec![rustok_product::services::SchemaTranslationInput {
+                locale,
+                name: input.name,
+                description: input.description,
+            }],
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "create_schema",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .create_schema(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
-
+            .map_err(|error| product_command_port_error(&port_context, error, "create_schema"))?;
         Ok(true)
     }
 
     async fn create_product_attribute_schema_group(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         locale: String,
         input: CreateProductAttributeSchemaGroupInput,
     ) -> Result<bool> {
@@ -510,32 +561,37 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
-            .create_schema_group(
-                tenant_id,
-                user_id,
-                rustok_product::services::CreateProductAttributeSchemaGroupInput {
-                    schema_id: input.schema_id,
-                    code: input.code,
-                    position: input.position,
-                    metadata: serde_json::Value::Object(Default::default()),
-                    translations: vec![rustok_product::services::AttributeGroupTranslationInput {
-                        locale,
-                        label: input.label,
-                    }],
-                },
-            )
+        let domain_input = rustok_product::services::CreateProductAttributeSchemaGroupInput {
+            schema_id: input.schema_id,
+            code: input.code,
+            position: input.position,
+            metadata: serde_json::Value::Object(Default::default()),
+            translations: vec![rustok_product::services::AttributeGroupTranslationInput {
+                locale,
+                label: input.label,
+            }],
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "create_schema_group",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .create_schema_group(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "create_schema_group")
+            })?;
         Ok(true)
     }
 
     async fn create_catalog_category_attribute_group(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         locale: String,
         input: CreateCategoryAttributeGroupInput,
     ) -> Result<bool> {
@@ -546,32 +602,37 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
-            .create_category_group(
-                tenant_id,
-                user_id,
-                rustok_product::services::CreateCategoryAttributeGroupInput {
-                    category_id: input.category_id,
-                    code: input.code,
-                    position: input.position,
-                    metadata: serde_json::Value::Object(Default::default()),
-                    translations: vec![rustok_product::services::AttributeGroupTranslationInput {
-                        locale,
-                        label: input.label,
-                    }],
-                },
-            )
+        let domain_input = rustok_product::services::CreateCategoryAttributeGroupInput {
+            category_id: input.category_id,
+            code: input.code,
+            position: input.position,
+            metadata: serde_json::Value::Object(Default::default()),
+            translations: vec![rustok_product::services::AttributeGroupTranslationInput {
+                locale,
+                label: input.label,
+            }],
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "create_category_group",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .create_category_group(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "create_category_group")
+            })?;
         Ok(true)
     }
 
     async fn set_catalog_category_schema_mode(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         input: SetCategorySchemaModeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -581,30 +642,33 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        service
-            .set_category_schema_mode(
-                tenant_id,
-                user_id,
-                rustok_product::services::SetCategorySchemaModeInput {
-                    category_id: input.category_id,
-                    mode: parse_category_schema_mode(&input.mode)?,
-                    schema_id: input.schema_id,
-                    clone_from_category_id: input.clone_from_category_id,
-                },
-            )
+        let domain_input = rustok_product::services::SetCategorySchemaModeInput {
+            category_id: input.category_id,
+            mode: parse_category_schema_mode(&input.mode)?,
+            schema_id: input.schema_id,
+            clone_from_category_id: input.clone_from_category_id,
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "set_category_schema_mode",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .set_category_schema_mode(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
-
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "set_category_schema_mode")
+            })?;
         Ok(true)
     }
 
     async fn bind_product_attribute_schema_attribute(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         input: BindSchemaAttributeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -614,35 +678,38 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        service
-            .bind_schema_attribute(
-                tenant_id,
-                user_id,
-                rustok_product::services::BindSchemaAttributeInput {
-                    schema_id: input.schema_id,
-                    attribute_id: input.attribute_id,
-                    group_code: input.group_code,
-                    is_required: input.is_required,
-                    is_disabled: input.is_disabled,
-                    position: input.position,
-                    visibility_overrides: serde_json::Value::Object(Default::default()),
-                    validation_overrides: serde_json::Value::Object(Default::default()),
-                    metadata: serde_json::Value::Object(Default::default()),
-                },
-            )
+        let domain_input = rustok_product::services::BindSchemaAttributeInput {
+            schema_id: input.schema_id,
+            attribute_id: input.attribute_id,
+            group_code: input.group_code,
+            is_required: input.is_required,
+            is_disabled: input.is_disabled,
+            position: input.position,
+            visibility_overrides: serde_json::Value::Object(Default::default()),
+            validation_overrides: serde_json::Value::Object(Default::default()),
+            metadata: serde_json::Value::Object(Default::default()),
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "bind_schema_attribute",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .bind_schema_attribute(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
-
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "bind_schema_attribute")
+            })?;
         Ok(true)
     }
 
     async fn bind_catalog_category_attribute(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         input: BindCategoryAttributeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -652,36 +719,39 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
-        service
-            .bind_category_attribute(
-                tenant_id,
-                user_id,
-                rustok_product::services::BindCategoryAttributeInput {
-                    category_id: input.category_id,
-                    attribute_id: input.attribute_id,
-                    group_code: input.group_code,
-                    binding_kind: parse_category_attribute_binding_kind(&input.binding_kind)?,
-                    is_required: input.is_required,
-                    is_disabled: input.is_disabled,
-                    position: input.position,
-                    visibility_overrides: serde_json::Value::Object(Default::default()),
-                    validation_overrides: serde_json::Value::Object(Default::default()),
-                    metadata: serde_json::Value::Object(Default::default()),
-                },
-            )
+        let domain_input = rustok_product::services::BindCategoryAttributeInput {
+            category_id: input.category_id,
+            attribute_id: input.attribute_id,
+            group_code: input.group_code,
+            binding_kind: parse_category_attribute_binding_kind(&input.binding_kind)?,
+            is_required: input.is_required,
+            is_disabled: input.is_disabled,
+            position: input.position,
+            visibility_overrides: serde_json::Value::Object(Default::default()),
+            validation_overrides: serde_json::Value::Object(Default::default()),
+            metadata: serde_json::Value::Object(Default::default()),
+        };
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            None,
+            idempotency_key,
+            "bind_category_attribute",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .bind_category_attribute(port_context.clone(), domain_input)
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
-
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "bind_category_attribute")
+            })?;
         Ok(true)
     }
 
     async fn save_product_attribute_values(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         product_id: Uuid,
         locale: String,
         patches: Vec<ProductAttributeValuePatchInput>,
@@ -693,23 +763,36 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
         let patches = patches
             .into_iter()
             .map(parse_product_attribute_value_patch)
             .collect::<Result<Vec<_>>>()?;
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
-            .save_product_attribute_values(tenant_id, user_id, product_id, locale.trim(), patches)
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            Some(product_id),
+            idempotency_key,
+            "save_product_attribute_values",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
+            .save_product_attribute_values(
+                port_context.clone(),
+                product_id,
+                locale.trim().to_string(),
+                patches,
+            )
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "save_product_attribute_values")
+            })
             .map(|items| items.into_iter().map(Into::into).collect())
     }
 
     async fn clear_detached_product_attribute_values(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         product_id: Uuid,
         locale: String,
         attribute_ids: Vec<Uuid>,
@@ -721,19 +804,29 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
+        let port_context = product_schema_write_context(
+            ctx,
+            tenant_id,
+            user_id,
+            Some(product_id),
+            idempotency_key,
+            "clear_detached_product_attribute_values",
+        )?;
+        product_schema_write_port(ctx, &port_context)?
             .clear_detached_product_attribute_values(
-                tenant_id,
-                user_id,
+                port_context.clone(),
                 product_id,
-                locale.trim(),
+                locale.trim().to_string(),
                 attribute_ids,
             )
             .await
-            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))
+            .map_err(|error| {
+                product_command_port_error(
+                    &port_context,
+                    error,
+                    "clear_detached_product_attribute_values",
+                )
+            })
             .map(|items| items.into_iter().map(Into::into).collect())
     }
 }

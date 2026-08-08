@@ -21,6 +21,7 @@ const requireMarkers = (relative, markers) => {
 const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
   'const MAX_PAGES_PER_RUN: usize = 1_024;',
+  'const MIN_REPLAY_RUN_LEASE_DURATION: Duration = Duration::from_secs(60);',
   'pub struct IndexReplayRunRequest',
   'pub enum IndexReplayRunStatus',
   'Cancelled,',
@@ -34,6 +35,8 @@ const runner = requireMarkers(runnerPath, [
   'for page_index in 0..request.max_pages()',
   'page_index % request.heartbeat_every_pages() == 0',
   'worker.run_next_page(request.page_request().clone())',
+  'let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(',
+  'aggregate.heartbeat_count += in_page_heartbeat_count;',
   'cancel_if_requested(&self.db, &lease).await?',
   'finish_success(&self.db, &lease).await?',
   'finish_failure(&self.db, &lease, details).await?',
@@ -51,32 +54,35 @@ const runner = requireMarkers(runnerPath, [
 
 for (const forbidden of [
   'tokio::spawn',
-  'loop {',
-  'tokio::time::sleep',
   'DELETE FROM index_jobs',
   'rustok_product',
   'rustok_content',
   'rustok_flex',
   'run_interruptible<Check>',
+  'index_replay_page_timeout',
 ]) {
   if (runner.includes(forbidden)) fail(`${runnerPath} contains forbidden marker ${forbidden}`);
 }
 
 const runLoop = runner.indexOf('for page_index in 0..request.max_pages()');
 const prePageCancel = runner.indexOf('cancel_if_requested(&self.db, &lease).await?', runLoop);
-const pageCall = runner.indexOf('worker.run_next_page(request.page_request().clone())', runLoop);
-const postPageCancel = runner.indexOf('cancel_if_requested(&self.db, &lease).await?', pageCall);
+const pageAwait = runner.indexOf('let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(', prePageCancel);
+const pageCall = runner.indexOf('worker.run_next_page(request.page_request().clone())', pageAwait);
+const pageMatch = runner.indexOf('let page = match page_result {', pageCall);
+const postPageCancel = runner.indexOf('cancel_if_requested(&self.db, &lease).await?', pageMatch);
 const successCall = runner.indexOf('finish_success(&self.db, &lease).await?', postPageCancel);
 const yieldCall = runner.indexOf('yield_for_resume(&self.db, &lease).await?', successCall);
 if (
   runLoop < 0
   || prePageCancel <= runLoop
-  || pageCall <= prePageCancel
-  || postPageCancel <= pageCall
+  || pageAwait <= prePageCancel
+  || pageCall <= pageAwait
+  || pageMatch <= pageCall
+  || postPageCancel <= pageMatch
   || successCall <= postPageCancel
   || yieldCall <= successCall
 ) {
-  fail('ordinary runner must preserve cancellation before/after pages, complete on null cursor, then yield');
+  fail('ordinary runner must preserve cancel -> bounded page/lease maintenance -> cancel -> complete/yield ordering');
 }
 
 for (const terminalSql of ['finish_success_sql', 'finish_failure_sql', 'yield_job_sql']) {
@@ -151,4 +157,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-replay-contract.mjs'",
 ]);
 
-console.log('[verify-index-replay-multipage-runner] ordinary replay/cancel semantics remain stable while the separate interruptible path is bound to server shutdown through lifecycle-neutral runtime/operator probes');
+console.log('[verify-index-replay-multipage-runner] ordinary replay/cancel semantics remain stable while long pages retain fenced lease ownership through the shared in-page heartbeat helper');
