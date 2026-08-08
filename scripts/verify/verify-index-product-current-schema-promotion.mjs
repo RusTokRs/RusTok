@@ -104,14 +104,19 @@ requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.m
   'The runtime must not stage or select a Product key `3` implementation',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md', [
-  'Status: `source_contract_complete_execution_pending`',
+  'Status: `postgres_packet_source_complete_execution_pending`',
   'Current source identity',
   'Tenant promotion sequence',
   'ordinary-register the exact Product key `4` immutable contract',
   '`PostgresSchemaRegistrationStore::register_current`',
   'Historical state',
+  'Retained PostgreSQL promotion packet — source complete',
+  'storage-only lower-key fixture',
   'Mounted Storefront remains owner-native',
-  'Execution still required',
+  'Maintainer execution still required',
+]);
+requireMarkers('scripts/verify/verify-index-product-current-schema-promotion-postgres-packet.mjs', [
+  'retained Product key4 stage/replay/register_current/inactive-old-key/restart PostgreSQL packet source verified',
 ]);
 
-console.log('[verify-index-product-current-schema-promotion] Product key4 is the only current runtime contract; tenant stage/rebuild/register_current promotion remains fail-closed and execution-owned');
+console.log('[verify-index-product-current-schema-promotion] Product key4 is the only current runtime contract; retained tenant promotion PostgreSQL packet is source-complete and execution remains maintainer-owned');
