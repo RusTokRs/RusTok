@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
+use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::request::RequestContext;
@@ -17,6 +17,8 @@ use crate::{
 };
 
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
+const DOMAIN_CODE_EXTENSION: &str = "domainCode";
+const RETRYABLE_EXTENSION: &str = "retryable";
 
 #[derive(Default)]
 pub struct GroupsMembershipEnforcementMutation;
@@ -189,7 +191,9 @@ fn port_context(
 }
 
 fn map_port_error(error: PortError) -> FieldError {
-    match error.kind {
+    let domain_code = error.code.clone();
+    let retryable = error.retryable;
+    let transport_error = match error.kind {
         PortErrorKind::Validation | PortErrorKind::Conflict => {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
@@ -203,5 +207,72 @@ fn map_port_error(error: PortError) -> FieldError {
         PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
             "Groups membership enforcement requires review",
         ),
+    };
+
+    // Keep the common GraphQL `code` extension as the transport classification while preserving
+    // the stable owner PortError identity separately. Clients can branch on the domain code without
+    // losing the platform-wide BAD_USER_INPUT/PERMISSION_DENIED/etc. contract.
+    transport_error.extend_with(move |_, extensions| {
+        extensions.set(DOMAIN_CODE_EXTENSION, domain_code);
+        extensions.set(RETRYABLE_EXTENSION, retryable);
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use async_graphql::ErrorExtensions;
+
+    use super::*;
+
+    fn extension_json(error: FieldError, key: &str) -> Option<serde_json::Value> {
+        error
+            .extend()
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get(key))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+    }
+
+    #[test]
+    fn graphql_conflict_preserves_transport_and_owner_codes() {
+        let error = map_port_error(PortError::conflict(
+            "groups.membership_enforcement_revision_conflict",
+            "stale membership revision",
+        ));
+        assert_eq!(
+            extension_json(error.clone(), "code").and_then(|value| value.as_str().map(str::to_owned)),
+            Some("BAD_USER_INPUT".to_string())
+        );
+        assert_eq!(
+            extension_json(error.clone(), DOMAIN_CODE_EXTENSION)
+                .and_then(|value| value.as_str().map(str::to_owned)),
+            Some("groups.membership_enforcement_revision_conflict".to_string())
+        );
+        assert_eq!(
+            extension_json(error, RETRYABLE_EXTENSION).and_then(|value| value.as_bool()),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn graphql_unavailable_keeps_safe_message_and_retryability() {
+        let error = map_port_error(PortError::unavailable(
+            "groups.persistence_unavailable",
+            "private database diagnostic",
+        ));
+        assert_eq!(
+            extension_json(error.clone(), "code").and_then(|value| value.as_str().map(str::to_owned)),
+            Some("INTERNAL_ERROR".to_string())
+        );
+        assert_eq!(
+            extension_json(error.clone(), DOMAIN_CODE_EXTENSION)
+                .and_then(|value| value.as_str().map(str::to_owned)),
+            Some("groups.persistence_unavailable".to_string())
+        );
+        assert_eq!(
+            extension_json(error, RETRYABLE_EXTENSION).and_then(|value| value.as_bool()),
+            Some(true)
+        );
     }
 }
