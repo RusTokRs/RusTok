@@ -16,7 +16,7 @@ for (const marker of [
   "reserve_group_write_for_update(transaction, tenant_id, locator.group_id).await?",
   "group::Entity::find()",
   ".filter(membership_state::Column::GroupId.eq(locator.group_id))",
-  "query.lock_exclusive()",
+  ".lock_exclusive()",
   "membership_enforcement::Entity::find_by_id(locked_membership.id)",
   "locked_membership.group_id != locator.group_id",
   "locked_membership.user_id != locator.user_id",
