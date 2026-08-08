@@ -27,6 +27,7 @@ pub(crate) fn validate_module_publish_readiness(
     validate_module_server_http_surface_contract(manifest_path, slug, package_manifest)?;
     validate_module_ui_classification_contract(slug, package_manifest)?;
     validate_module_ui_metadata_contract(slug, package_manifest)?;
+    validate_module_contribution_manifest_contract(slug, package_manifest, module_root)?;
     validate_module_admin_surface_contract(slug, package_manifest)?;
     validate_module_dependency_contract(slug, spec, package_manifest, module_root)?;
     validate_module_permission_contract(slug, module_root)?;
@@ -70,6 +71,78 @@ pub(crate) fn validate_module_publish_contract(
         anyhow::bail!(
             "Module '{slug}' description must be at least 20 characters for publish readiness"
         );
+    }
+
+    Ok(())
+}
+
+fn validate_module_contribution_manifest_contract(
+    slug: &str,
+    manifest: &ModulePackageManifest,
+    module_root: &Path,
+) -> Result<()> {
+    let path = module_root.join("rustok-module.toml");
+    let source = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read {} for contribution validation", path.display()))?;
+    let Some(normalized) = rustok_module_manifest::normalize_module_contribution_manifest(&source)
+        .map_err(|error| anyhow::anyhow!("Module '{slug}' has invalid contribution metadata: {error}"))?
+    else {
+        return Ok(());
+    };
+
+    if normalized.module_id != manifest.module.slug.trim() {
+        anyhow::bail!(
+            "Module '{slug}' contribution metadata resolves module_id='{}', expected '{}'",
+            normalized.module_id,
+            manifest.module.slug.trim()
+        );
+    }
+    if normalized.owner_version != manifest.module.version.trim() {
+        anyhow::bail!(
+            "Module '{slug}' contribution metadata resolves owner_version='{}', expected module.version='{}'",
+            normalized.owner_version,
+            manifest.module.version.trim()
+        );
+    }
+    if !normalized.admin.is_empty() && manifest.provides.admin_ui.is_none() {
+        anyhow::bail!(
+            "Module '{slug}' declares admin contribution metadata without [provides.admin_ui]"
+        );
+    }
+    if !normalized.storefront.is_empty() && manifest.provides.storefront_ui.is_none() {
+        anyhow::bail!(
+            "Module '{slug}' declares storefront contribution metadata without [provides.storefront_ui]"
+        );
+    }
+
+    let builder_capabilities = normalized
+        .builder_capabilities
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    for (surface, contributions) in [
+        ("admin", normalized.admin.as_slice()),
+        ("storefront", normalized.storefront.as_slice()),
+    ] {
+        for contribution in contributions {
+            let id = contribution
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("<unknown>");
+            let Some(required) = contribution
+                .get("required_capabilities")
+                .and_then(serde_json::Value::as_array)
+            else {
+                continue;
+            };
+            for capability in required.iter().filter_map(serde_json::Value::as_str) {
+                if !builder_capabilities.contains(capability) {
+                    anyhow::bail!(
+                        "Module '{slug}' {surface} contribution '{id}' requires capability '{capability}' outside fba.builder_consumer.capabilities"
+                    );
+                }
+            }
+        }
     }
 
     Ok(())
