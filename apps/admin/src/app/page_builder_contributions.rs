@@ -5,6 +5,7 @@ use rustok_page_builder_admin::{
     PageBuilderContributionPreviewPort, PageBuilderContributionPreviewRequest,
 };
 use std::collections::HashSet;
+use std::str::FromStr;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -43,23 +44,32 @@ impl PageBuilderContributionPreviewPort for ForumPageBuilderPreviewPort {
 }
 
 #[server(prefix = "/api/fn", endpoint = "page-builder/contribution-permissions")]
-async fn page_builder_contribution_permissions() -> Result<Vec<String>, ServerFnError> {
+async fn page_builder_contribution_permissions(
+    required_permissions: Vec<String>,
+) -> Result<Vec<String>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let mut permissions = auth
-            .permissions
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-        permissions.sort();
-        permissions.dedup();
-        Ok(permissions)
+        let mut granted = Vec::new();
+        for required in required_permissions {
+            let permission = rustok_api::Permission::from_str(required.trim()).map_err(|error| {
+                ServerFnError::new(format!(
+                    "Invalid Page Builder contribution permission `{required}`: {error}"
+                ))
+            })?;
+            if rustok_api::has_effective_permission(&auth.permissions, &permission) {
+                granted.push(permission.to_string());
+            }
+        }
+        granted.sort();
+        granted.dedup();
+        Ok(granted)
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = required_permissions;
         Err(ServerFnError::new(
             "page-builder/contribution-permissions requires the `ssr` feature",
         ))
@@ -69,14 +79,18 @@ async fn page_builder_contribution_permissions() -> Result<Vec<String>, ServerFn
 /// App composition scope for optional Page Builder provider extensions.
 ///
 /// The enabled-module set has already crossed tenant control-plane loading before this component
-/// is mounted. Effective permissions are loaded from the authenticated server snapshot rather than
-/// inferred from the client-visible role string.
+/// is mounted. The browser sends only manifest-declared permissions; the server resolves each one
+/// through `has_effective_permission`, so a resource `manage` grant correctly satisfies an exact
+/// `read` contribution requirement without exposing the caller's complete permission snapshot.
 #[component]
 pub fn PageBuilderContributionScope(
     enabled_modules: HashSet<String>,
     children: ChildrenFn,
 ) -> impl IntoView {
-    let permissions = LocalResource::new(page_builder_contribution_permissions);
+    let required_permissions = required_contribution_permissions(&enabled_modules);
+    let permissions = LocalResource::new(move || {
+        page_builder_contribution_permissions(required_permissions.clone())
+    });
     let children_for_result = children.clone();
 
     view! {
@@ -107,6 +121,20 @@ pub fn PageBuilderContributionScope(
             }}
         </Suspense>
     }
+}
+
+fn required_contribution_permissions(enabled_modules: &HashSet<String>) -> Vec<String> {
+    let mut permissions = Vec::new();
+    if enabled_modules.contains("forum") {
+        permissions.extend(
+            rustok_forum_admin::forum_contribution_manifest()
+                .required_permissions
+                .into_iter(),
+        );
+    }
+    permissions.sort();
+    permissions.dedup();
+    permissions
 }
 
 #[component]
