@@ -2,6 +2,7 @@
 
 use std::{env, error::Error};
 
+use rustok_core::MigrationSource;
 use rustok_index::IndexModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, Value,
@@ -274,7 +275,7 @@ async fn seed_titles(db: &DatabaseConnection) -> TestResult<()> {
     db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{TENANT_ID}')"))
         .await?;
     for (offset, (product_id, title, handle)) in products.into_iter().enumerate() {
-        let translation_id = Uuid::from_u128(0x7300 + offset as u128 + 1);
+        let translation_id = Uuid::from_u128(0x7300_u128 + offset as u128 + 1);
         db.execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO products (id, tenant_id) VALUES ($1, $2)",
