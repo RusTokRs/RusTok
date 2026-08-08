@@ -147,34 +147,43 @@ requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
   'IndexSourceContinuationScope::for_locale(',
   'IndexReplayDryRunRequest::for_locale(',
 ]);
-requireMarkers('apps/server/src/graphql/index_replay.rs', [
+const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
+const graphql = requireMarkers(graphqlPath, [
+  'pub struct IndexReplayTargetedRunInput',
+  'async fn run_index_replay_targeted(',
+  'prepare_authorized_targeted_run(tenant.id, auth.user_id, input)',
+  '.run_targeted(operator_context, request)',
   'pub struct IndexReplayShadowRunInput',
   'pub locale: Option<String>',
   'async fn run_index_replay_shadow(',
   '.get::<IndexReplayShadowTransportRuntime>()',
-  '.run(',
 ]);
-const graphqlProduction = read('apps/server/src/graphql/index_replay.rs').split('\n#[cfg(test)]')[0];
-if (graphqlProduction.includes('run_index_replay_targeted') || graphqlProduction.includes('.run_targeted(')) {
-  fail('Targeted public transport must remain absent until the dedicated transport slice');
+const production = graphql.split('\n#[cfg(test)]')[0];
+for (const forbidden of [
+  'SharedIndexReplayRuntime',
+  'IndexReplayTargetedExecutor',
+  'PostgresMutationStore',
+]) {
+  if (production.includes(forbidden)) {
+    fail(`GraphQL must not bypass dedicated guarded mode surfaces: ${forbidden}`);
+  }
 }
 
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_targeted_host_guard_transport_pending`.',
+  'Status: `source_complete_targeted_graphql_execution_pending`.',
   '`Full` — cursor-based durable source scan',
   '`Targeted` — bounded exact-key source load',
   '`Shadow` — side-effect-free cursor scan',
   'returns true only for `Full`',
   '## Targeted mutation application',
   '## Targeted PostgreSQL composition and host dispatch',
+  '## Targeted GraphQL transport',
   '`IndexReplayTargetedExecutor<PostgresMutationStore>`',
   'same effective `modules:manage`',
-  '`Shadow` host dispatch is source-complete',
-  '`runIndexReplayShadow` is a dedicated transport',
-  'Locale-safe continuation and dry-run execution',
+  '`runIndexReplayTargeted` is a dedicated mutation',
+  '`runIndexReplayShadow` remains a dedicated transport',
   'one current unversioned envelope',
-  'dedicated authorization-first public transport',
-  'Execution/admission remains maintainer-owned.',
+  'No additional independent source-only M6 replay boundary is open',
 ]);
 
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
@@ -187,6 +196,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
   'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
   'Add partition replay scope only after a real partition-capable source contract exists.',
+  'There is no remaining independent source-only M6 replay expansion justified by the current contract.',
 ]);
 
-console.log('[verify-index-replay-mode-contract] Full stays durable, Targeted has bounded PostgreSQL-backed modules:manage host dispatch without durable ownership, and Shadow remains no-write/sealed');
+console.log('[verify-index-replay-mode-contract] Full stays durable, Targeted uses bounded exact-key PostgreSQL/guarded GraphQL execution without durable ownership, and Shadow remains no-write/sealed');
