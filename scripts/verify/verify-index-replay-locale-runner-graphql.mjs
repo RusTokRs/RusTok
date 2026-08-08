@@ -80,7 +80,7 @@ requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
   '`partition_key`',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-locale-replay-runner-graphql.md', [
-  'runner_graphql_source_complete_execution_pending',
+  'runner_graphql_evidence_source_complete_execution_pending',
   'checkpoint.locale_key',
   'Partition replay must remain blocked',
   'end-to-end GraphQL locale yield/isolation/fresh-runtime resume',
