@@ -9,11 +9,11 @@ use rustok_index::{
 use rustok_product::{
     ProductAttributeTermExpr, ProductResolvedAttributeFilter, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection, entities::product::ProductStatus,
+    services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES,
 };
 
 use super::PRODUCT_SCHEMA_ROUTING_KEY;
 
-const MAX_TEXT_LIKE_PATTERN_BYTES: usize = 1024;
 const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;
 const MAX_STOREFRONT_ATTRIBUTE_FILTERS: usize = 8;
 
@@ -116,10 +116,10 @@ pub(crate) fn build_product_storefront_index_shadow_query(
         .map(str::trim)
         .filter(|search| !search.is_empty())
         .map(|search| {
-            let pattern = format!("%{search}%");
-            if pattern.len() > MAX_TEXT_LIKE_PATTERN_BYTES {
+            if search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES {
                 return Err(ProductStorefrontIndexShadowError::SearchPatternTooLong);
             }
+            let pattern = format!("%{search}%");
             if pattern.contains('\0') {
                 return Err(ProductStorefrontIndexShadowError::SearchPatternContainsNul);
             }
@@ -423,6 +423,23 @@ mod tests {
                 vec![attribute_term()],
             ),
             Err(ProductStorefrontIndexShadowError::OffsetTooDeep)
+        );
+    }
+
+    #[test]
+    fn fails_closed_when_public_query_fields_bypass_owner_search_constructor_bound() {
+        let mut owner = owner_query(StorefrontProductSortDirection::Asc);
+        owner.search = Some("a".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES + 1));
+        assert_eq!(
+            build_product_storefront_index_shadow_query(
+                Uuid::new_v4(),
+                "fi",
+                "en",
+                Some(Uuid::new_v4()),
+                &owner,
+                vec![attribute_term()],
+            ),
+            Err(ProductStorefrontIndexShadowError::SearchPatternTooLong)
         );
     }
 }
