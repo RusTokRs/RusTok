@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use rustok_api::PortContext;
-use rustok_index::{IndexQueryPage, IndexValue};
+use rustok_index::IndexQueryPage;
 use rustok_product::{
     ProductStorefrontTagHydration, StorefrontProductList, StorefrontProductListQuery,
 };
@@ -179,6 +179,8 @@ fn compare_owner_and_projected(
 
 #[cfg(test)]
 mod tests {
+    use rustok_index::IndexValue;
+
     use super::*;
 
     #[test]
