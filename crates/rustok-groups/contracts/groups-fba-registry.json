@@ -69,7 +69,7 @@
         "transactional_audit": true,
         "transactional_semantic_event": true,
         "transport_status": "rust_and_graphql_source",
-        "graphql_root": "graphql_membership_enforcement::GroupsMutationRoot",
+        "graphql_root": "graphql_application_cas::GroupsMutationRoot",
         "graphql_mutations": [
           "suspendGroupMembership",
           "revokeGroupMembershipSuspension"
@@ -93,7 +93,9 @@
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false,
-        "authorization": "active_owner_or_admin_or_platform_manage"
+        "authorization": "effective_active_owner_or_admin_or_platform_manage",
+        "effective_clock": "groups_owner_utc_clock",
+        "stored_status": "compatibility_only"
       },
       {
         "name": "GroupInvitationReadPort",
@@ -274,7 +276,10 @@
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true,
-        "authorization": "active_owner_or_admin_or_platform_manage",
+        "authorization": "effective_active_owner_or_admin_or_platform_manage",
+        "authorization_clock": "groups_owner_utc_clock",
+        "authorization_lock_order": "group_then_membership_then_enforcement",
+        "authorization_before_translation_state": true,
         "exact_locale_only": true,
         "last_translation_delete": "deny",
         "transactional_group_version": true,
@@ -401,9 +406,17 @@
     "effective_locale_owner": "host_runtime",
     "module_local_fallback": false,
     "management_selection": "exact_normalized_locale",
+    "effective_authorization": "implemented_source",
+    "effective_authorization_clock": "groups_owner_utc_clock",
+    "read_authorization": "owner_clock_effective_manager",
+    "write_authorization": "transactional_owner_clock_effective_manager",
+    "write_lock_order": "group_then_membership_then_enforcement",
+    "suspended_manager": "groups.membership_suspended",
+    "legacy_banned_manager": "groups.membership_banned",
+    "inactive_or_insufficient_manager": "groups.manager_required",
     "delete_last_translation": "deny",
     "version_bump": "same_transaction",
-    "mutation_serialization": "base_group_row"
+    "mutation_serialization": "base_group_row_then_effective_membership_locks"
   },
   "invitations": {
     "plaintext_token_storage": "never",
@@ -576,7 +589,9 @@
       "surfaces": [
         "rust_port",
         "graphql",
-        "leptos_server_function"
+        "leptos_server_function",
+        "owner_clock_effective_manager_read",
+        "transactional_effective_manager_write"
       ],
       "implicit_fallback": false
     },

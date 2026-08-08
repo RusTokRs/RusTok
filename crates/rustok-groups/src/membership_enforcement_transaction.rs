@@ -11,24 +11,19 @@ use crate::error::GroupsResult;
 use crate::membership_enforcement::resolve_group_membership_enforcement;
 use crate::membership_enforcement_entities::{membership_enforcement, membership_state};
 
-/// Resolve effective membership under the Groups owner write-lock protocol.
+/// Acquire the Groups owner aggregate writer reservation before reading mutable group state.
 ///
-/// The lock order is always `Group -> GroupMembership -> GroupMembershipEnforcement`.
-/// PostgreSQL/MySQL use row locks. SQLite acquires the database writer reservation through a
-/// no-op group update before reading membership/enforcement, preventing another owner transaction
-/// from committing enforcement or membership changes between authorization and mutation.
-pub(crate) async fn resolve_group_membership_enforcement_for_update(
+/// PostgreSQL/MySQL retain an exclusive row lock. SQLite obtains the writer reservation through a
+/// no-op update so subsequent group-version and membership/enforcement reads cannot race another
+/// owner writer. Existence remains the caller's domain concern; do not use rows-affected here as an
+/// existence signal because SQLite may report zero for a no-op assignment.
+pub(crate) async fn reserve_group_write_for_update(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     group_id: Uuid,
-    user_id: Uuid,
-    evaluated_at: DateTime<Utc>,
-) -> GroupsResult<GroupMembershipEffectiveState> {
+) -> GroupsResult<()> {
     match transaction.get_database_backend() {
         DbBackend::Sqlite => {
-            // The command has already resolved the group row before entering the effective guard.
-            // Do not use rows_affected as an existence test: SQLite may report zero for a no-op
-            // assignment depending on connection settings even though the writer lock was acquired.
             transaction
                 .execute(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
@@ -46,6 +41,23 @@ pub(crate) async fn resolve_group_membership_enforcement_for_update(
                 .await?;
         }
     }
+    Ok(())
+}
+
+/// Resolve effective membership under the Groups owner write-lock protocol.
+///
+/// The lock order is always `Group -> GroupMembership -> GroupMembershipEnforcement`.
+/// PostgreSQL/MySQL use row locks. SQLite acquires the database writer reservation through a
+/// no-op group update before reading membership/enforcement, preventing another owner transaction
+/// from committing enforcement or membership changes between authorization and mutation.
+pub(crate) async fn resolve_group_membership_enforcement_for_update(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_id: Uuid,
+    evaluated_at: DateTime<Utc>,
+) -> GroupsResult<GroupMembershipEffectiveState> {
+    reserve_group_write_for_update(transaction, tenant_id, group_id).await?;
 
     let membership = match transaction.get_database_backend() {
         DbBackend::Sqlite => {
