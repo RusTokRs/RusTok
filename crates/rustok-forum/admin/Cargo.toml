@@ -23,6 +23,8 @@ ssr = [
 ]
 
 [dependencies]
+fly = { path = "../../fly" }
+fly-ui = { path = "../../fly-ui" }
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 leptos.workspace = true
@@ -42,3 +44,8 @@ leptos-ui-routing.workspace = true
 rustok-seo-admin-support.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+
+[build-dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml.workspace = true
