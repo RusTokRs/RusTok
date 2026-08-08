@@ -22,16 +22,22 @@
     "enabled_feature_visibility": "effective_membership_resolver",
     "join_and_rejoin": "effective_membership_resolver",
     "feature_settings_authorization": "effective_membership_resolver",
+    "invitation_management_and_acceptance": "transaction_aware_effective_membership",
+    "membership_application_read_submit_reopen_review": "transaction_aware_effective_membership",
+    "localization_management_authorization": "transaction_aware_effective_manager",
+    "governance_authorization": "transaction_aware_effective_manager",
+    "direct_suspend_revoke_commands": "GroupMembershipEnforcementCommandPort",
     "forum_audience_provider_acl": "GroupMembershipEnforcementReadPort via ServerForumAudienceGroupFactsPort"
   },
   "access_semantics": {
     "public_read_during_suspension": "preserved",
     "closed_private_read_during_suspension": "denied",
-    "secret_group_summary_during_suspension": "not_found",
+    "secret_summary_during_suspension": "not_found",
     "post_comment_invite_moderate_manage_transfer_during_suspension": "denied",
     "join_during_active_suspension": "denied",
     "join_for_legacy_banned_status": "denied",
     "expired_or_revoked_enforcement": "falls_back_to_stored_group_membership_lifecycle",
+    "temporary_enforcement_member_count": "stored_lifecycle_count_unchanged",
     "platform_groups_manage": "explicit_bypass"
   },
   "wire_compatibility": {
@@ -60,13 +66,8 @@
     }
   },
   "remaining_paths": [
-    "invitation_management_and_acceptance",
-    "membership_application_read_submit_reopen_review",
-    "localization_management_authorization",
-    "governance_authorization",
     "additional_provider_specific_acl_adapters",
-    "member_count_suspend_restore_transitions",
-    "direct_suspend_revoke_commands",
+    "remote_and_degraded_provider_profiles",
     "moderation_subject_adapter"
   ],
   "evidence": {
