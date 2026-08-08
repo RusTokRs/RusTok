@@ -39,6 +39,7 @@ fn all_public_resources_display_parse_roundtrip() {
         Resource::ForumCategories,
         Resource::ForumTopics,
         Resource::ForumReplies,
+        Resource::ModerationCases,
         Resource::Scripts,
         Resource::Mcp,
         Resource::AiProviders,
@@ -114,6 +115,10 @@ fn permission_constants_match_canonical_strings() {
         (Permission::BLOG_POSTS_PUBLISH, "blog_posts:publish"),
         (Permission::BLOG_CATEGORIES_MANAGE, "blog_categories:manage"),
         (Permission::FORUM_TOPICS_MODERATE, "forum_topics:moderate"),
+        (
+            Permission::MODERATION_CASES_OVERRIDE,
+            "moderation_cases:override",
+        ),
         (Permission::AI_ROUTER_OVERRIDE, "ai:router:override"),
         (
             Permission::AI_TASKS_MULTIMODAL_RUN,
