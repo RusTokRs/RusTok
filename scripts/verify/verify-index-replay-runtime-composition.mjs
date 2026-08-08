@@ -21,6 +21,9 @@ const requireMarkers = (relative, markers) => {
 const runtimePath = 'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
 const runtime = requireMarkers(runtimePath, [
   'pub struct SharedIndexReplayRuntime',
+  'pub async fn run_interruptible<Check>(',
+  'Check: FnMut() -> bool',
+  '.run_interruptible(request, should_interrupt)',
   'pub enum IndexReplayRuntimeCompositionError',
   'AlreadyMaterialized',
   'MissingSchemaRegistry',
@@ -42,7 +45,7 @@ const runtime = requireMarkers(runtimePath, [
 ]);
 for (const forbidden of [
   'tokio::spawn', 'tokio::time::sleep', 'loop {', '.query_one(',
-  '.query_all(', '.execute(', '.begin()', 'permissions_for(', 'Permission::',
+  '.query_all(', '.execute(', '.begin()', 'permissions_for(', 'Permission::', 'StopHandle',
 ]) {
   if (runtime.includes(forbidden)) fail(`${runtimePath} contains ${forbidden}`);
 }
@@ -57,8 +60,12 @@ const serverPath = 'apps/server/src/services/index_replay_runtime_composition.rs
 const server = requireMarkers(serverPath, [
   'pub struct IndexReplayOperatorContext',
   'pub struct IndexReplayOperatorRuntime',
+  'pub async fn run_interruptible<Check>(',
+  'self.inner',
+  '.run_interruptible(request, should_interrupt)',
   'Permission::MODULES_MANAGE',
   'permissions_for(&self.tenant_id, &self.actor_id)',
+  'context.authorize_for(request.page_request().tenant_id())?;',
   'materialize_postgres_index_sources(extensions, db.clone())',
   'materialize_index_source_registry(extensions)',
   'materialize_postgres_index_replay_runtime(extensions, db.clone())',
@@ -92,6 +99,7 @@ requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   'publishes no replay runtime, no dry-run runtime, and no empty Index work registration',
   'The materializer performs no SQL',
   'starts the single generic `ModuleWorkScheduler` only when registrations exist',
+  '`SharedIndexReplayRuntime::run_interruptible`',
   'The work registration added here is reconciliation-only',
   'maintainer-run',
 ]);
@@ -104,4 +112,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-reconciliation-host-scheduler.mjs'",
 ]);
 
-console.log('[verify-index-replay-runtime-composition] OK');
+console.log('[verify-index-replay-runtime-composition] shared replay runtime/operator expose a lifecycle-neutral interruptible path while scheduler composition remains unchanged');
