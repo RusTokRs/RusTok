@@ -17,6 +17,7 @@ mod runtime_data;
 mod storefront_audience_topic;
 mod storefront_audience_topics;
 mod storefront_read_state;
+mod subscription_reconciliation_query;
 mod topic_fork_mutation;
 mod topic_merge_mutation;
 mod topic_reply_range_move_mutation;
@@ -57,6 +58,10 @@ pub use reconciliation_query::{
 };
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
+pub use subscription_reconciliation_query::{
+    GqlForumSubscriptionCursor, GqlForumSubscriptionDrift,
+    GqlForumSubscriptionReconciliationReport,
+};
 pub use topic_fork_mutation::{
     ForkForumTopicReplyBranchGraphqlInput, GqlForumTopicFork,
 };
@@ -85,6 +90,7 @@ pub struct ForumQuery(
     category_route_query::ForumCategoryRouteQuery,
     read_state::ForumReadStateQuery,
     reconciliation_query::ForumReconciliationQuery,
+    subscription_reconciliation_query::ForumSubscriptionReconciliationQuery,
     reply_audience_query::ForumReplyAudienceQuery,
     storefront_read_state::ForumStorefrontReadStateQuery,
     storefront_audience_topic::ForumStorefrontAudienceTopicQuery,
