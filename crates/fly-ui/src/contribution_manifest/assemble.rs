@@ -6,6 +6,8 @@ use crate::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+const PROVIDER_VERSION_METADATA_KEY: &str = "providerVersion";
+
 pub fn build_admin_contribution_registry_from_manifests(
     manifests: impl IntoIterator<Item = ModuleContributionManifest>,
     policy: &ContributionAssemblyPolicy,
@@ -137,7 +139,22 @@ fn register_surface_contributions(
         }
 
         let target_provider = contribution.provider.trim();
-        if !manifest.allows_target_provider(target_provider) {
+        let target_version = match contribution_provider_version(contribution) {
+            Ok(version) => version,
+            Err((code, message)) => {
+                skip_contribution(
+                    result,
+                    ContributionAssemblySeverity::Error,
+                    code,
+                    manifest,
+                    contribution,
+                    message,
+                );
+                continue;
+            }
+        };
+
+        let Some(expected_version) = allowed_target_version(manifest, target_provider) else {
             let allowed = allowed_target_summary(manifest);
             skip_contribution(
                 result,
@@ -145,7 +162,23 @@ fn register_surface_contributions(
                 "contribution_target_provider_forbidden",
                 manifest,
                 contribution,
-                format!("contribution targets `{target_provider}`; allowed targets: {allowed}"),
+                format!(
+                    "contribution targets `{target_provider}@{target_version}`; allowed targets: {allowed}"
+                ),
+            );
+            continue;
+        };
+
+        if !manifest.allows_target_provider(target_provider, target_version) {
+            skip_contribution(
+                result,
+                ContributionAssemblySeverity::Error,
+                "contribution_target_provider_version_mismatch",
+                manifest,
+                contribution,
+                format!(
+                    "contribution targets `{target_provider}@{target_version}`, expected `{target_provider}@{expected_version}`"
+                ),
             );
             continue;
         }
@@ -180,6 +213,55 @@ fn register_surface_contributions(
     }
 }
 
+fn contribution_provider_version(
+    contribution: &ContributionDescriptor,
+) -> Result<&str, (&'static str, String)> {
+    let Some(value) = contribution.metadata.get(PROVIDER_VERSION_METADATA_KEY) else {
+        return Err((
+            "contribution_provider_version_missing",
+            format!(
+                "contribution `{}` does not declare `{PROVIDER_VERSION_METADATA_KEY}`",
+                contribution.id.trim()
+            ),
+        ));
+    };
+    let Some(version) = value.as_str() else {
+        return Err((
+            "contribution_provider_version_invalid",
+            format!(
+                "contribution `{}` has a non-string `{PROVIDER_VERSION_METADATA_KEY}`",
+                contribution.id.trim()
+            ),
+        ));
+    };
+    let version = version.trim();
+    if version.is_empty() {
+        Err((
+            "contribution_provider_version_invalid",
+            format!(
+                "contribution `{}` has an empty `{PROVIDER_VERSION_METADATA_KEY}`",
+                contribution.id.trim()
+            ),
+        ))
+    } else {
+        Ok(version)
+    }
+}
+
+fn allowed_target_version<'a>(
+    manifest: &'a ModuleContributionManifest,
+    provider: &str,
+) -> Option<&'a str> {
+    if provider == manifest.owner_provider.trim() {
+        Some(manifest.owner_version.trim())
+    } else {
+        manifest
+            .target_providers
+            .get(provider)
+            .map(|version| version.trim())
+    }
+}
+
 fn skip_contribution(
     result: &mut ContributionAssemblyResult,
     severity: ContributionAssemblySeverity,
@@ -202,8 +284,11 @@ fn allowed_target_summary(manifest: &ModuleContributionManifest) -> String {
     manifest
         .target_providers
         .iter()
-        .cloned()
-        .chain(std::iter::once(manifest.owner_provider.clone()))
+        .map(|(provider, version)| format!("{provider}@{version}"))
+        .chain(std::iter::once(format!(
+            "{}@{}",
+            manifest.owner_provider, manifest.owner_version
+        )))
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>()
@@ -215,10 +300,31 @@ fn normalize_manifest(
 ) -> Result<ModuleContributionManifest, String> {
     manifest.module_id = required(&manifest.module_id, "module_id")?;
     manifest.owner_provider = required(&manifest.owner_provider, "owner_provider")?;
+    manifest.owner_version = required(&manifest.owner_version, "owner_version")?;
     manifest.dependencies = normalize_set(manifest.dependencies, "dependency")?;
     manifest.required_permissions =
         normalize_set(manifest.required_permissions, "required permission")?;
-    manifest.target_providers = normalize_set(manifest.target_providers, "target provider")?;
+
+    let mut target_providers = BTreeMap::new();
+    for (provider, version) in manifest.target_providers {
+        let provider = required(&provider, "target provider")?;
+        let version = required(&version, "target provider version")?;
+        if provider == manifest.owner_provider {
+            if version != manifest.owner_version {
+                return Err(format!(
+                    "target provider `{provider}@{version}` conflicts with owner version `{}`",
+                    manifest.owner_version
+                ));
+            }
+            continue;
+        }
+        if target_providers.insert(provider.clone(), version).is_some() {
+            return Err(format!(
+                "target provider `{provider}` is duplicated after normalization"
+            ));
+        }
+    }
+    manifest.target_providers = target_providers;
     Ok(manifest)
 }
 
