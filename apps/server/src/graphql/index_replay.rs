@@ -535,16 +535,15 @@ fn map_shadow_continuation_error(error: rustok_index::IndexSourceContinuationErr
         | Error::PlaintextTooLarge { .. }
         | Error::Base64(_)
         | Error::MalformedEnvelope
-        | Error::UnsupportedVersion(_)
         | Error::InvalidKeyId(_)
         | Error::KeyUnavailable(_)
         | Error::InvalidToken
         | Error::Postcard(_)
-        | Error::ContractVersionMismatch
         | Error::TenantMismatch
         | Error::SchemaMismatch
         | Error::SourceOwnerMismatch
         | Error::SourceNameMismatch
+        | Error::LocaleScopeMismatch
         | Error::InvalidClaimsLifetime
         | Error::IssuedAtInFuture => {
             shadow_continuation_input_error("INDEX_REPLAY_SHADOW_CONTINUATION_INVALID")
