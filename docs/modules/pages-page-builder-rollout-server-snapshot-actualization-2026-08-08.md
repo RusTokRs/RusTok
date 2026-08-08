@@ -39,7 +39,7 @@ The prior hardcoded `pages_builder_capability_flags() -> BuilderCapabilityFlags:
 
 Both UI facade and authoritative SSR rollout bindings are source-ready. The four declared profiles can now be exercised through the real Pages reference consumer.
 
-Execution is still pending: no four-profile runtime packet was produced, no provider SLO health was observed, and `pages_reference_consumer_gate` remains `accepted=false`. Forum Wave and FFA/FBA remain blocked.
+Execution is still pending: no four-profile runtime packet was produced, no provider SLO health was observed, and `pages_reference_consumer_gate` remains `accepted=false`. This is the four-profile runtime-evidence-pending boundary. Forum Wave and FFA/FBA remain blocked.
 
 ## Next exact cursor
 
