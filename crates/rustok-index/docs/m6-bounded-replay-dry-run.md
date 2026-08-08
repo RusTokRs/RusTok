@@ -1,9 +1,10 @@
 # M6 bounded replay dry-run
 
-Status: `source_complete_host_guard_pending`
+Status: `source_complete_transport_pending`
 
 This slice adds an Index-owned, side-effect-free validation runtime over the exact immutable
-`SharedIndexSourceRegistry` and `SharedIndexSchemaRegistry` used by production replay.
+`SharedIndexSourceRegistry` and `SharedIndexSchemaRegistry` used by production replay, and now
+binds that capability behind the server-owned request-bound replay operator guard.
 
 ## Contract
 
@@ -54,25 +55,38 @@ registry without its shared schema registry fails closed.
 A yielded run is resumed only by explicitly passing its returned opaque cursor into another
 bounded request. No durable cursor is implied.
 
+## Server-owned host guard
+
+`IndexReplayOperatorRuntime` now retains the already-materialized
+`SharedIndexReplayDryRunRuntime` beside the durable `SharedIndexReplayRuntime` and exposes
+`IndexReplayOperatorRuntime::run_shadow`.
+
+`run_shadow` reuses the same request-bound `modules:manage` authorization boundary as durable full
+replay. The exact request tenant must match the operator context before the side-effect-free source
+scan can start. The operator publishes no database connection, source registry, scheduler, worker
+handle, job identifier, lease control, cancellation state, or retry/requeue control to the caller.
+
+Server composition fails closed if durable replay materializes but the expected dry-run capability
+is missing. Retained server source evidence covers `modules:read` rejection and an authorized
+`modules:manage` empty-page completion through the guarded Shadow method. That completion creates
+no durable replay job or checkpoint and does not alter the Full runner.
+
 ## Explicitly open
 
-- server-owned request-bound `modules:manage` delegation for dry-run invocation;
-- GraphQL, HTTP, CLI, or admin transport surfaces;
+- GraphQL, HTTP, CLI, or admin transport surfaces for Shadow invocation;
+- authorization-first parsing/serialization of a bounded Shadow transport request and resume cursor;
+- optional canonical locale scope for the Shadow/dry-run transport path;
 - persisted dry-run reports or comparison snapshots;
 - cross-page duplicate event detection beyond one bounded page;
 - mutation/checkpoint timing simulation and interruption;
-- targeted-key, full, and shadow rebuild mode contracts;
+- targeted mutation execution over `IndexSource::load`;
 - cooperative cancellation while a source or validation future is already pending;
 - configurable per-source or per-request timeout policy;
 - retained production-source and PostgreSQL execution evidence.
 
-Transport code must not treat `SharedIndexReplayDryRunRuntime` as an authorized public endpoint.
-The raw capability is an engine seam awaiting the same server-owned guard used by executable
-replay.
-
-The canonical combined roadmap item for complete in-page interruption, dry-run, and rebuild modes
-remains open because this slice provides only bounded no-write source validation. It does not add
-a guarded invocation surface or any targeted/full/shadow rebuild execution.
+Transport code must call the guarded operator boundary rather than treat
+`SharedIndexReplayDryRunRuntime` as an authorized public endpoint. The existing GraphQL
+`runIndexReplay` command remains durable Full replay and is unchanged by the host-guard slice.
 
 ## Validation ownership
 
@@ -86,4 +100,5 @@ cargo test -p rustok-index --test replay_dry_run_contract -- --nocapture
 cargo test -p rustok-index replay_dry_run -- --nocapture
 cargo check -p rustok-index --all-targets
 node scripts/verify/verify-index-replay-runtime-composition.mjs
+node scripts/verify/verify-index-replay-shadow-host-dispatch.mjs
 ```
