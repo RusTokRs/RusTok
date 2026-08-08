@@ -5,6 +5,7 @@
   "status": "source_ready_maintainer_execution_pending",
   "runner": "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts",
   "config": "apps/next-admin/playwright.forum-page-builder.config.ts",
+  "global_setup": "apps/next-admin/tests/forum-page-builder/global-setup.ts",
   "output": {
     "environment": "RUSTOK_FORUM_PAGE_BUILDER_BROWSER_EVIDENCE_OUTPUT",
     "default_path": "target/forum-page-builder-browser-evidence.json",
@@ -41,6 +42,7 @@
   "required_source_files": [
     "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json",
     "apps/next-admin/playwright.forum-page-builder.config.ts",
+    "apps/next-admin/tests/forum-page-builder/global-setup.ts",
     "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts",
     "crates/rustok-forum/rustok-module.toml",
     "crates/rustok-forum/admin/src/page_builder.rs",
