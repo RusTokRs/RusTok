@@ -74,7 +74,7 @@
     "static_guard": "scripts/verify/verify-groups-effective-membership-access.mjs",
     "join_rejoin_static_guard": "scripts/verify/verify-groups-join-enforcement-authorization.mjs",
     "join_rejoin_sqlite_source": "apps/server/tests/groups_join_enforcement_sqlite.rs",
-    "join_rejoin_postgresql_source": null,
+    "join_rejoin_postgresql_source": "apps/server/tests/groups_join_enforcement_postgres.rs",
     "join_rejoin_runtime": null,
     "provider_acl_static_guard": "scripts/verify/verify-groups-membership-enforcement-access-path-integration.mjs",
     "provider_acl_forum_audience_source": "crates/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json",
