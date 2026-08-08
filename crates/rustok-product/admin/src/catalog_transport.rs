@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[path = "transport.rs"]
 mod legacy;
 #[path = "transport/admin_catalog_graphql.rs"]
@@ -12,10 +10,6 @@ mod graphql_error_safety;
 mod graphql_fallback_mutation_error_safety;
 #[path = "transport/graphql_fallback_mutations.rs"]
 mod graphql_fallback_mutations;
-
-pub(crate) use graphql_fallback_mutations::{
-    clear_detached_product_attribute_values, save_product_attribute_values,
-};
 
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{

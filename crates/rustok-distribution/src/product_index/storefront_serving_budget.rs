@@ -271,4 +271,15 @@ mod tests {
             Err(ProductStorefrontIndexServingBudgetError::BudgetOverflow)
         );
     }
+
+    #[test]
+    fn decision_is_eligible_distinguishes_eligible_variant() {
+        let eligible = ProductStorefrontIndexServingBudgetDecision::Eligible {
+            index_execution_ms: 10,
+            tag_hydration_ms: 10,
+            safety_margin_ms: 5,
+        };
+        assert!(eligible.is_eligible());
+        assert!(!ProductStorefrontIndexServingBudgetDecision::OwnerNativeTagHydrationUnavailable.is_eligible());
+    }
 }

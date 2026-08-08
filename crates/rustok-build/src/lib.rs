@@ -21,6 +21,10 @@ pub use events::{
 };
 pub use execution::{BuildCommandSpec, build_manifest_snapshot_path, run_build_command};
 pub use executor::BuildExecutionService;
+pub use module_manifest_contribution::{
+    ContributionRoleExport, NormalizedModuleContributionManifest,
+    normalize_module_contribution_manifest,
+};
 pub use plan::{
     BuildExecutionPlan, BuildRuntimeMode, FrontendArtifactKind, FrontendBuildPlan,
     FrontendBuildTool, RoleBuildPlan, parse_execution_plan,

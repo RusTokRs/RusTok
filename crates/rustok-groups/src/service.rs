@@ -45,12 +45,13 @@ impl GroupsService {
         )
         .await?;
         let result = if let Some(target) = target {
+            let _enforcement = target.enforcement();
             Some(
                 crate::membership_enforcement::resolve_group_membership_enforcement(
                     &transaction,
                     tenant_id,
-                    target.group.id,
-                    target.membership.user_id,
+                    target.group().id,
+                    target.membership().user_id,
                     Utc::now(),
                 )
                 .await?,

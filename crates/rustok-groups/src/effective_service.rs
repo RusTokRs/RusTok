@@ -49,6 +49,16 @@ impl GroupsService {
         }
     }
 
+    pub async fn lock_membership_enforcement_target_by_id(
+        &self,
+        tenant_id: Uuid,
+        membership_id: Uuid,
+    ) -> GroupsResult<Option<GroupMembershipEffectiveState>> {
+        self.legacy
+            .lock_membership_enforcement_target_by_id(tenant_id, membership_id)
+            .await
+    }
+
     async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
         group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))

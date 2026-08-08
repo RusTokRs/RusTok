@@ -2,7 +2,7 @@ use anyhow::{Context, anyhow};
 use object_store::{ObjectStoreExt, PutMode, path::Path};
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
 use rustok_storage::StorageRuntime;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -10,8 +10,8 @@ use crate::models::registry_module_owner::{self, Entity as RegistryModuleOwnerEn
 use crate::models::registry_module_release::{
     self, Entity as RegistryModuleReleaseEntity, RegistryModuleReleaseStatus,
 };
-use crate::models::registry_publish_request::{self, RegistryPublishRequestStatus};
-use crate::models::registry_validation_stage::{self, RegistryValidationStageStatus};
+use crate::models::registry_publish_request::RegistryPublishRequestStatus;
+use crate::models::registry_validation_stage::RegistryValidationStageStatus;
 use crate::services::marketplace_catalog::{RegistryPublishArtifactOrigin, RegistryPublishRequest};
 use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
 use thiserror::Error;

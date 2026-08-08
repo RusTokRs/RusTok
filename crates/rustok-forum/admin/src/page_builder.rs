@@ -111,6 +111,14 @@ pub fn forum_widget_preview_contribution() -> ContributionDescriptor {
     generated_contribution(FORUM_WIDGET_PREVIEW_CONTRIBUTION_ID).clone()
 }
 
+pub fn forum_owner_provider_version() -> &'static str {
+    FORUM_OWNER_PROVIDER_VERSION
+}
+
+pub fn forum_widget_component_types() -> &'static [&'static str] {
+    FORUM_WIDGET_COMPONENT_TYPES
+}
+
 pub fn forum_full_admin_contribution_policy() -> ContributionAssemblyPolicy {
     ContributionAssemblyPolicy {
         enabled_modules: BTreeSet::from([FORUM_MODULE_ID.to_string()]),

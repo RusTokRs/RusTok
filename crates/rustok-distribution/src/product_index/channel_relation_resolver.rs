@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use rustok_product::{
     MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, ProductSalesChannelIndexRelationError,
     ProductSalesChannelIndexRelationFreshnessError, ProductSalesChannelIndexRelationFreshnessStore,
@@ -16,7 +14,6 @@ use uuid::Uuid;
 use super::channel_visibility::{
     ProductChannelVisibility, ProductChannelVisibilityError, decode_product_visibility,
 };
-pub(crate) use super::channel_visibility::MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS;
 
 pub(crate) const MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE: usize = 64;
 pub(crate) const MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3;
@@ -70,6 +67,18 @@ pub(crate) struct ProductSalesChannelRelationResolvePage {
 }
 
 impl ProductSalesChannelRelationResolvePage {
+    pub(crate) fn new(
+        receipts: Vec<ProductSalesChannelRelationResolveReceipt>,
+        gone_products: usize,
+        next_product_id: Option<Uuid>,
+    ) -> Self {
+        Self {
+            receipts,
+            gone_products,
+            next_product_id,
+        }
+    }
+
     pub(crate) fn receipts(&self) -> &[ProductSalesChannelRelationResolveReceipt] {
         &self.receipts
     }
@@ -556,5 +565,41 @@ mod tests {
         let sql = "SELECT generation FROM channel_index_identity_generations WHERE tenant_id = $1";
         assert!(sql.contains("tenant_id = $1"));
         assert!(!sql.contains("channels.is_active"));
+    }
+
+    #[test]
+    fn receipt_and_page_accessors_and_errors_work() {
+        let tenant_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let receipt = ProductSalesChannelRelationResolveReceipt {
+            tenant_id,
+            product_id,
+            relation_epoch: 1,
+            channel_ids: vec![Uuid::nil()],
+            unrestricted: true,
+            changed: false,
+            channel_identity_generation: 2,
+        };
+        assert_eq!(receipt.tenant_id(), tenant_id);
+        assert_eq!(receipt.product_id(), product_id);
+        assert_eq!(receipt.relation_epoch(), 1);
+        assert_eq!(receipt.channel_ids(), &[Uuid::nil()]);
+        assert!(receipt.unrestricted());
+        assert!(!receipt.changed());
+        assert_eq!(receipt.channel_identity_generation(), 2);
+
+        let page = ProductSalesChannelRelationResolvePage::new(vec![receipt], 0, Some(product_id));
+        assert_eq!(page.receipts().len(), 1);
+        assert_eq!(page.gone_products(), 0);
+        assert_eq!(page.next_product_id(), Some(product_id));
+
+        assert_eq!(
+            ProductSalesChannelRelationResolverError::InvalidCursor.to_string(),
+            "Product-SalesChannel resolver page cursor is invalid"
+        );
+        assert_eq!(
+            ProductSalesChannelRelationResolverError::InvalidPage.to_string(),
+            "Product-SalesChannel resolver page limit is invalid"
+        );
     }
 }

@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
-use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 

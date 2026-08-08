@@ -5,7 +5,6 @@ use rustok_api::{
 };
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use sea_orm::DatabaseConnection;
-use uuid::Uuid;
 
 const MODULE_SLUG: &str = "pages";
 
@@ -92,6 +91,7 @@ fn ensure_pages_read_authority(auth: &AuthContext, tenant: &TenantContext) -> Re
 mod tests {
     use super::*;
     use rustok_api::{Action, Resource};
+    use uuid::Uuid;
 
     fn tenant(id: Uuid) -> TenantContext {
         TenantContext {

@@ -97,7 +97,7 @@ impl IndexReplayJobLeaseRequest {
         &self.schema
     }
 
-    pub(crate) fn locale(&self) -> Option<&LocaleKey> {
+    pub fn locale(&self) -> Option<&LocaleKey> {
         self.locale.as_ref()
     }
 

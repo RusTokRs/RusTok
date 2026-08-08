@@ -14,10 +14,7 @@ pub(crate) use crate::legacy_transport::{
     fetch_product_attribute_values, fetch_product_pricing, fetch_products, fetch_shipping_profiles,
 };
 pub(crate) use crate::product_schema_graphql::{
-    bind_category_attribute, bind_schema_attribute, clear_detached_product_attribute_values,
-    create_attribute_schema, create_catalog_category, create_category_attribute_group,
-    create_product_attribute, create_product_attribute_option,
-    create_product_attribute_schema_group, save_product_attribute_values, set_category_schema_mode,
+    clear_detached_product_attribute_values, save_product_attribute_values,
 };
 
 type RetryIdentity = ProductAdminLifecycleRetryIdentity<String>;

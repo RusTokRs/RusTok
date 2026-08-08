@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use async_graphql::{EmptyQuery, EmptySubscription, Request, Schema};
+use async_graphql::{EmptySubscription, Request, Schema};
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{
@@ -189,7 +189,17 @@ impl RusToKModule for LocaleReplayModule {
     }
 }
 
-type ReplayTestSchema = Schema<EmptyQuery, IndexReplayMutation, EmptySubscription>;
+#[derive(Default)]
+struct ReplayTestQuery;
+
+#[async_graphql::Object]
+impl ReplayTestQuery {
+    async fn _empty(&self) -> bool {
+        true
+    }
+}
+
+type ReplayTestSchema = Schema<ReplayTestQuery, IndexReplayMutation, EmptySubscription>;
 
 struct ReplayGraphqlRuntime {
     schema: ReplayTestSchema,
@@ -323,7 +333,7 @@ async fn graphql_runtime(db: &DatabaseConnection) -> ReplayGraphqlRuntime {
     let extensions = Arc::new(extensions);
     let (stop_handle, stop_receiver) = StopHandle::new();
     let schema = Schema::build(
-        EmptyQuery,
+        ReplayTestQuery::default(),
         IndexReplayMutation::default(),
         EmptySubscription,
     )
@@ -381,19 +391,21 @@ mutation {{
     ))
     .data(AuthContext {
         user_id: ACTOR_ID,
-        email: "operator@example.test".to_owned(),
-        tenant_id: Some(TENANT_ID),
-        is_super_admin: false,
-        is_platform_admin: false,
+        session_id: Uuid::new_v4(),
+        tenant_id: TENANT_ID,
         permissions: vec![Permission::MODULES_MANAGE],
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "direct".to_string(),
     })
     .data(TenantContext {
         id: TENANT_ID,
-        slug: "locale-evidence".to_owned(),
-        name: "Locale replay evidence".to_owned(),
-        is_platform: false,
-        default_locale: "en-US".to_owned(),
-        timezone: "UTC".to_owned(),
+        name: "Locale replay evidence".to_string(),
+        slug: "locale-evidence".to_string(),
+        domain: None,
+        settings: serde_json::json!({}),
+        default_locale: "en-US".to_string(),
+        is_active: true,
     })
 }
 

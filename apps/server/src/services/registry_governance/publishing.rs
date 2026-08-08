@@ -215,6 +215,7 @@ impl RegistryGovernanceService {
                 validation_stages: serde_json::Value::Array(
                     override_stages
                         .iter()
+                        .copied()
                         .map(validation_stage_snapshot_details_value)
                         .collect(),
                 ),

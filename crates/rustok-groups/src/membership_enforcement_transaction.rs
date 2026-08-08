@@ -22,6 +22,20 @@ pub(crate) struct LockedMembershipEnforcementTarget {
     pub(crate) enforcement: Option<membership_enforcement::Model>,
 }
 
+impl LockedMembershipEnforcementTarget {
+    pub(crate) fn group(&self) -> &group::Model {
+        &self.group
+    }
+
+    pub(crate) fn membership(&self) -> &membership_state::Model {
+        &self.membership
+    }
+
+    pub(crate) fn enforcement(&self) -> Option<&membership_enforcement::Model> {
+        self.enforcement.as_ref()
+    }
+}
+
 /// Acquire the Groups owner aggregate writer reservation before reading mutable group state.
 ///
 /// PostgreSQL/MySQL retain an exclusive row lock. SQLite obtains the writer reservation through a

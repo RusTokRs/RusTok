@@ -20,7 +20,7 @@ use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistrations, ModuleWorkSche
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 

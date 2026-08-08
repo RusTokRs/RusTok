@@ -532,3 +532,51 @@ pub(crate) async fn clear_detached_product_attribute_values(
     }
     result.map(|response| response.clear_detached_product_attribute_values)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bool_mutation_response_deserializes_all_fields() {
+        let json = serde_json::json!({
+            "createProductAttribute": true,
+            "createProductAttributeOption": true,
+            "createCatalogCategory": true,
+            "createProductAttributeSchema": true,
+            "createProductAttributeSchemaGroup": true,
+            "createCatalogCategoryAttributeGroup": true,
+            "setCatalogCategorySchemaMode": true,
+            "bindProductAttributeSchemaAttribute": true,
+            "bindCatalogCategoryAttribute": true
+        });
+        let res: BoolMutationResponse = serde_json::from_value(json).expect("valid bool response");
+        assert_eq!(res.create_product_attribute, Some(true));
+        assert_eq!(res.create_product_attribute_option, Some(true));
+        assert_eq!(res.create_catalog_category, Some(true));
+        assert_eq!(res.create_product_attribute_schema, Some(true));
+        assert_eq!(res.create_product_attribute_schema_group, Some(true));
+        assert_eq!(res.create_catalog_category_attribute_group, Some(true));
+        assert_eq!(res.set_catalog_category_schema_mode, Some(true));
+        assert_eq!(res.bind_product_attribute_schema_attribute, Some(true));
+        assert_eq!(res.bind_catalog_category_attribute, Some(true));
+    }
+
+    #[test]
+    fn variables_serialize_correctly() {
+        let locale_vars = LocaleMutationVariables {
+            idempotency_key: "key-1".to_string(),
+            locale: "en".to_string(),
+            input: "test",
+        };
+        let json = serde_json::to_value(&locale_vars).expect("serialize locale vars");
+        assert_eq!(json["idempotencyKey"], "key-1");
+
+        let input_vars = InputVariables {
+            idempotency_key: "key-2".to_string(),
+            input: 42,
+        };
+        let json2 = serde_json::to_value(&input_vars).expect("serialize input vars");
+        assert_eq!(json2["idempotencyKey"], "key-2");
+    }
+}

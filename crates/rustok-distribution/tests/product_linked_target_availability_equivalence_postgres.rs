@@ -14,7 +14,7 @@ use rustok_index::{
 };
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistrations, ModuleWorkScheduler};
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 const DATABASE_ENV: &str = "RUSTOK_INDEX_TEST_DATABASE_URL";

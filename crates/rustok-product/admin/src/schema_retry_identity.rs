@@ -157,4 +157,24 @@ mod tests {
         assert!(key.starts_with("product-admin-schema:clear-detached-attribute-values:"));
         assert!(key.len() <= 191);
     }
+
+    #[test]
+    fn schema_operations_have_valid_key_segments() {
+        let operations = [
+            ProductAdminSchemaOperation::CreateAttribute,
+            ProductAdminSchemaOperation::CreateAttributeOption,
+            ProductAdminSchemaOperation::CreateCategory,
+            ProductAdminSchemaOperation::CreateSchema,
+            ProductAdminSchemaOperation::CreateSchemaGroup,
+            ProductAdminSchemaOperation::CreateCategoryGroup,
+            ProductAdminSchemaOperation::SetCategorySchemaMode,
+            ProductAdminSchemaOperation::BindSchemaAttribute,
+            ProductAdminSchemaOperation::BindCategoryAttribute,
+            ProductAdminSchemaOperation::SaveAttributeValues,
+            ProductAdminSchemaOperation::ClearDetachedAttributeValues,
+        ];
+        for op in operations {
+            assert!(!op.key_segment().is_empty());
+        }
+    }
 }

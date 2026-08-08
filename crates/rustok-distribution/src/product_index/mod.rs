@@ -1,5 +1,5 @@
 mod absence;
-mod attribute_terms;
+pub mod attribute_terms;
 mod channel_relation_convergence;
 pub(crate) mod channel_relation_resolver;
 mod channel_visibility;
@@ -29,11 +29,7 @@ pub(crate) use storefront_projection::{
 #[cfg(test)]
 mod storefront_serving_budget;
 #[cfg(test)]
-pub(crate) use storefront_serving_budget::{
-    ProductStorefrontIndexServingBudget, ProductStorefrontIndexServingBudgetDecision,
-    ProductStorefrontIndexServingBudgetError, ProductStorefrontIndexServingBudgetObservation,
-    classify_product_storefront_index_serving_budget,
-};
+pub(crate) use storefront_serving_budget::ProductStorefrontIndexServingBudgetDecision;
 #[cfg(test)]
 mod storefront_shadow;
 #[cfg(test)]
@@ -44,11 +40,9 @@ pub(crate) use storefront_shadow::{
 mod storefront_shadow_executor;
 #[cfg(test)]
 pub(crate) use storefront_shadow_executor::{
-    ProductStorefrontIndexChannelScopeDecision, ProductStorefrontIndexPageScopeDecision,
     ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecution,
     ProductStorefrontIndexShadowExecutor, ProductStorefrontIndexShadowProjectionError,
-    ProductStorefrontIndexTagHydrationError, classify_product_storefront_index_channel_scope,
-    classify_product_storefront_index_page_scope,
+    ProductStorefrontIndexTagHydrationError,
 };
 #[cfg(test)]
 mod storefront_shadow_eav_postgres_tests;
