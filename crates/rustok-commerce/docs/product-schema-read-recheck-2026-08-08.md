@@ -2,7 +2,7 @@
 
 ## Scope
 
-Rechecked the canonical ecommerce execution plan and the currently mounted Product GraphQL read paths against `main` at `dfddce9f57916a712d531db38e75c87e7c45e8cf`, then continued the Product schema-read and legacy catalog-read cutover from `aaa496887fd1492f3feca8ac52261458ce25705e` through the current `main` line.
+Rechecked the canonical ecommerce execution plan and the currently mounted Product GraphQL read paths against `main` at `fe0bddc83c7f81431c731e823fe87ef9b558f807`, then continued the Product schema-read and legacy catalog-read cutover through the current implementation branch.
 
 The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`. This packet does not promote FBA/FFA or verification status and does not replace that plan.
 
@@ -11,8 +11,9 @@ The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`
 1. `ProductCatalogSchemaReadPort` publishes the effective-form aggregate capability added by PR #3182, and mounted `productEffectiveForm` is now cut over to that host-selected owner capability.
 2. PR #3203 published `ProductCatalogSchemaReadPort::read_product_attribute_values`, and mounted `productAttributeValues` is now cut over to that owner capability.
 3. `storefrontCatalogSearchOptions` was the remaining mounted direct `ProductCatalogSchemaService` schema-read consumer. Its current projection needs only categories and filterable/sortable attributes, so the already-published `list_categories` and `list_attributes` owner capabilities preserve the existing data and ordering semantics without a new Product projection.
-4. The active `CommerceQueryRoot` mounts both `query::CommerceQuery` and `product_catalog::ProductCatalogQuery`. The newer `adminProductCatalog`/`storefrontProductCatalog` paths already use `ProductCatalogReadRuntime`; the mounted legacy admin `product`/`products` roots were still direct `CatalogService` / Product-entity consumers and are cut over in the continuation below.
-5. The legacy mounted `storefrontProduct` / `storefrontProducts` roots remain direct `CatalogService` / Product-entity consumers. Therefore the broad ecommerce invariant requiring typed owner boundaries on every production path remains open; source inspection does not justify a status promotion.
+4. The active `CommerceQueryRoot` mounts both `query::CommerceQuery` and `product_catalog::ProductCatalogQuery`. The newer `adminProductCatalog`/`storefrontProductCatalog` paths already use `ProductCatalogReadRuntime`, and the mounted legacy admin `product`/`products` roots are cut over to the Product owner read runtime.
+5. PR #3238 published optional fail-closed legacy storefront detail/list capabilities without changing mounted serving. The continuation below cuts mounted `storefrontProduct` / `storefrontProducts` to those capabilities, so these production reads no longer choose Product lifecycle/channel/inventory policy or query Product entities directly.
+6. The broad ecommerce owner-boundary invariant remains open because Product schema writes, REST delete/publish/unpublish lifecycle commands, and remaining GraphQL Product lifecycle operations still require owner-port cutover and explicit idempotency contracts. Source inspection does not justify a status promotion.
 
 ## PR #3203 source change
 
@@ -51,12 +52,21 @@ The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`
 - Cut mounted legacy admin GraphQL `products` to `list_legacy_admin_products`, preserving `PRODUCTS_LIST`, current tenant, authenticated actor, request channel/deadline, exact legacy filters/order/pagination/projection, telemetry path, and the shared stable Product GraphQL public error mapper.
 - Extend the Product admin GraphQL source guard so both modern and legacy admin read roots require the host-selected runtime/ports and direct Product service/entity access is forbidden inside the cut-over resolvers.
 
+## Legacy storefront Product read continuation
+
+- PR #3238 publishes optional fail-closed `ProductCatalogReadPort::read_storefront_product_projection` with typed Product-id/handle subjects and `list_legacy_storefront_products` with the exact compatibility projection needed by the mounted legacy list.
+- Cut mounted `storefrontProduct` to the host-selected Product read runtime while preserving Product-module and storefront-channel admission, current-tenant-only scope, requested/request/default locale resolution, id-over-handle precedence, trimmed non-empty handle validation, request public channel, `commerce-storefront-graphql` service actor, bounded two-second deadline, `None` for missing/invisible products, and the shared correlation-aware Product GraphQL public error mapper.
+- Product owner now applies active/published lifecycle admission, public-channel visibility, public-channel inventory enrichment, and requested/default locale narrowing for both Product-id and handle detail subjects instead of Commerce reconstructing those policies.
+- Cut mounted `storefrontProducts` to `list_legacy_storefront_products`, preserving current-tenant/storefront admission, vendor/product-type/raw-search filters, page defaults and exact `1..48` validation, public-channel visibility, requested/default locale, Product-owned published/created ordering, tags, `Untitled product`, normalized/default shipping-profile projection, totals/page metadata, RFC3339 response fields, and the existing `commerce.storefront_products` read-budget metric.
+- Extend `verify-commerce-product-storefront-graphql-read.mjs` so the mounted detail/list slices require the host-selected runtime and new owner capabilities and forbid the previous direct `CatalogService`, Product entity, visibility SQL, translation-search, and inventory-enrichment calls inside those serving resolver slices.
+- Keep the old private Commerce list helper as unmounted compatibility source in this source-only slice; its cleanup remains separate from the mounted serving cutover and should follow compile/evidence work.
+
 ## Remaining execution order
 
-1. Cut legacy mounted `storefrontProduct` / `storefrontProducts` away from direct Product service/entity reads while preserving published/channel visibility, id-or-handle detail semantics, vendor/product-type/search filtering, inventory enrichment, ordering, pagination, locale fallback, and response projection.
-2. Continue remaining Product schema writes and lifecycle command cutovers from the canonical ecommerce plan.
+1. Continue remaining Product schema writes and Product lifecycle command cutovers from the canonical ecommerce plan, including REST delete/publish/unpublish and remaining GraphQL lifecycle operations. Repeatable commands require explicit caller idempotency semantics before cutover.
+2. Remove superseded private Product read compatibility helpers only after compile/source evidence confirms there are no remaining consumers.
 3. Only after the source cutovers, run the plan-listed static, compile, parity, remote-profile, restart, and backend evidence before changing promotion status.
 
 ## Verification state
 
-No tests, checks, formatters, or runtime verification were executed in these slices per maintainer instruction. All execution/promotion gates remain unchanged.
+No tests, checks, formatters, workflows, or runtime verification were executed in these slices per maintainer instruction. All execution/promotion gates remain unchanged.
