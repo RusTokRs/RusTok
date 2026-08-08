@@ -12,7 +12,8 @@ const MODULE_MANIFEST_RELATIVE_PATH: &str = "../rustok-module.toml";
 const GENERATED_FILE: &str = "forum_contribution_manifest.rs";
 const FORUM_MODULE_ID: &str = "forum";
 const FORUM_OWNER_PROVIDER: &str = "rustok.forum";
-const WIDGET_ROLE: &str = "widget_catalog";
+const WIDGET_CATALOG_ROLE: &str = "widget_catalog";
+const WIDGET_PREVIEW_ROLE: &str = "widget_preview";
 const OWNER_SCHEMA_REF_FORMAT: &str = "forum_widget_owner_schema_ref_v1";
 
 fn main() {
@@ -57,25 +58,26 @@ fn main() {
         );
     }
 
-    let role = normalized
-        .role(WIDGET_ROLE)
-        .unwrap_or_else(|| panic!("contribution_manifest must declare role='{WIDGET_ROLE}'"));
-    if role.surface != "admin" {
-        panic!("Forum widget contribution must remain on the admin surface");
-    }
-    if role.provider != normalized.owner_provider {
+    let catalog_role = required_role(&normalized, WIDGET_CATALOG_ROLE);
+    let preview_role = required_role(&normalized, WIDGET_PREVIEW_ROLE);
+    if catalog_role.provider != normalized.owner_provider
+        || preview_role.provider != normalized.owner_provider
+    {
         panic!(
-            "Forum widget contribution must stay under owner provider '{}'",
+            "Forum widget contributions must stay under owner provider '{}'",
             normalized.owner_provider
         );
     }
+    if catalog_role.blocks.len() != 3 {
+        panic!("Forum widget catalog contribution must declare exactly three canonical blocks");
+    }
+    if !preview_role.blocks.is_empty() {
+        panic!("Forum widget preview contribution must not duplicate block definitions");
+    }
 
-    let contribution = normalized
-        .admin
-        .iter()
-        .find(|value| value.get("id").and_then(Value::as_str) == Some(role.id.as_str()))
-        .unwrap_or_else(|| panic!("normalized Forum widget contribution '{}' is missing", role.id));
-    validate_widget_contribution(contribution, &role.blocks);
+    let catalog = find_admin_contribution(&normalized.admin, &catalog_role.id);
+    let preview = find_admin_contribution(&normalized.admin, &preview_role.id);
+    validate_widget_contracts(catalog, preview, &catalog_role.blocks);
 
     let manifest_json = normalized
         .manifest_json()
@@ -98,7 +100,12 @@ fn main() {
     push_str_const(
         &mut generated,
         "FORUM_WIDGET_CONTRIBUTION_ID",
-        &role.id,
+        &catalog_role.id,
+    );
+    push_str_const(
+        &mut generated,
+        "FORUM_WIDGET_PREVIEW_CONTRIBUTION_ID",
+        &preview_role.id,
     );
     push_str_slice_const(
         &mut generated,
@@ -115,7 +122,11 @@ fn main() {
         "FORUM_REQUIRED_PERMISSIONS",
         &permissions,
     );
-    push_str_slice_const(&mut generated, "FORUM_WIDGET_COMPONENT_TYPES", &role.blocks);
+    push_str_slice_const(
+        &mut generated,
+        "FORUM_WIDGET_COMPONENT_TYPES",
+        &catalog_role.blocks,
+    );
     generated.push_str(&format!(
         "pub const GENERATED_FORUM_CONTRIBUTION_MANIFEST_JSON: &str = {manifest_json:?};\n"
     ));
@@ -125,19 +136,97 @@ fn main() {
         .expect("write generated Forum contribution manifest");
 }
 
-fn validate_widget_contribution(contribution: &Value, blocks: &[String]) {
-    if blocks.len() != 3 {
-        panic!("Forum widget contribution must declare exactly three canonical widget blocks");
+fn required_role<'a>(
+    normalized: &'a module_manifest_contribution::NormalizedModuleContributionManifest,
+    role: &str,
+) -> &'a module_manifest_contribution::ContributionRoleExport {
+    let value = normalized
+        .role(role)
+        .unwrap_or_else(|| panic!("contribution_manifest must declare role='{role}'"));
+    if value.surface != "admin" {
+        panic!("Forum contribution role '{role}' must remain on the admin surface");
     }
+    value
+}
+
+fn find_admin_contribution<'a>(admin: &'a [Value], id: &str) -> &'a Value {
+    admin
+        .iter()
+        .find(|value| value.get("id").and_then(Value::as_str) == Some(id))
+        .unwrap_or_else(|| panic!("normalized Forum admin contribution '{id}' is missing"))
+}
+
+fn validate_widget_contracts(catalog: &Value, preview: &Value, blocks: &[String]) {
     let block_types = blocks.iter().cloned().collect::<BTreeSet<_>>();
     if block_types.len() != blocks.len() {
         panic!("Forum widget block ids must be unique");
     }
 
-    let renderers = contribution
+    let catalog_renderers = catalog
         .get("renderers")
         .and_then(Value::as_array)
-        .unwrap_or_else(|| panic!("Forum widget contribution must declare renderers"));
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if !catalog_renderers.is_empty() {
+        panic!("Forum widget catalog contribution must not bypass preview capability gating");
+    }
+
+    let editors = catalog
+        .get("property_editors")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("Forum widget catalog contribution must declare property editors"));
+    let editor_types = editors
+        .iter()
+        .map(|editor| required_json_string(editor, "component_type", "property editor"))
+        .collect::<BTreeSet<_>>();
+    if editor_types != block_types {
+        panic!("Forum property-editor component types must exactly match canonical widget block ids");
+    }
+    for editor in editors {
+        let schema = editor
+            .get("property_schema")
+            .and_then(Value::as_object)
+            .unwrap_or_else(|| panic!("Forum property editor must declare an owner schema reference"));
+        if schema.get("format").and_then(Value::as_str) != Some(OWNER_SCHEMA_REF_FORMAT) {
+            panic!("Forum property editor schema must use {OWNER_SCHEMA_REF_FORMAT}");
+        }
+        for key in [
+            "schema_id",
+            "catalog_endpoint",
+            "validate_endpoint",
+            "owner_data_state",
+        ] {
+            let value = schema
+                .get(key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default();
+            if value.is_empty() {
+                panic!("Forum property editor owner schema reference requires non-empty {key}");
+            }
+        }
+    }
+
+    let preview_blocks = preview
+        .get("blocks")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if !preview_blocks.is_empty() {
+        panic!("Forum widget preview contribution must not duplicate block definitions");
+    }
+    let preview_editors = preview
+        .get("property_editors")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if !preview_editors.is_empty() {
+        panic!("Forum widget preview contribution must not duplicate property editors");
+    }
+    let renderers = preview
+        .get("renderers")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("Forum widget preview contribution must declare renderers"));
     let renderer_types = renderers
         .iter()
         .map(|renderer| required_json_string(renderer, "component_type", "renderer"))
@@ -164,37 +253,6 @@ fn validate_widget_contribution(contribution: &Value, blocks: &[String]) {
             .collect::<BTreeSet<_>>();
         if presentations != expected {
             panic!("Forum widget renderer must support full/inline/preview/read_only presentations");
-        }
-    }
-
-    let editors = contribution
-        .get("property_editors")
-        .and_then(Value::as_array)
-        .unwrap_or_else(|| panic!("Forum widget contribution must declare property editors"));
-    let editor_types = editors
-        .iter()
-        .map(|editor| required_json_string(editor, "component_type", "property editor"))
-        .collect::<BTreeSet<_>>();
-    if editor_types != block_types {
-        panic!("Forum property-editor component types must exactly match canonical widget block ids");
-    }
-    for editor in editors {
-        let schema = editor
-            .get("property_schema")
-            .and_then(Value::as_object)
-            .unwrap_or_else(|| panic!("Forum property editor must declare an owner schema reference"));
-        if schema.get("format").and_then(Value::as_str) != Some(OWNER_SCHEMA_REF_FORMAT) {
-            panic!("Forum property editor schema must use {OWNER_SCHEMA_REF_FORMAT}");
-        }
-        for key in ["schema_id", "catalog_endpoint", "validate_endpoint"] {
-            let value = schema
-                .get(key)
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .unwrap_or_default();
-            if value.is_empty() {
-                panic!("Forum property editor owner schema reference requires non-empty {key}");
-            }
         }
     }
 }
