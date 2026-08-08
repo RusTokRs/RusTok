@@ -54,6 +54,8 @@ mod source_reconciliation_runner_tests;
 #[cfg(test)]
 mod source_replay_job_tests;
 #[cfg(test)]
+mod source_replay_locale_job_tests;
+#[cfg(test)]
 mod source_replay_runner_tests;
 #[cfg(test)]
 mod source_replay_graceful_shutdown_tests;
