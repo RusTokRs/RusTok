@@ -7,8 +7,8 @@ use rustok_index::{
     SchemaVersion,
 };
 use rustok_product::{
-    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
-    entities::product::ProductStatus,
+    ProductAttributeTermExpr, ProductResolvedAttributeFilter, StorefrontProductListQuery,
+    StorefrontProductSortBy, StorefrontProductSortDirection, entities::product::ProductStatus,
 };
 
 use super::PRODUCT_SCHEMA_ROUTING_KEY;
@@ -37,18 +37,17 @@ pub(crate) enum ProductStorefrontIndexShadowError {
     SearchPatternTooLong,
     #[error("Product Storefront Index shadow query title pattern contains a NUL byte")]
     SearchPatternContainsNul,
-    #[error("resolved Product attribute filter count does not match owner Storefront filter count")]
+    #[error("resolved Product attribute filters do not match the owner Storefront filter identities")]
     AttributeFilterResolutionMismatch,
-    #[error("resolved Product attribute filter is not a canonical attribute_terms predicate")]
+    #[error("resolved Product attribute term expression is invalid")]
     InvalidAttributeTermPredicate,
 }
 
 /// Build the Product Storefront query used only for shadow/equivalence work.
 ///
-/// The caller must resolve every public Product attribute filter through a Product-owned metadata
-/// capability before calling this function. `canonical_attribute_filters` are accepted only when every
-/// leaf is `Contains(attribute_terms, String(term))`; localized text fallback may compose those leaves
-/// with And/Or/Not. This keeps Product option/attribute ownership out of the generic Index engine.
+/// `resolved_attribute_filters` must come from the Product-owned Storefront filter resolution
+/// capability. Distribution translates the neutral Product expression shape into Index predicates but
+/// never resolves Product attribute codes, option codes or storage identities itself.
 ///
 /// A public channel ID is mandatory in this source slice. The owner channel-less contract means
 /// "metadata unrestricted only", while the current `sales_channel_ids` projection cannot distinguish
@@ -60,7 +59,7 @@ pub(crate) fn build_product_storefront_index_shadow_query(
     fallback_locale: &str,
     public_channel_id: Option<Uuid>,
     owner: &StorefrontProductListQuery,
-    canonical_attribute_filters: Vec<FilterExpr>,
+    resolved_attribute_filters: Vec<ProductResolvedAttributeFilter>,
 ) -> Result<LocalizedEntityQuery, ProductStorefrontIndexShadowError> {
     if tenant_id.is_nil() {
         return Err(ProductStorefrontIndexShadowError::NilTenant);
@@ -90,17 +89,7 @@ pub(crate) fn build_product_storefront_index_shadow_query(
     let limit = u32::try_from(owner.per_page)
         .map_err(|_| ProductStorefrontIndexShadowError::InvalidPagination)?;
 
-    if owner.attribute_filters.len() > MAX_STOREFRONT_ATTRIBUTE_FILTERS
-        || canonical_attribute_filters.len() != owner.attribute_filters.len()
-    {
-        return Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch);
-    }
-    if !canonical_attribute_filters
-        .iter()
-        .all(is_canonical_attribute_term_predicate)
-    {
-        return Err(ProductStorefrontIndexShadowError::InvalidAttributeTermPredicate);
-    }
+    let attribute_filters = resolved_attribute_filters_to_index(owner, resolved_attribute_filters)?;
 
     let mut filters = vec![
         FilterExpr::Eq(
@@ -119,7 +108,7 @@ pub(crate) fn build_product_storefront_index_shadow_query(
             IndexValue::Uuid(category_id),
         ));
     }
-    filters.extend(canonical_attribute_filters);
+    filters.extend(attribute_filters);
 
     let any_locale_filter = owner
         .search
@@ -192,6 +181,76 @@ pub(crate) fn build_product_storefront_index_shadow_query(
     .with_identity_order_direction(direction))
 }
 
+fn resolved_attribute_filters_to_index(
+    owner: &StorefrontProductListQuery,
+    resolved: Vec<ProductResolvedAttributeFilter>,
+) -> Result<Vec<FilterExpr>, ProductStorefrontIndexShadowError> {
+    if owner.attribute_filters.len() > MAX_STOREFRONT_ATTRIBUTE_FILTERS
+        || resolved.len() != owner.attribute_filters.len()
+        || owner
+            .attribute_filters
+            .iter()
+            .zip(&resolved)
+            .any(|(owner, resolved)| !owner.code.eq_ignore_ascii_case(resolved.code.as_str()))
+    {
+        return Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch);
+    }
+
+    resolved
+        .into_iter()
+        .map(|resolved| product_term_expr_to_index(resolved.predicate))
+        .collect()
+}
+
+fn product_term_expr_to_index(
+    expression: ProductAttributeTermExpr,
+) -> Result<FilterExpr, ProductStorefrontIndexShadowError> {
+    match expression {
+        ProductAttributeTermExpr::Term(term) => {
+            if term.is_empty() {
+                return Err(ProductStorefrontIndexShadowError::InvalidAttributeTermPredicate);
+            }
+            Ok(FilterExpr::Contains(
+                root_field("attribute_terms")?,
+                IndexValue::String(term),
+            ))
+        }
+        ProductAttributeTermExpr::And(children) => {
+            if children.is_empty() {
+                return Err(ProductStorefrontIndexShadowError::InvalidAttributeTermPredicate);
+            }
+            Ok(FilterExpr::And(
+                children
+                    .into_iter()
+                    .map(product_term_expr_to_index)
+                    .collect::<Result<Vec<_>, _>>()?,
+            ))
+        }
+        ProductAttributeTermExpr::Or(children) => {
+            if children.is_empty() {
+                return Err(ProductStorefrontIndexShadowError::InvalidAttributeTermPredicate);
+            }
+            Ok(FilterExpr::Or(
+                children
+                    .into_iter()
+                    .map(product_term_expr_to_index)
+                    .collect::<Result<Vec<_>, _>>()?,
+            ))
+        }
+        ProductAttributeTermExpr::Not(child) => Ok(FilterExpr::Not(Box::new(
+            product_term_expr_to_index(*child)?,
+        ))),
+        ProductAttributeTermExpr::Never => {
+            // Product ids are required/non-null in the current schema. Negating that invariant is a
+            // generic, bind-free false predicate without inventing a Product-specific sentinel term.
+            Ok(FilterExpr::Not(Box::new(FilterExpr::IsNull(
+                root_field("id")?,
+                false,
+            ))))
+        }
+    }
+}
+
 fn product_schema_ref() -> Result<SchemaRef, ProductStorefrontIndexShadowError> {
     Ok(SchemaRef {
         module: ModuleName::new("rustok-product")
@@ -208,25 +267,10 @@ fn root_field(name: &str) -> Result<FieldPath, ProductStorefrontIndexShadowError
     ))
 }
 
-fn is_canonical_attribute_term_predicate(filter: &FilterExpr) -> bool {
-    match filter {
-        FilterExpr::Contains(path, IndexValue::String(term)) => {
-            path.links().is_empty()
-                && path.field().as_str() == "attribute_terms"
-                && !term.is_empty()
-        }
-        FilterExpr::And(children) | FilterExpr::Or(children) => {
-            !children.is_empty() && children.iter().all(is_canonical_attribute_term_predicate)
-        }
-        FilterExpr::Not(child) => is_canonical_attribute_term_predicate(child),
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_product::ProductAttributeFilter;
+    use rustok_product::{ProductAttributeFilter, ProductResolvedAttributeFilter};
 
     fn owner_query(direction: StorefrontProductSortDirection) -> StorefrontProductListQuery {
         StorefrontProductListQuery::try_from_transport_with_attribute_filters(
@@ -237,26 +281,23 @@ mod tests {
                 StorefrontProductSortDirection::Asc => "asc",
                 StorefrontProductSortDirection::Desc => "desc",
             }),
-            vec![ProductAttributeFilter {
-                code: "brand".to_owned(),
-                value: "acme".to_owned(),
-            }],
+            vec!["brand=acme".to_owned()],
         )
         .unwrap()
         .with_pagination(2, 12)
     }
 
-    fn attribute_term() -> FilterExpr {
-        FilterExpr::Contains(
-            root_field("attribute_terms").unwrap(),
-            IndexValue::String(
+    fn attribute_term() -> ProductResolvedAttributeFilter {
+        ProductResolvedAttributeFilter {
+            code: "brand".to_owned(),
+            predicate: ProductAttributeTermExpr::Term(
                 "00000000-0000-0000-0000-000000000001|text||61636d65".to_owned(),
             ),
-        )
+        }
     }
 
     #[test]
-    fn maps_owner_filters_projection_order_and_page_to_localized_fold() {
+    fn maps_product_owned_terms_projection_order_and_page_to_localized_fold() {
         let tenant = Uuid::new_v4();
         let channel = Uuid::new_v4();
         let owner = owner_query(StorefrontProductSortDirection::Desc);
@@ -285,7 +326,29 @@ mod tests {
     }
 
     #[test]
-    fn fails_closed_without_public_channel_or_resolved_attribute_terms() {
+    fn product_never_expression_becomes_false_root_predicate() {
+        let owner = owner_query(StorefrontProductSortDirection::Asc);
+        let resolved = ProductResolvedAttributeFilter {
+            code: "brand".to_owned(),
+            predicate: ProductAttributeTermExpr::Never,
+        };
+        let query = build_product_storefront_index_shadow_query(
+            Uuid::new_v4(),
+            "fi",
+            "en",
+            Some(Uuid::new_v4()),
+            &owner,
+            vec![resolved],
+        )
+        .unwrap();
+        let Some(FilterExpr::And(filters)) = query.query.filter else {
+            panic!("shadow query root filter must be AND");
+        };
+        assert!(filters.iter().any(|filter| matches!(filter, FilterExpr::Not(_))));
+    }
+
+    #[test]
+    fn fails_closed_without_public_channel_or_matching_owner_resolution() {
         let owner = owner_query(StorefrontProductSortDirection::Asc);
         assert_eq!(
             build_product_storefront_index_shadow_query(
@@ -309,6 +372,10 @@ mod tests {
             ),
             Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch)
         );
+        let wrong = ProductResolvedAttributeFilter {
+            code: "other".to_owned(),
+            predicate: ProductAttributeTermExpr::Term("term".to_owned()),
+        };
         assert_eq!(
             build_product_storefront_index_shadow_query(
                 Uuid::new_v4(),
@@ -316,10 +383,27 @@ mod tests {
                 "en",
                 Some(Uuid::new_v4()),
                 &owner,
-                vec![FilterExpr::Eq(
-                    root_field("attribute_terms").unwrap(),
-                    IndexValue::String("forbidden".to_owned()),
-                )],
+                vec![wrong],
+            ),
+            Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch)
+        );
+    }
+
+    #[test]
+    fn rejects_empty_product_term_expression() {
+        let owner = owner_query(StorefrontProductSortDirection::Asc);
+        let invalid = ProductResolvedAttributeFilter {
+            code: "brand".to_owned(),
+            predicate: ProductAttributeTermExpr::Or(Vec::new()),
+        };
+        assert_eq!(
+            build_product_storefront_index_shadow_query(
+                Uuid::new_v4(),
+                "fi",
+                "en",
+                Some(Uuid::new_v4()),
+                &owner,
+                vec![invalid],
             ),
             Err(ProductStorefrontIndexShadowError::InvalidAttributeTermPredicate)
         );
