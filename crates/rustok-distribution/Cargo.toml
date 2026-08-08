@@ -85,7 +85,7 @@ rustok-marketplace-listing = { workspace = true, optional = true }
 rustok-marketplace-allocation = { workspace = true, optional = true }
 rustok-marketplace-commission = { workspace = true, optional = true }
 rustok-marketplace-ledger = { workspace = true, optional = true }
-rustok-marketplace-payout = { workspace = true, optional = true }
+rustok-marketplace_payout = { workspace = true, optional = true }
 rustok-marketplace = { workspace = true, optional = true }
 rustok-moderation = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
@@ -97,7 +97,7 @@ rustok-notifications = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }
-rustok-page-builder = { workspace = true, optional = true }
+rustok-page_builder = { workspace = true, optional = true }
 rustok-taxonomy = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
 rustok-translation = { workspace = true, optional = true }
@@ -110,8 +110,8 @@ flex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 sea-orm-migration.workspace = true
-tokio.workspace = true
