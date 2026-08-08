@@ -87,49 +87,17 @@ target_providers = {}
 dependencies = []
 required_permissions = ["forum_topics:read"]
 
+# Authoring identity and property contracts remain available when preview is disabled.
 [[fba.builder_consumer.contribution_manifest.admin]]
 role = "widget_catalog"
 id = "rustok.forum.widget-catalog"
 provider = "rustok.forum"
-required_capabilities = ["preview", "tree", "properties"]
+required_capabilities = ["tree", "properties"]
 blocks = [
   "forum.topic_list",
   "forum.topic_detail",
   "forum.reply_stream",
 ]
-
-[[fba.builder_consumer.contribution_manifest.admin.renderers]]
-id = "rustok.forum.topic-list.renderer"
-component_type = "forum.topic_list"
-provider = "rustok.forum"
-presentations = ["full", "inline", "preview", "read_only"]
-
-[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
-label_message_id = "forum.builder.widget.topicList.label"
-description_message_id = "forum.builder.widget.topicList.description"
-keyboard_hint_message_id = ""
-
-[[fba.builder_consumer.contribution_manifest.admin.renderers]]
-id = "rustok.forum.topic-detail.renderer"
-component_type = "forum.topic_detail"
-provider = "rustok.forum"
-presentations = ["full", "inline", "preview", "read_only"]
-
-[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
-label_message_id = "forum.builder.widget.topicDetail.label"
-description_message_id = "forum.builder.widget.topicDetail.description"
-keyboard_hint_message_id = ""
-
-[[fba.builder_consumer.contribution_manifest.admin.renderers]]
-id = "rustok.forum.reply-stream.renderer"
-component_type = "forum.reply_stream"
-provider = "rustok.forum"
-presentations = ["full", "inline", "preview", "read_only"]
-
-[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
-label_message_id = "forum.builder.widget.replyStream.label"
-description_message_id = "forum.builder.widget.replyStream.description"
-keyboard_hint_message_id = ""
 
 [[fba.builder_consumer.contribution_manifest.admin.property_editors]]
 id = "rustok.forum.topic-list.properties"
@@ -199,6 +167,66 @@ contract_version = "1.0"
 catalog_endpoint = "/api/forum/widgets/catalog"
 validate_endpoint = "/api/forum/widgets/validate"
 catalog_source = "fba.builder_consumer.widgets"
+adapter_state = "fly_contract_ready"
+preview_data_state = "owner_preview_transport_open"
+persistence_owner = "forum"
+authorization_owner = "forum"
+
+# Preview renderer admission is a separate contribution so preview_off does not remove property
+# editing or Fly component identity from an otherwise-authorized Forum widget document.
+[[fba.builder_consumer.contribution_manifest.admin]]
+role = "widget_preview"
+id = "rustok.forum.widget-preview"
+provider = "rustok.forum"
+required_capabilities = ["preview"]
+blocks = []
+
+[[fba.builder_consumer.contribution_manifest.admin.renderers]]
+id = "rustok.forum.topic-list.renderer"
+component_type = "forum.topic_list"
+provider = "rustok.forum"
+presentations = ["full", "inline", "preview", "read_only"]
+
+[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
+label_message_id = "forum.builder.widget.topicList.label"
+description_message_id = "forum.builder.widget.topicList.description"
+keyboard_hint_message_id = ""
+
+[[fba.builder_consumer.contribution_manifest.admin.renderers]]
+id = "rustok.forum.topic-detail.renderer"
+component_type = "forum.topic_detail"
+provider = "rustok.forum"
+presentations = ["full", "inline", "preview", "read_only"]
+
+[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
+label_message_id = "forum.builder.widget.topicDetail.label"
+description_message_id = "forum.builder.widget.topicDetail.description"
+keyboard_hint_message_id = ""
+
+[[fba.builder_consumer.contribution_manifest.admin.renderers]]
+id = "rustok.forum.reply-stream.renderer"
+component_type = "forum.reply_stream"
+provider = "rustok.forum"
+presentations = ["full", "inline", "preview", "read_only"]
+
+[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
+label_message_id = "forum.builder.widget.replyStream.label"
+description_message_id = "forum.builder.widget.replyStream.description"
+keyboard_hint_message_id = ""
+
+[fba.builder_consumer.contribution_manifest.admin.messages]
+"forum.builder.widget.topicList.label" = "Forum topic list"
+"forum.builder.widget.topicList.description" = "Preview a Forum-owned topic list widget."
+"forum.builder.widget.topicDetail.label" = "Forum topic detail"
+"forum.builder.widget.topicDetail.description" = "Preview a Forum-owned topic detail widget."
+"forum.builder.widget.replyStream.label" = "Forum reply stream"
+"forum.builder.widget.replyStream.description" = "Preview a Forum-owned reply stream widget."
+
+[fba.builder_consumer.contribution_manifest.admin.metadata]
+format = "forum_widget_preview_v1"
+surface = "admin"
+catalog_endpoint = "/api/forum/widgets/catalog"
+validate_endpoint = "/api/forum/widgets/validate"
 adapter_state = "fly_contract_ready"
 preview_data_state = "owner_preview_transport_open"
 persistence_owner = "forum"
