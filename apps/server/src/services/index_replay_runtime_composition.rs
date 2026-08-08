@@ -106,6 +106,24 @@ impl IndexReplayOperatorRuntime {
         self.inner.run(request).await.map_err(Into::into)
     }
 
+    /// Runs replay through the same authorization boundary while sampling one host-owned
+    /// cooperative interruption probe at the Index runner's durable safe points.
+    pub async fn run_interruptible<Check>(
+        &self,
+        context: IndexReplayOperatorContext,
+        request: rustok_index::IndexReplayRunRequest,
+        should_interrupt: Check,
+    ) -> Result<rustok_index::IndexReplayRunOutcome, IndexReplayOperatorError>
+    where
+        Check: FnMut() -> bool,
+    {
+        context.authorize_for(request.page_request().tenant_id())?;
+        self.inner
+            .run_interruptible(request, should_interrupt)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn request_cancel(
         &self,
         context: IndexReplayOperatorContext,
