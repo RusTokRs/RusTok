@@ -1,20 +1,26 @@
 # FORUM-33 counter reconciliation actualization — 2026-08-08
 
-Status: `in-progress / bounded-owner-report-source-ready / repair-and-runtime-evidence-open`
+Status: `in-progress / bounded-owner-report-and-cursors-source-ready / repair-and-runtime-evidence-open`
 
 ## Rechecked cursor
 
 FORUM-32 no longer has an unimplemented Forum/Page Builder source path. Its owner preview, property editing, browser harness, direct runtime-authorization harness and deployed server-function attestation are source-ready; maintainer execution, the Pages reference-consumer gate and observed Wave remain outside this source slice.
 
-The next real Forum source gap is FORUM-33: analytics, observability and reconciliation integrated with platform operations.
+FORUM-33A established the first read-only owner counter reconciliation page. FORUM-33B closes the next source gap by adding independent bounded continuation for the topic and category shapes without adding repair authority.
 
-## Delivered FORUM-33A source
+## Delivered FORUM-33A/B source
 
-This slice adds a read-only `ForumCounterReconciliationService` owned by `rustok-forum` and exposes it through a dedicated Forum GraphQL operator query:
+`ForumCounterReconciliationService` is owned by `rustok-forum` and is exposed through the Forum GraphQL operator query:
 
 ```text
-forumCounterReconciliationReport(limit: Int)
+forumCounterReconciliationReport(
+  limit: Int,
+  topicAfter: UUID,
+  categoryAfter: UUID
+)
 ```
+
+All arguments are optional. Omitting both cursors preserves the original first-page behavior. The existing owner `report(...)` method remains as a compatibility first-page wrapper, while `report_page(...)` is the bounded continuation entrypoint.
 
 The query is available only when the Forum module is enabled for the request tenant and the authenticated principal has both effective permissions:
 
@@ -37,18 +43,32 @@ The owner report checks the existing publication-accounting invariants without m
 
 These are the same public-accounting semantics used by topic creation/deletion, reply publication transitions and reply removal. Pending, rejected, hidden, flagged and deleted reply rows do not contribute to public reply counters.
 
+## Independent bounded continuation
+
+Topic and category continuation are independent because the two shapes may have very different cardinalities. The owner query accepts:
+
+- `topic_after` / GraphQL `topicAfter`;
+- `category_after` / GraphQL `categoryAfter`.
+
+Each SQL shape remains ordered by its owner UUID and uses a strict keyset predicate (`id > cursor`) rather than OFFSET pagination. Each query still fetches at most `effective_limit + 1` rows. The response returns:
+
+- `has_more_topics` and `topic_cursor`;
+- `has_more_categories` and `category_cursor`.
+
+The returned cursor is the last inspected owner id for that shape. If a shape returns no new rows, its output cursor preserves the supplied input cursor instead of resetting to `None`. An operator can therefore keep echoing an exhausted category cursor while advancing topics, or vice versa, without rescanning the exhausted shape from the beginning.
+
+This makes tenants larger than the hard 500-row page cap traversable without unbounded work. It deliberately does not keep a database transaction open across HTTP/GraphQL requests. Snapshot consistency is page-local: writes that occur behind an already-returned cursor are observed by the next full reconciliation scan rather than by a long-lived cross-request snapshot. The report remains diagnostic/read-only, so no repair decision may treat a multi-page scan as a serializable write fence.
+
 ## Bounded snapshot database shape
 
-The report executes exactly two tenant-scoped aggregate queries inside one database snapshot:
+Every page executes exactly two tenant-scoped aggregate queries inside one database snapshot:
 
 - one grouped topic/reply query;
 - one grouped category/topic/reply query.
 
-PostgreSQL uses one `REPEATABLE READ READ ONLY` transaction so concurrent Forum writes cannot make the topic and category observations come from different database snapshots. SQLite uses one transaction for both reads; the first read establishes the consistent SQLite snapshot. Failed report construction explicitly rolls the transaction back, while a completed report commits the read-only snapshot.
+PostgreSQL uses one `REPEATABLE READ READ ONLY` transaction so concurrent Forum writes cannot make the topic and category observations within a page come from different database snapshots. SQLite uses one transaction for both reads; the first read establishes the consistent SQLite snapshot. Failed report construction explicitly rolls the transaction back, while a completed report commits the read-only snapshot.
 
-Each query requests at most `effective_limit + 1` rows so the service can return `has_more_topics` / `has_more_categories` without an unbounded count. The default limit is 100 and the hard maximum is 500. The service therefore avoids per-subject N+1 queries and never scans another tenant through this API.
-
-The implementation contains explicit PostgreSQL and SQLite statements because those are the Forum-supported production/test backends. Other backends fail closed rather than approximating SQL or snapshot semantics.
+The default limit is 100 and the hard maximum is 500. The service avoids per-subject N+1 queries and never scans another tenant through this API. PostgreSQL and SQLite have explicit initial-page and keyset-continuation statements. Other backends fail closed rather than approximating SQL or snapshot semantics.
 
 ## Observability
 
@@ -71,12 +91,11 @@ This slice does **not** add a repair mutation or CLI repair command. The canonic
 - bounded retry/recovery behavior;
 - PostgreSQL/SQLite execution evidence.
 
-A separate `rustok-forum-cli` adapter was considered but not added here because adding a new selected CLI provider requires a synchronized workspace dependency and `Cargo.lock` update. This task intentionally does not generate or edit the lockfile without maintainer-run dependency tooling.
+A separate `rustok-forum-cli` adapter remains deferred until its workspace dependency and `Cargo.lock` update are synchronized with maintainer-run dependency tooling.
 
 ## Remaining FORUM-33 scope
 
-- retain SQLite and PostgreSQL execution evidence for clean and intentionally drifted counter fixtures plus snapshot behavior;
-- add bounded continuation/cursor semantics beyond the first bounded topic/category page before treating this report as a complete whole-tenant scanner;
+- retain SQLite and PostgreSQL execution evidence for clean/drifted first pages, multi-page cursor traversal, exhausted-one-side continuation and page-local snapshot behavior;
 - add bounded reconciliation for accepted-solution state, subscriptions, mentions, attachments and shared-owner projections where authoritative owner contracts permit it;
 - add the audited/idempotent repair job boundary before any write repair;
 - decide the platform CLI adapter together with its synchronized dependency/lock update;
