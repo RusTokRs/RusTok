@@ -366,7 +366,7 @@ fn property_field_view(
             view! {
                 <label class="flex items-center gap-2 text-sm" for=input_id.clone()>
                     <input
-                        id=input_id
+                        id=input_id.clone()
                         type="checkbox"
                         prop:checked=move || loaded.with(|loaded| loaded.as_ref()
                             .and_then(|loaded| loaded.values.get(&read_id))
@@ -394,7 +394,7 @@ fn property_field_view(
                 <label class="block text-sm font-medium" for=input_id.clone()>
                     {label}
                     <select
-                        id=input_id
+                        id=input_id.clone()
                         class="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-sm"
                         prop:value=move || loaded.with(|loaded| loaded.as_ref()
                             .and_then(|loaded| loaded.values.get(&read_id))
@@ -411,8 +411,11 @@ fn property_field_view(
                             });
                         }
                     >
-                        {options.into_iter().map(|option| view! {
-                            <option value=option.clone()>{option}</option>
+                        {options.into_iter().map(|option| {
+                            let opt_val = option.clone();
+                            view! {
+                                <option value=opt_val>{option}</option>
+                            }
                         }).collect_view()}
                     </select>
                 </label>
@@ -426,7 +429,7 @@ fn property_field_view(
                 <label class="block text-sm font-medium" for=input_id.clone()>
                     {label}
                     <input
-                        id=input_id
+                        id=input_id.clone()
                         type="number"
                         min=minimum.map(|value| value.to_string()).unwrap_or_default()
                         max=maximum.map(|value| value.to_string()).unwrap_or_default()
@@ -470,7 +473,7 @@ fn property_field_view(
                 <label class="block text-sm font-medium" for=input_id.clone()>
                     {label}
                     <input
-                        id=input_id
+                        id=input_id.clone()
                         type="text"
                         placeholder=placeholder
                         minlength=field.min_length.map(|value| value.to_string()).unwrap_or_default()

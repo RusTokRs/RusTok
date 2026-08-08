@@ -121,7 +121,7 @@ pub use services::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, ForumUserTrustAudienceFactsPort,
     ForumUserTrustChange, ForumUserTrustRevision, ForumUserTrustRevisionPage,
     ForumUserTrustService, ForumUserTrustState, ForumVisibilityScopedReadStateService,
-    ForumWidgetContractService, MAX_FORUM_POSTING_POLICY_FACTS,
+    ForumWidgetContractService, ForumWidgetPreviewService, MAX_FORUM_POSTING_POLICY_FACTS,
     MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
     MAX_FORUM_REPLY_RANGE_MOVE_REASON_LEN, MAX_FORUM_REPLY_RANGE_MOVE_REPLIES,
     MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES,
