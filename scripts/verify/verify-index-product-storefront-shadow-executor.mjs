@@ -95,9 +95,11 @@ for (const forbidden of [
 
 const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 requireMarkers(budgetedPath, [
+  'ProductStorefrontIndexProjectionPhases',
+  'impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor',
   'ProductStorefrontIndexBudgetedProjectionExecutor',
   'ProductStorefrontIndexServingBudgetDecision::Eligible',
-  'self.shadow.execute_projected(',
+  'self.phases.execute_projected(',
   '.hydrate_projected_tags(tag_context, fallback_locale, projected)',
   'use tokio::time::timeout;',
 ]);
@@ -114,6 +116,7 @@ requireMarkers('crates/rustok-distribution/src/product_index/storefront_projecti
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'ProductStorefrontIndexTagHydrationError',
   'ProductStorefrontIndexBudgetedProjectionExecutor',
+  'ProductStorefrontIndexProjectionPhases',
 ]);
 
 const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
@@ -131,4 +134,4 @@ for (const forbidden of [
   if (mounted.includes(forbidden)) fail(`${mountedPath} must remain owner-native; found ${forbidden}`);
 }
 
-console.log('[verify-index-product-storefront-shadow-executor] owner-first evidence executor exposes crate-private post-owner phases to a separate budgeted adapter while mounted Storefront remains owner-native');
+console.log('[verify-index-product-storefront-shadow-executor] owner-first evidence executor implements the crate-private post-owner phase seam for a separate budgeted adapter while mounted Storefront remains owner-native');
