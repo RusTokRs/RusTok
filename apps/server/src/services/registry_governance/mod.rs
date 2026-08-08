@@ -441,9 +441,10 @@ fn authority_can_create_publish_request(
     owner: Option<&registry_module_owner::Model>,
 ) -> bool {
     authority.can_manage_modules
-        || owner.is_some_and(|owner| {
-            principal_matches_ref(&owner.owner_principal, &authority.principal)
-        })
+        || optional_principal_matches_ref(
+            &owner.map(|owner| owner.owner_principal.clone()),
+            &authority.principal,
+        )
         || owner.is_none() && authority.principal.is_user()
 }
 
@@ -454,9 +455,10 @@ fn authority_can_manage_release(
 ) -> bool {
     authority.can_manage_modules
         || principal_matches_ref(&release.publisher, &authority.principal)
-        || owner.is_some_and(|owner| {
-            principal_matches_ref(&owner.owner_principal, &authority.principal)
-        })
+        || optional_principal_matches_ref(
+            &owner.map(|owner| owner.owner_principal.clone()),
+            &authority.principal,
+        )
 }
 
 fn authority_can_transfer_registry_owner(
