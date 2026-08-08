@@ -8,8 +8,9 @@ mod tags;
 pub mod types;
 
 pub use types::{
-    AdminProductList, AdminProductListItem, AdminProductListQuery, ProductAttributeFilter,
-    ProductTagState, StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
+    AdminProductList, AdminProductListItem, AdminProductListQuery,
+    MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductTagState,
+    StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 
