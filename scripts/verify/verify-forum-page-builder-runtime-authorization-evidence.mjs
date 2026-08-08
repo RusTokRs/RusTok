@@ -93,9 +93,9 @@ for (const marker of [
   "stderr,",
   "retained_raw_command_output: false",
   "runtime_authorization_execution_only: true",
-  "deployed_server_fn_attestation_pending: true",
-  "browser_execution_pending: true",
-  "provider_slo_health_unobserved: true",
+  "deployed_server_fn_attestation_not_claimed: true",
+  "browser_execution_not_claimed: true",
+  "provider_slo_health_not_claimed: true",
   "observed_page_builder_wave_pending: true",
 ]) {
   requireContains(runner, marker, `runtime evidence runner missing ${marker}`);
