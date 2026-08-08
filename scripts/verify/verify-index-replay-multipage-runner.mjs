@@ -57,6 +57,7 @@ for (const forbidden of [
   'rustok_product',
   'rustok_content',
   'rustok_flex',
+  'run_interruptible<Check>',
 ]) {
   if (runner.includes(forbidden)) fail(`${runnerPath} contains forbidden marker ${forbidden}`);
 }
@@ -75,7 +76,7 @@ if (
   || successCall <= postPageCancel
   || yieldCall <= successCall
 ) {
-  fail('runner must observe cancellation before/after pages, complete on null cursor, then yield');
+  fail('ordinary runner must preserve cancellation before/after pages, complete on null cursor, then yield');
 }
 
 for (const terminalSql of ['finish_success_sql', 'finish_failure_sql', 'yield_job_sql']) {
@@ -102,8 +103,11 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_ru
 ]);
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
-  'mod source_replay_runner;',
+  'mod source_replay_runner {',
+  'include!("source_replay_runner.rs");',
+  'mod graceful_shutdown;',
   'mod source_replay_runner_tests;',
+  'mod source_replay_graceful_shutdown_tests;',
   'PostgresIndexReplayRunner',
   'IndexReplayRunRequest',
   'IndexReplayRunOutcome',
@@ -124,10 +128,12 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-multipage-runner.md', [
   '1 through 1024 pages per invocation',
   'The source name is never caller supplied.',
   '`PostgresIndexReplayRunner::request_cancel`',
+  '`PostgresIndexReplayRunner::run_interruptible`',
+  'Host interruption does not set `cancel_requested`',
   'a `pending` job becomes terminal `cancelled` immediately',
   'cancel_requested = FALSE',
   'A running cancellation request survives lease expiry and reclaim.',
-  'in-page interruption',
+  'server-owned `StopHandle`',
   'maintainer-run',
 ]);
 
@@ -135,13 +141,13 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M6 bounded multi-page replay and cancellation: `source_complete_owner_execution_pending`',
   '- [x] Add bounded multi-page execution with heartbeat cadence and immediate pending resume.',
   '- [x] Add durable cancellation requests and fenced between-page terminal cancellation.',
-  'In-page interruption, automatic retry/backoff, dead-letter scheduling, host scheduling,',
 ]);
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-job-leases.mjs'",
   "'verify-index-replay-multipage-runner.mjs'",
+  "'verify-index-replay-graceful-shutdown.mjs'",
   "'verify-index-source-replay-contract.mjs'",
 ]);
 
-console.log('[verify-index-replay-multipage-runner] OK');
+console.log('[verify-index-replay-multipage-runner] ordinary replay/cancel semantics remain stable while host-probed interruption is isolated in a separate extension');
