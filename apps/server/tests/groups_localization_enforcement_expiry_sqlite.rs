@@ -180,6 +180,7 @@ async fn localization_management_follows_effective_suspension_and_owner_clock_ex
     .expect("owner should temporarily suspend the administrator");
     assert_eq!(suspended.membership_revision, admin_initial_revision + 1);
     assert_eq!(suspended.member_count, 2);
+    assert!(suspended.group_version > initial.group_version as i64);
 
     let (stored_status_during_suspension, stored_revision_during_suspension) =
         membership_snapshot(&db, tenant_id, admin_id).await;
@@ -247,7 +248,7 @@ async fn localization_management_follows_effective_suspension_and_owner_clock_ex
     .await
     .expect("expired suspension should restore administrator management writes without cleanup");
     assert!(restored.created);
-    assert!(restored.group_version > suspended.group_version.max(initial.group_version as i64) as u64);
+    assert_eq!(restored.group_version, suspended.group_version as u64 + 1);
 
     let final_translations = GroupLocalizationReadPort::list_group_translations(
         &localization,
