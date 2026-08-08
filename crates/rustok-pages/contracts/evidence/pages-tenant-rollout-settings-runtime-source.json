@@ -5,6 +5,7 @@
   "source_base": "e91926363cfcdf6a91836358add1afdf94f65ffa",
   "source_contract": {
     "platform_runtime_helper": "rustok_api::tenant_module_settings",
+    "trusted_tenant_id_must_be_supplied_by_caller": true,
     "exact_tenant_id_required": true,
     "exact_module_slug_required": true,
     "enabled_row_required": true,
@@ -33,5 +34,5 @@
     "browser_run": false,
     "workflow_or_ci_run": false
   },
-  "next_cursor": "bind the exact enabled Pages tenant-module settings snapshot into PagesBuilderFacade provider status and SSR Page Builder capability composition, then retain the four-profile runtime matrix"
+  "next_cursor": "bind a trusted routed-tenant Pages settings snapshot into PagesBuilderFacade provider status and authoritative SSR Page Builder capability composition, then retain the four-profile runtime matrix"
 }
