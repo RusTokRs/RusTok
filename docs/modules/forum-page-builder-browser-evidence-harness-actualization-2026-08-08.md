@@ -23,7 +23,7 @@ format: forum_page_builder_browser_execution_v1
 status: browser_execution_passed_runtime_evidence_pending
 ```
 
-The packet is bound to the exact source commit and immutable deployment RepoDigest. Required production source files are hashed at execution time so browser evidence cannot be replayed against a different Forum/Page Builder implementation.
+The exact source commit is checked against checkout `HEAD`, and required production source files are hashed at execution time so the packet cannot silently describe a different checked-out Forum/Page Builder implementation. The immutable RepoDigest is a maintainer-supplied reviewed deployment identity recorded by the packet; this browser harness does not independently attest that the opened URLs are served by that digest. Deployment provenance must therefore be verified outside this browser packet.
 
 ## Harness owner boundary
 
@@ -84,8 +84,8 @@ The `no_read` session must not receive Forum contribution admission. This proves
 
 The output retains only:
 
-- exact source commit;
-- immutable deployment RepoDigest;
+- exact source commit verified against checkout `HEAD`;
+- maintainer-supplied reviewed deployment identity (immutable RepoDigest);
 - SHA-256 hashes of required source files;
 - SHA-256 hashes and byte sizes of external storage-state files;
 - SHA-256 hashes of the five profile URLs;
@@ -104,7 +104,7 @@ The source-only guard is:
 node scripts/verify/verify-forum-page-builder-browser-evidence-harness.mjs
 ```
 
-It verifies the evidence contract, profile matrix, retention boundary, stale-output cleanup, stable production browser selectors, existing Forum host composition and the no-execution status.
+It verifies the evidence contract, profile matrix, retention boundary, stale-output cleanup, explicit external deployment-provenance boundary, stable production browser selectors, existing Forum host composition and the no-execution status.
 
 ## Maintainer browser command
 
@@ -116,14 +116,15 @@ npx --no-install playwright test \
   --config playwright.forum-page-builder.config.ts
 ```
 
-Required environment values are declared by the JSON contract and include the exact source commit, immutable deployment digest, two external storage-state files and five profile URLs.
+Required environment values are declared by the JSON contract and include the exact source commit, maintainer-supplied reviewed deployment identity, two external storage-state files and five profile URLs.
 
 ## Promotion boundary
 
-A passing browser packet may close only the retained browser portion of FORUM-32 for that exact source/image/environment.
+A passing browser packet may close only the retained browser portion of FORUM-32 for the reviewed source/environment after external deployment provenance has also been accepted.
 
 It does not by itself prove:
 
+- that the browser independently attested RepoDigest-to-deployment identity;
 - direct Forum property/preview transport tenant/module/RBAC rejection paths;
 - server/runtime visibility semantics outside the browser flow;
 - provider SLO health;
