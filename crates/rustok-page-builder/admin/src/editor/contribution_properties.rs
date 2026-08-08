@@ -38,6 +38,7 @@ struct ContributionPropertyField {
     id: String,
     label: String,
     required: bool,
+    min_length: Option<usize>,
     max_length: Option<usize>,
     kind: ContributionPropertyFieldKind,
 }
@@ -472,6 +473,7 @@ fn property_field_view(
                         id=input_id
                         type="text"
                         placeholder=placeholder
+                        minlength=field.min_length.map(|value| value.to_string()).unwrap_or_default()
                         maxlength=field.max_length.map(|value| value.to_string()).unwrap_or_default()
                         class="mt-1 w-full rounded border border-input bg-background px-2 py-1 text-sm"
                         prop:value=move || loaded.with(|loaded| loaded.as_ref()
@@ -484,7 +486,11 @@ fn property_field_view(
                             let value = event_target_value(&event);
                             loaded.update(|loaded| {
                                 if let Some(loaded) = loaded.as_mut() {
-                                    loaded.values.insert(write_id.clone(), Value::String(value));
+                                    if value.is_empty() {
+                                        loaded.values.remove(&write_id);
+                                    } else {
+                                        loaded.values.insert(write_id.clone(), Value::String(value));
+                                    }
                                 }
                             });
                         }
@@ -570,11 +576,10 @@ fn parse_owner_property_schema(
     if !required.iter().all(|field| properties.contains_key(field)) {
         return Err("Owner property schema requires an unknown field".to_string());
     }
-    let current = current_props
+    let mut values = current_props
         .as_object()
         .cloned()
         .ok_or_else(|| "Current contribution props must be an object".to_string())?;
-    let mut values = Map::new();
     let mut fields = Vec::with_capacity(properties.len());
 
     for (id, definition) in properties {
@@ -644,36 +649,37 @@ fn parse_owner_property_schema(
             }
         };
 
-        if let Some(value) = current.get(id).cloned().or_else(|| definition.get("default").cloned()) {
-            values.insert(id.clone(), value);
-        } else {
-            match &kind {
-                ContributionPropertyFieldKind::Boolean => {
-                    values.insert(id.clone(), Value::Bool(false));
-                }
-                ContributionPropertyFieldKind::Text { .. }
-                | ContributionPropertyFieldKind::Select { .. } => {
-                    values.insert(id.clone(), Value::String(String::new()));
-                }
-                ContributionPropertyFieldKind::Integer { .. } => {}
-            }
+        if !values.contains_key(id)
+            && let Some(default) = definition.get("default").cloned()
+        {
+            values.insert(id.clone(), default);
         }
 
-        let max_length = match definition.get("maxLength") {
-            None => None,
-            Some(value) => {
-                let value = value.as_u64().ok_or_else(|| {
-                    format!("Owner property `{id}` maxLength must be an unsigned integer")
-                })?;
-                Some(usize::try_from(value).map_err(|_| {
-                    format!("Owner property `{id}` maxLength is too large")
-                })?)
+        let (min_length, max_length) = if property_type == "string" {
+            let min_length = optional_usize_constraint(definition, id, "minLength")?;
+            let max_length = optional_usize_constraint(definition, id, "maxLength")?;
+            if min_length
+                .zip(max_length)
+                .is_some_and(|(minimum, maximum)| maximum < minimum)
+            {
+                return Err(format!(
+                    "Owner property `{id}` maxLength must be greater than or equal to minLength"
+                ));
             }
+            (min_length, max_length)
+        } else {
+            if definition.contains_key("minLength") || definition.contains_key("maxLength") {
+                return Err(format!(
+                    "Owner property `{id}` uses string length constraints on a non-string field"
+                ));
+            }
+            (None, None)
         };
         fields.push(ContributionPropertyField {
             id: id.clone(),
             label: humanize_property_id(id),
             required: required.contains(id),
+            min_length,
             max_length,
             kind,
         });
@@ -695,6 +701,20 @@ fn optional_u64_constraint(
             )
         }),
     }
+}
+
+fn optional_usize_constraint(
+    definition: &Map<String, Value>,
+    field_id: &str,
+    constraint: &str,
+) -> Result<Option<usize>, String> {
+    optional_u64_constraint(definition, field_id, constraint)?
+        .map(|value| {
+            usize::try_from(value).map_err(|_| {
+                format!("Owner property `{field_id}` {constraint} is too large")
+            })
+        })
+        .transpose()
 }
 
 fn humanize_property_id(id: &str) -> String {
