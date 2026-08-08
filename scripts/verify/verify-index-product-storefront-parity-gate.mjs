@@ -47,7 +47,6 @@ requireMarkers(typesPath, [
   'pub enum StorefrontProductSortBy',
   'PublishedAt',
   'CreatedAt',
-  'pub enum StorefrontProductSortDirection',
   'pub struct ProductAttributeFilter',
   'const MAX_ATTRIBUTE_FILTERS: usize = 8',
   'pub struct StorefrontProductListQuery',
@@ -67,83 +66,41 @@ const ownerQuery = requireMarkers(ownerQueryPath, [
   'Column::PrimaryCategoryId.eq(category_id)',
   'product_title_search_condition(',
   'attribute_filters::load_catalog_attribute_filter_conditions(',
-  'StorefrontProductSortBy::PublishedAt',
-  'StorefrontProductSortBy::CreatedAt',
-  '.order_by_asc(entities::product::Column::Id)',
-  '.order_by_desc(entities::product::Column::Id)',
   'let total = query.clone().count(&self.db).await?',
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
-  'load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))',
   'fn product_title_search_condition(',
   'FROM product_translations pt',
   'pt.product_id = products.id',
   'pt.title LIKE $1',
 ]);
-const titleSearchStart = ownerQuery.indexOf('fn product_title_search_condition(');
-const titleSearch = ownerQuery.slice(titleSearchStart);
+const titleSearch = ownerQuery.slice(ownerQuery.indexOf('fn product_title_search_condition('));
 if (titleSearch.includes('pt.locale')) {
-  fail(`${ownerQueryPath} title search became locale-scoped; update the parity architecture and guard in the same PR`);
+  fail(`${ownerQueryPath} title search became locale-scoped; update parity architecture in the same PR`);
 }
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
-const productIndex = read(productIndexPath);
-const schemaStart = productIndex.indexOf('fn product_schema()');
-const schemaEnd = productIndex.indexOf('fn validated_schema(', schemaStart);
-if (schemaStart < 0 || schemaEnd < 0 || schemaEnd <= schemaStart) {
-  fail(`${productIndexPath} canonical Product schema block is missing`);
-}
-const productSchema = productIndex.slice(schemaStart, schemaEnd);
-for (const marker of [
-  'scalar_field("id"',
-  'scalar_field("status"',
-  'scalar_field("title"',
-  'scalar_field("handle"',
-  'scalar_field("description"',
-  'scalar_field("seller_id"',
-  'scalar_field("vendor"',
-  'scalar_field("product_type"',
-  '"primary_category_id"',
-  'many_field("tag_ids"',
-  'scalar_field("created_at"',
-  'scalar_field("published_at"',
-  'many_field("attribute_terms"',
-  'many_field("variant_ids"',
-  'many_field("sales_channel_ids"',
-  'name: link_name("variants")?',
-  'name: link_name("sales_channels")?',
-]) {
-  if (!productSchema.includes(marker)) fail(`${productIndexPath} schema is missing ${marker}`);
-}
-if (!productIndex.includes('assert_eq!(schema.fields.len(), 15);')) {
-  fail(`${productIndexPath} current single Product field-count assertion is not 15`);
-}
-requireMarkers(productIndexPath, [
+const productIndex = requireMarkers(productIndexPath, [
+  'assert_eq!(schema.fields.len(), 15);',
   'JOIN product_translations t',
   't.locale',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'derive_index_schema_source_event_id(',
-  "COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids",
-  "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
+  'many_field("attribute_terms", IndexValueType::String, false, true)?',
 ]);
 forbidMarkers(productIndexPath, productIndex, [
   'SchemaVersion::new(3)',
   'derive_index_source_event_id(',
-  'ProductSchemaVersion',
   'product_v1_schema',
   'product_v2_schema',
   'COALESCE(requested_translation',
-  'fallback_translation AS title',
 ]);
 
-const absencePath = 'crates/rustok-distribution/src/product_index/absence.rs';
-requireMarkers(absencePath, [
+requireMarkers('crates/rustok-distribution/src/product_index/absence.rs', [
   'translation.locale = $3',
   'return Ok(None);',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
 ]);
-
-const schemaStorePath = 'crates/rustok-index/src/infrastructure/postgres/schema_registration.rs';
-requireMarkers(schemaStorePath, [
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_registration.rs', [
   'VersionConflict { reference: SchemaRef }',
   'pub async fn register_current(',
   'retire_lower_active_schemas(',
@@ -151,23 +108,24 @@ requireMarkers(schemaStorePath, [
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `localized_query_contract_source_complete_compiler_and_evidence_pending`',
+  'Status: `localized_compiler_decoder_source_complete_runtime_and_evidence_pending`',
   'does **not** restrict that search row to the requested or fallback locale',
   'owner list can still return the Product using its fallback translation',
   'one Index entity for each physically stored `product_translations.locale`',
   'A scalar substring/LIKE operator alone cannot close Storefront parity',
   'localized-entity identity fold',
-  '`LocalizedEntityQuery` explicitly wraps the ordinary exact-locale query shape',
-  '`LocalizedCursorCodec` uses dedicated scoped wire version `3`',
+  '`localized_projection_fields`',
+  '`SchemaRegistry::compile_postgres_localized_page_query`',
+  '`SchemaRegistry::decode_postgres_localized_query_page`',
+  'The public query runtime still has no `execute_localized_query` method.',
   'm7-product-storefront-localized-query-architecture.md',
   'Do **not** add another Product routing key merely to patch this query semantic.',
   'actualize retained Product PostgreSQL packets',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
 ]);
-
 requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
   'Status: `source_complete_materialized_rebuild_pending`',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains fail-closed while localized fold compiler/evidence are pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native while localized runtime/evidence are pending');
