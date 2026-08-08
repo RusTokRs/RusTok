@@ -31,10 +31,16 @@ const source = requireMarkers(executorPath, [
   'OwnerNativeChannelLess',
   'ChannelLessOwnerNative',
   'pub(crate) fn classify_product_storefront_index_channel_scope(',
+  'pub(crate) enum ProductStorefrontIndexPageScopeDecision',
+  'OwnerNativeDeepPage { offset: u64 }',
+  'DeepPageOwnerNative { offset: u64 }',
+  'pub(crate) fn classify_product_storefront_index_page_scope(',
   'list_filtered_published_products(',
   'let projected = self',
   'classify_product_storefront_index_channel_scope(',
+  'classify_product_storefront_index_page_scope(&query)',
   'return Err(ProductStorefrontIndexShadowProjectionError::ChannelLessOwnerNative);',
+  'return Err(ProductStorefrontIndexShadowProjectionError::DeepPageOwnerNative',
   '.schema_read_port()',
   '.resolve_storefront_attribute_filters(',
   'build_product_storefront_index_shadow_query(',
@@ -62,8 +68,10 @@ for (const forbidden of [
   'query_one(',
   'CHANNEL_LESS_SENTINEL',
   'UNRESTRICTED_CHANNEL_SENTINEL',
+  '.min(MAX_INDEX_OFFSET_DEPTH)',
+  'Pagination::Cursor',
 ]) {
-  if (source.includes(forbidden)) fail(`${executorPath} must compose selected ports only; found ${forbidden}`);
+  if (source.includes(forbidden)) fail(`${executorPath} must compose selected ports and preserve owner request semantics; found ${forbidden}`);
 }
 
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
@@ -72,7 +80,9 @@ requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'ProductStorefrontIndexShadowExecution',
   'ProductStorefrontIndexShadowComparison',
   'ProductStorefrontIndexChannelScopeDecision',
+  'ProductStorefrontIndexPageScopeDecision',
   'classify_product_storefront_index_channel_scope',
+  'classify_product_storefront_index_page_scope',
 ]);
 
 const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
@@ -84,4 +94,4 @@ for (const forbidden of ['ProductStorefrontIndexShadowExecutor', 'execute_locali
   if (mounted.includes(forbidden)) fail(`${mountedPath} must remain owner-native; found ${forbidden}`);
 }
 
-console.log('[verify-index-product-storefront-shadow-executor] owner-first non-serving shadow execution and typed channel-less owner-native policy are source-locked; mounted Storefront remains owner-native');
+console.log('[verify-index-product-storefront-shadow-executor] owner-first non-serving shadow execution plus channel-less and deep-page typed owner-native policies are source-locked; mounted Storefront remains owner-native');
