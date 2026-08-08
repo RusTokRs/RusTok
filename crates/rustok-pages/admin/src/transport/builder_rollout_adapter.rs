@@ -1,3 +1,5 @@
+#[cfg(target_arch = "wasm32")]
+use leptos::web_sys;
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use serde::Deserialize;
@@ -34,7 +36,7 @@ fn graphql_url() -> String {
 
     #[cfg(target_arch = "wasm32")]
     {
-        let origin = leptos::web_sys::window()
+        let origin = web_sys::window()
             .and_then(|window| window.location().origin().ok())
             .unwrap_or_else(|| "http://localhost:5150".to_string());
         format!("{origin}/api/graphql")
