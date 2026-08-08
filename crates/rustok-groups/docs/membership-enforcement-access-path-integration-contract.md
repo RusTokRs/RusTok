@@ -10,11 +10,11 @@ It does **not** claim that every planned provider ACL profile is complete. Blog,
 
 ## Owner boundary
 
-`apps/server/src/services/forum_audience_group_facts.rs` is a server composition adapter, not a Groups state owner. For every exact requested group fact it constructs a tenant/user-bound read `PortContext` and calls only:
+`apps/server/src/services/forum_audience_group_facts.rs` is a server composition adapter, not a Groups state owner. For every exact requested group fact it validates the caller's read `PortContext` against the requested tenant/user identity, forwards that context to the neutral Groups owner read port, and calls only:
 
 `GroupMembershipEnforcementReadPort::read_membership_enforcement`
 
-The adapter treats only `GroupMembershipEffectiveStatus::Active` as a positive membership fact. Suspended, inactive, legacy-banned or missing membership is not reported as active. Expiry is therefore inherited from the Groups owner clock and does not require a Forum cleanup job.
+The adapter accepts a positive membership fact only when the Groups owner response has `state.active_member=true`. That boolean is computed by the Groups effective-membership owner boundary; the adapter does not reinterpret raw stored lifecycle status or rebuild enforcement state. Suspended, inactive, legacy-banned or missing membership is therefore not reported as active. Expiry is inherited from the Groups owner clock and does not require a Forum cleanup job.
 
 The adapter validates returned tenant, group and user identity before trusting the owner response. It contains no direct Groups entity/table access and no local reconstruction of enforcement projection state.
 
@@ -48,7 +48,7 @@ This preserves fail-closed behavior without making the Groups adapter responsibl
 
 `crates/rustok-groups/contracts/groups-effective-membership-access.json` records `forum_audience_group_facts` as `source_delivered_execution_pending` and keeps `additional_provider_specific_acl_adapters` in remaining work.
 
-The broad Groups FBA field `membership_enforcement.provider_acl_integration` remains open because one delivered Forum consumer does not complete all provider profiles. `evidence.membership_enforcement_access_path_integration` remains null because the owner-backed commands were not executed by this implementation agent.
+The broad Groups FBA field `membership_enforcement.provider_acl_integration` remains open because one delivered Forum consumer does not complete all additional provider ACL profiles. `evidence.membership_enforcement_access_path_integration` remains null because the owner-backed commands were not executed by this implementation agent.
 
 ## Upstream Forum evidence
 
