@@ -1,9 +1,12 @@
 use super::*;
 use crate::{ContributionAssemblyPolicy, ContributionDescriptor, ContributionProviderHealth};
-use serde_json::Map;
+use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
-fn contribution(id: &str, provider: &str) -> ContributionDescriptor {
+const OWNER_VERSION: &str = "0.1.0";
+const TARGET_VERSION: &str = "1";
+
+fn contribution(id: &str, provider: &str, provider_version: &str) -> ContributionDescriptor {
     ContributionDescriptor {
         id: id.to_string(),
         provider: provider.to_string(),
@@ -12,7 +15,10 @@ fn contribution(id: &str, provider: &str) -> ContributionDescriptor {
         renderers: Vec::new(),
         property_editors: Vec::new(),
         messages: BTreeMap::new(),
-        metadata: Map::new(),
+        metadata: Map::from_iter([(
+            "providerVersion".to_string(),
+            Value::String(provider_version.to_string()),
+        )]),
     }
 }
 
@@ -20,7 +26,8 @@ fn manifest(admin: Vec<ContributionDescriptor>) -> ModuleContributionManifest {
     ModuleContributionManifest {
         module_id: "pages".to_string(),
         owner_provider: "rustok.pages".to_string(),
-        target_providers: BTreeSet::new(),
+        owner_version: OWNER_VERSION.to_string(),
+        target_providers: BTreeMap::new(),
         dependencies: BTreeSet::new(),
         required_permissions: BTreeSet::new(),
         admin,
@@ -29,15 +36,25 @@ fn manifest(admin: Vec<ContributionDescriptor>) -> ModuleContributionManifest {
 }
 
 fn cross_provider_manifest() -> ModuleContributionManifest {
-    let mut manifest = manifest(vec![contribution("pages.blocks", "fly.builtin")]);
-    manifest.target_providers.insert("fly.builtin".to_string());
+    let mut manifest = manifest(vec![contribution(
+        "pages.blocks",
+        "fly.builtin",
+        TARGET_VERSION,
+    )]);
+    manifest
+        .target_providers
+        .insert("fly.builtin".to_string(), TARGET_VERSION.to_string());
     manifest
 }
 
 #[test]
 fn owner_provider_is_the_only_implicit_target() {
     let result = build_admin_contribution_registry_from_manifests(
-        [manifest(vec![contribution("pages.blocks", "fly.builtin")])],
+        [manifest(vec![contribution(
+            "pages.blocks",
+            "fly.builtin",
+            TARGET_VERSION,
+        )])],
         &ContributionAssemblyPolicy::default(),
     );
     assert!(!result.is_valid());
@@ -51,7 +68,7 @@ fn owner_provider_is_the_only_implicit_target() {
 }
 
 #[test]
-fn explicit_target_provider_is_allowed() {
+fn explicit_versioned_target_provider_is_allowed() {
     let result = build_admin_contribution_registry_from_manifests(
         [cross_provider_manifest()],
         &ContributionAssemblyPolicy::default(),
@@ -59,6 +76,39 @@ fn explicit_target_provider_is_allowed() {
     assert!(result.is_valid());
     assert_eq!(result.registered_contributions, 1);
     assert!(result.registry.get("pages.blocks").is_some());
+}
+
+#[test]
+fn target_provider_version_mismatch_is_rejected() {
+    let mut manifest = cross_provider_manifest();
+    manifest.admin[0].metadata.insert(
+        "providerVersion".to_string(),
+        Value::String("2".to_string()),
+    );
+    let result = build_admin_contribution_registry_from_manifests(
+        [manifest],
+        &ContributionAssemblyPolicy::default(),
+    );
+    assert!(!result.is_valid());
+    assert!(result.registry.is_empty());
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "contribution_target_provider_version_mismatch"
+    }));
+}
+
+#[test]
+fn missing_provider_version_is_rejected() {
+    let mut manifest = cross_provider_manifest();
+    manifest.admin[0].metadata.remove("providerVersion");
+    let result = build_admin_contribution_registry_from_manifests(
+        [manifest],
+        &ContributionAssemblyPolicy::default(),
+    );
+    assert!(!result.is_valid());
+    assert!(result.registry.is_empty());
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "contribution_provider_version_missing"
+    }));
 }
 
 #[test]
@@ -99,8 +149,16 @@ fn owner_and_target_provider_allowlist_enables_cross_provider_extension() {
 
 #[test]
 fn admin_and_storefront_surfaces_remain_separate() {
-    let mut manifest = manifest(vec![contribution("pages.admin.blocks", "rustok.pages")]);
-    manifest.storefront = vec![contribution("pages.storefront.renderer", "rustok.pages")];
+    let mut manifest = manifest(vec![contribution(
+        "pages.admin.blocks",
+        "rustok.pages",
+        OWNER_VERSION,
+    )]);
+    manifest.storefront = vec![contribution(
+        "pages.storefront.renderer",
+        "rustok.pages",
+        OWNER_VERSION,
+    )];
     let admin = build_admin_contribution_registry_from_manifests(
         [manifest.clone()],
         &ContributionAssemblyPolicy::default(),
@@ -142,16 +200,21 @@ fn target_provider_health_can_block_cross_provider_extensions() {
 }
 
 #[test]
-fn direct_target_lookup_trims_provider_names() {
+fn direct_target_lookup_trims_owner_and_versions() {
     let manifest = ModuleContributionManifest {
         module_id: "pages".to_string(),
         owner_provider: " rustok.pages ".to_string(),
-        target_providers: BTreeSet::from(["fly.builtin".to_string()]),
+        owner_version: " 0.1.0 ".to_string(),
+        target_providers: BTreeMap::from([(
+            "fly.builtin".to_string(),
+            " 1 ".to_string(),
+        )]),
         dependencies: BTreeSet::new(),
         required_permissions: BTreeSet::new(),
         admin: Vec::new(),
         storefront: Vec::new(),
     };
-    assert!(manifest.allows_target_provider("rustok.pages"));
-    assert!(manifest.allows_target_provider("fly.builtin"));
+    assert!(manifest.allows_target_provider("rustok.pages", "0.1.0"));
+    assert!(manifest.allows_target_provider("fly.builtin", "1"));
+    assert!(!manifest.allows_target_provider("fly.builtin", "2"));
 }
