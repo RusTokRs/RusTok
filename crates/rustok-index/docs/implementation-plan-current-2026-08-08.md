@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product-owned Storefront search-bound merge
-`98757e58af94f4df20c14429c0eb6bdaea173b36` and continued on
-`agent/product-storefront-collation-evidence-20260808`.
+Status overlay rechecked after Product Storefront collation packet merge
+`26d6e340ee6d1be462f29da6b95b6539458b843f` and continued on
+`agent/product-storefront-channel-scope-policy-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -22,42 +22,52 @@ Source-complete:
 - Product channel relation/freshness materialization;
 - localized entity identity fold, cursor v3 and requested -> fallback projection;
 - localized PostgreSQL compiler/decoder/runtime with readiness/admission and one repeatable-read page/count snapshot;
-- generic String `TextLike` with a 1024-byte pattern bound;
-- Product-owned Storefront title-search input bound of 1022 effective UTF-8 bytes, leaving exactly two bytes
-  for the owner `%{search}%` pattern without truncation;
-- retained PostgreSQL title-search collation packet comparing owner/default `LIKE` against the Index-equivalent
-  explicit `COLLATE "C"` + backslash escape matrix on the real Product translation column;
+- generic String `TextLike` plus the Product-owned 1022-byte effective Storefront search bound;
+- retained owner/default-vs-Index-`C` PostgreSQL title-search collation packet source;
 - localized Product-ID tie-break direction matching owner Asc/Desc ordering;
-- Product-owned public Storefront attribute-filter -> neutral canonical term resolution;
-- pure Storefront shadow builder consuming only Product-owned filter terms and the Product-owned search bound;
-- non-serving owner-first `ProductStorefrontIndexShadowExecutor`;
-- current-key core and EAV Product Storefront owner-vs-shadow PostgreSQL packet source;
+- Product-owned Storefront attribute-filter -> neutral canonical term resolution;
+- pure Storefront shadow builder and owner-first non-serving shadow executor;
+- explicit current-key channel-scope policy: trusted non-empty slug + non-nil UUID is shadow-eligible, while
+  channel-less owner requests remain owner-native and partial/invalid channel identity fails closed;
+- current-key core/EAV Storefront PostgreSQL packet source;
 - historical retained Product PostgreSQL fixtures actualized to current Product routing key `4`.
 
-The Product search bound is enforced both by `StorefrontProductListQuery::try_new*` and immediately before
-`CatalogService::list_published_products_with_query` constructs owner SQL. Distribution consumes the same
-Product constant.
+## Channel-less visibility decision for current Product key 4
 
-The collation packet does not manufacture a favorable database locale. It runs Product migrations, seeds the
-real `product_translations.title` column, then compares production-owner `translation.title LIKE pattern`
-against `(translation.title COLLATE "C") LIKE pattern ESCAPE '\\'` for ASCII case, NFC/NFD Unicode,
-`%`, `_`, escaped wildcards and sharp-s/ASCII-SS distinctions. It records `lc_collate` in mismatch diagnostics.
-Any default-vs-C result difference is a retained fail-closed cutover signal.
+Owner channel-less semantics are **metadata-unrestricted only**: the Product owner predicate admits rows whose
+`metadata.channel_visibility.allowed_channel_slugs` is absent or empty.
 
-All PostgreSQL packets remain source-only until maintainer execution. The core Storefront packet also retains
-the no-requested/fallback-translation projection gap: owner emits `Untitled product`/empty handle while generic
-localized Index returns null.
+The Product -> SalesChannel relation resolver intentionally represents unrestricted visibility as membership
+in **all current Channel UUIDs**. A restricted Product whose allowed slugs currently resolve to every Channel
+therefore has the same `sales_channel_ids` value as an unrestricted Product. Current Product key `4` cannot
+recover the owner distinction from resolved membership.
+
+The generic PostgreSQL entity-admission catalog is schema-scoped and does not carry an arbitrary
+request-specific Product visibility predicate. Consequently the current source does not fabricate a sentinel,
+encode visibility into unrelated `attribute_terms`, or introduce a key-5 schema without the replacement
+protocol/evidence required for a real schema change.
+
+`classify_product_storefront_index_channel_scope` now makes the request policy explicit:
+
+- absent/blank slug + absent UUID => `OwnerNativeChannelLess`;
+- non-empty slug + non-nil UUID => `ShadowEligible`;
+- partial, contradictory or nil channel identity => `PublicChannelIdentityUnavailable`.
+
+The shadow executor still runs the authoritative Product owner list first. For channel-less requests it retains
+that result and records typed projected reason `ChannelLessOwnerNative`; it never approximates an Index result.
+This closes the current-key **policy decision**, not channel-less Index parity. Any future serving router must
+continue to route this shape owner-native unless a later schema/query capability represents the distinction
+exactly with freshness evidence.
 
 ## Remaining Storefront parity/evidence blockers
 
 - execute/review current-key Storefront, collation and actualized retained Product PostgreSQL packets;
-- admit collation parity only for deployments where the retained default-vs-C matrix agrees; a mismatch keeps
-  Storefront Index cutover fail-closed;
-- channel-less owner visibility cannot currently be represented exactly by `sales_channel_ids`;
-- owner page depth exceeds Index bounded offset depth;
+- admit collation parity only where the retained deployment matrix agrees;
+- owner page depth exceeds the Index bounded offset depth;
 - map localized null title/handle to owner public placeholders in final projection;
 - hydrate localized Taxonomy tag names only after Product page identity/count is fixed;
 - define serving latency/deadline policy before any shadow-to-serving transition;
+- preserve channel-less owner-native routing in any future serving composition;
 - complete maintainer-executed stale locale/readiness/admission/restart evidence.
 
 ## Retained Product evidence state
@@ -66,8 +76,6 @@ The retained Product PostgreSQL fixture set is source-aligned on routing key `4`
 query freshness, Product/Channel convergence, Channel identity transitions, linked-target delete/recreate,
 linked-target availability equivalence and linked-target replay/redelivery. ProductVariant remains key `2`
 and SalesChannel remains key `1`.
-
-`verify-index-product-postgres-key4-fixtures.mjs` locks that boundary. Execution/admission remains separate.
 
 ## M5 incremental ingestion
 
@@ -94,33 +102,32 @@ and SalesChannel remains key `1`.
 - [x] Canonical typed EAV terms and Product owner clock.
 - [x] Localized identity/fallback architecture and query/cursor contract.
 - [x] Localized PostgreSQL compiler/decoder/runtime.
-- [x] Generic scalar String `TextLike`.
-- [x] Product-owned 1022-byte Storefront search input bound compatible with the 1024-byte TextLike pattern.
+- [x] Generic scalar String `TextLike` and Product-owned compatible search bound.
 - [x] Retain owner/default-vs-Index-`C` PostgreSQL title-search collation packet source.
 - [x] Explicit localized entity-ID tie-break direction matching owner Asc/Desc ordering.
-- [x] Product Storefront Index shadow/evidence query builder.
-- [x] Product-owned Storefront attribute-filter resolution.
+- [x] Product Storefront shadow query builder and Product-owned EAV resolution.
 - [x] Compose non-serving Product-owner + Index shadow executor.
-- [x] Retain current-key core and EAV owner-vs-shadow PostgreSQL packet source.
+- [x] Retain current-key core/EAV owner-vs-shadow PostgreSQL packet source.
 - [x] Actualize historical retained Product PostgreSQL packets to routing key `4`.
-- [ ] Execute/review the retained Product/Storefront/collation PostgreSQL packets.
-- [ ] Admit owner/default vs Index `COLLATE "C"` title-search collation parity for a deployment.
-- [ ] Resolve channel-less unrestricted visibility parity or keep that shape owner-native.
+- [x] Keep channel-less Storefront owner-native on current key `4`; distinguish malformed channel identity.
+- [ ] Execute/review retained Product/Storefront/collation PostgreSQL packets.
+- [ ] Admit owner/default vs Index `COLLATE "C"` title-search parity for a deployment.
 - [ ] Decide authoritative deep-page policy.
 - [ ] Map no-localized-row nulls to owner public title/handle placeholders in final projection.
 - [ ] Batch-hydrate Taxonomy tag names after the Product page is fixed.
 - [ ] Extend folded linked paths only with dedicated target-availability evidence.
 - [ ] Execute/admit current replacement Product PostgreSQL evidence.
 - [ ] Stage/rebuild/promote Product key `4` for a tenant.
-- [ ] Move Storefront traffic only after every parity/readiness/freshness/restart/latency gate passes.
+- [ ] Move eligible Storefront traffic only after every parity/readiness/freshness/restart/latency gate passes;
+      channel-less remains owner-native unless a later exact representation is admitted.
 
 ## Next source-code step
 
-Resolve the channel-less Storefront visibility shape without weakening owner semantics. Owner channel-less
-means metadata-unrestricted only, while current `sales_channel_ids` stores resolved channel membership and
-cannot distinguish unrestricted from a restricted Product that happens to contain every current channel.
-Prefer a Product-owned materialized visibility identity/capability over inference from the channel UUID set;
-keep channel-less shadow execution fail-closed until the distinction is representable and freshness-covered.
+Resolve deep-page request policy without silently narrowing owner semantics. The owner accepts any checked
+`(page - 1) * per_page` offset representable by its query path, while generic Index offset pagination is
+bounded to `10_000`. Classify an otherwise valid owner request whose computed offset exceeds that bound as a
+typed **owner-native deep-page** shape, distinct from invalid pagination, and keep shallow pages shadow-eligible.
+Do not clamp page/offset or silently switch pagination semantics.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
