@@ -414,7 +414,7 @@ fn rereview_metadata(
     reason: &str,
 ) -> JsonValue {
     json!({
-        REREVIEW_METADATA_KEY: {
+        "operator_rereview": {
             "root_idempotency_key": root_idempotency_key,
             "source_case_id": source_case.id,
             "source_decision_id": source_decision_id,
@@ -487,7 +487,9 @@ fn map_port_error(error: PortError) -> FieldError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_moderation::{ModerationCasePriority, ModerationScopeRef, ModerationSubjectKind, ModerationSubjectRef};
+    use rustok_moderation::{
+        ModerationCasePriority, ModerationScopeRef, ModerationSubjectKind, ModerationSubjectRef,
+    };
 
     #[test]
     fn recovery_permission_is_not_inherited_from_forum_moderation() {
@@ -506,11 +508,18 @@ mod tests {
     #[test]
     fn rereview_step_keys_are_stable_and_distinct() {
         let root = Uuid::from_u128(1);
-        let base = PortContext::new("tenant", rustok_api::PortActor::user(Uuid::from_u128(2).to_string()), "en", "corr")
-            .with_deadline(RECOVERY_PORT_DEADLINE)
-            .with_idempotency_key(root.to_string());
+        let base = PortContext::new(
+            "tenant",
+            rustok_api::PortActor::user(Uuid::from_u128(2).to_string()),
+            "en",
+            "corr",
+        )
+        .with_deadline(RECOVERY_PORT_DEADLINE)
+        .with_idempotency_key(root.to_string());
         assert_eq!(
-            rereview_step_context(&base, root, "open").idempotency_key.as_deref(),
+            rereview_step_context(&base, root, "open")
+                .idempotency_key
+                .as_deref(),
             Some("00000000-0000-0000-0000-000000000001:rereview:open")
         );
         assert_ne!(
@@ -550,14 +559,25 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
         let case = ModerationCaseRecord {
-            subject: rustok_moderation::ModerationSubjectRef {
+            subject: ModerationSubjectRef {
                 revision: 11,
                 ..source_case.subject.clone()
             },
             metadata: rereview_metadata(root, &source_case, source_decision_id, 11, "fresh review"),
             ..source_case.clone()
         };
-        assert!(require_owned_rereview_case(&case, root, source_case_id, source_decision_id, 11).is_ok());
-        assert!(require_owned_rereview_case(&case, Uuid::from_u128(8), source_case_id, source_decision_id, 11).is_err());
+        assert!(
+            require_owned_rereview_case(&case, root, source_case_id, source_decision_id, 11).is_ok()
+        );
+        assert!(
+            require_owned_rereview_case(
+                &case,
+                Uuid::from_u128(8),
+                source_case_id,
+                source_decision_id,
+                11
+            )
+            .is_err()
+        );
     }
 }
