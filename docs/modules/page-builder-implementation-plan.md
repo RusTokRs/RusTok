@@ -16,21 +16,30 @@ status: active
 
 ## Current-source actualization
 
-This central plan is reconciled to current `main` as of 2026-08-07. The detailed
+This central plan is reconciled to current `main` as of 2026-08-08. The detailed
 source overlays under `docs/modules/page-builder-*-actualization-2026-08-07.md`
-remain authoritative where they are more specific. In particular, older open
-checkboxes for Pages metadata contributions, immutable rollback, artifact audit/
-repair, reviewed static resource limits, authenticated real-DOM authoring and
-anonymous authoring exclusion were stale and are corrected below.
+and the 2026-08-08 Pages/Page Builder parity packets remain authoritative where
+they are more specific. Older open checkboxes for Pages metadata contributions,
+immutable rollback, artifact audit/repair, reviewed static resource limits,
+authenticated real-DOM authoring, anonymous authoring exclusion and generated
+contribution-registry foundations were stale and are corrected below.
 
-Current source marker for this slice:
+Current source markers for this slice:
 
 ```text
 Provider status/degraded controls: source-ready
+Pages module-metadata contribution generation: source-ready
 ```
 
 Observed provider-health evidence remains an execution/composition cursor; an
-absent live health snapshot is now represented as `unobserved`, not healthy.
+absent live health snapshot is represented as `unobserved`, not healthy.
+
+The Pages reference consumer now keeps its complete Fly contribution declaration
+in canonical `rustok-module.toml`. `rustok-pages-admin/build.rs` validates that
+metadata and emits the normalized version-pinned manifest/constants into
+`OUT_DIR`; the admin/WASM runtime does not parse TOML and no handwritten Pages
+`ContributionDescriptor` tree remains. Shared module-tooling generalization is
+the next source cursor before a second production contribution consumer is added.
 
 ## Current-only policy
 
@@ -136,6 +145,9 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Metadata-only patch and document-only save commands are separate.
 - [x] Consumer metadata editing uses registered typed property contributions; the
   bespoke metadata editor/direct workspace metadata write are removed.
+- [x] Pages contribution identities, version-pinned providers, capabilities,
+  blocks, messages and the full metadata property schema are canonical module
+  metadata and are build-generated into the admin crate without runtime TOML.
 - [x] The obsolete parallel JSON/CRUD UI and PageBlock persistence/fallback paths
   are deleted.
 - [x] Pages provides one builder-first workspace with list/create/select,
@@ -337,6 +349,8 @@ Rules:
   remain retryable. A retry may safely advance a generation more than once.
 - Provider rollout flags and observed health are separate evidence. Lack of an
   observed SLO snapshot is never converted to a healthy claim.
+- Consumer contribution metadata is build-generated from canonical module
+  metadata; runtime source must not retain a parallel handwritten descriptor tree.
 
 ## Implementation phases
 
@@ -453,10 +467,13 @@ of the verification programme.
 
 ### Phase 9 — generated contribution registries
 
-- [ ] Separate admin/storefront factories.
-- [ ] Generate from module metadata.
-- [ ] Filter by tenant, permission, capability, policy and health.
-- [ ] Duplicate, cycle, version and missing-provider diagnostics.
+- [x] Separate admin/storefront factories.
+- [x] Generate the Pages reference-consumer contribution manifest from canonical
+  module metadata at build time, including version targets and property schema.
+- [x] Filter by tenant, permission, capability, policy and health.
+- [x] Duplicate, cycle, version and missing-provider diagnostics.
+- [ ] Generalize the canonical contribution metadata schema/generator into shared
+  module tooling before connecting a second production contribution consumer.
 
 ### Phase 10 — rollout
 
@@ -468,18 +485,18 @@ of the verification programme.
 
 ## Immediate implementation order
 
-1. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
+1. Generalize the Pages canonical contribution metadata/generation boundary into
+   shared module tooling and publish validation before onboarding a second consumer.
+2. Connect a real provider-health observation source to the admin status seam and
+   retain observed provider-health evidence for degraded/unavailable behavior.
+3. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
    cache rotation/miss-refill, metadata isolation and authenticated/anonymous
    authoring boundaries.
-2. Connect a real provider-health observation source to the new admin status seam
-   and retain observed provider-health evidence for degraded/unavailable behavior.
-3. Complete remaining generic Page Builder asset/accessibility controls and their
+4. Complete remaining generic Page Builder asset/accessibility controls and their
    executable browser evidence.
-4. Build generated contribution registries with tenant/permission/capability/
-   policy/health filtering and diagnostics.
 5. Connect the next production consumer to the canonical composition root only
-   after its tenant-scoped persistence, authorization and preview ownership are
-   explicitly defined.
+   after its tenant-scoped persistence, authorization, preview ownership and
+   contribution metadata authority are explicitly defined.
 
 ## Verification programme
 
@@ -498,6 +515,8 @@ cargo xtask module validate pages
 node scripts/verify/verify-pages-ui-boundary.mjs
 node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
+node scripts/verify/verify-fly-ui-contributions.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-scenario-baseline.mjs
@@ -521,8 +540,8 @@ cleanup, DnD/keyboard/accessibility, metadata/body revision conflicts,
 authoritative sanitization/resource budgets, deterministic artifact and receipt
 integrity, preview/static materialization parity, idempotent replay, repair/
 rollback continuity, event-driven cache generation rotation and public miss/
-refill, anonymous authoring exclusion, provider degradation and observed tenant
-rollout.
+refill, anonymous authoring exclusion, provider degradation, generated module
+metadata authority and observed tenant rollout.
 
 ## Update rules
 
