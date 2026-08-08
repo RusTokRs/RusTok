@@ -53,6 +53,12 @@ for (const marker of [
   "group.membership_suspension_revoked",
   "groups.membership.suspended",
   "groups.membership.suspension_revoked",
+  '"moderation_decision_id": provenance.moderation_decision_id',
+  '"moderation_decision_hash": provenance.moderation_decision_hash',
+  '"previous_moderation_decision_id": previous_moderation_decision_id',
+  '"previous_moderation_decision_hash": previous_moderation_decision_hash',
+  '"mutation_actor_kind": provenance.actor_kind',
+  '"mutation_actor_id": provenance.actor_id',
   "ModerationDecision",
 ]) {
   requireText(command, marker, `Groups enforcement command is missing ${marker}`);
