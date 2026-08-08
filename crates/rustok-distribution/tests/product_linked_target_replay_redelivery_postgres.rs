@@ -473,7 +473,7 @@ fn product_schema_ref() -> TestResult<SchemaRef> {
     Ok(SchemaRef {
         module: ModuleName::new("rustok-product")?,
         entity: EntityName::new("product")?,
-        version: SchemaVersion::new(3),
+        version: SchemaVersion::new(4),
     })
 }
 
