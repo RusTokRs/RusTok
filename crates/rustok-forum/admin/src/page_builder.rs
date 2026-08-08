@@ -54,8 +54,8 @@ pub struct ForumWidgetPropertyEditorModel {
 /// Forum-owned adapter for Fly contribution contracts.
 ///
 /// It resolves canonical widget identity and opaque configuration only. It never executes Forum
-/// reads or copies Forum JSON schemas into the Fly layer. Owner catalog/validation and the future
-/// preview-data transport remain the authoritative Forum boundary.
+/// reads or copies Forum JSON schemas into the Fly layer. Owner catalog/validation, property
+/// transport and preview transport remain the authoritative Forum boundary.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ForumContributionAdapter;
 
@@ -381,7 +381,7 @@ mod tests {
         assert_eq!(rendered.owner_schema.format, OWNER_SCHEMA_REF_FORMAT);
         assert_eq!(
             rendered.owner_schema.owner_data_state,
-            "owner_preview_transport_open"
+            "owner_property_editor_ready"
         );
 
         let editor = edit_contribution_properties(
