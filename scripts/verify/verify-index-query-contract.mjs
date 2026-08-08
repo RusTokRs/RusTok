@@ -36,6 +36,7 @@ const scripts = [
   'verify-index-replay-graceful-shutdown.mjs',
   'verify-index-replay-pending-future-timeout.mjs',
   'verify-index-replay-page-lease-heartbeat.mjs',
+  'verify-index-replay-multihost-reclaim-evidence.mjs',
   'verify-index-source-reconciliation.mjs',
   'verify-index-replay-runtime-composition.mjs',
   'verify-index-replay-graphql-transport.mjs',
