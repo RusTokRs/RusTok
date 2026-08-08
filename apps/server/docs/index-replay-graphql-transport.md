@@ -1,22 +1,27 @@
 # Index replay GraphQL transport
 
-Status: `source_complete_shutdown_bound_execution_pending`.
+Status: `locale_source_complete_execution_pending`.
 
 ## Boundary
 
 The server exposes two bounded GraphQL mutations over the guarded `IndexReplayOperatorRuntime`:
 
-- `runIndexReplay(input: ...)` runs one bounded schema-wide replay chunk and samples the server-owned graceful-shutdown signal at replay durable safe points;
+- `runIndexReplay(input: ...)` runs one bounded schema-wide or exact-locale replay chunk and samples the server-owned graceful-shutdown signal at replay durable safe points;
 - `cancelIndexReplay(input: ...)` requests cancellation of one replay job in the authenticated tenant.
 
 This remains a command transport. It does not add automatic replay scheduling, background worker ownership, a
-new replay algorithm, locale/partition checkpoint dimensions, or a traffic cutover.
+new replay algorithm, partition checkpoint scope, explicit targeted/full/shadow rebuild modes, or a traffic
+cutover.
 
 ## Authority before input parsing
 
 Tenant and actor identities are never accepted from GraphQL input. The transport derives both from
 `TenantContext` / `AuthContext`, requires the request-bound effective permission snapshot, and requires
-`modules:manage` before parsing untrusted schema identifiers, schema version, or job UUID.
+`modules:manage` before parsing untrusted schema identifiers, schema version, optional locale, or job UUID.
+
+Only after authorization does the run path canonicalize a supplied locale through `rustok_index::LocaleKey`.
+Locale input is bounded to 32 bytes before parsing. Omission is not inferred from schema metadata and preserves
+the historical schema-wide replay identity exactly.
 
 The server-owned `IndexReplayOperatorRuntime` performs the same authorization again before delegating to the
 canonical shared replay runtime. A cross-tenant job UUID is therefore only looked up in the authenticated
@@ -28,10 +33,11 @@ tenant and cannot widen authority.
 
 - module name;
 - entity name;
-- positive schema routing key.
+- positive schema routing key;
+- optional canonicalizable locale.
 
 It does not accept tenant, actor, worker identity, page limit, page count, heartbeat cadence, lease duration,
-locale, partition, source name, database handle, scheduler controls, shutdown state, or a stop handle.
+partition, source name, database handle, scheduler controls, shutdown state, or a stop handle.
 
 Each GraphQL invocation constructs a fresh server-owned worker identity and uses one fixed bounded chunk:
 
@@ -42,6 +48,24 @@ Each GraphQL invocation constructs a fresh server-owned worker identity and uses
 
 Those transport caps are intentionally narrower than the generic replay runner bounds. A yielded job remains
 resumable by a later authorized invocation through the existing durable job/checkpoint contract.
+
+## Locale identity
+
+A supplied locale is canonicalized once at the transport boundary and carried by `IndexReplayRunRequest` into
+the multi-page runner. The runner derives both durable job lease scope and every page request from that same
+`LocaleKey`:
+
+- schema-wide request -> schema job + schema checkpoint (`locale_key = ''`);
+- exact-locale request -> locale job + same canonical locale checkpoint.
+
+The terminal success fence checks the checkpoint using the leased locale rather than a hard-coded empty locale.
+This keeps acquisition, page scan, checkpoint writes and final success on one exact scope. `partition_key`
+remains empty in both cases.
+
+The one-page worker still resolves the registered runtime schema before checkpoint/source work and rejects a
+locale run for `LocaleMode::None`. Product is the currently retained production source that filters exact locale
+before pagination. Schema-wide replay remains valid, including for `LocaleMode::Required`, so omission does not
+silently become one locale.
 
 ## Graceful shutdown binding
 
@@ -60,6 +84,10 @@ published. The retained receiver is not exposed through GraphQL.
 `IndexReplayOperatorRuntime::run_interruptible` -> `SharedIndexReplayRuntime::run_interruptible` ->
 `PostgresIndexReplayRunner::run_interruptible`.
 
+The interruptible runner uses the same locale-aware lease helper as ordinary replay. A yielded locale job
+therefore keeps the same durable locale identity on the next authorized attempt instead of falling back to a
+schema job.
+
 The Index runtime and server operator remain lifecycle-type neutral; neither imports `StopHandle`. They accept
 only the boolean probe and keep authorization ahead of replay execution.
 
@@ -73,7 +101,8 @@ separate state machines.
 ## Result surface
 
 The run payload exposes only bounded operational counters plus status and job UUID. It does not expose source
-payloads, SQL, database errors, request authority, lease owner identity, shutdown state, or raw dependency causes.
+payloads, SQL, database errors, request authority, lease owner identity, locale internals, shutdown state, or raw
+dependency causes.
 
 The cancellation payload exposes only the normalized outcome: requested, cancelled, already terminal, or not
 found. Operational runner failures are mapped to a generic GraphQL error; an unknown source-owned schema is
@@ -83,8 +112,11 @@ reported as bad user input.
 
 Source guards retain:
 
-- authorization-before-parsing ordering;
-- absence of caller authority/worker/resource-budget/shutdown fields;
+- authorization-before-schema/locale parsing ordering;
+- absence of caller authority/worker/resource-budget/shutdown/partition fields;
+- optional locale canonicalization and schema-wide omission compatibility;
+- exact runner page/job/checkpoint locale coupling;
+- locale-aware interruptible runner acquisition and terminal success fencing;
 - fixed server-owned bounds;
 - delegation only through `IndexReplayOperatorRuntime`;
 - merged GraphQL schema registration;
@@ -92,8 +124,9 @@ Source guards retain:
 - `StopHandle::is_stopping` as the only replay shutdown observation;
 - no direct database/source/scheduler access and no `.stop()` call from the transport.
 
-GraphQL execution, actual process-shutdown replay interruption, database replay execution, cancellation races,
-CI, and retained runtime evidence remain maintainer-owned and are not claimed by this source slice.
+GraphQL execution, actual locale replay/restart execution, actual process-shutdown replay interruption, database
+replay execution, cancellation races, CI, and retained runtime evidence remain maintainer-owned and are not
+claimed by this source slice.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
