@@ -1,30 +1,32 @@
 # M6 targeted replay mutation application
 
-Status: `source_complete_host_guard_transport_pending`.
+Status: `source_complete_transport_execution_pending`.
 
 ## Purpose
 
-`IndexReplayTargetedExecutor` defines the bounded mutation-application contract for
+`IndexReplayTargetedExecutor` defines bounded exact-key mutation application for
 `IndexReplayMode::Targeted` without reusing the durable Full replay job/checkpoint state machine.
 It consumes only `IndexReplayModeSelection::Targeted`, which owns the canonical
-`IndexSourceLoadRequest` bounded tenant/schema/key-set validation.
+`IndexSourceLoadRequest` tenant/schema/key-set validation.
 
-The application contract is now composed into the canonical PostgreSQL replay runtime and exposed to
-server callers only through request-bound `modules:manage` host dispatch. It is still not a public
-transport and not a new durable replay owner.
+The application contract is composed into the canonical PostgreSQL replay runtime, guarded by the
+request-bound server replay operator, and exposed through one dedicated authorization-first GraphQL
+mutation. It is not a new durable replay owner and does not reinterpret `runIndexReplay` with a mode
+field.
 
 ## Canonical Targeted request and key admission
 
-Targeted selection continues to reuse `IndexSourceLoadRequest` unchanged:
+Targeted continues to reuse `IndexSourceLoadRequest` unchanged:
 
 - 1 through 256 unique `EntityKey` values;
 - one non-nil tenant;
 - one exact schema;
 - per-key locale identity remains part of each `EntityKey`;
-- mixed tenant/schema keys and duplicate keys fail during request construction.
+- mixed tenant/schema keys and duplicate canonical keys fail during request construction.
 
 The generic load request intentionally does not own active-schema semantics. Before source resolution
-or `IndexSource::load`, Targeted adds requested key admission against the active `SchemaRegistry`:
+or `IndexSource::load`, `IndexReplayTargetedExecutor` adds requested key admission against the active
+`SchemaRegistry`:
 
 - every requested entity UUID must be non-nil;
 - `LocaleMode::Required` requires every requested key to carry a locale;
@@ -39,52 +41,83 @@ Targeted mutation path.
 
 ## Execution order
 
-One Targeted invocation performs exactly these steps:
+One Targeted GraphQL invocation performs these boundaries in order:
 
-1. require the dedicated Targeted host method and canonical `IndexSourceLoadRequest`;
-2. server `IndexReplayOperatorContext` checks exact tenant equality and current request-bound effective
-   `modules:manage`;
-3. `SharedIndexReplayRuntime::run_targeted` wraps the request as the canonical Targeted selection;
-4. require the exact schema to exist in the active `SchemaRegistry`;
-5. validate every requested entity/locale key against that active schema;
-6. resolve the exact source owner from `SharedIndexSourceRegistry`;
-7. call the canonical bounded `SharedIndexSourceRegistry::load` once;
-8. preflight the complete returned batch before the first mutation write;
-9. apply each returned mutation sequentially through the existing `IndexReplayMutationSink`;
-10. return bounded counters only.
+1. derive tenant/actor from `TenantContext` / `AuthContext`;
+2. require the current request-bound effective `modules:manage` snapshot before parsing Targeted schema/entity/locale strings;
+3. parse one exact schema routing identity;
+4. require a bounded 1..=256 `targets` list;
+5. parse every target UUID and canonicalize its optional locale through `LocaleKey`;
+6. construct the canonical `IndexSourceLoadRequest` from server-owned tenant, parsed schema and exact keys;
+7. call only `IndexReplayOperatorRuntime::run_targeted`;
+8. the operator repeats exact tenant plus `modules:manage` authorization before runtime execution;
+9. `SharedIndexReplayRuntime::run_targeted` selects the canonical Targeted execution surface;
+10. require the exact schema in the active `SchemaRegistry` and validate every requested entity/locale key;
+11. resolve the exact source owner and perform one bounded canonical `load`;
+12. preflight the complete returned batch before the first mutation write;
+13. apply returned mutations through the existing `IndexReplayMutationSink`;
+14. return bounded counters only.
 
 The source registry rejects mutations for unrequested keys and duplicate returned entity keys. The
-Targeted executor then adds the replay-specific whole-batch preflight before persistence:
+Targeted executor additionally requires every event UUID to be non-nil and invocation-unique and every
+mutation to pass complete `SchemaRegistry::validate_mutation` validation before persistence begins.
 
-- every mutation event UUID must be non-nil;
-- event UUIDs must be unique within the invocation;
-- every mutation must pass complete `SchemaRegistry::validate_mutation` validation.
-
-If host authorization, requested key admission, or any returned-batch preflight fails, no mutation sink
-call occurs.
+If transport authorization, exact-target request construction, active-schema admission, or returned
+batch preflight fails, no mutation sink call occurs.
 
 ## PostgreSQL/runtime composition
 
-`materialize_postgres_index_replay_runtime` assembles one `IndexReplayTargetedExecutor<PostgresMutationStore>`
-from the same frozen `SharedIndexSourceRegistry`, immutable schema registry and host database already used by
-replay composition. `SharedIndexReplayRuntime` stores that executor beside the durable Full runner and exposes
-only a dedicated `run_targeted(IndexSourceLoadRequest)` method.
+`materialize_postgres_index_replay_runtime` assembles one
+`IndexReplayTargetedExecutor<PostgresMutationStore>` from the same frozen
+`SharedIndexSourceRegistry`, immutable schema registry and host database already used by replay
+composition. `SharedIndexReplayRuntime` stores that executor beside the durable Full runner and
+exposes only a dedicated `run_targeted(IndexSourceLoadRequest)` method.
 
-This is reuse of the existing mutation persistence contract, not a second durable replay state machine.
-`PostgresMutationStore` derives each inbox delivery ID from the source-owned mutation event UUID through the
-existing `IndexReplayMutationSink` implementation.
+This reuses the existing mutation persistence contract; it is not a second durable replay state
+machine. `PostgresMutationStore` derives each inbox delivery identity from the source-owned mutation
+event UUID through the existing `IndexReplayMutationSink` implementation.
 
-The server's existing `IndexReplayOperatorRuntime` owns Targeted dispatch. `run_targeted` first calls the same
-`IndexReplayOperatorContext::authorize_for` exact-tenant/request-snapshot check used by Full replay and then
-delegates to `SharedIndexReplayRuntime::run_targeted`. No separate Targeted permission, operator identity or
-caller-controlled mode selector is introduced.
+The server's existing `IndexReplayOperatorRuntime` owns Targeted dispatch. `run_targeted` first calls
+the same `IndexReplayOperatorContext::authorize_for` exact-tenant/request-snapshot check used by Full
+replay and then delegates to `SharedIndexReplayRuntime::run_targeted`. Targeted failures use a separate
+`IndexReplayTargetedOperatorError`, so Full/cancel GraphQL error mapping remains unchanged.
+
+## GraphQL transport
+
+`runIndexReplayTargeted(input: ...)` is a dedicated command rather than a caller-controlled generic
+replay mode. Its input contains only:
+
+- module name;
+- entity name;
+- positive schema routing key;
+- `targets`, each with one entity UUID and one optional canonicalizable locale.
+
+Tenant and actor are server-owned. Target count is bounded to the same canonical maximum of 256 before
+per-key parsing. Locale is canonicalized separately for every exact key, so aliases such as `EN-us`
+and `en-US` collapse to one `EntityKey` identity and duplicate canonical targets fail closed.
+
+The GraphQL payload contains only:
+
+- requested key count;
+- returned mutation count;
+- missing key count;
+- applied count;
+- duplicate count;
+- stale-ignored count.
+
+The application outcome internally carries the resolved source name for diagnostics, but GraphQL does
+not expose it. Source routing remains server-owned.
+
+Transport preparation errors are authorization-first. Unknown/unregistered schemas and active-schema
+invalid targets are reported as bad user input; source contract failures, invalid returned mutations
+and persistence failures remain generic internal command failures rather than leaking owner/storage
+details.
 
 ## Missing requested keys
 
-`IndexSource::load` is allowed to return fewer mutations than requested keys. Once requested keys have
-passed active-schema admission, Targeted execution does not infer deletion from source absence and does
-not manufacture tombstones. The outcome reports
-`missing_count = requested_count - mutation_count` only.
+`IndexSource::load` may return fewer mutations than requested keys. Once requested keys pass
+active-schema admission, Targeted does not infer deletion from source absence and does not manufacture
+tombstones. The outcome reports `missing_count = requested_count - mutation_count` only.
 
 Owner adapters remain responsible for returning an authoritative delete mutation when deletion is the
 owner contract for a requested key. Authorization-safe or otherwise intentional absence remains a
@@ -95,54 +128,42 @@ missing key, not a synthetic write.
 Targeted execution preserves the source-owned mutation event UUID. It does not generate a command UUID,
 job UUID, checkpoint delivery identity, or transport-specific event identity.
 
-With the PostgreSQL replay mutation sink, that source event UUID remains the `index_inbox` delivery
-identity. A later exact Targeted invocation can therefore safely encounter `Duplicate` or `StaleIgnored`
-after an earlier invocation partially committed mutations before a later mutation failed.
+With the PostgreSQL replay mutation sink, that event UUID remains the `index_inbox` delivery identity.
+A later exact Targeted invocation can therefore safely encounter `Duplicate` or `StaleIgnored` after an
+earlier invocation partially committed mutations before a later mutation failed.
 
 Retained source evidence models the harder window where mutation 1 succeeds and mutation 2 fails once;
 the exact retry observes mutation 1 as `Duplicate` and applies mutation 2. The executor intentionally
-does not add a checkpoint for partial progress. A failure reports the exact mutation position and
-existing bounded replay failure. Retry/requeue policy remains an operator/transport concern and is not
+does not add a checkpoint for partial progress. Retry/requeue remains an operator decision and is not
 automatic here.
-
-## Outcome
-
-A successful `IndexReplayTargetedOutcome` exposes only:
-
-- resolved source name;
-- requested key count;
-- returned mutation count;
-- missing key count;
-- applied count;
-- duplicate count;
-- stale-ignored count.
-
-It exposes no source payloads, database handles, SQL, job identity, checkpoint, lease owner, worker,
-retry state, cancellation state, scheduler handle, or partition scope.
 
 ## Explicitly absent
 
-This slice does not add:
+Targeted still has no:
 
-- durable Targeted jobs or checkpoints;
+- durable job or checkpoint;
 - lease/heartbeat/fencing state;
-- Targeted cancellation or automatic retry/requeue;
-- Targeted graceful-stop handling or a second lifecycle owner;
+- cancellation or automatic retry/requeue;
+- graceful-stop handling or second lifecycle owner;
 - scheduler/background worker ownership;
-- a generic caller-controlled replay mode selector;
-- GraphQL/HTTP/CLI/admin transport;
+- generic caller-controlled replay mode selector;
+- caller-controlled source name;
+- caller-controlled worker/page budget;
+- raw source payload/result exposure;
+- HTTP/CLI/admin transport added by this slice;
 - partition replay scope;
 - synthetic deletes for missing load keys.
 
-## Next source boundary
+## Next gate
 
-The next independent boundary is a dedicated authorization-first Targeted public transport. It must keep
-request tenant and actor server-owned, require `modules:manage` before parsing untrusted schema/entity/locale
-targets, build only the canonical bounded exact-key request, delegate solely to
-`IndexReplayOperatorRuntime::run_targeted`, and expose only bounded counters/failures.
+The independent Targeted source chain is complete through application execution, PostgreSQL mutation
+composition, request-bound host dispatch and dedicated GraphQL transport. The next Targeted step is
+maintainer execution/admission of the transport and PostgreSQL behavior; source inspection alone must
+not claim that evidence.
 
-Do not add a generic mode selector, caller-owned source name, worker, page budget, job/checkpoint identity,
-lease, cancellation, retry/requeue state, partition scope or synthetic delete semantics in that transport.
+No additional source-only M6 replay expansion is justified until either execution/admission exposes a
+concrete defect or a real partition-capable source contract can filter partition scope before
+pagination.
 
 ## Validation ownership
 
