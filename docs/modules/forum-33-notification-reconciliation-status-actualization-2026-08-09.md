@@ -68,7 +68,7 @@ Missing registry or recipient-policy composition fails closed. There is no priva
 
 ## Report semantics
 
-The GraphQL response contains recipient identity plus counts and continuation metadata only. `clean` means `unavailable == 0` for the returned page. Whole-recipient clean status requires exhausting every cursor page with every page clean.
+The GraphQL response contains recipient identity plus counts and continuation metadata only. `clean` is page-local: it means `unavailable == 0` for the returned page. Whole-recipient clean status requires exhausting every cursor page with every page clean.
 
 This is current-policy diagnostic evidence, not a snapshot across Notifications, Profiles, Social Graph and Forum source owners. Privacy/source state can legitimately change between rows or pages. The diagnostic therefore must not be used as a serializable repair fence.
 
