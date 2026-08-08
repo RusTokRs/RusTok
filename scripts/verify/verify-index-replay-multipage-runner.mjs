@@ -35,7 +35,7 @@ const runner = requireMarkers(runnerPath, [
   'for page_index in 0..request.max_pages()',
   'page_index % request.heartbeat_every_pages() == 0',
   'worker.run_next_page(request.page_request().clone())',
-  'await_page_with_lease_heartbeats(',
+  'let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(',
   'aggregate.heartbeat_count += in_page_heartbeat_count;',
   'cancel_if_requested(&self.db, &lease).await?',
   'finish_success(&self.db, &lease).await?',
@@ -66,18 +66,18 @@ for (const forbidden of [
 
 const runLoop = runner.indexOf('for page_index in 0..request.max_pages()');
 const prePageCancel = runner.indexOf('cancel_if_requested(&self.db, &lease).await?', runLoop);
-const pageCall = runner.indexOf('worker.run_next_page(request.page_request().clone())', runLoop);
-const pageAwait = runner.indexOf('await_page_with_lease_heartbeats(', pageCall);
-const pageMatch = runner.indexOf('let page = match page_result {', pageAwait);
+const pageAwait = runner.indexOf('let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(', prePageCancel);
+const pageCall = runner.indexOf('worker.run_next_page(request.page_request().clone())', pageAwait);
+const pageMatch = runner.indexOf('let page = match page_result {', pageCall);
 const postPageCancel = runner.indexOf('cancel_if_requested(&self.db, &lease).await?', pageMatch);
 const successCall = runner.indexOf('finish_success(&self.db, &lease).await?', postPageCancel);
 const yieldCall = runner.indexOf('yield_for_resume(&self.db, &lease).await?', successCall);
 if (
   runLoop < 0
   || prePageCancel <= runLoop
-  || pageCall <= prePageCancel
-  || pageAwait <= pageCall
-  || pageMatch <= pageAwait
+  || pageAwait <= prePageCancel
+  || pageCall <= pageAwait
+  || pageMatch <= pageCall
   || postPageCancel <= pageMatch
   || successCall <= postPageCancel
   || yieldCall <= successCall
