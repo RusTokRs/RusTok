@@ -65,7 +65,7 @@ pub struct GqlPageBuilderCapabilityPreflight {
 }
 
 impl GqlPageBuilderCapabilityPreflight {
-    fn allowed(capability: GqlPageBuilderCapability) -> Self {
+    fn allow(capability: GqlPageBuilderCapability) -> Self {
         Self {
             capability,
             allowed: true,
@@ -131,7 +131,7 @@ impl PageBuilderRolloutQuery {
 
         let flags = load_rollout_flags(db, tenant).await?;
         match ensure_capability(&flags, capability_kind) {
-            Ok(()) => Ok(GqlPageBuilderCapabilityPreflight::allowed(capability)),
+            Ok(()) => Ok(GqlPageBuilderCapabilityPreflight::allow(capability)),
             Err(BuilderRolloutError::CapabilityDisabled(_)) => Ok(
                 GqlPageBuilderCapabilityPreflight::feature_disabled(capability),
             ),
@@ -281,7 +281,7 @@ mod tests {
         );
 
         let allowed =
-            GqlPageBuilderCapabilityPreflight::allowed(GqlPageBuilderCapability::Preview);
+            GqlPageBuilderCapabilityPreflight::allow(GqlPageBuilderCapability::Preview);
         assert!(allowed.allowed);
         assert!(allowed.error_kind.is_none());
         assert!(allowed.error_code.is_none());

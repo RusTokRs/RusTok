@@ -16,5 +16,5 @@ mod schema_retry_identity;
 mod ui;
 
 pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
-pub use transport::fetch_catalog_search_options;
+pub use transport::*;
 pub use ui::catalog_admin::ProductAdmin;
