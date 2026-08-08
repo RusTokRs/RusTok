@@ -20,17 +20,20 @@ const requireMarkers = (relative, markers) => {
 
 const serverPath = 'apps/server/src/services/index_replay_runtime_composition.rs';
 const server = requireMarkers(serverPath, [
-  'Shadow(#[from] rustok_index::IndexReplayDryRunError)',
+  'pub enum IndexReplayShadowOperatorError',
+  'Authorization(#[from] IndexReplayOperatorError)',
+  'DryRun(#[from] rustok_index::IndexReplayDryRunError)',
   'shadow: rustok_index::SharedIndexReplayDryRunRuntime',
   'pub async fn run_shadow(',
   'request: rustok_index::IndexReplayDryRunRequest',
+  'Result<rustok_index::IndexReplayDryRunOutcome, IndexReplayShadowOperatorError>',
   'context.authorize_for(request.tenant_id())?;',
   'self.shadow.run(request).await.map_err(Into::into)',
   '.get::<rustok_index::SharedIndexReplayDryRunRuntime>()',
   'IndexReplayOperatorRuntime::new(runtime, shadow)',
   'shadow_dispatch_reuses_request_bound_modules_manage_guard',
   'vec![Permission::MODULES_READ]',
-  'IndexReplayOperatorError::Forbidden',
+  'IndexReplayShadowOperatorError::Authorization(IndexReplayOperatorError::Forbidden)',
   'vec![Permission::MODULES_MANAGE]',
   'IndexReplayDryRunStatus::Complete',
 ]);
@@ -50,6 +53,7 @@ for (const forbidden of [
   '.run_shadow(',
   'IndexReplayDryRunRequest',
   'SharedIndexReplayDryRunRuntime',
+  'IndexReplayShadowOperatorError',
 ]) {
   if (graphql.includes(forbidden)) {
     fail(`${graphqlPath} must remain Full/cancel-only until the separate Shadow transport slice: ${forbidden}`);
