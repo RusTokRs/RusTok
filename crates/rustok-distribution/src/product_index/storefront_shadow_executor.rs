@@ -47,14 +47,12 @@ impl ProductStorefrontIndexShadowComparison {
     }
 }
 
-/// Request-shape decision for the current Product key-4 channel projection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ProductStorefrontIndexChannelScopeDecision {
     ShadowEligible { public_channel_id: Uuid },
     OwnerNativeChannelLess,
 }
 
-/// Request-shape decision for owner-valid Product Storefront offset pagination.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ProductStorefrontIndexPageScopeDecision {
     ShadowEligible { offset: u64 },
@@ -196,7 +194,7 @@ impl ProductStorefrontIndexShadowExecutor {
         })
     }
 
-    async fn hydrate_projected_tags(
+    pub(crate) async fn hydrate_projected_tags(
         &self,
         context: PortContext,
         fallback_locale: String,
@@ -223,7 +221,7 @@ impl ProductStorefrontIndexShadowExecutor {
             .map_err(ProductStorefrontIndexTagHydrationError::Owner)
     }
 
-    async fn execute_projected(
+    pub(crate) async fn execute_projected(
         &self,
         context: PortContext,
         fallback_locale: String,

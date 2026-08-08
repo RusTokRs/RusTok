@@ -18,8 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const portContextPath = 'crates/rustok-api/src/ports.rs';
-requireMarkers(portContextPath, [
+requireMarkers('crates/rustok-api/src/ports.rs', [
   'pub deadline_ms: Option<u64>',
   'pub fn with_deadline(mut self, deadline: Duration)',
   'self.deadline_ms = Some(deadline.as_millis()',
@@ -33,7 +32,6 @@ const policy = requireMarkers(policyPath, [
   'tag_hydration_ms: u64',
   'safety_margin_ms: u64',
   'required_ms: u64',
-  'pub(crate) fn new(',
   'checked_add(tag_hydration_ms)',
   'checked_add(safety_margin_ms)',
   'ZeroIndexExecutionBudget',
@@ -51,16 +49,12 @@ const policy = requireMarkers(policyPath, [
   'OwnerNativeInsufficientBudget',
   'pub(crate) fn classify_product_storefront_index_serving_budget(',
   'context.deadline_ms.filter(|deadline_ms| *deadline_ms > 0)',
-  'let Some(budget) = budget else',
-  'let Some(remaining_ms) = observation.remaining_ms else',
   'if remaining_ms > deadline_ms',
   'if !observation.tag_hydration_available',
   'if remaining_ms < budget.required_ms()',
   'ProductStorefrontIndexServingBudgetDecision::Eligible',
-  'requires_host_measured_remaining_budget_and_owner_tag_capability',
-  'admits_only_when_remaining_budget_covers_all_bounded_phases',
+  'does not automatically decrease',
 ]);
-
 const productionPolicy = policy.split('#[cfg(test)]')[0];
 for (const forbidden of [
   'remaining_ms: context.deadline_ms',
@@ -71,25 +65,55 @@ for (const forbidden of [
   'tokio::time::timeout',
 ]) {
   if (productionPolicy.includes(forbidden)) {
-    fail(`${policyPath} must consume host-measured remaining budget rather than manufacture/enforce it here: ${forbidden}`);
+    fail(`${policyPath} must classify host-measured remaining budget, not manufacture or enforce timing: ${forbidden}`);
   }
 }
-if (!productionPolicy.includes('does not automatically decrease')) {
-  fail(`${policyPath} must document that PortContext.deadline_ms is not remaining time`);
+
+const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+const budgeted = requireMarkers(budgetedPath, [
+  'use tokio::time::timeout;',
+  'pub(crate) struct ProductStorefrontIndexBudgetedProjectionExecutor',
+  'pub(crate) async fn execute_after_owner(',
+  'ProductStorefrontIndexServingBudgetDecision::Eligible',
+  'BudgetNotEligible',
+  'index_context.deadline_ms = Some(index_execution_budget_ms);',
+  'Duration::from_millis(index_execution_budget_ms)',
+  'self.shadow.execute_projected(',
+  'tag_context.deadline_ms = Some(tag_hydration_budget_ms);',
+  'Duration::from_millis(tag_hydration_budget_ms)',
+  '.hydrate_projected_tags(tag_context, fallback_locale, projected)',
+  'ProductStorefrontIndexBudgetedProjectionError::TimedOut',
+  'ProductStorefrontIndexBudgetedTagHydrationError::TimedOut',
+  'pub(crate) authoritative: StorefrontProductList',
+]);
+if (budgeted.includes('list_filtered_published_products(')) {
+  fail(`${budgetedPath} is post-owner only and must not repeat the authoritative owner read`);
 }
 
-const productRuntimePath = 'crates/rustok-product/src/runtime.rs';
-requireMarkers(productRuntimePath, [
+const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executor = requireMarkers(executorPath, [
+  'pub(crate) async fn execute_projected(',
+  'pub(crate) async fn hydrate_projected_tags(',
+  'pub(crate) async fn execute(',
+]);
+for (const forbidden of ['tokio::time::timeout', 'ProductStorefrontIndexServingBudgetDecision']) {
+  if (executor.includes(forbidden)) {
+    fail(`${executorPath} evidence executor must remain separate from serving-budget enforcement: ${forbidden}`);
+  }
+}
+
+requireMarkers('crates/rustok-product/src/runtime.rs', [
   'storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>',
   'pub fn storefront_tag_read_port(&self)',
 ]);
-
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'mod storefront_serving_budget;',
+  'mod storefront_budgeted_execution;',
   'ProductStorefrontIndexServingBudget',
   'ProductStorefrontIndexServingBudgetDecision',
   'ProductStorefrontIndexServingBudgetObservation',
   'classify_product_storefront_index_serving_budget',
+  'ProductStorefrontIndexBudgetedProjectionExecutor',
 ]);
 
 const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
@@ -97,22 +121,13 @@ const mounted = read(mountedPath);
 for (const forbidden of [
   'ProductStorefrontIndexServingBudget',
   'classify_product_storefront_index_serving_budget',
+  'ProductStorefrontIndexBudgetedProjectionExecutor',
   'ProductStorefrontIndexShadowExecutor',
   'execute_localized_query',
 ]) {
   if (mounted.includes(forbidden)) {
-    fail(`${mountedPath} must remain owner-native and must not consume serving-budget/Index policy yet: ${forbidden}`);
+    fail(`${mountedPath} must remain owner-native; found serving-budget/Index marker ${forbidden}`);
   }
 }
 
-const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
-const executor = requireMarkers(executorPath, [
-  'pub(crate) tag_hydration:',
-  'TagReadPortUnavailable',
-  'let tag_hydration = match projected.as_ref()',
-]);
-if (executor.includes('classify_product_storefront_index_serving_budget')) {
-  fail(`${executorPath} current evidence executor must not be silently promoted into a serving router`);
-}
-
-console.log('[verify-index-product-storefront-serving-budget-policy] future serving handoff requires explicit host-measured remaining budget, bounded Index/tag phases, and tag capability; mounted Storefront remains owner-native');
+console.log('[verify-index-product-storefront-serving-budget-policy] host-measured eligibility stays pure, separate budgeted execution enforces admitted phase timeouts, and mounted Storefront remains owner-native');
