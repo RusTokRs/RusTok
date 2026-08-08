@@ -2,11 +2,35 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+const MAX_FORUM_PAGE_BUILDER_ATTESTATION_CHALLENGE_BYTES: usize = 128;
+const FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT: &str =
+    "forum_page_builder_server_fn_attestation_v1";
+const FORUM_PAGE_BUILDER_PREVIEW_ENDPOINT: &str = "/api/fn/forum/page-builder-widget-preview";
+const FORUM_PAGE_BUILDER_PROPERTY_SCHEMA_ENDPOINT: &str =
+    "/api/fn/forum/page-builder-widget-property-schema";
+const FORUM_PAGE_BUILDER_PROPERTY_VALIDATE_ENDPOINT: &str =
+    "/api/fn/forum/page-builder-widget-property-validate";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ForumWidgetPreviewTransportRequest {
     pub widget_type: String,
     #[serde(default)]
     pub props: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ForumPageBuilderTransportAttestationResponse {
+    pub challenge: String,
+    pub contract: String,
+    pub module_id: String,
+    pub owner_provider: String,
+    pub owner_version: String,
+    pub catalog_version: String,
+    pub builder_contract_version: String,
+    pub widget_types: Vec<String>,
+    pub preview_endpoint: String,
+    pub property_schema_endpoint: String,
+    pub property_validate_endpoint: String,
 }
 
 #[cfg(feature = "ssr")]
@@ -79,6 +103,88 @@ fn runtime() -> Result<
             )
         })?;
     Ok((host, event_bus))
+}
+
+#[cfg(feature = "ssr")]
+fn validate_attestation_challenge(challenge: &str) -> Result<(), ServerFnError> {
+    let bytes = challenge.as_bytes();
+    if bytes.is_empty() || bytes.len() > MAX_FORUM_PAGE_BUILDER_ATTESTATION_CHALLENGE_BYTES {
+        return Err(ServerFnError::new(
+            "Forum Page Builder attestation challenge is outside the bounded size",
+        ));
+    }
+    if !bytes
+        .iter()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        return Err(ServerFnError::new(
+            "Forum Page Builder attestation challenge contains unsupported characters",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
+fn build_transport_attestation(
+    challenge: String,
+) -> ForumPageBuilderTransportAttestationResponse {
+    let manifest = crate::forum_contribution_manifest();
+    let catalog = rustok_forum::ForumWidgetContractService::catalog();
+    let mut widget_types = catalog
+        .items
+        .iter()
+        .map(|item| item.widget_type.clone())
+        .collect::<Vec<_>>();
+    widget_types.sort();
+
+    ForumPageBuilderTransportAttestationResponse {
+        challenge,
+        contract: FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT.to_string(),
+        module_id: manifest.module_id,
+        owner_provider: manifest.owner_provider,
+        owner_version: manifest.owner_version,
+        catalog_version: catalog.catalog_version,
+        builder_contract_version: catalog.builder_contract_version,
+        widget_types,
+        preview_endpoint: FORUM_PAGE_BUILDER_PREVIEW_ENDPOINT.to_string(),
+        property_schema_endpoint: FORUM_PAGE_BUILDER_PROPERTY_SCHEMA_ENDPOINT.to_string(),
+        property_validate_endpoint: FORUM_PAGE_BUILDER_PROPERTY_VALIDATE_ENDPOINT.to_string(),
+    }
+}
+
+/// Read-only deployed-transport probe for Page Builder evidence.
+///
+/// A successful response proves that the request crossed the real Leptos `/api/fn` dispatcher,
+/// tenant/auth middleware, the shared effective `forum_topics:read` gate, exact tenant-module
+/// enablement, the Forum admin host runtime (including its transactional event bus), and the
+/// Forum-owned widget contract catalog. It returns only stable contract identity plus the caller's
+/// bounded challenge; it never reads or returns Forum topic/reply data.
+#[server(prefix = "/api/fn", endpoint = "forum/page-builder-transport-attestation")]
+pub async fn attest_forum_page_builder_transport(
+    challenge: String,
+) -> Result<ForumPageBuilderTransportAttestationResponse, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        validate_attestation_challenge(&challenge)?;
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        require_forum_transport_authorization(&auth, &tenant)?;
+
+        let (host, _event_bus) = runtime()?;
+        require_forum_module_enabled(&host, tenant.id).await?;
+        Ok(build_transport_attestation(challenge))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = challenge;
+        Err(ServerFnError::new(
+            "forum/page-builder-transport-attestation requires the `ssr` feature",
+        ))
+    }
 }
 
 /// Native Leptos transport used by the admin composition root. The transport returns the owner
@@ -217,6 +323,41 @@ mod tests {
                 .expect_err("module lookup failure must fail closed")
                 .to_string()
                 .contains("Forum module state is unavailable")
+        );
+    }
+
+    #[test]
+    fn attestation_challenge_is_bounded_and_transport_identity_is_owner_derived() {
+        assert!(validate_attestation_challenge("forum-attest_01.alpha:beta").is_ok());
+        assert!(validate_attestation_challenge("").is_err());
+        assert!(validate_attestation_challenge("contains space").is_err());
+        assert!(
+            validate_attestation_challenge(
+                &"x".repeat(MAX_FORUM_PAGE_BUILDER_ATTESTATION_CHALLENGE_BYTES + 1)
+            )
+            .is_err()
+        );
+
+        let response = build_transport_attestation("forum-attest_01".to_string());
+        assert_eq!(response.contract, FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT);
+        assert_eq!(response.module_id, "forum");
+        assert_eq!(response.owner_provider, "rustok.forum");
+        assert_eq!(
+            response.widget_types,
+            vec![
+                "forum.reply_stream".to_string(),
+                "forum.topic_detail".to_string(),
+                "forum.topic_list".to_string(),
+            ]
+        );
+        assert_eq!(response.preview_endpoint, FORUM_PAGE_BUILDER_PREVIEW_ENDPOINT);
+        assert_eq!(
+            response.property_schema_endpoint,
+            FORUM_PAGE_BUILDER_PROPERTY_SCHEMA_ENDPOINT
+        );
+        assert_eq!(
+            response.property_validate_endpoint,
+            FORUM_PAGE_BUILDER_PROPERTY_VALIDATE_ENDPOINT
         );
     }
 }
