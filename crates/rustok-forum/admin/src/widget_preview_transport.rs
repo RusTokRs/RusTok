@@ -100,7 +100,7 @@ fn runtime() -> Result<
         .shared_get::<rustok_outbox::TransactionalEventBus>()
         .ok_or_else(|| {
             ServerFnError::new(
-                "Forum widget preview requires TransactionalEventBus in host runtime context",
+                "Forum Page Builder transport requires TransactionalEventBus in host runtime context",
             )
         })?;
     Ok((host, event_bus))
@@ -114,10 +114,9 @@ fn validate_attestation_challenge(challenge: &str) -> Result<(), ServerFnError> 
             "Forum Page Builder attestation challenge is outside the bounded size",
         ));
     }
-    if !bytes
-        .iter()
-        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
-    {
+    if !bytes.iter().all(|byte| {
+        byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b':')
+    }) {
         return Err(ServerFnError::new(
             "Forum Page Builder attestation challenge contains unsupported characters",
         ));
