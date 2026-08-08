@@ -139,7 +139,7 @@ for (const marker of [
   "rustok-outbox` remains the only relay/retry/DLQ owner",
   "Retry -> owner reconstruction -> delivery acknowledgement",
   "Retry -> owner reconstruction -> DLQ",
-  "successful target delivery precedes outbox acknowledgement",
+  "only after target success may the durable row become",
   "source rows and the immutable recovery-audit ledger",
   "No tests, Cargo commands, Node verifiers",
 ]) need(plan, marker, "slice 97 plan");
