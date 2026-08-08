@@ -90,9 +90,11 @@ const schemaInitPath = 'apps/server/src/services/graphql_schema.rs';
 const schemaInit = requireMarkers(schemaInitPath, [
   'use crate::services::app_lifecycle::StopHandle;',
   'let stop_handle = stop_handle_from_context(ctx);',
-  'ctx.shared_insert_if_absent(candidate.clone());',
+  'let (candidate, _initial_receiver) = StopHandle::new();',
+  'ctx.shared_insert_if_absent(candidate);',
   'IndexReplayStopKeepalive',
   '_receiver: handle.subscribe()',
+  'avoid a zero-receiver window',
   'stop_handle,',
 ]);
 if (schemaInit.includes('stop_handle.stop()')) {
