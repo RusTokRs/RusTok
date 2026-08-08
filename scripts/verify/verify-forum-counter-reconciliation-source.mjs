@@ -185,6 +185,10 @@ for (const forbidden of ["tenant_id: Option<Uuid>", "Mutation", "UPDATE forum_"]
 for (const marker of [
   "mod reconciliation_query;",
   "reconciliation_query::ForumReconciliationQuery",
+  "GqlForumCounterReconciliationReport",
+  "GqlForumSolutionDrift",
+  "GqlForumSolutionReconciliationReport",
+  "topic_reply_range_move_mutation::ForumTopicReplyRangeMoveMutation",
 ]) {
   requireText(graphqlMod, marker, `Forum GraphQL composition missing ${marker}`);
 }
@@ -211,6 +215,7 @@ for (const marker of [
   "page-local snapshot",
   "node scripts/verify/verify-forum-counter-reconciliation-source.mjs",
   "subscriptions",
+  "empty source registry",
 ]) {
   requireText(plan, marker, `canonical Forum plan missing ${marker}`);
 }
