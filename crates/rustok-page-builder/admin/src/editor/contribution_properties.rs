@@ -153,7 +153,7 @@ pub fn ContributionPropertiesPanel(
 
     let form_runtime = runtime.clone();
     let save_host = host;
-    let on_save = move |_| {
+    let on_save = Callback::new(move |_: ()| {
         if busy.get_untracked() {
             return;
         }
@@ -242,7 +242,7 @@ pub fn ContributionPropertiesPanel(
             }
             busy.set(false);
         });
-    };
+    });
 
     view! {
         <section
@@ -283,6 +283,7 @@ pub fn ContributionPropertiesPanel(
                 let values = loaded;
                 let fields = current.fields.clone();
                 let schema_id = current.schema_id.clone();
+                let save_callback = on_save;
                 view! {
                     <div class="space-y-3" data-page-builder-contribution-property-schema=schema_id.clone()>
                         <p class="text-[11px] text-muted-foreground">{format!("Schema: {schema_id}")}</p>
@@ -291,7 +292,7 @@ pub fn ContributionPropertiesPanel(
                             type="button"
                             class="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
                             disabled=move || busy.get()
-                            on:click=on_save
+                            on:click=move |_| save_callback.run(())
                         >
                             {move || if busy.get() { "Validating..." } else { "Apply normalized properties" }}
                         </button>
@@ -547,11 +548,18 @@ fn parse_owner_property_schema(
         .map(|values| {
             values
                 .iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect::<BTreeSet<_>>()
+                .map(|value| {
+                    value.as_str().map(ToString::to_string).ok_or_else(|| {
+                        "Owner property schema required entries must be strings".to_string()
+                    })
+                })
+                .collect::<Result<BTreeSet<_>, _>>()
         })
+        .transpose()?
         .unwrap_or_default();
+    if !required.iter().all(|field| properties.contains_key(field)) {
+        return Err("Owner property schema requires an unknown field".to_string());
+    }
     let current = current_props
         .as_object()
         .cloned()
@@ -609,7 +617,7 @@ fn parse_owner_property_schema(
         if let Some(value) = current.get(id).cloned().or_else(|| definition.get("default").cloned()) {
             values.insert(id.clone(), value);
         } else {
-            match kind {
+            match &kind {
                 ContributionPropertyFieldKind::Boolean => {
                     values.insert(id.clone(), Value::Bool(false));
                 }
