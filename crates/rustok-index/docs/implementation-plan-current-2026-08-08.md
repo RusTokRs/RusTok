@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product key-4 promotion contract merge
-`d905c25a4d0ffd63682bf2aea9779ded190a255e` and continued on
-`agent/product-key4-promotion-postgres-evidence-20260808`.
+Status overlay rechecked after guarded replay GraphQL transport merge
+`6672c8b15f7b3ebd53a75147262b3d74020e4a16` and continued on
+`agent/index-replay-graceful-shutdown-v2-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -89,7 +89,7 @@ Current Product code has already completed the source-code replacement from lowe
 key `4`. `product-postgres-primary` uses `derive_index_schema_source_event_id`; Product source, absence and query
 admission do not select key `3`.
 
-The retained PostgreSQL packet now covers the staged authority-transition path in source:
+The retained PostgreSQL packet covers the staged authority-transition path in source:
 
 1. obtain the exact current Product schema from `SharedIndexSchemaRegistry` and assert key `4`;
 2. ordinary-register a storage-only lower-key fixture plus the actual current runtime schemas, leaving both
@@ -106,6 +106,43 @@ The retained PostgreSQL packet now covers the staged authority-transition path i
 The lower-key contract is deliberately a test-only storage/probe fixture derived from the current immutable
 contract with a lower routing key. It does not reconstruct the historical key3 Product fingerprint and does not
 register a key3 Product source/factory. Runtime dual-read compatibility remains forbidden.
+
+## M6 replay command transport
+
+`IndexReplayOperatorRuntime` remains the only server-owned replay invocation authority. It requires exact
+request-bound tenant/actor context and effective `modules:manage`, rejects cross-tenant run requests and derives
+cancel tenant from that context.
+
+The GraphQL layer exposes source-complete schema-wide `runIndexReplay` / `cancelIndexReplay` commands without
+calling `SharedIndexReplayRuntime`, source adapters or PostgreSQL directly. Authorization occurs before parsing
+untrusted schema/job input.
+
+Caller input contains no tenant, actor, worker ID, source name, locale/partition, scheduler handle or replay
+resource budget. Each run creates a server-owned worker identity and applies fixed transport caps: 100 mutations
+per page, at most 8 pages, heartbeat every page and a 60-second lease. Yielded work remains resumable through the
+existing durable job/checkpoint mechanism.
+
+GraphQL runtime execution/cancellation evidence remains maintainer-owned.
+
+## M6 replay graceful interruption
+
+`PostgresIndexReplayRunner::run_interruptible` now carries one host-owned synchronous probe into the existing
+one-page safe points: before source scan, before each mutation, and before checkpoint commit. Ordinary `run` and
+persisted operator cancellation semantics remain unchanged.
+
+An `IndexReplayError::Interrupted` first preserves any persisted cancellation race. Otherwise the same fenced
+job is yielded back to `pending`, lease ownership is cleared, no failure payload is recorded, and the last
+committed checkpoint is preserved.
+
+A retained deterministic SQLite packet covers both important restart windows:
+
+- host stop before scan: zero source calls/checkpoint changes, then attempt 2 completes normally;
+- host stop after one mutation is durable but before checkpoint commit: the first attempt yields with no
+  checkpoint, then attempt 2 scans the same page, records the stable delivery as `Duplicate`, commits the
+  checkpoint and succeeds.
+
+This is runner-level source completeness only. The server `StopHandle` is not yet wired through
+`SharedIndexReplayRuntime` / `IndexReplayOperatorRuntime` into the interruptible path.
 
 ## Remaining Storefront parity/evidence blockers
 
@@ -134,8 +171,14 @@ register a key3 Product source/factory. Runtime dual-read compatibility remains 
 - [x] Bounded replay, durable jobs/leases/checkpoints and cancellation.
 - [x] Reconciliation, drift diagnosis and targeted repair source.
 - [x] Real-migration repair PostgreSQL harness and retained-evidence admission tooling.
+- [x] Guarded schema-wide replay run/cancel GraphQL command transport with server-owned bounded run policy.
+- [x] Carry a host-owned interruption probe through replay runner safe points and retain duplicate-safe restart evidence source.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
-- [ ] Complete remaining multi-host/restart/shutdown/command-transport evidence.
+- [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
+- [ ] Execute/admit retained graceful interruption/restart evidence.
+- [ ] Bind server `StopHandle` to interruptible replay execution through guarded runtime/operator composition.
+- [ ] Complete remaining multi-host/restart evidence beyond existing convergence/replay packets.
+- [ ] Add locale/partition replay checkpoint dimensions and explicit rebuild modes under separate contracts.
 
 ## M7 Product Storefront graph
 
@@ -167,11 +210,13 @@ register a key3 Product source/factory. Runtime dual-read compatibility remains 
 
 ## Next source-code boundary
 
-The Storefront request-shape, projection/hydration, timeout, promotion contract and focused promotion/restart
-packet are source-complete. Do not add a traffic-switch adapter from source inspection alone. The remaining
-blocking work is maintainer execution/admission plus any source fix revealed by those runs. Independent source
-cleanup may actualize stale documentation/guards, but it must not convert source-only evidence into a serving
-claim.
+M7 Storefront remains execution/admission-gated and must not gain a traffic switch from source inspection alone.
+The next independent M6 source slice is server binding: surface only a server-owned `StopHandle::is_stopping`
+probe through `SharedIndexReplayRuntime` and `IndexReplayOperatorRuntime` so authorized replay commands use
+`run_interruptible` without accepting any shutdown control from GraphQL input.
+
+Do not change user-requested cancellation semantics while adding host-stop composition. Locale/partition replay
+checkpoint scope and explicit rebuild modes remain later, separate contracts.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.

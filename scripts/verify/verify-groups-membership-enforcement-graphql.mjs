@@ -48,6 +48,19 @@ for (const marker of [
   "member_count",
   "enforcement_revision",
   "replayed",
+  'const DOMAIN_CODE_EXTENSION: &str = "domainCode"',
+  'const RETRYABLE_EXTENSION: &str = "retryable"',
+  "let domain_code = error.code.clone()",
+  "let retryable = error.retryable",
+  "transport_error.extend_with",
+  "extensions.set(DOMAIN_CODE_EXTENSION, domain_code)",
+  "extensions.set(RETRYABLE_EXTENSION, retryable)",
+  "graphql_conflict_preserves_transport_and_owner_codes",
+  "graphql_unavailable_keeps_owner_code_and_retryability",
+  'Some("BAD_USER_INPUT".to_string())',
+  'Some("INTERNAL_ERROR".to_string())',
+  'Some("groups.membership_enforcement_revision_conflict".to_string())',
+  'Some("groups.persistence_unavailable".to_string())',
 ]) {
   requireText(graphql, marker, `Groups enforcement GraphQL source is missing ${marker}`);
 }
@@ -121,6 +134,10 @@ for (const marker of [
   "No fallback",
   "graphql_application_cas::GroupsMutationRoot",
   "GroupMembershipEnforcementCommandPort",
+  "domainCode",
+  "retryable",
+  "platform-wide GraphQL transport classification",
+  "Runtime schema/error-extension parity",
   "cargo check -p rustok-groups --features graphql",
 ]) {
   requireText(docs, marker, `Groups enforcement GraphQL handoff is missing ${marker}`);

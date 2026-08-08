@@ -31,6 +31,7 @@ const contractPath =
   "crates/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const adapter = read(contract.adapter_file ?? "");
+const ownerBackedTest = read(contract.owner_backed_test_file ?? "");
 const services = read(contract.services_file ?? "");
 const runtime = read(contract.runtime_composition_file ?? "");
 const forumAudienceOwner = read(contract.forum_audience_owner_file ?? "");
@@ -68,6 +69,8 @@ for (const delivered of [
   "publication_before_notification_source_materialization",
   "notification_source_factory_consumption",
   "inline_contract_tests",
+  "owner_backed_sqlite_effective_membership_source",
+  "owner_backed_postgres_effective_membership_source",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum audience group facts contract must record ${delivered} as delivered`);
@@ -81,7 +84,7 @@ for (const residual of [
   "final notification creation and delivery authorization",
   "initially non-public topic-created descriptor materialization",
   "search index SEO and deep-link migration",
-  "PostgreSQL and cross-consumer runtime evidence",
+  "executed PostgreSQL and cross-consumer runtime evidence",
 ]) {
   if (!contract.not_delivered?.includes(residual)) {
     failures.push(`forum audience group facts contract must keep ${residual} explicitly open`);
@@ -172,6 +175,7 @@ for (const marker of [
   "state.group_id != group_id",
   "state.user_id != request.user_id",
   "GroupMembershipEnforcementService::new(db)",
+  "mod owner_backed_tests;",
 ]) {
   requireText(adapter, marker, `forum group facts adapter is missing ${marker}`);
 }
@@ -256,6 +260,33 @@ for (const marker of [
   requireText(adapter, marker, `forum group facts inline contract test is missing ${marker}`);
 }
 
+for (const marker of [
+  "rustok_groups::migrations::migrations()",
+  "ServerForumAudienceGroupFactsPort::from_db(db.clone())",
+  "GroupMembershipEnforcementCommandPort::suspend_membership",
+  "GroupMembershipEffectiveStatus::Suspended",
+  "forum_group_facts_follow_groups_owner_clock_sqlite",
+  "forum_group_facts_follow_groups_owner_clock_postgres",
+  "RUSTOK_GROUPS_TEST_POSTGRES_URL",
+  "options=-csearch_path%3D",
+  'assert_eq!(stored_status_during_suspension, "active")',
+  "facts_after_suspend.group_memberships.is_empty()",
+  "facts_after_expiry.group_memberships, vec![group_id]",
+  "tokio::time::sleep",
+  "revision_after_expiry, suspended_revision",
+  "group_member_count",
+]) {
+  requireText(ownerBackedTest, marker, `owner-backed Forum Groups audience evidence is missing ${marker}`);
+}
+for (const forbidden of [
+  "UPDATE group_membership_enforcements",
+  "DELETE FROM group_membership_enforcements",
+  "GroupMembershipEffectiveState {",
+  "rustok_moderation::",
+]) {
+  rejectText(ownerBackedTest, forbidden, `owner-backed Forum Groups audience evidence contains shortcut ${forbidden}`);
+}
+
 if (
   upstream.schema_version !== 1 ||
   upstream.task !== "FORUM-20P" ||
@@ -279,4 +310,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Historical FORUM-20Q Groups facts contract remains valid through FORUM-26B.");
+console.log("Historical FORUM-20Q Groups facts contract remains valid with owner-backed SQLite/PostgreSQL evidence source.");

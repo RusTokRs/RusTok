@@ -106,22 +106,43 @@ requireMarkers('crates/rustok-index/src/replay_dry_run.rs', [
 const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = read(runnerPath);
 if (runner.includes('run_next_page_interruptible')) {
-  fail(`${runnerPath} must not claim lease-bound interruption before the runner integration slice`);
+  fail(`${runnerPath} ordinary replay runner file must stay separate from the interruption extension`);
 }
 
+const runnerExtensionPath =
+  'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
+const runnerExtension = requireMarkers(runnerExtensionPath, [
+  'pub async fn run_interruptible<Check>(',
+  '.run_next_page_interruptible(request.page_request().clone(), || {',
+  'Err(crate::IndexReplayError::Interrupted) => {',
+  'yield_after_host_interruption(&self.db, &lease, aggregate).await',
+  'match yield_for_resume(db, lease).await?',
+]);
+for (const forbidden of ['request_cancel(', 'cancel_requested = TRUE', 'finish_failure(db, lease']) {
+  if (runnerExtension.includes(forbidden)) {
+    fail(`${runnerExtensionPath} must keep host interruption separate from user cancellation/failure: ${forbidden}`);
+  }
+}
+
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+  'mod source_replay_runner {',
+  'include!("source_replay_runner.rs");',
+  'mod graceful_shutdown;',
+]);
+
 requireMarkers('crates/rustok-index/docs/m6-cooperative-page-interruption.md', [
-  'Status: `source_complete_runner_probe_pending`',
+  'Status: `worker_and_runner_source_complete_host_binding_pending`',
   '`run_next_page_interruptible`',
+  '`PostgresIndexReplayRunner::run_interruptible`',
   '`IndexReplayError::Interrupted`',
   '`IndexReplayError::InterruptionCheckFailed`',
   'before every mutation',
   'never commits the page checkpoint',
   '30-second source-call timeout wrapper',
   'bounded replay dry-run',
-  '`(tenant_id, job_id, worker_id, attempt_count)`',
   'does not impose a deadline on the probe future itself',
-  'canonical combined roadmap item',
-  'maintainer-run',
+  'server lifecycle still does not supply its `StopHandle`',
+  'runner interruption after durable mutation / before checkpoint commit',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
   '[M6 Cooperative Replay-page Interruption](./m6-cooperative-page-interruption.md)',
@@ -131,6 +152,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-page-interruption.mjs'",
+  "'verify-index-replay-graceful-shutdown.mjs'",
 ]);
 
-console.log('[verify-index-replay-page-interruption] OK');
+console.log('[verify-index-replay-page-interruption] worker safe points remain storage-neutral while the separate runner extension retains lease-aware host interruption; server StopHandle binding remains open');

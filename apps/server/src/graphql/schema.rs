@@ -21,6 +21,7 @@ use super::dashboard_security::GraphqlDashboardSecurityPolicy;
 use super::forum_principal_security::ForumPrincipalPolicy;
 use super::index_drift_diagnosis::IndexDriftDiagnosisMutation;
 use super::index_drift_source_page_diagnosis::IndexDriftSourcePageDiagnosisMutation;
+use super::index_replay::IndexReplayMutation;
 use super::legacy_disable_user::LegacyDisableUserPolicy;
 use super::loaders::TenantNameLoader;
 #[cfg(feature = "mod-moderation")]
@@ -88,6 +89,7 @@ pub struct Mutation(
     RootMutation,
     IndexDriftDiagnosisMutation,
     IndexDriftSourcePageDiagnosisMutation,
+    IndexReplayMutation,
     #[cfg(feature = "mod-moderation")]
     ModerationRecoveryMutation,
     #[cfg(all(

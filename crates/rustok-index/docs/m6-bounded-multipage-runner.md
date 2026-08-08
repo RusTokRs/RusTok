@@ -4,9 +4,9 @@ Status: `source_complete_owner_execution_pending`
 
 This slice composes the existing one-page replay worker, fenced rebuild jobs, mutation
 store, and lease-bound checkpoint store into one bounded PostgreSQL runner. It includes
-durable cancellation requests and between-page terminal cancellation. It does not add a
-scheduler, background task, automatic retry/backoff, in-page interruption, dry-run, or
-production source adapter.
+durable cancellation requests, between-page terminal cancellation, and a separate
+host-probed in-page interruption path. It does not add a scheduler, background task,
+automatic retry/backoff, dry-run, or production source adapter.
 
 ## Request bounds
 
@@ -22,9 +22,9 @@ The source name is never caller supplied. `PostgresIndexReplayRunner` resolves t
 owner from `SharedIndexSourceRegistry` before acquiring the durable job. The job request
 therefore uses the same source identity as page execution and checkpoint persistence.
 
-## Execution order
+## Ordinary execution order
 
-For an acquired `IndexReplayJobLease`, the runner:
+For an acquired `IndexReplayJobLease`, ordinary `PostgresIndexReplayRunner::run`:
 
 1. constructs `PostgresIndexReplayCheckpointStore` from that exact lease;
 2. observes and terminalizes a previously requested cancellation before each page;
@@ -38,10 +38,36 @@ For an acquired `IndexReplayJobLease`, the runner:
 8. when the page budget ends with continuation, atomically returns the same job to
    `pending`, clears lease ownership, and makes it immediately claimable for resume.
 
-A page itself is not interrupted by a heartbeat or cancellation task. Operators must
-choose a lease longer than the maximum admitted source-page and mutation/checkpoint
-commit duration. A cancellation requested during a page is observed after that page's
-idempotent mutations and checkpoint are durable.
+A persisted cancellation requested during ordinary execution is still observed after the
+current page's idempotent mutations and checkpoint are durable. This existing user-cancel
+contract is intentionally unchanged by host interruption work.
+
+## Host-probed in-page interruption
+
+`PostgresIndexReplayRunner::run_interruptible` is a separate execution entry point over the
+same job/checkpoint/mutation stores. It adapts a host-owned probe to
+`IndexReplayWorker::run_next_page_interruptible`, whose safe points are before source scan,
+before every mutation, and before checkpoint commit.
+
+If the worker returns `IndexReplayError::Interrupted`, the runner first preserves any
+persisted cancellation race. Otherwise it uses the ordinary fenced pending-yield transition:
+
+- the job keeps the same UUID;
+- state returns to `pending`;
+- lease ownership is cleared;
+- no failure payload is recorded;
+- the last committed checkpoint is preserved;
+- the next claim increments `attempt_count`.
+
+Host interruption does not set `cancel_requested` and is not a terminal cancellation.
+
+If interruption occurs after one or more mutations are already durable but before checkpoint
+commit, the next attempt replays the same page. Stable delivery IDs make those durable
+mutations `Duplicate`; the resumed page can then advance its checkpoint safely. No synthetic
+checkpoint advance or mutation rollback is introduced.
+
+The retained SQLite packet is documented in `m6-replay-graceful-shutdown.md`. It is
+source-only until maintainer execution/admission.
 
 ## Cancellation contract
 
@@ -86,22 +112,28 @@ classified as `checkpoint_lease_lost`, heartbeat loss, terminal completion loss,
 loss, and cancellation ownership loss return explicit `IndexReplayRunError::LeaseLost`
 instead of attempting a stale state write.
 
+Host interruption is not a page failure and does not enter this failure path.
+
 ## Still open
 
-- interruption or timeout of one currently executing source page;
+- bind the server-owned `StopHandle` to the interruptible runner path without exposing a
+  shutdown control to GraphQL callers;
+- execute/admit retained interruption/restart evidence;
 - automatic bounded retry/backoff and dead-letter scheduling;
-- a host scheduler, command/transport authorization, and graceful process shutdown;
-- direct server-composition publication of the runner;
-- dry-run and targeted/full/shadow rebuild modes;
+- operator-visible scheduler health and metrics;
+- explicit targeted/full/shadow rebuild modes;
 - locale and partition checkpoint dimensions;
-- Product and later source adapters;
 - retained PostgreSQL cancellation, crash, lease-expiry, restart, timing, and
-  multi-instance evidence.
+  multi-instance evidence beyond current focused packets.
+
+The guarded schema-wide GraphQL run/cancel command transport is now source-complete through
+`IndexReplayOperatorRuntime`; its execution evidence remains maintainer-owned.
 
 ## Owner validation
 
 ```bash
 node scripts/verify/verify-index-replay-multipage-runner.mjs
+node scripts/verify/verify-index-replay-graceful-shutdown.mjs
 node scripts/verify/verify-index-replay-job-leases.mjs
 node scripts/verify/verify-index-source-replay-contract.mjs
 cargo check -p rustok-index --all-targets

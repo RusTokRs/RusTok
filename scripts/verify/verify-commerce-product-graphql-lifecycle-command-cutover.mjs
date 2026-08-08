@@ -80,10 +80,10 @@ for (const required of [
   "MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH: usize = 191",
   "PRODUCT_COMMAND_DEADLINE: Duration = Duration::from_secs(2)",
   "idempotency_key: Option<String>",
+  "Product mutation idempotency key is required",
   "Product mutation idempotency key must not be empty",
   "BAD_USER_INPUT",
-  "one-request compatibility identity",
-  'format!("compatibility-{}", Uuid::new_v4())',
+  "let caller_key = idempotency_key.ok_or_else(||",
   "digest.update(tenant_id.as_bytes())",
   "digest.update(user_id.as_bytes())",
   "digest.update(operation.as_bytes())",
@@ -96,6 +96,14 @@ for (const required of [
   "context = context.with_channel(channel)",
 ]) {
   requireText(mutations, required, "GraphQL Product command context");
+}
+
+for (const forbidden of [
+  "one-request compatibility identity",
+  'format!("compatibility-{}", Uuid::new_v4())',
+  "Product GraphQL lifecycle caller omitted idempotency key",
+]) {
+  forbidText(mutations, forbidden, "GraphQL Product lifecycle compatibility identity");
 }
 
 forbidText(
@@ -189,4 +197,4 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Product GraphQL lifecycle mutations use scoped host-composed owner commands with explicit optional caller idempotency and compatibility fallback");
+console.log("✔ Product GraphQL lifecycle execution requires explicit caller idempotency with no compatibility identity; non-null SDL remains explicit follow-up debt");
