@@ -23,7 +23,7 @@ const packet = requireMarkers(packetPath, [
   'use super::index_replay::IndexReplayMutation;',
   'materialize_index_replay_runtime',
   'PostgresSchemaRegistrationStore',
-  'Schema<ReplayTestQuery, IndexReplayMutation, EmptySubscription>',
+  'type ReplayTestSchema = Schema<EmptyQuery, IndexReplayMutation, EmptySubscription>;',
   '.data(extensions)',
   '.data(stop_handle.clone())',
   'with_rbac_request_scope(',
@@ -32,7 +32,7 @@ const packet = requireMarkers(packetPath, [
   'gate.started.notified().await;',
   'first.stop_handle.stop().await;',
   'gate.release.notify_one();',
-  'first_run["status"].as_str(), Some("YIELDED")',
+  'assert_eq!(first_run["status"], "YIELDED");',
   'job_state(&db).await, "pending"',
   'job_attempt_count(&db).await, 1',
   'pending_uncancelled_lease_free_jobs(&db).await, 1',
@@ -40,7 +40,7 @@ const packet = requireMarkers(packetPath, [
   'materialized_entity_count(&db).await, 0',
   'applied_inbox_count(&db).await, 0',
   'let restarted = graphql_runtime(&db, None).await;',
-  'second_run["status"].as_str(), Some("COMPLETE")',
+  'assert_eq!(second_run["status"], "COMPLETE");',
   'job_attempt_count(&db).await, 2',
   'job_state(&db).await, "succeeded"',
   'checkpoint_count(&db).await, 1',
@@ -79,11 +79,11 @@ if (spawn < 0 || scope <= spawn || execute <= scope || started <= execute || sto
   fail('first GraphQL request must install request authority inside its task, enter source scan, publish stop, then release scan deterministically');
 }
 
-const firstYield = packet.indexOf('Some("YIELDED")', release);
+const firstYield = packet.indexOf('assert_eq!(first_run["status"], "YIELDED");', release);
 const pending = packet.indexOf('job_state(&db).await, "pending"', firstYield);
 const restart = packet.indexOf('let restarted = graphql_runtime(&db, None).await;', pending);
 const secondExecute = packet.indexOf('restarted.schema.execute(replay_request())', restart);
-const complete = packet.indexOf('Some("COMPLETE")', secondExecute);
+const complete = packet.indexOf('assert_eq!(second_run["status"], "COMPLETE");', secondExecute);
 const attemptTwo = packet.indexOf('job_attempt_count(&db).await, 2', complete);
 if (firstYield < 0 || pending <= firstYield || restart <= pending || secondExecute <= restart || complete <= secondExecute || attemptTwo <= complete) {
   fail('packet must retain yielded pending state before fresh GraphQL/runtime composition resumes and completes attempt 2');
@@ -106,6 +106,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/replay_runtime.r
   '.run_interruptible(request, should_interrupt)',
 ]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs', [
+  'let lease_request = lease_request_for_run(&request, source_name)?;',
   'Err(crate::IndexReplayError::Interrupted) => {',
   'yield_after_host_interruption(&self.db, &lease, aggregate).await',
   'match yield_for_resume(db, lease).await?',
@@ -129,4 +130,4 @@ requireMarkers('apps/server/docs/index-replay-graphql-shutdown-evidence.md', [
   'does not claim full HTTP/process bootstrap execution',
 ]);
 
-console.log('[verify-index-replay-graphql-shutdown-evidence] deterministic schema-data GraphQL shutdown packet retains authorized stop-to-pending and fresh-runtime attempt-2 completion without sleeps or polling');
+console.log('[verify-index-replay-graphql-shutdown-evidence] deterministic schema-data GraphQL shutdown packet matches current assertions and retains authorized stop-to-pending plus fresh-runtime attempt-2 completion');
