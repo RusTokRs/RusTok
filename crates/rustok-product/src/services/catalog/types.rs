@@ -54,7 +54,7 @@ impl StorefrontProductSortDirection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProductAttributeFilter {
     pub code: String,
     pub value: String,
@@ -65,49 +65,63 @@ impl ProductAttributeFilter {
         let (code, raw_value) = value.split_once('=').ok_or_else(|| {
             CommerceError::Validation("attribute_filters entries must use `code=value`".to_string())
         })?;
-        let code = code.trim();
-        let raw_value = raw_value.trim();
-        if code.is_empty()
-            || code.len() > MAX_ATTRIBUTE_FILTER_CODE_LENGTH
-            || !code.chars().all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
-            })
-        {
-            return Err(CommerceError::Validation(
-                "attribute filter code must contain 1..128 ASCII letters, digits, `_`, or `-`"
-                    .to_string(),
-            ));
-        }
-        if raw_value.is_empty() || raw_value.len() > MAX_ATTRIBUTE_FILTER_VALUE_LENGTH {
-            return Err(CommerceError::Validation(
-                "attribute filter value must contain 1..512 characters".to_string(),
-            ));
-        }
-        Ok(Self {
-            code: code.to_string(),
-            value: raw_value.to_string(),
-        })
+        let filter = Self {
+            code: code.trim().to_string(),
+            value: raw_value.trim().to_string(),
+        };
+        validate_attribute_filter(&filter)?;
+        Ok(filter)
     }
 }
 
-fn parse_attribute_filters(values: Vec<String>) -> CommerceResult<Vec<ProductAttributeFilter>> {
-    if values.len() > MAX_ATTRIBUTE_FILTERS {
+fn validate_attribute_filter(filter: &ProductAttributeFilter) -> CommerceResult<()> {
+    let code = filter.code.as_str();
+    if code.is_empty()
+        || code.len() > MAX_ATTRIBUTE_FILTER_CODE_LENGTH
+        || !code.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
+        })
+    {
+        return Err(CommerceError::Validation(
+            "attribute filter code must contain 1..128 ASCII letters, digits, `_`, or `-`"
+                .to_string(),
+        ));
+    }
+    if filter.value.is_empty() || filter.value.len() > MAX_ATTRIBUTE_FILTER_VALUE_LENGTH {
+        return Err(CommerceError::Validation(
+            "attribute filter value must contain 1..512 characters".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_product_attribute_filters(
+    filters: &[ProductAttributeFilter],
+) -> CommerceResult<()> {
+    if filters.len() > MAX_ATTRIBUTE_FILTERS {
         return Err(CommerceError::Validation(format!(
             "attribute_filters supports at most {MAX_ATTRIBUTE_FILTERS} entries"
         )));
     }
     let mut seen = HashSet::new();
-    let mut filters = Vec::with_capacity(values.len());
-    for value in values {
-        let filter = ProductAttributeFilter::parse(value)?;
+    for filter in filters {
+        validate_attribute_filter(filter)?;
         if !seen.insert(filter.code.to_ascii_lowercase()) {
             return Err(CommerceError::Validation(format!(
                 "attribute filter {} occurs more than once",
                 filter.code
             )));
         }
-        filters.push(filter);
     }
+    Ok(())
+}
+
+fn parse_attribute_filters(values: Vec<String>) -> CommerceResult<Vec<ProductAttributeFilter>> {
+    let filters = values
+        .into_iter()
+        .map(ProductAttributeFilter::parse)
+        .collect::<CommerceResult<Vec<_>>>()?;
+    validate_product_attribute_filters(&filters)?;
     Ok(filters)
 }
 
