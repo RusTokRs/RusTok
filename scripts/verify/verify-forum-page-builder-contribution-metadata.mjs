@@ -85,7 +85,11 @@ for (const marker of [
   requireMarker(sharedTooling, marker, "shared contribution metadata tooling");
 }
 
-for (const forbidden of ["fly-ui", "rustok-page-builder-admin", "rustok-page-builder ="] ) {
+for (const forbidden of [
+  "fly-ui",
+  "rustok-page-builder-admin",
+  "rustok-page-builder =",
+]) {
   forbidMarker(adminCargo, forbidden, "Forum admin adapter-pending dependency boundary");
 }
 
