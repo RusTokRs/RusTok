@@ -77,7 +77,7 @@ const targetedMethod = server.indexOf('pub async fn run_targeted(');
 const authorize = server.indexOf('context.authorize_for(request.tenant_id())?;', targetedMethod);
 const delegate = server.indexOf('self.inner.run_targeted(request).await.map_err(Into::into)', authorize);
 if (targetedMethod < 0 || authorize <= targetedMethod || delegate <= authorize) {
-  fail('Targeted host dispatch must remain authorize exact tenant/modules:manage before runtime execution');
+  fail('Targeted host dispatch must authorize exact tenant/modules:manage before runtime execution');
 }
 for (const forbidden of [
   'targeted_worker',
@@ -105,40 +105,51 @@ requireMarkers(appPath, [
 ]);
 
 const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
-const graphqlProduction = read(graphqlPath).split('\n#[cfg(test)]')[0];
+const graphql = requireMarkers(graphqlPath, [
+  'pub struct IndexReplayTargetedRunInput',
+  'pub struct IndexReplayTargetedKeyInput',
+  'async fn run_index_replay_targeted(',
+  'prepare_authorized_targeted_run(tenant.id, auth.user_id, input)',
+  '.run_targeted(operator_context, request)',
+  '.map_err(map_targeted_operator_error)?',
+  'IndexReplayTargetedOperatorError::Authorization(error) => map_operator_error(error)',
+  'IndexReplayTargetedOperatorError::Targeted(error) => map_targeted_error(error)',
+]);
+const production = graphql.split('\n#[cfg(test)]')[0];
 for (const forbidden of [
-  'run_index_replay_targeted',
-  'runIndexReplayTargeted',
-  '.run_targeted(',
-  'IndexReplayTargetedOutcome',
-  'IndexReplayTargetedOperatorError',
+  'SharedIndexReplayRuntime',
+  'IndexReplayTargetedExecutor',
+  'PostgresMutationStore',
+  'PostgresIndexReplayRunner',
+  'DatabaseConnection',
 ]) {
-  if (graphqlProduction.includes(forbidden)) {
-    fail(`${graphqlPath} must not expose or map Targeted publicly in the host-dispatch slice: ${forbidden}`);
+  if (production.includes(forbidden)) {
+    fail(`${graphqlPath} must route Targeted only through the guarded server operator: ${forbidden}`);
   }
 }
 
 requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
-  'Status: `source_complete_host_guard_transport_pending`.',
+  'Status: `source_complete_transport_execution_pending`.',
   '## PostgreSQL/runtime composition',
-  '`IndexReplayTargetedExecutor<PostgresMutationStore>`',
-  '`IndexReplayOperatorRuntime` owns Targeted dispatch',
-  'dedicated authorization-first Targeted public transport',
+  '## GraphQL transport',
+  '`runIndexReplayTargeted(input: ...)`',
+  'does not expose it',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   'Targeted and Shadow each keep a separate typed operator error wrapper',
   'does not widen the existing GraphQL Full/cancel error contract',
+  '`runIndexReplayTargeted` is mounted on the existing `IndexReplayMutation` object',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_targeted_host_guard_transport_pending`.',
+  'Status: `source_complete_targeted_graphql_execution_pending`.',
   '## Targeted PostgreSQL composition and host dispatch',
+  '## Targeted GraphQL transport',
   '`run_targeted(IndexSourceLoadRequest)`',
   'same effective `modules:manage`',
-  'dedicated authorization-first public transport',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
   'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
 ]);
 
-console.log('[verify-index-replay-targeted-host-dispatch] Targeted uses the canonical PostgreSQL mutation sink and exact request-bound modules:manage host guard with an isolated error surface, no Full durable ownership and no public transport');
+console.log('[verify-index-replay-targeted-host-dispatch] Targeted uses the canonical PostgreSQL mutation sink and exact request-bound modules:manage host guard, and GraphQL delegates only through that isolated operator surface');
