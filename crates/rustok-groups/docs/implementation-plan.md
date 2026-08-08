@@ -117,6 +117,8 @@ Source exists for:
 - direct `GroupMembershipEnforcementCommandPort` suspend/revoke with expected-revision CAS,
   receipt-first replay, hierarchy/owner protection, shared owner mutation, audit/events and bounded
   direct-local provenance;
+- direct GraphQL suspend/revoke mutations composed into the final Groups mutation root and routed
+  only through `GroupMembershipEnforcementCommandPort`;
 - stored lifecycle active member-count semantics that remain independent from temporary owner-clock
   suspension/expiry/revocation while every enforcement mutation still advances group version;
 - append-only membership suspend/revoke semantic events beside targeted invitation events;
@@ -134,7 +136,8 @@ Evidence still open:
 - PostgreSQL and SQLite migration/runtime evidence, including the expanded append-only event ledger;
 - lock behavior and concurrent enforcement-change tests;
 - direct enforcement replay, expected-revision contention, hierarchy, owner-protection, expiry,
-  revoke, lifecycle-count invariance, audit/event atomicity, security and transport parity evidence;
+  revoke, lifecycle-count invariance, audit/event atomicity and security evidence;
+- executed native/GraphQL parity and schema/error-mapping evidence for direct enforcement;
 - native/GraphQL parity, CAS, lifecycle, bulk-review, retry, recovery, security, and accessibility
   evidence for the broader module;
 - localization and governance effective authorization;
@@ -152,7 +155,7 @@ Evidence still open:
 | GROUPS-04 | in_progress | typed summary/membership/access/localization/invitation/application/governance/enforcement ports | consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, invitation acceptance/delivery | parity and Notifications evidence |
 | GROUPS-06 | in_progress | localized policy, CAS, lifecycle, focused/bulk review, FFA UX | profiles/events/parity/concurrency/accessibility |
-| GROUPS-07 | in_progress | revision, enforcement read/direct command, effective core access, transactional invitation/application authorization | moderation adapter, transport/runtime/concurrency evidence |
+| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, effective core access, transactional invitation/application authorization | moderation adapter, runtime/concurrency/parity evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and navigation | registry/degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum integration evidence |
 | GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner/privacy evidence |
@@ -281,6 +284,29 @@ triggers. Downgrade fails while membership events exist instead of deleting appe
 
 No bulk enforcement command is introduced before single-command runtime evidence.
 
+### Source-complete direct enforcement GraphQL transport
+
+The module manifest now composes `graphql_membership_enforcement::GroupsMutationRoot` as the final
+Groups mutation root. It wraps the existing application/invitation/governance/localization mutation
+chain with exactly two new fields:
+
+- `suspendGroupMembership`;
+- `revokeGroupMembershipSuspension`.
+
+The transport requires an authenticated user in the same tenant, constructs a five-second write
+`PortContext`, forwards every effective permission as a claim, forwards the caller's idempotency
+key, and delegates only to `GroupMembershipEnforcementCommandPort`. It does not pre-authorize only
+platform moderators, because local owner/admin/moderator hierarchy is an owner-domain decision.
+
+GraphQL does not write Groups tables, recompute hierarchy, rewrite revisions, or introduce fallback.
+Owner stable conflicts/validation map to bad-user-input, owner authorization failures map to
+permission-denied, and unavailable/timeout/invariant outcomes stay non-successful. The response is
+the owner result: membership/group/enforcement revisions, lifecycle member count, effective status,
+expiry/revocation state and replay flag.
+
+Runtime schema execution, error-code parity, replay/CAS and authorization parity remain evidence
+gates; source composition is not promoted to `done`.
+
 ### Planned moderation adapter
 
 Initial mapping remains:
@@ -354,6 +380,7 @@ node scripts/verify/verify-groups-application-lifecycle.mjs
 node scripts/verify/verify-groups-application-bulk-review.mjs
 node scripts/verify/verify-groups-membership-enforcement-read-path.mjs
 node scripts/verify/verify-groups-membership-enforcement-command.mjs
+node scripts/verify/verify-groups-membership-enforcement-graphql.mjs
 node scripts/verify/verify-groups-effective-membership-access.mjs
 node scripts/verify/verify-groups-effective-membership-invitations-applications.mjs
 npm run verify:i18n:ui
