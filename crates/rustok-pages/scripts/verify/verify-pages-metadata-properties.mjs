@@ -17,6 +17,7 @@ const providerPanel = read(contract.provider.panel_source);
 const providerModuleExport = read(contract.provider.module_export_source);
 const providerPanelExport = read(contract.provider.panel_export_source);
 const providerCanvas = read(contract.provider.composition_source);
+const moduleManifestTooling = read("crates/rustok-build/src/module_manifest_contribution.rs");
 const pagesContributions = read(contract.pages_consumer.contribution_source);
 const pagesContributionBuild = read("crates/rustok-pages/admin/build.rs");
 const pagesModuleManifest = read("crates/rustok-pages/rustok-module.toml");
@@ -207,6 +208,17 @@ for (const marker of [
 }
 
 for (const marker of [
+  "pub struct NormalizedModuleContributionManifest",
+  "pub fn normalize_module_contribution_manifest(",
+  "OWNER_PROVIDER_METADATA_KEY",
+  "PROVIDER_VERSION_METADATA_KEY",
+  "outside fba.builder_consumer.capabilities",
+  "must not hand-author",
+]) {
+  requireMarker(moduleManifestTooling, marker, "shared module contribution metadata tooling");
+}
+
+for (const marker of [
   'include!(concat!(env!("OUT_DIR"), "/pages_contribution_manifest.rs"));',
   "GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON",
   "pub fn pages_metadata_property_schema()",
@@ -251,17 +263,30 @@ for (const field of contract.pages_consumer.fields) {
   );
 }
 for (const marker of [
-  "contribution_manifest: ContributionManifestSource",
-  "OWNER_PROVIDER_METADATA_KEY",
-  "PROVIDER_VERSION_METADATA_KEY",
-  "must not hand-author ownerProvider/providerVersion",
+  "module_manifest_contribution.rs",
+  "normalize_module_contribution_manifest",
+  '.role("landing_blocks")',
+  '.role("metadata")',
+  ".manifest_json()",
   "metadata contribution must declare exactly one property editor",
   "GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON",
   "PAGES_METADATA_CONTRIBUTION_ID",
   "PAGES_METADATA_PROPERTY_EDITOR_ID",
   "PAGES_METADATA_COMPONENT_TYPE",
 ]) {
-  requireMarker(pagesContributionBuild, marker, "Pages contribution build generator");
+  requireMarker(pagesContributionBuild, marker, "Pages shared contribution build adapter");
+}
+for (const forbidden of [
+  "struct ModuleManifestRoot",
+  "struct ContributionManifestSource",
+  "fn normalize_targets(",
+  "fn normalize_contributions(",
+]) {
+  forbidMarker(
+    pagesContributionBuild,
+    forbidden,
+    "Pages shared contribution build adapter",
+  );
 }
 
 for (const marker of [
@@ -389,5 +414,5 @@ for (const marker of [
 }
 
 console.log(
-  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true metadata_revision_isolation_source_ready=true published_metadata_surface_source_ready=true generated_manifest_authority=true execution_evidence=pending",
+  "[verify-pages-metadata-properties] PASS metadata_surface_cutover_complete=true metadata_revision_isolation_source_ready=true published_metadata_surface_source_ready=true shared_manifest_tooling=true execution_evidence=pending",
 );

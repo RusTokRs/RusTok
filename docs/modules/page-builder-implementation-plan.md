@@ -21,25 +21,32 @@ source overlays under `docs/modules/page-builder-*-actualization-2026-08-07.md`
 and the 2026-08-08 Pages/Page Builder parity packets remain authoritative where
 they are more specific. Older open checkboxes for Pages metadata contributions,
 immutable rollback, artifact audit/repair, reviewed static resource limits,
-authenticated real-DOM authoring, anonymous authoring exclusion and generated
-contribution-registry foundations were stale and are corrected below.
+authenticated real-DOM authoring, anonymous authoring exclusion, generated
+contribution-registry foundations and shared contribution metadata tooling were
+stale and are corrected below.
 
 Current source markers for this slice:
 
 ```text
 Provider status/degraded controls: source-ready
 Pages module-metadata contribution generation: source-ready
+Shared module contribution tooling: source-ready
 ```
 
 Observed provider-health evidence remains an execution/composition cursor; an
 absent live health snapshot is represented as `unobserved`, not healthy.
 
-The Pages reference consumer now keeps its complete Fly contribution declaration
-in canonical `rustok-module.toml`. `rustok-pages-admin/build.rs` validates that
-metadata and emits the normalized version-pinned manifest/constants into
-`OUT_DIR`; the admin/WASM runtime does not parse TOML and no handwritten Pages
-`ContributionDescriptor` tree remains. Shared module-tooling generalization is
-the next source cursor before a second production contribution consumer is added.
+The Pages reference consumer keeps its complete Fly contribution declaration in
+canonical `rustok-module.toml`. `rustok-pages-admin/build.rs` now delegates generic
+parsing, provider/version injection and capability validation to the reusable
+`rustok-build/src/module_manifest_contribution.rs` tooling source, while retaining
+only Pages-specific role/constant assertions. `xtask module validate` consumes the
+same normalizer for publish readiness. Admin/WASM runtime still does not parse TOML
+and no handwritten Pages `ContributionDescriptor` tree remains.
+
+The next contribution source cursor is a second production consumer, selected only
+after its persistence, authorization and preview ownership are explicit. Live SLO
+health remains a separate open cursor.
 
 ## Current-only policy
 
@@ -79,6 +86,8 @@ The current component-tree authority is `pages[].component`.
   preview/review/materialization contracts, health and rollout controls;
 - consumer backend — page/document revisions, immutable artifacts, publish
   transactions, receipts, outbox and cache scope/key ownership;
+- platform build tooling — canonical module contribution parsing/normalization and
+  publish-readiness validation, never runtime registry or tenant policy;
 - cache/host infrastructure — shared connection, byte storage and bounded
   generation primitives, never consumer cache policy.
 
@@ -148,6 +157,9 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Pages contribution identities, version-pinned providers, capabilities,
   blocks, messages and the full metadata property schema are canonical module
   metadata and are build-generated into the admin crate without runtime TOML.
+- [x] Generic contribution metadata parsing, provider/version injection and
+  capability admission are shared through platform build tooling and module
+  publish readiness rather than remaining Pages-local.
 - [x] The obsolete parallel JSON/CRUD UI and PageBlock persistence/fallback paths
   are deleted.
 - [x] Pages provides one builder-first workspace with list/create/select,
@@ -351,6 +363,8 @@ Rules:
   observed SLO snapshot is never converted to a healthy claim.
 - Consumer contribution metadata is build-generated from canonical module
   metadata; runtime source must not retain a parallel handwritten descriptor tree.
+- Shared contribution parsing/normalization is platform build tooling and publish
+  validation only; it must not become runtime registry, tenant or persistence policy.
 
 ## Implementation phases
 
@@ -472,8 +486,8 @@ of the verification programme.
   module metadata at build time, including version targets and property schema.
 - [x] Filter by tenant, permission, capability, policy and health.
 - [x] Duplicate, cycle, version and missing-provider diagnostics.
-- [ ] Generalize the canonical contribution metadata schema/generator into shared
-  module tooling before connecting a second production contribution consumer.
+- [x] Generalize canonical contribution metadata parsing/normalization into shared
+  platform build tooling and `xtask` module publish validation.
 
 ### Phase 10 — rollout
 
@@ -485,8 +499,9 @@ of the verification programme.
 
 ## Immediate implementation order
 
-1. Generalize the Pages canonical contribution metadata/generation boundary into
-   shared module tooling and publish validation before onboarding a second consumer.
+1. Select a second production contribution consumer only after its tenant-scoped
+   persistence, authorization and preview ownership are explicit, then adopt the
+   shared canonical metadata/tooling boundary without a local schema/parser.
 2. Connect a real provider-health observation source to the admin status seam and
    retain observed provider-health evidence for degraded/unavailable behavior.
 3. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
@@ -494,9 +509,8 @@ of the verification programme.
    authoring boundaries.
 4. Complete remaining generic Page Builder asset/accessibility controls and their
    executable browser evidence.
-5. Connect the next production consumer to the canonical composition root only
-   after its tenant-scoped persistence, authorization, preview ownership and
-   contribution metadata authority are explicitly defined.
+5. Promote no new consumer or FFA/FBA wave until its ownership and retained
+   execution evidence satisfy the same canonical composition boundary.
 
 ## Verification programme
 
@@ -541,7 +555,7 @@ authoritative sanitization/resource budgets, deterministic artifact and receipt
 integrity, preview/static materialization parity, idempotent replay, repair/
 rollback continuity, event-driven cache generation rotation and public miss/
 refill, anonymous authoring exclusion, provider degradation, generated module
-metadata authority and observed tenant rollout.
+metadata authority, shared publish validation and observed tenant rollout.
 
 ## Update rules
 
