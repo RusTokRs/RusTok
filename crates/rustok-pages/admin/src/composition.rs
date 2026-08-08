@@ -79,15 +79,19 @@ pub fn PagesAdmin() -> impl IntoView {
             .await
             .map_err(|error| error.to_string())?;
             let release_status = transport::fetch_page_builder_scenario_release_status(
-                token,
-                tenant,
+                token.clone(),
+                tenant.clone(),
                 page_id,
             )
             .await
             .map_err(|error| error.to_string())?;
-            let provider_flags = crate::builder_rollout_settings::pages_builder_rollout_flags()
-                .await
-                .map_err(|error| error.to_string())?;
+            let provider_flags = crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
+                token,
+                tenant,
+            )
+            .await
+            .map_err(|error| error.to_string())?
+            .flags;
             Ok(Some((page, baseline, release_status, provider_flags)))
         }
     });
