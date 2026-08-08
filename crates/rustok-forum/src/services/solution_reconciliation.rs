@@ -231,17 +231,17 @@ impl ForumSolutionReconciliationService {
 
             let author_id: Option<Uuid> = row.try_get("", "author_id")?;
             let author_stat_exists: i64 = row.try_get("", "author_stat_exists")?;
-            if eligible == 1
-                && author_stat_exists == 0
-                && let Some(author_id) = author_id
-                && missing_stat_authors.insert(author_id)
-            {
-                drifts.push(ForumSolutionDrift {
-                    kind: ForumSolutionDriftKind::SolutionAuthorStatMissing,
-                    subject_id: author_id,
-                    stored: 0,
-                    expected: 1,
-                });
+            if eligible == 1 && author_stat_exists == 0 {
+                if let Some(author_id) = author_id {
+                    if missing_stat_authors.insert(author_id) {
+                        drifts.push(ForumSolutionDrift {
+                            kind: ForumSolutionDriftKind::SolutionAuthorStatMissing,
+                            subject_id: author_id,
+                            stored: 0,
+                            expected: 1,
+                        });
+                    }
+                }
             }
         }
 
