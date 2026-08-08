@@ -38,10 +38,6 @@ const REVISION_CONFLICT: &str = "REVISION_CONFLICT";
 #[cfg(feature = "ssr")]
 const PAGE_BUILDER_PORT_DEADLINE: Duration = Duration::from_secs(15);
 
-fn pages_builder_capability_flags() -> BuilderCapabilityFlags {
-    BuilderCapabilityFlags::default()
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PagesBuilderSaveSnapshot {
     pub token: Option<String>,
@@ -57,6 +53,7 @@ type SavedHandler = Arc<dyn Fn(PageMutationResult, Value) + Send + Sync>;
 pub struct PagesBuilderFacade {
     snapshot: SnapshotProvider,
     on_saved: SavedHandler,
+    provider_flags: Option<BuilderCapabilityFlags>,
 }
 
 impl PagesBuilderFacade {
@@ -67,7 +64,13 @@ impl PagesBuilderFacade {
         Self {
             snapshot: Arc::new(snapshot),
             on_saved: Arc::new(on_saved),
+            provider_flags: None,
         }
+    }
+
+    pub fn with_provider_flags(mut self, provider_flags: BuilderCapabilityFlags) -> Self {
+        self.provider_flags = Some(provider_flags);
+        self
     }
 }
 
@@ -89,9 +92,8 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
     }
 
     fn provider_status(&self) -> Option<PageBuilderAdminProviderStatus> {
-        Some(PageBuilderAdminProviderStatus::unobserved(
-            pages_builder_capability_flags(),
-        ))
+        self.provider_flags
+            .map(PageBuilderAdminProviderStatus::unobserved)
     }
 }
 
