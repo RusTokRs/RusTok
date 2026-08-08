@@ -408,8 +408,29 @@ impl ProductPostgresIndexSource {
     ) -> Result<Vec<QueryResult>, IndexSourceFailure> {
         let fetch_limit = i64::try_from(request.limit() + 1)
             .expect("Index source page limit is bounded below i64::MAX");
-        let (sql, values): (String, Vec<Value>) = match cursor {
-            Some(cursor) => (
+        let (sql, values): (String, Vec<Value>) = match (request.locale(), cursor) {
+            (Some(locale), Some(cursor)) => (
+                format!(
+                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE row.locale = $2 AND row.product_id > $3\nORDER BY row.product_id ASC\nLIMIT $4"
+                ),
+                vec![
+                    request.tenant_id().into(),
+                    locale.as_str().to_owned().into(),
+                    cursor.product_id.into(),
+                    fetch_limit.into(),
+                ],
+            ),
+            (Some(locale), None) => (
+                format!(
+                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE row.locale = $2\nORDER BY row.product_id ASC\nLIMIT $3"
+                ),
+                vec![
+                    request.tenant_id().into(),
+                    locale.as_str().to_owned().into(),
+                    fetch_limit.into(),
+                ],
+            ),
+            (None, Some(cursor)) => (
                 format!(
                     "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE (row.product_id, row.locale) > ($2, $3)\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $4"
                 ),
@@ -420,7 +441,7 @@ impl ProductPostgresIndexSource {
                     fetch_limit.into(),
                 ],
             ),
-            None => (
+            (None, None) => (
                 format!(
                     "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $2"
                 ),
@@ -482,6 +503,11 @@ impl IndexSource for ProductPostgresIndexSource {
             .map(ProductCursor::decode)
             .transpose()
             .map_err(|_| permanent("product_index_cursor_invalid"))?;
+        if let (Some(locale), Some(cursor)) = (request.locale(), cursor.as_ref())
+            && cursor.locale != locale.as_str()
+        {
+            return Err(permanent("product_index_cursor_invalid"));
+        }
         let rows = self.scan_rows(&request, cursor.as_ref()).await?;
         let has_more = rows.len() > request.limit();
         let mut mutations = Vec::with_capacity(rows.len().min(request.limit()));
