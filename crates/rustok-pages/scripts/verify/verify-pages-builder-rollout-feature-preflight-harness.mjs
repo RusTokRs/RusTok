@@ -11,6 +11,9 @@ const files = {
   config: "apps/next-admin/playwright.pages-builder-rollout-feature-preflight.config.ts",
   spec: "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
   owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
+  graphqlMod: "crates/rustok-pages/src/graphql/mod.rs",
+  pagesCargo: "crates/rustok-pages/Cargo.toml",
+  pageBuilderCargo: "crates/rustok-page-builder/Cargo.toml",
   rollout: "crates/rustok-page-builder/src/rollout.rs",
   service: "crates/rustok-page-builder/src/service.rs",
   packet: "docs/modules/pages-page-builder-rollout-feature-preflight-actualization-2026-08-08.md",
@@ -40,6 +43,9 @@ const evidence = JSON.parse(read(files.evidence));
 const config = read(files.config);
 const spec = read(files.spec);
 const owner = read(files.owner);
+const graphqlMod = read(files.graphqlMod);
+const pagesCargo = read(files.pagesCargo);
+const pageBuilderCargo = read(files.pageBuilderCargo);
 const rollout = read(files.rollout);
 const service = read(files.service);
 const packet = read(files.packet);
@@ -66,10 +72,19 @@ const actualProfiles = contract.profiles?.map((profile) => [
 ]);
 if (JSON.stringify(actualProfiles) !== JSON.stringify(expectedProfiles)) failures.push("feature preflight profile contract drifted");
 
+const expectedPermissionMapping = {
+  preview: "pages:read",
+  tree: "pages:read",
+  properties: "pages:update",
+  publish: "pages:publish",
+};
 if (
   contract.capability_preflight?.operation !== "pageBuilderCapabilityPreflight" ||
   contract.capability_preflight?.non_mutating !== true ||
-  contract.capability_preflight?.permission_mapping_owner !== "PageBuilderCapabilityPermissions" ||
+  JSON.stringify(contract.capability_preflight?.permission_mapping_contract) !== JSON.stringify(expectedPermissionMapping) ||
+  contract.capability_preflight?.permission_mapping_reference !== "rustok_page_builder::service::PageBuilderCapabilityPermissions" ||
+  contract.capability_preflight?.permission_mapping_reference_is_source_locked !== true ||
+  contract.capability_preflight?.server_feature_dependency_required_in_pages !== false ||
   contract.capability_preflight?.rollout_guard_owner !== "rustok_page_builder::rollout::ensure_capability" ||
   contract.capability_preflight?.feature_disabled_kind !== "feature-disabled" ||
   contract.capability_preflight?.feature_disabled_code !== "FEATURE_DISABLED"
@@ -138,23 +153,38 @@ for (const marker of [
 
 for (const marker of [
   "pub enum GqlPageBuilderCapability",
+  '#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]',
   "pub struct GqlPageBuilderCapabilityPreflight",
   "async fn page_builder_capability_preflight(",
-  "PageBuilderCapabilityPermissions::default().required_for(capability_kind)",
+  "let required_permission = required_page_builder_permission(capability_kind);",
   "ensure_capability(&flags, capability_kind)",
   "PageBuilderErrorKind::FeatureDisabled.as_str()",
   "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
+  "fn required_page_builder_permission(capability: BuilderCapabilityKind) -> Permission",
+  "BuilderCapabilityKind::Preview | BuilderCapabilityKind::Tree",
+  "Permission::new(Resource::Pages, Action::Read)",
+  "BuilderCapabilityKind::Properties => Permission::new(Resource::Pages, Action::Update)",
+  "BuilderCapabilityKind::Publish => Permission::new(Resource::Pages, Action::Publish)",
 ]) need(owner, marker, "Pages server-owned feature preflight");
-for (const marker of [
-  "save_project(",
-  "render_preview(",
-]) {
-  const start = owner.indexOf("async fn page_builder_capability_preflight(");
-  const end = owner.indexOf("\n    }\n}\n\nasync fn load_rollout_flags", start);
-  const preflight = start >= 0 && end > start ? owner.slice(start, end) : "";
-  forbid(preflight, marker, "non-mutating feature preflight");
+
+const preflightStart = owner.indexOf("async fn page_builder_capability_preflight(");
+const permissionMappingStart = owner.indexOf("\nfn required_page_builder_permission(", preflightStart);
+if (preflightStart < 0 || permissionMappingStart <= preflightStart) {
+  failures.push("non-mutating preflight source slice could not be isolated");
+} else {
+  const preflight = owner.slice(preflightStart, permissionMappingStart);
+  for (const marker of ["save_project(", "render_preview(", ".publish(", "save_document("]) {
+    forbid(preflight, marker, "non-mutating feature preflight");
+  }
 }
 
+for (const marker of [
+  "pub struct PageBuilderCapabilityPermissions",
+  "preview: Permission::new(Resource::Pages, Action::Read)",
+  "tree: Permission::new(Resource::Pages, Action::Read)",
+  "properties: Permission::new(Resource::Pages, Action::Update)",
+  "publish: Permission::new(Resource::Pages, Action::Publish)",
+]) need(service, marker, "Page Builder authorizer permission mapping reference");
 for (const marker of [
   "pub fn ensure_capability(",
   "Err(BuilderRolloutError::CapabilityDisabled(capability.as_str()))",
@@ -164,6 +194,14 @@ for (const marker of [
   "Self::CapabilityDisabled(_) => Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)",
   "ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;",
 ]) need(service, marker, "canonical Page Builder feature-disabled service contract");
+
+for (const marker of [
+  "GqlPageBuilderCapability",
+  "GqlPageBuilderCapabilityPreflight",
+  "GqlPageBuilderRolloutSnapshot",
+]) need(graphqlMod, marker, "Pages GraphQL exports");
+forbid(pagesCargo, 'rustok-page-builder = { workspace = true, default-features = false, features = ["server"]', "Pages Page Builder dependency");
+need(pageBuilderCargo, 'server = ["dep:rustok-api", "dep:rustok-core"]', "Page Builder feature boundary");
 
 if (evidence.format !== "pages_builder_rollout_feature_preflight_harness_source_v1") failures.push("feature preflight source evidence format drifted");
 if (evidence.status !== "pages_builder_rollout_feature_preflight_harness_source_unvalidated") failures.push("feature preflight source evidence status drifted");
@@ -206,6 +244,7 @@ for (const marker of [
   "source-ready / maintainer-execution-pending",
   "feature-disabled / FEATURE_DISABLED",
   "PageBuilderCapabilityPermissions",
+  "source-lock",
   "ensure_capability",
   "browser -> rollout matrix -> feature preflight",
   "No tests, Node verifiers, Cargo commands",
