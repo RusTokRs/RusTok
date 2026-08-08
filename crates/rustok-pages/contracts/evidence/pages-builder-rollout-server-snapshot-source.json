@@ -15,6 +15,7 @@
     "raw_settings_are_not_returned": true,
     "only_builder_capability_flags_are_returned": true,
     "omitted_builder_keys_default_to_all_on_for_backward_compatibility": true,
+    "malformed_setting_types_fail_closed": true,
     "invalid_flag_combinations_fail_closed": true,
     "all_four_declared_profiles_have_source_tests": true,
     "browser_supplied_flags_accepted": false,
