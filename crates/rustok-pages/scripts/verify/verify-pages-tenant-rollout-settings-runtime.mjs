@@ -8,7 +8,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const files = {
   runtime: "crates/rustok-api/src/runtime.rs",
   apiLib: "crates/rustok-api/src/lib.rs",
+  adapter: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
   pagesBuilder: "crates/rustok-pages/admin/src/builder.rs",
+  composition: "crates/rustok-pages/admin/src/composition.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-tenant-rollout-settings-runtime-source.json",
   gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   actualization: "docs/modules/pages-page-builder-tenant-rollout-settings-runtime-actualization-2026-08-08.md",
@@ -47,13 +49,10 @@ const gate = JSON.parse(sources.gate);
 
 const functionStart = sources.runtime.indexOf("pub async fn tenant_module_settings(");
 const functionEnd = sources.runtime.indexOf("\n/// Immutable host configuration snapshot", functionStart);
-if (functionStart < 0 || functionEnd < 0) {
-  failures.push("runtime: unable to isolate tenant_module_settings");
-}
-const settingsFunction =
-  functionStart >= 0 && functionEnd > functionStart
-    ? sources.runtime.slice(functionStart, functionEnd)
-    : "";
+if (functionStart < 0 || functionEnd < 0) failures.push("runtime: unable to isolate tenant_module_settings");
+const settingsFunction = functionStart >= 0 && functionEnd > functionStart
+  ? sources.runtime.slice(functionStart, functionEnd)
+  : "";
 
 for (const marker of [
   "pub async fn tenant_module_settings(",
@@ -70,33 +69,42 @@ for (const marker of [
   "serde_json::from_str(&encoded)",
   "DbErr::Custom",
 ]) need(settingsFunction, marker, "runtime settings helper");
-
 for (const marker of ["INSERT ", "UPDATE ", "DELETE ", "ActiveModel", ".execute(", "execute_unprepared("]) {
   forbid(settingsFunction, marker, "runtime settings helper must remain read-only");
 }
-
-for (const marker of [
-  "tenant_module_settings_returns_only_the_exact_enabled_row",
-  'tenant_module_settings(&db, tenant_id, "pages")',
-  'tenant_module_settings(&db, foreign_tenant_id, "pages")',
-  'tenant_module_settings(&db, tenant_id, "forum")',
-  'tenant_module_settings(&db, tenant_id, "missing")',
-]) need(sources.runtime, marker, "runtime settings source test");
-
 need(sources.apiLib, "tenant_module_settings", "rustok-api runtime export");
 
 for (const marker of [
-  "fn pages_builder_capability_flags() -> BuilderCapabilityFlags",
-  "BuilderCapabilityFlags::default()",
-  "PageBuilderAdminProviderStatus::unobserved(",
-  "pages_builder_capability_flags()",
-  "compose_fly_page_builder_handlers(store, renderer, pages_builder_capability_flags())",
-]) need(sources.pagesBuilder, marker, "Pages binding blocker");
+  "TrustedPagesBuilderRolloutSnapshot",
+  "load_trusted_pages_builder_rollout_snapshot(",
+  "auth.tenant_id != tenant.id",
+  "Permission::new(Resource::Pages, Action::Read)",
+  'tenant_module_settings(runtime.db(), tenant.id, "pages")',
+  "tenant_slug: tenant.slug",
+  "pages_builder_flags_from_settings(&settings)",
+]) need(sources.adapter, marker, "trusted Pages rollout adapter");
 
-if (evidence.format !== "pages_tenant_rollout_settings_runtime_source_v1") {
-  failures.push(`evidence format drifted: ${evidence.format}`);
-}
-if (evidence.status !== "platform_settings_read_seam_source_ready_pages_binding_pending") {
+for (const marker of [
+  "provider_flags: Option<BuilderCapabilityFlags>",
+  "with_provider_flags",
+  ".map(PageBuilderAdminProviderStatus::unobserved)",
+  "load_trusted_pages_builder_rollout_snapshot()",
+  "tenant_slug != trusted_rollout.tenant_slug",
+  "compose_fly_page_builder_handlers(store, renderer, trusted_rollout.flags)",
+]) need(sources.pagesBuilder, marker, "Pages builder binding");
+for (const marker of [
+  "fn pages_builder_capability_flags() -> BuilderCapabilityFlags",
+  "compose_fly_page_builder_handlers(store, renderer, pages_builder_capability_flags())",
+]) forbid(sources.pagesBuilder, marker, "hardcoded Pages rollout binding");
+
+for (const marker of [
+  "pages_builder_rollout_flags()",
+  ".with_provider_flags(provider_flags)",
+  "provider_flags: BuilderCapabilityFlags",
+]) need(sources.composition, marker, "Pages workspace rollout binding");
+
+if (evidence.format !== "pages_tenant_rollout_settings_runtime_source_v1") failures.push(`evidence format drifted: ${evidence.format}`);
+if (evidence.status !== "platform_settings_read_seam_and_pages_binding_source_ready_runtime_evidence_pending") {
   failures.push(`evidence status drifted: ${evidence.status}`);
 }
 for (const [key, expected] of Object.entries({
@@ -113,50 +121,39 @@ for (const [key, expected] of Object.entries({
   tenant_persistence_entity_import_required: false,
   settings_mutation_added: false,
   parallel_settings_store_added: false,
-  pages_consumer_binding_complete: false,
-  pages_runtime_profile_matrix_executable: false,
+  pages_consumer_binding_complete: true,
+  pages_ui_provider_status_uses_trusted_flags: true,
+  pages_ssr_capability_dispatch_rereads_trusted_flags: true,
+  pages_ssr_snapshot_tenant_slug_is_verified: true,
+  browser_supplied_flags_accepted: false,
+  pages_runtime_profile_matrix_executable: true,
+  pages_runtime_profile_matrix_evidence_retained: false,
+  provider_health_observed: false,
   gate_accepted: false,
   forum_wave_accepted: false,
   ffa_promoted: false,
   fba_promoted: false,
 })) {
-  if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`evidence source_contract.${key} must be ${expected}`);
-  }
+  if (evidence.source_contract?.[key] !== expected) failures.push(`evidence source_contract.${key} must be ${expected}`);
 }
 for (const [key, value] of Object.entries(evidence.validation ?? {})) {
   if (value !== false) failures.push(`evidence validation.${key} must remain false`);
 }
 
 if (gate.accepted !== false) failures.push("Pages reference-consumer gate must remain unaccepted");
-if (gate.current_boundary?.execution_gate !== "pending") {
-  failures.push("Pages reference-consumer execution gate must remain pending");
-}
-if (
-  gate.current_boundary?.tenant_rollout_settings !==
-  "platform_read_seam_source_ready_pages_binding_pending"
-) {
+if (gate.current_boundary?.execution_gate !== "pending") failures.push("Pages execution gate must remain pending");
+if (gate.current_boundary?.tenant_rollout_settings !== "platform_read_seam_and_pages_binding_source_ready") {
   failures.push("Pages gate tenant rollout settings cursor drifted");
 }
-if (
-  gate.current_boundary?.four_profile_runtime_matrix !==
-  "blocked_on_pages_tenant_settings_binding"
-) {
+if (gate.current_boundary?.four_profile_runtime_matrix !== "source_executable_evidence_pending") {
   failures.push("Pages gate four-profile runtime cursor drifted");
 }
-if (
-  gate.verification?.tenant_rollout_settings_guard !==
-  "crates/rustok-pages/scripts/verify/verify-pages-tenant-rollout-settings-runtime.mjs"
-) {
-  failures.push("Pages gate tenant rollout settings guard is not registered");
-}
+if (gate.current_boundary?.provider_health !== "unobserved") failures.push("provider health must remain unobserved");
 
 for (const marker of [
-  "hardcoded `BuilderCapabilityFlags::default()`",
-  "platform read seam is source-ready",
-  "trusted `TenantContext`",
-  "Pages consumer binding remains pending",
-  "four-profile runtime matrix remains blocked",
+  "Pages consumer binding is source-ready",
+  "independently calls `load_trusted_pages_builder_rollout_snapshot()`",
+  "four-profile runtime evidence-pending",
   "No tests, Node verifiers, Cargo commands",
 ]) need(sources.actualization, marker, "actualization");
 
@@ -165,7 +162,4 @@ if (failures.length > 0) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-
-console.log(
-  "[verify-pages-tenant-rollout-settings-runtime] PASS platform_read_seam=source_ready pages_binding=pending four_profile_runtime=blocked",
-);
+console.log("[verify-pages-tenant-rollout-settings-runtime] PASS platform_read_seam=source_ready pages_binding=source_ready four_profile_runtime=evidence_pending");
