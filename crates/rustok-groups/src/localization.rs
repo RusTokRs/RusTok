@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, normalize_locale_tag};
@@ -10,12 +8,15 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::domain::{GroupMembershipStatus, GroupRole};
 use crate::dto::{
     DeleteGroupTranslationRequest, DeleteGroupTranslationResult, GroupTranslation,
     GroupTranslationMutationResult, ListGroupTranslationsRequest, UpsertGroupTranslationRequest,
 };
-use crate::entities::{group, membership, translation};
+use crate::effective_membership_guard::{
+    GroupManagerCapability, require_effective_manager_direct_owned,
+    require_effective_manager_owned,
+};
+use crate::entities::{group, translation};
 use crate::error::{GroupsError, GroupsResult};
 use crate::ports::{GroupLocalizationCommandPort, GroupLocalizationReadPort};
 
@@ -191,16 +192,16 @@ impl GroupLocalizationService {
             .one(&self.db)
             .await?
             .ok_or(GroupsError::NotFound)?;
-        if has_platform_manage(context) {
-            return Ok(());
-        }
-        let membership = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(group_id))
-            .filter(membership::Column::UserId.eq(actor_user_id))
-            .one(&self.db)
-            .await?;
-        require_local_manager(membership.as_ref())
+
+        require_effective_manager_direct_owned(
+            &self.db,
+            context,
+            tenant_id,
+            group_id,
+            actor_user_id,
+            GroupManagerCapability::ManageSettings,
+        )
+        .await
     }
 
     async fn require_manage_in_transaction(
@@ -223,16 +224,16 @@ impl GroupLocalizationService {
             }
         }
         .ok_or(GroupsError::NotFound)?;
-        if has_platform_manage(context) {
-            return Ok(group_model);
-        }
-        let membership = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(group_id))
-            .filter(membership::Column::UserId.eq(actor_user_id))
-            .one(transaction)
-            .await?;
-        require_local_manager(membership.as_ref())?;
+
+        require_effective_manager_owned(
+            transaction,
+            context,
+            tenant_id,
+            group_id,
+            actor_user_id,
+            GroupManagerCapability::ManageSettings,
+        )
+        .await?;
         Ok(group_model)
     }
 }
@@ -270,20 +271,6 @@ impl GroupLocalizationCommandPort for GroupLocalizationService {
         self.delete_group_translation_owned(&context, request)
             .await
             .map_err(Into::into)
-    }
-}
-
-fn require_local_manager(model: Option<&membership::Model>) -> GroupsResult<()> {
-    let allowed = model
-        .filter(|row| row.status == GroupMembershipStatus::Active.as_str())
-        .and_then(|row| GroupRole::from_str(&row.role).ok())
-        .is_some_and(GroupRole::can_manage_settings);
-    if allowed {
-        Ok(())
-    } else {
-        Err(GroupsError::Forbidden(
-            "group owner or administrator role is required".to_string(),
-        ))
     }
 }
 
@@ -364,11 +351,4 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
     }
     Uuid::parse_str(&context.actor.id)
         .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))
-}
-
-fn has_platform_manage(context: &PortContext) -> bool {
-    context
-        .claims
-        .iter()
-        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
 }
