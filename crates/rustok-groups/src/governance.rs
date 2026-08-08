@@ -294,7 +294,16 @@ impl GroupGovernanceService {
         }
 
         let now = Utc::now();
-        if !platform_manage {
+        if platform_manage {
+            validate_platform_recovery_owner_state(
+                &transaction,
+                tenant_id,
+                request.group_id,
+                previous_owner_id,
+                now,
+            )
+            .await?;
+        } else {
             let actor_role = effective_manager_role(
                 &transaction,
                 tenant_id,
@@ -559,6 +568,30 @@ async fn effective_governance_role(
         }),
         _ => Err(GroupsError::Conflict(
             "an active group membership is required".to_string(),
+        )),
+    }
+}
+
+async fn validate_platform_recovery_owner_state(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    owner_user_id: Uuid,
+    now: chrono::DateTime<Utc>,
+) -> GroupsResult<()> {
+    let state = resolve_group_membership_enforcement(
+        transaction,
+        tenant_id,
+        group_id,
+        owner_user_id,
+        now,
+    )
+    .await?;
+    match state.effective_status {
+        GroupMembershipEffectiveStatus::Active | GroupMembershipEffectiveStatus::Suspended => Ok(()),
+        GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::MembershipBanned),
+        _ => Err(GroupsError::Invariant(
+            "current group owner effective membership is not recoverable".to_string(),
         )),
     }
 }
