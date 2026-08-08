@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-08-08",
-  "status": "product_lifecycle_static_corequisite_selection_enforced_unvalidated",
-  "source_base_revision": "0ae8f7f4382a4218107c43a4e1e6f1e5b957a84e",
+  "status": "product_lifecycle_tenant_corequisite_host_guard_source_complete_unvalidated",
+  "source_base_revision": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
   "scope": "Product create/delete transaction collaboration with Inventory and Pricing owners",
   "module_topology": {
     "product_dependencies": [
@@ -21,9 +21,12 @@
     "ordinary_reverse_dependencies_forbidden": true,
     "co_requisites_are_ordering_dependencies": false,
     "static_default_selection_enforcement_source_complete": true,
+    "tenant_lifecycle_corequisite_guard_source_complete": true,
+    "effective_policy_corequisite_guard_source_complete": true,
+    "canonical_policy_revision_corequisite_identity_source_complete": false,
     "co_requisite_control_plane_execution_proven": false,
-    "tenant_lifecycle_corequisite_enforcement_proven": false,
-    "reason": "Static startup validates selected Product co-requisites separately from ordinary dependencies so Inventory/Pricing remain owner modules without a dependency-order cycle",
+    "tenant_lifecycle_corequisite_execution_proven": false,
+    "reason": "Static selection and tenant host guards consume Product co-requisites separately from ordinary dependencies; canonical owner policy revision/explanation integration remains open",
     "default_enabled_bundle": [
       "product",
       "pricing",
@@ -68,14 +71,16 @@
     "containment_complete": true,
     "corequisite_contract_declared": true,
     "static_default_selection_enforcement_source_complete": true,
+    "tenant_lifecycle_corequisite_guard_source_complete": true,
+    "effective_policy_corequisite_guard_source_complete": true,
     "dependency_contract_resolved": false,
-    "next_slice": "Apply Product co-requisite semantics to tenant lifecycle/effective-policy selection without adding dependency-order edges, then prove non-default Product activation and rollback",
+    "next_slice": "Include Product co-requisite availability in canonical modules-owner effective-policy revision/cache identity and explicit decision explanation without adding dependency-order edges; then retain execution evidence",
     "do_not": [
       "add inventory or pricing to Product ordinary module dependencies",
       "move Inventory or Pricing ORM entities into Product",
       "replace atomic owner collaboration with unproven best-effort post-commit writes",
       "claim standalone Product write activation",
-      "claim tenant co-requisite enforcement before lifecycle/effective policy consumes the contract"
+      "claim canonical policy-revision integration before the modules owner hashes and explains co-requisites"
     ]
   },
   "validation": {
@@ -86,6 +91,9 @@
     "workflow_checks_run": false,
     "ci_run": false,
     "static_default_selection_execution_proven": false,
+    "tenant_lifecycle_execution_proven": false,
+    "effective_policy_guard_execution_proven": false,
+    "policy_cache_identity_execution_proven": false,
     "standalone_activation_proven": false,
     "non_default_deployment_selection_proven": false,
     "transaction_rollback_proven": false
