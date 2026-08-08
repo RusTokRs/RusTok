@@ -116,6 +116,7 @@ const resolvers = [
   ["product_attributes", "catalog_categories", ".list_attributes("],
   ["catalog_categories", "product_attribute_schemas", ".list_categories("],
   ["product_attribute_schemas", "product_effective_form", ".list_schemas("],
+  ["product_effective_form", "product_attribute_values", ".read_effective_form("],
 ];
 for (const [name, nextName, ownerCall] of resolvers) {
   const resolver = resolverSlice(commerceQuery, name, nextName);
@@ -142,16 +143,17 @@ const effectiveForm = resolverSlice(
   "product_effective_form",
   "product_attribute_values",
 );
-requireText(
-  effectiveForm,
-  "ProductCatalogSchemaService::new",
-  "productEffectiveForm consumer cutover must remain explicit follow-up debt in this capability slice",
-);
-forbidText(
-  effectiveForm,
-  ".read_effective_form(",
-  "productEffectiveForm must not be marked cut over by the capability-only source guard",
-);
+for (const required of [
+  "rustok_product::ProductEffectiveFormSubject::Product",
+  "rustok_product::ProductEffectiveFormSubject::Category",
+  "rustok_product::ProductEffectiveFormRequest",
+]) {
+  requireText(
+    effectiveForm,
+    required,
+    `productEffectiveForm owner-port cutover must contain ${required}`,
+  );
+}
 
 const attributeValues = resolverSlice(
   commerceQuery,
@@ -161,12 +163,12 @@ const attributeValues = resolverSlice(
 requireText(
   attributeValues,
   "ProductCatalogSchemaService::new",
-  "productAttributeValues consumer cutover must remain explicit follow-up debt in this capability slice",
+  "productAttributeValues consumer cutover must remain explicit follow-up debt in this slice",
 );
 forbidText(
   attributeValues,
   ".read_product_attribute_values(",
-  "productAttributeValues must not be marked cut over by the capability-only source guard",
+  "productAttributeValues must not be marked cut over before its consumer slice",
 );
 
 if (!process.exitCode) {

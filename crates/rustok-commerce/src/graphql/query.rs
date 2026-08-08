@@ -1742,7 +1742,7 @@ impl CommerceQuery {
     ) -> Result<Option<GqlProductEffectiveForm>> {
         require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         let tenant_id = product_query_tenant(ctx, tenant_id)?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
             "Permission denied: products:read required",
@@ -1750,96 +1750,73 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
         let locale = locale.trim();
-        let form = match (product_id, category_id) {
-            (Some(product_id), _) => service
-                .load_effective_form_for_product(tenant_id, product_id)
-                .await
-                .map_err(|error| map_product_service_error(error, "product_query"))?,
-            (None, Some(category_id)) => Some(
-                service
-                    .load_effective_form_for_category(tenant_id, category_id, &[])
-                    .await
-                    .map_err(|error| map_product_service_error(error, "product_query"))?,
-            ),
+        let subject = match (product_id, category_id) {
+            (Some(product_id), _) => {
+                rustok_product::ProductEffectiveFormSubject::Product { product_id }
+            }
+            (None, Some(category_id)) => {
+                rustok_product::ProductEffectiveFormSubject::Category { category_id }
+            }
             (None, None) => {
                 return Err(async_graphql::Error::new(
                     "Either product_id or category_id is required",
                 ));
             }
         };
+        let port_context = product_schema_read_port_context(
+            ctx,
+            tenant_id,
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+            locale,
+            "product_effective_form",
+        );
+        let schema_read_port =
+            product_schema_read_port(db, event_bus, &port_context, "product_effective_form")?;
+        let form = schema_read_port
+            .read_effective_form(
+                port_context.clone(),
+                rustok_product::ProductEffectiveFormRequest { subject },
+            )
+            .await
+            .map_err(|error| {
+                FieldError::from(crate::graphql::product_catalog::product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "product_effective_form",
+                ))
+            })?;
         let Some(form) = form else {
             return Ok(None);
         };
-        let group_labels = service
-            .load_effective_form_group_labels(tenant_id, form.category_id, locale)
-            .await
-            .map_err(|error| map_product_service_error(error, "product_query"))?;
-
-        let definitions = service
-            .list_attributes(tenant_id, locale)
-            .await
-            .map_err(|error| map_product_service_error(error, "product_query"))?
-            .into_iter()
-            .map(|attribute| (attribute.id, attribute))
-            .collect::<HashMap<_, _>>();
-        let effective_attribute_ids = form
-            .attributes
-            .iter()
-            .map(|binding| binding.attribute_id)
-            .collect::<Vec<_>>();
-        let mut options_by_attribute = service
-            .list_attribute_options(tenant_id, &effective_attribute_ids, locale)
-            .await
-            .map_err(|error| map_product_service_error(error, "product_query"))?
-            .into_iter()
-            .fold(
-                HashMap::<Uuid, Vec<GqlProductAttributeOption>>::new(),
-                |mut map, option| {
-                    map.entry(option.attribute_id)
-                        .or_default()
-                        .push(GqlProductAttributeOption {
-                            id: option.id,
-                            code: option.code,
-                            label: option.label,
-                            position: option.position,
-                        });
-                    map
-                },
-            );
 
         let attributes = form
             .attributes
             .into_iter()
-            .map(|binding| {
-                let definition = definitions.get(&binding.attribute_id).ok_or_else(|| {
-                    async_graphql::Error::new(format!(
-                        "attribute definition {} is missing",
-                        binding.attribute_id
-                    ))
-                })?;
-                Ok(GqlProductEffectiveFormAttribute {
-                    attribute_id: binding.attribute_id,
-                    code: definition.code.clone(),
-                    label: definition.label.clone(),
-                    value_type: definition.value_type.as_str().to_string(),
-                    is_localized: definition.is_localized,
-                    options: options_by_attribute
-                        .remove(&binding.attribute_id)
-                        .unwrap_or_default(),
-                    group_label: binding
-                        .group_code
-                        .as_ref()
-                        .and_then(|code| group_labels.get(code).cloned()),
-                    group_code: binding.group_code,
-                    is_required: binding.is_required,
-                    is_disabled: binding.is_disabled,
-                    position: binding.position,
-                    source: effective_attribute_source_name(binding.source).to_string(),
-                })
+            .map(|attribute| GqlProductEffectiveFormAttribute {
+                attribute_id: attribute.attribute_id,
+                code: attribute.code,
+                label: attribute.label,
+                value_type: attribute.value_type.as_str().to_string(),
+                is_localized: attribute.is_localized,
+                options: attribute
+                    .options
+                    .into_iter()
+                    .map(|option| GqlProductAttributeOption {
+                        id: option.id,
+                        code: option.code,
+                        label: option.label,
+                        position: option.position,
+                    })
+                    .collect(),
+                group_code: attribute.group_code,
+                group_label: attribute.group_label,
+                is_required: attribute.is_required,
+                is_disabled: attribute.is_disabled,
+                position: attribute.position,
+                source: effective_attribute_source_name(attribute.source).to_string(),
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect();
 
         Ok(Some(GqlProductEffectiveForm {
             category_id: form.category_id,
