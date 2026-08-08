@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
@@ -499,9 +499,13 @@ pub async fn update_product(
     delete,
     path = "/admin/products/{id}",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Product ID")),
+    params(
+        ("id" = Uuid, Path, description = "Product ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable identity for this logical lifecycle command, maximum 191 bytes")
+    ),
     responses(
         (status = 204, description = "Product deleted successfully"),
+        (status = 400, description = "Missing or invalid idempotency key"),
         (status = 401, description = "Unauthorized")
     )
 )]
@@ -509,9 +513,19 @@ pub async fn delete_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
     path: Path<Uuid>,
 ) -> HttpResult<StatusCode> {
-    super::super::products::delete_product(state, tenant, auth, path).await
+    super::super::products::delete_product(
+        state,
+        tenant,
+        auth,
+        request_context,
+        headers,
+        path,
+    )
+    .await
 }
 
 /// Publish admin ecommerce product
@@ -519,9 +533,13 @@ pub async fn delete_product(
     post,
     path = "/admin/products/{id}/publish",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Product ID")),
+    params(
+        ("id" = Uuid, Path, description = "Product ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable identity for this logical lifecycle command, maximum 191 bytes")
+    ),
     responses(
         (status = 200, description = "Product published successfully", body = ProductResponse),
+        (status = 400, description = "Missing or invalid idempotency key"),
         (status = 401, description = "Unauthorized")
     )
 )]
@@ -529,9 +547,19 @@ pub async fn publish_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::publish_product(state, tenant, auth, path).await
+    super::super::products::publish_product(
+        state,
+        tenant,
+        auth,
+        request_context,
+        headers,
+        path,
+    )
+    .await
 }
 
 /// Unpublish admin ecommerce product
@@ -539,9 +567,13 @@ pub async fn publish_product(
     post,
     path = "/admin/products/{id}/unpublish",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Product ID")),
+    params(
+        ("id" = Uuid, Path, description = "Product ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable identity for this logical lifecycle command, maximum 191 bytes")
+    ),
     responses(
         (status = 200, description = "Product unpublished successfully", body = ProductResponse),
+        (status = 400, description = "Missing or invalid idempotency key"),
         (status = 401, description = "Unauthorized")
     )
 )]
@@ -549,7 +581,17 @@ pub async fn unpublish_product(
     state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::unpublish_product(state, tenant, auth, path).await
+    super::super::products::unpublish_product(
+        state,
+        tenant,
+        auth,
+        request_context,
+        headers,
+        path,
+    )
+    .await
 }

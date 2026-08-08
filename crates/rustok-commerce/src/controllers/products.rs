@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::Permission;
 use rustok_api::locale_tags_match;
@@ -32,6 +32,7 @@ use super::common::{PaginatedResponse, PaginationMeta, PaginationParams, ensure_
 
 const ADMIN_PRODUCT_OWNER: &str = "rustok_product.catalog";
 const ADMIN_PRODUCT_BOUNDARY: &str = "commerce_admin_product_http";
+const MAX_ADMIN_PRODUCT_LIFECYCLE_KEY_LENGTH: usize = 191;
 
 type AdminProductHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
@@ -208,6 +209,45 @@ pub(crate) fn admin_product_command_idempotency_key<T: Serialize>(
         digest.update(product_id.as_bytes());
     }
     digest.update(payload);
+    Ok(format!(
+        "commerce-admin-product:{operation}:{}",
+        hex::encode(digest.finalize())
+    ))
+}
+
+pub(crate) fn admin_product_lifecycle_idempotency_key(
+    headers: &HeaderMap,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    product_id: Uuid,
+    operation: &'static str,
+) -> HttpResult<String> {
+    let caller_key = headers
+        .get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            HttpError::bad_request(
+                "product_idempotency_key_required",
+                "Idempotency-Key header is required",
+            )
+        })?;
+    if caller_key.len() > MAX_ADMIN_PRODUCT_LIFECYCLE_KEY_LENGTH {
+        return Err(HttpError::bad_request(
+            "product_idempotency_key_invalid",
+            format!(
+                "Idempotency-Key must contain at most {MAX_ADMIN_PRODUCT_LIFECYCLE_KEY_LENGTH} bytes"
+            ),
+        ));
+    }
+
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(actor_id.as_bytes());
+    digest.update(product_id.as_bytes());
+    digest.update(operation.as_bytes());
+    digest.update(caller_key.as_bytes());
     Ok(format!(
         "commerce-admin-product:{operation}:{}",
         hex::encode(digest.finalize())
@@ -543,6 +583,8 @@ pub async fn delete_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
     ensure_permissions(
@@ -551,13 +593,23 @@ pub async fn delete_product(
         "Permission denied: products:delete required",
     )?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    service
-        .delete_product(tenant.id, auth.user_id, id)
+    let idempotency_key = admin_product_lifecycle_idempotency_key(
+        &headers,
+        tenant.id,
+        auth.user_id,
+        id,
+        "delete_product",
+    )?;
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+    runtime
+        .product_catalog_command_port()
+        .delete_product(port_context.clone(), id)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "delete_product"),
+                &port_context,
                 error,
             )
         })?;
@@ -570,6 +622,8 @@ pub async fn publish_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
@@ -578,13 +632,23 @@ pub async fn publish_product(
         "Permission denied: products:update required",
     )?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .publish_product(tenant.id, auth.user_id, id)
+    let idempotency_key = admin_product_lifecycle_idempotency_key(
+        &headers,
+        tenant.id,
+        auth.user_id,
+        id,
+        "publish_product",
+    )?;
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+    let product = runtime
+        .product_catalog_command_port()
+        .publish_product(port_context.clone(), id)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "publish_product"),
+                &port_context,
                 error,
             )
         })?;
@@ -597,6 +661,8 @@ pub async fn unpublish_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
@@ -605,18 +671,28 @@ pub async fn unpublish_product(
         "Permission denied: products:update required",
     )?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .unpublish_product(tenant.id, auth.user_id, id)
+    let idempotency_key = admin_product_lifecycle_idempotency_key(
+        &headers,
+        tenant.id,
+        auth.user_id,
+        id,
+        "unpublish_product",
+    )?;
+    let port_context =
+        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+    let product = runtime
+        .product_catalog_command_port()
+        .unpublish_product(port_context.clone(), id)
         .await
         .map_err(|error| {
-            map_admin_product_error(
+            map_admin_product_port_error(
                 AdminProductErrorContext::new(
                     tenant.id,
                     auth.user_id,
                     Some(id),
                     "unpublish_product",
                 ),
+                &port_context,
                 error,
             )
         })?;

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Rechecked the canonical ecommerce execution plan and the currently mounted Product GraphQL read paths against `main` at `fe0bddc83c7f81431c731e823fe87ef9b558f807`, then continued the Product schema-read and legacy catalog-read cutover through the current implementation branch.
+Rechecked the canonical ecommerce execution plan and the currently mounted Product GraphQL/HTTP paths against `main` at `26d6e340ee6d1be462f29da6b95b6539458b843f`, then continued the Product owner-boundary cutover through the current implementation branch.
 
 The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`. This packet does not promote FBA/FFA or verification status and does not replace that plan.
 
@@ -12,8 +12,9 @@ The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`
 2. PR #3203 published `ProductCatalogSchemaReadPort::read_product_attribute_values`, and mounted `productAttributeValues` is now cut over to that owner capability.
 3. `storefrontCatalogSearchOptions` was the remaining mounted direct `ProductCatalogSchemaService` schema-read consumer. Its current projection needs only categories and filterable/sortable attributes, so the already-published `list_categories` and `list_attributes` owner capabilities preserve the existing data and ordering semantics without a new Product projection.
 4. The active `CommerceQueryRoot` mounts both `query::CommerceQuery` and `product_catalog::ProductCatalogQuery`. The newer `adminProductCatalog`/`storefrontProductCatalog` paths already use `ProductCatalogReadRuntime`, and the mounted legacy admin `product`/`products` roots are cut over to the Product owner read runtime.
-5. PR #3238 published optional fail-closed legacy storefront detail/list capabilities without changing mounted serving. The continuation below cuts mounted `storefrontProduct` / `storefrontProducts` to those capabilities, so these production reads no longer choose Product lifecycle/channel/inventory policy or query Product entities directly.
-6. The broad ecommerce owner-boundary invariant remains open because Product schema writes, REST delete/publish/unpublish lifecycle commands, and remaining GraphQL Product lifecycle operations still require owner-port cutover and explicit idempotency contracts. Source inspection does not justify a status promotion.
+5. PR #3238 published optional fail-closed legacy storefront detail/list capabilities without changing mounted serving. Mounted `storefrontProduct` / `storefrontProducts` are now cut to those capabilities, so these production reads no longer choose Product lifecycle/channel/inventory policy or query Product entities directly.
+6. `CommerceHttpRuntime` already host-composes `ProductCatalogCommandRuntime`, and Product already publishes typed `delete_product`, `publish_product`, and `unpublish_product` command methods. The mounted REST lifecycle handlers were still bypassing that runtime through direct `CatalogService` construction and did not have an explicit caller retry identity.
+7. The continuation below cuts REST delete/publish/unpublish to the host-selected Product command port and introduces an explicit caller-provided `Idempotency-Key` contract for those repeatable lifecycle calls. The broad ecommerce owner-boundary invariant remains open because Product GraphQL lifecycle operations and schema writes still require owner-port cutover. Source inspection does not justify a status promotion.
 
 ## PR #3203 source change
 
@@ -61,11 +62,22 @@ The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`
 - Extend `verify-commerce-product-storefront-graphql-read.mjs` so the mounted detail/list slices require the host-selected runtime and new owner capabilities and forbid the previous direct `CatalogService`, Product entity, visibility SQL, translation-search, and inventory-enrichment calls inside those serving resolver slices.
 - Keep the old private Commerce list helper as unmounted compatibility source in this source-only slice; its cleanup remains separate from the mounted serving cutover and should follow compile/evidence work.
 
+## REST Product lifecycle continuation
+
+- Require a non-empty caller-provided `Idempotency-Key` header of at most 191 bytes for mounted admin REST delete, publish, and unpublish operations. The key identifies one logical lifecycle invocation and must not be reused for a distinct later invocation.
+- Scope-hash the caller key with tenant, authenticated actor, product id, and lifecycle operation before placing it into `PortContext`, so equal caller keys on different products or operations cannot alias owner command identity.
+- Build the existing bounded Product command context with authenticated actor, request locale, request channel, explicit idempotency key, and two-second deadline.
+- Cut shared mounted REST delete/publish/unpublish handlers from direct `CatalogService` construction to `CommerceHttpRuntime::product_catalog_command_port()` and Product's typed `delete_product`, `publish_product`, and `unpublish_product` commands.
+- Preserve Product permission admission, delete `204 No Content`, publish/unpublish Product response envelopes, lifecycle conflict/not-found/storage failure mapping, and correlation-aware stable public owner errors.
+- Expose the required `Idempotency-Key` contract in the mounted admin OpenAPI declarations and forward `RequestContext`/headers through the route wrappers.
+- Add `verify-commerce-product-rest-lifecycle-command-cutover.mjs` to lock the source contract: host-composed runtime, caller identity scoping, mounted forwarding, typed owner calls, and no direct `CatalogService` use inside the three lifecycle handler slices.
+
 ## Remaining execution order
 
-1. Continue remaining Product schema writes and Product lifecycle command cutovers from the canonical ecommerce plan, including REST delete/publish/unpublish and remaining GraphQL lifecycle operations. Repeatable commands require explicit caller idempotency semantics before cutover.
-2. Remove superseded private Product read compatibility helpers only after compile/source evidence confirms there are no remaining consumers.
-3. Only after the source cutovers, run the plan-listed static, compile, parity, remote-profile, restart, and backend evidence before changing promotion status.
+1. Cut remaining mounted GraphQL Product create/update/publish/delete operations to host-composed Product command capabilities with an explicit GraphQL caller idempotency contract.
+2. Cut Product schema writes away from direct `ProductCatalogSchemaService` construction through typed owner write capabilities.
+3. Remove superseded private Product read compatibility helpers only after compile/source evidence confirms there are no remaining consumers.
+4. Only after the source cutovers, run the plan-listed static, compile, parity, remote-profile, restart, and backend evidence before changing promotion status.
 
 ## Verification state
 
