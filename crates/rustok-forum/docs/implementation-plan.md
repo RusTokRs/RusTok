@@ -303,7 +303,7 @@ optional owner selection and host materialization boundary.
 
 The Reactions-disabled Forum composition remains valid: Forum commands and reads
 continue without owner storage or a materialized reaction registry. Reactions
-without Forum or Blog materializes an empty registry; Forum with Reactions
+without Forum or Blog materializes an empty source registry; Forum with Reactions
 materializes the `forum` source with `topic` and `reply` kinds. Blog is the
 second real producer and materializes the `blog` source with `post` while using
 Blog-owned positive version, `published` lifecycle and typed channel visibility.
