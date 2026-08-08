@@ -1,8 +1,8 @@
 {
   "format": "pages_builder_rollout_server_snapshot_source_v1",
-  "status": "trusted_server_snapshot_source_ready_ui_dispatch_binding_pending",
+  "status": "trusted_server_snapshot_source_ready_ui_and_ssr_binding_complete_runtime_evidence_pending",
   "prepared_on": "2026-08-08",
-  "source_base": "0ae8f7f4382a4218107c43a4e1e6f1e5b957a84e",
+  "source_base": "488803a831e725ef0fbeaa8540f09458ee461b85",
   "source_contract": {
     "server_endpoint": "/api/fn/pages/builder-rollout-flags",
     "tenant_context_is_server_extracted": true,
@@ -20,9 +20,15 @@
     "all_four_declared_profiles_have_source_tests": true,
     "browser_supplied_flags_accepted": false,
     "settings_mutation_added": false,
-    "pages_ui_facade_binding_complete": false,
-    "pages_ssr_dispatch_binding_complete": false,
-    "four_profile_runtime_matrix_executable": false,
+    "pages_ui_facade_binding_complete": true,
+    "pages_ui_facade_uses_server_owned_flags": true,
+    "pages_ssr_dispatch_binding_complete": true,
+    "pages_ssr_dispatch_rereads_trusted_snapshot_per_request": true,
+    "pages_ssr_snapshot_tenant_slug_must_match_request_snapshot": true,
+    "hardcoded_all_on_consumer_binding_removed": true,
+    "four_profile_runtime_matrix_executable": true,
+    "four_profile_runtime_evidence_retained": false,
+    "provider_health_observed": false,
     "gate_accepted": false,
     "forum_wave_accepted": false,
     "ffa_promoted": false,
@@ -38,5 +44,5 @@
     "browser_run": false,
     "workflow_or_ci_run": false
   },
-  "next_cursor": "consume pages_builder_rollout_flags in the Pages admin workspace and independently re-read the trusted snapshot in authoritative Page Builder SSR dispatch"
+  "next_cursor": "retain and maintainer-execute the exact-source four-profile Pages runtime matrix; do not advance owner sign-off until all_on, publish_off, preview_off and builder_off evidence plus Pages-owned reads are accepted"
 }
