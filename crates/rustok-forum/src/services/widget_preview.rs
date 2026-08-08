@@ -11,6 +11,8 @@ use crate::dto::{
     PreviewForumWidgetInput, ValidateForumWidgetPropsInput,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::services::topic::TopicService as TopicPersistenceService;
+use crate::services::topic_visibility::ForumTopicVisibilityService;
 use crate::services::widget_contract::{
     FORUM_WIDGET_CONTRACT_VERSION, FORUM_WIDGET_TYPE_REPLY_STREAM,
     FORUM_WIDGET_TYPE_TOPIC_DETAIL, FORUM_WIDGET_TYPE_TOPIC_LIST, ForumWidgetContractService,
@@ -121,19 +123,26 @@ impl ForumWidgetPreviewService {
         let per_page = required_u64(props, "per_page")?;
         let include_pinned = required_bool(props, "include_pinned")?;
         let sort = required_string(props, "sort")?;
-        let (items, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
-            .list_widget_preview_with_locale_fallback(
-                tenant_id,
-                security,
-                category_id,
-                page,
-                per_page,
-                include_pinned,
-                sort,
-                locale,
-                fallback_locale,
-            )
+        let hidden_category_ids = ForumTopicVisibilityService::new(self.db.clone())
+            .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
+        let (items, total) = TopicPersistenceService::new(
+            self.db.clone(),
+            self.event_bus.clone(),
+        )
+        .list_widget_preview_with_locale_fallback_and_hidden_categories(
+            tenant_id,
+            security,
+            category_id,
+            page,
+            per_page,
+            include_pinned,
+            sort,
+            locale,
+            fallback_locale,
+            &hidden_category_ids,
+        )
+        .await?;
 
         Ok(ForumTopicListWidgetPreview {
             items,
