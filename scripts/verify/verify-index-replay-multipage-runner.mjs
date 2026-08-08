@@ -133,8 +133,9 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-multipage-runner.md', [
   'a `pending` job becomes terminal `cancelled` immediately',
   'cancel_requested = FALSE',
   'A running cancellation request survives lease expiry and reclaim.',
-  'server-owned `StopHandle`',
-  'maintainer-run',
+  'Server shutdown binding',
+  '`StopHandle::is_stopping`',
+  'execution evidence remains maintainer-owned',
 ]);
 
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
@@ -150,4 +151,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-replay-contract.mjs'",
 ]);
 
-console.log('[verify-index-replay-multipage-runner] ordinary replay/cancel semantics remain stable while host-probed interruption is isolated in a separate extension');
+console.log('[verify-index-replay-multipage-runner] ordinary replay/cancel semantics remain stable while the separate interruptible path is bound to server shutdown through lifecycle-neutral runtime/operator probes');
