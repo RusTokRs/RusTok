@@ -533,6 +533,7 @@ provider = "fly.builtin"
             Some(&"1".to_string())
         );
         assert_eq!(normalized.role("landing").expect("role").surface, "admin");
+        assert!(normalized.manifest_json().unwrap().contains("\"module_id\":\"pages\""));
         let metadata = normalized.admin[0]
             .get("metadata")
             .and_then(serde_json::Value::as_object)

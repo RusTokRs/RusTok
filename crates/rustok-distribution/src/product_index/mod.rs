@@ -10,7 +10,9 @@ mod product;
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
 mod query_admission;
 pub(crate) mod relation_admission;
+#[cfg(test)]
 mod storefront_budgeted_execution;
+#[cfg(test)]
 pub(crate) use storefront_budgeted_execution::{
     ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedProjectionError,
     ProductStorefrontIndexBudgetedProjectionExecutor, ProductStorefrontIndexBudgetedStartError,
@@ -18,21 +20,29 @@ pub(crate) use storefront_budgeted_execution::{
 };
 #[cfg(test)]
 mod storefront_budgeted_execution_tests;
+#[cfg(test)]
 mod storefront_projection;
+#[cfg(test)]
 pub(crate) use storefront_projection::{
     ProductStorefrontIndexPublicProjectionError, project_product_storefront_index_page,
 };
+#[cfg(test)]
 mod storefront_serving_budget;
+#[cfg(test)]
 pub(crate) use storefront_serving_budget::{
     ProductStorefrontIndexServingBudget, ProductStorefrontIndexServingBudgetDecision,
     ProductStorefrontIndexServingBudgetError, ProductStorefrontIndexServingBudgetObservation,
     classify_product_storefront_index_serving_budget,
 };
+#[cfg(test)]
 mod storefront_shadow;
+#[cfg(test)]
 pub(crate) use storefront_shadow::{
     ProductStorefrontIndexShadowError, build_product_storefront_index_shadow_query,
 };
+#[cfg(test)]
 mod storefront_shadow_executor;
+#[cfg(test)]
 pub(crate) use storefront_shadow_executor::{
     ProductStorefrontIndexChannelScopeDecision, ProductStorefrontIndexPageScopeDecision,
     ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecution,

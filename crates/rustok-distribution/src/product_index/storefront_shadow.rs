@@ -270,16 +270,16 @@ fn root_field(name: &str) -> Result<FieldPath, ProductStorefrontIndexShadowError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_product::{ProductAttributeFilter, ProductResolvedAttributeFilter};
+    use rustok_product::ProductResolvedAttributeFilter;
 
     fn owner_query(direction: StorefrontProductSortDirection) -> StorefrontProductListQuery {
         StorefrontProductListQuery::try_from_transport_with_attribute_filters(
             Some(" phone ".to_owned()),
-            Some(Uuid::new_v4()),
-            Some("published_at"),
+            Some(Uuid::new_v4().to_string()),
+            Some("published_at".to_owned()),
             Some(match direction {
-                StorefrontProductSortDirection::Asc => "asc",
-                StorefrontProductSortDirection::Desc => "desc",
+                StorefrontProductSortDirection::Asc => "asc".to_owned(),
+                StorefrontProductSortDirection::Desc => "desc".to_owned(),
             }),
             vec!["brand=acme".to_owned()],
         )

@@ -210,7 +210,7 @@ async fn execute(
         .await
 }
 
-fn projected_string(page: &IndexQueryPage, field_name: &str) -> Option<&str> {
+fn projected_string<'a>(page: &'a IndexQueryPage, field_name: &str) -> Option<&'a str> {
     let item = page.items.first()?;
     item.fields.iter().find_map(|projected| {
         (projected.path.links().is_empty() && projected.path.field().as_str() == field_name)

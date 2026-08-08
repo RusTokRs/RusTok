@@ -8,13 +8,6 @@ pub(crate) mod types {
     pub(crate) use super::super::types::*;
 }
 
-pub(crate) fn map_product_service_error(
-    error: rustok_product::CommerceError,
-    operation: &'static str,
-) -> query_error_boundary::BoundaryError {
-    super::map_product_service_error(error, operation).into()
-}
-
 pub(crate) fn product_query_tenant(
     ctx: &::async_graphql::Context<'_>,
     requested_tenant_id: uuid::Uuid,

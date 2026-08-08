@@ -32,6 +32,36 @@ impl GroupsService {
         Self { db }
     }
 
+    pub async fn lock_membership_enforcement_target_by_id(
+        &self,
+        tenant_id: Uuid,
+        membership_id: Uuid,
+    ) -> GroupsResult<Option<GroupMembershipEffectiveState>> {
+        let transaction = self.db.begin().await?;
+        let target = crate::membership_enforcement_transaction::lock_membership_enforcement_target_by_id_for_update(
+            &transaction,
+            tenant_id,
+            membership_id,
+        )
+        .await?;
+        let result = if let Some(target) = target {
+            Some(
+                crate::membership_enforcement::resolve_group_membership_enforcement(
+                    &transaction,
+                    tenant_id,
+                    target.group.id,
+                    target.membership.user_id,
+                    Utc::now(),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        transaction.commit().await?;
+        Ok(result)
+    }
+
     async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
         group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
@@ -989,5 +1019,15 @@ mod tests {
         assert!(normalize_language_agnostic_metadata(json!({"flags": ["featured"]})).is_ok());
         assert!(normalize_language_agnostic_metadata(json!({"title": "Localized copy"})).is_err());
         assert!(normalize_language_agnostic_metadata(json!({"translations": {"ru": {}}})).is_err());
+    }
+
+    #[tokio::test]
+    async fn lock_membership_enforcement_target_by_id_returns_none_or_err() {
+        let db = DatabaseConnection::Disconnected;
+        let service = GroupsService::new(db);
+        let result = service
+            .lock_membership_enforcement_target_by_id(Uuid::new_v4(), Uuid::new_v4())
+            .await;
+        assert!(result.is_err());
     }
 }

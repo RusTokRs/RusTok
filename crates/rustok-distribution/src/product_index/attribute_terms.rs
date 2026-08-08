@@ -276,6 +276,14 @@ mod tests {
             "00000000-0000-0000-0000-000000000001|text||417c62"
         );
         assert_eq!(
+            integer_term(attribute_id, 42).unwrap(),
+            "00000000-0000-0000-0000-000000000001|integer||3432"
+        );
+        assert_eq!(
+            date_term(attribute_id, NaiveDate::from_ymd_opt(2026, 8, 8).unwrap()).unwrap(),
+            "00000000-0000-0000-0000-000000000001|date||323032362d30382d3038"
+        );
+        assert_eq!(
             decimal_term(attribute_id, Decimal::new(12_300, 3)).unwrap(),
             "00000000-0000-0000-0000-000000000001|decimal||31322e33"
         );

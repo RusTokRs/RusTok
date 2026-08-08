@@ -23,3 +23,6 @@ uuid.workspace = true
 [features]
 default = []
 graphql = ["dep:async-graphql", "rustok-api/server"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

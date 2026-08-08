@@ -4,6 +4,7 @@ use rustok_page_builder::browser_host::{
     PageBuilderBrowserModuleOptions, page_builder_browser_module,
 };
 
+#[cfg(any(feature = "browser-js", test))]
 fn browser_adapter_config_json(
     intent_endpoint: Option<String>,
     csrf_token: Option<String>,

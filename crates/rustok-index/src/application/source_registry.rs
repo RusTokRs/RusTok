@@ -265,6 +265,10 @@ impl IndexSourceFailure {
         self.kind
     }
 
+    pub fn is_retryable(&self) -> bool {
+        self.kind == IndexSourceFailureKind::Retryable
+    }
+
     pub fn code(&self) -> &str {
         &self.code
     }

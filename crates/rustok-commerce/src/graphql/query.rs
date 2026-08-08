@@ -16,34 +16,25 @@ use rustok_pricing::{
     ResolveProductPriceRequest, StorefrontProductPricingProjectionRequest,
     in_process_pricing_read_port,
 };
-use rustok_product::services::catalog::helpers::product_channel_visibility_condition;
-use rustok_product::CatalogService;
 use rustok_region::{RegionListRequest, RegionReadPort, RegionService};
 use rustok_telemetry::metrics;
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect,
-};
-use std::collections::HashMap;
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
     CommerceError, ShippingProfileService, StoreContextService,
-    search::product_translation_title_search_condition,
     storefront_channel::{
-        apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
-        normalize_public_channel_slug, public_channel_slug_from_request,
+        is_metadata_visible_for_public_channel, normalize_public_channel_slug,
+        public_channel_slug_from_request,
     },
     storefront_shipping::{
         enrich_cart_delivery_groups, is_shipping_option_compatible_with_profiles,
-        load_cart_shipping_profile_slugs, product_shipping_profile_slug,
+        load_cart_shipping_profile_slugs,
     },
 };
-use rustok_product::entities::{product, product_translation};
 
 use super::{
-    MODULE_SLUG, PRODUCT_MODULE_SLUG, map_product_service_error, product_query_tenant,
-    require_commerce_permission, types::*,
+    MODULE_SLUG, PRODUCT_MODULE_SLUG, product_query_tenant, require_commerce_permission, types::*,
 };
 
 #[derive(Default)]
@@ -2402,90 +2393,6 @@ fn pricing_storefront_product_port_context(
         .unwrap_or(context)
 }
 
-async fn load_product_list_items(
-    db: &DatabaseConnection,
-    event_bus: &TransactionalEventBus,
-    tenant_id: Uuid,
-    products: Vec<product::Model>,
-    locale: &str,
-    default_locale: &str,
-    metric_path: &str,
-) -> Result<Vec<GqlProductListItem>> {
-    let product_ids = products
-        .iter()
-        .map(|product| product.id)
-        .collect::<Vec<_>>();
-    let translations_started_at = std::time::Instant::now();
-    let translations = if product_ids.is_empty() {
-        Vec::new()
-    } else {
-        product_translation::Entity::find()
-            .filter(product_translation::Column::ProductId.is_in(product_ids))
-            .all(db)
-            .await
-            .map_err(|error| {
-                map_product_service_error(error.into(), "storefront_product_translations")
-            })?
-    };
-    metrics::record_read_path_query(
-        "graphql",
-        metric_path,
-        "translations",
-        translations_started_at.elapsed().as_secs_f64(),
-        translations.len() as u64,
-    );
-
-    let mut translations_by_product: HashMap<Uuid, Vec<product_translation::Model>> =
-        HashMap::new();
-    for translation in translations {
-        translations_by_product
-            .entry(translation.product_id)
-            .or_default()
-            .push(translation);
-    }
-    let product_tags_started_at = std::time::Instant::now();
-    let product_tags = CatalogService::new(db.clone(), event_bus.clone())
-        .load_product_tag_map(tenant_id, &products, locale, Some(default_locale))
-        .await
-        .map_err(|error| map_product_service_error(error, "product_query"))?;
-    metrics::record_read_path_query(
-        "graphql",
-        metric_path,
-        "product_tags",
-        product_tags_started_at.elapsed().as_secs_f64(),
-        product_tags.len() as u64,
-    );
-
-    Ok(products
-        .into_iter()
-        .map(|product| {
-            let translation = translations_by_product
-                .get(&product.id)
-                .and_then(|items| pick_translation(items, locale, default_locale));
-            GqlProductListItem {
-                id: product.id,
-                status: product.status.into(),
-                title: translation
-                    .map(|value| value.title.clone())
-                    .unwrap_or_else(|| "Untitled product".to_string()),
-                handle: translation
-                    .map(|value| value.handle.clone())
-                    .unwrap_or_default(),
-                seller_id: product.seller_id,
-                vendor: product.vendor,
-                product_type: product.product_type,
-                shipping_profile_slug: Some(product_shipping_profile_slug(
-                    product.shipping_profile_slug.as_deref(),
-                    &product.metadata,
-                )),
-                tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
-                created_at: product.created_at.to_rfc3339(),
-                published_at: product.published_at.map(|value| value.to_rfc3339()),
-            }
-        })
-        .collect())
-}
-
 fn localized_product_response(
     mut product: crate::dto::ProductResponse,
     locale: &str,
@@ -2500,24 +2407,6 @@ fn localized_product_response(
         product.translations = selected_translation;
     }
     product
-}
-
-fn pick_translation<'a>(
-    translations: &'a [product_translation::Model],
-    locale: &str,
-    default_locale: &str,
-) -> Option<&'a product_translation::Model> {
-    translations
-        .iter()
-        .find(|translation| locale_tags_match(&translation.locale, locale))
-        .or_else(|| {
-            (!locale_tags_match(default_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
-            })?
-        })
-        .or_else(|| translations.first())
 }
 
 fn pick_response_translation<'a>(
@@ -2536,10 +2425,6 @@ fn pick_response_translation<'a>(
             })?
         })
         .or_else(|| translations.first())
-}
-
-fn product_list_path(path: &'static str) -> &'static str {
-    path
 }
 
 fn effective_attribute_source_name(

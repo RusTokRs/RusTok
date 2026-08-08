@@ -152,6 +152,7 @@ mod tests {
 
     #[test]
     fn generated_constants_match_canonical_module_metadata() {
+        use rustok_page_builder_admin::PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT;
         let module_manifest = include_str!("../../rustok-module.toml");
         assert!(module_manifest.contains("[fba.builder_consumer.contribution_manifest]"));
         assert!(module_manifest.contains("role = \"landing_blocks\""));
