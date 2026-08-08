@@ -1,14 +1,13 @@
 use async_graphql::{Context, Enum, ErrorExtensions, Object, Result, SimpleObject};
 use rustok_api::{
-    AuthContext, Permission, TenantContext, graphql::require_module_enabled, has_effective_permission,
-    tenant_module_settings,
+    Action, AuthContext, Permission, Resource, TenantContext, graphql::require_module_enabled,
+    has_effective_permission, tenant_module_settings,
 };
 use rustok_page_builder::{
     dto::{
         BuilderCapabilityKind, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, PageBuilderErrorKind,
     },
     rollout::{BuilderCapabilityFlags, BuilderRolloutError, ensure_capability},
-    service::PageBuilderCapabilityPermissions,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -39,6 +38,7 @@ impl GqlPageBuilderRolloutSnapshot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Enum)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
 pub enum GqlPageBuilderCapability {
     Preview,
     Tree,
@@ -106,10 +106,10 @@ impl PageBuilderRolloutQuery {
 
     /// Non-mutating rollout/RBAC preflight for canonical Page Builder capability evidence.
     ///
-    /// The permission check follows the same capability -> Pages permission mapping as the
-    /// Page Builder authorizer. The shared rollout guard then yields the canonical
-    /// `feature-disabled / FEATURE_DISABLED` contract without invoking preview rendering or
-    /// publish persistence.
+    /// The permission check mirrors the Page Builder authorizer mapping and is source-locked
+    /// against `PageBuilderCapabilityPermissions` by the feature-preflight verifier. The shared
+    /// rollout guard then yields the canonical `feature-disabled / FEATURE_DISABLED` contract
+    /// without invoking preview rendering or publish persistence.
     async fn page_builder_capability_preflight(
         &self,
         ctx: &Context<'_>,
@@ -122,8 +122,7 @@ impl PageBuilderRolloutQuery {
         ensure_tenant_authority(auth, tenant)?;
 
         let capability_kind: BuilderCapabilityKind = capability.into();
-        let required_permission =
-            PageBuilderCapabilityPermissions::default().required_for(capability_kind);
+        let required_permission = required_page_builder_permission(capability_kind);
         if !has_effective_permission(&auth.permissions, &required_permission) {
             return Err(async_graphql::Error::new(format!(
                 "Pages permission `{required_permission}` is required for Page Builder `{capability_kind}` preflight"
@@ -141,6 +140,16 @@ impl PageBuilderRolloutQuery {
                 Err(rollout_invalid_error(message))
             }
         }
+    }
+}
+
+fn required_page_builder_permission(capability: BuilderCapabilityKind) -> Permission {
+    match capability {
+        BuilderCapabilityKind::Preview | BuilderCapabilityKind::Tree => {
+            Permission::new(Resource::Pages, Action::Read)
+        }
+        BuilderCapabilityKind::Properties => Permission::new(Resource::Pages, Action::Update),
+        BuilderCapabilityKind::Publish => Permission::new(Resource::Pages, Action::Publish),
     }
 }
 
@@ -197,7 +206,6 @@ fn ensure_pages_read_authority(auth: &AuthContext, tenant: &TenantContext) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_api::{Action, Resource};
 
     fn tenant(id: Uuid) -> TenantContext {
         TenantContext {
@@ -228,22 +236,36 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let tenant = tenant(tenant_id);
         assert!(
-            ensure_pages_read_authority(
-                &auth(tenant_id, vec![Permission::new(Resource::Pages, Action::Read)]),
-                &tenant,
-            )
-            .is_ok()
+            ensure_pages_read_authority(&auth(tenant_id, vec![Permission::PAGES_READ]), &tenant)
+                .is_ok()
         );
         assert!(ensure_pages_read_authority(&auth(tenant_id, Vec::new()), &tenant).is_err());
         assert!(
             ensure_pages_read_authority(
-                &auth(
-                    Uuid::new_v4(),
-                    vec![Permission::new(Resource::Pages, Action::Read)]
-                ),
+                &auth(Uuid::new_v4(), vec![Permission::PAGES_READ]),
                 &tenant,
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn capability_preflight_permission_mapping_matches_page_builder_authorizer_contract() {
+        assert_eq!(
+            required_page_builder_permission(BuilderCapabilityKind::Preview),
+            Permission::new(Resource::Pages, Action::Read)
+        );
+        assert_eq!(
+            required_page_builder_permission(BuilderCapabilityKind::Tree),
+            Permission::new(Resource::Pages, Action::Read)
+        );
+        assert_eq!(
+            required_page_builder_permission(BuilderCapabilityKind::Properties),
+            Permission::new(Resource::Pages, Action::Update)
+        );
+        assert_eq!(
+            required_page_builder_permission(BuilderCapabilityKind::Publish),
+            Permission::new(Resource::Pages, Action::Publish)
         );
     }
 
