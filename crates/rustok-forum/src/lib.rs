@@ -13,6 +13,8 @@ pub mod category_presentation;
 pub mod category_read_transport;
 pub mod constants;
 pub mod controllers;
+#[path = "services/counter_reconciliation.rs"]
+mod counter_reconciliation;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -52,6 +54,11 @@ pub use category_read_transport::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, category_read_audience_port_context,
 };
 pub use constants::*;
+pub use counter_reconciliation::{
+    DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, ForumCounterDrift, ForumCounterDriftKind,
+    ForumCounterReconciliationReport, ForumCounterReconciliationService,
+    MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+};
 pub use dto::*;
 pub use entities::*;
 pub use error::{ForumError, ForumResult};
