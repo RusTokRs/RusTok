@@ -215,6 +215,7 @@ fn validate_checkpoint_identity(
     if key.tenant_id() != lease.tenant_id()
         || key.source_name() != lease.source_name()
         || key.schema() != lease.schema()
+        || key.locale() != lease.locale()
     {
         return Err(IndexReplayFailure::permanent_static(
             "checkpoint_lease_identity_mismatch",
@@ -351,7 +352,10 @@ fn checkpoint_key_values(
         key.schema().module.as_str().to_owned().into(),
         key.schema().entity.as_str().to_owned().into(),
         i64::from(key.schema().version.get()).into(),
-        "".into(),
+        key.locale()
+            .map(|locale| locale.as_str().to_owned())
+            .unwrap_or_default()
+            .into(),
         "".into(),
     ]
 }

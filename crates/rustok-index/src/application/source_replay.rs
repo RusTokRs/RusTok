@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{IndexMutation, SchemaRef, SchemaRegistry};
+use crate::{IndexMutation, LocaleKey, LocaleMode, SchemaRef, SchemaRegistry};
 
 use super::{
     IndexSourceCursor, IndexSourceError, IndexSourceScanRequest, SharedIndexSourceRegistry,
@@ -73,6 +73,7 @@ impl IndexReplayFailure {
 pub struct IndexReplayPageRequest {
     tenant_id: Uuid,
     schema: SchemaRef,
+    locale: Option<LocaleKey>,
     limit: usize,
 }
 
@@ -87,6 +88,23 @@ impl IndexReplayPageRequest {
         Ok(Self {
             tenant_id,
             schema,
+            locale: None,
+            limit,
+        })
+    }
+
+    pub(crate) fn for_locale(
+        tenant_id: Uuid,
+        schema: SchemaRef,
+        locale: LocaleKey,
+        limit: usize,
+    ) -> Result<Self, IndexReplayError> {
+        IndexSourceScanRequest::for_locale(tenant_id, schema.clone(), locale.clone(), None, limit)
+            .map_err(IndexReplayError::SourceContract)?;
+        Ok(Self {
+            tenant_id,
+            schema,
+            locale: Some(locale),
             limit,
         })
     }
@@ -99,6 +117,10 @@ impl IndexReplayPageRequest {
         &self.schema
     }
 
+    pub(crate) fn locale(&self) -> Option<&LocaleKey> {
+        self.locale.as_ref()
+    }
+
     pub fn limit(&self) -> usize {
         self.limit
     }
@@ -109,6 +131,7 @@ pub struct IndexReplayCheckpointKey {
     tenant_id: Uuid,
     source_name: String,
     schema: SchemaRef,
+    locale: Option<LocaleKey>,
 }
 
 impl IndexReplayCheckpointKey {
@@ -116,6 +139,24 @@ impl IndexReplayCheckpointKey {
         tenant_id: Uuid,
         source_name: impl Into<String>,
         schema: SchemaRef,
+    ) -> Result<Self, IndexReplayError> {
+        Self::new_scoped(tenant_id, source_name, schema, None)
+    }
+
+    pub(crate) fn for_locale(
+        tenant_id: Uuid,
+        source_name: impl Into<String>,
+        schema: SchemaRef,
+        locale: LocaleKey,
+    ) -> Result<Self, IndexReplayError> {
+        Self::new_scoped(tenant_id, source_name, schema, Some(locale))
+    }
+
+    fn new_scoped(
+        tenant_id: Uuid,
+        source_name: impl Into<String>,
+        schema: SchemaRef,
+        locale: Option<LocaleKey>,
     ) -> Result<Self, IndexReplayError> {
         if tenant_id.is_nil() {
             return Err(IndexReplayError::NilTenantId);
@@ -128,6 +169,7 @@ impl IndexReplayCheckpointKey {
             tenant_id,
             source_name,
             schema,
+            locale,
         })
     }
 
@@ -141,6 +183,10 @@ impl IndexReplayCheckpointKey {
 
     pub fn schema(&self) -> &SchemaRef {
         &self.schema
+    }
+
+    pub(crate) fn locale(&self) -> Option<&LocaleKey> {
+        self.locale.as_ref()
     }
 }
 
@@ -343,11 +389,29 @@ where
             .sources
             .source_for_schema(request.schema())
             .ok_or_else(|| IndexReplayError::UnknownSchemaSource(request.schema().clone()))?;
-        let checkpoint_key = IndexReplayCheckpointKey::new(
-            request.tenant_id(),
-            descriptor.source_name(),
-            request.schema().clone(),
-        )?;
+        let registered = self
+            .schema_registry
+            .get(request.schema())
+            .ok_or_else(|| IndexReplayError::SchemaNotRegistered(request.schema().clone()))?;
+        if request.locale().is_some() && registered.schema.locale_mode == LocaleMode::None {
+            return Err(IndexReplayError::LocaleScopeUnsupported(
+                request.schema().clone(),
+            ));
+        }
+
+        let checkpoint_key = match request.locale() {
+            Some(locale) => IndexReplayCheckpointKey::for_locale(
+                request.tenant_id(),
+                descriptor.source_name(),
+                request.schema().clone(),
+                locale.clone(),
+            )?,
+            None => IndexReplayCheckpointKey::new(
+                request.tenant_id(),
+                descriptor.source_name(),
+                request.schema().clone(),
+            )?,
+        };
         let current = self
             .checkpoint_store
             .load_replay_checkpoint(&checkpoint_key)
@@ -374,14 +438,24 @@ where
         }
 
         check_replay_interruption(&mut should_interrupt).await?;
-        let scan_request = IndexSourceScanRequest::new(
-            request.tenant_id(),
-            request.schema().clone(),
-            current
-                .as_ref()
-                .and_then(|checkpoint| checkpoint.cursor().cloned()),
-            request.limit(),
-        )
+        let cursor = current
+            .as_ref()
+            .and_then(|checkpoint| checkpoint.cursor().cloned());
+        let scan_request = match request.locale() {
+            Some(locale) => IndexSourceScanRequest::for_locale(
+                request.tenant_id(),
+                request.schema().clone(),
+                locale.clone(),
+                cursor,
+                request.limit(),
+            ),
+            None => IndexSourceScanRequest::new(
+                request.tenant_id(),
+                request.schema().clone(),
+                cursor,
+                request.limit(),
+            ),
+        }
         .map_err(IndexReplayError::SourceContract)?;
         let page = self
             .sources
@@ -494,6 +568,10 @@ pub enum IndexReplayError {
     InvalidCheckpointDeliveryId(String),
     #[error("No Index replay source owns schema {0}")]
     UnknownSchemaSource(SchemaRef),
+    #[error("Index replay schema is not registered in the active runtime: {0}")]
+    SchemaNotRegistered(SchemaRef),
+    #[error("Index replay schema does not support locale-scoped pages: {0}")]
+    LocaleScopeUnsupported(SchemaRef),
     #[error(transparent)]
     SourceContract(IndexSourceError),
     #[error("Index replay page was cooperatively interrupted")]
