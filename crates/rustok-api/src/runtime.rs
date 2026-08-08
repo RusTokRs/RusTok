@@ -42,8 +42,9 @@ pub async fn is_tenant_module_enabled(
 /// This is the read-only counterpart to [`is_tenant_module_enabled`]. Internal
 /// GraphQL and native server-function adapters can consume the same persisted
 /// tenant-module control-plane snapshot without importing tenant persistence
-/// entities or inventing a parallel settings store. Disabled, foreign and
-/// missing rows fail closed to `None`.
+/// entities or inventing a parallel settings store. The caller must supply the
+/// tenant id from a trusted request context; this helper only applies the exact
+/// tenant/module/enabled-row lookup. Disabled or missing rows return `None`.
 pub async fn tenant_module_settings(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -241,16 +242,16 @@ CREATE TABLE tenant_modules (
         assert_eq!(settings["builder"]["properties"]["enabled"], true);
         assert_eq!(settings["builder"]["publish"]["enabled"], false);
 
+        let other_tenant_settings = tenant_module_settings(&db, foreign_tenant_id, "pages")
+            .await
+            .expect("other exact tenant Pages lookup should succeed")
+            .expect("other exact enabled Pages row should expose its own settings");
+        assert_eq!(other_tenant_settings["builder"]["enabled"], true);
+
         assert_eq!(
             tenant_module_settings(&db, tenant_id, "forum")
                 .await
                 .expect("disabled Forum settings lookup should succeed"),
-            None
-        );
-        assert_eq!(
-            tenant_module_settings(&db, foreign_tenant_id, "forum")
-                .await
-                .expect("foreign module settings lookup should succeed"),
             None
         );
         assert_eq!(
