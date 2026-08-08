@@ -101,10 +101,13 @@ for (const marker of [
   'const FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT: &str =',
   '"forum_page_builder_server_fn_attestation_v1"',
   'pub struct ForumPageBuilderTransportAttestationResponse',
-  'pub source_commit: Option<String>',
+  'pub source_commit: String',
+  'fn canonical_source_commit(value: &str) -> Option<String>',
   'std::env::var("RUSTOK_SOURCE_COMMIT")',
   'value.len() == 40',
   'value.bytes().all(|byte| byte.is_ascii_hexdigit())',
+  'Forum Page Builder deployed source revision is unavailable',
+  'Forum Page Builder deployed source revision is not a canonical Git SHA',
   '#[server(prefix = "/api/fn", endpoint = "forum/page-builder-transport-attestation")]',
   'pub async fn attest_forum_page_builder_transport(',
   'challenge: String',
@@ -114,6 +117,8 @@ for (const marker of [
   'require_forum_transport_authorization(&auth, &tenant)?',
   'let (host, _event_bus) = runtime()?;',
   'require_forum_module_enabled(&host, tenant.id).await?',
+  'let source_commit = deployed_source_commit()?;',
+  'Ok(build_transport_attestation(challenge, source_commit))',
   'crate::forum_contribution_manifest()',
   'rustok_forum::ForumWidgetContractService::catalog()',
   'FORUM_PAGE_BUILDER_PREVIEW_ENDPOINT',
@@ -122,6 +127,11 @@ for (const marker of [
 ]) {
   requireContains(previewTransport, marker, `Forum transport attestation source missing ${marker}`);
 }
+requireAbsent(
+  previewTransport,
+  "pub source_commit: Option<String>",
+  "successful Forum transport attestation must require a source revision",
+);
 
 const attestationStart = previewTransport.indexOf(
   '#[server(prefix = "/api/fn", endpoint = "forum/page-builder-transport-attestation")]',
