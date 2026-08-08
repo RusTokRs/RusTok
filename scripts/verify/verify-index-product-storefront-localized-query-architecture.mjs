@@ -24,6 +24,7 @@ const ownerQuery = requireMarkers(ownerQueryPath, [
   'let total = query.clone().count(&self.db).await?',
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
   'fn product_title_search_condition(',
+  'let pattern = format!("%{search}%");',
   'FROM product_translations pt',
   'pt.product_id = products.id',
   'pt.title LIKE $1',
@@ -34,6 +35,11 @@ if (ownerQuery.slice(titleSearchStart).includes('pt.locale')) {
   fail(`${ownerQueryPath} title search became locale-scoped; revisit the localized identity architecture in the same PR`);
 }
 
+requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
+  'pub struct StorefrontProductListQuery',
+  'pub search: Option<String>',
+  'search: normalize_optional_text(search)',
+]);
 requireMarkers('crates/rustok-product/src/services/catalog/commands.rs', [
   'if input.translations.is_empty()',
   'At least one translation is required',
@@ -57,27 +63,31 @@ if (productSource.includes('SchemaVersion::new(3)')) {
 
 const architecturePath = 'crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md';
 requireMarkers(architecturePath, [
-  'Status: `runtime_source_complete_text_pattern_and_evidence_pending`',
+  'Status: `runtime_and_text_pattern_source_complete_adapter_and_evidence_pending`',
   '`localized_projection_fields`',
   '`SchemaRegistry::compile_postgres_localized_page_query`',
   '`SchemaRegistry::decode_postgres_localized_query_page`',
-  '`IndexQueryPort` now publishes an explicit `execute_localized_query` method.',
-  '`SharedIndexQueryRuntime` forwards the localized capability',
-  '`PostgresIndexQueryPort::execute_localized_query` implements the canonical execution boundary',
+  '`IndexQueryPort` publishes `execute_localized_query`',
+  '`PostgresIndexQueryPort::execute_localized_query`',
   '`REPEATABLE READ, READ ONLY`',
   '`PostgresQueryEntityAdmission`',
-  'The next source slice must add one generic bounded scalar string text-pattern primitive',
+  'Generic `TextLike` — source complete',
+  '`FilterExpr::TextLike(FieldPath, String)`',
+  'pattern size at most 1024 UTF-8 bytes',
+  'Remaining Product search-bound mismatch',
+  'Implement the Product Storefront Index adapter',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `localized_runtime_source_complete_text_pattern_adapter_and_evidence_pending`',
+  'Status: `localized_runtime_and_text_pattern_source_complete_adapter_and_evidence_pending`',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  'Status overlay rechecked from `main@6044dbd5110a65e2ebeee0a6a3a0053d9971b250` (#3210)',
-  'Wire localized execution through the canonical PostgreSQL query runtime with persisted readiness,',
-  'Add generic scalar string text-pattern matching inside folded `any_locale_filter`.',
-  'Do not add a runtime alias for key `3`',
+  'Status overlay rechecked from `main@eab3b1b925e5cbfa65d2fe3f938b63be7a067846` (#3218)',
+  'Wire localized execution through canonical PostgreSQL runtime with readiness/admission/snapshot.',
+  'Add generic scalar String `TextLike` usable inside folded `any_locale_filter`.',
+  'implement the Product Storefront Index adapter plus retained localized-query',
+  'No historical-key runtime compatibility path is allowed.',
 ]);
 
-console.log('[verify-index-product-storefront-localized-query-architecture] localized Product runtime architecture is locked; text pattern, adapter and evidence remain pending');
+console.log('[verify-index-product-storefront-localized-query-architecture] localized Product runtime plus generic TextLike are locked; adapter/search-bound/evidence remain pending');

@@ -68,13 +68,17 @@ requireMarkers('crates/rustok-index/src/application/query_port.rs', [
   'async fn execute_localized_query(',
   'localized Index query execution is unavailable for this adapter',
 ]);
+requireMarkers('crates/rustok-index/src/domain/query.rs', [
+  'TextLike(FieldPath, String)',
+]);
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
-  'Status: `runtime_source_complete_text_pattern_and_evidence_pending`',
+  'Status: `runtime_and_text_pattern_source_complete_adapter_and_evidence_pending`',
   '`LocalizedEntityQuery`',
   '`localized_projection_fields`',
   '`LocalizedCursorCodec`',
   'wire version `3`',
   'ordinary exact-locale cursors remain on version `2`',
+  'Generic `TextLike` — source complete',
 ]);
 
-console.log('[verify-index-localized-query-contract] localized query/projection/cursor contract remains source-locked with fail-closed runtime capability');
+console.log('[verify-index-localized-query-contract] localized query/projection/cursor contract remains source-locked with fail-closed runtime and generic text-pattern capability');

@@ -26,6 +26,7 @@ pub enum FilterExpr {
     Lte(FieldPath, IndexValue),
     Contains(FieldPath, IndexValue),
     IsNull(FieldPath, bool),
+    TextLike(FieldPath, String),
 }
 
 impl FilterExpr {
@@ -45,7 +46,8 @@ impl FilterExpr {
             | Self::Lt(path, _)
             | Self::Lte(path, _)
             | Self::Contains(path, _)
-            | Self::IsNull(path, _) => output.push(path),
+            | Self::IsNull(path, _)
+            | Self::TextLike(path, _) => output.push(path),
         }
     }
 

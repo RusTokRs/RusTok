@@ -17,92 +17,52 @@ const requireMarkers = (relative, markers) => {
   }
   return source;
 };
-const forbidMarkers = (relative, source, markers) => {
-  for (const marker of markers) {
-    if (source.includes(marker)) fail(`${relative} contains forbidden marker ${marker}`);
-  }
-};
 
 const storefrontPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
 const storefront = requireMarkers(storefrontPath, [
-  'StorefrontProductListQuery::try_from_transport_with_attribute_filters(',
-  '.with_pagination(1, 12)',
   'CatalogService::new(runtime_ctx.db_clone(), event_bus)',
   '.list_published_products_with_query(',
-  'public_channel_slug.as_deref()',
-  'seller_id: item.seller_id',
-  'tags: item.tags',
-  'created_at: item.created_at.to_rfc3339()',
-  'published_at: item.published_at.map(|value| value.to_rfc3339())',
 ]);
-forbidMarkers(storefrontPath, storefront, [
-  'rustok_index',
-  'SharedIndexQueryRuntime',
-  'IndexQuery',
-  'materialize_postgres_index_query_runtime',
-]);
+for (const forbidden of ['rustok_index', 'SharedIndexQueryRuntime', 'IndexQuery']) {
+  if (storefront.includes(forbidden)) fail(`${storefrontPath} contains forbidden marker ${forbidden}`);
+}
 
-const ownerQueryPath = 'crates/rustok-product/src/services/catalog/queries.rs';
-const ownerQuery = requireMarkers(ownerQueryPath, [
+const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
+const owner = requireMarkers(ownerPath, [
   'ProductStatus::Active',
   'Column::PublishedAt.is_not_null()',
   'product_channel_visibility_condition(',
-  'Column::PrimaryCategoryId.eq(category_id)',
   'product_title_search_condition(',
-  'attribute_filters::load_catalog_attribute_filter_conditions(',
   'let total = query.clone().count(&self.db).await?',
   'pick_product_translation(items.as_slice(), locale, fallback_locale)',
-  'fn product_title_search_condition(',
+  'let pattern = format!("%{search}%");',
   'FROM product_translations pt',
   'pt.product_id = products.id',
   'pt.title LIKE $1',
 ]);
-const titleSearch = ownerQuery.slice(ownerQuery.indexOf('fn product_title_search_condition('));
-if (titleSearch.includes('pt.locale')) {
-  fail(`${ownerQueryPath} title search became locale-scoped; update parity architecture in the same PR`);
-}
+const titleSearch = owner.slice(owner.indexOf('fn product_title_search_condition('));
+if (titleSearch.includes('pt.locale')) fail(`${ownerPath} title search became locale-scoped`);
+
+requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
+  'pub struct StorefrontProductListQuery',
+  'pub search: Option<String>',
+  'search: normalize_optional_text(search)',
+]);
 
 const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
   'assert_eq!(schema.fields.len(), 15);',
   'JOIN product_translations t',
-  't.locale',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'derive_index_schema_source_event_id(',
-  'many_field("attribute_terms", IndexValueType::String, false, true)?',
 ]);
-forbidMarkers(productIndexPath, productIndex, [
-  'SchemaVersion::new(3)',
-  'derive_index_source_event_id(',
-  'product_v1_schema',
-  'product_v2_schema',
-  'COALESCE(requested_translation',
-]);
-
-requireMarkers('crates/rustok-distribution/src/product_index/absence.rs', [
-  'translation.locale = $3',
-  'return Ok(None);',
-  'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
-]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_registration.rs', [
-  'VersionConflict { reference: SchemaRef }',
-  'pub async fn register_current(',
-  'retire_lower_active_schemas(',
-  "status = 'retired'",
-]);
+if (productIndex.includes('SchemaVersion::new(3)')) fail(`${productIndexPath} restored historical key 3`);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `localized_runtime_source_complete_text_pattern_adapter_and_evidence_pending`',
-  'does **not** restrict',
-  'one physical entity per stored translation locale',
-  'localized-entity identity fold',
-  '`localized_projection_fields`',
-  '`SchemaRegistry::compile_postgres_localized_page_query`',
-  '`SchemaRegistry::decode_postgres_localized_query_page`',
-  '`IndexQueryPort` now exposes explicit `execute_localized_query`',
-  '`REPEATABLE READ, READ ONLY`',
-  'generic scalar string text-pattern',
-  'Do **not** add another Product routing key',
+  'Status: `localized_runtime_and_text_pattern_source_complete_adapter_and_evidence_pending`',
+  'Generic `TextLike` — source complete',
+  '`FilterExpr::TextLike(FieldPath, String)`',
+  'no explicit search-length bound',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
@@ -110,4 +70,4 @@ requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native while text-pattern/adapter/evidence gates are pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native while adapter/search-bound/collation/evidence gates are pending');

@@ -286,6 +286,13 @@ impl<'a> ReferenceFixture<'a> {
                         .all(|value| matches!(value, IndexValue::Null));
                 is_null == *expected_null
             }
+            FilterExpr::TextLike(path, pattern) => self
+                .values_for_path(record, path)
+                .into_iter()
+                .any(|value| match value {
+                    IndexValue::String(value) => text_like_matches(value, pattern),
+                    _ => false,
+                }),
         }
     }
 
@@ -362,6 +369,58 @@ impl<'a> ReferenceFixture<'a> {
             entity_id: record.key.entity_id,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TextLikeToken {
+    AnyMany,
+    AnyOne,
+    Literal(char),
+}
+
+fn text_like_matches(value: &str, pattern: &str) -> bool {
+    let mut tokens = Vec::new();
+    let mut characters = pattern.chars();
+    while let Some(character) = characters.next() {
+        match character {
+            '%' => tokens.push(TextLikeToken::AnyMany),
+            '_' => tokens.push(TextLikeToken::AnyOne),
+            '\\' => {
+                let Some(literal) = characters.next() else {
+                    return false;
+                };
+                tokens.push(TextLikeToken::Literal(literal));
+            }
+            literal => tokens.push(TextLikeToken::Literal(literal)),
+        }
+    }
+
+    let value = value.chars().collect::<Vec<_>>();
+    let mut previous = vec![false; value.len() + 1];
+    previous[0] = true;
+    for token in tokens {
+        let mut current = vec![false; value.len() + 1];
+        match token {
+            TextLikeToken::AnyMany => {
+                current[0] = previous[0];
+                for index in 1..=value.len() {
+                    current[index] = previous[index] || current[index - 1];
+                }
+            }
+            TextLikeToken::AnyOne => {
+                for index in 1..=value.len() {
+                    current[index] = previous[index - 1];
+                }
+            }
+            TextLikeToken::Literal(expected) => {
+                for index in 1..=value.len() {
+                    current[index] = previous[index - 1] && value[index - 1] == expected;
+                }
+            }
+        }
+        previous = current;
+    }
+    previous[value.len()]
 }
 
 fn apply_direction(ordering: Ordering, direction: OrderDirection) -> Ordering {

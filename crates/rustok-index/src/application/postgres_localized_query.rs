@@ -429,6 +429,14 @@ fn compile_filter_for_alias(
                 Ok(format!("NOT ({})", sql.null_predicate))
             }
         }
+        FilterExpr::TextLike(path, pattern) => {
+            let sql = field_sql_for_path(plan, path, alias, bindings)?;
+            let pattern = bindings.push(PostgresBindValue::Text(pattern.clone()));
+            Ok(format!(
+                "COALESCE({} LIKE {pattern} ESCAPE E'\\\\', FALSE)",
+                sql.scalar
+            ))
+        }
     }
 }
 
@@ -775,9 +783,9 @@ mod tests {
                 include_exact_count: true,
             },
             Some(LocaleKey::new("en").unwrap()),
-            Some(FilterExpr::Eq(
+            Some(FilterExpr::TextLike(
                 FieldPath::new(FieldName::new("title").unwrap()),
-                IndexValue::String("needle".to_owned()),
+                "%needle%".to_owned(),
             )),
         )
         .with_localized_projection_fields([FieldPath::new(FieldName::new("title").unwrap())])
@@ -801,11 +809,14 @@ mod tests {
         assert!(sql.contains("\"t4\".locale_key < \"t0\".locale_key"));
         assert!(sql.contains("CASE WHEN \"t1\".entity_id IS NOT NULL"));
         assert!(sql.contains("WHEN \"t2\".entity_id IS NOT NULL"));
+        assert!(sql.contains(" LIKE "));
+        assert!(sql.contains("ESCAPE E'\\\\'"));
         assert_eq!(compiled.requested_page_size(), 20);
         let count = compiled.compiled().exact_count.as_ref().unwrap();
         assert!(count.sql.contains("index_entities AS \"t0\""));
         assert!(count.sql.contains("index_entities AS \"t3\""));
         assert!(count.sql.contains("index_entities AS \"t4\""));
+        assert!(count.sql.contains(" LIKE "));
         assert!(!count.sql.contains("index_entities AS \"t1\""));
     }
 
