@@ -85,7 +85,10 @@ for (const forbidden of ['tokio::spawn', 'tokio::time::sleep', 'loop {', 'StopHa
 
 requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
   'pub struct IndexReplayShadowTransportRuntime',
+  'locale: Option<rustok_index::LocaleKey>',
+  'IndexSourceContinuationScope::for_locale(',
   'IndexSourceContinuationScope::from_registry(',
+  'IndexReplayDryRunRequest::for_locale(',
   'self.operator.run_shadow(context, request).await?',
 ]);
 const continuation = requireMarkers('crates/rustok-index/src/application/source_continuation.rs', [
@@ -98,6 +101,11 @@ for (const forbidden of ['CONTINUATION_VERSION', 'ContinuationClaimsV1', 'Contin
     fail(`source continuation must remain one canonical unversioned envelope: ${forbidden}`);
   }
 }
+requireMarkers('crates/rustok-index/src/replay_dry_run.rs', [
+  'locale: Option<LocaleKey>',
+  'registered.schema.locale_mode == LocaleMode::None',
+  'IndexSourceScanRequest::for_locale(',
+]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs', [
   'impl ModuleWorkRegistration for IndexReconciliationWorkRegistration',
   'impl ModuleWorkSource for PostgresIndexReconciliationWorkAdapter',
@@ -124,8 +132,8 @@ requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   '`SharedIndexReplayRuntime::run_interruptible`',
   '`IndexReplayShadowTransportRuntime`',
   'one current unversioned envelope',
-  '`IndexSourceContinuationScope` can now also derive an exact-locale identity through `for_locale`',
-  'exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation identity',
+  '`IndexSourceContinuationScope::from_registry` is schema-wide; `for_locale` binds one exact canonical `LocaleKey`',
+  'execute/admit schema-wide and exact-locale Shadow GraphQL plus continuation-key deployment evidence',
   'The work registration added here is reconciliation-only',
   'maintainer-run',
 ]);
@@ -140,4 +148,4 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-reconciliation-host-scheduler.mjs'",
 ]);
 
-console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Shadow no-write/sealed, one unversioned locale-safe continuation format, and reconciliation under the single generic scheduler boundary');
+console.log('[verify-index-replay-runtime-composition] shared replay composition keeps Full durable, Shadow no-write/sealed and locale-aware, one unversioned continuation format, and reconciliation under the single generic scheduler boundary');
