@@ -10,12 +10,12 @@ use uuid::Uuid;
 
 use crate::{
     application::{
-        CompiledPostgresCell, CompiledPostgresCount, CompiledPostgresPageQuery,
-        CompiledPostgresQuery, CompiledPostgresRow, CompiledQueryColumn,
-        IndexQueryExecutionError, IndexQueryPage, IndexQueryPort,
-        PersistedSchemaReadinessFailure, PostgresBindValue, SchemaRegistry,
+        CompiledPostgresCell, CompiledPostgresCount, CompiledPostgresLocalizedPageQuery,
+        CompiledPostgresPageQuery, CompiledPostgresQuery, CompiledPostgresRow, CompiledQueryColumn,
+        IndexQueryExecutionError, IndexQueryPage, IndexQueryPort, PersistedSchemaReadinessFailure,
+        PostgresBindValue, SchemaRegistry,
     },
-    domain::{IndexQuery, SchemaRef},
+    domain::{IndexQuery, LocalizedEntityQuery, SchemaRef},
 };
 
 use super::PostgresIndexQueryAdmissionCatalog;
@@ -81,20 +81,49 @@ impl PostgresIndexQueryPort {
         page_query: &CompiledPostgresPageQuery,
     ) -> Result<CompiledPostgresQuery, IndexQueryExecutionError> {
         let mut compiled = page_query.compiled().clone();
+        self.apply_admissions(query, &mut compiled)?;
+        Ok(compiled)
+    }
+
+    fn admitted_localized_page_query(
+        &self,
+        query: &LocalizedEntityQuery,
+        mut page_query: CompiledPostgresLocalizedPageQuery,
+    ) -> Result<CompiledPostgresLocalizedPageQuery, IndexQueryExecutionError> {
+        self.apply_admissions(&query.query, page_query.compiled_mut())?;
+        Ok(page_query)
+    }
+
+    fn apply_admissions(
+        &self,
+        query: &IndexQuery,
+        compiled: &mut CompiledPostgresQuery,
+    ) -> Result<(), IndexQueryExecutionError> {
         self.admissions
-            .apply_link_target_availability(query, &mut compiled)
+            .apply_link_target_availability(query, compiled)
             .map_err(|error| {
                 IndexQueryExecutionError::contract_preparation(query.schema.clone(), error)
             })?;
         if let Some(descriptor) = self.admissions.get(&query.schema) {
-            descriptor
-                .admission()
-                .apply(&mut compiled)
-                .map_err(|error| {
-                    IndexQueryExecutionError::contract_preparation(query.schema.clone(), error)
-                })?;
+            descriptor.admission().apply(compiled).map_err(|error| {
+                IndexQueryExecutionError::contract_preparation(query.schema.clone(), error)
+            })?;
         }
-        Ok(compiled)
+        Ok(())
+    }
+
+    async fn configure_snapshot_and_verify(
+        transaction: &DatabaseTransaction,
+        query: &IndexQuery,
+        required_schemas: &[RequiredSchemaContract],
+    ) -> Result<(), IndexQueryExecutionError> {
+        transaction
+            .execute_unprepared(READ_ONLY_SNAPSHOT_SQL)
+            .await
+            .map_err(|error| {
+                IndexQueryExecutionError::storage("configure read-only snapshot", error)
+            })?;
+        verify_persisted_schemas(transaction, query, required_schemas).await
     }
 
     async fn execute_in_transaction(
@@ -105,23 +134,9 @@ impl PostgresIndexQueryPort {
         compiled: &CompiledPostgresQuery,
         required_schemas: &[RequiredSchemaContract],
     ) -> Result<IndexQueryPage, IndexQueryExecutionError> {
-        transaction
-            .execute_unprepared(READ_ONLY_SNAPSHOT_SQL)
-            .await
-            .map_err(|error| {
-                IndexQueryExecutionError::storage("configure read-only snapshot", error)
-            })?;
+        Self::configure_snapshot_and_verify(transaction, query, required_schemas).await?;
 
-        verify_persisted_schemas(transaction, query, required_schemas).await?;
-
-        let page_rows = transaction
-            .query_all(compiled_statement(compiled))
-            .await
-            .map_err(|error| IndexQueryExecutionError::storage("execute page statement", error))?
-            .into_iter()
-            .map(|row| map_page_row(row, compiled))
-            .collect::<Result<Vec<_>, _>>()?;
-
+        let page_rows = execute_page_rows(transaction, compiled).await?;
         let exact_count_row = match compiled.exact_count.as_ref() {
             Some(count) => Some(execute_exact_count(transaction, count).await?),
             None => None,
@@ -130,6 +145,47 @@ impl PostgresIndexQueryPort {
         self.registry
             .decode_postgres_query_page(query, page_query, page_rows, exact_count_row)
             .map_err(IndexQueryExecutionError::from)
+    }
+
+    async fn execute_localized_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        query: &LocalizedEntityQuery,
+        page_query: &CompiledPostgresLocalizedPageQuery,
+        required_schemas: &[RequiredSchemaContract],
+    ) -> Result<IndexQueryPage, IndexQueryExecutionError> {
+        Self::configure_snapshot_and_verify(transaction, &query.query, required_schemas).await?;
+
+        let compiled = page_query.compiled();
+        let page_rows = execute_page_rows(transaction, compiled).await?;
+        let exact_count_row = match compiled.exact_count.as_ref() {
+            Some(count) => Some(execute_exact_count(transaction, count).await?),
+            None => None,
+        };
+
+        self.registry
+            .decode_postgres_localized_query_page(query, page_query, page_rows, exact_count_row)
+            .map_err(IndexQueryExecutionError::from)
+    }
+
+    async fn finish_transaction(
+        transaction: DatabaseTransaction,
+        result: Result<IndexQueryPage, IndexQueryExecutionError>,
+    ) -> Result<IndexQueryPage, IndexQueryExecutionError> {
+        match result {
+            Ok(page) => {
+                transaction.commit().await.map_err(|error| {
+                    IndexQueryExecutionError::storage("commit query snapshot", error)
+                })?;
+                Ok(page)
+            }
+            Err(error) => {
+                transaction.rollback().await.map_err(|rollback_error| {
+                    IndexQueryExecutionError::storage("rollback query snapshot", rollback_error)
+                })?;
+                Err(error)
+            }
+        }
     }
 }
 
@@ -160,21 +216,36 @@ impl IndexQueryPort for PostgresIndexQueryPort {
                 &required_schemas,
             )
             .await;
+        Self::finish_transaction(transaction, result).await
+    }
 
-        match result {
-            Ok(page) => {
-                transaction.commit().await.map_err(|error| {
-                    IndexQueryExecutionError::storage("commit query snapshot", error)
-                })?;
-                Ok(page)
-            }
-            Err(error) => {
-                transaction.rollback().await.map_err(|rollback_error| {
-                    IndexQueryExecutionError::storage("rollback query snapshot", rollback_error)
-                })?;
-                Err(error)
-            }
+    async fn execute_localized_query(
+        &self,
+        query: LocalizedEntityQuery,
+    ) -> Result<IndexQueryPage, IndexQueryExecutionError> {
+        if self.db.get_database_backend() != DbBackend::Postgres {
+            return Err(IndexQueryExecutionError::UnsupportedBackend);
         }
+
+        let required_schemas = required_schema_contracts(&self.registry, &query.query)?;
+        let page_query = self.registry.compile_postgres_localized_page_query(&query)?;
+        // Trusted owner/link admission is applied to every physical fold alias before the read-only
+        // transaction begins. A malformed admission contract therefore cannot execute page/count SQL.
+        let page_query = self.admitted_localized_page_query(&query, page_query)?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| IndexQueryExecutionError::storage("begin localized query snapshot", error))?;
+        let result = self
+            .execute_localized_in_transaction(
+                &transaction,
+                &query,
+                &page_query,
+                &required_schemas,
+            )
+            .await;
+        Self::finish_transaction(transaction, result).await
     }
 }
 
@@ -267,6 +338,19 @@ async fn verify_persisted_schemas(
         }
     }
     Ok(())
+}
+
+async fn execute_page_rows(
+    transaction: &DatabaseTransaction,
+    compiled: &CompiledPostgresQuery,
+) -> Result<Vec<CompiledPostgresRow>, IndexQueryExecutionError> {
+    transaction
+        .query_all(compiled_statement(compiled))
+        .await
+        .map_err(|error| IndexQueryExecutionError::storage("execute page statement", error))?
+        .into_iter()
+        .map(|row| map_page_row(row, compiled))
+        .collect::<Result<Vec<_>, _>>()
 }
 
 fn compiled_statement(compiled: &CompiledPostgresQuery) -> Statement {

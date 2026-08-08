@@ -30,7 +30,6 @@ requireMarkers('crates/rustok-index/src/domain/localized_query.rs', [
   'pub fn is_localized_projection_path(&self, path: &FieldPath)',
   'ordinary_nodes + any_locale_nodes > MAX_LOCALIZED_FILTER_NODES',
 ]);
-
 requireMarkers('crates/rustok-index/src/application/localized_validation.rs', [
   'pub enum LocalizedEntityQueryValidationError',
   'LocaleRequiredSchema(SchemaRef)',
@@ -44,7 +43,6 @@ requireMarkers('crates/rustok-index/src/application/localized_validation.rs', [
   'probe.filter = Some(filter.clone());',
   'field.cardinality != FieldCardinality::One',
 ]);
-
 requireMarkers('crates/rustok-index/src/application/localized_cursor.rs', [
   'const LOCALIZED_SCOPED_CURSOR_VERSION: u8 = 3;',
   'pub struct LocalizedIndexCursor',
@@ -66,24 +64,17 @@ if (ordinaryCursor.includes('localized_entity_fold_v1')) {
   fail('ordinary cursor codec must not absorb localized fold identity');
 }
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
-  'mod localized_cursor;',
-  'mod localized_validation;',
-  'pub use localized_validation::LocalizedEntityQueryValidationError;',
+requireMarkers('crates/rustok-index/src/application/query_port.rs', [
+  'async fn execute_localized_query(',
+  'localized Index query execution is unavailable for this adapter',
 ]);
-
-const port = read('crates/rustok-index/src/application/query_port.rs');
-if (port.includes('execute_localized_query')) {
-  fail('localized execution must remain unpublished until runtime admission/readiness wiring is complete');
-}
-
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
-  'Status: `compiler_decoder_source_complete_runtime_and_evidence_pending`',
+  'Status: `runtime_source_complete_text_pattern_and_evidence_pending`',
   '`LocalizedEntityQuery`',
   '`localized_projection_fields`',
   '`LocalizedCursorCodec`',
   'wire version `3`',
-  'ordinary exact-locale cursor wire version `2` remains unchanged',
+  'ordinary exact-locale cursors remain on version `2`',
 ]);
 
-console.log('[verify-index-localized-query-contract] localized query/projection/cursor contract is source-locked; runtime publication remains pending');
+console.log('[verify-index-localized-query-contract] localized query/projection/cursor contract remains source-locked with fail-closed runtime capability');

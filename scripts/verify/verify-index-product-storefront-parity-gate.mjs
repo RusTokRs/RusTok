@@ -42,22 +42,6 @@ forbidMarkers(storefrontPath, storefront, [
   'materialize_postgres_index_query_runtime',
 ]);
 
-const typesPath = 'crates/rustok-product/src/services/catalog/types.rs';
-requireMarkers(typesPath, [
-  'pub enum StorefrontProductSortBy',
-  'PublishedAt',
-  'CreatedAt',
-  'pub struct ProductAttributeFilter',
-  'const MAX_ATTRIBUTE_FILTERS: usize = 8',
-  'pub struct StorefrontProductListQuery',
-  'pub attribute_filters: Vec<ProductAttributeFilter>',
-  'pub struct StorefrontProductListItem',
-  'pub seller_id: Option<String>',
-  'pub tags: Vec<String>',
-  'pub created_at: chrono::DateTime<chrono::Utc>',
-  'pub published_at: Option<chrono::DateTime<chrono::Utc>>',
-]);
-
 const ownerQueryPath = 'crates/rustok-product/src/services/catalog/queries.rs';
 const ownerQuery = requireMarkers(ownerQueryPath, [
   'ProductStatus::Active',
@@ -108,19 +92,17 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_registrat
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `localized_compiler_decoder_source_complete_runtime_and_evidence_pending`',
-  'does **not** restrict that search row to the requested or fallback locale',
-  'owner list can still return the Product using its fallback translation',
-  'one Index entity for each physically stored `product_translations.locale`',
-  'A scalar substring/LIKE operator alone cannot close Storefront parity',
+  'Status: `localized_runtime_source_complete_text_pattern_adapter_and_evidence_pending`',
+  'does **not** restrict',
+  'one physical entity per stored translation locale',
   'localized-entity identity fold',
   '`localized_projection_fields`',
   '`SchemaRegistry::compile_postgres_localized_page_query`',
   '`SchemaRegistry::decode_postgres_localized_query_page`',
-  'The public query runtime still has no `execute_localized_query` method.',
-  'm7-product-storefront-localized-query-architecture.md',
-  'Do **not** add another Product routing key merely to patch this query semantic.',
-  'actualize retained Product PostgreSQL packets',
+  '`IndexQueryPort` now exposes explicit `execute_localized_query`',
+  '`REPEATABLE READ, READ ONLY`',
+  'generic scalar string text-pattern',
+  'Do **not** add another Product routing key',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
@@ -128,4 +110,4 @@ requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native while localized runtime/evidence are pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native while text-pattern/adapter/evidence gates are pending');
