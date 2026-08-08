@@ -1,17 +1,17 @@
 # M6 targeted replay mutation application
 
-Status: `source_complete_host_guard_pending`.
+Status: `source_complete_host_guard_transport_pending`.
 
 ## Purpose
 
 `IndexReplayTargetedExecutor` defines the bounded mutation-application contract for
 `IndexReplayMode::Targeted` without reusing the durable Full replay job/checkpoint state machine.
-It consumes only `IndexReplayModeSelection::Targeted`, which already owns the canonical
+It consumes only `IndexReplayModeSelection::Targeted`, which owns the canonical
 `IndexSourceLoadRequest` bounded tenant/schema/key-set validation.
 
-This is an application execution boundary, not a public transport and not a new durable replay
-owner. PostgreSQL/runtime materialization and request-bound host dispatch remain separate follow-up
-slices.
+The application contract is now composed into the canonical PostgreSQL replay runtime and exposed to
+server callers only through request-bound `modules:manage` host dispatch. It is still not a public
+transport and not a new durable replay owner.
 
 ## Canonical Targeted request and key admission
 
@@ -41,14 +41,17 @@ Targeted mutation path.
 
 One Targeted invocation performs exactly these steps:
 
-1. require `IndexReplayModeSelection::Targeted`;
-2. require the exact schema to exist in the active `SchemaRegistry`;
-3. validate every requested entity/locale key against that active schema;
-4. resolve the exact source owner from `SharedIndexSourceRegistry`;
-5. call the canonical bounded `SharedIndexSourceRegistry::load` once;
-6. preflight the complete returned batch before the first mutation write;
-7. apply each returned mutation sequentially through the existing `IndexReplayMutationSink`;
-8. return bounded counters only.
+1. require the dedicated Targeted host method and canonical `IndexSourceLoadRequest`;
+2. server `IndexReplayOperatorContext` checks exact tenant equality and current request-bound effective
+   `modules:manage`;
+3. `SharedIndexReplayRuntime::run_targeted` wraps the request as the canonical Targeted selection;
+4. require the exact schema to exist in the active `SchemaRegistry`;
+5. validate every requested entity/locale key against that active schema;
+6. resolve the exact source owner from `SharedIndexSourceRegistry`;
+7. call the canonical bounded `SharedIndexSourceRegistry::load` once;
+8. preflight the complete returned batch before the first mutation write;
+9. apply each returned mutation sequentially through the existing `IndexReplayMutationSink`;
+10. return bounded counters only.
 
 The source registry rejects mutations for unrequested keys and duplicate returned entity keys. The
 Targeted executor then adds the replay-specific whole-batch preflight before persistence:
@@ -57,7 +60,24 @@ Targeted executor then adds the replay-specific whole-batch preflight before per
 - event UUIDs must be unique within the invocation;
 - every mutation must pass complete `SchemaRegistry::validate_mutation` validation.
 
-If requested key admission or any returned-batch preflight fails, no mutation sink call occurs.
+If host authorization, requested key admission, or any returned-batch preflight fails, no mutation sink
+call occurs.
+
+## PostgreSQL/runtime composition
+
+`materialize_postgres_index_replay_runtime` assembles one `IndexReplayTargetedExecutor<PostgresMutationStore>`
+from the same frozen `SharedIndexSourceRegistry`, immutable schema registry and host database already used by
+replay composition. `SharedIndexReplayRuntime` stores that executor beside the durable Full runner and exposes
+only a dedicated `run_targeted(IndexSourceLoadRequest)` method.
+
+This is reuse of the existing mutation persistence contract, not a second durable replay state machine.
+`PostgresMutationStore` derives each inbox delivery ID from the source-owned mutation event UUID through the
+existing `IndexReplayMutationSink` implementation.
+
+The server's existing `IndexReplayOperatorRuntime` owns Targeted dispatch. `run_targeted` first calls the same
+`IndexReplayOperatorContext::authorize_for` exact-tenant/request-snapshot check used by Full replay and then
+delegates to `SharedIndexReplayRuntime::run_targeted`. No separate Targeted permission, operator identity or
+caller-controlled mode selector is introduced.
 
 ## Missing requested keys
 
@@ -75,15 +95,14 @@ missing key, not a synthetic write.
 Targeted execution preserves the source-owned mutation event UUID. It does not generate a command UUID,
 job UUID, checkpoint delivery identity, or transport-specific event identity.
 
-When backed by the existing PostgreSQL replay mutation sink, that source event UUID remains the
-`index_inbox` delivery identity. A later exact Targeted invocation can therefore safely encounter
-`Duplicate` or `StaleIgnored` after an earlier invocation partially committed mutations before a later
-mutation failed.
+With the PostgreSQL replay mutation sink, that source event UUID remains the `index_inbox` delivery
+identity. A later exact Targeted invocation can therefore safely encounter `Duplicate` or `StaleIgnored`
+after an earlier invocation partially committed mutations before a later mutation failed.
 
 Retained source evidence models the harder window where mutation 1 succeeds and mutation 2 fails once;
 the exact retry observes mutation 1 as `Duplicate` and applies mutation 2. The executor intentionally
 does not add a checkpoint for partial progress. A failure reports the exact mutation position and
-existing bounded replay failure. Retry/requeue policy remains an operator/host concern and is not
+existing bounded replay failure. Retry/requeue policy remains an operator/transport concern and is not
 automatic here.
 
 ## Outcome
@@ -108,22 +127,22 @@ This slice does not add:
 - durable Targeted jobs or checkpoints;
 - lease/heartbeat/fencing state;
 - Targeted cancellation or automatic retry/requeue;
+- Targeted graceful-stop handling or a second lifecycle owner;
 - scheduler/background worker ownership;
 - a generic caller-controlled replay mode selector;
 - GraphQL/HTTP/CLI/admin transport;
-- request-bound host authorization;
 - partition replay scope;
 - synthetic deletes for missing load keys.
 
 ## Next source boundary
 
-The next independent boundary is PostgreSQL/runtime composition plus request-bound server host dispatch
-for this executor. That slice should reuse `PostgresMutationStore` as the existing
-`IndexReplayMutationSink`, expose only a guarded Targeted capability under the same effective
-`modules:manage` authority as Full/Shadow, and still avoid durable scan jobs/checkpoints, leases,
-cancellation and automatic retry ownership.
+The next independent boundary is a dedicated authorization-first Targeted public transport. It must keep
+request tenant and actor server-owned, require `modules:manage` before parsing untrusted schema/entity/locale
+targets, build only the canonical bounded exact-key request, delegate solely to
+`IndexReplayOperatorRuntime::run_targeted`, and expose only bounded counters/failures.
 
-Public GraphQL transport should remain separate until the guarded host capability is source-complete.
+Do not add a generic mode selector, caller-owned source name, worker, page budget, job/checkpoint identity,
+lease, cancellation, retry/requeue state, partition scope or synthetic delete semantics in that transport.
 
 ## Validation ownership
 
