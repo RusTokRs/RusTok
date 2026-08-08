@@ -40,6 +40,7 @@ struct LocalizedCursorQueryIdentity<'a> {
     fallback_locale: Option<&'a LocaleKey>,
     filter: &'a Option<FilterExpr>,
     any_locale_filter: &'a Option<FilterExpr>,
+    localized_projection_fields: Vec<&'a FieldPath>,
     order_by: &'a [OrderExpr],
 }
 
@@ -75,7 +76,7 @@ pub enum LocalizedCursorValidationError {
     RequestedLocaleMismatch,
     #[error("localized cursor fallback locale does not match canonical query fallback")]
     FallbackLocaleMismatch,
-    #[error("localized cursor query fingerprint does not match fold/filter/order semantics")]
+    #[error("localized cursor query fingerprint does not match fold/filter/projection/order semantics")]
     QueryFingerprintMismatch,
     #[error("localized cursor contains {actual} order values but query defines {expected} order expressions")]
     OrderArityMismatch { expected: usize, actual: usize },
@@ -162,6 +163,11 @@ fn decode_payload<T: DeserializeOwned>(
 fn query_fingerprint(
     query: &LocalizedEntityQuery,
 ) -> Result<[u8; 32], LocalizedCursorCodecError> {
+    let mut localized_projection_fields = query
+        .localized_projection_fields
+        .iter()
+        .collect::<Vec<_>>();
+    localized_projection_fields.sort();
     let identity = LocalizedCursorQueryIdentity {
         mode: "localized_entity_fold_v1",
         tenant_id: query.query.scope.tenant_id,
@@ -170,6 +176,7 @@ fn query_fingerprint(
         fallback_locale: query.canonical_fallback_locale(),
         filter: &query.query.filter,
         any_locale_filter: &query.any_locale_filter,
+        localized_projection_fields,
         order_by: &query.query.order_by,
     };
     let bytes = postcard::to_stdvec(&identity)?;
@@ -281,15 +288,26 @@ mod tests {
                 version: SchemaVersion::INITIAL,
             },
             locale_mode: LocaleMode::Required,
-            fields: vec![IndexField {
-                name: FieldName::new("id").unwrap(),
-                value_type: IndexValueType::Uuid,
-                cardinality: FieldCardinality::One,
-                nullable: false,
-                selectable: true,
-                filterable: true,
-                sortable: true,
-            }],
+            fields: vec![
+                IndexField {
+                    name: FieldName::new("id").unwrap(),
+                    value_type: IndexValueType::Uuid,
+                    cardinality: FieldCardinality::One,
+                    nullable: false,
+                    selectable: true,
+                    filterable: true,
+                    sortable: true,
+                },
+                IndexField {
+                    name: FieldName::new("title").unwrap(),
+                    value_type: IndexValueType::String,
+                    cardinality: FieldCardinality::One,
+                    nullable: false,
+                    selectable: true,
+                    filterable: true,
+                    sortable: false,
+                },
+            ],
             links: Vec::new(),
         }
     }
@@ -302,7 +320,10 @@ mod tests {
                     locale: Some(LocaleKey::new("en-US").unwrap()),
                 },
                 schema: schema.reference.clone(),
-                fields: vec![FieldPath::new(FieldName::new("id").unwrap())],
+                fields: vec![
+                    FieldPath::new(FieldName::new("id").unwrap()),
+                    FieldPath::new(FieldName::new("title").unwrap()),
+                ],
                 filter: None,
                 order_by: vec![OrderExpr {
                     field: FieldPath::new(FieldName::new("id").unwrap()),
@@ -317,6 +338,7 @@ mod tests {
             fallback.map(|value| LocaleKey::new(value).unwrap()),
             None,
         )
+        .with_localized_projection_fields([FieldPath::new(FieldName::new("title").unwrap())])
     }
 
     #[test]
@@ -359,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn localized_cursor_cannot_cross_fallback_semantics() {
+    fn localized_cursor_cannot_cross_fallback_or_projection_semantics() {
         let schema = schema();
         let mut registry = SchemaRegistry::new();
         registry.register(schema.clone()).unwrap();
@@ -374,10 +396,26 @@ mod tests {
             entity_id: Uuid::new_v4(),
         };
         let encoded = LocalizedCursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
-        let mut changed = original.clone();
-        changed.fallback_locale = Some(LocaleKey::new("fr").unwrap());
+
+        let mut changed_fallback = original.clone();
+        changed_fallback.fallback_locale = Some(LocaleKey::new("fr").unwrap());
         assert!(matches!(
-            LocalizedCursorCodec::decode_scoped_for_query(&encoded, &changed, &registry),
+            LocalizedCursorCodec::decode_scoped_for_query(
+                &encoded,
+                &changed_fallback,
+                &registry
+            ),
+            Err(LocalizedCursorValidationError::QueryFingerprintMismatch)
+        ));
+
+        let mut changed_projection = original.clone();
+        changed_projection.localized_projection_fields.clear();
+        assert!(matches!(
+            LocalizedCursorCodec::decode_scoped_for_query(
+                &encoded,
+                &changed_projection,
+                &registry
+            ),
             Err(LocalizedCursorValidationError::QueryFingerprintMismatch)
         ));
     }
