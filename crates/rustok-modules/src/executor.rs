@@ -20,7 +20,11 @@ pub struct ModuleLifecycleToggleRequest {
     pub requested_by: Option<String>,
     pub correlation_id: Option<String>,
     pub idempotency_key: Option<uuid::Uuid>,
+    /// Canonical serving availability, including co-requisite constraints.
     pub effective_enabled_modules: HashSet<String>,
+    /// Ordinary dependency-order selection used only to validate sequential
+    /// lifecycle transitions. Co-requisites must not create a second ordering graph.
+    pub ordering_enabled_modules: HashSet<String>,
     pub current_settings: serde_json::Value,
     pub policy_transition: Option<ModulePolicyRevisionTransition>,
 }
@@ -83,7 +87,7 @@ pub async fn execute_module_toggle(
     }
     validate_module_toggle(
         dispatcher.catalog(),
-        &request.effective_enabled_modules,
+        &request.ordering_enabled_modules,
         &request.module_slug,
         request.enabled,
     )?;
@@ -383,6 +387,7 @@ mod tests {
                 correlation_id: None,
                 idempotency_key: None,
                 effective_enabled_modules: HashSet::new(),
+                ordering_enabled_modules: HashSet::new(),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
             },

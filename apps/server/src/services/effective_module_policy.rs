@@ -28,12 +28,11 @@ impl EffectiveModulePolicyService {
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
         let default_enabled_modules = manifest.settings.default_enabled;
         let policy = ModuleControlPlane::new(db.clone())
-            .effective_policy(registry, default_enabled_modules.clone())
-            .resolve(tenant_id)
+            .lifecycle(registry, default_enabled_modules.clone())
+            .with_corequisites(co_requisites)
+            .effective_policy(tenant_id)
             .await
             .map_err(map_effective_policy_error)?;
-        ManifestManager::validate_effective_policy_corequisites(&policy, &co_requisites)
-            .map_err(PlatformCompositionError::EffectivePolicy)?;
         let cache_identity = policy
             .cache_identity(tenant_id)
             .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))?;
@@ -65,8 +64,8 @@ impl EffectiveModulePolicyService {
     }
 
     /// Resolves module availability from a channel-owner snapshot. Channel
-    /// resolution remains in `rustok-channel`; this adapter forwards the owner
-    /// result through the deployment co-requisite fail-closed guard.
+    /// resolution remains in `rustok-channel`; the active package co-requisite
+    /// contract is supplied to the canonical modules-owner decision.
     pub async fn resolve_for_channel(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
@@ -75,18 +74,16 @@ impl EffectiveModulePolicyService {
     ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
         let manifest = PlatformCompositionService::active_manifest(db).await?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
-        let policy = ModuleControlPlane::new(db.clone())
-            .effective_policy(registry, manifest.settings.default_enabled)
-            .resolve_for_channel(tenant_id, channel)
+        ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
+            .effective_policy_for_channel(tenant_id, channel)
             .await
-            .map_err(map_effective_policy_error)?;
-        ManifestManager::validate_effective_policy_corequisites(&policy, &co_requisites)
-            .map_err(PlatformCompositionError::EffectivePolicy)?;
-        Ok(policy)
+            .map_err(map_effective_policy_error)
     }
 
-    /// Forwards all host-owned policy snapshots to the single module owner
-    /// decision, then fail-closes if a selected consumer lost a co-requisite.
+    /// Forwards all host-owned policy snapshots and the active package
+    /// co-requisite contract into one canonical modules-owner decision.
     pub async fn resolve_for_context(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
@@ -97,14 +94,12 @@ impl EffectiveModulePolicyService {
     ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
         let manifest = PlatformCompositionService::active_manifest(db).await?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
-        let policy = ModuleControlPlane::new(db.clone())
-            .effective_policy(registry, manifest.settings.default_enabled)
-            .resolve_for_context(tenant_id, channel, maintenance, node_readiness)
+        ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
+            .effective_policy_for_context(tenant_id, channel, maintenance, node_readiness)
             .await
-            .map_err(map_effective_policy_error)?;
-        ManifestManager::validate_effective_policy_corequisites(&policy, &co_requisites)
-            .map_err(PlatformCompositionError::EffectivePolicy)?;
-        Ok(policy)
+            .map_err(map_effective_policy_error)
     }
 
     pub async fn resolve_for_node_readiness(
@@ -115,14 +110,12 @@ impl EffectiveModulePolicyService {
     ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
         let manifest = PlatformCompositionService::active_manifest(db).await?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
-        let policy = ModuleControlPlane::new(db.clone())
-            .effective_policy(registry, manifest.settings.default_enabled)
-            .resolve_for_node_readiness(tenant_id, node_readiness)
+        ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
+            .effective_policy_for_node_readiness(tenant_id, node_readiness)
             .await
-            .map_err(map_effective_policy_error)?;
-        ManifestManager::validate_effective_policy_corequisites(&policy, &co_requisites)
-            .map_err(PlatformCompositionError::EffectivePolicy)?;
-        Ok(policy)
+            .map_err(map_effective_policy_error)
     }
 
     pub async fn list_enabled(
@@ -146,7 +139,7 @@ impl EffectiveModulePolicyService {
     ) -> Result<Vec<TenantModuleOverrideSnapshot>, PlatformCompositionError> {
         let manifest = PlatformCompositionService::active_manifest(db).await?;
         ModuleControlPlane::new(db.clone())
-            .effective_policy(registry, manifest.settings.default_enabled)
+            .lifecycle(registry, manifest.settings.default_enabled)
             .tenant_override_snapshots(tenant_id, limit)
             .await
             .map_err(map_effective_policy_error)

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-08-08",
-  "status": "product_lifecycle_tenant_corequisite_host_guard_source_complete_unvalidated",
-  "source_base_revision": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
+  "status": "product_lifecycle_owner_corequisite_policy_identity_source_complete_unvalidated",
+  "source_base_revision": "d7eb11aa73e41bd7ada51c03cb798dc332a10a2b",
   "scope": "Product create/delete transaction collaboration with Inventory and Pricing owners",
   "module_topology": {
     "product_dependencies": [
@@ -23,10 +23,13 @@
     "static_default_selection_enforcement_source_complete": true,
     "tenant_lifecycle_corequisite_guard_source_complete": true,
     "effective_policy_corequisite_guard_source_complete": true,
-    "canonical_policy_revision_corequisite_identity_source_complete": false,
+    "canonical_policy_revision_corequisite_identity_source_complete": true,
+    "owner_corequisite_decision_explanation_source_complete": true,
+    "lifecycle_ordering_separated_from_corequisite_availability_source_complete": true,
+    "staged_intent_recovery_semantics_source_complete": false,
     "co_requisite_control_plane_execution_proven": false,
     "tenant_lifecycle_corequisite_execution_proven": false,
-    "reason": "Static selection and tenant host guards consume Product co-requisites separately from ordinary dependencies; canonical owner policy revision/explanation integration remains open",
+    "reason": "The modules owner now hashes normalized Product co-requisites into canonical effective-policy revision/cache identity and explains availability separately from ordinary lifecycle ordering; staged retry/compensation predecessor semantics remain open",
     "default_enabled_bundle": [
       "product",
       "pricing",
@@ -73,14 +76,17 @@
     "static_default_selection_enforcement_source_complete": true,
     "tenant_lifecycle_corequisite_guard_source_complete": true,
     "effective_policy_corequisite_guard_source_complete": true,
+    "canonical_policy_revision_corequisite_identity_source_complete": true,
+    "owner_corequisite_decision_explanation_source_complete": true,
+    "lifecycle_ordering_separated_from_corequisite_availability_source_complete": true,
     "dependency_contract_resolved": false,
-    "next_slice": "Include Product co-requisite availability in canonical modules-owner effective-policy revision/cache identity and explicit decision explanation without adding dependency-order edges; then retain execution evidence",
+    "next_slice": "Separate persisted tenant selected-intent predecessor/current state from effective availability in post-hook retry and compensation while retaining canonical co-requisite-aware policy revision identity",
     "do_not": [
       "add inventory or pricing to Product ordinary module dependencies",
       "move Inventory or Pricing ORM entities into Product",
       "replace atomic owner collaboration with unproven best-effort post-commit writes",
       "claim standalone Product write activation",
-      "claim canonical policy-revision integration before the modules owner hashes and explains co-requisites"
+      "reuse effective availability as the staged tenant-intent recovery predecessor"
     ]
   },
   "validation": {
@@ -94,6 +100,7 @@
     "tenant_lifecycle_execution_proven": false,
     "effective_policy_guard_execution_proven": false,
     "policy_cache_identity_execution_proven": false,
+    "staged_intent_recovery_execution_proven": false,
     "standalone_activation_proven": false,
     "non_default_deployment_selection_proven": false,
     "transaction_rollback_proven": false

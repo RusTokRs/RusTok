@@ -24,6 +24,10 @@ const manifestCorequisites = read('apps/server/src/modules/manifest/corequisites
 const manifestManager = read('apps/server/src/modules/manifest/mod.rs');
 const tenantLifecycle = read('apps/server/src/services/module_lifecycle.rs');
 const effectivePolicy = read('apps/server/src/services/effective_module_policy.rs');
+const ownerPolicy = read('crates/rustok-modules/src/policy.rs');
+const lifecycleWriter = read('crates/rustok-modules/src/lifecycle_writer.rs');
+const lifecycleExecutor = read('crates/rustok-modules/src/executor.rs');
+const recovery = read('crates/rustok-modules/src/recovery.rs');
 const note = read('crates/rustok-product/docs/product-lifecycle-collaboration.md');
 const evidence = JSON.parse(
   read('crates/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json'),
@@ -95,12 +99,6 @@ const lifecycleToggleBlock = between(
   '\n    pub async fn module_operation_recovery_plan(',
   'tenant lifecycle toggle block',
 );
-const compensationBlock = between(
-  tenantLifecycle,
-  'pub async fn compensate_failed_operation(',
-  '\n    pub async fn update_module_settings(',
-  'tenant lifecycle compensation block',
-);
 
 for (const [source, value, label] of [
   [productModuleEntry, 'depends_on = ["taxonomy"]', 'root Product dependency'],
@@ -128,36 +126,48 @@ for (const [source, value, label] of [
   [inventoryBootstrap, 'C: ConnectionTrait', 'Inventory transaction connection'],
   [pricingBootstrap, 'Pricing-owned transaction-aware operations required by Product lifecycle writes.', 'Pricing owner contract'],
   [pricingBootstrap, 'C: ConnectionTrait', 'Pricing transaction connection'],
+
   [manifestCorequisites, 'co_requisites: BTreeMap<String, PackageCoRequisiteSpec>', 'typed package co-requisite parser'],
+  [manifestCorequisites, 'pub(crate) fn module_policy_corequisites', 'owner co-requisite input entrypoint'],
   [manifestCorequisites, 'pub(super) fn validate_default_corequisite_selection', 'deployment selection preflight'],
-  [manifestCorequisites, 'pub(crate) fn module_policy_corequisites', 'tenant co-requisite metadata entrypoint'],
-  [manifestCorequisites, 'pub(crate) fn validate_effective_policy_corequisites', 'effective-policy co-requisite guard'],
-  [manifestCorequisites, 'pub(crate) fn validate_corequisite_toggle', 'tenant lifecycle co-requisite contract guard'],
-  [manifestCorequisites, 'if !policy.contains(provider)', 'effective provider availability rejection'],
-  [manifestCorequisites, 'validate_policy_provider_contract(', 'shared admitted provider contract validation'],
-  [manifestCorequisites, 'if !enabled {', 'orderable tenant disable intent'],
-  [manifestCorequisites, 'VersionReq::parse(requirement)', 'co-requisite version requirement validation'],
-  [manifestCorequisites, 'requirement.matches(&version)', 'tenant co-requisite effective version validation'],
   [manifestCorequisites, 'module.ordinary_dependencies.contains(co_requisite)', 'dependency/co-requisite separation'],
   [manifestCorequisites, '!selected.contains(co_requisite)', 'missing selected co-requisite rejection'],
-  [manifestCorequisites, 'selection_requires_corequisites_without_creating_dependency_edges', 'selection source test'],
-  [manifestCorequisites, 'selection_rejects_incompatible_corequisite_version', 'version source test'],
-  [manifestManager, 'mod corequisites;', 'manifest co-requisite module wiring'],
+  [manifestCorequisites, 'VersionReq::parse(requirement)', 'deployment co-requisite version validation'],
+  [manifestCorequisites, 'requirement.matches(&installed_version)', 'deployment selected version validation'],
   [manifestManager, 'pub fn validate_deployment_selection(', 'manifest deployment selection API'],
   [startupValidationBlock, '.and_then(|_| ManifestManager::validate_deployment_selection(&manifest))', 'startup co-requisite preflight'],
   [registryValidationBlock, 'dependencies: resolved_spec.depends_on.iter().cloned().collect()', 'ordinary registry dependency source'],
   [installBuiltinBlock, 'Self::validate(manifest)?;', 'ordinary install validation'],
-  [lifecycleToggleBlock, 'ManifestManager::module_policy_corequisites(&manifest)', 'tenant lifecycle co-requisite contract load'],
-  [lifecycleToggleBlock, '.effective_policy(registry, default_enabled.clone())', 'tenant lifecycle current owner policy'],
-  [lifecycleToggleBlock, 'ManifestManager::validate_corequisite_toggle(', 'tenant lifecycle pre-write contract guard'],
-  [compensationBlock, 'plan.previous_effective_enabled', 'compensation requested state source'],
-  [compensationBlock, 'ManifestManager::validate_corequisite_toggle(', 'compensation co-requisite guard'],
-  [effectivePolicy, 'ManifestManager::module_policy_corequisites(&manifest)', 'effective-policy co-requisite contract load'],
-  [effectivePolicy, 'ManifestManager::validate_effective_policy_corequisites(&policy, &co_requisites)', 'effective-policy result guard'],
-  [note, 'Status: static and tenant host co-requisite guards source-complete, canonical policy-revision integration pending, unvalidated.', 'focused note status'],
-  [note, 'Tenant intent can therefore be staged Product-first', 'orderable tenant intent note'],
-  [note, 'EffectiveModulePolicyService', 'effective policy note'],
-  [note, 'not part of `ModuleEffectivePolicy.policy_revision`', 'policy revision debt'],
+
+  [ownerPolicy, 'pub struct ModuleEffectivePolicyCoRequisite', 'owner co-requisite input'],
+  [ownerPolicy, 'CoRequisite {', 'owner co-requisite decision fact'],
+  [ownerPolicy, 'CoRequisiteUnavailable { module_slug: String }', 'owner unavailable denial'],
+  [ownerPolicy, 'CoRequisiteVersionMismatch { module_slug: String }', 'owner version denial'],
+  [ownerPolicy, 'co_requisites: Vec<ModuleEffectivePolicyCoRequisite>', 'owner query co-requisite state'],
+  [ownerPolicy, 'co_requisites: &\'a [ModuleEffectivePolicyCoRequisite]', 'revisioned co-requisite input'],
+  [ownerPolicy, 'contract: "rustok.module_effective_policy.v2"', 'effective policy v2 identity'],
+  [ownerPolicy, 'normalize_corequisites(self.catalog, self.co_requisites)', 'owner co-requisite normalization'],
+  [ownerPolicy, 'corequisite_version_compatible(self.catalog, co_requisite)', 'owner version decision'],
+  [ownerPolicy, 'corequisites_are_revisioned_explainable_availability_not_dependency_edges', 'owner policy source test'],
+
+  [lifecycleWriter, 'pub fn with_corequisites(', 'lifecycle writer co-requisite input'],
+  [lifecycleWriter, '.with_corequisites(self.co_requisites.iter().cloned())', 'canonical lifecycle policy co-requisites'],
+  [lifecycleWriter, 'ordering_policy_from_overrides', 'ordinary ordering projection'],
+  [lifecycleWriter, 'ordering_policy.into_enabled_modules()', 'ordinary ordering selection output'],
+  [lifecycleExecutor, 'pub ordering_enabled_modules: HashSet<String>', 'lifecycle ordering input'],
+  [lifecycleExecutor, '&request.ordering_enabled_modules', 'ordinary toggle validation input'],
+  [recovery, 'previous_effective_enabled', 'legacy recovery predecessor debt'],
+
+  [lifecycleToggleBlock, 'ManifestManager::module_policy_corequisites(&manifest)', 'lifecycle package contract load'],
+  [lifecycleToggleBlock, '.with_corequisites(co_requisites)', 'lifecycle owner policy binding'],
+  [effectivePolicy, 'ManifestManager::module_policy_corequisites(&manifest)', 'effective-policy package contract load'],
+  [effectivePolicy, '.with_corequisites(co_requisites)', 'effective-policy owner binding'],
+  [effectivePolicy, '.cache_identity(tenant_id)', 'canonical cache identity'],
+
+  [note, 'canonical owner effective-policy co-requisite identity source-complete', 'focused note status'],
+  [note, 'rustok.module_effective_policy.v2', 'focused note revision identity'],
+  [note, '**ordinary ordering selection**', 'focused note ordering split'],
+  [note, 'previous_effective_enabled', 'focused note staged recovery debt'],
 ]) requireText(source, value, label);
 
 for (const [source, value, label] of [
@@ -169,7 +179,10 @@ for (const [source, value, label] of [
   [productRuntime, '"pricing"', 'cyclic Product runtime Pricing dependency'],
   [installBuiltinBlock, 'validate_deployment_selection', 'cyclic install-time co-requisite preflight'],
   [registryValidationBlock, 'co_requisite', 'co-requisite leaked into registry dependency comparison'],
-  [manifestCorequisites, 'cannot be disabled while required as a co-requisite', 'tenant co-requisite disable deadlock'],
+  [manifestCorequisites, 'validate_effective_policy_corequisites', 'duplicate host effective-policy guard'],
+  [manifestCorequisites, 'validate_corequisite_toggle', 'duplicate host lifecycle guard'],
+  [tenantLifecycle, 'validate_corequisite_toggle', 'server lifecycle duplicate guard'],
+  [effectivePolicy, 'validate_effective_policy_corequisites', 'server effective-policy duplicate guard'],
   [catalog, 'rustok_commerce_foundation::entities', 'foreign foundation entity import'],
   [commands, 'rustok_commerce_foundation::entities', 'foreign foundation entity import in commands'],
   [commands, 'inventory_item::Entity', 'direct Inventory entity access'],
@@ -183,7 +196,7 @@ for (const [source, value, label] of [
   [commands, 'INTO prices', 'direct Pricing SQL write'],
 ]) forbidText(source, value, label);
 
-if (evidence.status !== 'product_lifecycle_tenant_corequisite_host_guard_source_complete_unvalidated') {
+if (evidence.status !== 'product_lifecycle_owner_corequisite_policy_identity_source_complete_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 const coRequisites = [...(evidence.module_topology?.product_co_requisites ?? [])].sort();
@@ -196,7 +209,10 @@ for (const [key, expected] of [
   ['static_default_selection_enforcement_source_complete', true],
   ['tenant_lifecycle_corequisite_guard_source_complete', true],
   ['effective_policy_corequisite_guard_source_complete', true],
-  ['canonical_policy_revision_corequisite_identity_source_complete', false],
+  ['canonical_policy_revision_corequisite_identity_source_complete', true],
+  ['owner_corequisite_decision_explanation_source_complete', true],
+  ['lifecycle_ordering_separated_from_corequisite_availability_source_complete', true],
+  ['staged_intent_recovery_semantics_source_complete', false],
   ['co_requisite_control_plane_execution_proven', false],
   ['tenant_lifecycle_corequisite_execution_proven', false],
   ['standalone_product_write_activation_proven', false],
@@ -210,13 +226,20 @@ if (evidence.product_boundary?.foreign_owner_entities_imported !== false ||
     evidence.product_boundary?.owner_bootstrap_services_only !== true) {
   failures.push('evidence Product owner boundary mismatch');
 }
+for (const key of [
+  'static_default_selection_enforcement_source_complete',
+  'tenant_lifecycle_corequisite_guard_source_complete',
+  'effective_policy_corequisite_guard_source_complete',
+  'canonical_policy_revision_corequisite_identity_source_complete',
+  'owner_corequisite_decision_explanation_source_complete',
+  'lifecycle_ordering_separated_from_corequisite_availability_source_complete',
+]) {
+  if (evidence.decision?.[key] !== true) failures.push(`evidence decision.${key} must be true`);
+}
 if (evidence.decision?.containment_complete !== true ||
     evidence.decision?.corequisite_contract_declared !== true ||
-    evidence.decision?.static_default_selection_enforcement_source_complete !== true ||
-    evidence.decision?.tenant_lifecycle_corequisite_guard_source_complete !== true ||
-    evidence.decision?.effective_policy_corequisite_guard_source_complete !== true ||
     evidence.decision?.dependency_contract_resolved !== false) {
-  failures.push('evidence decision must retain tenant host guards while keeping canonical policy identity open');
+  failures.push('evidence decision must close owner policy identity while keeping staged recovery open');
 }
 for (const key of [
   'tests_run',
@@ -229,6 +252,7 @@ for (const key of [
   'tenant_lifecycle_execution_proven',
   'effective_policy_guard_execution_proven',
   'policy_cache_identity_execution_proven',
+  'staged_intent_recovery_execution_proven',
   'standalone_activation_proven',
   'non_default_deployment_selection_proven',
   'transaction_rollback_proven',
@@ -245,5 +269,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Product static selection and tenant host policy/lifecycle guards enforce Inventory/Pricing co-requisites without changing ordinary dependency ordering; canonical policy revision identity and execution evidence remain open',
+  '✔ Product co-requisites are canonical owner effective-policy identity/explanation inputs and remain separate from ordinary lifecycle ordering; staged recovery and execution evidence remain open',
 );
