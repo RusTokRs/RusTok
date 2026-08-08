@@ -176,7 +176,6 @@ fn saturating_i32(value: u64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::subscription::reconciliation::ForumSubscriptionCursor;
     use rustok_api::{Action, Resource};
 
     fn auth(permissions: Vec<Permission>) -> AuthContext {
