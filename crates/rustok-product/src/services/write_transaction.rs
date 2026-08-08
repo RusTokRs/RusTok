@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{future::Future, ops::Deref};
 
 use crate::{
     error::{CommerceError, CommerceResult},
@@ -8,21 +8,67 @@ use crate::{
     },
 };
 use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{TransactionalEventBus, idempotency};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, ExecResult,
     QueryResult, Statement, TransactionTrait,
 };
+use serde_json::Value;
 use uuid::Uuid;
+
+#[derive(Clone)]
+struct ProductOperationReceipt {
+    lease: idempotency::Lease,
+    response_json: Value,
+}
+
+tokio::task_local! {
+    static PRODUCT_OPERATION_RECEIPT: ProductOperationReceipt;
+}
+
+/// Bind one Product owner receipt to the current async write execution.
+///
+/// The scope is intentionally task-local: the shared `ProductCatalogSchemaService`
+/// stays stateless across concurrent callers, while `ProductWriteTransaction::begin`
+/// captures the receipt only for the explicitly wrapped owner command.
+pub(crate) async fn with_product_operation_receipt<F, T>(
+    lease: idempotency::Lease,
+    response_json: Value,
+    future: F,
+) -> T
+where
+    F: Future<Output = T>,
+{
+    PRODUCT_OPERATION_RECEIPT
+        .scope(
+            ProductOperationReceipt {
+                lease,
+                response_json,
+            },
+            future,
+        )
+        .await
+}
+
+/// The receipt operation UUID is also a stable Product-owned resource identity
+/// for create operations that opt into durable owner replay.
+pub(crate) fn current_product_operation_id() -> Option<Uuid> {
+    PRODUCT_OPERATION_RECEIPT
+        .try_with(|receipt| receipt.lease.operation_id)
+        .ok()
+}
 
 /// Owns one product write transaction and its transactional outbox publisher.
 ///
 /// Product entity changes and domain events must use the same database
 /// transaction. The wrapper makes publishing through any non-transactional
 /// transport unavailable to product write paths before the transaction commits.
+/// When a Product owner receipt scope is active, terminal success is completed
+/// in this same transaction before commit.
 pub(crate) struct ProductWriteTransaction {
     transaction: DatabaseTransaction,
     event_bus: TransactionalEventBus,
+    operation_receipt: Option<ProductOperationReceipt>,
 }
 
 impl ProductWriteTransaction {
@@ -30,9 +76,11 @@ impl ProductWriteTransaction {
         db: &DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> CommerceResult<Self> {
+        let operation_receipt = PRODUCT_OPERATION_RECEIPT.try_with(Clone::clone).ok();
         Ok(Self {
             transaction: db.begin().await?,
             event_bus,
+            operation_receipt,
         })
     }
 
@@ -114,6 +162,22 @@ impl ProductWriteTransaction {
     }
 
     pub(crate) async fn commit(self) -> CommerceResult<()> {
+        if let Some(receipt) = self.operation_receipt.as_ref() {
+            idempotency::complete(&self.transaction, receipt.lease, &receipt.response_json)
+                .await
+                .map_err(|error| {
+                    tracing::error!(
+                        operation_id = %receipt.lease.operation_id,
+                        internal_code = %error.code,
+                        retryable = error.retryable,
+                        "Product owner receipt completion failed inside write transaction"
+                    );
+                    CommerceError::Database(DbErr::Custom(format!(
+                        "product owner receipt completion failed: {}",
+                        error.code
+                    )))
+                })?;
+        }
         self.transaction.commit().await?;
         Ok(())
     }
