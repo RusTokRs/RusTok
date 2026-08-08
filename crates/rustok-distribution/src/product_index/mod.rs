@@ -19,6 +19,8 @@ pub(crate) use storefront_shadow_executor::{
     ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecution,
     ProductStorefrontIndexShadowExecutor, ProductStorefrontIndexShadowProjectionError,
 };
+#[cfg(test)]
+mod storefront_shadow_postgres_tests;
 #[path = "../product_variant_index.rs"]
 mod variant;
 #[cfg(test)]
