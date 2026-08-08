@@ -13,6 +13,7 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod admin_command;
 pub mod analytics;
 mod checkout_compensation;
 mod checkout_compensation_local_context;
@@ -39,6 +40,11 @@ pub mod checkout_owner_context {
     };
 }
 
+pub use admin_command::{
+    CancelOrderRequest, DeliverOrderRequest, InProcessOrderAdminCommandPort,
+    MarkOrderPaidRequest, OrderAdminCommandPort, OrderAdminCommandRuntime, ShipOrderRequest,
+    in_process_order_admin_command_port,
+};
 pub use analytics::{OrderStatsSnapshot, load_order_stats_snapshot};
 pub use checkout_compensation::{
     CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest,
