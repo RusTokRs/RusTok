@@ -124,6 +124,9 @@ Source exists for:
 - append-only membership suspend/revoke semantic events beside targeted invitation events;
 - effective core `GroupsService` for access, redaction, join/rejoin, membership listing, enabled
   features, and feature settings;
+- effective localization management reads plus transaction-aware translation upsert/delete using the
+  same owner-clock manager semantics and `Group -> GroupMembership -> GroupMembershipEnforcement`
+  write lock protocol;
 - sealed effective public invitation/application services with compatibility module paths;
 - transaction-aware invitation/application writes using the group/membership/enforcement lock
   protocol;
@@ -138,9 +141,11 @@ Evidence still open:
 - direct enforcement replay, expected-revision contention, hierarchy, owner-protection, expiry,
   revoke, lifecycle-count invariance, audit/event atomicity and security evidence;
 - executed native/GraphQL parity and schema/error-mapping evidence for direct enforcement;
+- executed localization suspension/expiry, native/GraphQL parity, and concurrent enforcement-vs-write
+  evidence;
 - native/GraphQL parity, CAS, lifecycle, bulk-review, retry, recovery, security, and accessibility
   evidence for the broader module;
-- localization and governance effective authorization;
+- governance effective authorization;
 - provider ACL integration and remote/degraded profiles;
 - neutral moderation adapter and durable moderation application orchestration.
 
@@ -155,7 +160,7 @@ Evidence still open:
 | GROUPS-04 | in_progress | typed summary/membership/access/localization/invitation/application/governance/enforcement ports | consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, invitation acceptance/delivery | parity and Notifications evidence |
 | GROUPS-06 | in_progress | localized policy, CAS, lifecycle, focused/bulk review, FFA UX | profiles/events/parity/concurrency/accessibility |
-| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, effective core access, transactional invitation/application authorization | moderation adapter, runtime/concurrency/parity evidence |
+| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, effective core/localization access, transactional invitation/application authorization | moderation adapter, governance/provider cutover, runtime/concurrency/parity evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and navigation | registry/degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum integration evidence |
 | GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner/privacy evidence |
@@ -308,6 +313,26 @@ expiry/revocation state and replay flag.
 Runtime schema execution, error-code parity, replay/CAS and authorization parity remain evidence
 gates; source composition is not promoted to `done`.
 
+### Source-complete localization effective authorization
+
+Localization management no longer authorizes against raw stored membership status. Read-only
+`list_group_translations` first preserves exact group existence semantics, then evaluates the shared
+Groups owner-clock manager state. Translation `upsert` and `delete` first serialize the group row and
+then evaluate `GroupManagerCapability::ManageSettings` through the canonical transaction-aware
+`Group -> GroupMembership -> GroupMembershipEnforcement` lock protocol before the first translation
+read or write.
+
+This means an active owner/admin role is authoritative only while its effective membership is active.
+An active suspension returns `groups.membership_suspended`; legacy banned state returns
+`groups.membership_banned`; an inactive or insufficient role returns `groups.manager_required`.
+Expiry/revocation takes effect immediately through the Groups owner clock without cleanup. Platform
+`groups:manage` authority remains the explicit bypass, while write serialization still retains the
+group owner row before mutation.
+
+Exact-locale behavior, last-translation deletion denial, translation mutation semantics and
+`groups.version` advancement are unchanged. Runtime PostgreSQL/SQLite contention and native/GraphQL
+parity evidence remain open.
+
 ### Planned moderation adapter
 
 Initial mapping remains:
@@ -340,12 +365,11 @@ above rather than introduce a second Groups enforcement state path.
 
 ## Remaining implementation order
 
-1. Convert localization management authorization to the transaction-aware resolver.
-2. Convert governance role/ownership commands with owner protection and the same lock protocol.
-3. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
-4. Convert provider ACL consumers and remote/degraded profiles.
-5. Produce direct-enforcement and adapter runtime, parity, concurrency, security, migration and
-   accessibility evidence.
+1. Convert governance role/ownership commands with owner protection and the same lock protocol.
+2. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
+3. Convert provider ACL consumers and remote/degraded profiles.
+4. Produce direct-enforcement, localization, governance and adapter runtime, parity, concurrency,
+   security, migration and accessibility evidence.
 
 ## Degraded modes
 
@@ -374,6 +398,7 @@ cargo check -p rustok-groups-admin --features ssr
 cargo check -p rustok-groups-storefront --features ssr
 cargo test -p rustok-groups
 node scripts/verify/verify-groups-boundary.mjs
+node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-invitations-boundary.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-application-policy-cas.mjs
