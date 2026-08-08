@@ -39,6 +39,9 @@ requireMarkers(budgetPath, [
 const executionPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 const execution = requireMarkers(executionPath, [
   'use tokio::time::timeout;',
+  'pub(crate) trait ProductStorefrontIndexProjectionPhases',
+  'impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor',
+  'phases: Arc<dyn ProductStorefrontIndexProjectionPhases>',
   'pub(crate) struct ProductStorefrontIndexBudgetedExecution',
   'pub(crate) authoritative: StorefrontProductList',
   'pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexBudgetedProjectionError>',
@@ -60,7 +63,7 @@ const execution = requireMarkers(executionPath, [
   'index_context.deadline_ms = Some(index_execution_budget_ms);',
   'timeout(',
   'Duration::from_millis(index_execution_budget_ms)',
-  'self.shadow.execute_projected(',
+  'self.phases.execute_projected(',
   'ProductStorefrontIndexBudgetedProjectionError::TimedOut',
   '.map(project_product_storefront_index_page);',
   'tag_context.deadline_ms = Some(tag_hydration_budget_ms);',
@@ -124,6 +127,8 @@ requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'ProductStorefrontIndexBudgetedStartError',
   'ProductStorefrontIndexBudgetedProjectionError',
   'ProductStorefrontIndexBudgetedTagHydrationError',
+  'ProductStorefrontIndexProjectionPhases',
+  '#[cfg(test)]\nmod storefront_budgeted_execution_tests;',
 ]);
 
 const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
@@ -139,4 +144,4 @@ for (const forbidden of [
   }
 }
 
-console.log('[verify-index-product-storefront-budgeted-execution] eligible post-owner projection applies bounded Index/tag timeouts while preserving the authoritative owner result; mounted Storefront remains owner-native');
+console.log('[verify-index-product-storefront-budgeted-execution] eligible post-owner projection applies bounded Index/tag timeouts through the production phase seam while preserving the authoritative owner result; mounted Storefront remains owner-native');
