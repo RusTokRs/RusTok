@@ -27,6 +27,7 @@
     "standalone_browser_intent_preflight_uses_server_owned_flags": true,
     "browser_supplied_flags_accepted": false,
     "pages_runtime_profile_matrix_executable": true,
+    "runtime_matrix_harness_source_ready": true,
     "pages_runtime_profile_matrix_evidence_retained": false,
     "provider_health_observed": false,
     "gate_accepted": false,
@@ -43,5 +44,5 @@
     "browser_run": false,
     "workflow_or_ci_run": false
   },
-  "next_cursor": "retain and maintainer-execute a four-profile Pages runtime matrix for all_on, publish_off, preview_off and builder_off on one exact source/deployment, including browser-intent denial and Pages-owned read guarantees"
+  "next_cursor": "maintainer executes the four-profile Pages runtime matrix on one exact source/deployment and retains owner-review-pending evidence"
 }
