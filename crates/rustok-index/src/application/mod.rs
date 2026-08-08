@@ -6,6 +6,8 @@ mod drift_digest;
 mod drift_finding_lifecycle;
 mod drift_repair;
 mod drift_repair_recovery;
+mod localized_cursor;
+mod localized_validation;
 mod mutation_event;
 mod planner;
 mod postgres_compiler;
@@ -103,6 +105,11 @@ pub use drift_repair_recovery::{
     IndexDriftRepairRecoveryStore, IndexDriftRepairRecoveryStoreOutcome,
     IndexDriftRepairRecoveryValidationError,
 };
+pub use localized_cursor::{
+    LocalizedCursorCodec, LocalizedCursorCodecError, LocalizedCursorValidationError,
+    LocalizedIndexCursor,
+};
+pub use localized_validation::LocalizedEntityQueryValidationError;
 pub use mutation_event::{
     IndexMutationAcknowledgeFailure, IndexMutationAcknowledgeFailureKind,
     IndexMutationEventAcknowledger, IndexMutationEventCatalog, IndexMutationEventDelivery,

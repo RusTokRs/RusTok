@@ -1,5 +1,6 @@
 mod error;
 mod identifiers;
+mod localized_query;
 mod mutation;
 mod query;
 mod record;
@@ -11,6 +12,7 @@ pub use identifiers::{
     EntityKey, EntityName, FieldName, FieldPath, LinkName, LocaleKey, ModuleName, SchemaIdentity,
     SchemaRef, SchemaVersion,
 };
+pub use localized_query::LocalizedEntityQuery;
 pub use mutation::IndexMutation;
 pub use query::{
     FilterExpr, IndexQuery, IndexQueryScope, ManyOrderAggregate, OrderDirection, OrderExpr,

@@ -151,12 +151,14 @@ requireMarkers(schemaStorePath, [
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `source_architecture_selected_implementation_and_evidence_pending`',
+  'Status: `localized_query_contract_source_complete_compiler_and_evidence_pending`',
   'does **not** restrict that search row to the requested or fallback locale',
   'owner list can still return the Product using its fallback translation',
   'one Index entity for each physically stored `product_translations.locale`',
   'A scalar substring/LIKE operator alone cannot close Storefront parity',
   'localized-entity identity fold',
+  '`LocalizedEntityQuery` explicitly wraps the ordinary exact-locale query shape',
+  '`LocalizedCursorCodec` uses dedicated scoped wire version `3`',
   'm7-product-storefront-localized-query-architecture.md',
   'Do **not** add another Product routing key merely to patch this query semantic.',
   'actualize retained Product PostgreSQL packets',
@@ -168,4 +170,4 @@ requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md',
   '`requested-value OR (NOT requested-present AND fallback-value)`',
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains fail-closed while the selected localized identity fold is implementation/evidence pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains fail-closed while localized fold compiler/evidence are pending');

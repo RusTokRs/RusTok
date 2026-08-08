@@ -61,37 +61,37 @@ if (productSource.includes('SchemaVersion::new(3)')) {
 
 const architecturePath = 'crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md';
 requireMarkers(architecturePath, [
-  'Status: `source_decision_complete_implementation_and_evidence_pending`',
+  'Status: `query_contract_source_complete_compiler_and_evidence_pending`',
   'Keep the current owner Storefront behavior and keep exactly one current Product Index schema.',
   '`(tenant_id, schema_ref, entity_id)`',
-  'requested locale',
-  'fallback locale',
+  '`LocalizedEntityQuery` wraps an ordinary validated `IndexQuery`',
+  '`any_locale_filter` is a separate identity-level existential predicate',
+  '`SchemaRegistry::validate_localized_entity_query` permits the mode only for `LocaleMode::Required`',
+  '`LocalizedCursorCodec` and `LocalizedIndexCursor` provide a separate continuation identity',
+  'wire version `3`',
+  'ordinary exact-locale cursor wire version `2` remains unchanged',
   'Any-locale title search is an identity predicate',
   'the row that satisfied search does **not** become the result locale merely because it matched',
-  'requested-locale row',
-  'fallback-locale row',
   'Grouping happens **before** pagination and exact count.',
   'exact count is the number of distinct admitted Product identities',
   'a cursor from an ordinary exact-locale query must not be accepted by the folded query path',
-  'A consumer must not emulate this contract by issuing independent locale queries',
   'Existing schema readiness, Product entity freshness, and queried link-target availability remain',
-  'Storefront remains owner-native.',
-  'Implement the generic localized-entity fold in `rustok-index`',
+  'Compile `LocalizedEntityQuery` into one PostgreSQL identity-fold statement',
 ]);
 
 requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
-  'Status: `source_architecture_selected_implementation_and_evidence_pending`',
   'm7-product-storefront-localized-query-architecture.md',
   'A scalar substring/LIKE operator alone cannot close Storefront parity',
   'Storefront must continue to execute `CatalogService::list_published_products_with_query`',
 ]);
 
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  'Status overlay rechecked from `main@aaa496887fd1492f3feca8ac52261458ce25705e` (#3203)',
+  'Status overlay rechecked from `main@0a8d09a84688e4c0f3d6007d9b90d7f41b2a53a3` (#3204)',
   'one current Product schema on internal routing key `4`',
-  'Choose one generic localized Product query identity/fallback architecture',
-  'implement the generic localized-entity fold in `rustok-index`',
+  'Add explicit generic localized query shape/validation',
+  'Add dedicated localized cursor identity/version',
+  'compile `LocalizedEntityQuery` into one PostgreSQL identity-fold page/count',
   'Do not add a runtime alias for key `3`',
 ]);
 
-console.log('[verify-index-product-storefront-localized-query-architecture] localized Product identity/fallback decision is locked; implementation and evidence remain pending');
+console.log('[verify-index-product-storefront-localized-query-architecture] localized Product architecture plus query/cursor contract are locked; compiler and evidence remain pending');
