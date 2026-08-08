@@ -1,7 +1,7 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after Product Storefront shadow adapter merge `4e9e032e11848db91ad4f837937c0de8ca3a7eaf` and continued on
-`agent/product-storefront-filter-terms-20260808`.
+Status overlay rechecked after Product-owned Storefront filter resolution merge `215389fcac0e086d7015453d7712fc341d6b722f` and continued on
+`agent/index-storefront-owner-terms-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -24,14 +24,13 @@ Source-complete:
   `REPEATABLE READ, READ ONLY` page/count snapshot;
 - bounded generic String `TextLike` for all-translations title matching;
 - localized Product-ID tie-break direction matching owner Asc/Desc ordering;
-- pure crate-local Product Storefront shadow query builder;
-- Product-owned public Storefront attribute-filter -> canonical term resolution capability.
+- Product-owned public Storefront attribute-filter -> neutral canonical term resolution;
+- pure crate-local Storefront shadow builder that consumes only `ProductResolvedAttributeFilter` and
+  translates `Term/And/Or/Not/Never` into Index root predicates.
 
-The Product-owned resolver now centralizes typed filter parsing used by the owner SQL path and exposes
-neutral `ProductAttributeTermExpr` values through optional `ProductCatalogSchemaReadPort` capability.
-Select/Multiselect option codes resolve to current active Product option UUIDs; UUID inputs keep owner
-identity semantics; missing option code/nil UUID becomes `Never` and therefore preserves owner empty-result
-behavior. Distribution Rust term helpers delegate canonical term identity to Product.
+`Never` maps to a bind-free false predicate by negating the current Product schema's required/non-null `id`
+invariant. The builder validates owner/resolver filter count and code identity before translating terms, so
+arbitrary consumer-built `FilterExpr` values can no longer cross the Product ownership boundary.
 
 ## Remaining Storefront parity blockers
 
@@ -46,7 +45,7 @@ behavior. Distribution Rust term helpers delegate canonical term identity to Pro
 Historical PostgreSQL packets must be actualized to routing key `4` / current 15-field Product contract;
 never add a key-3 runtime alias. Localized Storefront retained equivalence must cover requested/fallback/
 third-locale projection and search, wildcard behavior, scalar and localized EAV terms, Select/Multiselect
-option code and UUID inputs, missing option behavior, channel membership, equal timestamp Asc/Desc ties,
+option code and UUID inputs, missing option `Never`, channel membership, equal timestamp Asc/Desc ties,
 pagination/count, stale locale exclusion, readiness/admission and restart.
 
 ## M5 incremental ingestion
@@ -78,7 +77,8 @@ pagination/count, stale locale exclusion, readiness/admission and restart.
 - [x] Explicit localized entity-ID tie-break direction matching owner Asc/Desc ordering.
 - [x] Product Storefront Index shadow/evidence query builder.
 - [x] Product-owned Storefront attribute-filter resolution to neutral canonical term expressions.
-- [ ] Wire Product term expressions into the shadow builder/executor.
+- [x] Wire Product term expressions into the shadow builder.
+- [ ] Compose non-serving Product-owner + Index shadow executor.
 - [ ] Retain owner-vs-Index localized PostgreSQL equivalence packet.
 - [ ] Resolve/admit search-length and collation parity.
 - [ ] Resolve channel-less unrestricted visibility parity or keep that shape owner-native.
@@ -92,10 +92,10 @@ pagination/count, stale locale exclusion, readiness/admission and restart.
 
 ## Next source-code step
 
-Build a non-serving **shadow executor/equivalence boundary**. It should retrieve the host-selected Product
-schema read port, resolve owner EAV inputs there, translate `ProductAttributeTermExpr` into Index root
-predicates, execute through `execute_localized_query`, and retain owner-vs-Index evidence without changing
-mounted Storefront behavior. Taxonomy hydration stays after Product page selection.
+Compose a non-serving **shadow executor/equivalence boundary**. It must retrieve the host-selected Product
+schema read port, call `resolve_storefront_attribute_filters`, feed those owner-owned results to the shadow
+builder, execute through `execute_localized_query`, and retain owner-vs-Index evidence without changing
+mounted Storefront behavior. Taxonomy hydration remains after Product page selection.
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
