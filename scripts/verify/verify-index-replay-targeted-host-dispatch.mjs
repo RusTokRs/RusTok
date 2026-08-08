@@ -133,11 +133,11 @@ requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application
   '## PostgreSQL/runtime composition',
   '## GraphQL transport',
   '`runIndexReplayTargeted(input: ...)`',
-  'does not expose it',
+  'not expose it. Source routing remains server-owned.',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   'Targeted and Shadow each keep a separate typed operator error wrapper',
-  'does not widen the existing GraphQL Full/cancel error contract',
+  '`IndexReplayOperatorError`, so adding those execution surfaces does not widen the existing GraphQL',
   '`runIndexReplayTargeted` is mounted on the existing `IndexReplayMutation` object',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
