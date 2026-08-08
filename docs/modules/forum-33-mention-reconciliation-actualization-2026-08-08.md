@@ -11,7 +11,7 @@ The FORUM-33 source line is now complete through:
 - FORUM-33C: accepted-solution eligibility and solution-author stat reconciliation;
 - FORUM-33D: bounded persisted topic/category subscription reconciliation.
 
-FORUM-33D explicitly advanced the next source reconciliation cursor to mentions. The canonical implementation-plan ledger was also found to still describe subscriptions as open even though #3351 is already merged; this slice synchronizes the ledger with the actual mainline state.
+FORUM-33D explicitly advanced the next source reconciliation cursor to mentions. Recheck also found that the canonical implementation-plan ledger still describes subscriptions as open even though #3351 is already merged. This dated actualization records the corrected source cursor; canonical-ledger text synchronization remains a documentation follow-up and must not be mistaken for missing subscription implementation.
 
 ## Existing mention owner rechecked
 
