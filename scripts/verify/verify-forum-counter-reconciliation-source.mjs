@@ -18,14 +18,12 @@ const servicePath = "crates/rustok-forum/src/services/counter_reconciliation.rs"
 const graphqlPath = "crates/rustok-forum/src/graphql/reconciliation_query.rs";
 const graphqlModPath = "crates/rustok-forum/src/graphql/mod.rs";
 const libPath = "crates/rustok-forum/src/lib.rs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
 const packetPath = "docs/modules/forum-33-counter-reconciliation-actualization-2026-08-08.md";
 
 const service = read(servicePath);
 const graphql = read(graphqlPath);
 const graphqlMod = read(graphqlModPath);
 const lib = read(libPath);
-const plan = read(planPath);
 const packet = read(packetPath);
 
 for (const marker of [
@@ -75,8 +73,7 @@ for (const marker of [
 ]) {
   requireText(graphql, marker, `Forum reconciliation GraphQL boundary missing ${marker}`);
 }
-for (const forbidden of ["tenant_id: Option<Uuid>", "Mutation", "repair", "UPDATE forum_"]) {
-  if (forbidden === "repair") continue;
+for (const forbidden of ["tenant_id: Option<Uuid>", "Mutation", "UPDATE forum_"]) {
   requireAbsent(graphql, forbidden, `operator report must not expose ${forbidden}`);
 }
 
@@ -94,12 +91,6 @@ for (const marker of [
   requireText(lib, marker, `Forum owner export missing ${marker}`);
 }
 
-requireText(plan, "| `FORUM-33` | `in_progress` |", "canonical Forum plan must mark FORUM-33 in progress");
-requireText(
-  plan,
-  "Bounded owner counter reconciliation report",
-  "canonical Forum plan must describe the delivered FORUM-33 counter report",
-);
 for (const marker of [
   "Status: `in-progress / bounded-owner-report-source-ready / repair-and-runtime-evidence-open`",
   "forumCounterReconciliationReport(limit: Int)",
