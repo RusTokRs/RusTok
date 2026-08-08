@@ -96,6 +96,7 @@ pub fn ContributionPropertiesPanel(
             return;
         };
 
+        loaded.set(None);
         busy.set(true);
         saved.set(false);
         error.set(None);
@@ -112,7 +113,13 @@ pub fn ContributionPropertiesPanel(
             match response {
                 Ok(schema) => match parse_owner_property_schema(&schema.schema, &request.props) {
                     Ok((fields, values)) => {
-                        if let Some(expected_schema_id) = request
+                        if selected_request.get_untracked().as_ref() != Some(&request) {
+                            error.set(Some(
+                                "The selected component changed while its owner schema was loading; reload properties"
+                                    .to_string(),
+                            ));
+                            loaded.set(None);
+                        } else if let Some(expected_schema_id) = request
                             .property_schema
                             .get("schema_id")
                             .and_then(Value::as_str)
@@ -182,6 +189,9 @@ pub fn ContributionPropertiesPanel(
             )));
             return;
         };
+        let baseline_project_hash = form_runtime
+            .controller
+            .with(|controller| controller.editor().revision().project_hash.hex());
 
         busy.set(true);
         saved.set(false);
@@ -211,10 +221,12 @@ pub fn ContributionPropertiesPanel(
                         let selection_still_matches = runtime.controller.with(|controller| {
                             controller.ui().state.selection.component_id.as_deref()
                                 == Some(current.component_id.as_str())
+                                && controller.editor().revision().project_hash.hex()
+                                    == baseline_project_hash
                         });
                         if !selection_still_matches {
                             error.set(Some(
-                                "The selected component changed while owner validation was running; properties were not applied"
+                                "The selected component or Fly document changed while owner validation was running; properties were not applied"
                                     .to_string(),
                             ));
                         } else {
@@ -542,21 +554,19 @@ fn parse_owner_property_schema(
             "Owner property schema must contain between 1 and {MAX_OWNER_PROPERTY_FIELDS} fields"
         ));
     }
-    let required = object
-        .get("required")
-        .and_then(Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .map(|value| {
-                    value.as_str().map(ToString::to_string).ok_or_else(|| {
-                        "Owner property schema required entries must be strings".to_string()
-                    })
+    let required = match object.get("required") {
+        None => BTreeSet::new(),
+        Some(required) => required
+            .as_array()
+            .ok_or_else(|| "Owner property schema `required` must be an array".to_string())?
+            .iter()
+            .map(|value| {
+                value.as_str().map(ToString::to_string).ok_or_else(|| {
+                    "Owner property schema required entries must be strings".to_string()
                 })
-                .collect::<Result<BTreeSet<_>, _>>()
-        })
-        .transpose()?
-        .unwrap_or_default();
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?,
+    };
     if !required.iter().all(|field| properties.contains_key(field)) {
         return Err("Owner property schema requires an unknown field".to_string());
     }
@@ -580,7 +590,10 @@ fn parse_owner_property_schema(
             .ok_or_else(|| format!("Owner property `{id}` requires a type"))?;
         let kind = match property_type {
             "string" => {
-                if let Some(options) = definition.get("enum").and_then(Value::as_array) {
+                if let Some(raw_options) = definition.get("enum") {
+                    let options = raw_options.as_array().ok_or_else(|| {
+                        format!("Owner property `{id}` enum must be an array")
+                    })?;
                     let options = options
                         .iter()
                         .map(|value| {
@@ -594,18 +607,35 @@ fn parse_owner_property_schema(
                     }
                     ContributionPropertyFieldKind::Select { options }
                 } else {
-                    ContributionPropertyFieldKind::Text {
-                        format: definition
-                            .get("format")
-                            .and_then(Value::as_str)
-                            .map(ToString::to_string),
-                    }
+                    let format = match definition.get("format") {
+                        None => None,
+                        Some(value) => {
+                            let format = value.as_str().ok_or_else(|| {
+                                format!("Owner property `{id}` format must be a string")
+                            })?;
+                            match format {
+                                "uuid" => Some(format.to_string()),
+                                other => {
+                                    return Err(format!(
+                                        "Owner property `{id}` uses unsupported string format `{other}`"
+                                    ));
+                                }
+                            }
+                        }
+                    };
+                    ContributionPropertyFieldKind::Text { format }
                 }
             }
-            "integer" => ContributionPropertyFieldKind::Integer {
-                minimum: definition.get("minimum").and_then(Value::as_u64),
-                maximum: definition.get("maximum").and_then(Value::as_u64),
-            },
+            "integer" => {
+                let minimum = optional_u64_constraint(definition, id, "minimum")?;
+                let maximum = optional_u64_constraint(definition, id, "maximum")?;
+                if minimum.zip(maximum).is_some_and(|(minimum, maximum)| maximum < minimum) {
+                    return Err(format!(
+                        "Owner property `{id}` maximum must be greater than or equal to minimum"
+                    ));
+                }
+                ContributionPropertyFieldKind::Integer { minimum, maximum }
+            }
             "boolean" => ContributionPropertyFieldKind::Boolean,
             other => {
                 return Err(format!(
@@ -629,19 +659,42 @@ fn parse_owner_property_schema(
             }
         }
 
+        let max_length = match definition.get("maxLength") {
+            None => None,
+            Some(value) => {
+                let value = value.as_u64().ok_or_else(|| {
+                    format!("Owner property `{id}` maxLength must be an unsigned integer")
+                })?;
+                Some(usize::try_from(value).map_err(|_| {
+                    format!("Owner property `{id}` maxLength is too large")
+                })?)
+            }
+        };
         fields.push(ContributionPropertyField {
             id: id.clone(),
             label: humanize_property_id(id),
             required: required.contains(id),
-            max_length: definition
-                .get("maxLength")
-                .and_then(Value::as_u64)
-                .and_then(|value| usize::try_from(value).ok()),
+            max_length,
             kind,
         });
     }
 
     Ok((fields, values))
+}
+
+fn optional_u64_constraint(
+    definition: &Map<String, Value>,
+    field_id: &str,
+    constraint: &str,
+) -> Result<Option<u64>, String> {
+    match definition.get(constraint) {
+        None => Ok(None),
+        Some(value) => value.as_u64().map(Some).ok_or_else(|| {
+            format!(
+                "Owner property `{field_id}` {constraint} must be an unsigned integer"
+            )
+        }),
+    }
 }
 
 fn humanize_property_id(id: &str) -> String {
