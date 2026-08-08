@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
 Date: 2026-08-08  
-Status: source-parity-current / pages-repeated-artifact-loss-recovery-source-ready / provider-degraded-controls-source-ready / contribution-registry-version-parity-source-ready / contribution-module-metadata-generation-source-ready / observed-health-open / shared-contribution-tooling-open / execution-browser-rollout-pending
+Status: source-parity-current / pages-repeated-artifact-loss-recovery-source-ready / provider-degraded-controls-source-ready / contribution-registry-version-parity-source-ready / contribution-module-metadata-generation-source-ready / shared-contribution-tooling-source-ready / observed-health-open / second-contribution-consumer-open / execution-browser-rollout-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` document, publication, artifact, routing, cache, authenticated inline-authoring and deterministic deployment boundaries
 
 ## Source-of-truth policy
@@ -14,6 +14,7 @@ Pages and Page Builder remain one vertical pipeline with explicit owners:
 
 - Pages owns persistence, lifecycle, immutable bindings, localized route identity, cache policy, public reads, authenticated inline grants/save transport and the module-owned authoring asset HTTP contract.
 - Pages admin owns the optional same-origin authoring launch control and consumes build-generated contribution metadata.
+- Platform build tooling owns the reusable parsing/normalization contract for canonical module contribution metadata; it does not own runtime registry policy.
 - Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization, renderer, artifact producer contracts and reusable real-DOM inline adapter/session.
 - Navigation and SEO own their resolved payloads.
 - Hosts own route admission, CSP and HTTP composition, not Pages document, route, asset or launch policy.
@@ -30,15 +31,18 @@ The recheck includes all relevant merged source after the former PR #3063 cursor
 - PR #3191 — repeated physical loss of rebuilt immutable Pages artifacts can recover again from the latest accepted repair state per locale while preserving bounded repair/rollback lineage; execution remains open;
 - PR #3196 — Page Builder admin provider rollout/degraded controls are connected through the Pages consumer; absent live SLO evidence remains explicitly `unobserved` and no health state is fabricated;
 - the existing `fly-ui` contribution path already has separate admin/storefront factories, tenant/permission/capability/provider-policy/provider-health filtering, and duplicate/missing-provider/missing-dependency/cycle diagnostics;
-- PR #3205 restored exact owner/target provider versions and fail-closed manifest-routed provider-version admission.
+- PR #3205 restored exact owner/target provider versions and fail-closed manifest-routed provider-version admission;
+- PR #3215 moved the Pages reference-consumer declaration into canonical `rustok-module.toml` and generated the version-pinned runtime manifest at build time.
 
-The present source slice closes the remaining Pages reference-consumer metadata-generation gap without changing Pages persistence or publication ownership:
+The current source slice closes the remaining shared-tooling gap without changing Pages persistence, publication or runtime registry ownership:
 
-- `crates/rustok-pages/rustok-module.toml` is the canonical source for contribution ids, providers, target versions, capabilities, Fly block ids, messages, metadata-property editor identity/accessibility and the complete consumer property schema;
-- `crates/rustok-pages/admin/build.rs` parses and validates that source at build time, derives owner version from `[module].version`, injects `ownerProvider` and exact `providerVersion`, and emits stable Rust constants plus a normalized `ModuleContributionManifest` JSON into `OUT_DIR`;
-- `rustok-pages-admin` keeps `toml` as a build dependency only; admin/WASM runtime never parses module TOML;
-- `admin/src/contributions.rs` consumes the generated manifest and retains the existing public helper API without a handwritten `ModuleContributionManifest`, `ContributionDescriptor`, `PropertyEditorDescriptor` or consumer property-field authority;
-- the existing Fly and Pages metadata source guards now verify canonical module metadata + generation and reject reintroduction of the parallel handwritten descriptor tree.
+- `crates/rustok-build/src/module_manifest_contribution.rs` is the reusable metadata-only parser/normalizer for `[fba.builder_consumer.contribution_manifest]`;
+- it normalizes module/provider/version identity, exact target providers, dependencies, permissions and separate admin/storefront contributions;
+- contribution capabilities must remain inside `[fba.builder_consumer].capabilities`, nested renderer/property-editor providers must match their contribution provider, and reserved `ownerProvider`/`providerVersion` identity is injected only from canonical metadata;
+- `crates/rustok-pages/admin/build.rs` is now a thin Pages-specific adapter over that shared source and retains only Pages role/constant assertions;
+- `xtask module validate <slug>` consumes the same normalizer and rejects invalid contribution metadata during module publish readiness, including admin/storefront contributions without their corresponding declared UI surface;
+- the shared normalizer remains build/tooling code only and does not depend on `fly-ui`, Leptos, Page Builder runtime packages or tenant/provider-health state;
+- the Fly and Pages metadata source guards now require this shared boundary and reject reintroduction of a Pages-local parser/normalizer.
 
 Rechecked Page Builder Phase 9 source state:
 
@@ -46,14 +50,15 @@ Rechecked Page Builder Phase 9 source state:
 - [x] Generate the complete Pages reference-consumer contribution manifest from canonical module metadata at build time.
 - [x] Filter by tenant, permission, capability, provider policy and health.
 - [x] Duplicate, missing-provider, missing-dependency, cycle and provider-version diagnostics.
-- [ ] Generalize the canonical contribution metadata schema/generator into shared module tooling before onboarding a second production contribution consumer.
+- [x] Generalize canonical contribution metadata parsing/normalization into platform build tooling and module publish validation.
 
-The next source cursor is shared module-tooling generalization for contribution metadata and publish validation. Real provider health remains a separate open composition/runtime cursor because the repository still has no authoritative live Page Builder SLO observation source. Execution evidence remains maintainer-owned.
+The next contribution source cursor is onboarding a second production consumer through this shared metadata boundary, but only after that consumer's persistence, authorization and preview ownership are explicit. Real provider health remains a separate open composition/runtime cursor because the repository still has no authoritative live Page Builder SLO observation source. Execution evidence remains maintainer-owned.
 
-Detailed evidence for the two 2026-08-08 contribution slices is retained in:
+Detailed evidence for the 2026-08-08 contribution slices is retained in:
 
 - `docs/modules/pages-page-builder-contribution-parity-actualization-2026-08-08.md`;
-- `docs/modules/pages-page-builder-module-metadata-contribution-generation-2026-08-08.md`.
+- `docs/modules/pages-page-builder-module-metadata-contribution-generation-2026-08-08.md`;
+- `docs/modules/pages-page-builder-shared-contribution-tooling-2026-08-08.md`.
 
 ## Rechecked merged cursor
 
@@ -106,6 +111,7 @@ No build, workflow, Docker, HTTP or browser execution is claimed.
 - `provider-degraded-controls-source-ready` — rollout/degraded provider controls are connected without fabricating observed health.
 - `contribution-registry-version-parity-source-ready` — contribution owner/target provider versions are pinned and fail closed on missing/mismatched versions.
 - `contribution-module-metadata-generation-source-ready` — Pages contribution declarations and property schema are generated from canonical module metadata at build time.
+- `shared-contribution-tooling-source-ready` — canonical contribution parsing/normalization is shared by platform build tooling, Pages generation and module publish readiness.
 
 ## Current parity state
 
@@ -115,15 +121,15 @@ Draft workspaces and published Pages metadata share the registered consumer-prop
 
 Pages remains the sole document persistence owner. Reviewed Page Builder materialization remains required for publish. Rollback selects a prior immutable manifest without compiling the current draft.
 
-Database, GraphQL, REST, publish, rollback and event schemas are unchanged by the contribution-generation slice.
+Database, GraphQL, REST, publish, rollback and event schemas are unchanged by the contribution-generation/tooling slices.
 
 Execution evidence remains pending.
 
-### Canonical contribution metadata generation: source-ready / shared-tooling-open
+### Canonical contribution metadata generation and shared tooling: source-ready
 
-Pages now owns one canonical contribution declaration in `rustok-module.toml`. Its build script validates and materializes the version-pinned Fly manifest and metadata property schema into `OUT_DIR`; runtime consumes only generated Rust/JSON and retains no TOML dependency or handwritten descriptor tree.
+Pages owns one canonical contribution declaration in `rustok-module.toml`. Its build script materializes the version-pinned Fly manifest and metadata property schema into `OUT_DIR`; runtime consumes only generated Rust/JSON and retains no TOML dependency or handwritten descriptor tree.
 
-The Pages reference consumer therefore completes the Phase 9 generation proof. Shared cross-module tooling and publish-time validation of this contribution metadata shape remain open before the same pattern is extended to another production consumer.
+Generic parsing, provider/version injection, capability admission and nested provider validation now live once in `rustok-build` tooling and are reused by Pages build generation and `xtask` publish readiness. A second production consumer has not yet been selected or onboarded.
 
 ### Public locale, route and cache authority: source-ready
 
@@ -258,7 +264,7 @@ Page Builder provider flags can only narrow an already authorized capability set
 
 ### Contribution registry version parity: source-ready
 
-Admin/storefront assembly, policy filters and structural diagnostics are source-ready. Owner and target provider versions are exact and fail closed on missing/mismatched contribution metadata. Pages now supplies those identities from canonical module metadata generation rather than a handwritten runtime manifest.
+Admin/storefront assembly, policy filters and structural diagnostics are source-ready. Owner and target provider versions are exact and fail closed on missing/mismatched contribution metadata. Pages supplies those identities through canonical metadata and the shared build normalizer rather than a handwritten runtime manifest.
 
 ## Parity matrix
 
@@ -267,7 +273,7 @@ Admin/storefront assembly, policy filters and structural diagnostics are source-
 | Registered metadata and owner port | Complete | Browser/conflict execution pending |
 | Reviewed publish and immutable rollback | Complete | DB/runtime execution pending |
 | Repeated immutable-artifact loss recovery | Source-ready | Repair/rollback execution pending |
-| Canonical contribution metadata generation | Source-ready (Pages) | Shared tooling / execution pending |
+| Canonical contribution metadata generation | Source-ready (Pages + shared tooling) | Execution pending |
 | Public locale fallback | Source-ready | Native/GraphQL execution pending |
 | Published aliases, tombstones and history import | Source-ready | SQLite/PostgreSQL/host execution pending |
 | Host canonical/redirect/gone response | Source-ready | HTTP/SSR execution pending |
@@ -285,7 +291,7 @@ Admin/storefront assembly, policy filters and structural diagnostics are source-
 | Anonymous dependency graph | Source-ready | `cargo metadata` execution pending |
 | Anonymous SSR built artifact | Inspector source-ready | Build/inspection pending |
 | Provider degraded controls | Source-ready | Live observed-health evidence pending |
-| Version-pinned contribution registry | Source-ready | Shared tooling / execution pending |
+| Version-pinned contribution registry | Source-ready | Execution pending |
 | Tenant rollout and FFA/FBA | Open | Not promoted |
 
 ## Historical compatibility markers
@@ -306,7 +312,7 @@ These exact phrases are retained only because earlier static guards consume the 
 
 ## Boundaries
 
-The historical deployment slice below remains unchanged; the 2026-08-08 reconciliation additionally restores contribution version parity, moves Pages contribution authority to canonical module metadata and updates the source cursor.
+The historical deployment slice remains unchanged; the 2026-08-08 reconciliation additionally restores contribution version parity, moves Pages contribution authority to canonical module metadata and centralizes metadata normalization in platform build tooling.
 
 It does not:
 
@@ -318,6 +324,7 @@ It does not:
 - enable same-origin launch in standalone admin builds;
 - add runtime build tooling to `apps/server/Dockerfile.release`;
 - add a TOML parser to Pages admin/WASM runtime;
+- make platform build tooling a runtime contribution registry or tenant policy owner;
 - claim verifier, Cargo, npm, Trunk, WASM, server, Docker, workflow, HTTP, browser or rollout execution;
 - fabricate Page Builder provider-health observations;
 - promote FFA or FBA.
@@ -326,11 +333,11 @@ It does not:
 
 Source continuation:
 
-1. Generalize the Pages canonical contribution metadata schema/generator into shared module tooling and publish validation before onboarding a second production contribution consumer.
-2. Keep current Pages repair/recovery and Page Builder degraded-control source boundaries unchanged while that shared authority is extracted.
+1. Select the second production contribution consumer only after its persistence, authorization and preview ownership are explicit, then adopt the shared canonical module metadata/tooling boundary without a consumer-local parser or manifest schema.
+2. Keep current Pages repair/recovery and Page Builder degraded-control source boundaries unchanged during that onboarding.
 3. Connect real provider-health observation only after an authoritative Page Builder SLO source exists.
 
-Maintainer-owned execution evidence remains pending for the contribution-generation, release, browser, database and recovery slices.
+Maintainer-owned execution evidence remains pending for the contribution-generation/tooling, release, browser, database and recovery slices.
 
 ## Maintainer validation
 
@@ -339,6 +346,7 @@ Suggested commands, intentionally not run in this slice:
 ```bash
 node scripts/verify/verify-fly-ui-contributions.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+cargo xtask module validate pages
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
