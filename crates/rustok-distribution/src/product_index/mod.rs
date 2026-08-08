@@ -23,7 +23,8 @@ pub(crate) use storefront_shadow_executor::{
     ProductStorefrontIndexChannelScopeDecision, ProductStorefrontIndexPageScopeDecision,
     ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecution,
     ProductStorefrontIndexShadowExecutor, ProductStorefrontIndexShadowProjectionError,
-    classify_product_storefront_index_channel_scope, classify_product_storefront_index_page_scope,
+    ProductStorefrontIndexTagHydrationError, classify_product_storefront_index_channel_scope,
+    classify_product_storefront_index_page_scope,
 };
 #[cfg(test)]
 mod storefront_shadow_eav_postgres_tests;
