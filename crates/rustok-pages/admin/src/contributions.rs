@@ -12,7 +12,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const PAGES_MODULE_ID: &str = "pages";
 pub const PAGES_OWNER_PROVIDER: &str = "rustok.pages";
+pub const PAGES_OWNER_PROVIDER_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const FLY_BUILTIN_PROVIDER: &str = "fly.builtin";
+pub const FLY_BUILTIN_PROVIDER_VERSION: &str = "1";
 pub const PAGES_LANDING_BLOCKS_CONTRIBUTION_ID: &str = "rustok.pages.landing-blocks";
 pub const PAGES_METADATA_CONTRIBUTION_ID: &str = "rustok.pages.metadata";
 pub const PAGES_METADATA_PROPERTY_EDITOR_ID: &str = "rustok.pages.metadata.editor";
@@ -33,13 +35,17 @@ pub const PAGES_LANDING_BLOCK_IDS: &[&str] = &[
 /// Module-owned metadata used by the generated Fly admin contribution registry.
 ///
 /// Pages owns document lifecycle and metadata persistence. Landing blocks explicitly target
-/// `fly.builtin`, while the executable metadata editor remains under the `rustok.pages` owner
-/// provider and calls the consumer facade rather than mutating the Fly document.
+/// `fly.builtin@1`, while the executable metadata editor remains under the version-pinned
+/// `rustok.pages` owner provider and calls the consumer facade rather than mutating the Fly document.
 pub fn pages_contribution_manifest() -> ModuleContributionManifest {
     ModuleContributionManifest {
         module_id: PAGES_MODULE_ID.to_string(),
         owner_provider: PAGES_OWNER_PROVIDER.to_string(),
-        target_providers: BTreeSet::from([FLY_BUILTIN_PROVIDER.to_string()]),
+        owner_version: PAGES_OWNER_PROVIDER_VERSION.to_string(),
+        target_providers: BTreeMap::from([(
+            FLY_BUILTIN_PROVIDER.to_string(),
+            FLY_BUILTIN_PROVIDER_VERSION.to_string(),
+        )]),
         dependencies: BTreeSet::new(),
         required_permissions: BTreeSet::new(),
         admin: vec![
@@ -69,6 +75,10 @@ pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
             (
                 "ownerProvider".to_string(),
                 Value::String(PAGES_OWNER_PROVIDER.to_string()),
+            ),
+            (
+                "providerVersion".to_string(),
+                Value::String(FLY_BUILTIN_PROVIDER_VERSION.to_string()),
             ),
             ("format".to_string(), Value::String("grapesjs".to_string())),
             ("surface".to_string(), Value::String("admin".to_string())),
@@ -182,6 +192,10 @@ pub fn pages_metadata_contribution() -> ContributionDescriptor {
                 Value::String(PAGES_OWNER_PROVIDER.to_string()),
             ),
             (
+                "providerVersion".to_string(),
+                Value::String(PAGES_OWNER_PROVIDER_VERSION.to_string()),
+            ),
+            (
                 "persistence".to_string(),
                 Value::String("consumer_facade".to_string()),
             ),
@@ -243,9 +257,16 @@ mod tests {
     #[test]
     fn manifest_targets_fly_blocks_and_keeps_metadata_under_pages_owner() {
         let manifest = pages_contribution_manifest();
-        assert!(manifest.allows_target_provider(FLY_BUILTIN_PROVIDER));
-        assert!(manifest.allows_target_provider(PAGES_OWNER_PROVIDER));
-        assert!(!manifest.allows_target_provider("other.provider"));
+        assert!(manifest.allows_target_provider(
+            FLY_BUILTIN_PROVIDER,
+            FLY_BUILTIN_PROVIDER_VERSION,
+        ));
+        assert!(manifest.allows_target_provider(
+            PAGES_OWNER_PROVIDER,
+            PAGES_OWNER_PROVIDER_VERSION,
+        ));
+        assert!(!manifest.allows_target_provider("other.provider", "1"));
+        assert!(!manifest.allows_target_provider(FLY_BUILTIN_PROVIDER, "2"));
     }
 
     #[test]
@@ -304,5 +325,10 @@ mod tests {
                 "Pages module manifest is missing builder capability `{capability}`"
             );
         }
+    }
+
+    #[test]
+    fn storefront_surface_stays_empty_until_a_real_adapter_exists() {
+        assert!(pages_contribution_manifest().storefront.is_empty());
     }
 }
