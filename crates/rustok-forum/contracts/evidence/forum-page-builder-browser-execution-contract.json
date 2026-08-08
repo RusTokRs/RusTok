@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "module": "forum",
+  "packet": "page_builder_browser_evidence",
+  "status": "source_ready_maintainer_execution_pending",
+  "runner": "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts",
+  "config": "apps/next-admin/playwright.forum-page-builder.config.ts",
+  "output": {
+    "environment": "RUSTOK_FORUM_PAGE_BUILDER_BROWSER_EVIDENCE_OUTPUT",
+    "default_path": "target/forum-page-builder-browser-evidence.json",
+    "format": "forum_page_builder_browser_execution_v1",
+    "status": "browser_execution_passed_runtime_evidence_pending"
+  },
+  "environment": {
+    "source_commit": "RUSTOK_FORUM_PAGE_BUILDER_BROWSER_SOURCE_COMMIT",
+    "deployment_digest": "RUSTOK_FORUM_PAGE_BUILDER_DEPLOYMENT_DIGEST",
+    "editor_storage_state": "RUSTOK_FORUM_PAGE_BUILDER_EDITOR_STORAGE_STATE",
+    "no_read_storage_state": "RUSTOK_FORUM_PAGE_BUILDER_NO_READ_STORAGE_STATE",
+    "full_url": "RUSTOK_FORUM_PAGE_BUILDER_FULL_URL",
+    "preview_off_url": "RUSTOK_FORUM_PAGE_BUILDER_PREVIEW_OFF_URL",
+    "properties_off_url": "RUSTOK_FORUM_PAGE_BUILDER_PROPERTIES_OFF_URL",
+    "forum_disabled_url": "RUSTOK_FORUM_PAGE_BUILDER_FORUM_DISABLED_URL",
+    "no_read_url": "RUSTOK_FORUM_PAGE_BUILDER_NO_READ_URL"
+  },
+  "profiles": [
+    "full",
+    "preview_off",
+    "properties_off",
+    "forum_disabled",
+    "no_read"
+  ],
+  "full_profile_proofs": [
+    "forum.topic_list palette admission",
+    "owner schema load",
+    "owner validation rejection",
+    "owner normalization and sanitize issue",
+    "Fly undo and redo",
+    "owner preview readiness",
+    "Pages facade save"
+  ],
+  "required_source_files": [
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json",
+    "apps/next-admin/playwright.forum-page-builder.config.ts",
+    "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts",
+    "crates/rustok-forum/rustok-module.toml",
+    "crates/rustok-forum/admin/src/page_builder.rs",
+    "crates/rustok-forum/admin/src/widget_preview_transport.rs",
+    "crates/rustok-forum/admin/src/widget_property_transport.rs",
+    "crates/rustok-page-builder/admin/src/contribution_host.rs",
+    "crates/rustok-page-builder/admin/src/editor/palette_layers.rs",
+    "crates/rustok-page-builder/admin/src/editor/contribution_properties.rs",
+    "crates/rustok-page-builder/admin/src/editor/contribution_preview.rs",
+    "apps/admin/src/app/page_builder_contributions.rs"
+  ],
+  "retained_data": [
+    "exact source commit",
+    "immutable deployment RepoDigest",
+    "source-file SHA-256 hashes",
+    "storage-state file SHA-256 hashes and byte sizes",
+    "profile URL SHA-256 hashes",
+    "bounded boolean/count observations"
+  ],
+  "forbidden_retained_data": [
+    "raw profile URLs",
+    "cookies",
+    "authorization headers",
+    "storage-state contents",
+    "owner preview payload",
+    "raw DOM or HTML",
+    "Forum topic or reply content",
+    "tenant or actor identifiers"
+  ],
+  "not_claimed": [
+    "browser execution",
+    "runtime authorization execution",
+    "observed Page Builder Wave",
+    "provider SLO health"
+  ]
+}
