@@ -117,8 +117,8 @@ Source exists for:
 - direct `GroupMembershipEnforcementCommandPort` suspend/revoke with expected-revision CAS,
   receipt-first replay, hierarchy/owner protection, shared owner mutation, audit/events and bounded
   direct-local provenance;
-- direct GraphQL suspend/revoke mutations composed into the final Groups mutation root and routed
-  only through `GroupMembershipEnforcementCommandPort`;
+- direct GraphQL suspend/revoke mutations composed into the stable final Groups mutation root and
+  routed only through `GroupMembershipEnforcementCommandPort`;
 - stored lifecycle active member-count semantics that remain independent from temporary owner-clock
   suspension/expiry/revocation while every enforcement mutation still advances group version;
 - append-only membership suspend/revoke semantic events beside targeted invitation events;
@@ -286,9 +286,10 @@ No bulk enforcement command is introduced before single-command runtime evidence
 
 ### Source-complete direct enforcement GraphQL transport
 
-The module manifest now composes `graphql_membership_enforcement::GroupsMutationRoot` as the final
-Groups mutation root. It wraps the existing application/invitation/governance/localization mutation
-chain with exactly two new fields:
+The stable module manifest entrypoint remains `graphql_application_cas::GroupsMutationRoot`. Its
+existing `MergedObject` now includes `graphql_membership_enforcement::GroupsMembershipEnforcementMutation`
+as one additive component while preserving the application/invitation/governance/localization chain.
+The two new fields are:
 
 - `suspendGroupMembership`;
 - `revokeGroupMembershipSuspension`.
