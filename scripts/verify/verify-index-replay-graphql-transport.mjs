@@ -25,56 +25,57 @@ const transport = requireMarkers(transportPath, [
   'pub entity_name: String',
   'pub schema_version: String',
   'pub locale: Option<String>',
+  'pub struct IndexReplayShadowRunInput',
+  'pub continuation: Option<String>',
   'pub struct IndexReplayCancelInput',
   'pub job_id: String',
   'const MAX_LOCALE_BYTES: usize = 32;',
+  'const MAX_CONTINUATION_BYTES: usize = 16 * 1024;',
   'const GRAPHQL_REPLAY_PAGE_LIMIT: usize = 100;',
   'const GRAPHQL_REPLAY_MAX_PAGES: usize = 8;',
   'const GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES: usize = 1;',
   'const GRAPHQL_REPLAY_LEASE_SECONDS: u64 = 60;',
   'async fn run_index_replay(',
+  'async fn run_index_replay_shadow(',
   'async fn cancel_index_replay(',
   'prepare_authorized_run(tenant.id, auth.user_id, input)',
+  'prepare_authorized_shadow_run(tenant.id, auth.user_id, input)',
   'prepare_authorized_cancel(tenant.id, auth.user_id, input)',
   'permissions_for(&tenant_id, &actor_id)',
   'has_effective_permission(&permissions, &Permission::MODULES_MANAGE)',
-  'let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;',
   'let locale = parse_locale(input.locale)?;',
   'rustok_index::LocaleKey::new(locale)',
   'rustok_index::IndexReplayRunRequest::for_locale(',
   'rustok_index::IndexReplayRunRequest::new(',
   'let worker_id = format!("graphql-replay-{}", Uuid::new_v4().simple());',
   '.get::<IndexReplayOperatorRuntime>()',
+  '.get::<IndexReplayShadowTransportRuntime>()',
   'let stop_handle = ctx.data::<StopHandle>()?.clone();',
   '.run_interruptible(operator_context, request, || stop_handle.is_stopping())',
+  '.run_schema_wide(',
   '.request_cancel(operator_context, job_id)',
   'replay_transport_authorizes_before_parsing_untrusted_run_input',
+  'shadow_transport_authorizes_before_schema_and_continuation_parsing',
+  'shadow_transport_accepts_only_schema_and_bounded_sealed_continuation',
   'replay_transport_derives_authority_worker_and_server_owned_budgets',
   'replay_transport_canonicalizes_optional_locale_after_authorization',
   'replay_cancel_authorizes_before_job_id_parsing_and_derives_tenant',
 ]);
 
-const authorizeStart = transport.indexOf('fn authorize(');
-const permissionCheck = transport.indexOf(
-  'let permissions = permissions_for(&tenant_id, &actor_id)',
-  authorizeStart,
-);
 const runPrepare = transport.indexOf('fn prepare_authorized_run(');
 const runAuthorize = transport.indexOf('let context = authorize(tenant_id, actor_id)?;', runPrepare);
-const runSchemaParse = transport.indexOf(
-  'let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;',
-  runPrepare,
-);
+const runSchemaParse = transport.indexOf('let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;', runPrepare);
 const runLocaleParse = transport.indexOf('let locale = parse_locale(input.locale)?;', runPrepare);
-if (
-  authorizeStart < 0 ||
-  permissionCheck < authorizeStart ||
-  runPrepare < 0 ||
-  runAuthorize < runPrepare ||
-  runSchemaParse <= runAuthorize ||
-  runLocaleParse <= runAuthorize
-) {
-  fail('run transport must authorize before parsing untrusted schema/locale input');
+if (runPrepare < 0 || runAuthorize < runPrepare || runSchemaParse <= runAuthorize || runLocaleParse <= runAuthorize) {
+  fail('durable Full transport must authorize before parsing untrusted schema/locale input');
+}
+
+const shadowPrepare = transport.indexOf('fn prepare_authorized_shadow_run(');
+const shadowAuthorize = transport.indexOf('let context = authorize(tenant_id, actor_id)?;', shadowPrepare);
+const shadowSchemaParse = transport.indexOf('let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)?;', shadowPrepare);
+const shadowContinuationParse = transport.indexOf('bounded_text("continuation", &value, MAX_CONTINUATION_BYTES)?;', shadowPrepare);
+if (shadowPrepare < 0 || shadowAuthorize < shadowPrepare || shadowSchemaParse <= shadowAuthorize || shadowContinuationParse <= shadowSchemaParse) {
+  fail('Shadow transport must authorize before parsing untrusted schema/continuation input');
 }
 
 const cancelPrepare = transport.indexOf('fn prepare_authorized_cancel(');
@@ -88,24 +89,26 @@ const runInputStart = transport.indexOf('pub struct IndexReplayRunInput');
 const runInputEnd = transport.indexOf('\n}', runInputStart);
 const runInput = transport.slice(runInputStart, runInputEnd);
 for (const forbidden of [
-  'tenant',
-  'actor',
-  'user_id',
-  'worker',
-  'page_limit',
-  'max_pages',
-  'heartbeat',
-  'lease',
-  'partition',
-  'source_name',
-  'StopHandle',
-  'is_stopping',
-  'Uuid',
+  'tenant', 'actor', 'user_id', 'worker', 'page_limit', 'max_pages', 'heartbeat', 'lease',
+  'partition', 'source_name', 'StopHandle', 'is_stopping', 'Uuid',
 ]) {
-  if (runInput.includes(forbidden)) fail(`replay run input contains caller-owned field marker ${forbidden}`);
+  if (runInput.includes(forbidden)) fail(`durable replay input contains caller-owned field marker ${forbidden}`);
 }
 if (!runInput.includes('locale: Option<String>')) {
-  fail('replay run input must expose only one optional locale scope extension');
+  fail('durable replay input must expose only one optional locale scope extension');
+}
+
+const shadowInputStart = transport.indexOf('pub struct IndexReplayShadowRunInput');
+const shadowInputEnd = transport.indexOf('\n}', shadowInputStart);
+const shadowInput = transport.slice(shadowInputStart, shadowInputEnd);
+for (const forbidden of [
+  'tenant', 'actor', 'worker', 'locale', 'page_limit', 'max_pages', 'heartbeat', 'lease',
+  'partition', 'source_name', 'job_id', 'checkpoint', 'cancel', 'retry', 'StopHandle', 'Uuid',
+]) {
+  if (shadowInput.includes(forbidden)) fail(`Shadow replay input contains caller-owned field marker ${forbidden}`);
+}
+if (!shadowInput.includes('continuation: Option<String>')) {
+  fail('schema-wide Shadow input must expose only one optional sealed continuation extension');
 }
 
 const production = transport.split('\n#[cfg(test)]')[0];
@@ -116,6 +119,9 @@ for (const forbidden of [
   '.scan(',
   'PostgresIndexReplayRunner',
   'SharedIndexReplayRuntime',
+  'SharedIndexReplayDryRunRuntime',
+  'IndexReplayDryRunRequest',
+  '.run_shadow(',
   'PostgresMutationStore',
   'ModuleWorkScheduler',
   '.stop()',
@@ -132,22 +138,20 @@ requireMarkers('apps/server/src/graphql/schema.rs', [
   'pub stop_handle: StopHandle,',
   '.data(stop_handle)',
 ]);
-requireMarkers('apps/server/src/services/graphql_schema.rs', [
-  'let stop_handle = stop_handle_from_context(ctx);',
-  'let (candidate, _initial_receiver) = StopHandle::new();',
-  'ctx.shared_insert_if_absent(candidate);',
-  'IndexReplayStopKeepalive',
-  '_receiver: handle.subscribe()',
-  'avoid a zero-receiver window',
-  'stop_handle,',
-]);
 requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'pub struct IndexReplayOperatorRuntime',
   'pub async fn run_interruptible<Check>(',
-  '.run_interruptible(request, should_interrupt)',
+  'pub async fn run_shadow(',
   'pub async fn request_cancel(',
+  'IndexReplayShadowTransportRuntime',
   'Permission::MODULES_MANAGE',
-  'context.authorize_for(request.page_request().tenant_id())?;',
+]);
+requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
+  'pub struct IndexReplayShadowTransportRuntime',
+  'context.authorize_for(context.tenant_id())?;',
+  'IndexSourceContinuationScope::from_registry(',
+  'self.operator.run_shadow(context, request).await?',
+  'codec.seal(&scope, cursor, Utc::now(), keyring.lifetime())',
 ]);
 requireMarkers('apps/server/src/services/app_lifecycle.rs', [
   'pub struct StopHandle',
@@ -156,17 +160,19 @@ requireMarkers('apps/server/src/services/app_lifecycle.rs', [
   'pub fn is_stopping(&self) -> bool',
 ]);
 requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
-  'Status: `locale_source_complete_execution_pending`.',
+  'Status: `full_locale_and_schema_wide_shadow_source_complete_execution_pending`.',
   '`runIndexReplay(input: ...)`',
+  '`runIndexReplayShadow(input: ...)`',
   '`cancelIndexReplay(input: ...)`',
   'Tenant and actor identities are never accepted',
   'optional canonicalizable locale',
+  'schema-wide Shadow path intentionally has no locale input',
   'page limit: `100` mutations',
   'maximum pages: `8`',
   'lease duration: `60` seconds',
+  'same fixed source page limit and maximum-page count (`100 × 8`)',
   '`StopHandle::is_stopping`',
-  'delegation only through `IndexReplayOperatorRuntime`',
   'maintainer-owned',
 ]);
 
-console.log('[verify-index-replay-graphql-transport] guarded schema/locale replay run is authorized before optional locale parsing, bounded by server policy and bound to the server-owned StopHandle probe');
+console.log('[verify-index-replay-graphql-transport] durable Full/cancel and sealed schema-wide Shadow commands remain authorization-first and server-bounded without transport-owned execution state');
