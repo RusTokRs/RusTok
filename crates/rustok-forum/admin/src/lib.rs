@@ -12,6 +12,7 @@ mod topic_split_model;
 mod transport;
 mod ui;
 mod widget_preview_transport;
+mod widget_property_transport;
 
 pub use page_builder::{
     ForumContributionAdapter, ForumWidgetOwnerSchemaRef, ForumWidgetPropertyEditorModel,
@@ -22,4 +23,11 @@ pub use page_builder::{
 pub use ui::root::ForumAdmin;
 pub use widget_preview_transport::{
     ForumWidgetPreviewTransportRequest, preview_forum_page_builder_widget,
+};
+pub use widget_property_transport::{
+    ForumWidgetPropertySchemaTransportRequest, ForumWidgetPropertySchemaTransportResponse,
+    ForumWidgetPropertyValidationIssueTransport, ForumWidgetPropertyValidationTransportRequest,
+    ForumWidgetPropertyValidationTransportResponse,
+    load_forum_page_builder_widget_property_schema,
+    validate_forum_page_builder_widget_properties,
 };
