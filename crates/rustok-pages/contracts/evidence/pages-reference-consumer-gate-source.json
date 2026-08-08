@@ -8,7 +8,7 @@
   "accepted": false,
   "prepared_on": "2026-08-08",
   "source_recheck": {
-    "main_base": "65ff0a38a0a0d5039c77f56302f6e0f2586d3a62",
+    "main_base": "0f64eb62f9521e0c08027ab04433256429321c62",
     "pages_source_boundary": "complete_execution_pending",
     "page_builder_provider_status": "source_ready_health_unobserved",
     "forum_second_consumer": {
