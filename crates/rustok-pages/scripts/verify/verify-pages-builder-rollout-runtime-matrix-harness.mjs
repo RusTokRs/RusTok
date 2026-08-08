@@ -18,8 +18,12 @@ const files = {
 const failures = [];
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
 const read = (relativePath) => fs.readFileSync(absolute(relativePath), "utf8");
-const need = (source, marker, label) => { if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`); };
-const forbid = (source, marker, label) => { if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`); };
+const need = (source, marker, label) => {
+  if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+};
+const forbid = (source, marker, label) => {
+  if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+};
 
 for (const [label, relativePath] of Object.entries(files)) {
   if (!fs.existsSync(absolute(relativePath))) {
@@ -27,7 +31,9 @@ for (const [label, relativePath] of Object.entries(files)) {
     continue;
   }
   const stats = fs.lstatSync(absolute(relativePath));
-  if (!stats.isFile() || stats.isSymbolicLink()) failures.push(`${label}: ${relativePath} must be a regular non-symlink file`);
+  if (!stats.isFile() || stats.isSymbolicLink()) {
+    failures.push(`${label}: ${relativePath} must be a regular non-symlink file`);
+  }
 }
 if (failures.length) {
   console.error("[verify-pages-builder-rollout-runtime-matrix-harness] FAIL");
@@ -51,6 +57,18 @@ if (
   contract.status !== "source_ready_maintainer_execution_pending"
 ) failures.push("matrix execution contract identity drifted");
 
+if (
+  contract.predecessor?.same_source_commit_required !== true ||
+  contract.predecessor?.same_api_origin_hash_required !== true ||
+  contract.predecessor?.same_admin_origin_hash_required !== true ||
+  contract.predecessor?.deployment_digest_required !== true ||
+  contract.predecessor?.tenant_rollout_must_be_unexecuted !== true
+) failures.push("matrix predecessor identity boundary drifted");
+if (
+  contract.fixtures?.api_origin_environment !== "RUSTOK_PAGES_ROLLOUT_MATRIX_API_ORIGIN" ||
+  contract.fixtures?.admin_origin_environment !== "RUSTOK_PAGES_ROLLOUT_MATRIX_ADMIN_ORIGIN"
+) failures.push("matrix API/admin origin fixture contract drifted");
+
 const expectedProfiles = [
   ["all_on", true, true, true, true, "unobserved"],
   ["publish_off", true, true, true, false, "degraded"],
@@ -65,7 +83,9 @@ const actualProfiles = contract.profiles?.map((profile) => [
   profile.flags?.publish_enabled,
   profile.provider_state,
 ]);
-if (JSON.stringify(actualProfiles) !== JSON.stringify(expectedProfiles)) failures.push("matrix profile set or flags drifted");
+if (JSON.stringify(actualProfiles) !== JSON.stringify(expectedProfiles)) {
+  failures.push("matrix profile set or flags drifted");
+}
 
 if (
   contract.settings_authority?.read_operation !== "tenantModules" ||
@@ -87,7 +107,9 @@ if (
 ) failures.push("matrix output boundary drifted");
 
 for (const relativePath of contract.required_source_files ?? []) {
-  if (!fs.existsSync(absolute(relativePath))) failures.push(`required source file is missing: ${relativePath}`);
+  if (!fs.existsSync(absolute(relativePath))) {
+    failures.push(`required source file is missing: ${relativePath}`);
+  }
 }
 for (const forbidden of [
   "tenant slugs",
@@ -102,7 +124,9 @@ for (const forbidden of [
   "screenshots",
   "videos",
 ]) {
-  if (!contract.forbidden_retained_data?.includes(forbidden)) failures.push(`privacy contract is missing ${forbidden}`);
+  if (!contract.forbidden_retained_data?.includes(forbidden)) {
+    failures.push(`privacy contract is missing ${forbidden}`);
+  }
 }
 
 for (const marker of [
@@ -118,26 +142,32 @@ for (const marker of [
 for (const marker of [
   "currentCommit()",
   "validatePredecessor",
+  "apiOrigin",
+  "adminOrigin",
+  "target?.origin_sha256 !== sha256(apiOrigin)",
+  "target?.standalone_origin_sha256 !== sha256(adminOrigin)",
+  "apiOrigin === adminOrigin",
   "tenantModulesQuery",
   "updateSettingsMutation",
   "rolloutSnapshotQuery",
   "pagesReadsQuery",
   "withProfile(original.settings, profile.flags)",
-  "writePagesSettings(context, profileSettings)",
-  "readRolloutSnapshot(context, tenantSlug, profile)",
-  "assertPagesReads(context, pageId)",
+  "writePagesSettings(context, apiOrigin, profileSettings)",
+  "readRolloutSnapshot(",
+  "assertPagesReads(context, apiOrigin, pageId)",
   "assertUiProfile(page, profile)",
   "allowedPreview(page, profile.id === \"all_on\")",
   "deniedPreview(context, previewTemplate)",
   'deniedBrowserIntent(context, pageId, "save", "publish")',
-  '"rename_page"',
-  '"properties"',
+  'deniedBrowserIntent(context, pageId, "rename_page", "properties")',
   "finally {",
-  "await writePagesSettings(context, originalSettings)",
+  "await writePagesSettings(context, apiOrigin, originalSettings)",
   "canonicalJson(restored.settings) !== canonicalJson(originalSettings)",
   "restoreVerified = true",
   "rmSync(output, { force: true })",
   "renameSync(temporary, location)",
+  "api_origin_sha256: sha256(apiOrigin)",
+  "admin_origin_sha256: sha256(adminOrigin)",
   "raw_settings_persisted: false",
   "provider_health_observed: false",
   "gate_accepted: false",
@@ -175,14 +205,27 @@ for (const marker of [
   "dispatch_pages_browser_intent_with_capabilities(snapshot, envelope, editor_capabilities)",
 ]) need(adminMain, marker, "standalone browser-intent rollout binding");
 
-if (evidence.format !== "pages_builder_rollout_runtime_matrix_harness_source_v1") failures.push("matrix source evidence format drifted");
-if (evidence.status !== "pages_builder_rollout_runtime_matrix_harness_source_unvalidated") failures.push("matrix source evidence status drifted");
-if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) failures.push("matrix source evidence execution must remain empty");
-for (const [key, value] of Object.entries(evidence.validation ?? {})) if (value !== false) failures.push(`matrix validation.${key} must remain false`);
+if (evidence.format !== "pages_builder_rollout_runtime_matrix_harness_source_v1") {
+  failures.push("matrix source evidence format drifted");
+}
+if (evidence.status !== "pages_builder_rollout_runtime_matrix_harness_source_unvalidated") {
+  failures.push("matrix source evidence status drifted");
+}
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
+  failures.push("matrix source evidence execution must remain empty");
+}
+for (const [key, value] of Object.entries(evidence.validation ?? {})) {
+  if (value !== false) failures.push(`matrix validation.${key} must remain false`);
+}
 for (const key of [
   "execution_contract_added",
   "playwright_config_added",
   "bounded_matrix_spec_added",
+  "predecessor_same_source_required",
+  "predecessor_same_api_origin_hash_required",
+  "predecessor_same_admin_origin_hash_required",
+  "predecessor_immutable_deployment_digest_required",
+  "api_and_admin_origins_must_be_distinct",
   "production_tenant_modules_read_used",
   "production_update_module_settings_used",
   "original_settings_restored_in_finally",
@@ -195,7 +238,9 @@ for (const key of [
   "all_on_publish_probe_is_non_mutating",
   "output_is_atomic",
 ]) {
-  if (evidence.source_contract?.[key] !== true) failures.push(`matrix source_contract.${key} must be true`);
+  if (evidence.source_contract?.[key] !== true) {
+    failures.push(`matrix source_contract.${key} must be true`);
+  }
 }
 for (const key of [
   "direct_sql_used",
@@ -214,18 +259,24 @@ for (const key of [
   "ffa_promoted",
   "fba_promoted",
 ]) {
-  if (evidence.source_contract?.[key] !== false) failures.push(`matrix source_contract.${key} must remain false`);
+  if (evidence.source_contract?.[key] !== false) {
+    failures.push(`matrix source_contract.${key} must remain false`);
+  }
 }
 
 if (
   gate.accepted !== false ||
   gate.current_boundary?.execution_gate !== "pending" ||
-  gate.current_boundary?.provider_health !== "unobserved"
-) failures.push("Pages gate must remain pending, unaccepted and unobserved");
+  gate.current_boundary?.provider_health !== "unobserved" ||
+  gate.current_boundary?.four_profile_runtime_matrix !==
+    "harness_source_ready_maintainer_execution_pending"
+) failures.push("Pages gate must remain pending, unaccepted, unobserved and matrix-execution pending");
 
 for (const marker of [
   "source-ready / maintainer-execution-pending",
   "updateModuleSettings",
+  "API origin",
+  "admin origin",
   "restore",
   "four profiles",
   "No tests, Node verifiers, Cargo commands",
@@ -236,4 +287,4 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-rollout-runtime-matrix-harness] PASS source_ready=true execution=not_run gate_accepted=false");
+console.log("[verify-pages-builder-rollout-runtime-matrix-harness] PASS source_ready=true execution=not_run gate_accepted=false targets=api+admin");
