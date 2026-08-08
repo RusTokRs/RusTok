@@ -11,16 +11,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub type PageBuilderContributionPreviewFuture = Pin<
-    Box<
-        dyn Future<Output = Result<Value, PageBuilderContributionPreviewError>>
-            + Send
-            + 'static,
-    >,
->;
-
-#[cfg(target_arch = "wasm32")]
 pub type PageBuilderContributionPreviewFuture = Pin<
     Box<dyn Future<Output = Result<Value, PageBuilderContributionPreviewError>> + 'static>,
 >;
@@ -69,7 +59,9 @@ impl std::fmt::Display for PageBuilderContributionPreviewError {
 impl std::error::Error for PageBuilderContributionPreviewError {}
 
 /// Async owner-data preview port. Fly contribution adapters remain synchronous and framework
-/// neutral; transports live here at the Page Builder admin composition boundary.
+/// neutral; transports live here at the Page Builder admin composition boundary. The future itself
+/// is intentionally local because the admin UI executes it through `spawn_local`; the port object
+/// remains `Send + Sync` for host-context composition.
 pub trait PageBuilderContributionPreviewPort: Send + Sync {
     fn preview(
         &self,
