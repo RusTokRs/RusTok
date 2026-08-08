@@ -1,8 +1,8 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked after guarded replay GraphQL transport merge
-`6672c8b15f7b3ebd53a75147262b3d74020e4a16` and continued on
-`agent/index-replay-graceful-shutdown-v2-20260808`.
+Status overlay rechecked after replay graceful-runner merge
+`9b1bd76ba264939566e66158e35cefab7419ce4c` and continued on
+`agent/index-replay-stop-handle-binding-20260808`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
 
@@ -117,16 +117,15 @@ The GraphQL layer exposes source-complete schema-wide `runIndexReplay` / `cancel
 calling `SharedIndexReplayRuntime`, source adapters or PostgreSQL directly. Authorization occurs before parsing
 untrusted schema/job input.
 
-Caller input contains no tenant, actor, worker ID, source name, locale/partition, scheduler handle or replay
-resource budget. Each run creates a server-owned worker identity and applies fixed transport caps: 100 mutations
-per page, at most 8 pages, heartbeat every page and a 60-second lease. Yielded work remains resumable through the
-existing durable job/checkpoint mechanism.
+Caller input contains no tenant, actor, worker ID, source name, locale/partition, scheduler handle, replay
+resource budget, stop handle or shutdown flag. Each run creates a server-owned worker identity and applies fixed
+transport caps: 100 mutations per page, at most 8 pages, heartbeat every page and a 60-second lease.
 
 GraphQL runtime execution/cancellation evidence remains maintainer-owned.
 
-## M6 replay graceful interruption
+## M6 replay graceful interruption and server lifecycle binding
 
-`PostgresIndexReplayRunner::run_interruptible` now carries one host-owned synchronous probe into the existing
+`PostgresIndexReplayRunner::run_interruptible` carries one host-owned synchronous probe into the existing
 one-page safe points: before source scan, before each mutation, and before checkpoint commit. Ordinary `run` and
 persisted operator cancellation semantics remain unchanged.
 
@@ -141,8 +140,18 @@ A retained deterministic SQLite packet covers both important restart windows:
   checkpoint, then attempt 2 scans the same page, records the stable delivery as `Duplicate`, commits the
   checkpoint and succeeds.
 
-This is runner-level source completeness only. The server `StopHandle` is not yet wired through
-`SharedIndexReplayRuntime` / `IndexReplayOperatorRuntime` into the interruptible path.
+The host binding is also source-complete:
+
+1. `SharedIndexReplayRuntime::run_interruptible` forwards only a lifecycle-neutral boolean probe;
+2. `IndexReplayOperatorRuntime::run_interruptible` preserves exact tenant/actor + `modules:manage` authorization;
+3. GraphQL schema initialization resolves or atomically publishes the one shared server `StopHandle`;
+4. API-only hosts retain a private watch receiver so the existing `StopHandle::stop()` can publish the terminal
+   value even when no background worker subscribed;
+5. `runIndexReplay` samples only `StopHandle::is_stopping` through the guarded operator/runtime chain;
+6. GraphQL never receives a shutdown field and never calls `.stop()`;
+7. `cancelIndexReplay` remains the separate persisted cancellation state machine.
+
+Actual process-shutdown execution evidence has **not** been run or admitted.
 
 ## Remaining Storefront parity/evidence blockers
 
@@ -173,10 +182,10 @@ This is runner-level source completeness only. The server `StopHandle` is not ye
 - [x] Real-migration repair PostgreSQL harness and retained-evidence admission tooling.
 - [x] Guarded schema-wide replay run/cancel GraphQL command transport with server-owned bounded run policy.
 - [x] Carry a host-owned interruption probe through replay runner safe points and retain duplicate-safe restart evidence source.
+- [x] Bind the shared server `StopHandle::is_stopping` signal through guarded replay runtime/operator composition without caller shutdown controls.
 - [ ] Execute and admit the concrete repair PostgreSQL packet.
 - [ ] Execute/admit replay GraphQL transport behavior and cancellation evidence.
-- [ ] Execute/admit retained graceful interruption/restart evidence.
-- [ ] Bind server `StopHandle` to interruptible replay execution through guarded runtime/operator composition.
+- [ ] Execute/admit retained graceful interruption/restart evidence and process-shutdown binding.
 - [ ] Complete remaining multi-host/restart evidence beyond existing convergence/replay packets.
 - [ ] Add locale/partition replay checkpoint dimensions and explicit rebuild modes under separate contracts.
 
@@ -211,12 +220,13 @@ This is runner-level source completeness only. The server `StopHandle` is not ye
 ## Next source-code boundary
 
 M7 Storefront remains execution/admission-gated and must not gain a traffic switch from source inspection alone.
-The next independent M6 source slice is server binding: surface only a server-owned `StopHandle::is_stopping`
-probe through `SharedIndexReplayRuntime` and `IndexReplayOperatorRuntime` so authorized replay commands use
-`run_interruptible` without accepting any shutdown control from GraphQL input.
+The next independent M6 source slice is retained end-to-end shutdown command evidence: drive an authorized replay
+command through the real GraphQL/schema/operator chain, flip the shared `StopHandle` deterministically without
+sleep/timing polling, and prove the job yields `pending` and resumes with duplicate-safe semantics.
 
-Do not change user-requested cancellation semantics while adding host-stop composition. Locale/partition replay
-checkpoint scope and explicit rebuild modes remain later, separate contracts.
+If that cannot be retained deterministically without inventing a test-only lifecycle path, move instead to the
+separate pending-future timeout boundary. Locale/partition checkpoint scope and explicit rebuild modes remain
+later contracts.
 
 No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
 `git diff --check` were executed by the implementation agent.
