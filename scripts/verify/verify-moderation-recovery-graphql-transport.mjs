@@ -8,6 +8,10 @@ const graphqlMod = fs.readFileSync("apps/server/src/graphql/mod.rs", "utf8");
 const schema = fs.readFileSync("apps/server/src/graphql/schema.rs", "utf8");
 const serverCargo = fs.readFileSync("apps/server/Cargo.toml", "utf8");
 const ports = fs.readFileSync("crates/rustok-moderation/src/ports.rs", "utf8");
+const caseOpen = fs.readFileSync(
+  "crates/rustok-moderation/src/commands/case_open.rs",
+  "utf8",
+);
 
 function requireText(source, needle, message) {
   if (!source.includes(needle)) throw new Error(message);
@@ -68,10 +72,13 @@ for (const rereviewMarker of [
   "report_ids: Vec::new()",
   '"operator_rereview"',
   '"root_idempotency_key"',
+  '"request_hash"',
   '"source_case_id"',
   '"source_decision_id"',
   '"source_subject_revision"',
   '"fresh_subject_revision"',
+  "rereview_request_hash",
+  "Sha256::digest",
   "require_owned_rereview_case",
   "ModerationCommandPort::open_case",
   "ModerationCommandPort::assign_case",
@@ -101,6 +108,17 @@ for (const forbiddenRereview of [
     `Rereview must not mutate historical identity: ${forbiddenRereview}`,
   );
 }
+
+requireText(
+  caseOpen,
+  "if created || !command.report_ids.is_empty()",
+  "Deduplicated open with no reports must not emit a reports-attached audit fact",
+);
+requireText(
+  caseOpen,
+  '"reports_attached"',
+  "Real report attachment must retain the canonical audit event",
+);
 
 requireText(
   transport,
