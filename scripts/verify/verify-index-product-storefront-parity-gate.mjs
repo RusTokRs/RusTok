@@ -125,11 +125,16 @@ for (const forbidden of ['SchemaVersion::new(3)', 'SchemaVersion::new(5)', 'loca
 
 requireMarkers('scripts/verify/verify-index-product-current-schema-promotion.mjs', [
   'Product key4 is the only current runtime contract',
-  'tenant stage/rebuild/register_current promotion remains fail-closed and execution-owned',
+  'retained tenant promotion PostgreSQL packet is source-complete',
+]);
+requireMarkers('scripts/verify/verify-index-product-current-schema-promotion-postgres-packet.mjs', [
+  'retained Product key4 stage/replay/register_current/inactive-old-key/restart PostgreSQL packet source verified',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md', [
-  'Status: `source_contract_complete_execution_pending`',
+  'Status: `postgres_packet_source_complete_execution_pending`',
   'Tenant promotion sequence',
+  'Retained PostgreSQL promotion packet — source complete',
+  'storage-only lower-key fixture',
   '`PostgresSchemaRegistrationStore::register_current`',
   'Mounted Storefront remains owner-native',
 ]);
@@ -173,7 +178,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', 
   'Mounted Storefront remains owner-native',
   'Serving-budget policy and timeout enforcement — source complete',
   'Deterministic timeout evidence — source complete, execution pending',
-  'Current Product key-4 promotion — source contract complete, execution pending',
+  'Current Product key-4 promotion — PostgreSQL packet source complete, execution pending',
   '`ProductStorefrontIndexBudgetedProjectionExecutor`',
   'The packet has not been executed by the implementation agent',
 ]);
@@ -188,9 +193,10 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-budgeted-executio
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-current-schema-promotion.mjs'",
+  "'verify-index-product-current-schema-promotion-postgres-packet.mjs'",
   "'verify-index-product-storefront-serving-budget-policy.mjs'",
   "'verify-index-product-storefront-budgeted-execution.mjs'",
   "'verify-index-product-storefront-budgeted-execution-evidence.mjs'",
 ]);
 
-console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; current key4 promotion, budget policy, timeout enforcement and deterministic timeout evidence are source-complete while maintainer execution/admission remains pending');
+console.log('[verify-index-product-storefront-parity-gate] Storefront remains owner-native; key4 promotion PostgreSQL packet, budget policy, timeout enforcement and deterministic timeout evidence are source-complete while maintainer execution/admission remains pending');
