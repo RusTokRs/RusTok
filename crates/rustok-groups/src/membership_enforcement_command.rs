@@ -106,7 +106,6 @@ impl GroupMembershipEnforcementCommandService {
         context: &PortContext,
         request: SuspendGroupMembershipRequest,
     ) -> GroupsResult<GroupMembershipEnforcementMutationResult> {
-        require_write(context)?;
         validate_identity(
             request.group_id,
             request.target_user_id,
@@ -210,7 +209,6 @@ impl GroupMembershipEnforcementCommandService {
         context: &PortContext,
         request: RevokeGroupMembershipSuspensionRequest,
     ) -> GroupsResult<GroupMembershipEnforcementMutationResult> {
-        require_write(context)?;
         validate_identity(
             request.group_id,
             request.target_user_id,
@@ -310,6 +308,7 @@ impl GroupMembershipEnforcementCommandPort for GroupMembershipEnforcementCommand
         context: PortContext,
         request: SuspendGroupMembershipRequest,
     ) -> Result<GroupMembershipEnforcementMutationResult, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
         self.suspend_owned(&context, request).await.map_err(Into::into)
     }
 
@@ -318,6 +317,7 @@ impl GroupMembershipEnforcementCommandPort for GroupMembershipEnforcementCommand
         context: PortContext,
         request: RevokeGroupMembershipSuspensionRequest,
     ) -> Result<GroupMembershipEnforcementMutationResult, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
         self.revoke_owned(&context, request).await.map_err(Into::into)
     }
 }
@@ -595,6 +595,10 @@ pub(crate) async fn apply_membership_suspension_in_tx(
             "membership_id": target.id,
             "reason_code": reason_code,
             "source_kind": provenance.source_kind.as_str(),
+            "moderation_decision_id": provenance.moderation_decision_id,
+            "moderation_decision_hash": provenance.moderation_decision_hash.clone(),
+            "mutation_actor_kind": provenance.actor_kind,
+            "mutation_actor_id": provenance.actor_id,
             "effective_until": effective_until,
             "previous_membership_revision": expected_membership_revision,
             "membership_revision": result.membership_revision,
@@ -616,6 +620,10 @@ pub(crate) async fn apply_membership_suspension_in_tx(
             "user_id": target.user_id,
             "reason_code": reason_code,
             "source_kind": provenance.source_kind.as_str(),
+            "moderation_decision_id": provenance.moderation_decision_id,
+            "moderation_decision_hash": provenance.moderation_decision_hash,
+            "mutation_actor_kind": provenance.actor_kind,
+            "mutation_actor_id": provenance.actor_id,
             "effective_until": effective_until,
             "membership_revision": result.membership_revision,
             "group_version": result.group_version
@@ -655,6 +663,8 @@ pub(crate) async fn revoke_membership_suspension_in_tx(
 
     let previous_reason_code = existing.reason_code.clone();
     let previous_effective_until = existing.effective_until.map(|value| value.with_timezone(&Utc));
+    let previous_moderation_decision_id = existing.moderation_decision_id;
+    let previous_moderation_decision_hash = existing.moderation_decision_hash.clone();
     let fixed_now = now.fixed_offset();
     let mut active: membership_enforcement::ActiveModel = existing.into();
     // Preserve the original suspension actor/source provenance. The revoking actor is retained in
@@ -689,6 +699,10 @@ pub(crate) async fn revoke_membership_suspension_in_tx(
             "previous_reason_code": previous_reason_code,
             "previous_effective_until": previous_effective_until,
             "source_kind": existing_source.as_str(),
+            "previous_moderation_decision_id": previous_moderation_decision_id,
+            "previous_moderation_decision_hash": previous_moderation_decision_hash.clone(),
+            "mutation_actor_kind": provenance.actor_kind,
+            "mutation_actor_id": provenance.actor_id,
             "previous_membership_revision": expected_membership_revision,
             "membership_revision": result.membership_revision,
             "group_version": result.group_version,
@@ -710,6 +724,10 @@ pub(crate) async fn revoke_membership_suspension_in_tx(
             "revocation_reason_code": revocation_reason_code,
             "previous_reason_code": previous_reason_code,
             "source_kind": existing_source.as_str(),
+            "previous_moderation_decision_id": previous_moderation_decision_id,
+            "previous_moderation_decision_hash": previous_moderation_decision_hash,
+            "mutation_actor_kind": provenance.actor_kind,
+            "mutation_actor_id": provenance.actor_id,
             "membership_revision": result.membership_revision,
             "group_version": result.group_version
         }),
@@ -997,12 +1015,6 @@ fn request_hash<T: Serialize>(request: &T) -> GroupsResult<String> {
         ))
     })?;
     Ok(crate::domain::sha256_hex(&bytes))
-}
-
-fn require_write(context: &PortContext) -> GroupsResult<()> {
-    context
-        .require_policy(PortCallPolicy::write())
-        .map_err(|error| GroupsError::Validation(error.message))
 }
 
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
