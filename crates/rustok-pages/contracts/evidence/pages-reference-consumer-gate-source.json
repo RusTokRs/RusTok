@@ -11,6 +11,7 @@
     "main_base": "0f64eb62f9521e0c08027ab04433256429321c62",
     "rollout_owner_correction_base": "9221664d677f3f8775ef4ade66ffe14a4b316c54",
     "rollout_matrix_harness_base": "edd68d44d726085252a0c0b9ae426a3ec016032f",
+    "reference_candidate_matrix_input_base": "a08337a73bba49ee57dc932d7e0128ac545e2071",
     "pages_source_boundary": "complete_execution_pending",
     "page_builder_provider_status": "source_ready_health_unobserved",
     "plan_parity": "source_ready",
@@ -19,6 +20,7 @@
     "trusted_rollout_server_snapshot": "pages_graphql_owner_ui_ssr_browser_intent_bindings_source_ready",
     "browser_intent_rollout_preflight": "source_ready_server_owned_flags",
     "four_profile_runtime_matrix": "harness_source_ready_maintainer_execution_pending",
+    "reference_candidate_rollout_matrix_input": "source_ready_required_before_candidate",
     "forum_second_consumer": {
       "contribution_metadata": "source_ready",
       "fly_adapter": "source_ready",
@@ -79,6 +81,7 @@
       "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
       "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
       "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
       "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs"
     ],
     "required_execution_evidence": [
@@ -111,6 +114,14 @@
     "candidate_format": "pages_reference_consumer_gate_candidate_v1",
     "candidate_status": "component_execution_passed_owner_review_pending",
     "automatic_acceptance": false,
+    "required_inputs": {
+      "artifact_http": "pages_inline_edit_artifact_http_execution_v1",
+      "browser": "pages_inline_edit_browser_execution_v1",
+      "rollout_matrix": "pages_builder_rollout_runtime_matrix_v1"
+    },
+    "rollout_matrix_status_required": "four_profile_runtime_matrix_passed_owner_review_pending",
+    "rollout_matrix_browser_predecessor_hash_required": true,
+    "rollout_matrix_settings_restore_required": true,
     "owner_signoff_after_candidate": true,
     "rollback_decision_after_candidate": true
   },
@@ -136,6 +147,7 @@
     "trusted_rollout_server_snapshot": "pages_graphql_owner_ui_ssr_browser_intent_bindings_source_ready",
     "browser_intent_rollout_preflight": "source_ready_server_owned_flags",
     "four_profile_runtime_matrix": "harness_source_ready_maintainer_execution_pending",
+    "reference_candidate_rollout_matrix_input": "source_ready_required_before_candidate",
     "forum_wave_blocker": "pages_reference_consumer_gate",
     "provider_health": "unobserved",
     "ffa_fba_promotion": "not_claimed"
