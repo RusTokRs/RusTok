@@ -118,6 +118,13 @@ function requireDeploymentDigest(value, label) {
   return value;
 }
 
+function requireSha256(value, label) {
+  if (typeof value !== "string" || !sha256Pattern.test(value)) {
+    fail(`${label} must be a lowercase SHA-256`);
+  }
+  return value;
+}
+
 function validateArtifactHttp(input, contract, head) {
   const document = input.document;
   const specification = contract.inputs?.artifact_http;
@@ -175,6 +182,8 @@ function validateBrowser(input, contract, head, artifactInput, deploymentDigest)
   if (target.deployment_image_digest !== deploymentDigest) {
     fail("browser and artifact/HTTP deployment digests differ");
   }
+  requireSha256(target.origin_sha256, "browser API origin hash");
+  requireSha256(target.standalone_origin_sha256, "browser standalone-admin origin hash");
   const inputs = object(document.inputs, "browser inputs");
   const artifactHttp = object(inputs.artifact_http, "browser artifact/HTTP input");
   if (
@@ -230,6 +239,253 @@ function validateBrowser(input, contract, head, artifactInput, deploymentDigest)
     "videos_persisted",
   ]) {
     if (privacy[key] !== false) fail(`browser privacy.${key} must remain false`);
+  }
+}
+
+function validateBoundedBodyRecord(value, label, expectedStatus = null) {
+  const record = object(value, label);
+  if (
+    !Number.isInteger(record.response_body_bytes) ||
+    record.response_body_bytes < 0 ||
+    record.response_body_bytes > MAX_INPUT_BYTES
+  ) {
+    fail(`${label}.response_body_bytes is outside the bound`);
+  }
+  requireSha256(record.response_body_sha256, `${label}.response_body_sha256`);
+  if (expectedStatus !== null && record.status !== expectedStatus) {
+    fail(`${label}.status must be ${expectedStatus}`);
+  }
+  return record;
+}
+
+function validateTypedIntentDenial(value, label, capability, intent) {
+  const denial = validateBoundedBodyRecord(value, label, 403);
+  if (
+    denial.code !== "FLY_CAPABILITY_DENIED" ||
+    denial.capability !== capability ||
+    denial.intent !== intent
+  ) {
+    fail(`${label} is not the expected typed capability denial`);
+  }
+}
+
+function validateRolloutProfile(profileId, value) {
+  const profile = object(value, `rollout matrix profile ${profileId}`);
+  const expected = {
+    all_on: {
+      flags: [true, true, true, true],
+      provider: "unobserved",
+      preview: true,
+      properties: "enabled",
+      publish: "enabled",
+      previewDisabled: false,
+    },
+    publish_off: {
+      flags: [true, true, true, false],
+      provider: "degraded",
+      preview: true,
+      properties: "enabled",
+      publish: "disabled_or_hidden",
+      previewDisabled: false,
+    },
+    preview_off: {
+      flags: [true, false, true, false],
+      provider: "degraded",
+      preview: false,
+      properties: "enabled",
+      publish: "disabled_or_hidden",
+      previewDisabled: true,
+    },
+    builder_off: {
+      flags: [false, false, false, false],
+      provider: "unavailable",
+      preview: false,
+      properties: "disabled_or_hidden",
+      publish: "disabled_or_hidden",
+      previewDisabled: true,
+    },
+  }[profileId];
+  if (expected === undefined) fail(`unexpected rollout profile ${profileId}`);
+
+  const flags = object(profile.flags, `${profileId} flags`);
+  const actualFlags = [
+    flags.builder_enabled,
+    flags.preview_enabled,
+    flags.properties_enabled,
+    flags.publish_enabled,
+  ];
+  if (JSON.stringify(actualFlags) !== JSON.stringify(expected.flags)) {
+    fail(`${profileId} rollout flags drifted`);
+  }
+
+  const settingsWrite = validateBoundedBodyRecord(profile.settings_write, `${profileId} settings write`, 200);
+  if (settingsWrite.raw_request_or_response_persisted !== false) {
+    fail(`${profileId} settings write persisted a raw request or response`);
+  }
+
+  const snapshot = validateBoundedBodyRecord(profile.server_snapshot, `${profileId} server snapshot`, 200);
+  if (
+    snapshot.raw_request_or_response_persisted !== false ||
+    snapshot.tenant_match !== true ||
+    snapshot.flags_match !== true ||
+    snapshot.provider_health_observed !== false
+  ) {
+    fail(`${profileId} server snapshot does not satisfy rollout ownership`);
+  }
+
+  const reads = validateBoundedBodyRecord(profile.pages_owned_reads, `${profileId} Pages reads`, 200);
+  if (
+    reads.raw_request_or_response_persisted !== false ||
+    reads.list_read !== true ||
+    reads.document_read !== true
+  ) {
+    fail(`${profileId} does not preserve Pages-owned reads`);
+  }
+
+  const ui = object(profile.ui, `${profileId} UI evidence`);
+  const allowedState = (actual, expectedState) =>
+    expectedState === "disabled_or_hidden"
+      ? actual === "disabled" || actual === "hidden"
+      : actual === expectedState;
+  if (
+    ui.provider_state !== expected.provider ||
+    ui.provider_health !== "unobserved" ||
+    ui.preview_enabled !== expected.preview ||
+    !allowedState(ui.properties, expected.properties) ||
+    !allowedState(ui.publish, expected.publish)
+  ) {
+    fail(`${profileId} UI rollout state drifted`);
+  }
+
+  const preview = validateBoundedBodyRecord(profile.preview_ssr, `${profileId} preview SSR`);
+  if (preview.capability_disabled !== expected.previewDisabled) {
+    fail(`${profileId} preview SSR capability outcome drifted`);
+  }
+  if (expected.previewDisabled) {
+    if (preview.status < 400) fail(`${profileId} disabled preview returned a success status`);
+  } else if (preview.status >= 400) {
+    fail(`${profileId} enabled preview returned an error status`);
+  }
+
+  if (profileId === "all_on") {
+    const publish = object(profile.publish_dry, "all_on publish dry evidence");
+    if (
+      publish.ui_capability_enabled !== true ||
+      publish.mutating_save_request_sent !== false
+    ) {
+      fail("all_on publish dry evidence must remain non-mutating and enabled");
+    }
+    if (profile.properties_denial !== null) {
+      fail("all_on must not retain a properties denial");
+    }
+  } else {
+    validateTypedIntentDenial(profile.publish_dry, `${profileId} publish denial`, "publish", "save");
+    if (profileId === "builder_off") {
+      validateTypedIntentDenial(
+        profile.properties_denial,
+        "builder_off properties denial",
+        "properties",
+        "rename_page",
+      );
+    } else if (profile.properties_denial !== null) {
+      fail(`${profileId} must not retain a properties denial`);
+    }
+  }
+}
+
+function validateRolloutMatrix(input, contract, gate, head, browserInput, deploymentDigest) {
+  const document = input.document;
+  const specification = contract.inputs?.rollout_matrix;
+  if (
+    document.format !== specification?.format ||
+    document.status !== specification?.status ||
+    document.source_commit !== head
+  ) {
+    fail("rollout matrix identity, status, or source commit drifted");
+  }
+
+  const inputs = object(document.inputs, "rollout matrix inputs");
+  const predecessor = object(inputs.browser_predecessor, "rollout matrix browser predecessor");
+  if (
+    predecessor.bytes !== browserInput.record.size ||
+    predecessor.sha256 !== browserInput.record.sha256
+  ) {
+    fail("rollout matrix is not bound to the supplied browser predecessor packet");
+  }
+
+  const browserTarget = object(browserInput.document.target, "browser target");
+  const target = object(document.target, "rollout matrix target");
+  if (target.deployment_image_digest !== deploymentDigest) {
+    fail("rollout matrix API deployment digest differs from the artifact/browser chain");
+  }
+  if (
+    requireSha256(target.api_origin_sha256, "rollout matrix API origin hash") !==
+      browserTarget.origin_sha256 ||
+    requireSha256(target.admin_origin_sha256, "rollout matrix admin origin hash") !==
+      browserTarget.standalone_origin_sha256
+  ) {
+    fail("rollout matrix origins differ from the supplied browser predecessor");
+  }
+
+  const originalSettings = object(document.original_settings, "rollout matrix original settings");
+  requireSha256(originalSettings.semantic_sha256, "rollout matrix original settings hash");
+  if (
+    originalSettings.raw_settings_persisted !== false ||
+    originalSettings.restored !== true ||
+    originalSettings.restore_verified !== true
+  ) {
+    fail("rollout matrix does not prove restoration of the original Pages settings");
+  }
+
+  const profiles = object(document.profiles, "rollout matrix profiles");
+  const requiredProfiles = gate.gate?.required_profiles;
+  if (
+    !Array.isArray(requiredProfiles) ||
+    JSON.stringify(requiredProfiles) !==
+      JSON.stringify(["all_on", "publish_off", "preview_off", "builder_off"])
+  ) {
+    fail("source gate required rollout profiles drifted");
+  }
+  const actualProfiles = Object.keys(profiles).sort();
+  const expectedProfiles = [...requiredProfiles].sort();
+  if (JSON.stringify(actualProfiles) !== JSON.stringify(expectedProfiles)) {
+    fail("rollout matrix profile set is incomplete or contains unexpected profiles");
+  }
+  for (const profileId of requiredProfiles) {
+    validateRolloutProfile(profileId, profiles[profileId]);
+  }
+
+  const boundaries = object(document.boundaries, "rollout matrix boundaries");
+  if (
+    boundaries.runtime_matrix_executed !== true ||
+    boundaries.owner_review_pending !== true ||
+    boundaries.gate_accepted !== false ||
+    boundaries.forum_wave_accepted !== false ||
+    boundaries.provider_health_observed !== false ||
+    boundaries.ffa_promoted !== false ||
+    boundaries.fba_promoted !== false ||
+    boundaries.canonical_source_mutated !== false
+  ) {
+    fail("rollout matrix execution/promotion boundaries drifted");
+  }
+
+  const privacy = object(document.privacy, "rollout matrix privacy");
+  for (const key of [
+    "tenant_slug_or_id_persisted",
+    "page_id_or_admin_route_persisted",
+    "authorization_or_cookie_values_persisted",
+    "storage_state_contents_persisted",
+    "tokens_or_session_ids_persisted",
+    "raw_module_settings_persisted",
+    "raw_graphql_bodies_persisted",
+    "raw_preview_request_or_response_persisted",
+    "raw_browser_intent_response_persisted",
+    "raw_html_persisted",
+    "traces_persisted",
+    "screenshots_persisted",
+    "videos_persisted",
+  ]) {
+    if (privacy[key] !== false) fail(`rollout matrix privacy.${key} must remain false`);
   }
 }
 
@@ -321,9 +577,9 @@ function validateCommands(commands, label) {
 
 function validateGateCommandParity(contract, gate) {
   const guardScripts = new Set(
-    validateCommands(contract.source_guards, "source guard").map((command) =>
-      command.program === "node" ? command.args[0] : null,
-    ).filter(Boolean),
+    validateCommands(contract.source_guards, "source guard")
+      .map((command) => (command.program === "node" ? command.args[0] : null))
+      .filter(Boolean),
   );
   const required = gate.gate?.required_source_guards;
   if (!Array.isArray(required) || required.length === 0) {
@@ -446,8 +702,20 @@ function main() {
     requireEnvironment(contract.inputs.browser.environment),
     "browser evidence",
   );
+  const rolloutMatrixInput = readJsonInput(
+    requireEnvironment(contract.inputs.rollout_matrix.environment),
+    "rollout matrix evidence",
+  );
   const deploymentDigest = validateArtifactHttp(artifactInput, contract, head);
   validateBrowser(browserInput, contract, head, artifactInput, deploymentDigest);
+  validateRolloutMatrix(
+    rolloutMatrixInput,
+    contract,
+    gate,
+    head,
+    browserInput,
+    deploymentDigest,
+  );
 
   const output = outputPath(contract);
   rmSync(output, { force: true });
@@ -470,6 +738,10 @@ function main() {
         bytes: browserInput.record.size,
         sha256: browserInput.record.sha256,
       },
+      rollout_matrix: {
+        bytes: rolloutMatrixInput.record.size,
+        sha256: rolloutMatrixInput.record.sha256,
+      },
     },
     source_sha256: sources,
     source_guards: sourceGuards,
@@ -480,6 +752,9 @@ function main() {
       exact_source_commit_bound: true,
       exact_deployment_digest_bound: true,
       artifact_http_browser_chain_bound: true,
+      rollout_matrix_browser_chain_bound: true,
+      rollout_matrix_profiles_passed: true,
+      rollout_matrix_settings_restored: true,
       provider_health: "unobserved",
       owner_signoff: "pending",
       rollback_decision: "pending",
@@ -498,6 +773,7 @@ function main() {
       tenant_or_actor_ids_persisted: false,
       credentials_sessions_grants_or_proofs_persisted: false,
       raw_html_or_http_bodies_persisted: false,
+      raw_rollout_settings_persisted: false,
       database_urls_persisted: false,
     },
   });
