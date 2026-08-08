@@ -22,12 +22,13 @@ use crate::CommerceError;
 /// idempotency identity and deadline. Consumers must receive this capability from host
 /// composition rather than constructing `ProductCatalogSchemaService` directly.
 ///
-/// The embedded adapter durably binds Product attribute and attribute-option creates to
-/// the shared owner-operation receipt ledger. Their receipt completion is committed in
-/// the same Product transaction as the schema rows and outbox event, so a lost response
-/// replays the stored owner result without creating a second resource. The remaining
-/// category/schema/group creates and update-style schema writes still require explicit
-/// owner-local replay semantics before the combined ecommerce task can be closed.
+/// The embedded adapter durably binds all six Product schema create operations to the
+/// shared owner-operation receipt ledger. Receipt completion is committed in the same
+/// Product transaction as schema rows and outbox publication using the actual result
+/// recorded by the owner create method, so transaction-derived fields such as category
+/// path replay exactly without an external preflight read. Update-style schema writes
+/// still require explicit replay result/state semantics before the combined ecommerce
+/// task can be closed.
 #[async_trait]
 pub trait ProductCatalogSchemaWritePort: Send + Sync {
     async fn create_attribute(
@@ -119,15 +120,8 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
             }
             idempotency::Admission::ReplayError(error) => return Err(error),
         };
-        let expected = ProductAttributeRecord {
-            id: lease.operation_id,
-            code: input.code.clone(),
-            value_type: input.value_type.clone(),
-        };
-        let response_json = encode_schema_receipt(&context, operation, &expected)?;
         let result = with_product_operation_receipt(
             lease,
-            response_json,
             self.create_attribute(tenant_id, actor_id, input),
         )
         .await;
@@ -150,15 +144,8 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
             }
             idempotency::Admission::ReplayError(error) => return Err(error),
         };
-        let expected = ProductAttributeOptionRecord {
-            id: lease.operation_id,
-            attribute_id: input.attribute_id,
-            code: input.code.clone(),
-        };
-        let response_json = encode_schema_receipt(&context, operation, &expected)?;
         let result = with_product_operation_receipt(
             lease,
-            response_json,
             self.create_attribute_option(tenant_id, actor_id, input),
         )
         .await;
@@ -172,9 +159,21 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
     ) -> Result<CatalogCategoryRecord, PortError> {
         let operation = "create_category";
         let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
-        self.create_category(tenant_id, actor_id, input)
-            .await
-            .map_err(|error| schema_write_error(&context, operation, error))
+        let request = serde_json::json!({ "actor": &context.actor, "input": &input });
+        let lease = match admit_schema_operation(self, &context, tenant_id, operation, &request).await?
+        {
+            idempotency::Admission::Run(lease) => lease,
+            idempotency::Admission::Replay(value) => {
+                return decode_schema_receipt(&context, operation, value)
+            }
+            idempotency::Admission::ReplayError(error) => return Err(error),
+        };
+        let result = with_product_operation_receipt(
+            lease,
+            self.create_category(tenant_id, actor_id, input),
+        )
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
     }
 
     async fn create_schema(
@@ -184,9 +183,21 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
     ) -> Result<ProductAttributeSchemaRecord, PortError> {
         let operation = "create_schema";
         let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
-        self.create_schema(tenant_id, actor_id, input)
-            .await
-            .map_err(|error| schema_write_error(&context, operation, error))
+        let request = serde_json::json!({ "actor": &context.actor, "input": &input });
+        let lease = match admit_schema_operation(self, &context, tenant_id, operation, &request).await?
+        {
+            idempotency::Admission::Run(lease) => lease,
+            idempotency::Admission::Replay(value) => {
+                return decode_schema_receipt(&context, operation, value)
+            }
+            idempotency::Admission::ReplayError(error) => return Err(error),
+        };
+        let result = with_product_operation_receipt(
+            lease,
+            self.create_schema(tenant_id, actor_id, input),
+        )
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
     }
 
     async fn create_schema_group(
@@ -196,9 +207,21 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
     ) -> Result<ProductAttributeGroupRecord, PortError> {
         let operation = "create_schema_group";
         let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
-        self.create_schema_group(tenant_id, actor_id, input)
-            .await
-            .map_err(|error| schema_write_error(&context, operation, error))
+        let request = serde_json::json!({ "actor": &context.actor, "input": &input });
+        let lease = match admit_schema_operation(self, &context, tenant_id, operation, &request).await?
+        {
+            idempotency::Admission::Run(lease) => lease,
+            idempotency::Admission::Replay(value) => {
+                return decode_schema_receipt(&context, operation, value)
+            }
+            idempotency::Admission::ReplayError(error) => return Err(error),
+        };
+        let result = with_product_operation_receipt(
+            lease,
+            self.create_schema_group(tenant_id, actor_id, input),
+        )
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
     }
 
     async fn create_category_group(
@@ -208,9 +231,21 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
     ) -> Result<ProductAttributeGroupRecord, PortError> {
         let operation = "create_category_group";
         let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
-        self.create_category_group(tenant_id, actor_id, input)
-            .await
-            .map_err(|error| schema_write_error(&context, operation, error))
+        let request = serde_json::json!({ "actor": &context.actor, "input": &input });
+        let lease = match admit_schema_operation(self, &context, tenant_id, operation, &request).await?
+        {
+            idempotency::Admission::Run(lease) => lease,
+            idempotency::Admission::Replay(value) => {
+                return decode_schema_receipt(&context, operation, value)
+            }
+            idempotency::Admission::ReplayError(error) => return Err(error),
+        };
+        let result = with_product_operation_receipt(
+            lease,
+            self.create_category_group(tenant_id, actor_id, input),
+        )
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
     }
 
     async fn set_category_schema_mode(
@@ -327,26 +362,6 @@ async fn finish_receipted_schema_write<T>(
             Err(port_error)
         }
     }
-}
-
-fn encode_schema_receipt<T: Serialize>(
-    context: &PortContext,
-    operation: &'static str,
-    value: &T,
-) -> Result<serde_json::Value, PortError> {
-    serde_json::to_value(value).map_err(|error| {
-        tracing::error!(
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation,
-            error = %error,
-            "failed to encode Product schema owner receipt"
-        );
-        PortError::invariant_violation(
-            "product.schema_receipt_encode",
-            "product schema operation could not be completed safely",
-        )
-    })
 }
 
 fn decode_schema_receipt<T: DeserializeOwned>(

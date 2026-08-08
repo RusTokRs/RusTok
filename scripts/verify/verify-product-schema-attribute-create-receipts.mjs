@@ -26,6 +26,8 @@ const functionSlice = (source, name, nextName) => {
 const port = read("crates/rustok-product/src/catalog_schema_write_port.rs");
 const transaction = read("crates/rustok-product/src/services/write_transaction.rs");
 const attributes = read("crates/rustok-product/src/services/catalog_schema_service/attributes.rs");
+const categories = read("crates/rustok-product/src/services/catalog_schema_service/categories.rs");
+const schemas = read("crates/rustok-product/src/services/catalog_schema_service/schemas.rs");
 const plan = read("crates/rustok-commerce/docs/implementation-plan.md");
 const recheck = read("crates/rustok-commerce/docs/product-schema-write-recheck-2026-08-08.md");
 const implStart = port.indexOf("impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService");
@@ -48,12 +50,15 @@ for (const required of [
 for (const [name, nextName] of [
   ["create_attribute", "create_attribute_option"],
   ["create_attribute_option", "create_category"],
+  ["create_category", "create_schema"],
+  ["create_schema", "create_schema_group"],
+  ["create_schema_group", "create_category_group"],
+  ["create_category_group", "set_category_schema_mode"],
 ]) {
   const slice = functionSlice(portImpl, name, nextName);
   for (const required of [
     "admit_schema_operation(",
     "idempotency::Admission::Replay(value)",
-    "lease.operation_id",
     "with_product_operation_receipt(",
     "finish_receipted_schema_write(",
   ]) {
@@ -62,10 +67,6 @@ for (const [name, nextName] of [
 }
 
 for (const [name, nextName] of [
-  ["create_category", "create_schema"],
-  ["create_schema", "create_schema_group"],
-  ["create_schema_group", "create_category_group"],
-  ["create_category_group", "set_category_schema_mode"],
   ["set_category_schema_mode", "bind_schema_attribute"],
   ["bind_schema_attribute", "bind_category_attribute"],
   ["bind_category_attribute", "save_product_attribute_values"],
@@ -73,14 +74,17 @@ for (const [name, nextName] of [
   ["clear_detached_product_attribute_values", "admit_schema_operation"],
 ]) {
   const slice = functionSlice(portImpl, name, nextName);
-  forbidText(slice, "admit_schema_operation(", `${name} must remain explicit receipt follow-up debt in this slice`);
+  forbidText(slice, "admit_schema_operation(", `${name} must remain explicit update-style receipt follow-up debt`);
 }
 
 for (const required of [
   "tokio::task_local!",
   "struct ProductOperationReceipt",
+  "Arc<Mutex<Option<Value>>>",
   "PRODUCT_OPERATION_RECEIPT.try_with(Clone::clone).ok()",
-  "idempotency::complete(&self.transaction, receipt.lease, &receipt.response_json)",
+  "record_product_operation_result",
+  "product owner receipt result was not recorded before commit",
+  "idempotency::complete(&self.transaction, receipt.lease, &response_json)",
   "self.transaction.commit().await?",
   "current_product_operation_id()",
 ]) {
@@ -92,10 +96,21 @@ if (completion < 0 || commit < 0 || completion > commit) {
   failures.push("Product receipt completion must occur before owner transaction commit");
 }
 
-const stableIdCount = (attributes.match(/current_product_operation_id\(\)\.unwrap_or_else\(generate_id\)/g) ?? []).length;
-if (stableIdCount !== 2) {
-  failures.push(`attribute and option creates must derive exactly two stable receipt resource IDs (found ${stableIdCount})`);
+for (const [source, label, expected] of [
+  [attributes, "attribute creates", 2],
+  [categories, "category creates", 2],
+  [schemas, "schema creates", 2],
+]) {
+  const stableIds = (source.match(/current_product_operation_id\(\)\.unwrap_or_else\(generate_id\)/g) ?? []).length;
+  if (stableIds !== expected) {
+    failures.push(`${label} must derive exactly ${expected} stable receipt resource IDs (found ${stableIds})`);
+  }
+  const recordedResults = (source.match(/record_product_operation_result\(&result\)\?/g) ?? []).length;
+  if (recordedResults !== expected) {
+    failures.push(`${label} must record exactly ${expected} actual receipt results before commit (found ${recordedResults})`);
+  }
 }
+
 for (const required of [
   'const PRODUCT_SCHEMA_RECEIPT_OWNER: &str = "product"',
   "idempotency::admit(",
@@ -104,31 +119,41 @@ for (const required of [
   requireText(attributes, required, "Product schema receipt owner helpers");
 }
 
+const categoryCreate = functionSlice(categories, "create_category", "list_categories");
+for (const required of [
+  "let path = parent",
+  "let result = CatalogCategoryRecord",
+  "path,",
+  "record_product_operation_result(&result)?",
+]) {
+  requireText(categoryCreate, required, "category create actual-result receipt");
+}
+
 requireText(
   plan,
-  "receipts cover attribute and attribute-option creates",
-  "canonical Product schema-write debt must record this partial durable slice",
+  "durable owner receipts cover all six schema create operations",
+  "canonical Product schema-write debt must record complete create receipt coverage",
 );
 requireText(
   plan,
-  "category/schema/group\n  creates and update-style schema writes still need explicit owner replay semantics",
+  "update-style schema writes still need explicit owner replay semantics",
   "canonical Product schema-write debt must remain open",
 );
 requireText(
   recheck,
-  "attribute and attribute-option creates",
-  "Product schema write recheck must describe the durable create slice",
+  "all six Product schema create operations",
+  "Product schema write recheck must describe complete create receipt coverage",
 );
 requireText(
   recheck,
-  "category/schema/group creates and update-style schema writes remain open",
-  "Product schema write recheck must preserve remaining debt",
+  "update-style schema writes remain open",
+  "Product schema write recheck must preserve remaining update-style debt",
 );
 
 if (failures.length) {
-  console.error("Product schema attribute-create receipt source verification failed:");
+  console.error("Product schema create receipt source verification failed:");
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Product attribute and attribute-option creates bind durable owner receipts atomically with Product writes; remaining schema replay semantics stay explicit debt");
+console.log("✔ All six Product schema creates bind durable owner receipts to actual transaction results; update-style replay semantics remain explicit debt");

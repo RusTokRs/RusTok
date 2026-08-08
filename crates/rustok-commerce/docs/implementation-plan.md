@@ -271,9 +271,8 @@ These are source-contract defects, not verification-only tasks.
   idempotency key across explicit retries, then make mounted GraphQL `idempotencyKey`
   non-null/mandatory after updating current regression callers to supply explicit keys.
 - [ ] Complete Product schema-write durable idempotency: mounted consumers already use
-  typed Product owner write capabilities with mandatory caller identity; durable owner
-  receipts cover attribute and attribute-option creates, while category/schema/group
-  creates and update-style schema writes still need explicit owner replay semantics.
+  typed Product owner write capabilities with mandatory caller identity. Source-complete
+  durable owner receipts cover all six schema create operations; update-style schema writes still need explicit owner replay semantics.
 - [x] Publish the order-owned `OrderReadPort` for complete order, return, and
   order-change detail/list projections with canonical read context/deadline policy,
   stable typed errors, filters, ordering, totals, and explicit unvalidated evidence.
@@ -290,7 +289,7 @@ These are source-contract defects, not verification-only tasks.
 - [x] Cut GraphQL return/order-change detail and list reads to the scoped host-selected
   runtime with validated actor, resolved channel/effective-locale context, typed
   not-found compatibility errors, and no concrete owner service storage.
-- [x] Cut mounted admin return/order-change detail and list reads to the host-selected
+- [x] Cut mounted admin return/order-change detail/list reads to the host-selected
   runtime while preserving `ORDERS_READ`, filters, clamped pagination, totals, public
   envelopes, actor/channel/effective-locale/deadline context, and unchanged mutation,
   payment, and fulfillment ownership.
