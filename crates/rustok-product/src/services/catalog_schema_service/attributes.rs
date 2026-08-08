@@ -5,10 +5,22 @@ use super::{
     ProductCatalogSchemaService, load_attribute_write_definition, map_schema_resolution_error,
     uuid_filter_values, validate_locale,
 };
-use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
+use crate::services::catalog::types::validate_product_attribute_filters;
+use crate::services::catalog_attribute_terms::{
+    ProductAttributeFilterValue, parse_product_attribute_filter_value,
+};
+use crate::services::{
+    ProductAttributeFilter, ProductAttributeTermError, ProductAttributeTermExpr,
+    ProductResolvedAttributeFilter, product_attribute_boolean_term, product_attribute_date_term,
+    product_attribute_datetime_term, product_attribute_decimal_term,
+    product_attribute_integer_term, product_attribute_localized_text_expr,
+    product_attribute_option_term, product_attribute_text_term,
+};
 use crate::services::write_transaction::ProductWriteTransaction;
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
@@ -239,4 +251,224 @@ impl ProductCatalogSchemaService {
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(Into::into)
     }
+
+    /// Resolve public Storefront attribute filters into the canonical Product-owned term grammar.
+    ///
+    /// This is an owner capability: consumers do not read Product attribute/option tables directly.
+    /// Missing option codes resolve to `Never`, matching the existing owner SQL's empty-result behavior.
+    pub async fn resolve_storefront_attribute_filter_terms(
+        &self,
+        tenant_id: Uuid,
+        requested_locale: &str,
+        fallback_locale: &str,
+        filters: &[ProductAttributeFilter],
+    ) -> CommerceResult<Vec<ProductResolvedAttributeFilter>> {
+        validate_product_attribute_filters(filters)?;
+        if filters.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let definitions =
+            load_storefront_filter_definitions(&self.db, tenant_id, filters).await?;
+        let mut resolved = Vec::with_capacity(filters.len());
+        for filter in filters {
+            let definition = definitions
+                .get(&filter.code.to_ascii_lowercase())
+                .ok_or_else(|| {
+                    CommerceError::Validation(format!(
+                        "attribute {} is not available as a product filter",
+                        filter.code
+                    ))
+                })?;
+            let value_type = AttributeValueType::from_storage(definition.value_type.as_str())
+                .map_err(|_| {
+                    CommerceError::Validation(format!(
+                        "attribute {} has an unsupported stored value type",
+                        definition.code
+                    ))
+                })?;
+            let predicate = resolve_storefront_filter_predicate(
+                &self.db,
+                tenant_id,
+                definition,
+                value_type,
+                filter.value.as_str(),
+                requested_locale,
+                fallback_locale,
+            )
+            .await?;
+            resolved.push(ProductResolvedAttributeFilter {
+                code: filter.code.clone(),
+                predicate,
+            });
+        }
+        Ok(resolved)
+    }
+}
+
+#[derive(Debug, FromQueryResult)]
+struct StorefrontAttributeFilterDefinitionRow {
+    id: Uuid,
+    code: String,
+    value_type: String,
+    is_localized: bool,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct StorefrontAttributeFilterOptionRow {
+    id: Uuid,
+}
+
+async fn load_storefront_filter_definitions(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    filters: &[ProductAttributeFilter],
+) -> CommerceResult<HashMap<String, StorefrontAttributeFilterDefinitionRow>> {
+    let backend = db.get_database_backend();
+    let mut values = Vec::<sea_orm::Value>::with_capacity(filters.len() + 1);
+    values.push(tenant_id.into());
+    let placeholders = filters
+        .iter()
+        .enumerate()
+        .map(|(index, filter)| {
+            values.push(filter.code.to_ascii_lowercase().into());
+            storefront_sql_placeholder(backend, index + 2)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let tenant_placeholder = storefront_sql_placeholder(backend, 1);
+    StorefrontAttributeFilterDefinitionRow::find_by_statement(Statement::from_sql_and_values(
+        backend,
+        format!(
+            r#"
+            SELECT id, code, value_type, is_localized
+            FROM product_attributes
+            WHERE tenant_id = {tenant_placeholder}
+              AND archived_at IS NULL
+              AND is_filterable = TRUE
+              AND scope IN ('product', 'both')
+              AND LOWER(code) IN ({placeholders})
+            "#
+        ),
+        values,
+    ))
+    .all(db)
+    .await
+    .map(|rows| {
+        rows.into_iter()
+            .map(|definition| (definition.code.to_ascii_lowercase(), definition))
+            .collect()
+    })
+    .map_err(Into::into)
+}
+
+async fn resolve_storefront_filter_predicate(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    definition: &StorefrontAttributeFilterDefinitionRow,
+    value_type: AttributeValueType,
+    raw_value: &str,
+    requested_locale: &str,
+    fallback_locale: &str,
+) -> CommerceResult<ProductAttributeTermExpr> {
+    let value = parse_product_attribute_filter_value(
+        definition.code.as_str(),
+        value_type,
+        raw_value,
+    )?;
+    let term = match value {
+        ProductAttributeFilterValue::Text(value) if definition.is_localized => {
+            return product_attribute_localized_text_expr(
+                definition.id,
+                requested_locale,
+                fallback_locale,
+                value.as_str(),
+            )
+            .map_err(|error| map_term_error(definition.code.as_str(), error));
+        }
+        ProductAttributeFilterValue::Text(value) => {
+            product_attribute_text_term(definition.id, value.as_str())
+        }
+        ProductAttributeFilterValue::Integer(value) => {
+            product_attribute_integer_term(definition.id, value)
+        }
+        ProductAttributeFilterValue::Decimal(value) => {
+            product_attribute_decimal_term(definition.id, value)
+        }
+        ProductAttributeFilterValue::Boolean(value) => {
+            product_attribute_boolean_term(definition.id, value)
+        }
+        ProductAttributeFilterValue::Date(value) => {
+            product_attribute_date_term(definition.id, value)
+        }
+        ProductAttributeFilterValue::Datetime(value) => {
+            product_attribute_datetime_term(definition.id, value)
+        }
+        ProductAttributeFilterValue::Option(raw_value) => {
+            let option_id = match Uuid::parse_str(raw_value.as_str()) {
+                Ok(option_id) if option_id.is_nil() => return Ok(ProductAttributeTermExpr::Never),
+                Ok(option_id) => option_id,
+                Err(_) => {
+                    let Some(option_id) = load_active_option_id(
+                        db,
+                        tenant_id,
+                        definition.id,
+                        raw_value.as_str(),
+                    )
+                    .await?
+                    else {
+                        return Ok(ProductAttributeTermExpr::Never);
+                    };
+                    option_id
+                }
+            };
+            product_attribute_option_term(definition.id, option_id)
+        }
+    }
+    .map_err(|error| map_term_error(definition.code.as_str(), error))?;
+
+    Ok(ProductAttributeTermExpr::Term(term))
+}
+
+async fn load_active_option_id(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    attribute_id: Uuid,
+    code: &str,
+) -> CommerceResult<Option<Uuid>> {
+    let backend = db.get_database_backend();
+    let tenant = storefront_sql_placeholder(backend, 1);
+    let attribute = storefront_sql_placeholder(backend, 2);
+    let code_placeholder = storefront_sql_placeholder(backend, 3);
+    let row = StorefrontAttributeFilterOptionRow::find_by_statement(Statement::from_sql_and_values(
+        backend,
+        format!(
+            r#"
+            SELECT id
+            FROM product_attribute_options
+            WHERE tenant_id = {tenant}
+              AND attribute_id = {attribute}
+              AND archived_at IS NULL
+              AND code = {code_placeholder}
+            LIMIT 1
+            "#
+        ),
+        vec![tenant_id.into(), attribute_id.into(), code.to_string().into()],
+    ))
+    .one(db)
+    .await?;
+    Ok(row.map(|row| row.id))
+}
+
+fn storefront_sql_placeholder(backend: DbBackend, index: usize) -> String {
+    match backend {
+        DbBackend::Sqlite => "?".to_string(),
+        _ => format!("${index}"),
+    }
+}
+
+fn map_term_error(code: &str, error: ProductAttributeTermError) -> CommerceError {
+    CommerceError::Validation(format!(
+        "attribute filter {code} cannot be represented as a canonical term: {error}"
+    ))
 }

@@ -1,5 +1,3 @@
-use chrono::{DateTime, NaiveDate, Utc};
-use rust_decimal::Decimal;
 use sea_orm::{
     Condition, ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement,
     sea_query::Expr,
@@ -8,9 +6,13 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
+use crate::services::catalog_attribute_terms::{
+    ProductAttributeFilterValue, parse_product_attribute_filter_value,
+};
 use crate::services::catalog_schema::AttributeValueType;
 
 use super::ProductAttributeFilter;
+use super::types::validate_product_attribute_filters;
 
 #[derive(Debug, FromQueryResult)]
 struct CatalogAttributeFilterDefinitionRow {
@@ -27,6 +29,7 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
     fallback_locale: &str,
     filters: &[ProductAttributeFilter],
 ) -> CommerceResult<Vec<Condition>> {
+    validate_product_attribute_filters(filters)?;
     if filters.is_empty() {
         return Ok(Vec::new());
     }
@@ -104,23 +107,25 @@ fn build_attribute_filter_condition(
     locale: &str,
     fallback_locale: &str,
 ) -> CommerceResult<Condition> {
-    let condition = match value_type {
-        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext
-            if definition.is_localized =>
-        {
+    let value = parse_product_attribute_filter_value(
+        definition.code.as_str(),
+        value_type,
+        raw_value,
+    )?;
+    let condition = match value {
+        ProductAttributeFilterValue::Text(value) if definition.is_localized => {
             localized_text_condition(
                 backend,
                 tenant_id,
                 definition.id,
                 locale.trim(),
                 fallback_locale.trim(),
-                raw_value,
+                value.as_str(),
             )
         }
-        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext => {
-            custom_condition(
-                backend,
-                r#"
+        ProductAttributeFilterValue::Text(value) => custom_condition(
+            backend,
+            r#"
             EXISTS (
                 SELECT 1
                 FROM product_attribute_values pav
@@ -131,87 +136,45 @@ fn build_attribute_filter_condition(
                   AND pav.value_text = {p3}
             )
             "#,
-                vec![tenant_id.into(), definition.id.into(), raw_value.into()],
-            )
-        }
-        AttributeValueType::Integer => {
-            let value = raw_value
-                .parse::<i64>()
-                .map_err(|_| invalid_typed_value(definition.code.as_str(), "integer", raw_value))?;
-            scalar_condition(
-                backend,
-                tenant_id,
-                definition.id,
-                "value_integer",
-                value.into(),
-            )
-        }
-        AttributeValueType::Decimal => {
-            let value = raw_value
-                .parse::<Decimal>()
-                .map_err(|_| invalid_typed_value(definition.code.as_str(), "decimal", raw_value))?;
-            scalar_condition(
-                backend,
-                tenant_id,
-                definition.id,
-                "value_decimal",
-                value.into(),
-            )
-        }
-        AttributeValueType::Boolean => {
-            let value = match raw_value.to_ascii_lowercase().as_str() {
-                "true" | "1" => true,
-                "false" | "0" => false,
-                _ => {
-                    return Err(invalid_typed_value(
-                        definition.code.as_str(),
-                        "boolean",
-                        raw_value,
-                    ));
-                }
-            };
-            scalar_condition(
-                backend,
-                tenant_id,
-                definition.id,
-                "value_boolean",
-                value.into(),
-            )
-        }
-        AttributeValueType::Date => {
-            let value = NaiveDate::parse_from_str(raw_value, "%Y-%m-%d").map_err(|_| {
-                invalid_typed_value(definition.code.as_str(), "date (YYYY-MM-DD)", raw_value)
-            })?;
-            scalar_condition(
-                backend,
-                tenant_id,
-                definition.id,
-                "value_date",
-                value.into(),
-            )
-        }
-        AttributeValueType::Datetime => {
-            let value = DateTime::parse_from_rfc3339(raw_value)
-                .map(|value| value.with_timezone(&Utc))
-                .map_err(|_| {
-                    invalid_typed_value(definition.code.as_str(), "RFC3339 datetime", raw_value)
-                })?;
-            scalar_condition(
-                backend,
-                tenant_id,
-                definition.id,
-                "value_datetime",
-                value.into(),
-            )
-        }
-        AttributeValueType::Select | AttributeValueType::Multiselect => {
-            option_condition(backend, tenant_id, definition.id, raw_value)
-        }
-        AttributeValueType::Json => {
-            return Err(CommerceError::Validation(format!(
-                "attribute {} uses json and cannot be used in attribute_filters",
-                definition.code
-            )));
+            vec![tenant_id.into(), definition.id.into(), value.into()],
+        ),
+        ProductAttributeFilterValue::Integer(value) => scalar_condition(
+            backend,
+            tenant_id,
+            definition.id,
+            "value_integer",
+            value.into(),
+        ),
+        ProductAttributeFilterValue::Decimal(value) => scalar_condition(
+            backend,
+            tenant_id,
+            definition.id,
+            "value_decimal",
+            value.into(),
+        ),
+        ProductAttributeFilterValue::Boolean(value) => scalar_condition(
+            backend,
+            tenant_id,
+            definition.id,
+            "value_boolean",
+            value.into(),
+        ),
+        ProductAttributeFilterValue::Date(value) => scalar_condition(
+            backend,
+            tenant_id,
+            definition.id,
+            "value_date",
+            value.into(),
+        ),
+        ProductAttributeFilterValue::Datetime(value) => scalar_condition(
+            backend,
+            tenant_id,
+            definition.id,
+            "value_datetime",
+            value.into(),
+        ),
+        ProductAttributeFilterValue::Option(value) => {
+            option_condition(backend, tenant_id, definition.id, value.as_str())
         }
     };
     Ok(condition)
@@ -392,10 +355,4 @@ fn sql_placeholder(backend: DbBackend, index: usize) -> String {
         DbBackend::Sqlite => "?".to_string(),
         _ => format!("${index}"),
     }
-}
-
-fn invalid_typed_value(code: &str, expected: &str, value: &str) -> CommerceError {
-    CommerceError::Validation(format!(
-        "attribute filter {code} expects {expected}, received `{value}`"
-    ))
 }

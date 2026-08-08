@@ -5,9 +5,9 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::services::{
-    AttributeValueType, CatalogCategoryListRecord, EffectiveAttributeSource,
+    AttributeValueType, CatalogCategoryListRecord, EffectiveAttributeSource, ProductAttributeFilter,
     ProductAttributeListRecord, ProductAttributeOptionListRecord, ProductAttributeSchemaListRecord,
-    ProductAttributeValueRecord, ProductCatalogSchemaService,
+    ProductAttributeValueRecord, ProductCatalogSchemaService, ProductResolvedAttributeFilter,
 };
 
 const LIST_ATTRIBUTES_OPERATION: &str = "list_catalog_attributes";
@@ -15,6 +15,8 @@ const LIST_CATEGORIES_OPERATION: &str = "list_catalog_categories";
 const LIST_SCHEMAS_OPERATION: &str = "list_attribute_schemas";
 const READ_EFFECTIVE_FORM_OPERATION: &str = "read_effective_product_form";
 const READ_PRODUCT_ATTRIBUTE_VALUES_OPERATION: &str = "read_product_attribute_values";
+const RESOLVE_STOREFRONT_ATTRIBUTE_FILTERS_OPERATION: &str =
+    "resolve_storefront_attribute_filters";
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -56,8 +58,14 @@ pub struct ProductAttributeValuesRequest {
     pub product_id: Uuid,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ProductStorefrontAttributeFilterResolutionRequest {
+    pub fallback_locale: String,
+    pub filters: Vec<ProductAttributeFilter>,
+}
+
 /// Optional Product-owned read boundary for catalog schema directory, effective-form,
-/// and product attribute-value projections.
+/// product attribute-value projections, and Storefront attribute-filter resolution.
 #[async_trait]
 pub trait ProductCatalogSchemaReadPort: Send + Sync {
     async fn list_attributes(
@@ -98,6 +106,19 @@ pub trait ProductCatalogSchemaReadPort: Send + Sync {
         Err(PortError::unavailable(
             "product.attribute_values_unavailable",
             "product attribute values are unavailable",
+        ))
+    }
+
+    /// Optional Product-owned Storefront filter resolver. Consumers receive canonical Product term
+    /// expressions and never resolve attribute/option storage identities themselves.
+    async fn resolve_storefront_attribute_filters(
+        &self,
+        _context: PortContext,
+        _request: ProductStorefrontAttributeFilterResolutionRequest,
+    ) -> Result<Vec<ProductResolvedAttributeFilter>, PortError> {
+        Err(PortError::unavailable(
+            "product.storefront_attribute_filter_resolution_unavailable",
+            "product storefront attribute filter resolution is unavailable",
         ))
     }
 }
@@ -269,6 +290,25 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
             tenant_id,
             request.product_id,
             context.locale.as_str(),
+        )
+        .await
+        .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))
+    }
+
+    async fn resolve_storefront_attribute_filters(
+        &self,
+        context: PortContext,
+        request: ProductStorefrontAttributeFilterResolutionRequest,
+    ) -> Result<Vec<ProductResolvedAttributeFilter>, PortError> {
+        let owner_operation = RESOLVE_STOREFRONT_ATTRIBUTE_FILTERS_OPERATION;
+        require_schema_read_context(&context, owner_operation)?;
+        let tenant_id = parse_tenant_id(&context, owner_operation)?;
+        ProductCatalogSchemaService::resolve_storefront_attribute_filter_terms(
+            self,
+            tenant_id,
+            context.locale.as_str(),
+            request.fallback_locale.as_str(),
+            request.filters.as_slice(),
         )
         .await
         .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))

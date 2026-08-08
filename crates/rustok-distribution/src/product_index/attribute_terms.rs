@@ -1,13 +1,14 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use rustok_index::{FieldName, FieldPath, FilterExpr, IndexValue, LocaleKey};
-use thiserror::Error;
 use uuid::Uuid;
+
+pub(crate) use rustok_product::ProductAttributeTermError;
 
 pub(crate) const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";
 
 /// PostgreSQL CTE fragment used by the replacement Product source to materialize every active,
-/// Product-scoped, filterable EAV value into the same canonical term grammar produced below in Rust.
+/// Product-scoped, filterable EAV value into the Product-owned canonical term grammar.
 ///
 /// The fragment is tenant-scoped by `$1` and intentionally aggregates terms by Product rather than by
 /// Product translation locale. Localized text terms carry their own canonical locale identity, so one
@@ -156,19 +157,11 @@ product_attribute_terms AS (
 )
 "#;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub(crate) enum ProductAttributeTermError {
-    #[error("Product attribute term attribute id must not be nil")]
-    NilAttributeId,
-    #[error("Product attribute term option id must not be nil")]
-    NilOptionId,
-}
-
 pub(crate) fn text_term(
     attribute_id: Uuid,
     value: &str,
 ) -> Result<String, ProductAttributeTermError> {
-    term(attribute_id, "text", None, value)
+    rustok_product::product_attribute_text_term(attribute_id, value)
 }
 
 pub(crate) fn localized_text_term(
@@ -176,79 +169,56 @@ pub(crate) fn localized_text_term(
     locale: &LocaleKey,
     value: &str,
 ) -> Result<String, ProductAttributeTermError> {
-    term(attribute_id, "localized_text", Some(locale), value)
+    rustok_product::product_attribute_localized_text_term(attribute_id, locale.as_str(), value)
 }
 
 pub(crate) fn localized_presence_term(
     attribute_id: Uuid,
     locale: &LocaleKey,
 ) -> Result<String, ProductAttributeTermError> {
-    term(attribute_id, "localized_present", Some(locale), "")
+    rustok_product::product_attribute_localized_presence_term(attribute_id, locale.as_str())
 }
 
 pub(crate) fn integer_term(
     attribute_id: Uuid,
     value: i64,
 ) -> Result<String, ProductAttributeTermError> {
-    term(attribute_id, "integer", None, value.to_string().as_str())
+    rustok_product::product_attribute_integer_term(attribute_id, value)
 }
 
 pub(crate) fn decimal_term(
     attribute_id: Uuid,
     value: Decimal,
 ) -> Result<String, ProductAttributeTermError> {
-    term(
-        attribute_id,
-        "decimal",
-        None,
-        value.normalize().to_string().as_str(),
-    )
+    rustok_product::product_attribute_decimal_term(attribute_id, value)
 }
 
 pub(crate) fn boolean_term(
     attribute_id: Uuid,
     value: bool,
 ) -> Result<String, ProductAttributeTermError> {
-    term(
-        attribute_id,
-        "boolean",
-        None,
-        if value { "true" } else { "false" },
-    )
+    rustok_product::product_attribute_boolean_term(attribute_id, value)
 }
 
 pub(crate) fn date_term(
     attribute_id: Uuid,
     value: NaiveDate,
 ) -> Result<String, ProductAttributeTermError> {
-    term(
-        attribute_id,
-        "date",
-        None,
-        value.format("%Y-%m-%d").to_string().as_str(),
-    )
+    rustok_product::product_attribute_date_term(attribute_id, value)
 }
 
 pub(crate) fn datetime_term(
     attribute_id: Uuid,
     value: DateTime<Utc>,
 ) -> Result<String, ProductAttributeTermError> {
-    term(
-        attribute_id,
-        "datetime",
-        None,
-        value.timestamp_micros().to_string().as_str(),
-    )
+    rustok_product::product_attribute_datetime_term(attribute_id, value)
 }
 
 pub(crate) fn option_term(
     attribute_id: Uuid,
     option_id: Uuid,
 ) -> Result<String, ProductAttributeTermError> {
-    if option_id.is_nil() {
-        return Err(ProductAttributeTermError::NilOptionId);
-    }
-    term(attribute_id, "option", None, option_id.to_string().as_str())
+    rustok_product::product_attribute_option_term(attribute_id, option_id)
 }
 
 pub(crate) fn contains_term_filter(term: String) -> FilterExpr {
@@ -256,7 +226,6 @@ pub(crate) fn contains_term_filter(term: String) -> FilterExpr {
 }
 
 /// Reproduces the owner localized-text predicate exactly:
-///
 /// requested-value OR (requested-locale-absent AND fallback-value).
 pub(crate) fn localized_text_filter(
     attribute_id: Uuid,
@@ -295,33 +264,12 @@ fn attribute_terms_path() -> FieldPath {
     )
 }
 
-fn term(
-    attribute_id: Uuid,
-    kind: &str,
-    locale: Option<&LocaleKey>,
-    value: &str,
-) -> Result<String, ProductAttributeTermError> {
-    if attribute_id.is_nil() {
-        return Err(ProductAttributeTermError::NilAttributeId);
-    }
-    let locale = locale
-        .map(|locale| hex::encode(locale.as_str().as_bytes()))
-        .unwrap_or_default();
-    Ok(format!(
-        "{}|{}|{}|{}",
-        attribute_id,
-        kind,
-        locale,
-        hex::encode(value.as_bytes())
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn scalar_terms_are_collision_safe_and_normalized() {
+    fn scalar_terms_are_product_owned_and_materialization_compatible() {
         let attribute_id = Uuid::from_u128(1);
         assert_eq!(
             text_term(attribute_id, "A|b").unwrap(),
