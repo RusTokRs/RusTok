@@ -29,6 +29,7 @@ pub struct CommerceHttpRuntime {
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
     order_admin_command_runtime: rustok_order::OrderAdminCommandRuntime,
     payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
+    payment_admin_read_runtime: rustok_payment::PaymentAdminReadRuntime,
     product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     product_catalog_command_runtime: rustok_product::ProductCatalogCommandRuntime,
     #[cfg(feature = "marketplace-financial")]
@@ -85,6 +86,10 @@ impl CommerceHttpRuntime {
 
     fn payment_order_read_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentOrderReadPort> {
         self.payment_order_read_runtime.read_port()
+    }
+
+    fn payment_admin_read_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentAdminReadPort> {
+        self.payment_admin_read_runtime.read_port()
     }
 
     fn product_catalog_read_port(
@@ -156,6 +161,9 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require PaymentOrderReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let payment_admin_read_runtime = runtime
+            .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
+            .unwrap_or_else(|| rustok_payment::PaymentAdminReadRuntime::in_process(runtime.db_clone()));
         let product_catalog_read_runtime = runtime
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
             .ok_or_else(|| {
@@ -192,6 +200,7 @@ impl CommerceHttpRuntime {
             order_read_runtime,
             order_admin_command_runtime,
             payment_order_read_runtime,
+            payment_admin_read_runtime,
             product_catalog_read_runtime,
             product_catalog_command_runtime,
             #[cfg(feature = "marketplace-financial")]
