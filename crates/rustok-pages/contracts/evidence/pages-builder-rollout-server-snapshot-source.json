@@ -29,6 +29,7 @@
     "standalone_browser_intent_preflight_binding_complete": true,
     "hardcoded_all_on_consumer_binding_removed": true,
     "four_profile_runtime_matrix_executable": true,
+    "runtime_matrix_harness_source_ready": true,
     "four_profile_runtime_evidence_retained": false,
     "provider_health_observed": false,
     "gate_accepted": false,
@@ -46,5 +47,5 @@
     "browser_run": false,
     "workflow_or_ci_run": false
   },
-  "next_cursor": "retain and maintainer-execute the exact-source four-profile Pages runtime matrix after server-owner GraphQL snapshot and browser-intent preflight binding are accepted in source"
+  "next_cursor": "maintainer executes the exact-source four-profile Pages runtime matrix and retains owner-review-pending evidence"
 }

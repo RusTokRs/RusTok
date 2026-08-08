@@ -16,6 +16,7 @@
     "standalone_admin_host_runtime_context_required": false,
     "hardcoded_all_on_consumer_binding_present": false,
     "four_profiles_source_exercisable": true,
+    "runtime_matrix_harness_source_ready": true,
     "four_profile_runtime_evidence_retained": false,
     "gate_accepted": false,
     "forum_wave_accepted": false,
@@ -32,5 +33,5 @@
     "browser_run": false,
     "workflow_or_ci_run": false
   },
-  "next_cursor": "retain and maintainer-execute a bounded exact-source four-profile runtime matrix with UI, SSR, browser-intent and Pages-owned read guarantees"
+  "next_cursor": "maintainer executes the bounded exact-source four-profile runtime matrix and retains owner-review-pending evidence"
 }
