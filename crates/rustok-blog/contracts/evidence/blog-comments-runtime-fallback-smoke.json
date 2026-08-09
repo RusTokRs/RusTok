@@ -100,8 +100,7 @@
     "status": "planned",
     "status_scope": "cached_read_runtime_execution_only",
     "profiles": [
-      "embedded_native",
-      "graphql_storefront"
+      "embedded_native"
     ],
     "degraded_modes": [
       "hide_comment_form",
