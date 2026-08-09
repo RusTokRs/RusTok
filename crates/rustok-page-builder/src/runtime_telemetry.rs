@@ -248,7 +248,6 @@ impl PageBuilderRuntimeTelemetry for ProviderHealthRuntimeTelemetry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::health::provider_health_runtime_sample_counts;
     use rustok_api::PortActor;
 
     fn context(correlation_id: &str) -> PortContext {
@@ -274,20 +273,39 @@ mod tests {
     }
 
     #[test]
-    fn provider_health_telemetry_ignores_load_project_and_records_terminal_preview() {
+    fn provider_health_telemetry_ignores_load_project_and_closes_matching_preview() {
         let telemetry = ProviderHealthRuntimeTelemetry::default();
-        let before = provider_health_runtime_sample_counts();
         let context = context("provider-health-preview");
         let load = PageBuilderRuntimeCallEvidence::load_project(&context, "home");
         telemetry.record_runtime_call(&load);
         telemetry.record_runtime_call(&load.succeeded());
-        assert_eq!(provider_health_runtime_sample_counts(), before);
+        assert_eq!(
+            telemetry
+                .pending
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .len(),
+            0
+        );
 
         let preview = PageBuilderRuntimeCallEvidence::render_preview(&context, "home");
         telemetry.record_runtime_call(&preview);
+        assert_eq!(
+            telemetry
+                .pending
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .len(),
+            1
+        );
         telemetry.record_runtime_call(&preview.succeeded());
-        let after = provider_health_runtime_sample_counts();
-        assert_eq!(after.preview, before.preview + 1);
-        assert_eq!(after.publish, before.publish);
+        assert_eq!(
+            telemetry
+                .pending
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .len(),
+            0
+        );
     }
 }
