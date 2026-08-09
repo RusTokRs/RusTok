@@ -18,8 +18,8 @@ const MODULE_SLUG: &str = "pages";
 pub struct GqlPageBuilderProviderHealthSnapshot {
     pub state: String,
     pub degradation_reasons: Vec<String>,
-    pub preview_p95_ms: i64,
-    pub publish_p95_ms: i64,
+    pub preview_p95_ms: u64,
+    pub publish_p95_ms: u64,
     pub sanitize_failure_rate: f64,
     pub runtime_error_rate: f64,
 }
@@ -33,8 +33,8 @@ impl From<&ProviderHealthSnapshot> for GqlPageBuilderProviderHealthSnapshot {
                 .iter()
                 .map(|reason| reason.as_str().to_string())
                 .collect(),
-            preview_p95_ms: snapshot.observed.preview_p95_ms.min(i64::MAX as u64) as i64,
-            publish_p95_ms: snapshot.observed.publish_p95_ms.min(i64::MAX as u64) as i64,
+            preview_p95_ms: snapshot.observed.preview_p95_ms,
+            publish_p95_ms: snapshot.observed.publish_p95_ms,
             sanitize_failure_rate: snapshot.observed.sanitize_failure_rate,
             runtime_error_rate: snapshot.observed.runtime_error_rate,
         }
