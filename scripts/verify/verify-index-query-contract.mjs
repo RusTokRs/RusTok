@@ -56,6 +56,7 @@ const scripts = [
   'verify-index-prepared-repair-recovery.mjs',
   'verify-index-repair-execution-postgres-harness.mjs',
   'verify-index-repair-retained-evidence.mjs',
+  'verify-index-maintainer-unblock-handoff.mjs',
   'verify-index-reconciliation-retry-store.mjs',
   'verify-index-reconciliation-runner-retry.mjs',
   'verify-index-reconciliation-host-scheduler.mjs',
