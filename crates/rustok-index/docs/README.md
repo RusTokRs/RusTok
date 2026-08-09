@@ -9,7 +9,7 @@ This directory contains the detailed technical architecture documentation for `r
 | Indexing Approach | Write Overhead | Cross-Module Filtering | Zero N+1 Queries | Consistency Model | Infrastructure Complexity |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Traditional SQL JOINs** | Low | Slow (Multi-table JOIN bottlenecks) | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
-| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | Immediate | Single DB |
+| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
 | **External Search Sync (Elasticsearch / Algolia)** | High DDL & Row Bloat | Fast | Yes | Eventual (Lag & drift risks) | Heavy JVM/Cloud cluster |
 | **`rustok-index` (JSONB + Keyset Engine)** | **Low (Transactional Outbox Inbox)** | **Ultra-Fast (Derived B-Tree / GIN Indexes)** | **Yes (Single REPEATABLE READ query)** | **Immediate (Transactional Outbox)** | **Pure Rust + PostgreSQL (Zero external dependencies)** |
 
@@ -70,7 +70,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Reconciliation Host Scheduler](./m6-reconciliation-host-scheduler.md)
 - [M6 Drift Finding Inspection](./m6-drift-finding-inspection.md)
 - [M6 Drift Digest Finding Writer](./m6-drift-finding-writer.md)
-- [M6 Bounded Drift Digest Producer](./m6-drift-digest-producer.md)
+- [M6 Bounded Drift Digest Producer](./m6-bounded-drift-digest-producer.md)
 - [M6 Locale-Optional Drift-Finding Scope](./m6-drift-finding-locale-scope.md)
 - [M6 PostgreSQL Drift Snapshot Reader](./m6-postgres-drift-snapshot-reader.md)
 - [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
