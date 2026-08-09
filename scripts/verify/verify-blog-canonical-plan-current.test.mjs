@@ -21,6 +21,7 @@ const files = [
   'crates/rustok-blog/docs/implementation-plan-slice-101.md',
   'crates/rustok-blog/docs/implementation-plan-slice-102.md',
   'crates/rustok-blog/docs/implementation-plan-slice-103.md',
+  'crates/rustok-blog/docs/implementation-plan-slice-104.md',
   'crates/rustok-blog/docs/README.md',
   'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json',
   'crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json',
@@ -30,6 +31,7 @@ const files = [
   'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
   'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
   'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
+  'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
 ];
 function absolute(root, relativePath) { return path.join(root, relativePath); }
 function write(root, relativePath, content) {
@@ -72,15 +74,15 @@ test('accepts the canonical Blog current implementation cursor', () => {
   try {
     const result = run(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /cursor=slice-103/);
+    assert.match(result.stdout, /cursor=slice-104/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('rejects reopening remote transport as live current-cursor work', () => {
   const result = rejects((root) => {
-    const relativePath = 'crates/rustok-blog/docs/implementation-plan-current.md';
-    const source = readFileSync(absolute(root, relativePath), 'utf8');
-    write(root, relativePath, source.replace(
+    const file = 'crates/rustok-blog/docs/implementation-plan-current.md';
+    const source = readFileSync(absolute(root, file), 'utf8');
+    write(root, file, source.replace(
       '`remote_comments_transport = source_implemented_maintainer_execution_pending`',
       '`remote_comments_transport = remote transport remains pending`',
     ));
@@ -89,10 +91,12 @@ test('rejects reopening remote transport as live current-cursor work', () => {
   assert.match(result.stderr, /remote transport|current/);
 });
 
-test('rejects advancing a different source gap than the retained next cursor', () => {
+test('rejects claiming another source gap without a fresh audit', () => {
   const result = rejects((root) => {
     mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
+      value.planning_result.independent_production_source_gap_identified = true;
       value.planning_result.next_source_gap = 'another_gap';
+      value.planning_result.future_autonomous_source_work_requires_fresh_audit = false;
     });
   });
   assert.notEqual(result.status, 0);
@@ -160,33 +164,34 @@ test('rejects metadata tags becoming canonical again', () => {
   assert.match(result.stderr, /canonical tag projection track drift/);
 });
 
-test('rejects premature atomic tag mutation claim', () => {
-  const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json', (value) => {
-      value.source_contract.tag_mutation_atomic_reindex_implemented = true;
-    });
-  });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /canonical tag projection source evidence drift/);
-});
-
-test('rejects losing the tag mutation atomic-reindex next cursor', () => {
+test('rejects reopening atomic tag mutation after slice 104', () => {
   const result = rejects((root) => {
     mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
-      value.source_tracks.tag_mutation_atomic_reindex.status = 'done';
+      value.source_tracks.tag_mutation_atomic_reindex.status = 'next_source_gap';
     });
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /tag mutation atomic-reindex cursor drift/);
+  assert.match(result.stderr, /tag mutation atomic-reindex track drift/);
+});
+
+test('rejects premature tag mutation runtime promotion', () => {
+  const result = rejects((root) => {
+    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json', (value) => {
+      value.runtime_status = 'validated';
+      value.execution.push({ command: 'not-run' });
+    });
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /tag mutation atomic-reindex source evidence drift/);
 });
 
 test('rejects listing the historical plan before the canonical current cursor', () => {
   const result = rejects((root) => {
-    const relativePath = 'crates/rustok-blog/docs/README.md';
-    const source = readFileSync(absolute(root, relativePath), 'utf8');
+    const file = 'crates/rustok-blog/docs/README.md';
+    const source = readFileSync(absolute(root, file), 'utf8');
     const current = '[Current Implementation Cursor](./implementation-plan-current.md)';
     const historical = '[Historical Implementation Plan](./implementation-plan.md)';
-    write(root, relativePath, source.replace(current, '__CURRENT__').replace(historical, current).replace('__CURRENT__', historical));
+    write(root, file, source.replace(current, '__CURRENT__').replace(historical, current).replace('__CURRENT__', historical));
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /canonical current cursor must be listed before/);
@@ -194,9 +199,9 @@ test('rejects listing the historical plan before the canonical current cursor', 
 
 test('rejects an unrecorded advance of the historical embedded slice list', () => {
   const result = rejects((root) => {
-    const relativePath = 'crates/rustok-blog/docs/implementation-plan.md';
-    const source = readFileSync(absolute(root, relativePath), 'utf8');
-    write(root, relativePath, source.replace(
+    const file = 'crates/rustok-blog/docs/implementation-plan.md';
+    const source = readFileSync(absolute(root, file), 'utf8');
+    write(root, file, source.replace(
       '\n## Next results',
       '\n68. Unrecorded historical-list advance.\n\n## Next results',
     ));
