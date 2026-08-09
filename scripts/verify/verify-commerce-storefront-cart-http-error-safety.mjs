@@ -53,6 +53,7 @@ const updateLineHandler = between(
 for (const [value, label] of [
   ['OptionalAuthContext, PortError, RequestContext, TenantContext', 'typed port error import'],
   ['port_error_to_http_error', 'shared port HTTP mapper import'],
+  ['mod shipping_owner_reads;', 'mounted shipping owner read helper'],
   ['fn map_cart_port_error(', 'cart port mapper'],
   ['error = ?error', 'raw internal error logging'],
   ['owner = "rustok_cart"', 'cart owner logging'],
@@ -138,10 +139,20 @@ for (const [value, label] of [
   ['ensure_storefront_channel_enabled_for_db(', 'channel guard'],
   ['current_customer_id_for_db(', 'customer lookup'],
   ['ensure_store_cart_access(', 'cart ownership guard'],
-  ['enrich_storefront_cart_for_db(', 'cart enrichment'],
+  ['runtime.shipping_option_read_port()', 'host-selected Fulfillment shipping read port'],
+  ['shipping_owner_reads::enrich_storefront_cart(', 'cart shipping enrichment'],
+  ['shipping_owner_reads::apply_cart_context_patch(', 'cart context shipping validation'],
   ['storefront_cart_port_context(', 'cart port context'],
 ]) {
   requireText(controller, value, label);
+}
+
+for (const value of [
+  'super::enrich_storefront_cart_for_db(',
+  'super::apply_cart_context_patch_for_db(',
+  'FulfillmentService::new(',
+]) {
+  forbidText(controller, value, 'stale mounted storefront shipping construction');
 }
 
 for (const [value, label] of [
@@ -196,4 +207,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('✔ Storefront cart handlers use typed safe public envelopes and diagnostics');
+console.log('✔ Storefront cart handlers use typed safe public envelopes, host-selected shipping reads, and diagnostics');

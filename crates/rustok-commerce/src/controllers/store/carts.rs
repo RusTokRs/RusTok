@@ -21,6 +21,7 @@ use rustok_cart::{
 use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 
 use super::line_item_resolution;
+mod shipping_owner_reads;
 
 fn map_cart_port_error(
     error: PortError,
@@ -115,10 +116,12 @@ pub async fn create_cart(
         )
         .await
         .map_err(|error| map_cart_port_error(error, "create_cart", tenant.id, None))?;
-    let cart = super::enrich_storefront_cart_for_db(
-        runtime.db(),
+    let shipping_option_read_port = runtime.shipping_option_read_port();
+    let cart = shipping_owner_reads::enrich_storefront_cart(
+        shipping_option_read_port.as_ref(),
         tenant.id,
         &request_context,
+        auth.0.as_ref(),
         tenant.default_locale.as_str(),
         cart,
     )
@@ -168,11 +171,13 @@ pub async fn get_cart(
         .await
         .map_err(|error| map_cart_port_error(error, "get_cart", tenant.id, Some(id)))?;
     super::ensure_store_cart_access(&cart, customer_id)?;
+    let shipping_option_read_port = runtime.shipping_option_read_port();
     Ok(Json(
-        super::enrich_storefront_cart_for_db(
-            runtime.db(),
+        shipping_owner_reads::enrich_storefront_cart(
+            shipping_option_read_port.as_ref(),
             tenant.id,
             &request_context,
+            auth.0.as_ref(),
             tenant.default_locale.as_str(),
             cart,
         )
@@ -223,11 +228,14 @@ pub async fn update_cart_context(
         })?;
     super::ensure_store_cart_access(&cart, customer_id)?;
 
-    let updated = super::apply_cart_context_patch_for_db(
+    let shipping_option_read_port = runtime.shipping_option_read_port();
+    let updated = shipping_owner_reads::apply_cart_context_patch(
         runtime.db(),
         runtime.event_bus(),
+        shipping_option_read_port.as_ref(),
         tenant.id,
         &request_context,
+        auth.0.as_ref(),
         tenant.default_locale.as_str(),
         &cart,
         StoreCartContextPatch {
@@ -333,11 +341,13 @@ pub async fn add_cart_line_item(
         )
         .await
         .map_err(|error| map_cart_port_error(error, "add_cart_line_item", tenant.id, Some(id)))?;
+    let shipping_option_read_port = runtime.shipping_option_read_port();
     Ok(Json(
-        super::enrich_storefront_cart_for_db(
-            runtime.db(),
+        shipping_owner_reads::enrich_storefront_cart(
+            shipping_option_read_port.as_ref(),
             tenant.id,
             &request_context,
+            auth.0.as_ref(),
             tenant.default_locale.as_str(),
             cart,
         )
@@ -483,11 +493,13 @@ pub async fn update_cart_line_item(
                 map_cart_port_error(error, "update_cart_line_item_quantity", tenant.id, Some(id))
             })?
     };
+    let shipping_option_read_port = runtime.shipping_option_read_port();
     Ok(Json(
-        super::enrich_storefront_cart_for_db(
-            runtime.db(),
+        shipping_owner_reads::enrich_storefront_cart(
+            shipping_option_read_port.as_ref(),
             tenant.id,
             &request_context,
+            auth.0.as_ref(),
             tenant.default_locale.as_str(),
             cart,
         )
@@ -559,11 +571,13 @@ pub async fn remove_cart_line_item(
         .map_err(|error| {
             map_cart_port_error(error, "remove_cart_line_item", tenant.id, Some(id))
         })?;
+    let shipping_option_read_port = runtime.shipping_option_read_port();
     Ok(Json(
-        super::enrich_storefront_cart_for_db(
-            runtime.db(),
+        shipping_owner_reads::enrich_storefront_cart(
+            shipping_option_read_port.as_ref(),
             tenant.id,
             &request_context,
+            auth.0.as_ref(),
             tenant.default_locale.as_str(),
             cart,
         )
