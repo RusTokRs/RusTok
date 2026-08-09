@@ -67,8 +67,20 @@
     "permission_mapping_reference_is_source_locked": true,
     "server_feature_dependency_required_in_pages": false,
     "rollout_guard_owner": "rustok_page_builder::rollout::ensure_capability",
+    "provider_runtime_policy_owner": "rustok_page_builder::rollout::effective_provider_runtime_flags",
     "feature_disabled_kind": "feature-disabled",
     "feature_disabled_code": "FEATURE_DISABLED"
+  },
+  "provider_health_boundary": {
+    "harness_purpose": "rollout_only",
+    "provider_health_must_remain_unobserved": true,
+    "observation_operation": "pageBuilderRolloutSnapshot",
+    "observe_before_each_profile_preflight": true,
+    "observe_after_each_profile_preflight": true,
+    "provider_health_payload_must_be_absent": true,
+    "fail_if_provider_health_is_observed": true,
+    "retained_health_payload": false,
+    "retained_observation": "http_status_body_hash_and_unobserved_boolean_only"
   },
   "profiles": [
     {"id":"all_on","flags":[true,true,true,true],"preview":"allowed","properties":"allowed","publish":"allowed"},
@@ -109,7 +121,7 @@
   ],
   "forbidden_retained_data": [
     "tenant slugs","tenant ids","authorization headers","cookies","storage state contents","session ids",
-    "access tokens","refresh tokens","raw module settings","raw GraphQL request or response bodies","database urls"
+    "access tokens","refresh tokens","raw module settings","raw GraphQL request or response bodies","provider health payload","database urls"
   ],
   "not_claimed": [
     "owner sign-off","rollback keep decision","pages_reference_consumer_gate accepted",
