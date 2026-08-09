@@ -12,6 +12,7 @@
     "consumer_service": "crates/rustok-blog/src/services/comment.rs",
     "consumer_error_mapping": "crates/rustok-blog/src/services/comment.rs",
     "public_snapshot_policy": "crates/rustok-blog/src/public_comments_snapshot.rs",
+    "storefront_write_surface_inventory": "crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
     "provider_port_registry": "crates/rustok-comments/contracts/comments-fba-registry.json",
     "graphql_runtime": "crates/rustok-blog/src/graphql/runtime_data.rs",
     "graphql_owner": "crates/rustok-blog/src/graphql/types.rs",
@@ -41,7 +42,7 @@
     ],
     "propagated_error_policy": "all_other_blog_errors",
     "cached_thread_snapshot": "source_verified_no_compile",
-    "comment_form_fallback": "planned",
+    "comment_form_fallback": "not_applicable_no_storefront_write_surface",
     "degraded_payload": {
       "cache_hit": {
         "cached_snapshot": true,
@@ -85,8 +86,18 @@
     ],
     "runtime_evidence": "pending"
   },
+  "storefront_write_surface": {
+    "status": "source_verified_absent",
+    "inventory": "crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
+    "active_comment_form": false,
+    "active_create_comment_transport": false,
+    "legacy_degraded_mode": "hide_comment_form",
+    "legacy_registry_semantics": "compatibility_vocabulary_not_active_storefront_surface",
+    "comment_form_fallback": "not_applicable_no_storefront_write_surface"
+  },
   "fallback_smoke": {
     "status": "planned",
+    "status_scope": "cached_read_runtime_execution_only",
     "profiles": [
       "embedded_native",
       "graphql_storefront"
@@ -113,7 +124,8 @@
           "with_error_code(error.code)"
         ],
         "degraded_mode": "hide_comment_form",
-        "expected_consumer_behavior": "comment-form fallback remains planned; source contract preserves typed unavailable/forbidden/validation errors while runtime fallback evidence remains pending"
+        "mode_status": "legacy_not_applicable_no_storefront_write_surface",
+        "expected_consumer_behavior": "the active storefront has no public comment form or create-comment transport; hide_comment_form is retained only as registry compatibility vocabulary and is not an implementation target"
       },
       {
         "operation": "list_comments_for_target",
@@ -133,6 +145,7 @@
           "with_error_code(error.code)"
         ],
         "degraded_mode": "show_cached_thread_snapshot",
+        "mode_status": "source_ready_maintainer_execution_pending",
         "expected_consumer_behavior": "cached public snapshot source is retained for unavailable/timeout reads across GraphQL and native SSR; runtime fallback execution remains pending"
       }
     ],
