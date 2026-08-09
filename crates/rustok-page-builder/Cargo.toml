@@ -11,6 +11,7 @@ server = [
   "dep:async-trait",
   "dep:rustok-api",
   "dep:rustok-core",
+  "dep:rustok-telemetry",
   "dep:sea-orm-migration",
 ]
 
@@ -19,6 +20,7 @@ fly = { path = "../fly" }
 rustok-api = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
+rustok-telemetry = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }
 thiserror.workspace = true
 serde.workspace = true
