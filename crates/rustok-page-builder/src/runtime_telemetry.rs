@@ -4,6 +4,7 @@ use crate::health::{
 };
 use crate::service::PageBuilderServiceError;
 use rustok_api::PortContext;
+use rustok_telemetry::page_builder_provider_metrics::record_page_builder_provider_operation;
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -164,12 +165,13 @@ impl PendingProviderHealthCall {
     }
 }
 
-/// Production-default runtime telemetry for the bounded process-local provider-health window.
+/// Production-default runtime telemetry for the bounded process-local provider-health window and
+/// deployment-aggregatable platform metrics.
 ///
 /// It observes only canonical Fly adapter terminal calls already emitted by the provider service.
 /// Load-project telemetry is intentionally excluded from the current Preview/Publish SLO contract.
-/// A process restart clears pending calls and the health window remains unobserved until the
-/// minimum sample floor is rebuilt.
+/// A process restart clears the local window; Prometheus counters/histograms also restart at the
+/// target and are expected to be aggregated with reset-aware range functions by the metrics backend.
 #[derive(Debug, Clone, Default)]
 pub struct ProviderHealthRuntimeTelemetry {
     pending: Arc<Mutex<VecDeque<PendingProviderHealthCall>>>,
@@ -183,6 +185,22 @@ impl ProviderHealthRuntimeTelemetry {
             PageBuilderRuntimeOperation::RenderPreview => Some(ProviderHealthOperation::Preview),
             PageBuilderRuntimeOperation::SaveProject => Some(ProviderHealthOperation::Publish),
             PageBuilderRuntimeOperation::LoadProject => None,
+        }
+    }
+
+    const fn operation_label(operation: ProviderHealthOperation) -> &'static str {
+        match operation {
+            ProviderHealthOperation::Preview => "preview",
+            ProviderHealthOperation::Publish => "publish",
+        }
+    }
+
+    const fn outcome_label(outcome: ProviderHealthOutcome) -> &'static str {
+        match outcome {
+            ProviderHealthOutcome::Succeeded => "succeeded",
+            ProviderHealthOutcome::SanitizeFailed => "sanitize_failed",
+            ProviderHealthOutcome::RuntimeFailed => "runtime_failed",
+            ProviderHealthOutcome::OtherFailed => "other_failed",
         }
     }
 
@@ -227,7 +245,13 @@ impl ProviderHealthRuntimeTelemetry {
             },
             PageBuilderRuntimeCallStatus::Started => return,
         };
-        record_provider_health_observation(operation, pending_call.started_at.elapsed(), outcome);
+        let elapsed = pending_call.started_at.elapsed();
+        record_provider_health_observation(operation, elapsed, outcome);
+        record_page_builder_provider_operation(
+            Self::operation_label(operation),
+            Self::outcome_label(outcome),
+            elapsed,
+        );
     }
 }
 
@@ -306,6 +330,26 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .len(),
             0
+        );
+    }
+
+    #[test]
+    fn provider_health_metric_labels_match_bounded_platform_contract() {
+        assert_eq!(
+            ProviderHealthRuntimeTelemetry::operation_label(ProviderHealthOperation::Preview),
+            "preview"
+        );
+        assert_eq!(
+            ProviderHealthRuntimeTelemetry::operation_label(ProviderHealthOperation::Publish),
+            "publish"
+        );
+        assert_eq!(
+            ProviderHealthRuntimeTelemetry::outcome_label(ProviderHealthOutcome::SanitizeFailed),
+            "sanitize_failed"
+        );
+        assert_eq!(
+            ProviderHealthRuntimeTelemetry::outcome_label(ProviderHealthOutcome::RuntimeFailed),
+            "runtime_failed"
         );
     }
 }
