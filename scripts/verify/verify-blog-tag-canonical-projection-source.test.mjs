@@ -13,6 +13,7 @@ const verifier = path.join(repositoryRoot, 'scripts/verify/verify-blog-tag-canon
 const files = [
   'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
   'crates/rustok-blog/src/services/tag.rs',
+  'crates/rustok-blog/tests/taxonomy_tags.rs',
   'crates/rustok-search/src/blog_projector.rs',
   'crates/rustok-search/tests/blog_projection_postgres_test.rs',
   'crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json',
@@ -65,6 +66,16 @@ test('rejects metadata resurrection on empty relation set', () => {
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /tags_by_post/);
+});
+
+test('rejects removal of the Blog read regression harness', () => {
+  const result = rejects((root) => {
+    const file = 'crates/rustok-blog/tests/taxonomy_tags.rs';
+    const source = readFileSync(absolute(root, file), 'utf8');
+    write(root, file, source.replace('post_read_does_not_resurrect_metadata_tags_after_relations_are_removed', 'removed_read_case'));
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /post_read_does_not_resurrect/);
 });
 
 test('rejects metadata-backed Search projection', () => {
