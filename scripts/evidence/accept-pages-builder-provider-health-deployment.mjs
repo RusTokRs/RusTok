@@ -7,6 +7,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -37,6 +38,8 @@ const THRESHOLDS = {
 const ACCEPT_DECISION = "accept_for_pages_binding";
 const REJECT_DECISION = "reject";
 const ROLLBACK_ACTION = "restore_unobserved_provider_health";
+const OWNER_ID_PATTERN_SOURCE = "^[A-Za-z0-9._-]{1,64}$";
+const OWNER_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
 function fail(message) {
   throw new Error(`Pages Page Builder provider-health owner acceptance failed: ${message}`);
@@ -99,15 +102,25 @@ function regularFile(location, label, maximumBytes = MAX_INPUT_BYTES) {
   return readFileSync(location);
 }
 
+function repositoryTargetRoot() {
+  const targetRoot = path.resolve(repoRoot, "target");
+  if (!existsSync(targetRoot)) fail("repository target/ is missing");
+  const metadata = lstatSync(targetRoot);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) fail("repository target/ must be a real directory");
+  return realpathSync(targetRoot);
+}
+
 function resolveTargetInput(candidate, label) {
   if (typeof candidate !== "string" || candidate.length === 0 || candidate.length > 16_384) {
     fail(`${label} path is invalid`);
   }
   const absolute = path.isAbsolute(candidate) ? path.resolve(candidate) : path.resolve(repoRoot, candidate);
-  const targetRoot = path.resolve(repoRoot, "target");
-  const relative = path.relative(targetRoot, absolute);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) fail(`${label} must reside under repository target/`);
-  return absolute;
+  if (!existsSync(absolute)) fail(`${label} is missing`);
+  const real = realpathSync(absolute);
+  const targetRoot = repositoryTargetRoot();
+  const relative = path.relative(targetRoot, real);
+  if (relative.startsWith("..") || path.isAbsolute(relative) || relative.length === 0) fail(`${label} must reside under repository target/`);
+  return real;
 }
 
 function jsonDocument(location, label) {
@@ -135,8 +148,8 @@ function canonicalRepoDigest(value) {
   return value;
 }
 
-function boundedOwnerId(value, pattern) {
-  if (typeof value !== "string" || !(new RegExp(pattern)).test(value)) {
+function boundedOwnerId(value) {
+  if (typeof value !== "string" || !OWNER_ID_PATTERN.test(value)) {
     fail("--owner-id must be a bounded operator identifier using A-Z a-z 0-9 . _ -");
   }
   return value;
@@ -235,12 +248,15 @@ function requireEvaluation(evaluation, contract, evaluatorContract, head) {
   const verifiedTargets = nonNegativeInteger(evaluation.deployment.verified_backend_target_count, "verified target count");
   if (expectedTargets < 1 || expectedTargets > 64 || expectedTargets !== verifiedTargets) fail("evaluation target counts are incomplete");
 
+  const minimumWindow = nonNegativeInteger(evaluatorContract.backend_query?.query_window_seconds_minimum, "evaluator minimum query window");
+  const maximumWindow = nonNegativeInteger(evaluatorContract.backend_query?.query_window_seconds_maximum, "evaluator maximum query window");
+  const minimumFreshness = nonNegativeInteger(evaluatorContract.backend_query?.freshness_seconds_minimum, "evaluator minimum freshness window");
+  const maximumIdentityAge = nonNegativeInteger(evaluatorContract.backend_query?.identity_capture_maximum_age_seconds, "evaluator maximum identity age");
+  if (minimumWindow === 0 || maximumWindow < minimumWindow || minimumFreshness === 0 || maximumIdentityAge < minimumWindow) {
+    fail("deployment evaluator bounds are invalid");
+  }
   const queryWindow = nonNegativeInteger(evaluation.deployment.query_window_seconds, "query window");
   const freshnessWindow = nonNegativeInteger(evaluation.deployment.freshness_seconds, "freshness window");
-  const minimumWindow = evaluatorContract.backend_query?.query_window_seconds_minimum;
-  const maximumWindow = evaluatorContract.backend_query?.query_window_seconds_maximum;
-  const minimumFreshness = evaluatorContract.backend_query?.freshness_seconds_minimum;
-  const maximumIdentityAge = evaluatorContract.backend_query?.identity_capture_maximum_age_seconds;
   if (queryWindow < minimumWindow || queryWindow > maximumWindow) fail("evaluation query window is outside evaluator contract bounds");
   if (freshnessWindow < minimumFreshness || freshnessWindow > queryWindow) fail("evaluation freshness window is outside evaluator contract bounds");
   const identityAge = finiteNumber(evaluation.deployment.identity_age_seconds, "identity age");
@@ -337,9 +353,9 @@ function outputPath(contract, requested) {
   const candidate = requested ?? contract.output.default_path;
   if (typeof candidate !== "string" || candidate.length === 0 || candidate.length > 16_384) fail("acceptance output path is invalid");
   const absolute = path.isAbsolute(candidate) ? path.resolve(candidate) : path.resolve(repoRoot, candidate);
-  const targetRoot = path.resolve(repoRoot, "target");
-  const relative = path.relative(targetRoot, absolute);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) fail("acceptance output must remain inside repository target/");
+  const targetRoot = repositoryTargetRoot();
+  if (path.dirname(absolute) !== targetRoot || path.basename(absolute).length === 0) fail("acceptance output must be a direct file inside repository target/");
+  if (existsSync(absolute) && lstatSync(absolute).isSymbolicLink()) fail("acceptance output must not be a symlink");
   return absolute;
 }
 
@@ -358,7 +374,20 @@ function main() {
   }
   const contract = JSON.parse(regularFile(contractPath, "owner acceptance source contract").toString("utf8"));
   const evaluatorContract = JSON.parse(regularFile(evaluatorContractPath, "deployment evaluator source contract").toString("utf8"));
-  if (contract.status !== "source_ready_maintainer_execution_pending") fail("owner acceptance source contract is not execution-pending");
+  if (contract.format !== "pages_builder_provider_health_owner_acceptance_source_v1" || contract.status !== "source_ready_maintainer_execution_pending") {
+    fail("owner acceptance source contract identity drifted");
+  }
+  if (
+    contract.owner_decision?.owner_id_pattern !== OWNER_ID_PATTERN_SOURCE ||
+    contract.owner_decision?.accepted_rollback_action !== ROLLBACK_ACTION ||
+    !contract.owner_decision?.decisions?.includes(ACCEPT_DECISION) ||
+    !contract.owner_decision?.decisions?.includes(REJECT_DECISION) ||
+    contract.output?.format !== "pages_builder_provider_health_owner_acceptance_v1" ||
+    contract.output?.accepted_status !== "owner_accepted_server_binding_pending" ||
+    contract.output?.rejected_status !== "owner_rejected_observed_health_binding"
+  ) {
+    fail("owner acceptance source contract policy drifted");
+  }
   if (evaluatorContract.status !== "source_ready_execution_pending") fail("deployment evaluator source contract drifted");
 
   const decision = options.decision;
@@ -367,7 +396,7 @@ function main() {
     fail(`accepted decision requires --rollback-action ${ROLLBACK_ACTION}`);
   }
   if (decision === REJECT_DECISION && options.rollbackAction) fail("rejected decision must not carry a rollback action");
-  const ownerId = boundedOwnerId(options.ownerId, contract.owner_decision.owner_id_pattern);
+  const ownerId = boundedOwnerId(options.ownerId);
   const head = currentCommit();
   const evaluationPath = resolveTargetInput(options.evaluation, "evaluation packet");
   const { document: evaluation, bytes: evaluationBytes } = jsonDocument(evaluationPath, "evaluation packet");
