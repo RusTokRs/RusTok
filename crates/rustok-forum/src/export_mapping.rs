@@ -11,14 +11,11 @@ use crate::dto::{CategoryResponse, ReplyResponse, TopicResponse};
 pub const FORUM_EXPORT_SCHEMA_V1: &str = "rustok.forum.export.v1";
 pub const MAX_FORUM_EXPORT_OWNER_VIEWS_PER_FRAGMENT: usize = 512;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct ForumExportOwnerViewBatch {
     pub tenant_id: Uuid,
-    #[serde(default)]
     pub categories: Vec<CategoryResponse>,
-    #[serde(default)]
     pub topics: Vec<TopicResponse>,
-    #[serde(default)]
     pub replies: Vec<ReplyResponse>,
 }
 
