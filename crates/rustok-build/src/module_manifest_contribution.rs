@@ -157,11 +157,8 @@ pub fn normalize_module_contribution_manifest(
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    let target_providers = normalize_targets(
-        manifest.target_providers,
-        &owner_provider,
-        &owner_version,
-    )?;
+    let target_providers =
+        normalize_targets(manifest.target_providers, &owner_provider, &owner_version)?;
     let dependencies = normalize_set(
         manifest.dependencies,
         "fba.builder_consumer.contribution_manifest.dependencies",
@@ -192,7 +189,9 @@ pub fn normalize_module_contribution_manifest(
     )?;
 
     if admin.is_empty() && storefront.is_empty() {
-        return fail("contribution_manifest must declare at least one admin or storefront contribution");
+        return fail(
+            "contribution_manifest must declare at least one admin or storefront contribution",
+        );
     }
 
     Ok(Some(NormalizedModuleContributionManifest {
@@ -448,17 +447,15 @@ fn normalize_set(values: BTreeSet<String>, label: &str) -> Result<BTreeSet<Strin
     for value in values {
         let value = required(&value, label)?;
         if !normalized.insert(value.clone()) {
-            return fail(format!("{label} contains duplicate '{value}' after normalization"));
+            return fail(format!(
+                "{label} contains duplicate '{value}' after normalization"
+            ));
         }
     }
     Ok(normalized)
 }
 
-fn take_optional_string(
-    table: &mut toml::Table,
-    key: &str,
-    label: &str,
-) -> Result<Option<String>> {
+fn take_optional_string(table: &mut toml::Table, key: &str, label: &str) -> Result<Option<String>> {
     let Some(value) = table.remove(key) else {
         return Ok(None);
     };
@@ -473,9 +470,7 @@ fn table_required_string(table: &toml::Table, key: &str, label: &str) -> Result<
         .get(key)
         .and_then(toml::Value::as_str)
         .ok_or_else(|| {
-            ModuleContributionManifestError::new(format!(
-                "{label} is missing string '{key}'"
-            ))
+            ModuleContributionManifestError::new(format!("{label} is missing string '{key}'"))
         })?;
     required(value, &format!("{label}.{key}"))
 }
@@ -533,7 +528,10 @@ provider = "fly.builtin"
             Some(&"1".to_string())
         );
         assert_eq!(normalized.role("landing").expect("role").surface, "admin");
-        assert!(normalized.manifest_json().unwrap().contains("\"module_id\":\"pages\""));
+        assert!(normalized
+            .manifest_json()
+            .unwrap()
+            .contains("\"module_id\":\"pages\""));
         let metadata = normalized.admin[0]
             .get("metadata")
             .and_then(serde_json::Value::as_object)

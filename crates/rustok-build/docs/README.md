@@ -31,3 +31,19 @@ transition. The event preserves the requested and restored build IDs, source
 and target release IDs, and verified actor. The host maps the same owner event
 to the canonical `build.rolled_back` domain event, WebSocket message, and
 GraphQL subscription payload; it does not synthesize another completion.
+
+## Accepted Release-Safety Cutover
+
+The current active-release and rollback surface is an implementation gap under
+the accepted
+[module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md).
+The atomic target makes `rustok-modules` the sole operator-level owner of
+static release selection, predecessor eligibility, recovery, desired/observed
+rollout, and incident outcome. `rustok-build` remains the immutable role-build
+and publication executor and returns digest-bound receipts; it does not retain
+an independent public active-release head or rollback command.
+
+The cutover migrates all GraphQL, native, and CLI callers and removes the
+duplicate head, mutation, event/DTO surface, schema, tests, and current
+documentation in one change. There is no dual-write or fallback path. See the
+[implementation plan](./implementation-plan.md) for the tracked work.

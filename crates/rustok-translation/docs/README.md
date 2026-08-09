@@ -9,7 +9,8 @@ work while each domain owner remains authoritative for localized business data.
 
 The module owns inventory projections, provider checkpoints, translation jobs,
 proposals, review and approval state, assignments, quality evidence, translation
-memory, glossaries, interchange operations, and owner-application receipts.
+memory, glossaries, bounded direct interchange and private artifact lifecycle,
+and owner-application receipts.
 It also owns the provider-neutral `MachineTranslationPort` SPI and bounded
 request/result evidence. AI routing and inference remain outside this module.
 
@@ -37,6 +38,7 @@ The implemented persistence foundation owns:
 - `translation_machine_memory_bindings`;
 - `translation_machine_cancellations`;
 - `translation_machine_recoveries`;
+- `translation_exchange_jobs`;
 - bounded provider change-cursor synchronization with optimistic checkpoint
   revision protection, provider-identity isolation, and cursor-progress
   validation;
@@ -64,6 +66,14 @@ The implemented persistence foundation owns:
   non-excluded fields. Import is atomic per item, rejects stale source digests
   and ineligible fields, and creates an `import` proposal only through
   canonical owner validation and deterministic QA;
+- tenant-scoped object-storage interchange artifacts. Only bounded document
+  bytes live at private object keys in a canonical camel-case wire document;
+  lifecycle metadata records checksum, byte length, actor/idempotency binding,
+  a short exclusive import-processing lease,
+  expiry/deletion, and aggregate import outcomes. Reads verify integrity,
+  a module-owned runtime worker deletes expired artifacts independently of
+  later tenant requests, missing storage fails closed, and concurrent import
+  retries fail retryably instead of running twice;
 - revision-guarded memory retention, legal hold, tombstone, and purge with
   actor-bound durable idempotency receipts. Tombstoned entries are excluded
   from lookup, while purge preserves content-free operation evidence. Owner
@@ -141,6 +151,30 @@ Inventory rows never copy source or translated field values. Source text is
 stored only in workflow item snapshots with an explicit job/tenant boundary;
 owner tables remain canonical.
 
+## Observability
+
+Translation owns a lazily registered `rustok_translation_*` collector in the
+single process telemetry registry. It reports content-free provider operation
+availability and latency, observed checkpoint freshness and age, workflow
+apply attempts/replays/owner-error categories, Translation Memory strongest
+match kind, QA warning/error family, and interchange artifact operation,
+size, aggregate import outcome, rejection category, and expiry-cleanup result.
+The observer creates matching `tracing` spans for provider, workflow, and
+interchange boundaries.
+
+Every label is selected from a fixed module enum. No metric or trace field
+contains a tenant, actor, job, item, resource, object key, opaque cursor,
+locale, source/translated value, glossary term, or arbitrary provider error
+code. Checkpoint age is an elapsed-time observation only; opaque cursors are
+never interpreted as numeric lag or distance.
+
+System-health metrics intentionally do not provide a cross-tenant job-state
+gauge. `TranslationProgressService` remains the canonical tenant-authorized
+content-progress surface, while its aggregate counts are emitted only as
+content-free trace fields. Broker-backed event-consumer lag remains owned by
+the runtime consumer/outbox observer and must be derived from a durable
+partition checkpoint, not event age or a Translation cursor.
+
 ## Integration
 
 Owner modules register `TranslationTargetProvider` implementations through
@@ -207,7 +241,9 @@ tenant, locale, permission claims, deadlines, and caller-supplied idempotency
 keys are converted into the same transport-neutral `PortContext` used by
 native adapters. Runtime data is materialized by
 `graphql_runtime::attach_schema_data`; owner modules remain visible only
-through the neutral registry.
+through the neutral registry. The optional `StorageRuntime` is used only for
+the private interchange artifact lifecycle; its absence fails that lifecycle
+closed without creating an in-memory fallback.
 
 The module-owned `rustok-translation-admin` package defines a single typed
 operation/response boundary over that service contract. SSR/hydrate selects a
@@ -217,16 +253,21 @@ locale, permission, deadline, and idempotency evidence and never reads an owner
 table. Both adapters share Translation's redacted public-error classification.
 Its six-tab Leptos `core/transport/ui` workbench is manifest-mounted in
 `apps/admin`; the matching `@rustok/translation-admin` package is mounted by
-the Next host through a thin client wrapper and uses the same 41-operation
+the Next host through a thin client wrapper and uses the same 49-operation
 GraphQL contract. The Workflow surface includes a non-billable conservative
 machine-translation estimate derived from AI-owned tenant routing and immutable
 price snapshots before proposal generation, along with generation, status,
 cancellation, and recovery controls. It also provides revision-guarded
-assignment/unassignment, bounded reviewer queue and workload reads, blocked-item
-retry, job cancellation, and owner-apply recovery. The Jobs surface provides
+assignment/unassignment, bounded reviewer queue and workload reads, private
+append-only job/item workflow notes, blocked-item retry, job cancellation, and
+owner-apply recovery. Notes are bounded and resolution-revision-guarded; their
+bodies remain out of Translation Memory, machine requests, owner application,
+and event bodies. The Jobs surface provides
 bounded immutable snapshot export and atomic per-item import through canonical
-QA. Both clients use `memory_entry_id` for explicit memory selection and never
-auto-select the first entry.
+QA, plus private object-storage artifact create/list/read/store/process with a
+5-minute to 7-day lifetime, size/checksum validation, and aggregate conflict
+reports. Both clients use `memory_entry_id` for explicit memory selection and
+never auto-select the first entry.
 
 ## Verification
 

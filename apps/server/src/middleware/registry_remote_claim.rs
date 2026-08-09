@@ -6,6 +6,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use rustok_modules::ModuleGovernanceErrorCategory;
 use subtle::ConstantTimeEq;
 
 use crate::services::marketplace_catalog::{
@@ -280,21 +281,24 @@ fn mutation_response(claim_id: &str, status: &str) -> Response {
 }
 
 fn transition_error_response(error: RegistryRemoteTransitionError) -> Response {
-    match error {
-        RegistryRemoteTransitionError::Invalid(message) => {
-            response(StatusCode::BAD_REQUEST, "invalid_request", &message)
+    let RegistryRemoteTransitionError {
+        category,
+        code,
+        detail,
+    } = error;
+    match category {
+        ModuleGovernanceErrorCategory::InvalidInput => {
+            response(StatusCode::BAD_REQUEST, code, &detail)
         }
-        RegistryRemoteTransitionError::Forbidden(message) => {
-            response(StatusCode::FORBIDDEN, "forbidden", &message)
+        ModuleGovernanceErrorCategory::PermissionDenied => {
+            response(StatusCode::FORBIDDEN, code, &detail)
         }
-        RegistryRemoteTransitionError::NotFound(message) => {
-            response(StatusCode::NOT_FOUND, "not_found", &message)
+        ModuleGovernanceErrorCategory::NotFound => {
+            response(StatusCode::NOT_FOUND, code, "Not found")
         }
-        RegistryRemoteTransitionError::Conflict(message) => {
-            response(StatusCode::CONFLICT, "conflict", &message)
-        }
-        RegistryRemoteTransitionError::Internal(message) => {
-            tracing::error!(error = %message, "Atomic registry runner transition failed");
+        ModuleGovernanceErrorCategory::Conflict => response(StatusCode::CONFLICT, code, &detail),
+        ModuleGovernanceErrorCategory::Internal => {
+            tracing::error!(error = %detail, "Atomic registry runner transition failed");
             response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",

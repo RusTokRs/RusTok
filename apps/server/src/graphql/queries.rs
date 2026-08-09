@@ -22,7 +22,6 @@ use crate::graphql::types::{
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
-use crate::modules::ManifestManager;
 use crate::services::dashboard_user_activity;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
@@ -667,11 +666,9 @@ impl RootQuery {
         let limit = clamp_collection_limit(limit);
 
         let db = ctx.data::<DatabaseConnection>()?;
-        let manifest = PlatformCompositionService::active_manifest(db)
+        let modules = PlatformCompositionService::installed_modules(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        let modules = ManifestManager::installed_modules(&manifest)
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
             .iter()
             .take(limit)
             .map(InstalledModule::from)

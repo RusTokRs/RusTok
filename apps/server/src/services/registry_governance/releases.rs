@@ -4,6 +4,7 @@ use rustok_modules::{
     ModuleGovernanceActorContext, ModuleGovernanceOwnerSnapshot,
     ModuleGovernancePublishArtifactDownloadSnapshot, ModuleGovernancePublishRequestStatusSnapshot,
     ModuleGovernanceRequestSnapshot, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
+    ModuleReleaseYankResult,
 };
 use std::collections::HashMap;
 
@@ -274,37 +275,22 @@ impl RegistryGovernanceService {
         reason: &str,
         reason_code: &str,
         authority: &RegistryAuthority,
-    ) -> anyhow::Result<registry_module_release::Model> {
-        let release = RegistryModuleReleaseEntity::find()
-            .filter(registry_module_release::Column::Slug.eq(slug))
-            .filter(registry_module_release::Column::Version.eq(version))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| {
-                not_found_error(format!(
-                    "Published release '{slug}@{version}' was not found"
-                ))
-            })?;
-        self.ensure_authority_can_manage_release(authority, &release, "yank")
-            .await?;
+    ) -> anyhow::Result<ModuleReleaseYankResult> {
         let normalized_reason = normalize_required_reason(reason, "Registry yank")?;
         let normalized_reason_code =
             normalize_reason_code(reason_code, REGISTRY_YANK_REASON_CODES, "Registry yank")?;
 
         self.release_service()
             .yank_release(ModuleReleaseYankCommand {
-                slug: release.slug.clone(),
-                version: release.version.clone(),
+                slug: slug.to_string(),
+                version: version.to_string(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
                 actor_principal: authority.principal.to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules,
             })
             .await
-            .map_err(anyhow::Error::new)?;
-        RegistryModuleReleaseEntity::find_by_id(release.id)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| anyhow!("yanked registry release disappeared"))
+            .map_err(anyhow::Error::new)
     }
 
     pub async fn transfer_registry_slug_owner(
@@ -314,37 +300,11 @@ impl RegistryGovernanceService {
         reason: &str,
         reason_code: &str,
         authority: &RegistryAuthority,
-    ) -> anyhow::Result<RegistryModuleOwnerSnapshot> {
-        let existing = self
-            .release_service()
-            .owner_binding_snapshot(slug)
-            .await
-            .map_err(anyhow::Error::new)?
-            .map(map_owner_binding_snapshot)
-            .ok_or_else(|| {
-                not_found_error(format!(
-                    "Registry owner binding for slug '{slug}' was not found"
-                ))
-            })?;
-        self.ensure_authority_can_transfer_registry_owner(
-            authority,
-            &existing,
-            slug,
-            "transfer ownership",
-        )
-        .await?;
-
+    ) -> anyhow::Result<()> {
         if !new_owner.is_user() {
             return Err(malformed_error(format!(
                 "Registry owner transfer for slug '{}' requires a valid new owner user principal",
                 slug
-            )));
-        }
-        if existing.owner == *new_owner {
-            return Err(conflict_error(format!(
-                "Registry owner for slug '{}' is already bound to '{}'",
-                slug,
-                new_owner.label()
             )));
         }
         let normalized_reason = normalize_required_reason(reason, "Registry owner transfer")?;
@@ -359,16 +319,12 @@ impl RegistryGovernanceService {
                 slug: slug.to_string(),
                 new_owner_principal: new_owner.to_json_value(),
                 actor_principal: authority.principal.to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules,
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
             })
             .await
-            .map_err(anyhow::Error::new)?;
-        self.release_service()
-            .owner_binding_snapshot(slug)
-            .await?
-            .map(map_owner_binding_snapshot)
-            .ok_or_else(|| anyhow!("transferred registry owner binding disappeared"))
+            .map_err(anyhow::Error::new)
     }
 
     pub async fn lifecycle_snapshot(
@@ -425,23 +381,6 @@ impl RegistryGovernanceService {
             })
     }
 
-    pub(crate) async fn ensure_authority_can_create_publish_request(
-        &self,
-        authority: &RegistryAuthority,
-        slug: &str,
-    ) -> anyhow::Result<()> {
-        let owner = self.registry_slug_owner(slug).await?;
-        if authority_can_create_publish_request(authority, owner.as_ref()) {
-            return Ok(());
-        }
-
-        Err(forbidden_error(format!(
-            "Principal '{}' is not allowed to create registry publish requests for slug '{}'",
-            authority_actor(authority),
-            slug
-        )))
-    }
-
     pub(crate) async fn authorized_publish_request_status_snapshot(
         &self,
         request_id: &str,
@@ -480,54 +419,6 @@ impl RegistryGovernanceService {
             snapshot.request.id,
             snapshot.request.slug
         )))
-    }
-
-    pub(crate) async fn ensure_authority_can_manage_release(
-        &self,
-        authority: &RegistryAuthority,
-        release: &registry_module_release::Model,
-        action: &str,
-    ) -> anyhow::Result<()> {
-        let owner = self.registry_slug_owner(&release.slug).await?;
-        if authority_can_manage_release(authority, release, owner.as_ref()) {
-            return Ok(());
-        }
-
-        Err(forbidden_error(format!(
-            "Principal '{}' is not allowed to {} published release '{}@{}'; yank/unpublish actions require either MODULES_MANAGE, the current persisted owner binding, or the published release principal",
-            authority_actor(authority),
-            action,
-            release.slug,
-            release.version
-        )))
-    }
-
-    pub(crate) async fn ensure_authority_can_transfer_registry_owner(
-        &self,
-        authority: &RegistryAuthority,
-        binding: &RegistryModuleOwnerSnapshot,
-        slug: &str,
-        action: &str,
-    ) -> anyhow::Result<()> {
-        if authority_can_transfer_registry_owner(authority, binding) {
-            return Ok(());
-        }
-
-        Err(forbidden_error(format!(
-            "Principal '{}' is not allowed to {} for slug '{}'; owner transfer requires either MODULES_MANAGE or the current persisted owner binding",
-            authority_actor(authority),
-            action,
-            slug
-        )))
-    }
-
-    async fn registry_slug_owner(
-        &self,
-        slug: &str,
-    ) -> anyhow::Result<Option<registry_module_owner::Model>> {
-        Ok(RegistryModuleOwnerEntity::find_by_id(slug)
-            .one(&self.db)
-            .await?)
     }
 }
 
@@ -581,11 +472,4 @@ fn catalog_entry_for_owner_projection(
         installed_version: None,
         update_available: false,
     })
-}
-
-pub fn release_status_label(status: RegistryModuleReleaseStatus) -> &'static str {
-    match status {
-        RegistryModuleReleaseStatus::Active => "active",
-        RegistryModuleReleaseStatus::Yanked => "yanked",
-    }
 }

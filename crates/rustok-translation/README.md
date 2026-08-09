@@ -20,6 +20,13 @@ machine-translation orchestration.
 - Maintain a content-free, rebuildable per-job workflow progress projection
   plus bounded reviewer queue and workload read models derived from current
   workflow evidence rather than duplicated assignment state.
+- Publish content-free, fixed-cardinality provider, workflow, memory, QA, and
+  interchange observability through the shared telemetry registry; tenant
+  content progress remains an authorized Translation read model rather than a
+  process-global metric.
+- Run a Translation-owned runtime worker, when private storage is configured,
+  to delete expired interchange documents independently of later tenant
+  requests while retaining content-free lifecycle metadata.
 - Persist tenant-scoped jobs, immutable owner source snapshots, proposal and
   approval records, and owner-application receipts.
 - Run deterministic platform QA on every proposal save, submission, and
@@ -39,6 +46,7 @@ machine-translation orchestration.
 - `TranslationWorkflowService`
 - `TranslationPolicyService`
 - `TranslationProgressService`
+- `TranslationExchangeService`
 - `TranslationGlossaryService`
 - `TranslationMemoryService`
 - `MachineTranslationPort` and bounded machine-translation request/result
@@ -169,15 +177,20 @@ machine-translation orchestration.
 - Shares one redacted public-error classifier between GraphQL and native
   adapters, preserving stable client codes without exposing database details.
 - Publishes the module-owned `rustok-translation-admin` package with one typed
-  41-operation contract, native `#[server]` execution for SSR/hydrate,
+  49-operation contract, native `#[server]` execution for SSR/hydrate,
   `rustok-graphql` execution for CSR/headless, and a six-tab Leptos workbench.
   The manifest mounts that package in the Leptos host; the matching
   `@rustok/translation-admin` package owns the parity Next admin workbench,
-  including Translation Memory lookup/lifecycle management, bounded
-  interchange export/import, and machine-translation estimate, generation,
+  including Translation Memory lookup/lifecycle management, bounded direct
+  interchange export/import, private object-storage artifact lifecycle with
+  exclusive import-processing leases, and
+  machine-translation estimate, generation,
   status, cancellation, and recovery controls, revision-guarded
   assignment/unassignment, bounded reviewer queue and workload reads,
-  blocked-item retry, job cancellation, and owner-apply recovery.
+  blocked-item retry, job cancellation, owner-apply recovery, and private
+  append-only job/item workflow notes. Notes are bounded, actor-bound,
+  resolution-revision-guarded, and never enter Translation Memory, machine
+  requests, owner application, or event bodies.
 
 See the [local module contract](docs/README.md) and
 [implementation plan](docs/implementation-plan.md).

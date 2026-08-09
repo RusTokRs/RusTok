@@ -149,6 +149,7 @@ pub fn evaluate_patch_qa(
     validation
         .validate()
         .map_err(|error| TranslationError::InvalidProviderValidation(error.to_string()))?;
+    crate::observability::record_qa_validation(&validation);
     Ok(validation)
 }
 

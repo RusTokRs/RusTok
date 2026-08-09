@@ -18,6 +18,7 @@ use crate::{
     TranslationError, TranslationResult,
     entities::{inventory_resource, provider_checkpoint},
     memory::record_owner_deletion,
+    observability::{self, ProviderOperation},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +52,20 @@ impl TranslationInventoryService {
     }
 
     pub async fn sync_provider_changes(
+        &self,
+        context: PortContext,
+        owner_slug: OwnerSlug,
+        resource_kind: ResourceKind,
+        limit: u16,
+    ) -> TranslationResult<TranslationInventorySyncResult> {
+        observability::observe_provider_operation(
+            ProviderOperation::ChangeSync,
+            self.sync_provider_changes_inner(context, owner_slug, resource_kind, limit),
+        )
+        .await
+    }
+
+    async fn sync_provider_changes_inner(
         &self,
         context: PortContext,
         owner_slug: OwnerSlug,
@@ -268,6 +283,29 @@ impl TranslationInventoryService {
     }
 
     pub async fn rebuild_provider_inventory(
+        &self,
+        context: PortContext,
+        owner_slug: OwnerSlug,
+        resource_kind: ResourceKind,
+        source_locale: TenantLocale,
+        target_locale: TenantLocale,
+        page_size: u16,
+    ) -> TranslationResult<TranslationInventoryRebuildResult> {
+        observability::observe_provider_operation(
+            ProviderOperation::InventoryRebuild,
+            self.rebuild_provider_inventory_inner(
+                context,
+                owner_slug,
+                resource_kind,
+                source_locale,
+                target_locale,
+                page_size,
+            ),
+        )
+        .await
+    }
+
+    async fn rebuild_provider_inventory_inner(
         &self,
         context: PortContext,
         owner_slug: OwnerSlug,

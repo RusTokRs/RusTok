@@ -14,6 +14,9 @@ signing adapters used by isolated RusToK build publishers.
 - Invoke one digest-pinned Cosign executable with an approved KMS reference,
   cleared environment, closed standard streams, and a bounded deadline.
 - Re-hash fixed broker and signer executables before every use.
+- Provide one shared validation primitive for other isolated worker helpers
+  that must be absolute, non-symlink regular files with an exact SHA-256
+  identity.
 
 ## Non-responsibilities
 

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use rustok_outbox::TransactionalEventBus;
+use rustok_storage::StorageRuntime;
 use rustok_tenant::{TenantLocalePolicyPort, TenantService};
 use rustok_translation_targets::TranslationTargetRegistry;
 use sea_orm::DatabaseConnection;
@@ -13,6 +14,7 @@ pub struct TranslationGraphqlRuntimeData {
     providers: Arc<TranslationTargetRegistry>,
     tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
     event_bus: TransactionalEventBus,
+    storage: Option<StorageRuntime>,
     machine_port: Option<Arc<dyn crate::MachineTranslationPort>>,
     machine_port_error_code: Option<String>,
 }
@@ -28,6 +30,7 @@ impl TranslationGraphqlRuntimeData {
         providers: Arc<TranslationTargetRegistry>,
         tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
         event_bus: TransactionalEventBus,
+        storage: Option<StorageRuntime>,
         machine_port: Option<Arc<dyn crate::MachineTranslationPort>>,
         machine_port_error_code: Option<String>,
     ) -> Self {
@@ -36,6 +39,7 @@ impl TranslationGraphqlRuntimeData {
             providers,
             tenant_locale_policies,
             event_bus,
+            storage,
             machine_port,
             machine_port_error_code,
         }
@@ -78,6 +82,26 @@ impl TranslationGraphqlRuntimeData {
             Arc::clone(&self.tenant_locale_policies),
             self.event_bus.clone(),
         )
+    }
+
+    pub(crate) fn exchange_service(
+        &self,
+    ) -> crate::TranslationResult<crate::TranslationExchangeService> {
+        let storage = self
+            .storage
+            .clone()
+            .ok_or_else(|| crate::TranslationError::Provider {
+                code: "translation.interchange.storage_unavailable".to_string(),
+                message: "translation interchange storage is unavailable".to_string(),
+                retryable: true,
+            })?;
+        Ok(crate::TranslationExchangeService::new(
+            self.database.clone(),
+            Arc::clone(&self.providers),
+            Arc::clone(&self.tenant_locale_policies),
+            self.event_bus.clone(),
+            storage,
+        ))
     }
 
     pub(crate) fn machine_service(
@@ -127,6 +151,7 @@ pub fn attach_schema_data(
         .ok_or_else(|| "transactional event bus is unavailable".to_string())?;
     let tenant_locale_policies: Arc<dyn TenantLocalePolicyPort> =
         Arc::new(TenantService::new(database.clone()));
+    let storage = inputs.shared_get::<StorageRuntime>();
     let (machine_port, machine_port_error_code) =
         match crate::machine_translation_port_from_context(inputs.host()) {
             Ok(machine_port) => (machine_port, None),
@@ -138,6 +163,7 @@ pub fn attach_schema_data(
         providers,
         tenant_locale_policies,
         event_bus,
+        storage,
         machine_port,
         machine_port_error_code,
     ))

@@ -26,6 +26,7 @@ use uuid::Uuid;
 use crate::{
     TranslationError, TranslationPolicyFreshness, TranslationPolicyService, TranslationResult,
     entities::{apply_receipt, job, job_item, job_progress, proposal, provider_checkpoint},
+    observability::{self, ProviderOperation, WorkflowOperation},
     workflow::{
         JobItemRecord, actor_kind_value, assignment_actor, item_record, validate_workflow_actor,
     },
@@ -163,7 +164,19 @@ impl TranslationProgressService {
         context: PortContext,
         job_id: Uuid,
     ) -> TranslationResult<JobProgressRecord> {
-        let tenant_id = authorize_progress(&context, PortCallPolicy::read(), Action::Read)?;
+        observability::observe_workflow_operation(
+            WorkflowOperation::ProgressRead,
+            self.read_job_progress_inner(context, job_id),
+        )
+        .await
+    }
+
+    async fn read_job_progress_inner(
+        &self,
+        context: PortContext,
+        job_id: Uuid,
+    ) -> TranslationResult<JobProgressRecord> {
+        let tenant_id = authorize_translation(&context, PortCallPolicy::read(), Action::Read)?;
         ensure_job(&self.database, tenant_id, job_id).await?;
         let model = job_progress::Entity::find()
             .filter(job_progress::Column::TenantId.eq(tenant_id))
@@ -171,7 +184,9 @@ impl TranslationProgressService {
             .one(&self.database)
             .await?
             .ok_or(TranslationError::JobProgressNotFound)?;
-        progress_record(model)
+        let progress = progress_record(model)?;
+        observability::record_workflow_progress_snapshot(&progress);
+        Ok(progress)
     }
 
     pub async fn list_reviewer_queue(
@@ -179,7 +194,7 @@ impl TranslationProgressService {
         context: PortContext,
         input: ReviewerQueueInput,
     ) -> TranslationResult<Vec<ReviewerQueueRecord>> {
-        let tenant_id = authorize_progress(&context, PortCallPolicy::read(), Action::Read)?;
+        let tenant_id = authorize_translation(&context, PortCallPolicy::read(), Action::Read)?;
         if input.limit == 0 || input.limit > MAX_REVIEWER_QUEUE_LIMIT {
             return Err(TranslationError::InvalidRequest(format!(
                 "reviewer queue limit must be between 1 and {MAX_REVIEWER_QUEUE_LIMIT}"
@@ -265,7 +280,7 @@ impl TranslationProgressService {
         context: PortContext,
         input: ReviewerWorkloadInput,
     ) -> TranslationResult<Vec<ReviewerWorkloadRecord>> {
-        let tenant_id = authorize_progress(&context, PortCallPolicy::read(), Action::Read)?;
+        let tenant_id = authorize_translation(&context, PortCallPolicy::read(), Action::Read)?;
         ensure_job(&self.database, tenant_id, input.job_id).await?;
         let items = job_item::Entity::find()
             .filter(job_item::Column::TenantId.eq(tenant_id))
@@ -314,7 +329,7 @@ impl TranslationProgressService {
         context: PortContext,
         job_id: Uuid,
     ) -> TranslationResult<JobProgressRecord> {
-        let tenant_id = authorize_progress(&context, PortCallPolicy::write(), Action::Manage)?;
+        let tenant_id = authorize_translation(&context, PortCallPolicy::write(), Action::Manage)?;
         let transaction = self.database.begin().await?;
         let progress = refresh_job_progress(&transaction, tenant_id, job_id).await?;
         transaction.commit().await?;
@@ -329,7 +344,28 @@ impl TranslationProgressService {
         source_locale: TenantLocale,
         target_locale: TenantLocale,
     ) -> TranslationResult<ProviderProgressRecord> {
-        let tenant_id = authorize_progress(&context, PortCallPolicy::read(), Action::Read)?;
+        observability::observe_provider_operation(
+            ProviderOperation::AggregateProgress,
+            self.read_provider_progress_inner(
+                context,
+                owner_slug,
+                resource_kind,
+                source_locale,
+                target_locale,
+            ),
+        )
+        .await
+    }
+
+    async fn read_provider_progress_inner(
+        &self,
+        context: PortContext,
+        owner_slug: OwnerSlug,
+        resource_kind: ResourceKind,
+        source_locale: TenantLocale,
+        target_locale: TenantLocale,
+    ) -> TranslationResult<ProviderProgressRecord> {
+        let tenant_id = authorize_translation(&context, PortCallPolicy::read(), Action::Read)?;
         let request = TranslationTargetProgressRequest {
             source_locale: source_locale.clone(),
             target_locale: target_locale.clone(),
@@ -376,7 +412,7 @@ impl TranslationProgressService {
             Some(_) => ProviderProjectionFreshness::Behind,
         };
 
-        Ok(ProviderProgressRecord {
+        let progress = ProviderProgressRecord {
             owner_slug,
             resource_kind,
             source_locale,
@@ -386,7 +422,12 @@ impl TranslationProgressService {
             checkpoint_revision: checkpoint.as_ref().map(|checkpoint| checkpoint.revision),
             checkpoint_updated_at: checkpoint.map(|checkpoint| checkpoint.updated_at),
             freshness,
-        })
+        };
+        observability::record_provider_projection(
+            progress.freshness,
+            progress.checkpoint_updated_at,
+        );
+        Ok(progress)
     }
 
     pub async fn read_required_provider_progress(
@@ -1152,7 +1193,7 @@ where
         .ok_or(TranslationError::JobNotFound)
 }
 
-fn authorize_progress(
+pub(crate) fn authorize_translation(
     context: &PortContext,
     policy: PortCallPolicy,
     action: Action,

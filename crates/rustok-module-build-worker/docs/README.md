@@ -9,13 +9,16 @@ The worker requires a mutually authenticated listener configured with the
 - `RUSTOK_MODULE_BUILD_CLIENT_CA_PEM`;
 - `RUSTOK_MODULE_BUILD_JOB_LAUNCHER` (an absolute non-symlink,
   deployment-owned executable that launches exactly one OCI build job).
+- `RUSTOK_MODULE_BUILD_JOB_LAUNCHER_DIGEST` (the exact lowercase SHA-256
+  identity of the deployment-owned launcher executable).
 - `RUSTOK_MODULE_BUILD_JOB_RUNTIME` (`gvisor` or `kata`; no permissive
   runtime is accepted).
 - `RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST` (the exact `sha256:<hex>` OCI image
   identity permitted for every launched build job).
 - `RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION` (an absolute regular deployment
   evidence file proving the selected runtime/image job has no host mounts,
-  container socket, host PID/network, or privileged mode).
+  container socket, host PID/network, tenant database access, general platform
+  secret access, or privileged mode, and binding the exact launcher digest).
 - `RUSTOK_MODULE_BUILD_WORKDIR` (an existing absolute image-owned directory).
 - `RUSTOK_MODULE_BUILD_SOURCE_ROOT` (an existing absolute read-only CAS archive mount).
 - `RUSTOK_MODULE_BUILD_CARGO` (an absolute non-symlink Cargo executable owned by the image).
@@ -105,13 +108,15 @@ Optional listener limits are `RUSTOK_MODULE_BUILD_REQUEST_TIMEOUT_MS`,
 `RUSTOK_MODULE_BUILD_CONCURRENCY_LIMIT`, and
 `RUSTOK_MODULE_BUILD_MAX_MESSAGE_SIZE` (at most 1 MiB). Startup fails if the
 mounted OCI job launcher, Cargo executable/cache, or `wasm-tools` executable is
-absent or invalid, if the hardened OCI runtime is not explicitly selected, or
-if the isolation attestation is missing, malformed, or does not match the
-configured runtime and image, or if the mTLS configuration is incomplete. The
+absent or invalid, if the launcher's bytes do not match its configured digest,
+if the hardened OCI runtime is not explicitly selected, or if the isolation
+attestation is missing, malformed, or does not match the configured runtime and
+image, or if the mTLS configuration is incomplete. The
 worker remains not ready until deployment-owned isolation evidence is loaded
 and still matches the fixed hardened-job contract. The bounded attestation
 rejects unknown fields, the worker exposes no attestation-free constructor, and
-the readiness gate reloads the deployment-owned file before every execution.
+the readiness gate reloads the deployment-owned file and rehashes the launcher
+before every execution.
 There is no plaintext,
 permissive-runtime, or server-local fallback.
 
@@ -129,7 +134,8 @@ digest-pinned `RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST`. It also receives
 exact request JSON bytes on standard input.
 The job returns exactly one canonical `ModuleBuildResult` JSON value on the
 launcher standard output. The launcher is an image-owned entrypoint, not
-request-selected input. The worker clears its environment and supplies only
+request-selected input. The worker rehashes the launcher immediately before
+spawning it, clears its environment, and supplies only
 request-scoped source/output/target/home paths, the fixed
 `RUSTOK_MODULE_BUILD_CARGO` executable, a verified `CARGO_HOME`, and
 `CARGO_NET_OFFLINE=true`. The launched job must invoke that fixed Cargo path and
@@ -148,8 +154,8 @@ bounded JSON object contains `protocol_version: 2`, `request_id`,
 `job_id`. The worker requires those values to equal the immutable request, its
 exact canonical request JSON, and its fixed
 gVisor/Kata and image-digest configuration; a missing, oversized, symlinked,
-malformed, or mismatched receipt is a transport failure and is never accepted
-as build evidence.
+malformed, unknown-field-bearing, or mismatched receipt is a transport failure
+and is never accepted as build evidence.
 
 Every source archive must contain one bounded regular non-symlink
 `module-artifact.json` source manifest. It declares the optional WASM module,

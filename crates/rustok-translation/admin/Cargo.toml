@@ -20,6 +20,7 @@ ssr = [
   "dep:leptos_axum",
   "dep:rustok-core",
   "dep:rustok-outbox",
+  "dep:rustok-storage",
   "dep:rustok-tenant",
   "dep:rustok-translation",
   "dep:rustok-translation-targets",
@@ -35,6 +36,7 @@ rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-graphql.workspace = true
 rustok-outbox = { workspace = true, optional = true }
+rustok-storage = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-translation = { workspace = true, optional = true, features = ["runtime"] }
 rustok-translation-targets = { workspace = true, optional = true }
@@ -55,4 +57,5 @@ axum.workspace = true
 rustok-translation = { workspace = true, features = ["graphql"] }
 sea-orm-migration.workspace = true
 serde_qs.workspace = true
+tempfile = "3.27"
 tokio.workspace = true

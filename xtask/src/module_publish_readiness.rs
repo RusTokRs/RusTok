@@ -83,10 +83,17 @@ fn validate_module_contribution_manifest_contract(
     module_root: &Path,
 ) -> Result<()> {
     let path = module_root.join("rustok-module.toml");
-    let source = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read {} for contribution validation", path.display()))?;
-    let Some(normalized) = crate::module_manifest_contribution::normalize_module_contribution_manifest(&source)
-        .map_err(|error| anyhow::anyhow!("Module '{slug}' has invalid contribution metadata: {error}"))?
+    let source = fs::read_to_string(&path).with_context(|| {
+        format!(
+            "Failed to read {} for contribution validation",
+            path.display()
+        )
+    })?;
+    let Some(normalized) =
+        crate::module_manifest_contribution::normalize_module_contribution_manifest(&source)
+            .map_err(|error| {
+                anyhow::anyhow!("Module '{slug}' has invalid contribution metadata: {error}")
+            })?
     else {
         return Ok(());
     };

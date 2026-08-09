@@ -15,11 +15,11 @@ impl RegistryGovernanceService {
         request: &RegistryPublishRequest,
         authority: &RegistryAuthority,
     ) -> anyhow::Result<RegistryPublishRequestSnapshot> {
-        self.ensure_authority_can_create_publish_request(authority, &request.module.slug)
-            .await?;
-
-        let command =
-            module_publish_request_create_command(request, authority.principal.to_json_value())?;
+        let command = module_publish_request_create_command(
+            request,
+            authority.principal.to_json_value(),
+            authority.can_manage_modules,
+        )?;
         let request_id = self
             .publication_service()
             .create_publish_request(command)
@@ -35,7 +35,7 @@ impl RegistryGovernanceService {
     pub fn publish_request_warnings(
         request: &RegistryPublishRequest,
     ) -> anyhow::Result<Vec<String>> {
-        module_publish_request_create_command(request, serde_json::json!({}))?
+        module_publish_request_create_command(request, serde_json::json!({}), false)?
             .validation_warnings()
             .map_err(anyhow::Error::new)
     }
@@ -90,20 +90,15 @@ impl RegistryGovernanceService {
             .ok_or_else(|| anyhow!("owner-attached registry artifact request disappeared"))
     }
 
-    /// Operator-only transport adapter for external prebuilt staging. The
-    /// owner service remains the sole writer of the immutable policy and
-    /// quarantine fact; this adapter contributes only authenticated identity.
+    /// Transport adapter for external prebuilt staging. The owner remains the
+    /// sole writer and verifies the authenticated operator capability together
+    /// with the quarantine approver identity.
     pub async fn stage_external_prebuilt(
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
         input: RegistryExternalPrebuiltStageInput,
     ) -> anyhow::Result<ModuleExternalPrebuiltStageResult> {
-        if !authority.can_manage_modules {
-            return Err(forbidden_error(
-                "External prebuilt staging requires modules.manage authority",
-            ));
-        }
         self.publication_service()
             .stage_external_prebuilt(ModuleExternalPrebuiltStageCommand {
                 request_id: request_id.to_string(),
@@ -117,25 +112,21 @@ impl RegistryGovernanceService {
                 quarantine_approved_by_principal: authority.principal.to_json_value(),
                 idempotency_key: input.idempotency_key,
                 actor_principal: authority.principal.to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules,
             })
             .await
             .map_err(anyhow::Error::new)
     }
 
-    /// Operator-only adapter for staging an immutable completed platform build.
-    /// It receives a tenant only from the session-authenticated controller and
-    /// leaves all build/result and artifact identity checks to the owner.
+    /// Transport adapter for staging an immutable completed platform build. It
+    /// receives a tenant only from the session-authenticated controller; the
+    /// owner derives both request-management permission and build identity.
     pub async fn stage_platform_build(
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
         input: RegistryPlatformBuildStageInput,
     ) -> anyhow::Result<ModulePublishPlatformBuildStageResult> {
-        if !authority.can_manage_modules {
-            return Err(forbidden_error(
-                "Platform build staging requires modules.manage authority",
-            ));
-        }
         self.publication_service()
             .stage_platform_build(ModulePublishPlatformBuildStageCommand {
                 request_id: request_id.to_string(),
@@ -143,6 +134,7 @@ impl RegistryGovernanceService {
                 build_request_id: input.build_request_id,
                 idempotency_key: input.idempotency_key,
                 actor_principal: authority.principal.to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules,
             })
             .await
             .map_err(anyhow::Error::new)
@@ -399,6 +391,7 @@ fn validation_stage_snapshot_details_value(
 fn module_publish_request_create_command(
     request: &RegistryPublishRequest,
     actor_principal: serde_json::Value,
+    actor_can_manage_modules: bool,
 ) -> anyhow::Result<ModulePublishRequestCreateCommand> {
     Ok(ModulePublishRequestCreateCommand {
         slug: request.module.slug.clone(),
@@ -427,19 +420,6 @@ fn module_publish_request_create_command(
         name: request.module.name.clone(),
         description: request.module.description.clone(),
         actor_principal,
+        actor_can_manage_modules,
     })
-}
-
-pub fn request_status_label(status: RegistryPublishRequestStatus) -> &'static str {
-    match status {
-        RegistryPublishRequestStatus::Draft => "draft",
-        RegistryPublishRequestStatus::ArtifactUploaded => "artifact_uploaded",
-        RegistryPublishRequestStatus::Submitted => "submitted",
-        RegistryPublishRequestStatus::Validating => "validating",
-        RegistryPublishRequestStatus::Approved => "approved",
-        RegistryPublishRequestStatus::ChangesRequested => "changes_requested",
-        RegistryPublishRequestStatus::OnHold => "on_hold",
-        RegistryPublishRequestStatus::Rejected => "rejected",
-        RegistryPublishRequestStatus::Published => "published",
-    }
 }

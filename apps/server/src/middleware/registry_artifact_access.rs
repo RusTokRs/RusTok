@@ -8,29 +8,25 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use object_store::ObjectStoreExt;
-use rustok_api::{AuthContextExtension, Permission, has_effective_permission};
+use rustok_api::AuthContextExtension;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use subtle::ConstantTimeEq;
 
-use crate::models::{registry_module_owner, registry_publish_request, users};
+use crate::models::users;
 use crate::services::marketplace_catalog::RegistryOwnerTransferRequest;
-use crate::services::registry_principal::RegistryPrincipalRef;
+use crate::services::registry_governance::RegistryGovernanceService;
+use crate::services::registry_principal::RegistryAuthority;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const ARTIFACT_CONTENT_TYPE: &str = "application/octet-stream";
-const ARTIFACT_DISPOSITION: &str = "attachment";
 const MAX_REGISTRY_MUTATION_BODY_BYTES: usize = 64 * 1024;
 
 /// Enforce registry publish-request, artifact, ownership and remote-runner
-/// access before the legacy controller executes.
+/// access before the controller executes.
 ///
-/// Every request-specific read and dry-run is authorized before resolver/body
-/// business logic. Publisher operations use the same ownerless-requester rule
-/// as the governance service; review operations require the current slug owner
-/// or request-effective `modules:manage`. Remote runner routes use the host
-/// shared token with constant-time comparison. Downloads are streamed through
-/// this boundary as opaque attachments.
+/// Every request-specific read and dry-run is authorized from the exact owner
+/// projection before resolver/body business logic. Remote runner routes use the
+/// host shared token with constant-time comparison.
 pub async fn enforce(
     State(ctx): State<ServerRuntimeContext>,
     mut request: Request<Body>,
@@ -58,10 +54,6 @@ pub async fn enforce(
         return next.run(request).await;
     }
 
-    let publish_request = match load_publish_request(&ctx, request_id).await {
-        Ok(request) => request,
-        Err(response) => return response,
-    };
     // Copy only the authentication context before awaiting authorization I/O.
     // Borrowing `Request<Body>` across an await makes this Axum middleware future
     // non-Send because request bodies are not Sync.
@@ -70,8 +62,7 @@ pub async fn enforce(
     match operation {
         RegistryOperation::PublishStatus => {
             if let Err(response) =
-                authorize_user_access(&ctx, auth.as_ref(), &publish_request, PublishAccess::Manage)
-                    .await
+                authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage).await
             {
                 return response;
             }
@@ -79,8 +70,7 @@ pub async fn enforce(
         }
         RegistryOperation::ArtifactUpload => {
             if let Err(response) =
-                authorize_user_access(&ctx, auth.as_ref(), &publish_request, PublishAccess::Manage)
-                    .await
+                authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage).await
             {
                 return response;
             }
@@ -92,23 +82,18 @@ pub async fn enforce(
         }
         RegistryOperation::ArtifactDownload => {
             if !runner_token_is_valid(&ctx, &request) {
-                if let Err(response) = authorize_user_access(
-                    &ctx,
-                    auth.as_ref(),
-                    &publish_request,
-                    PublishAccess::Manage,
-                )
-                .await
+                if let Err(response) =
+                    authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage)
+                        .await
                 {
                     return response;
                 }
             }
-            serve_artifact(&ctx, &publish_request).await
+            next.run(request).await
         }
         RegistryOperation::ManageMutation => {
             if let Err(response) =
-                authorize_user_access(&ctx, auth.as_ref(), &publish_request, PublishAccess::Manage)
-                    .await
+                authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage).await
             {
                 return response;
             }
@@ -116,31 +101,11 @@ pub async fn enforce(
         }
         RegistryOperation::ReviewMutation => {
             if let Err(response) =
-                authorize_user_access(&ctx, auth.as_ref(), &publish_request, PublishAccess::Review)
-                    .await
+                authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Review).await
             {
                 return response;
             }
             next.run(request).await
-        }
-    }
-}
-
-async fn load_publish_request(
-    ctx: &ServerRuntimeContext,
-    request_id: &str,
-) -> Result<registry_publish_request::Model, Response> {
-    match registry_publish_request::Entity::find_by_id(request_id)
-        .one(ctx.db())
-        .await
-    {
-        Ok(Some(request)) => Ok(request),
-        Ok(None) => Err(not_found("Registry publish request was not found")),
-        Err(error) => {
-            tracing::error!(%error, "Failed to load registry publish request for authorization");
-            Err(internal_error(
-                "Failed to authorize registry publish request access",
-            ))
         }
     }
 }
@@ -205,40 +170,30 @@ enum PublishAccess {
 async fn authorize_user_access(
     ctx: &ServerRuntimeContext,
     auth_extension: Option<&AuthContextExtension>,
-    publish_request: &registry_publish_request::Model,
+    request_id: &str,
     access: PublishAccess,
 ) -> Result<(), Response> {
-    let auth = auth_extension
-        .map(|extension| &extension.0)
+    let auth_extension = auth_extension
         .ok_or_else(|| unauthorized("Registry publish request access requires authentication"))?;
+    let auth = &auth_extension.0;
     if auth.client_id.is_some() && auth.session_id.is_nil() {
         return Err(forbidden(
             "Registry publish request access requires a user session",
         ));
     }
 
-    let owner = registry_module_owner::Entity::find_by_id(publish_request.slug.clone())
-        .one(ctx.db())
+    let authority = RegistryAuthority::from_auth(auth_extension);
+    let snapshot = RegistryGovernanceService::new(ctx.db_clone())
+        .publish_request_status_snapshot_for_authority(request_id, Some(&authority))
         .await
         .map_err(|error| {
-            tracing::error!(%error, "Failed to load registry owner for authorization");
+            tracing::error!(%error, request_id, "Failed to load owner publish-request authorization snapshot");
             internal_error("Failed to authorize registry publish request access")
-        })?;
-
-    let principal = RegistryPrincipalRef::user(auth.user_id);
-    let owns_request = principal_matches(&publish_request.requested_by, &principal)
-        || publish_request
-            .publisher_principal
-            .as_ref()
-            .is_some_and(|value| principal_matches(value, &principal));
-    let owns_slug = owner
-        .as_ref()
-        .is_some_and(|owner| principal_matches(&owner.owner_principal, &principal));
-    let can_manage = has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE);
-    let ownerless_requester = owner.is_none() && owns_request;
+        })?
+        .ok_or_else(|| not_found("Registry publish request was not found"))?;
     let allowed = match access {
-        PublishAccess::Manage => can_manage || owns_slug || ownerless_requester,
-        PublishAccess::Review => can_manage || owns_slug,
+        PublishAccess::Manage => snapshot.authorization.can_manage,
+        PublishAccess::Review => snapshot.authorization.can_review,
     };
 
     if allowed {
@@ -253,51 +208,6 @@ async fn authorize_user_access(
             }
         }))
     }
-}
-
-async fn serve_artifact(
-    ctx: &ServerRuntimeContext,
-    publish_request: &registry_publish_request::Model,
-) -> Response {
-    let Some(storage_key) = publish_request.artifact_storage_key.as_deref() else {
-        return not_found("Registry publish artifact was not uploaded");
-    };
-    let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() else {
-        return internal_error("Registry artifact storage is unavailable");
-    };
-    let result = match storage
-        .objects
-        .get(&object_store::path::Path::from(storage_key))
-        .await
-    {
-        Ok(result) => result,
-        Err(object_store::Error::NotFound { .. }) => {
-            return not_found("Registry publish artifact was not found");
-        }
-        Err(error) => {
-            tracing::error!(%error, request_id = %publish_request.id, "Failed to read registry artifact");
-            return internal_error("Failed to read registry publish artifact");
-        }
-    };
-    let bytes = match result.bytes().await {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            tracing::error!(%error, request_id = %publish_request.id, "Failed to read registry artifact body");
-            return internal_error("Failed to read registry publish artifact");
-        }
-    };
-
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, ARTIFACT_CONTENT_TYPE)
-        .header(header::CONTENT_DISPOSITION, ARTIFACT_DISPOSITION)
-        .header(header::CACHE_CONTROL, "private, no-store")
-        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-        .body(Body::from(bytes))
-        .unwrap_or_else(|error| {
-            tracing::error!(%error, "Failed to build registry artifact response");
-            internal_error("Failed to build registry artifact response")
-        })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -366,16 +276,6 @@ fn is_remote_runner_path(path: &str) -> bool {
         && segments[2] == "runner"
         && !segments[3].is_empty()
         && matches!(segments[4], "heartbeat" | "complete" | "fail")
-}
-
-fn principal_matches(value: &serde_json::Value, principal: &RegistryPrincipalRef) -> bool {
-    let persisted = RegistryPrincipalRef::from_json_value(value);
-    if persisted.is_user() && principal.is_user() {
-        persisted.user_id() == principal.user_id()
-    } else {
-        persisted.subject == principal.subject
-            || persisted.persisted_label() == principal.persisted_label()
-    }
 }
 
 fn runner_token_is_valid(ctx: &ServerRuntimeContext, request: &Request<Body>) -> bool {

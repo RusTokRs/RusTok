@@ -239,7 +239,11 @@ impl RegistryCredentialLease {
     }
 }
 
-pub(crate) fn validate_fixed_program(
+/// Verifies that a deployment-selected executable is absolute, a regular
+/// non-symlink file, and exactly matches its configured SHA-256 identity.
+/// Isolated worker boundaries use this before every invocation of an external
+/// trusted helper.
+pub fn validate_fixed_program(
     path: &Path,
     expected_digest: &str,
     label: &str,

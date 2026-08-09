@@ -107,13 +107,15 @@ Still outside the owner boundary:
   independent quarantine review, and either a reproducible source identity or
   an explicit source-absence reason; they require author signature and platform
   admission bound to the staged payload digest but cannot use a build-worker
-  attestation. The server external
-  staging adapter is operator-only and derives actor/quarantine approver from
-  authenticated `modules.manage` authority. Its replay compares all immutable
-  source/provenance/quarantine facts and both authenticated principals. The
-  platform build-stage adapter also requires `modules.manage`, derives its tenant only from the
-  authenticated session, and forwards only the completed build ID plus an
-  idempotency key to the tenant-RLS owner read;
+  attestation. The server external staging adapter derives actor/quarantine
+  approver and an authenticated `modules.manage` fact, but the owner command
+  enforces that capability and requires the two principals to be identical.
+  Its replay compares all immutable source/provenance/quarantine facts and
+  both authenticated principals. The platform build-stage adapter derives its
+  tenant only from the authenticated session and forwards only the completed
+  build ID, idempotency key, and authenticated privilege fact. The owner then
+  authorizes the durable request manager: `modules.manage`, the current owner
+  binding, or the original requester before a binding exists;
 - publisher-controlled marketplace names and descriptions now pass through the
   owner-owned bounded plain-text projection. It rejects control, invisible,
   and bidirectional override characters; category and tags are bounded
@@ -184,8 +186,11 @@ Still outside the owner boundary:
   contract. On 2026-07-20 the permitted structural checks passed; compile and
   test suites were intentionally not run;
 - draft publish-request creation now uses an owner transaction for the request,
-  default-locale metadata translation, and audit fact. Host authorization and
-  artifact object storage remain adapters; the owner transaction attaches a
+  default-locale metadata translation, and audit fact. The host supplies only
+  the authenticated principal and `modules.manage` fact; the owner authorizes
+  the current binding, or a user principal while no binding exists, before any
+  write or idempotent replay. Artifact object storage remains an adapter; the
+  owner transaction attaches a
   stored artifact, resets validation attempts on reupload, submits the request,
   and persists audit facts;
 - parts of effective-policy input assembly;
@@ -202,10 +207,13 @@ Important intermediate limitations that must not be mistaken for the target:
   must supply durable catalog loading before artifact-only modules reach that
   adapter. Server lifecycle transports now supply only the active distribution
   defaults and actor identity to this writer for toggle, post-hook retry, and
-  compensation. For settings, the server supplies only the host-resolved schema
-  and owner-normalized JSON; the writer derives active identity, Core status,
-  effective enablement, and persistence, then the transport maps its owner
-  result to a host ORM view;
+  compensation. Compensation returns the exact owner-issued module identity,
+  so the server cannot preflight a recovery plan to reconstruct its response.
+  For settings, the server supplies only the host-resolved schema and
+  owner-normalized JSON; the writer derives active identity, Core status,
+  effective enablement, persisted enablement, and settings facts. Lifecycle
+  command responses map those owner-issued facts directly and never reload
+  `tenant_modules` or `module_operations` server models after the command;
 - artifact lifecycle dispatch requires a configured
   `ArtifactLifecycleExecutor`; production host wiring for that executor remains
   to be supplied;
@@ -314,7 +322,9 @@ The owner facade also exposes bounded `TenantModuleOverrideSnapshot` reads for
 operator transports. This is intentionally distinct from effective
 availability: it shows persisted tenant intent and settings, while
 `ModuleEffectivePolicy` remains the only enabled/denied decision. GraphQL no
-longer reads `tenant_modules` directly for this surface.
+longer reads `tenant_modules` directly for this surface or after a lifecycle
+mutation; inherited compensation availability is resolved by the same owner
+policy service.
 
 The admin GraphQL adapter now fails closed when module-control-plane reads fail;
 it no longer converts its generated navigation registry into synthetic module
@@ -340,13 +350,15 @@ from another request with the same slug or recreate lifecycle policy from a
 SeaORM model. Once all required follow-up stages pass, an approved request now
 resolves to final publication rather than repeatedly suggesting the completed
 stage operation.
-Operator staging adapters also invoke the external-prebuilt and platform-build
-owner commands directly and use the same status snapshot for their response
+Staging adapters invoke the external-prebuilt and platform-build owner commands
+directly and use the same status snapshot for their response
 identity/status in dry-run and committed paths. They no longer issue a
 server-local publish-request existence preflight or post-command model read and
 preserve the owner `not_found` contract at the HTTP edge.
 Creation and upload now use that exact status projection for their committed
-responses as well. Before an upload, the owner authenticates the actor against
+responses as well. Creation carries only authenticated principal/privilege
+facts; the owner checks the current binding before writing or replaying it.
+Before an upload, the owner authenticates the actor against
 the durable request/binding facts and returns only a SHA-256-derived immutable
 slot. The host uses conditional object creation, rehashes a collision before it
 can become a replay, and attaches the same metadata through the owner. It never
@@ -354,6 +366,14 @@ constructs an artifact key from a server model or deletes a prior object inline;
 retention-aware owner policy is the only cleanup authority. The platform
 authoring producer uses the same slot, preventing a second artifact-storage
 write path.
+Release yanking now likewise dispatches directly to the owner. The command
+carries only the authenticated principal/privilege fact; the owner locks the
+exact release, derives permission from `modules.manage`, the durable owner
+binding, or the release publisher, and returns a minimal owner-issued result
+instead of a server SeaORM release model or post-mutation reread.
+Owner transfer follows the same rule: its command carries the authenticated
+principal/privilege fact, and the owner locks the current binding, authorizes
+`modules.manage` or the bound owner, and records the transition atomically.
 Validation enqueue, manual validation-stage reporting, and all live decisions
 also map their committed response from the exact owner status projection; the
 server no longer rebuilds acceptance, errors, or next-step guidance from a
@@ -362,7 +382,19 @@ Remote-runner heartbeat and terminal-completion adapters now receive the
 owner-issued `ModuleRemoteValidationStageTransition` instead of loading a
 server validation-stage model after the lease transition. The duplicate
 registry-governance remote-runner mutation adapter has been removed, so the
-owner-routed transition path is the only implementation.
+owner-routed transition path is the only implementation. Both remote HTTP
+adapters preserve the owner-issued governance error category/code rather than
+maintaining a lease-specific error taxonomy; not-found detail stays
+content-free.
+Runtime guardrails likewise obtain their active and expired remote lease counts
+from the owner-issued `ModuleRemoteValidationRunnerSnapshot`, not a server
+`registry_validation_stages` model query. Only `running` remote stages count as
+active or expired leases; a failed owner snapshot is reported as critical
+instead of being hidden as zero work.
+Manual validation-stage reports now carry stage/status/reason data directly to
+the owner, which canonicalizes and validates the command before its state
+transition. The obsolete server stage model and parser were deleted, and the
+public request no longer accepts its formerly ignored `detail` field.
 The owner status projection now also returns durable actor-specific
 `can_manage` and `can_review` facts. Live validation, validation-stage report,
 and moderation adapters authorize from those facts instead of server-local
@@ -382,9 +414,27 @@ to owner-authorized mutation services.
 Approve, reject, request-changes, hold, and resume previews use the same
 snapshot; approval override warning text and pending-stage facts stay
 owner-derived rather than reconstructed by the HTTP adapter.
-The owner-transfer adapter likewise uses an exact owner binding snapshot for
-authorization and its post-command result, rather than reading or exposing a
-server SeaORM binding model.
+The owner-transfer adapter now sends only authenticated host facts to its
+owner command. The owner derives authorization from the locked durable binding,
+and the adapter performs no preflight or post-command binding read.
+The registry access middleware also consumes only the owner-issued request
+authorization snapshot; it no longer reads publish-request or owner-binding
+SeaORM models before forwarding a request to the controller.
+The remaining server-local publish-request, translation, validation-job, and
+governance-event SeaORM models, plus their unused status-label mapper, have
+also been deleted: lifecycle status is now carried exclusively by the
+`rustok-modules` owner projection.
+`ModuleGovernanceError` likewise owns the stable error category and code used
+by registry transports. The HTTP adapter maps only that owner contract to an
+HTTP envelope, keeps not-found detail content-free, and no longer maintains a
+parallel lifecycle-error taxonomy.
+
+GraphQL platform-native install, uninstall, and upgrade mutations now provide
+only the authenticated actor, optional revision, and requested module change to
+one platform composition adapter. That host adapter loads the durable snapshot,
+applies the static-manifest adapter, and calls the owner-controlled
+CAS/build transaction. No GraphQL resolver loads, mutates, validates,
+serializes, or hashes a composition manifest directly.
 
 Platform build active/history/release reads and rollback are now also
 host-composed through `rustok_build::SharedBuildControl`. The server supplies
@@ -597,9 +647,10 @@ in-process fallback. `load_queued` and `dispatch_queued` provide the owner-side
 outbox-consumer delivery path: they release tenant-scoped database state before
 the RPC and accept the terminal result only through immutable owner validation.
 `rustok-module-build-worker` is now a separately deployable mTLS process. It
-can invoke only a fixed image-owned non-symlink runner in a fixed workdir with
-a cleared environment, request-derived timeout, and aggregate streamed output
-cap. Production construction requires the bounded deployment-owned isolation
+can invoke only a fixed image-owned non-symlink runner whose SHA-256 digest is
+rehashed at construction, readiness, and immediately before spawning in a fixed
+workdir with a cleared environment, request-derived timeout, and aggregate
+streamed output cap. Production construction requires the bounded deployment-owned isolation
 attestation; its schema rejects unknown fields, there is no public
 attestation-free constructor, and execution reloads that file through the
 readiness gate before accepting each request. Its current source is a
@@ -1443,6 +1494,11 @@ and installation lifecycle preconditions before that command may delete data.
   requests, and preserves immutable evidence. Rollback activation additionally
   requires the rebuilt artifact digest to reproduce its target, while a
   superseding selection or failed/cancelled build closes the pending request.
+  This describes the currently implemented interim path. The accepted module
+  release safety decision supersedes rebuild-on-rollback for production
+  recovery; the planned cutover near the top of this document replaces it with
+  retained direct-predecessor role-bundle deployment and removes the interim
+  mutation atomically.
   The current-only `ModuleStaticDistributionExecutor` port and owner
   `dispatch_next` orchestration now claim before invoking the external
   executor, heartbeat the durable lease while it runs, and persist its outcome
@@ -1504,21 +1560,90 @@ and installation lifecycle preconditions before that command may delete data.
 
 ## Planned Cross-Module Release Safety Integration
 
-`rustok-modules` remains the sole production owner of immutable release
-selection, update preflight, activation, rollback, incident receipts, and
-desired-versus-observed rollout state. The cross-module adoption plan is
-documented in [Module Release and Rollback Plan](../../../docs/modules/module-release-rollback-plan.md).
-It requires stateful module owners to declare data compatibility and recovery
-evidence in their local plans; it does not permit module-local rollback
-implementations, mutable artifact replacement, or automatic database restore.
+`rustok-modules` is the canonical operator-level owner of module update intent,
+the executable transition decision, direct-predecessor selection, the
+durable operation and atomically acquired cross-scope conflict fence set,
+rollback eligibility, incident outcome, and
+desired-versus-observed rollout state. `rustok-build`, `rustok-migrations`,
+sandbox, and deployment components remain narrow execution/evidence ports and
+must not retain a second operator rollback lifecycle. The cross-module
+adoption plan is documented in
+[Module Release and Rollback Plan](../../../docs/modules/module-release-rollback-plan.md).
 
-The mechanism must present a WordPress-like operator update experience only
-over this immutable owner model. Automatic rollback is limited to an eligible
-direct predecessor during the observation window. An irreversible data
-checkpoint closes that path and creates a controlled recovery-required outcome
-instead of reactivating incompatible code.
+Automatic mode is computed for one exact candidate/predecessor pair and live
+scope from owner-validated evidence; caller migration modes, module prose, and
+the central readiness board cannot authorize it. Every updateable module,
+including a stateless module, records its readiness constraints locally.
+Dynamic recovery selects one installation predecessor. Static recovery selects
+the complete predecessor role composition, including embedded Leptos assets,
+and deploys already retained and revalidated immutable bytes rather than
+compiling during the incident.
+
+The target adds one crash-recoverable operation, canonical conflict-set
+acquisition, one automatic attempt, trusted candidate-attributed health
+evaluation, pre-traffic recovery after predecessor displacement, an
+outside-candidate static control path, mixed N/N+1 data and bounded drain
+evidence, and a point-of-no-return gate before irreversible effects. It never
+automatically restores production data. The current direct `rustok-build`
+operator rollback,
+rebuild-on-rollback path, and caller-selected artifact migration mode are
+removed atomically with their canonical replacement; no compatibility path is
+retained.
 
 ## Verification
+
+### 2026-08-09 lifecycle owner-result slice
+
+- Lifecycle toggle, retry, compensation, and settings transports now map
+  owner-issued operation/state facts and no longer reread `tenant_modules` or
+  `module_operations` persistence models after a command. The owner settings
+  result returns the module slug, persisted enablement, and normalized JSON;
+  the lifecycle toggle result carries the exact settings fact used by its
+  command and idempotent replay. The server lifecycle state snapshot preserves
+  the owner-issued operation identity for lifecycle transitions rather than
+  suggesting a persistence reread.
+- Retry and compensation carry the authenticated tenant into the lifecycle
+  writer, which treats a recovery operation from another tenant as not found
+  before dispatch or state mutation. Retry returns the completed
+  owner-issued recovery plan directly, so GraphQL no longer performs an
+  authorization pre-read or a post-command recovery-plan reread.
+- GraphQL `installedModules` now maps the installed projection returned by the
+  platform-composition adapter instead of reading the manifest through
+  `ManifestManager` at the transport boundary.
+- Passed touched-file `rustfmt --edition 2024`, `git diff --check`,
+  `cargo metadata --locked --no-deps`, the module control-plane write-path and
+  lifecycle-bypass guardrails, the focused owner snapshot test, the 198-test
+  `rustok-modules` library suite, and both default and
+  `--no-default-features` `cargo check --locked -p rustok-server`. The server
+  checks emit unrelated existing warnings; no workspace-wide compile or test
+  suite is claimed.
+
+### 2026-08-09 remote validation owner-observability slice
+
+- The focused owner test proves that active and expired remote lease counts
+  exclude terminal and non-remote stages. Touched-file `rustfmt --edition
+  2024`, `git diff --check`, `cargo metadata --locked --no-deps`, and the
+  module control-plane write-path and lifecycle-bypass guardrails passed. The
+  current `cargo test --locked -p rustok-modules --lib` run passed all 198
+  tests. `cargo check --locked -p rustok-server --no-default-features` also
+  completed successfully, with pre-existing warnings outside this slice.
+- The focused `remote_executor_guardrail_tests` server unit test passed with
+  `--no-default-features`, as did the owner validation-stage normalization and
+  server schema regression tests. The `module_lifecycle` integration target
+  was attempted with both feature selections, but the host exhausted Windows
+  virtual memory while compiling the default UI graph; the subsequent
+  no-default attempt inherited an inconsistent target cache. Neither attempt
+  reached the test runner, so no lifecycle integration success is claimed.
+- The owner-category/code regression test passed. The follow-up server owner
+  cleanup also passed `cargo check --locked -p rustok-server --no-default-features`,
+  touched-file `rustfmt --edition 2024`, `git diff --check`, `cargo metadata
+  --locked --no-deps`, and the module-control-plane write-path plus lifecycle
+  bypass guards. Server warnings remain outside this slice; no workspace-wide
+  compile or test suite is claimed.
+- The focused remote-transition regression also passed after the owner
+  classified a runner-mismatched remote lease as permission denial rather than
+  a lifecycle conflict. Both remote HTTP adapters preserve that canonical
+  category/code contract.
 
 ### 2026-08-02 federated-registry freshness slice
 

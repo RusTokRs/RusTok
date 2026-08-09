@@ -73,6 +73,8 @@ pub struct TenantModuleStateRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantModuleStateRecord {
     pub id: Uuid,
+    /// Explicit enablement persisted by this operation.
+    pub enabled: bool,
     pub previous_enabled: bool,
     pub changed: bool,
 }
@@ -89,7 +91,9 @@ pub struct TenantModuleSettingsRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantModuleSettingsRecord {
     pub id: Uuid,
+    pub module_slug: String,
     pub enabled: bool,
+    pub settings: serde_json::Value,
 }
 
 /// Owner-owned persistence for a tenant's explicit module state row.
@@ -428,6 +432,7 @@ impl TenantModuleStateStore {
             let enabled: bool = row.try_get("", "enabled").map_err(database_error)?;
             Ok(TenantModuleStateRecord {
                 id: row.try_get("", "id").map_err(database_error)?,
+                enabled,
                 previous_enabled: enabled,
                 changed: false,
             })
@@ -473,6 +478,7 @@ impl TenantModuleStateStore {
             }
             return Ok(TenantModuleStateRecord {
                 id,
+                enabled: request.enabled,
                 previous_enabled,
                 changed: previous_enabled != request.enabled,
             });
@@ -492,6 +498,7 @@ impl TenantModuleStateStore {
         .await?;
         Ok(TenantModuleStateRecord {
             id,
+            enabled: request.enabled,
             previous_enabled: !request.enabled,
             changed: true,
         })
@@ -501,6 +508,8 @@ impl TenantModuleStateStore {
         db: &C,
         request: TenantModuleSettingsRequest,
     ) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
+        let module_slug = request.module_slug.clone();
+        let settings = request.settings.clone();
         let backend = db.get_database_backend();
         let select = match backend {
             DbBackend::Postgres => {
@@ -533,7 +542,12 @@ impl TenantModuleStateStore {
                 vec![enabled.into(), json_value(request.settings), id.into()],
             )
             .await?;
-            return Ok(TenantModuleSettingsRecord { id, enabled });
+            return Ok(TenantModuleSettingsRecord {
+                id,
+                module_slug,
+                enabled,
+                settings,
+            });
         }
 
         if !request.is_core && !request.is_effectively_enabled {
@@ -555,7 +569,12 @@ impl TenantModuleStateStore {
             ],
         )
         .await?;
-        Ok(TenantModuleSettingsRecord { id, enabled })
+        Ok(TenantModuleSettingsRecord {
+            id,
+            module_slug,
+            enabled,
+            settings,
+        })
     }
 }
 
@@ -651,7 +670,9 @@ mod tests {
         )
         .await
         .expect("core settings");
+        assert_eq!(core.module_slug, "modules");
         assert!(core.enabled);
+        assert_eq!(core.settings, json!({ "value": 2 }));
 
         let updated = TenantModuleStateStore::persist_settings(
             &database,
@@ -666,6 +687,8 @@ mod tests {
         .await
         .expect("updated core settings");
         assert_eq!(updated.id, core.id);
+        assert_eq!(updated.module_slug, "modules");
         assert!(updated.enabled);
+        assert_eq!(updated.settings, json!({ "value": 3 }));
     }
 }

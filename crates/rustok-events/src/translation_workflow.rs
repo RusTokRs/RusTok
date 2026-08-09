@@ -45,6 +45,18 @@ pub enum TranslationWorkflowEvent {
         prior_status: String,
         item_revision: i64,
     },
+    NoteCreated {
+        note_id: Uuid,
+        job_id: Uuid,
+        item_id: Option<Uuid>,
+        revision: i64,
+    },
+    NoteResolved {
+        note_id: Uuid,
+        job_id: Uuid,
+        item_id: Option<Uuid>,
+        revision: i64,
+    },
     ProposalSubmitted {
         item_id: Uuid,
         proposal_id: Uuid,
@@ -93,6 +105,8 @@ impl TranslationWorkflowEvent {
             Self::ItemAssigned { .. } => "translation.item.assigned",
             Self::ItemUnassigned { .. } => "translation.item.unassigned",
             Self::ItemRetryRequested { .. } => "translation.item.retry_requested",
+            Self::NoteCreated { .. } => "translation.note.created",
+            Self::NoteResolved { .. } => "translation.note.resolved",
             Self::ProposalSubmitted { .. } => "translation.proposal.submitted",
             Self::ProposalApproved { .. } => "translation.proposal.approved",
             Self::ApplyRequested { .. } => "translation.apply.requested",
@@ -143,6 +157,12 @@ const ITEM_RETRY_REQUESTED_FIELDS: &[FieldSchema] = &[
     field("prior_status", "string"),
     field("item_revision", "int64"),
 ];
+const NOTE_FIELDS: &[FieldSchema] = &[
+    field("note_id", "uuid"),
+    field("job_id", "uuid"),
+    optional_field("item_id", "uuid"),
+    field("revision", "int64"),
+];
 const PROPOSAL_FIELDS: &[FieldSchema] = &[
     field("item_id", "uuid"),
     field("proposal_id", "uuid"),
@@ -178,6 +198,14 @@ const fn field(name: &'static str, data_type: &'static str) -> FieldSchema {
     }
 }
 
+const fn optional_field(name: &'static str, data_type: &'static str) -> FieldSchema {
+    FieldSchema {
+        name,
+        data_type,
+        optional: true,
+    }
+}
+
 pub const TRANSLATION_WORKFLOW_EVENT_SCHEMAS: &[EventSchema] = &[
     schema(
         "translation.job.created",
@@ -208,6 +236,16 @@ pub const TRANSLATION_WORKFLOW_EVENT_SCHEMAS: &[EventSchema] = &[
         "translation.item.retry_requested",
         "A blocked translation job item was returned to its approved state for an explicit retry.",
         ITEM_RETRY_REQUESTED_FIELDS,
+    ),
+    schema(
+        "translation.note.created",
+        "A private translation workflow note was created without its body content.",
+        NOTE_FIELDS,
+    ),
+    schema(
+        "translation.note.resolved",
+        "A private translation workflow note was resolved without its body content.",
+        NOTE_FIELDS,
     ),
     schema(
         "translation.proposal.submitted",
@@ -350,6 +388,25 @@ impl ValidateEvent for TranslationWorkflowEvent {
                     ));
                 }
                 validate_revision("item_revision", *item_revision)
+            }
+            Self::NoteCreated {
+                note_id,
+                job_id,
+                item_id,
+                revision,
+            }
+            | Self::NoteResolved {
+                note_id,
+                job_id,
+                item_id,
+                revision,
+            } => {
+                validate_uuid("note_id", note_id)?;
+                validate_uuid("job_id", job_id)?;
+                if let Some(item_id) = item_id {
+                    validate_uuid("item_id", item_id)?;
+                }
+                validate_revision("revision", *revision)
             }
             Self::ProposalSubmitted {
                 item_id,

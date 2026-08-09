@@ -53,6 +53,14 @@ Root envelopes use the nil tenant UUID only for explicitly platform-capable
 `DomainEvent` variants. All other root and typed contract envelopes reject the
 sentinel before persistence or relay.
 
+The rebuild-only rollback and `build.rolled_back` contracts describe the
+current implementation. The accepted
+[module release rollback safety decision](../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+requires an atomic cutover to `rustok-modules`-owned recovery-operation and
+desired/observed rollout facts. The cutover removes superseded build rollback
+events and every repository-owned caller rather than retaining parallel event
+families.
+
 ## Docs
 
 - [Module docs](./docs/README.md)

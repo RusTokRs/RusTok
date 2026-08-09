@@ -14,10 +14,14 @@ use crate::{
     MachineProposalRecord, MemoryEntryRecord, MemoryMatchEvidence, MemoryMatchKind,
     MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, ProposalOrigin, ProposalRecord,
     ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord, ReviewerQueueRecord,
-    ReviewerWorkloadRecord, TranslationInterchangeDocument as InterchangeDocument,
+    ReviewerWorkloadRecord, TranslationInterchangeArtifactContent as InterchangeArtifactContent,
+    TranslationInterchangeArtifactRecord as InterchangeArtifactRecord,
+    TranslationInterchangeConflictReport as InterchangeConflictReport,
+    TranslationInterchangeDocument as InterchangeDocument,
     TranslationInterchangeField as InterchangeField, TranslationInterchangeItem as InterchangeItem,
-    TranslationInventoryRebuildResult, TranslationInventorySyncResult, TranslationPolicyFreshness,
-    TranslationPolicyRecord,
+    TranslationInterchangeItemOutcome as InterchangeItemOutcome, TranslationInventoryRebuildResult,
+    TranslationInventorySyncResult, TranslationPolicyFreshness, TranslationPolicyRecord,
+    WorkflowNoteRecord,
 };
 
 #[derive(InputObject)]
@@ -55,6 +59,42 @@ pub struct TranslationProposalValueInput {
 pub struct ExportTranslationJobInput {
     pub job_id: Uuid,
     pub max_items: u16,
+}
+
+#[derive(InputObject)]
+pub struct TranslationInterchangeArtifactsInput {
+    pub job_id: Option<Uuid>,
+    #[graphql(default = false)]
+    pub include_expired: bool,
+    #[graphql(default = 50)]
+    pub limit: u16,
+}
+
+#[derive(InputObject)]
+pub struct ReadTranslationInterchangeArtifactInput {
+    pub artifact_id: Uuid,
+}
+
+#[derive(InputObject)]
+pub struct CreateTranslationInterchangeExportArtifactInput {
+    pub job_id: Uuid,
+    pub max_items: u16,
+    pub expires_in_seconds: u32,
+    pub idempotency_key: String,
+}
+
+#[derive(InputObject)]
+pub struct StoreTranslationInterchangeImportArtifactInput {
+    pub job_id: Uuid,
+    pub document_json: String,
+    pub expires_in_seconds: u32,
+    pub idempotency_key: String,
+}
+
+#[derive(InputObject)]
+pub struct ProcessTranslationInterchangeImportArtifactInput {
+    pub artifact_id: Uuid,
+    pub idempotency_key: String,
 }
 
 #[derive(InputObject)]
@@ -308,6 +348,31 @@ pub struct TranslationReviewerQueueInput {
 #[derive(InputObject)]
 pub struct TranslationReviewerWorkloadInput {
     pub job_id: Uuid,
+}
+
+#[derive(InputObject)]
+pub struct TranslationWorkflowNotesInput {
+    pub job_id: Uuid,
+    pub item_id: Option<Uuid>,
+    #[graphql(default = false)]
+    pub include_resolved: bool,
+    #[graphql(default = 50)]
+    pub limit: u16,
+}
+
+#[derive(InputObject)]
+pub struct CreateTranslationWorkflowNoteInput {
+    pub job_id: Uuid,
+    pub item_id: Option<Uuid>,
+    pub body: String,
+    pub idempotency_key: String,
+}
+
+#[derive(InputObject)]
+pub struct ResolveTranslationWorkflowNoteInput {
+    pub note_id: Uuid,
+    pub expected_revision: i64,
+    pub idempotency_key: String,
 }
 
 #[derive(InputObject)]
@@ -648,6 +713,7 @@ pub struct TranslationInterchangeField {
     pub key: String,
     pub source_value: String,
     pub exact_target_value: Option<String>,
+    pub proposed_value: Option<String>,
     pub source_hash: String,
     pub required: bool,
     pub max_characters: Option<u32>,
@@ -660,6 +726,7 @@ impl From<InterchangeField> for TranslationInterchangeField {
             key: value.key.to_string(),
             source_value: value.source_value,
             exact_target_value: value.exact_target_value,
+            proposed_value: value.proposed_value,
             source_hash: value.source_hash,
             required: value.required,
             max_characters: value.max_characters,
@@ -708,6 +775,90 @@ impl From<InterchangeDocument> for TranslationInterchangeDocument {
             source_locale: value.source_locale.as_str().to_string(),
             target_locale: value.target_locale.as_str().to_string(),
             items: value.items.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationInterchangeArtifactItemOutcome {
+    pub item_id: Uuid,
+    pub status: String,
+}
+
+impl From<InterchangeItemOutcome> for TranslationInterchangeArtifactItemOutcome {
+    fn from(value: InterchangeItemOutcome) -> Self {
+        Self {
+            item_id: value.item_id,
+            status: value.status,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationInterchangeConflictReport {
+    pub total_items: u16,
+    pub accepted_items: u16,
+    pub conflict_items: u16,
+    pub rejected_items: u16,
+    pub outcomes: Vec<TranslationInterchangeArtifactItemOutcome>,
+}
+
+impl From<InterchangeConflictReport> for TranslationInterchangeConflictReport {
+    fn from(value: InterchangeConflictReport) -> Self {
+        Self {
+            total_items: value.total_items,
+            accepted_items: value.accepted_items,
+            conflict_items: value.conflict_items,
+            rejected_items: value.rejected_items,
+            outcomes: value.outcomes.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationInterchangeArtifact {
+    pub id: Uuid,
+    pub job_id: Uuid,
+    pub direction: String,
+    pub status: String,
+    pub content_length: u64,
+    pub checksum_sha256: String,
+    pub expires_at: DateTime<FixedOffset>,
+    pub processed_at: Option<DateTime<FixedOffset>>,
+    pub report: Option<TranslationInterchangeConflictReport>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl From<InterchangeArtifactRecord> for TranslationInterchangeArtifact {
+    fn from(value: InterchangeArtifactRecord) -> Self {
+        Self {
+            id: value.id,
+            job_id: value.job_id,
+            direction: value.direction.as_str().to_string(),
+            status: value.status.as_str().to_string(),
+            content_length: value.content_length,
+            checksum_sha256: value.checksum_sha256,
+            expires_at: value.expires_at,
+            processed_at: value.processed_at,
+            report: value.report.map(Into::into),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationInterchangeArtifactContent {
+    pub artifact: TranslationInterchangeArtifact,
+    pub document: TranslationInterchangeDocument,
+}
+
+impl From<InterchangeArtifactContent> for TranslationInterchangeArtifactContent {
+    fn from(value: InterchangeArtifactContent) -> Self {
+        Self {
+            artifact: value.artifact.into(),
+            document: value.document.into(),
         }
     }
 }
@@ -950,6 +1101,37 @@ impl From<ReviewerWorkloadRecord> for TranslationReviewerWorkload {
             rebase_required_items: value.rebase_required_items,
             blocked_items: value.blocked_items,
             source_characters: value.source_characters,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationWorkflowNote {
+    pub id: Uuid,
+    pub job_id: Uuid,
+    pub item_id: Option<Uuid>,
+    pub body: String,
+    pub author: TranslationActor,
+    pub revision: i64,
+    pub resolved_at: Option<DateTime<FixedOffset>>,
+    pub resolved_by: Option<TranslationActor>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl From<WorkflowNoteRecord> for TranslationWorkflowNote {
+    fn from(value: WorkflowNoteRecord) -> Self {
+        Self {
+            id: value.id,
+            job_id: value.job_id,
+            item_id: value.item_id,
+            body: value.body,
+            author: value.author.into(),
+            revision: value.revision,
+            resolved_at: value.resolved_at,
+            resolved_by: value.resolved_by.map(Into::into),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
         }
     }
 }
@@ -1545,6 +1727,12 @@ pub(crate) fn parse_field_key(value: String) -> async_graphql::Result<FieldKey> 
 
 pub(crate) fn parse_locale(value: String) -> async_graphql::Result<TenantLocale> {
     TenantLocale::new(value).map_err(input_error)
+}
+
+pub(crate) fn parse_interchange_document(
+    value: &str,
+) -> async_graphql::Result<InterchangeDocument> {
+    crate::parse_artifact_document(value).map_err(input_error)
 }
 
 fn locale_strings(locales: Vec<TenantLocale>) -> Vec<String> {

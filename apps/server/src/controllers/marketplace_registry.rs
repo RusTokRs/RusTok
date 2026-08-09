@@ -57,7 +57,7 @@ use crate::services::registry_governance::{
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
     RegistryExternalPrebuiltStageInput, RegistryFollowUpGateSnapshot,
     RegistryGovernanceActionSnapshot, RegistryGovernanceError, RegistryGovernanceService,
-    RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot, release_status_label,
+    RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
@@ -68,7 +68,9 @@ use crate::services::registry_remote_transitions::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
 use rustok_api::request::RequestContext;
-use rustok_modules::{ModuleExternalSourceEvidence, ModuleGovernanceError};
+use rustok_modules::{
+    ModuleExternalSourceEvidence, ModuleGovernanceError, ModuleGovernanceErrorCategory,
+};
 use rustok_web::HttpError;
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -913,7 +915,6 @@ async fn report_validation_stage(
             &authority,
             &request.stage,
             &request.status,
-            request.detail.as_deref(),
             request.reason_code.as_deref(),
             request.requeue,
         )
@@ -1818,7 +1819,7 @@ async fn yank(
                 dry_run: false,
                 accepted: true,
                 request_id: release.request_id,
-                status: Some(release_status_label(release.status).to_string()),
+                status: Some(release.status),
                 slug: request.slug,
                 version: request.version,
                 warnings,
@@ -2771,112 +2772,25 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
 /// Maps the stable owner error contract at the HTTP edge. The registry adapter
 /// must not reclassify owner failures into server-local error types.
 fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::Error) -> Error {
-    match error {
-        ModuleGovernanceError::InvalidLifecycleQuery
-        | ModuleGovernanceError::InvalidOwnerBindingQuery
-        | ModuleGovernanceError::InvalidPublishArtifactDownloadQuery
-        | ModuleGovernanceError::InvalidPublishRequestStatusQuery
-        | ModuleGovernanceError::InvalidYankCommand
-        | ModuleGovernanceError::InvalidYankReasonCode(_)
-        | ModuleGovernanceError::InvalidOwnerTransferCommand
-        | ModuleGovernanceError::InvalidOwnerBindCommand
-        | ModuleGovernanceError::InvalidPublishRequestRejectCommand
-        | ModuleGovernanceError::InvalidPublishRequestChangesCommand
-        | ModuleGovernanceError::InvalidPublishRequestHoldCommand
-        | ModuleGovernanceError::InvalidPublishRequestResumeCommand
-        | ModuleGovernanceError::InvalidPublishRequestPublicationCommand
-        | ModuleGovernanceError::InvalidPublishApprovalOverride
-        | ModuleGovernanceError::InvalidValidationStageReportCommand
-        | ModuleGovernanceError::ValidationStageNotRequiredForArtifactOrigin { .. }
-        | ModuleGovernanceError::OwnerEvidenceValidationStageCannotBeReported(_)
-        | ModuleGovernanceError::InvalidValidationStageRequeue
-        | ModuleGovernanceError::InvalidRemoteValidationLeaseCommand
-        | ModuleGovernanceError::InvalidValidationJobEnqueueCommand
-        | ModuleGovernanceError::InvalidValidationJobClaimCommand
-        | ModuleGovernanceError::InvalidValidationJobResultCommand
-        | ModuleGovernanceError::InvalidValidationJobRetryCommand
-        | ModuleGovernanceError::InvalidPublishRequestCreateCommand
-        | ModuleGovernanceError::InvalidPublishArtifactAttachCommand
-        | ModuleGovernanceError::InvalidPublicationEvidenceCommand
-        | ModuleGovernanceError::InvalidPlatformPublicationEvidenceRequest
-        | ModuleGovernanceError::InvalidBuildServiceAttestationCommand
-        | ModuleGovernanceError::InvalidPlatformAdmissionCommand
-        | ModuleGovernanceError::InvalidPlatformBuildStageCommand
-        | ModuleGovernanceError::InvalidExternalPrebuiltStageCommand
-        | ModuleGovernanceError::InvalidAlloyAuthoredStageCommand
-        | ModuleGovernanceError::InvalidRemoteValidationClaimStage(_)
-        | ModuleGovernanceError::InvalidOwnerTransferReasonCode(_)
-        | ModuleGovernanceError::InvalidPublishRequestRejectReasonCode(_)
-        | ModuleGovernanceError::InvalidPublishRequestChangesReasonCode(_)
-        | ModuleGovernanceError::InvalidPublishRequestHoldReasonCode(_)
-        | ModuleGovernanceError::InvalidPublishRequestResumeReasonCode(_)
-        | ModuleGovernanceError::InvalidPublishApprovalOverrideReasonCode(_)
-        | ModuleGovernanceError::InvalidValidationStageReasonCode(_) => {
-            Error::BadRequest(error.to_string())
+    match error.category() {
+        ModuleGovernanceErrorCategory::InvalidInput => {
+            http_error(HttpError::bad_request(error.code(), error.to_string()))
         }
-        ModuleGovernanceError::PublicationEvidenceAuthorityReserved => {
-            http_error(HttpError::forbidden("forbidden", error.to_string()))
+        ModuleGovernanceErrorCategory::PermissionDenied => {
+            http_error(HttpError::forbidden(error.code(), error.to_string()))
         }
-        ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized => {
-            http_error(HttpError::forbidden("forbidden", error.to_string()))
+        ModuleGovernanceErrorCategory::NotFound => {
+            http_error(HttpError::not_found(error.code(), "Not found"))
         }
-        ModuleGovernanceError::ReleaseNotFound
-        | ModuleGovernanceError::OwnerBindingNotFound
-        | ModuleGovernanceError::PublishRequestNotFound
-        | ModuleGovernanceError::ValidationJobNotFound
-        | ModuleGovernanceError::ValidationStageNotFound
-        | ModuleGovernanceError::RemoteValidationLeaseNotFound => Error::NotFound,
-        ModuleGovernanceError::Store(_)
-        | ModuleGovernanceError::InvalidLifecycleArtifactOrigin(_)
-        | ModuleGovernanceError::InvalidPublishRequestStatus(_) => {
-            tracing::error!(error = %source, "Registry governance owner store error");
+        ModuleGovernanceErrorCategory::Conflict => http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            error.code(),
+            error.to_string(),
+        )),
+        ModuleGovernanceErrorCategory::Internal => {
+            tracing::error!(error = %source, "Registry governance owner error");
             Error::InternalServerError
         }
-        ModuleGovernanceError::OwnerUnchanged
-        | ModuleGovernanceError::OwnerAlreadyBound
-        | ModuleGovernanceError::PublishRequestCreationConflict
-        | ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable
-        | ModuleGovernanceError::PublishRequestReleaseAlreadyActive { .. }
-        | ModuleGovernanceError::PublishRequestCannotBeRejected(_)
-        | ModuleGovernanceError::PublishRequestCannotRequestChanges(_)
-        | ModuleGovernanceError::PublishRequestCannotBeHeld(_)
-        | ModuleGovernanceError::PublishRequestCannotBeResumed(_)
-        | ModuleGovernanceError::PublishRequestCannotBePublished(_)
-        | ModuleGovernanceError::PublishedRequestMissingRelease
-        | ModuleGovernanceError::PublishRequestCannotAttachArtifact(_)
-        | ModuleGovernanceError::PublishRequestArtifactReplayConflict
-        | ModuleGovernanceError::PublishRequestCannotRecordPublicationEvidence(_)
-        | ModuleGovernanceError::PublishRequestCannotReportValidationStage(_)
-        | ModuleGovernanceError::PublishRequestCannotQueueValidation(_)
-        | ModuleGovernanceError::ValidationJobNotRunning(_)
-        | ModuleGovernanceError::ValidationJobRequestStateMismatch(_)
-        | ModuleGovernanceError::PublishRequestMissingArtifactStorageKey
-        | ModuleGovernanceError::PublishRequestMissingArtifactChecksum
-        | ModuleGovernanceError::PublishRequestInvalidArtifactChecksum
-        | ModuleGovernanceError::PublishRequestMissingArtifactSize
-        | ModuleGovernanceError::PublishRequestMissingPlatformBuildStage
-        | ModuleGovernanceError::PublishRequestMissingExternalPrebuiltStage
-        | ModuleGovernanceError::PublishRequestMissingAlloyAuthoredStage
-        | ModuleGovernanceError::PublishRequestArtifactOriginUnclassified
-        | ModuleGovernanceError::PublishRequestMissingAuthorSignature
-        | ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract
-        | ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission
-        | ModuleGovernanceError::PublishRequestMissingExternalPlatformAdmission
-        | ModuleGovernanceError::PublishRequestMissingAlloyPlatformAdmission
-        | ModuleGovernanceError::PublishRequestMissingTranslations
-        | ModuleGovernanceError::PublishRequestInvalidTranslations
-        | ModuleGovernanceError::RemoteValidationLeaseRunnerMismatch
-        | ModuleGovernanceError::RemoteValidationLeaseNotRunning(_)
-        | ModuleGovernanceError::RemoteValidationLeaseExpired
-        | ModuleGovernanceError::InvalidValidationStageTransition { .. }
-        | ModuleGovernanceError::PublishRequestInvalidHeldFromStatus
-        | ModuleGovernanceError::PlatformBuildStageIdempotencyConflict
-        | ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict
-        | ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict
-        | ModuleGovernanceError::PublicationIdempotencyConflict
-        | ModuleGovernanceError::PublishedRequestMissingIdempotencyRecord => http_error(
-            HttpError::new(StatusCode::CONFLICT, "conflict", error.to_string()),
-        ),
     }
 }
 
@@ -2885,19 +2799,26 @@ fn map_remote_validation_claim_error(error: anyhow::Error) -> Error {
 }
 
 fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) -> Error {
-    match error {
-        RegistryRemoteTransitionError::Invalid(message) => Error::BadRequest(message),
-        RegistryRemoteTransitionError::Forbidden(message) => {
-            http_error(HttpError::forbidden("forbidden", message.as_str()))
+    let RegistryRemoteTransitionError {
+        category,
+        code,
+        detail,
+    } = error;
+    match category {
+        ModuleGovernanceErrorCategory::InvalidInput => {
+            http_error(HttpError::bad_request(code, detail))
         }
-        RegistryRemoteTransitionError::NotFound(_) => Error::NotFound,
-        RegistryRemoteTransitionError::Conflict(message) => http_error(HttpError::new(
-            StatusCode::CONFLICT,
-            "conflict",
-            message.as_str(),
-        )),
-        RegistryRemoteTransitionError::Internal(message) => {
-            tracing::error!(%message, "Remote validation transition failed");
+        ModuleGovernanceErrorCategory::PermissionDenied => {
+            http_error(HttpError::forbidden(code, detail))
+        }
+        ModuleGovernanceErrorCategory::NotFound => {
+            http_error(HttpError::not_found(code, "Not found"))
+        }
+        ModuleGovernanceErrorCategory::Conflict => {
+            http_error(HttpError::new(StatusCode::CONFLICT, code, detail))
+        }
+        ModuleGovernanceErrorCategory::Internal => {
+            tracing::error!(%detail, "Remote validation transition failed");
             Error::InternalServerError
         }
     }

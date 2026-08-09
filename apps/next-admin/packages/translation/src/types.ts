@@ -174,6 +174,7 @@ export type InterchangeField = {
   key: string;
   sourceValue: string;
   exactTargetValue: string | null;
+  proposedValue: string | null;
   sourceHash: string;
   required: boolean;
   maxCharacters: number | null;
@@ -195,6 +196,38 @@ export type InterchangeDocument = {
   sourceLocale: string;
   targetLocale: string;
   items: InterchangeItem[];
+};
+
+export type InterchangeArtifactItemOutcome = {
+  itemId: string;
+  status: string;
+};
+
+export type InterchangeConflictReport = {
+  totalItems: number;
+  acceptedItems: number;
+  conflictItems: number;
+  rejectedItems: number;
+  outcomes: InterchangeArtifactItemOutcome[];
+};
+
+export type InterchangeArtifact = {
+  id: string;
+  jobId: string;
+  direction: string;
+  status: string;
+  contentLength: number;
+  checksumSha256: string;
+  expiresAt: string;
+  processedAt: string | null;
+  report: InterchangeConflictReport | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InterchangeArtifactContent = {
+  artifact: InterchangeArtifact;
+  document: InterchangeDocument;
 };
 
 export type ImportItemInput = {
@@ -262,6 +295,19 @@ export type ReviewerWorkload = {
   rebaseRequiredItems: number;
   blockedItems: number;
   sourceCharacters: number;
+};
+
+export type WorkflowNote = {
+  id: string;
+  jobId: string;
+  itemId: string | null;
+  body: string;
+  author: Actor;
+  revision: number;
+  resolvedAt: string | null;
+  resolvedBy: Actor | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Proposal = {
@@ -479,6 +525,19 @@ export type TranslationOperation =
       glossary?: GlossaryBinding;
       idempotencyKey: string;
     }
+  | {
+      kind: 'create_workflow_note';
+      jobId: string;
+      itemId?: string | null;
+      body: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'resolve_workflow_note';
+      noteId: string;
+      expectedRevision: number;
+      idempotencyKey: string;
+    }
   | { kind: 'read_job_progress'; jobId: string }
   | {
       kind: 'read_reviewer_queue';
@@ -488,7 +547,40 @@ export type TranslationOperation =
       limit: number;
     }
   | { kind: 'read_reviewer_workload'; jobId: string }
+  | {
+      kind: 'list_workflow_notes';
+      jobId: string;
+      itemId?: string | null;
+      includeResolved: boolean;
+      limit: number;
+    }
+  | {
+      kind: 'list_interchange_artifacts';
+      jobId?: string | null;
+      includeExpired: boolean;
+      limit: number;
+    }
+  | { kind: 'read_interchange_artifact'; artifactId: string }
   | { kind: 'export_job'; jobId: string; maxItems: number }
+  | {
+      kind: 'create_interchange_export_artifact';
+      jobId: string;
+      maxItems: number;
+      expiresInSeconds: number;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'store_interchange_import_artifact';
+      jobId: string;
+      documentJson: string;
+      expiresInSeconds: number;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'process_interchange_import_artifact';
+      artifactId: string;
+      idempotencyKey: string;
+    }
   | {
       kind: 'import_item';
       input: ImportItemInput;
@@ -621,7 +713,12 @@ export type TranslationResponse =
   | { kind: 'job_progress'; value: JobProgress }
   | { kind: 'reviewer_queue'; value: ReviewerQueueItem[] }
   | { kind: 'reviewer_workload'; value: ReviewerWorkload[] }
+  | { kind: 'workflow_notes'; value: WorkflowNote[] }
+  | { kind: 'workflow_note'; value: WorkflowNote }
   | { kind: 'interchange_document'; value: InterchangeDocument }
+  | { kind: 'interchange_artifacts'; value: InterchangeArtifact[] }
+  | { kind: 'interchange_artifact'; value: InterchangeArtifact }
+  | { kind: 'interchange_artifact_content'; value: InterchangeArtifactContent }
   | { kind: 'provider_progress'; value: ProviderProgress }
   | { kind: 'required_progress'; value: RequiredProviderProgress }
   | { kind: 'item'; value: JobItem }

@@ -3,12 +3,16 @@ use uuid::Uuid;
 
 use crate::{
     AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
-    CancelMachineOperationInput, CreateGlossaryInput, CreateJobInput, GenerateMachineProposalInput,
-    ImportTranslationItemInput as DomainImportTranslationItemInput, ProposalValue,
-    PurgeMemoryEntryInput, RecoverApplyInput, RecoverMachineOperationInput,
-    ReplaceGlossaryTermsInput, ReplaceRequiredTargetLocalesInput, RetryItemInput,
-    SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
-    TombstoneMemoryEntryInput, UnassignItemInput, UpdateGlossaryInput,
+    CancelMachineOperationInput, CreateGlossaryInput,
+    CreateInterchangeExportArtifactInput as DomainCreateInterchangeExportArtifactInput,
+    CreateJobInput, CreateWorkflowNoteInput, GenerateMachineProposalInput,
+    ImportTranslationItemInput as DomainImportTranslationItemInput,
+    ProcessInterchangeImportArtifactInput as DomainProcessInterchangeImportArtifactInput,
+    ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput, RecoverMachineOperationInput,
+    ReplaceGlossaryTermsInput, ReplaceRequiredTargetLocalesInput, ResolveWorkflowNoteInput,
+    RetryItemInput, SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput,
+    StoreInterchangeImportArtifactInput as DomainStoreInterchangeImportArtifactInput,
+    SubmitProposalInput, TombstoneMemoryEntryInput, UnassignItemInput, UpdateGlossaryInput,
 };
 
 use super::{
@@ -16,19 +20,23 @@ use super::{
     types::{
         AddTranslationJobItemInput, AssignTranslationItemInput,
         CancelMachineTranslationOperationInput, CancelTranslationJobInput,
-        CreateTranslationGlossaryInput, CreateTranslationJobInput,
+        CreateTranslationGlossaryInput, CreateTranslationInterchangeExportArtifactInput,
+        CreateTranslationJobInput, CreateTranslationWorkflowNoteInput,
         GenerateMachineTranslationProposalInput, ImportTranslationItemInput,
         MachineTranslationCancellation, MachineTranslationEstimate, MachineTranslationProposal,
+        ProcessTranslationInterchangeImportArtifactInput,
         RecoverMachineTranslationOperationInput as GraphqlRecoverMachineTranslationOperationInput,
         RecoverTranslationApplyInput, ReplaceTranslationGlossaryTermsInput,
-        ReplaceTranslationPolicyInput, RetryTranslationItemInput, SaveTranslationProposalInput,
-        SetTranslationGlossaryActiveInput, SetTranslationMemoryRetentionInput,
+        ReplaceTranslationPolicyInput, ResolveTranslationWorkflowNoteInput,
+        RetryTranslationItemInput, SaveTranslationProposalInput, SetTranslationGlossaryActiveInput,
+        SetTranslationMemoryRetentionInput, StoreTranslationInterchangeImportArtifactInput,
         TransitionTranslationMemoryEntryInput, TransitionTranslationProposalInput,
         TranslationApply, TranslationAssignment, TranslationCancellation, TranslationGlossary,
-        TranslationInventoryRebuild, TranslationInventorySync, TranslationJob, TranslationJobItem,
-        TranslationJobProgress, TranslationMemoryMutation, TranslationPolicy, TranslationProposal,
-        TranslationRetry, UnassignTranslationItemInput, UpdateTranslationGlossaryInput,
-        parse_field_key, parse_locale, parse_owner_slug, parse_resource_kind,
+        TranslationInterchangeArtifact, TranslationInventoryRebuild, TranslationInventorySync,
+        TranslationJob, TranslationJobItem, TranslationJobProgress, TranslationMemoryMutation,
+        TranslationPolicy, TranslationProposal, TranslationRetry, TranslationWorkflowNote,
+        UnassignTranslationItemInput, UpdateTranslationGlossaryInput, parse_field_key,
+        parse_interchange_document, parse_locale, parse_owner_slug, parse_resource_kind,
     },
 };
 
@@ -37,6 +45,49 @@ pub struct TranslationMutation;
 
 #[Object]
 impl TranslationMutation {
+    async fn create_translation_workflow_note(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateTranslationWorkflowNoteInput,
+    ) -> Result<TranslationWorkflowNote> {
+        let context = write_port_context(ctx, "create-workflow-note", input.idempotency_key)?;
+        runtime(ctx)?
+            .workflow_service()
+            .collaboration_service()
+            .create_workflow_note(
+                context,
+                CreateWorkflowNoteInput {
+                    job_id: input.job_id,
+                    item_id: input.item_id,
+                    body: input.body,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn resolve_translation_workflow_note(
+        &self,
+        ctx: &Context<'_>,
+        input: ResolveTranslationWorkflowNoteInput,
+    ) -> Result<TranslationWorkflowNote> {
+        let context = write_port_context(ctx, "resolve-workflow-note", input.idempotency_key)?;
+        runtime(ctx)?
+            .workflow_service()
+            .collaboration_service()
+            .resolve_workflow_note(
+                context,
+                ResolveWorkflowNoteInput {
+                    note_id: input.note_id,
+                    expected_revision: input.expected_revision,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
     async fn replace_translation_policy(
         &self,
         ctx: &Context<'_>,
@@ -311,6 +362,83 @@ impl TranslationMutation {
                     identity: input.identity.try_into()?,
                     source_digest: input.source_digest,
                     values,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn create_translation_interchange_export_artifact(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateTranslationInterchangeExportArtifactInput,
+    ) -> Result<TranslationInterchangeArtifact> {
+        let context = write_port_context(
+            ctx,
+            "create-interchange-export-artifact",
+            input.idempotency_key,
+        )?;
+        runtime(ctx)?
+            .exchange_service()
+            .map_err(translation_error)?
+            .create_export_artifact(
+                context,
+                DomainCreateInterchangeExportArtifactInput {
+                    job_id: input.job_id,
+                    max_items: input.max_items,
+                    expires_in_seconds: input.expires_in_seconds,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn store_translation_interchange_import_artifact(
+        &self,
+        ctx: &Context<'_>,
+        input: StoreTranslationInterchangeImportArtifactInput,
+    ) -> Result<TranslationInterchangeArtifact> {
+        let document = parse_interchange_document(&input.document_json)?;
+        let context = write_port_context(
+            ctx,
+            "store-interchange-import-artifact",
+            input.idempotency_key,
+        )?;
+        runtime(ctx)?
+            .exchange_service()
+            .map_err(translation_error)?
+            .store_import_artifact(
+                context,
+                DomainStoreInterchangeImportArtifactInput {
+                    job_id: input.job_id,
+                    document,
+                    expires_in_seconds: input.expires_in_seconds,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn process_translation_interchange_import_artifact(
+        &self,
+        ctx: &Context<'_>,
+        input: ProcessTranslationInterchangeImportArtifactInput,
+    ) -> Result<TranslationInterchangeArtifact> {
+        let context = write_port_context(
+            ctx,
+            "process-interchange-import-artifact",
+            input.idempotency_key,
+        )?;
+        runtime(ctx)?
+            .exchange_service()
+            .map_err(translation_error)?
+            .process_import_artifact(
+                context,
+                DomainProcessInterchangeImportArtifactInput {
+                    artifact_id: input.artifact_id,
                 },
             )
             .await

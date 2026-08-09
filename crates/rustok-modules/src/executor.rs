@@ -4,16 +4,14 @@ use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
 
 use crate::recovery::{
-    apply_tenant_override_enabled, read_tenant_override_enabled,
-    record_operation_override_state,
+    apply_tenant_override_enabled, read_tenant_override_enabled, record_operation_override_state,
 };
 use crate::{
     ControlPlaneInfrastructure, ModuleEffectivePolicyTransitionCoordinator,
     ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
-    ModuleOperationRecord, ModuleOperationRecordOutcome, ModuleOperationRequest,
-    ModuleOperationSnapshot, ModuleOperationStatus, ModulePolicyRevisionTransition,
-    ModuleToggleValidationError, TenantModuleStateRecord, TenantModuleStateStore,
-    validate_module_toggle,
+    ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
+    ModuleOperationStatus, ModulePolicyRevisionTransition, ModuleToggleValidationError,
+    TenantModuleStateRecord, TenantModuleStateStore, validate_module_toggle,
 };
 
 #[derive(Clone, Debug)]
@@ -39,13 +37,20 @@ pub struct ModuleLifecycleToggleRequest {
     pub policy_transition: Option<ModulePolicyRevisionTransition>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ModuleLifecycleToggleResult {
+    /// Exact module identity selected by the owner command. A host must not
+    /// reread the original operation merely to reconstruct this response fact.
+    pub module_slug: String,
     /// Current explicit tenant row after the state commit. `None` means the
     /// operation restored inherited/default selection by removing the row.
     pub state: Option<TenantModuleStateRecord>,
     pub override_enabled: Option<bool>,
     pub operation_id: Option<uuid::Uuid>,
+    /// Exact settings supplied to lifecycle hooks and retained by the current
+    /// explicit state. Host transports return this owner-issued fact instead
+    /// of rereading the tenant-module persistence model.
+    pub settings: serde_json::Value,
 }
 
 #[derive(Debug, Error)]
@@ -73,6 +78,7 @@ pub async fn execute_module_toggle(
     policy_transition_coordinator: Option<ModuleEffectivePolicyTransitionCoordinator>,
     request: ModuleLifecycleToggleRequest,
 ) -> Result<ModuleLifecycleToggleResult, ModuleLifecycleExecutionError> {
+    let settings = request.current_settings.clone();
     if request.idempotency_key == Some(uuid::Uuid::nil()) {
         return Err(ModuleLifecycleExecutionError::InvalidIdempotencyKey);
     }
@@ -97,7 +103,7 @@ pub async fn execute_module_toggle(
                 .await
                 .map_err(map_idempotency_store_error)?
     {
-        return replay_lifecycle_operation(db, &operation_request, existing).await;
+        return replay_lifecycle_operation(db, &operation_request, existing, settings).await;
     }
     validate_module_toggle(
         dispatcher.catalog(),
@@ -115,9 +121,11 @@ pub async fn execute_module_toggle(
         .await
         .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
         return Ok(ModuleLifecycleToggleResult {
+            module_slug: request.module_slug.clone(),
             state,
             override_enabled: request.requested_override_enabled,
             operation_id: None,
+            settings,
         });
     }
 
@@ -142,7 +150,8 @@ pub async fn execute_module_toggle(
                             "idempotent lifecycle operation disappeared".to_string(),
                         )
                     })?;
-                return replay_lifecycle_operation(db, &operation_request, existing).await;
+                return replay_lifecycle_operation(db, &operation_request, existing, settings)
+                    .await;
             }
         }
     } else {
@@ -207,7 +216,8 @@ pub async fn execute_module_toggle(
                         .map_err(|error| {
                             ModuleLifecycleExecutionError::Persistence(error.to_string())
                         })?;
-                    if let (Some(coordinator), Some(transition)) = (coordinator, policy_transition) {
+                    if let (Some(coordinator), Some(transition)) = (coordinator, policy_transition)
+                    {
                         coordinator
                             .publish_and_advance(
                                 transaction,
@@ -267,9 +277,11 @@ pub async fn execute_module_toggle(
     }
 
     Ok(ModuleLifecycleToggleResult {
+        module_slug: request.module_slug.clone(),
         state,
         override_enabled: request.requested_override_enabled,
         operation_id: Some(operation.id),
+        settings,
     })
 }
 
@@ -289,7 +301,9 @@ async fn record_override_state_or_fail(
     {
         let message = format!("recovery-state: {error}");
         let _ = ModuleOperationJournal::mark_failed(db, operation_id, &message).await;
-        return Err(ModuleLifecycleExecutionError::Persistence(error.to_string()));
+        return Err(ModuleLifecycleExecutionError::Persistence(
+            error.to_string(),
+        ));
     }
     Ok(())
 }
@@ -309,16 +323,16 @@ async fn replay_lifecycle_operation(
     db: &DatabaseConnection,
     request: &ModuleOperationRequest,
     operation: ModuleOperationSnapshot,
+    settings: serde_json::Value,
 ) -> Result<ModuleLifecycleToggleResult, ModuleLifecycleExecutionError> {
     match operation.status {
         ModuleOperationStatus::Committed => {
-            let override_enabled = read_tenant_override_enabled(
-                db,
-                request.tenant_id,
-                &request.module_slug,
-            )
-            .await
-            .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+            let override_enabled =
+                read_tenant_override_enabled(db, request.tenant_id, &request.module_slug)
+                    .await
+                    .map_err(|error| {
+                        ModuleLifecycleExecutionError::Persistence(error.to_string())
+                    })?;
             let state = if override_enabled.is_some() {
                 TenantModuleStateStore::read(db, request.tenant_id, &request.module_slug)
                     .await
@@ -329,9 +343,11 @@ async fn replay_lifecycle_operation(
                 None
             };
             Ok(ModuleLifecycleToggleResult {
+                module_slug: request.module_slug.clone(),
                 state,
                 override_enabled,
                 operation_id: Some(operation.id),
+                settings,
             })
         }
         ModuleOperationStatus::Failed => {

@@ -8,13 +8,15 @@ use crate::model::MachineTranslationEstimate;
 use crate::model::{
     Actor, ActorKind, ApplyResult, Assignment, Cancellation, Glossary, GlossaryBinding,
     GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossarySummary, GlossaryTermPolicy,
-    GlossaryVariant, InterchangeDocument, InterchangeField, InterchangeItem, InventoryResult, Job,
-    JobItem, JobProgress, MachineCancellation, MachineOperationStatus, MachineProposal,
-    MachineTranslationAttempt, MachineTranslationDiagnostic, MachineTranslationUsage, MemoryEntry,
-    MemoryMatchEvidence, MemoryMatchKind, MemoryMutation, MemoryRetentionPolicy, MemorySuggestion,
-    Proposal, ProposalOrigin, ProposalValue, ProviderProgress, QaIssue, RequiredProviderProgress,
-    Retry, ReviewerQueueItem, ReviewerWorkload, TranslationPolicy, TranslationResourceIdentity,
-    TranslationTarget,
+    GlossaryVariant, InterchangeArtifact, InterchangeArtifactContent,
+    InterchangeArtifactItemOutcome, InterchangeConflictReport, InterchangeDocument,
+    InterchangeField, InterchangeItem, InventoryResult, Job, JobItem, JobProgress,
+    MachineCancellation, MachineOperationStatus, MachineProposal, MachineTranslationAttempt,
+    MachineTranslationDiagnostic, MachineTranslationUsage, MemoryEntry, MemoryMatchEvidence,
+    MemoryMatchKind, MemoryMutation, MemoryRetentionPolicy, MemorySuggestion, Proposal,
+    ProposalOrigin, ProposalValue, ProviderProgress, QaIssue, RequiredProviderProgress, Retry,
+    ReviewerQueueItem, ReviewerWorkload, TranslationPolicy, TranslationResourceIdentity,
+    TranslationTarget, WorkflowNote,
 };
 use crate::model::{TranslationAdminOperation, TranslationAdminResponse};
 
@@ -85,6 +87,7 @@ async fn execute_with_runtime(
     let tenant_locale_policies = runtime
         .shared_get::<Arc<dyn TenantLocalePolicyPort>>()
         .unwrap_or_else(|| Arc::new(TenantService::new(database.clone())));
+    let storage = runtime.shared_get::<rustok_storage::StorageRuntime>();
     let mut context = port_context(auth, request, operation.idempotency_key())?;
     if matches!(
         &operation,
@@ -116,6 +119,7 @@ async fn execute_with_runtime(
         tenant_locale_policies,
         event_bus,
         machine_port,
+        storage,
     )
     .await
 }
@@ -161,19 +165,24 @@ async fn dispatch(
     tenant_locale_policies: std::sync::Arc<dyn rustok_tenant::TenantLocalePolicyPort>,
     event_bus: rustok_outbox::TransactionalEventBus,
     machine_port: Option<std::sync::Arc<dyn rustok_translation::MachineTranslationPort>>,
+    storage: Option<rustok_storage::StorageRuntime>,
 ) -> Result<TranslationAdminResponse, ServerFnError> {
     use rustok_translation::{
         AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
-        CancelMachineOperationInput, CreateGlossaryInput, CreateJobInput,
-        ExportTranslationJobInput, GenerateMachineProposalInput, ImportTranslationItemInput,
-        MemoryListInput, MemoryLookupInput, ProposalValue, PurgeMemoryEntryInput,
-        RecoverApplyInput, RecoverMachineOperationInput, ReplaceGlossaryTermsInput,
-        ReplaceRequiredTargetLocalesInput, RetryItemInput, ReviewerQueueInput,
-        ReviewerWorkloadInput, SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput,
-        SubmitProposalInput, TombstoneMemoryEntryInput, TranslationGlossaryService,
-        TranslationInventoryService, TranslationMachineControlService, TranslationMachineService,
-        TranslationMemoryService, TranslationPolicyService, TranslationProgressService,
-        TranslationWorkflowService, UnassignItemInput, UpdateGlossaryInput,
+        CancelMachineOperationInput, CreateGlossaryInput, CreateInterchangeExportArtifactInput,
+        CreateJobInput, CreateWorkflowNoteInput, ExportTranslationJobInput,
+        GenerateMachineProposalInput, ImportTranslationItemInput, ListInterchangeArtifactsInput,
+        ListWorkflowNotesInput, MemoryListInput, MemoryLookupInput,
+        ProcessInterchangeImportArtifactInput, ProposalValue, PurgeMemoryEntryInput,
+        ReadInterchangeArtifactInput, RecoverApplyInput, RecoverMachineOperationInput,
+        ReplaceGlossaryTermsInput, ReplaceRequiredTargetLocalesInput, ResolveWorkflowNoteInput,
+        RetryItemInput, ReviewerQueueInput, ReviewerWorkloadInput, SaveProposalInput,
+        SetGlossaryActiveInput, SetMemoryRetentionInput, StoreInterchangeImportArtifactInput,
+        SubmitProposalInput, TombstoneMemoryEntryInput, TranslationExchangeService,
+        TranslationGlossaryService, TranslationInventoryService, TranslationMachineControlService,
+        TranslationMachineService, TranslationMemoryService, TranslationPolicyService,
+        TranslationProgressService, TranslationWorkflowService, UnassignItemInput,
+        UpdateGlossaryInput,
     };
 
     let policy = || TranslationPolicyService::new(database.clone(), tenant_locale_policies.clone());
@@ -197,6 +206,21 @@ async fn dispatch(
         )
     };
     let interchange = || workflow().interchange_service();
+    let exchange = || {
+        storage
+            .clone()
+            .map(|storage| {
+                TranslationExchangeService::new(
+                    database.clone(),
+                    providers.clone(),
+                    tenant_locale_policies.clone(),
+                    event_bus.clone(),
+                    storage,
+                )
+            })
+            .ok_or_else(|| ServerFnError::new("Translation interchange storage is unavailable"))
+    };
+    let collaboration = || workflow().collaboration_service();
     let machine = || {
         machine_port
             .as_ref()
@@ -361,6 +385,30 @@ async fn dispatch(
                     .collect(),
             )
         }
+        TranslationAdminOperation::ListWorkflowNotes {
+            job_id,
+            item_id,
+            include_resolved,
+            limit,
+        } => TranslationAdminResponse::WorkflowNotes(
+            collaboration()
+                .list_workflow_notes(
+                    context,
+                    ListWorkflowNotesInput {
+                        job_id: parse_uuid(&job_id, "job_id")?,
+                        item_id: item_id
+                            .map(|value| parse_uuid(&value, "item_id"))
+                            .transpose()?,
+                        include_resolved,
+                        limit,
+                    },
+                )
+                .await
+                .map_err(public_error)?
+                .into_iter()
+                .map(map_workflow_note)
+                .collect(),
+        ),
         TranslationAdminOperation::ExportJob { job_id, max_items } => {
             TranslationAdminResponse::InterchangeDocument(map_interchange_document(
                 interchange()
@@ -369,6 +417,41 @@ async fn dispatch(
                         ExportTranslationJobInput {
                             job_id: parse_uuid(&job_id, "job_id")?,
                             max_items,
+                        },
+                    )
+                    .await
+                    .map_err(public_error)?,
+            ))
+        }
+        TranslationAdminOperation::ListInterchangeArtifacts {
+            job_id,
+            include_expired,
+            limit,
+        } => TranslationAdminResponse::InterchangeArtifacts(
+            exchange()?
+                .list_artifacts(
+                    context,
+                    ListInterchangeArtifactsInput {
+                        job_id: job_id
+                            .map(|value| parse_uuid(&value, "job_id"))
+                            .transpose()?,
+                        include_expired,
+                        limit,
+                    },
+                )
+                .await
+                .map_err(public_error)?
+                .into_iter()
+                .map(map_interchange_artifact)
+                .collect(),
+        ),
+        TranslationAdminOperation::ReadInterchangeArtifact { artifact_id } => {
+            TranslationAdminResponse::InterchangeArtifactContent(map_interchange_artifact_content(
+                exchange()?
+                    .read_artifact(
+                        context,
+                        ReadInterchangeArtifactInput {
+                            artifact_id: parse_uuid(&artifact_id, "interchange_artifact_id")?,
                         },
                     )
                     .await
@@ -583,6 +666,92 @@ async fn dispatch(
                 .await
                 .map_err(public_error)?,
         )),
+        TranslationAdminOperation::CreateWorkflowNote {
+            job_id,
+            item_id,
+            body,
+            ..
+        } => TranslationAdminResponse::WorkflowNote(map_workflow_note(
+            collaboration()
+                .create_workflow_note(
+                    context,
+                    CreateWorkflowNoteInput {
+                        job_id: parse_uuid(&job_id, "job_id")?,
+                        item_id: item_id
+                            .map(|value| parse_uuid(&value, "item_id"))
+                            .transpose()?,
+                        body,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::ResolveWorkflowNote {
+            note_id,
+            expected_revision,
+            ..
+        } => TranslationAdminResponse::WorkflowNote(map_workflow_note(
+            collaboration()
+                .resolve_workflow_note(
+                    context,
+                    ResolveWorkflowNoteInput {
+                        note_id: parse_uuid(&note_id, "workflow_note_id")?,
+                        expected_revision,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::CreateInterchangeExportArtifact {
+            job_id,
+            max_items,
+            expires_in_seconds,
+            ..
+        } => TranslationAdminResponse::InterchangeArtifact(map_interchange_artifact(
+            exchange()?
+                .create_export_artifact(
+                    context,
+                    CreateInterchangeExportArtifactInput {
+                        job_id: parse_uuid(&job_id, "job_id")?,
+                        max_items,
+                        expires_in_seconds,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::StoreInterchangeImportArtifact {
+            job_id,
+            document_json,
+            expires_in_seconds,
+            ..
+        } => TranslationAdminResponse::InterchangeArtifact(map_interchange_artifact(
+            exchange()?
+                .store_import_artifact(
+                    context,
+                    StoreInterchangeImportArtifactInput {
+                        job_id: parse_uuid(&job_id, "job_id")?,
+                        document: rustok_translation::parse_artifact_document(&document_json)
+                            .map_err(public_error)?,
+                        expires_in_seconds,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::ProcessInterchangeImportArtifact { artifact_id, .. } => {
+            TranslationAdminResponse::InterchangeArtifact(map_interchange_artifact(
+                exchange()?
+                    .process_import_artifact(
+                        context,
+                        ProcessInterchangeImportArtifactInput {
+                            artifact_id: parse_uuid(&artifact_id, "interchange_artifact_id")?,
+                        },
+                    )
+                    .await
+                    .map_err(public_error)?,
+            ))
+        }
         TranslationAdminOperation::AddItem {
             job_id, identity, ..
         } => TranslationAdminResponse::Item(map_item(
@@ -1437,6 +1606,7 @@ fn map_interchange_document(
                         key: field.key.to_string(),
                         source_value: field.source_value,
                         exact_target_value: field.exact_target_value,
+                        proposed_value: field.proposed_value,
                         source_hash: field.source_hash,
                         required: field.required,
                         max_characters: field.max_characters,
@@ -1490,6 +1660,64 @@ fn map_reviewer_workload(value: rustok_translation::ReviewerWorkloadRecord) -> R
         rebase_required_items: value.rebase_required_items,
         blocked_items: value.blocked_items,
         source_characters: value.source_characters,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_interchange_artifact(
+    value: rustok_translation::TranslationInterchangeArtifactRecord,
+) -> InterchangeArtifact {
+    InterchangeArtifact {
+        id: value.id.to_string(),
+        job_id: value.job_id.to_string(),
+        direction: value.direction.as_str().to_string(),
+        status: value.status.as_str().to_string(),
+        content_length: value.content_length,
+        checksum_sha256: value.checksum_sha256,
+        expires_at: value.expires_at.to_rfc3339(),
+        processed_at: value.processed_at.map(|value| value.to_rfc3339()),
+        report: value.report.map(|report| InterchangeConflictReport {
+            total_items: report.total_items,
+            accepted_items: report.accepted_items,
+            conflict_items: report.conflict_items,
+            rejected_items: report.rejected_items,
+            outcomes: report
+                .outcomes
+                .into_iter()
+                .map(|outcome| InterchangeArtifactItemOutcome {
+                    item_id: outcome.item_id.to_string(),
+                    status: outcome.status,
+                })
+                .collect(),
+        }),
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_interchange_artifact_content(
+    value: rustok_translation::TranslationInterchangeArtifactContent,
+) -> InterchangeArtifactContent {
+    InterchangeArtifactContent {
+        artifact: map_interchange_artifact(value.artifact),
+        document: map_interchange_document(value.document),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_workflow_note(value: rustok_translation::WorkflowNoteRecord) -> WorkflowNote {
+    WorkflowNote {
+        id: value.id.to_string(),
+        job_id: value.job_id.to_string(),
+        item_id: value.item_id.map(|item_id| item_id.to_string()),
+        body: value.body,
+        author: map_actor(value.author),
+        revision: value.revision,
+        resolved_at: value.resolved_at.map(|timestamp| timestamp.to_rfc3339()),
+        resolved_by: value.resolved_by.map(map_actor),
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
     }
 }
 
@@ -1730,6 +1958,7 @@ mod tests {
         PortError, RequestContext, Resource, TenantContext, TenantContextExtension, TenantLocale,
     };
     use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
+    use rustok_storage::{LocalStorageConfig, StorageRuntime};
     use rustok_tenant::{
         ReplaceTenantLocalePolicyRequest, TenantLocalePolicyEntry, TenantLocalePolicyPort,
         TenantLocalePolicyProjection,
@@ -1761,6 +1990,7 @@ mod tests {
         QueryFilter, Statement,
     };
     use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use tempfile::TempDir;
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
@@ -2242,6 +2472,35 @@ mod tests {
             auth,
             tenant,
             request,
+        )
+    }
+
+    async fn native_interchange_artifact_fixture() -> (
+        HostRuntimeContext,
+        Uuid,
+        Uuid,
+        AuthContext,
+        TenantContext,
+        RequestContext,
+        TempDir,
+    ) {
+        let (runtime, first_tenant_id, second_tenant_id, auth, tenant, request) =
+            native_fixture().await;
+        let storage_directory = tempfile::tempdir().expect("create artifact storage directory");
+        let storage = StorageRuntime::local(&LocalStorageConfig {
+            base_dir: storage_directory.path().display().to_string(),
+            base_url: "/private".to_string(),
+            fsync: false,
+        })
+        .expect("create artifact storage runtime");
+        (
+            runtime.with_shared_value(storage),
+            first_tenant_id,
+            second_tenant_id,
+            auth,
+            tenant,
+            request,
+            storage_directory,
         )
     }
 
@@ -2970,6 +3229,83 @@ mod tests {
         };
         assert_eq!(initial_progress.total_items, 1);
         assert_eq!(initial_progress.missing_items, 1);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::CreateWorkflowNote {
+                job_id: job.id.clone(),
+                item_id: Some(item.id.clone()),
+                body: "Private translator context".to_string(),
+                idempotency_key: "native-workflow-note-create".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::WorkflowNote(note) = response else {
+            panic!("expected workflow note response");
+        };
+        assert_eq!(note.body, "Private translator context");
+        assert_eq!(note.item_id.as_deref(), Some(item.id.as_str()));
+        assert!(note.resolved_at.is_none());
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ListWorkflowNotes {
+                job_id: job.id.clone(),
+                item_id: Some(item.id.clone()),
+                include_resolved: false,
+                limit: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::WorkflowNotes(notes) = response else {
+            panic!("expected workflow notes response");
+        };
+        assert_eq!(notes, vec![note.clone()]);
+
+        let response = execute_http_ok(
+            &runtime,
+            &reviewer,
+            &tenant,
+            TranslationAdminOperation::ResolveWorkflowNote {
+                note_id: note.id.clone(),
+                expected_revision: note.revision,
+                idempotency_key: "native-workflow-note-resolve".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::WorkflowNote(resolved_note) = response else {
+            panic!("expected resolved workflow note response");
+        };
+        assert_eq!(resolved_note.revision, note.revision + 1);
+        assert!(resolved_note.resolved_at.is_some());
+        assert_eq!(
+            resolved_note
+                .resolved_by
+                .as_ref()
+                .map(|actor| actor.id.as_str()),
+            Some(reviewer.user_id.to_string().as_str())
+        );
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ListWorkflowNotes {
+                job_id: job.id.clone(),
+                item_id: Some(item.id.clone()),
+                include_resolved: false,
+                limit: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::WorkflowNotes(open_notes) = response else {
+            panic!("expected workflow notes response");
+        };
+        assert!(open_notes.is_empty());
 
         let response = execute_http_ok(
             &runtime,
@@ -3724,6 +4060,125 @@ mod tests {
             TranslationAdminOperation::ExportJob {
                 job_id: job.id,
                 max_items: 10,
+            },
+        )
+        .await;
+        assert!(
+            isolated.contains("TRANSLATION_RESOURCE_NOT_FOUND"),
+            "{isolated}"
+        );
+    }
+
+    #[tokio::test]
+    async fn native_interchange_artifacts_execute_authenticated_http_parity() {
+        let (runtime, _, second_tenant_id, auth, tenant, _, _storage_directory) =
+            native_interchange_artifact_fixture().await;
+        let (job, item) = create_http_job_item(&runtime, &auth, &tenant, "native-artifact").await;
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::CreateInterchangeExportArtifact {
+                job_id: job.id.clone(),
+                max_items: 10,
+                expires_in_seconds: 86_400,
+                idempotency_key: "native-artifact-export".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::InterchangeArtifact(exported) = response else {
+            panic!("expected export artifact response");
+        };
+        assert_eq!(exported.direction, "export");
+        assert_eq!(exported.status, "ready");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ListInterchangeArtifacts {
+                job_id: Some(job.id.clone()),
+                include_expired: false,
+                limit: 10,
+            },
+        )
+        .await;
+        let TranslationAdminResponse::InterchangeArtifacts(artifacts) = response else {
+            panic!("expected interchange artifacts response");
+        };
+        assert_eq!(artifacts, vec![exported.clone()]);
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ReadInterchangeArtifact {
+                artifact_id: exported.id.clone(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::InterchangeArtifactContent(mut export_content) = response
+        else {
+            panic!("expected interchange artifact content response");
+        };
+        assert_eq!(export_content.artifact.id, exported.id);
+        assert_eq!(export_content.document.items.len(), 1);
+        assert_eq!(export_content.document.items[0].item_id, item.id);
+        export_content.document.items[0].fields[0].proposed_value = Some("Held".to_string());
+        let import_document = serde_json::to_string(&export_content.document)
+            .expect("serialize import artifact document");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::StoreInterchangeImportArtifact {
+                job_id: job.id.clone(),
+                document_json: import_document,
+                expires_in_seconds: 86_400,
+                idempotency_key: "native-artifact-store".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::InterchangeArtifact(imported) = response else {
+            panic!("expected import artifact response");
+        };
+        assert_eq!(imported.direction, "import");
+        assert_eq!(imported.status, "ready");
+
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::ProcessInterchangeImportArtifact {
+                artifact_id: imported.id.clone(),
+                idempotency_key: "native-artifact-process".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::InterchangeArtifact(processed) = response else {
+            panic!("expected processed import artifact response");
+        };
+        assert_eq!(processed.status, "completed");
+        let report = processed
+            .report
+            .expect("expected aggregate conflict report");
+        assert_eq!(report.total_items, 1);
+        assert_eq!(report.accepted_items, 1);
+        assert_eq!(report.conflict_items, 0);
+        assert_eq!(report.rejected_items, 0);
+        assert_eq!(report.outcomes[0].item_id, item.id);
+        assert_eq!(report.outcomes[0].status, "imported");
+
+        let second_auth = auth_context(second_tenant_id, Uuid::new_v4());
+        let second_tenant = tenant_context(second_tenant_id);
+        let isolated = execute_http_error(
+            &runtime,
+            &second_auth,
+            &second_tenant,
+            TranslationAdminOperation::ReadInterchangeArtifact {
+                artifact_id: imported.id,
             },
         )
         .await;

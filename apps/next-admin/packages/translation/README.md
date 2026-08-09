@@ -7,9 +7,10 @@ admin host.
 
 ## Responsibilities
 
-- Render policy, versioned glossary, Translation Memory, bounded interchange,
-  target, inventory, progress, reviewed workflow, and reviewer workload
-  operations.
+- Render policy, versioned glossary, Translation Memory, bounded direct
+  interchange, private object-storage interchange artifacts, target, inventory,
+  progress, reviewed workflow, and reviewer workload operations, including
+  private job/item workflow notes.
 - Use the host-provided GraphQL executor, tenant identity, authentication, and
   `next-intl` locale.
 - Keep the selected workbench tab, glossary, and memory entry in the typed
@@ -21,13 +22,18 @@ admin host.
 
 ## Interactions
 
-The package executes the same 41 module-owned operations as
+The package executes the same 49 module-owned operations as
 `rustok-translation-admin`, including exact/contextual memory lookup and
-revision-guarded retention, tombstone, purge, immutable job export, and atomic
-item import through canonical QA, plus machine-translation estimate, generation,
+revision-guarded retention, tombstone, purge, immutable job export, atomic
+item import through canonical QA, and private artifact create/list/read/store/
+process with checksum-verified, expiring object storage, exclusive
+import-processing leases, and aggregate conflict reports, plus machine-translation estimate, generation,
 status, cancellation, and recovery controls, revision-guarded
 assignment/unassignment, bounded reviewer queue and workload reads, blocked-item
-retry, job cancellation, and owner-apply recovery. It never reads owner tables
+retry, job cancellation, owner-apply recovery, and private workflow-note
+list/create/resolve. Notes remain inside Translation's tenant-scoped workflow
+store and never enter memory, machine requests, owner application, or event
+bodies. It never reads owner tables
 and never performs cross-protocol mutation fallback. `apps/next-admin`
 contributes only the route, GraphQL executor injection, and shell composition.
 

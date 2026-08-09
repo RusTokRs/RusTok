@@ -217,7 +217,6 @@ impl TranslationMachineService {
             serde_json::from_value(item.source_snapshot.clone())?;
         let mut request = self
             .build_request(
-                context.clone(),
                 tenant_id,
                 &item,
                 &snapshot,
@@ -247,14 +246,7 @@ impl TranslationMachineService {
         validate_operation_replay(&operation, &context, &command_hash)?;
         if !created && operation.machine_request_digest != machine_request_digest {
             request = self
-                .build_request(
-                    context.clone(),
-                    tenant_id,
-                    &item,
-                    &snapshot,
-                    &input,
-                    Some(&operation),
-                )
+                .build_request(tenant_id, &item, &snapshot, &input, Some(&operation))
                 .await?;
             request.validate(&context)?;
             validate_provider_compatibility(&request, self.machine_port.descriptor())?;
@@ -355,7 +347,7 @@ impl TranslationMachineService {
         let snapshot: TranslationResourceSnapshot =
             serde_json::from_value(item.source_snapshot.clone())?;
         let request = self
-            .build_request(context.clone(), tenant_id, &item, &snapshot, &input, None)
+            .build_request(tenant_id, &item, &snapshot, &input, None)
             .await?;
         request.validate(&context)?;
         validate_provider_compatibility(&request, self.machine_port.descriptor())?;
@@ -515,14 +507,7 @@ impl TranslationMachineService {
         let snapshot: TranslationResourceSnapshot =
             serde_json::from_value(item.source_snapshot.clone())?;
         let request = self
-            .build_request(
-                context.clone(),
-                tenant_id,
-                &item,
-                &snapshot,
-                input,
-                Some(operation),
-            )
+            .build_request(tenant_id, &item, &snapshot, input, Some(operation))
             .await?;
         request.validate(&context)?;
         validate_provider_compatibility(&request, self.machine_port.descriptor())?;
@@ -534,7 +519,6 @@ impl TranslationMachineService {
 
     async fn build_request(
         &self,
-        context: PortContext,
         tenant_id: Uuid,
         item: &job_item::Model,
         snapshot: &TranslationResourceSnapshot,
@@ -577,7 +561,7 @@ impl TranslationMachineService {
         } else {
             lookup_memory_suggestions(
                 &self.memory,
-                context,
+                tenant_id,
                 snapshot,
                 &units,
                 input.minimum_memory_similarity_basis_points,
@@ -626,7 +610,7 @@ impl TranslationMachineService {
 
 async fn lookup_memory_suggestions(
     memory: &TranslationMemoryService,
-    context: PortContext,
+    tenant_id: Uuid,
     snapshot: &TranslationResourceSnapshot,
     units: &[MachineTranslationUnit],
     minimum_similarity_basis_points: u16,
@@ -634,8 +618,8 @@ async fn lookup_memory_suggestions(
     let mut memory_suggestions = Vec::new();
     for unit in units {
         let suggestions = memory
-            .lookup(
-                context.clone(),
+            .lookup_for_machine(
+                tenant_id,
                 MemoryLookupInput {
                     source_locale: snapshot.source_locale.clone(),
                     target_locale: snapshot.target_locale.clone(),
@@ -2356,10 +2340,15 @@ mod tests {
             .unwrap()
             .item_id;
 
+        let context = recovery_context(tenant_id, actor_id);
+        assert!(
+            !context
+                .claims
+                .contains(&Permission::new(Resource::TranslationMemory, Action::Read).to_string())
+        );
         let estimate = service
             .estimate_proposal(
-                recovery_context(tenant_id, actor_id)
-                    .with_idempotency_key("estimate-machine-translation"),
+                context.with_idempotency_key("estimate-machine-translation"),
                 recovery_proposal(item_id),
             )
             .await
@@ -2630,7 +2619,6 @@ mod tests {
 
     async fn prepare_saving_recovery(
         service: &TranslationMachineService,
-        context: &PortContext,
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> RecoverMachineOperationInput {
@@ -2642,14 +2630,7 @@ mod tests {
             .await
             .unwrap();
         let request = service
-            .build_request(
-                context.clone(),
-                tenant_id,
-                &item,
-                &snapshot(),
-                &proposal,
-                Some(&operation),
-            )
+            .build_request(tenant_id, &item, &snapshot(), &proposal, Some(&operation))
             .await
             .unwrap();
         let observed_updated_at = Utc::now().fixed_offset();
@@ -2869,7 +2850,7 @@ mod tests {
             });
             let service = recovery_service(database.clone(), machine_port);
             let context = recovery_context(tenant_id, actor_id);
-            let input = prepare_saving_recovery(&service, &context, tenant_id, operation_id).await;
+            let input = prepare_saving_recovery(&service, tenant_id, operation_id).await;
             let expected_proposal_id = if proposal_was_saved {
                 let operation = find_operation(&database, tenant_id, operation_id)
                     .await
@@ -3045,14 +3026,7 @@ mod tests {
             .await
             .unwrap();
         let request = service
-            .build_request(
-                context.clone(),
-                tenant_id,
-                &item,
-                &snapshot(),
-                &proposal,
-                Some(&operation),
-            )
+            .build_request(tenant_id, &item, &snapshot(), &proposal, Some(&operation))
             .await
             .unwrap();
         let observed_updated_at = Utc::now().fixed_offset();

@@ -2,18 +2,24 @@ use async_graphql::{Context, Object, Result};
 use rustok_api::Action;
 use uuid::Uuid;
 
-use crate::{MemoryListInput, MemoryLookupInput, ReviewerQueueInput, ReviewerWorkloadInput};
+use crate::{
+    ListInterchangeArtifactsInput, ListWorkflowNotesInput, MemoryListInput, MemoryLookupInput,
+    ReadInterchangeArtifactInput, ReviewerQueueInput, ReviewerWorkloadInput,
+};
 
 use super::{
     context::{read_port_context, require_translation_permission, runtime, translation_error},
     types::{
         ExportTranslationJobInput, LookupTranslationMemoryInput, MachineTranslationOperationStatus,
-        TranslationGlossary, TranslationGlossarySummary, TranslationInterchangeDocument,
+        ReadTranslationInterchangeArtifactInput, TranslationGlossary, TranslationGlossarySummary,
+        TranslationInterchangeArtifact, TranslationInterchangeArtifactContent,
+        TranslationInterchangeArtifactsInput, TranslationInterchangeDocument,
         TranslationJobProgress, TranslationMemoryEntry, TranslationMemorySuggestion,
         TranslationPolicy, TranslationProviderProgress, TranslationRequiredProviderProgress,
         TranslationReviewerQueueInput, TranslationReviewerQueueItem, TranslationReviewerWorkload,
-        TranslationReviewerWorkloadInput, TranslationTargetDescriptor, parse_field_key,
-        parse_locale, parse_owner_slug, parse_resource_kind,
+        TranslationReviewerWorkloadInput, TranslationTargetDescriptor, TranslationWorkflowNote,
+        TranslationWorkflowNotesInput, parse_field_key, parse_locale, parse_owner_slug,
+        parse_resource_kind,
     },
 };
 
@@ -208,6 +214,29 @@ impl TranslationQuery {
             .map_err(translation_error)
     }
 
+    async fn translation_workflow_notes(
+        &self,
+        ctx: &Context<'_>,
+        input: TranslationWorkflowNotesInput,
+    ) -> Result<Vec<TranslationWorkflowNote>> {
+        let context = read_port_context(ctx, "workflow-notes")?;
+        runtime(ctx)?
+            .workflow_service()
+            .collaboration_service()
+            .list_workflow_notes(
+                context,
+                ListWorkflowNotesInput {
+                    job_id: input.job_id,
+                    item_id: input.item_id,
+                    include_resolved: input.include_resolved,
+                    limit: input.limit,
+                },
+            )
+            .await
+            .map(|records| records.into_iter().map(Into::into).collect())
+            .map_err(translation_error)
+    }
+
     async fn export_translation_job(
         &self,
         ctx: &Context<'_>,
@@ -222,6 +251,48 @@ impl TranslationQuery {
                 crate::ExportTranslationJobInput {
                     job_id: input.job_id,
                     max_items: input.max_items,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn translation_interchange_artifacts(
+        &self,
+        ctx: &Context<'_>,
+        input: TranslationInterchangeArtifactsInput,
+    ) -> Result<Vec<TranslationInterchangeArtifact>> {
+        let context = read_port_context(ctx, "interchange-artifacts")?;
+        runtime(ctx)?
+            .exchange_service()
+            .map_err(translation_error)?
+            .list_artifacts(
+                context,
+                ListInterchangeArtifactsInput {
+                    job_id: input.job_id,
+                    include_expired: input.include_expired,
+                    limit: input.limit,
+                },
+            )
+            .await
+            .map(|records| records.into_iter().map(Into::into).collect())
+            .map_err(translation_error)
+    }
+
+    async fn translation_interchange_artifact(
+        &self,
+        ctx: &Context<'_>,
+        input: ReadTranslationInterchangeArtifactInput,
+    ) -> Result<TranslationInterchangeArtifactContent> {
+        let context = read_port_context(ctx, "interchange-artifact")?;
+        runtime(ctx)?
+            .exchange_service()
+            .map_err(translation_error)?
+            .read_artifact(
+                context,
+                ReadInterchangeArtifactInput {
+                    artifact_id: input.artifact_id,
                 },
             )
             .await

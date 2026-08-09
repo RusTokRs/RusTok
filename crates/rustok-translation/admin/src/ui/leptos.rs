@@ -11,9 +11,9 @@ use rustok_ui_core::UiRouteContext;
 use crate::core::{self, ProposalCommand, TranslationAdminTab, operation_receipt_view_model};
 use crate::i18n::t;
 use crate::model::{
-    ActorKind, Glossary, GlossarySummary, MemoryEntry, MemorySuggestion, ReviewerQueueItem,
-    ReviewerWorkload, TranslationAdminOperation, TranslationAdminResponse,
-    TranslationAdminTransportContext, TranslationPolicy, TranslationTarget,
+    ActorKind, Glossary, GlossarySummary, InterchangeArtifact, MemoryEntry, MemorySuggestion,
+    ReviewerQueueItem, ReviewerWorkload, TranslationAdminOperation, TranslationAdminResponse,
+    TranslationAdminTransportContext, TranslationPolicy, TranslationTarget, WorkflowNote,
 };
 use crate::transport;
 
@@ -476,11 +476,28 @@ fn JobsTab(
     let (max_export_items, set_max_export_items) = signal("200".to_string());
     let (export_document, set_export_document) = signal(String::new());
     let (import_document, set_import_document) = signal(String::new());
+    let (interchange_artifacts, set_interchange_artifacts) =
+        signal(Vec::<InterchangeArtifact>::new());
+    let (interchange_artifact_id, set_interchange_artifact_id) = signal(String::new());
+    let (interchange_artifact_document, set_interchange_artifact_document) = signal(String::new());
+    let (interchange_artifact_expiry, set_interchange_artifact_expiry) =
+        signal("86400".to_string());
+    let (interchange_artifact_include_expired, set_interchange_artifact_include_expired) =
+        signal(false);
     let (busy, set_busy) = signal(false);
     let (outcome, set_outcome) = signal(OperationOutcome::None);
     let (create_key, set_create_key) = signal(core::new_idempotency_key("create-job"));
     let (rebuild_key, set_rebuild_key) = signal(core::new_idempotency_key("rebuild-job-progress"));
     let (import_key, set_import_key) = signal(core::new_idempotency_key("import-item"));
+    let (create_interchange_artifact_key, set_create_interchange_artifact_key) = signal(
+        core::new_idempotency_key("create-interchange-export-artifact"),
+    );
+    let (store_interchange_artifact_key, set_store_interchange_artifact_key) = signal(
+        core::new_idempotency_key("store-interchange-import-artifact"),
+    );
+    let (process_interchange_artifact_key, set_process_interchange_artifact_key) = signal(
+        core::new_idempotency_key("process-interchange-import-artifact"),
+    );
 
     let create_title = t(
         locale.as_deref(),
@@ -677,6 +694,86 @@ fn JobsTab(
         "translation.action.importItem",
         "Import item",
     );
+    let interchange_artifacts_title = t(
+        locale.as_deref(),
+        "translation.jobs.interchangeArtifacts",
+        "Expiring interchange artifacts",
+    );
+    let interchange_artifacts_description = t(
+        locale.as_deref(),
+        "translation.jobs.interchangeArtifactsDescription",
+        "Store bounded interchange documents in private object storage, then inspect or process their aggregate conflict report.",
+    );
+    let interchange_artifacts_empty_label = t(
+        locale.as_deref(),
+        "translation.jobs.interchangeArtifactsEmpty",
+        "No interchange artifacts have been loaded.",
+    );
+    let interchange_artifact_id_label = t(
+        locale.as_deref(),
+        "translation.field.interchangeArtifactId",
+        "Artifact ID",
+    );
+    let interchange_artifact_expiry_label = t(
+        locale.as_deref(),
+        "translation.field.interchangeArtifactExpiry",
+        "Artifact expiry (seconds)",
+    );
+    let interchange_artifact_document_label = t(
+        locale.as_deref(),
+        "translation.field.interchangeArtifactDocument",
+        "Artifact document JSON",
+    );
+    let include_expired_label = t(
+        locale.as_deref(),
+        "translation.field.includeExpired",
+        "Include expired",
+    );
+    let direction_label = t(
+        locale.as_deref(),
+        "translation.field.interchangeDirection",
+        "Direction",
+    );
+    let expires_at_label = t(
+        locale.as_deref(),
+        "translation.field.expiresAt",
+        "Expires at",
+    );
+    let accepted_items_label = t(
+        locale.as_deref(),
+        "translation.field.acceptedItems",
+        "Accepted items",
+    );
+    let conflict_items_label = t(
+        locale.as_deref(),
+        "translation.field.conflictItems",
+        "Conflict items",
+    );
+    let create_interchange_artifact_label = t(
+        locale.as_deref(),
+        "translation.action.createInterchangeExportArtifact",
+        "Create export artifact",
+    );
+    let list_interchange_artifacts_label = t(
+        locale.as_deref(),
+        "translation.action.listInterchangeArtifacts",
+        "Load artifacts",
+    );
+    let read_interchange_artifact_label = t(
+        locale.as_deref(),
+        "translation.action.readInterchangeArtifact",
+        "Read artifact",
+    );
+    let store_interchange_artifact_label = t(
+        locale.as_deref(),
+        "translation.action.storeInterchangeImportArtifact",
+        "Store import artifact",
+    );
+    let process_interchange_artifact_label = t(
+        locale.as_deref(),
+        "translation.action.processInterchangeImportArtifact",
+        "Process import artifact",
+    );
 
     let create_action = {
         let locale = locale.clone();
@@ -804,6 +901,143 @@ fn JobsTab(
             );
         }
     };
+    let create_interchange_artifact_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::create_interchange_export_artifact_operation(
+                    &job_id.get_untracked(),
+                    &max_export_items.get_untracked(),
+                    &interchange_artifact_expiry.get_untracked(),
+                    &create_interchange_artifact_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::InterchangeArtifact(artifact) = response {
+                        set_interchange_artifact_id.set(artifact.id.clone());
+                        set_interchange_artifacts.update(|artifacts| {
+                            artifacts.retain(|current| current.id != artifact.id);
+                            artifacts.push(artifact);
+                            artifacts.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+                        });
+                    }
+                    set_create_interchange_artifact_key.set(core::new_idempotency_key(
+                        "create-interchange-export-artifact",
+                    ));
+                }),
+            );
+        }
+    };
+    let list_interchange_artifacts_action = {
+        let locale = locale.clone();
+        move || {
+            let current_job_id = job_id.get_untracked();
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::list_interchange_artifacts_operation(
+                    core::ListInterchangeArtifactsOperationInput {
+                        job_id: (!current_job_id.trim().is_empty())
+                            .then_some(current_job_id.as_str()),
+                        include_expired: interchange_artifact_include_expired.get_untracked(),
+                        limit: "50",
+                    },
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::InterchangeArtifacts(artifacts) = response {
+                        set_interchange_artifacts.set(artifacts);
+                    }
+                }),
+            );
+        }
+    };
+    let read_interchange_artifact_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::read_interchange_artifact_operation(&interchange_artifact_id.get_untracked()),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::InterchangeArtifactContent(content) = response
+                    {
+                        set_interchange_artifact_id.set(content.artifact.id.clone());
+                        match core::interchange_document_json(&content.document) {
+                            Ok(document) => set_interchange_artifact_document.set(document),
+                            Err(error) => set_outcome.set(Some(Err(error.to_string()))),
+                        }
+                        set_interchange_artifacts.update(|artifacts| {
+                            artifacts.retain(|current| current.id != content.artifact.id);
+                            artifacts.push(content.artifact);
+                            artifacts.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+                        });
+                    }
+                }),
+            );
+        }
+    };
+    let store_interchange_artifact_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::store_interchange_import_artifact_operation(
+                    &job_id.get_untracked(),
+                    &interchange_artifact_document.get_untracked(),
+                    &interchange_artifact_expiry.get_untracked(),
+                    &store_interchange_artifact_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::InterchangeArtifact(artifact) = response {
+                        set_interchange_artifact_id.set(artifact.id.clone());
+                        set_interchange_artifacts.update(|artifacts| {
+                            artifacts.retain(|current| current.id != artifact.id);
+                            artifacts.push(artifact);
+                            artifacts.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+                        });
+                    }
+                    set_store_interchange_artifact_key.set(core::new_idempotency_key(
+                        "store-interchange-import-artifact",
+                    ));
+                }),
+            );
+        }
+    };
+    let process_interchange_artifact_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::process_interchange_import_artifact_operation(
+                    &interchange_artifact_id.get_untracked(),
+                    &process_interchange_artifact_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::InterchangeArtifact(artifact) = response {
+                        set_interchange_artifact_id.set(artifact.id.clone());
+                        set_interchange_artifacts.update(|artifacts| {
+                            artifacts.retain(|current| current.id != artifact.id);
+                            artifacts.push(artifact);
+                            artifacts.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+                        });
+                    }
+                    set_process_interchange_artifact_key.set(core::new_idempotency_key(
+                        "process-interchange-import-artifact",
+                    ));
+                }),
+            );
+        }
+    };
+    let interchange_artifact_id_input_label = interchange_artifact_id_label.clone();
+    let interchange_artifact_status_label = status_label.clone();
 
     view! {
         <div class="grid gap-6 xl:grid-cols-2">
@@ -1029,6 +1263,91 @@ fn JobsTab(
                             <Button on_click=Box::new(import_action)>{import_label}</Button>
                         </div>
                     </div>
+                </CardContent>
+            </Card>
+
+            <Card class="xl:col-span-2">
+                <CardHeader>
+                    <CardTitle>{interchange_artifacts_title}</CardTitle>
+                    <CardDescription>{interchange_artifacts_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-5">
+                    <div class="grid gap-4 lg:grid-cols-3">
+                        <div class="space-y-2">
+                            <Label required=true r#for="interchange_artifact_expiry">{interchange_artifact_expiry_label}</Label>
+                            <Input value=interchange_artifact_expiry set_value=set_interchange_artifact_expiry id="interchange_artifact_expiry" name="interchange_artifact_expiry" />
+                        </div>
+                        <div class="space-y-2">
+                            <Label r#for="interchange_artifact_id">{interchange_artifact_id_input_label}</Label>
+                            <Input value=interchange_artifact_id set_value=set_interchange_artifact_id id="interchange_artifact_id" name="interchange_artifact_id" />
+                        </div>
+                        <label class="flex items-center gap-2 pt-8 text-sm text-foreground">
+                            <Checkbox checked=interchange_artifact_include_expired set_checked=set_interchange_artifact_include_expired name="interchange_artifact_include_expired" />
+                            {include_expired_label}
+                        </label>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button on_click=Box::new(create_interchange_artifact_action)>{create_interchange_artifact_label}</Button>
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(list_interchange_artifacts_action)>{list_interchange_artifacts_label}</Button>
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(read_interchange_artifact_action)>{read_interchange_artifact_label}</Button>
+                        <Button variant=ButtonVariant::Secondary on_click=Box::new(process_interchange_artifact_action)>{process_interchange_artifact_label}</Button>
+                    </div>
+                    <div class="space-y-2">
+                        <Label required=true r#for="interchange_artifact_document">{interchange_artifact_document_label}</Label>
+                        <Textarea value=interchange_artifact_document set_value=set_interchange_artifact_document id="interchange_artifact_document" name="interchange_artifact_document" rows=14 />
+                        <Button on_click=Box::new(store_interchange_artifact_action)>{store_interchange_artifact_label}</Button>
+                    </div>
+                    {move || {
+                        let artifacts = interchange_artifacts.get();
+                        if artifacts.is_empty() {
+                            view! {
+                                <p class="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                                    {interchange_artifacts_empty_label.clone()}
+                                </p>
+                            }
+                            .into_any()
+                        } else {
+                            let artifact_id_label = interchange_artifact_id_label.clone();
+                            let direction_label = direction_label.clone();
+                            let status_label = interchange_artifact_status_label.clone();
+                            let expires_at_label = expires_at_label.clone();
+                            let accepted_items_label = accepted_items_label.clone();
+                            let conflict_items_label = conflict_items_label.clone();
+                            view! {
+                                <div class="overflow-x-auto rounded-xl border border-border">
+                                    <table class="w-full text-sm" data-testid="translation-interchange-artifacts">
+                                        <thead class="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                            <tr>
+                                                <th class="px-3 py-2">{artifact_id_label}</th>
+                                                <th class="px-3 py-2">{direction_label}</th>
+                                                <th class="px-3 py-2">{status_label}</th>
+                                                <th class="px-3 py-2">{expires_at_label}</th>
+                                                <th class="px-3 py-2">{accepted_items_label}</th>
+                                                <th class="px-3 py-2">{conflict_items_label}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-border">
+                                            {artifacts.into_iter().map(|artifact| {
+                                                let accepted = artifact.report.as_ref().map(|report| report.accepted_items).unwrap_or_default();
+                                                let conflicts = artifact.report.as_ref().map(|report| report.conflict_items).unwrap_or_default();
+                                                view! {
+                                                    <tr>
+                                                        <td class="px-3 py-2 font-mono text-xs">{artifact.id}</td>
+                                                        <td class="px-3 py-2">{artifact.direction}</td>
+                                                        <td class="px-3 py-2">{artifact.status}</td>
+                                                        <td class="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">{artifact.expires_at}</td>
+                                                        <td class="px-3 py-2">{accepted}</td>
+                                                        <td class="px-3 py-2">{conflicts}</td>
+                                                    </tr>
+                                                }
+                                            }).collect_view()}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            .into_any()
+                        }
+                    }}
                 </CardContent>
             </Card>
 
@@ -2376,6 +2695,10 @@ fn WorkflowTab(
     let (apply_operation_id, set_apply_operation_id) = signal(String::new());
     let (expected_attempt_count, set_expected_attempt_count) = signal("1".to_string());
     let (recovery_reason, set_recovery_reason) = signal(String::new());
+    let (workflow_note_body, set_workflow_note_body) = signal(String::new());
+    let (workflow_note_limit, set_workflow_note_limit) = signal("50".to_string());
+    let (workflow_note_include_resolved, set_workflow_note_include_resolved) = signal(false);
+    let (workflow_notes, set_workflow_notes) = signal(Vec::<WorkflowNote>::new());
     let (busy, set_busy) = signal(false);
     let (outcome, set_outcome) = signal(OperationOutcome::None);
     let (add_key, set_add_key) = signal(core::new_idempotency_key("add-item"));
@@ -2397,6 +2720,10 @@ fn WorkflowTab(
     let (cancel_job_key, set_cancel_job_key) = signal(core::new_idempotency_key("cancel-job"));
     let (recover_apply_key, set_recover_apply_key) =
         signal(core::new_idempotency_key("recover-apply"));
+    let (create_workflow_note_key, set_create_workflow_note_key) =
+        signal(core::new_idempotency_key("create-workflow-note"));
+    let (resolve_workflow_note_key, set_resolve_workflow_note_key) =
+        signal(core::new_idempotency_key("resolve-workflow-note"));
 
     let admit_title = t(
         locale.as_deref(),
@@ -2468,8 +2795,19 @@ fn WorkflowTab(
         "translation.workflow.reviewDescription",
         "Each transition is explicit, idempotent, and never retries through another protocol.",
     );
+    let workflow_notes_title = t(
+        locale.as_deref(),
+        "translation.workflow.notes",
+        "Private workflow notes",
+    );
+    let workflow_notes_description = t(
+        locale.as_deref(),
+        "translation.workflow.notesDescription",
+        "Leave private job or item context for translators and reviewers; note bodies never enter memory, AI, owner data, or events.",
+    );
     let job_id_label = t(locale.as_deref(), "translation.field.jobId", "Job ID");
     let job_control_job_id_label = job_id_label.clone();
+    let workflow_note_job_id_label = job_id_label.clone();
     let resource_id_label = t(
         locale.as_deref(),
         "translation.field.resourceId",
@@ -2563,6 +2901,26 @@ fn WorkflowTab(
         "translation.field.proposalId",
         "Proposal ID",
     );
+    let workflow_note_body_label = t(
+        locale.as_deref(),
+        "translation.field.workflowNoteBody",
+        "Workflow note",
+    );
+    let workflow_note_item_label = t(
+        locale.as_deref(),
+        "translation.field.workflowNoteItemId",
+        "Item ID (optional)",
+    );
+    let workflow_note_limit_label = t(
+        locale.as_deref(),
+        "translation.field.workflowNoteLimit",
+        "Notes to load",
+    );
+    let workflow_note_include_resolved_label = t(
+        locale.as_deref(),
+        "translation.field.includeResolved",
+        "Include resolved",
+    );
     let add_label = t(locale.as_deref(), "translation.action.addItem", "Add item");
     let save_label = t(
         locale.as_deref(),
@@ -2633,6 +2991,32 @@ fn WorkflowTab(
         locale.as_deref(),
         "translation.action.recoverApply",
         "Recover owner apply",
+    );
+    let load_workflow_notes_label = t(
+        locale.as_deref(),
+        "translation.action.loadWorkflowNotes",
+        "Load notes",
+    );
+    let create_workflow_note_label = t(
+        locale.as_deref(),
+        "translation.action.createWorkflowNote",
+        "Add private note",
+    );
+    let resolve_workflow_note_label = t(
+        locale.as_deref(),
+        "translation.action.resolveWorkflowNote",
+        "Resolve note",
+    );
+    let workflow_notes_empty_label = t(
+        locale.as_deref(),
+        "translation.workflow.notesEmpty",
+        "No workflow notes have been loaded.",
+    );
+    let workflow_note_open_label = t(locale.as_deref(), "translation.workflow.noteOpen", "open");
+    let workflow_note_resolved_label = t(
+        locale.as_deref(),
+        "translation.workflow.noteResolved",
+        "resolved",
     );
 
     let add_action = {
@@ -3004,6 +3388,85 @@ fn WorkflowTab(
             );
         }
     };
+    let load_workflow_notes_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::list_workflow_notes_operation(core::WorkflowNotesOperationInput {
+                    job_id: &job_id.get_untracked(),
+                    item_id: &item_id.get_untracked(),
+                    include_resolved: workflow_note_include_resolved.get_untracked(),
+                    limit: &workflow_note_limit.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::WorkflowNotes(notes) = response {
+                        set_workflow_notes.set(notes);
+                    }
+                }),
+            );
+        }
+    };
+    let create_workflow_note_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::create_workflow_note_operation(core::CreateWorkflowNoteOperationInput {
+                    job_id: &job_id.get_untracked(),
+                    item_id: &item_id.get_untracked(),
+                    body: &workflow_note_body.get_untracked(),
+                    idempotency_key: &create_workflow_note_key.get_untracked(),
+                }),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_create_workflow_note_key
+                        .set(core::new_idempotency_key("create-workflow-note"));
+                    if let TranslationAdminResponse::WorkflowNote(note) = response {
+                        set_workflow_note_body.set(String::new());
+                        set_workflow_notes.update(|notes| {
+                            notes.retain(|existing| existing.id != note.id);
+                            notes.insert(0, note);
+                        });
+                    }
+                }),
+            );
+        }
+    };
+    let resolve_workflow_note_action = {
+        let locale = locale.clone();
+        Callback::new(move |(note_id, expected_revision): (String, i64)| {
+            let expected_revision = expected_revision.to_string();
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::resolve_workflow_note_operation(
+                    &note_id,
+                    &expected_revision,
+                    &resolve_workflow_note_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    set_resolve_workflow_note_key
+                        .set(core::new_idempotency_key("resolve-workflow-note"));
+                    if let TranslationAdminResponse::WorkflowNote(note) = response {
+                        set_workflow_notes.update(|notes| {
+                            if let Some(existing) =
+                                notes.iter_mut().find(|existing| existing.id == note.id)
+                            {
+                                *existing = note;
+                            } else {
+                                notes.insert(0, note);
+                            }
+                        });
+                    }
+                }),
+            );
+        })
+    };
 
     view! {
         <div class="space-y-6">
@@ -3015,7 +3478,7 @@ fn WorkflowTab(
                     </CardHeader>
                     <CardContent class="space-y-4">
                         <div class="grid gap-4 sm:grid-cols-2">
-                            <div class="space-y-2"><Label required=true r#for="job_id">{job_id_label}</Label><Input value=job_id set_value=set_job_id id="job_id" name="job_id" /></div>
+                            <div class="space-y-2"><Label required=true r#for="job_id">{job_id_label.clone()}</Label><Input value=job_id set_value=set_job_id id="job_id" name="job_id" /></div>
                             <div class="space-y-2"><Label required=true r#for="resource_id">{resource_id_label}</Label><Input value=resource_id set_value=set_resource_id id="resource_id" name="resource_id" /></div>
                             <div class="space-y-2"><Label required=true r#for="owner_slug">{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug id="owner_slug" name="owner_slug" /></div>
                             <div class="space-y-2"><Label required=true r#for="resource_kind">{kind_label}</Label><Input value=resource_kind set_value=set_resource_kind id="resource_kind" name="resource_kind" /></div>
@@ -3151,6 +3614,86 @@ fn WorkflowTab(
                     <Show when=move || busy.get()>
                         <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
                     </Show>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{workflow_notes_title}</CardTitle>
+                    <CardDescription>{workflow_notes_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="space-y-2"><Label required=true r#for="workflow_note_job_id">{workflow_note_job_id_label}</Label><Input value=job_id set_value=set_job_id id="workflow_note_job_id" name="workflow_note_job_id" /></div>
+                        <div class="space-y-2"><Label r#for="workflow_note_item_id">{workflow_note_item_label}</Label><Input value=item_id set_value=set_item_id id="workflow_note_item_id" name="workflow_note_item_id" /></div>
+                        <div class="space-y-2"><Label r#for="workflow_note_limit">{workflow_note_limit_label}</Label><Input value=workflow_note_limit set_value=set_workflow_note_limit id="workflow_note_limit" name="workflow_note_limit" /></div>
+                        <label class="flex items-end gap-2 pb-1 text-sm text-foreground"><Checkbox checked=workflow_note_include_resolved set_checked=set_workflow_note_include_resolved name="workflow_note_include_resolved" />{workflow_note_include_resolved_label}</label>
+                        <div class="space-y-2 sm:col-span-2"><Label required=true r#for="workflow_note_body">{workflow_note_body_label}</Label><Textarea value=workflow_note_body set_value=set_workflow_note_body id="workflow_note_body" name="workflow_note_body" rows=4 /></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(load_workflow_notes_action)>{load_workflow_notes_label}</Button>
+                        <Button on_click=Box::new(create_workflow_note_action)>{create_workflow_note_label}</Button>
+                    </div>
+                    {move || {
+                        let notes = workflow_notes.get();
+                        if notes.is_empty() {
+                            view! {
+                                <p class="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                                    {workflow_notes_empty_label.clone()}
+                                </p>
+                            }
+                            .into_any()
+                        } else {
+                            let resolve_action = resolve_workflow_note_action;
+                            let resolve_label = resolve_workflow_note_label.clone();
+                            let open_label = workflow_note_open_label.clone();
+                            let resolved_label = workflow_note_resolved_label.clone();
+                            notes
+                                .into_iter()
+                                .map(move |note| {
+                                    let note_id = note.id.clone();
+                                    let note_revision = note.revision;
+                                    let is_resolved = note.resolved_at.is_some();
+                                    let state = if is_resolved {
+                                        resolved_label.clone()
+                                    } else {
+                                        open_label.clone()
+                                    };
+                                    let scope_id = note
+                                        .item_id
+                                        .clone()
+                                        .unwrap_or_else(|| note.job_id.clone());
+                                    let author_kind = match note.author.kind {
+                                        ActorKind::User => "user",
+                                        ActorKind::Service => "service",
+                                    };
+                                    let author = format!("{author_kind}:{}", note.author.id);
+                                    let action = resolve_action;
+                                    let resolve_label = resolve_label.clone();
+                                    view! {
+                                        <article class="space-y-3 rounded-xl border border-border p-4">
+                                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <Badge variant=if is_resolved { BadgeVariant::Secondary } else { BadgeVariant::Outline }>{state}</Badge>
+                                                    <span class="font-mono text-xs text-muted-foreground">{scope_id}</span>
+                                                </div>
+                                                <span class="text-xs text-muted-foreground">{format!("{author} · {}", note.created_at)}</span>
+                                            </div>
+                                            <p class="whitespace-pre-wrap text-sm text-foreground">{note.body}</p>
+                                            {(!is_resolved).then(|| {
+                                                let note_id = note_id.clone();
+                                                let resolve_label = resolve_label.clone();
+                                                view! {
+                                                    <Button variant=ButtonVariant::Outline on_click=Box::new(move || action.run((note_id.clone(), note_revision)))>{resolve_label}</Button>
+                                                }
+                                            })}
+                                        </article>
+                                    }
+                                })
+                                .collect_view()
+                                .into_any()
+                        }
+                    }}
                 </CardContent>
             </Card>
             <OutcomePanel outcome locale=locale.clone() />

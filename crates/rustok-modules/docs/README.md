@@ -233,8 +233,9 @@ services; lifecycle dispatch still resolves the implementation only from the
 compiled registry. This release ledger does not deploy code or mutate the
 running composition; deployment, explicit rollback, and revocation remain
 separate owner operations.
-`ModuleControlPlane::static_distribution_release` also owns those lifecycle
-commands. Rollback is limited to the active release's direct predecessor and is
+`ModuleControlPlane::static_distribution_release` also owns the currently
+implemented lifecycle commands. Rollback is limited to the active release's
+direct predecessor and is
 accepted only when the distribution head still matches the active release. It
 revalidates the target admission, terminal build digest, complete composition,
 promotion review, and publication evidence before queuing a new immutable build
@@ -246,6 +247,16 @@ records actor/reason/policy, cancels pending rollback requests involving that
 release, and clears the head when the revoked release was active. Neither
 operation mutates a running process; deployment consumes the resulting owner
 events.
+
+The accepted
+[module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+supersedes that rebuild-on-rollback mechanism for production incident recovery.
+The target owner retains and revalidates the complete direct-predecessor role
+bundle before rollout, then redeploys those exact immutable server, worker,
+embedded Leptos, generated-registry, and browser-asset bytes through the normal
+desired/observed reconciler. Rebuild remains reproducibility evidence or a
+manual fallback. The current rebuild request is therefore an explicit cutover
+gap, not the completed automatic recovery path.
 
 `ModuleControlPlane::static_distribution_rollout` owns the next deployment
 boundary. A topology resolver returns one sorted, bounded node set with a
@@ -362,15 +373,30 @@ read a publish-request persistence model or recreate lifecycle policy.
 The external-prebuilt and platform-build staging responses reuse that same
 snapshot for request identity and status in both dry-run and committed paths;
 they do not query a server SeaORM publish-request model before or after the
-owner staging command.
+owner staging command. External-prebuilt staging carries an authenticated
+`modules.manage` fact and requires the staged actor to be the recorded
+quarantine approver. Platform-build staging carries the same host fact but the
+owner derives whether it is allowed from that privilege, the current durable
+owner binding, or the original requester before a binding exists.
 Creation and artifact-upload responses use the same exact owner status
-projection after their mutation. Artifact upload first asks the owner to
+projection after their mutation. Creation carries only authenticated
+principal/privilege facts; the owner checks its current binding before writing
+or replaying the request. Artifact upload first asks the owner to
 authorize and issue a digest-derived immutable slot; the host conditionally
 creates or rehashes the object at that slot and then asks the owner to attach
 the same metadata. The host cannot choose a storage key or delete a prior
 artifact inline. Exact retries reuse the attached content-addressed object;
 retention-aware owner policy, not an upload adapter, governs historical-object
 cleanup. The platform-authoring producer follows this identical slot contract.
+Release yanking is also an owner command: the owner locks the addressed
+release, derives permission from the authenticated `modules.manage` fact,
+durable owner binding, or release publisher, and returns only the request ID
+and resulting status needed by the HTTP response.
+Owner transfer is likewise owner-authorized: the host passes only the
+authenticated principal and privilege fact, while the owner locks the current
+binding and permits either `modules.manage` or that bound owner before writing
+the immutable audit fact. No server owner/release SeaORM model remains in the
+production path.
 Validation enqueue, manual validation-stage reporting, and every live decision
 (approve, reject, request changes, hold, resume) likewise return that exact
 owner status projection after their command. HTTP no longer reconstructs
@@ -398,9 +424,16 @@ owner status snapshot after authentication instead of preflighting a server
 request persistence model.
 Approve, reject, request-changes, hold, and resume previews follow the same
 rule; approval override text and pending-stage facts remain owner-derived.
-Owner-transfer adapters obtain the exact durable binding through the same owner
-service before and after a transfer. They no longer read the owner-binding
-table or return its persistence model from the server boundary.
+Owner-transfer adapters supply authenticated actor and privilege facts only.
+The same owner service locks the current binding, derives authorization, and
+returns the transition result; the server never reads the owner-binding table
+or returns its persistence model from that boundary.
+Lifecycle toggle, retry, compensation, and settings responses follow the same
+rule: the modules owner returns the exact module identity plus current operation
+or state facts, and the server maps them without a recovery-plan preflight or a
+post-command `tenant_modules` or `module_operations` model read. Inherited
+compensation availability is the owner's effective-policy decision rather than
+an adapter reconstruction.
 Detail reads attach `ModuleGovernanceLifecycleSnapshot`, whose owner service
 derives moderation policy, validation gates, events, and available governance
 actions from durable registry state. A missing catalog handle or unsupported

@@ -1,5 +1,7 @@
+mod collaboration;
 pub mod entities;
 mod error;
+mod exchange;
 mod glossary;
 #[cfg(feature = "graphql")]
 pub mod graphql;
@@ -11,6 +13,7 @@ mod machine;
 mod machine_service;
 mod memory;
 pub mod migrations;
+mod observability;
 mod policy;
 mod progress;
 mod public_error;
@@ -24,7 +27,22 @@ use rustok_api::{Action, Permission, Resource};
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub use collaboration::{
+    CreateWorkflowNoteInput, ListWorkflowNotesInput, MAX_WORKFLOW_NOTE_BODY_CHARACTERS,
+    MAX_WORKFLOW_NOTE_LIST_LIMIT, ResolveWorkflowNoteInput, TranslationCollaborationService,
+    WorkflowNoteRecord,
+};
 pub use error::{TranslationError, TranslationResult};
+pub use exchange::{
+    CreateInterchangeExportArtifactInput, DEFAULT_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS,
+    ListInterchangeArtifactsInput, MAX_INTERCHANGE_ARTIFACT_BYTES,
+    MAX_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS, MAX_INTERCHANGE_ARTIFACT_LIST_LIMIT,
+    MIN_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS, ProcessInterchangeImportArtifactInput,
+    ReadInterchangeArtifactInput, StoreInterchangeImportArtifactInput, TranslationExchangeService,
+    TranslationInterchangeArtifactContent, TranslationInterchangeArtifactRecord,
+    TranslationInterchangeArtifactStatus, TranslationInterchangeConflictReport,
+    TranslationInterchangeDirection, TranslationInterchangeItemOutcome, parse_artifact_document,
+};
 pub use glossary::{
     CreateGlossaryInput, GlossaryBinding, GlossaryConcept, GlossaryMatchKind, GlossaryRecord,
     GlossaryScope, GlossarySummaryRecord, GlossaryTermPolicy, GlossaryVariant,
@@ -145,11 +163,16 @@ impl RusToKModule for TranslationModule {
         _extensions: &mut rustok_core::ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
         #[cfg(feature = "runtime")]
-        _extensions
-            .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default)
-            .register(std::sync::Arc::new(
+        {
+            let registrations = _extensions
+                .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default);
+            registrations.register(std::sync::Arc::new(
                 scheduler::TranslationMemoryRetentionWorkRegistration,
             ));
+            registrations.register(std::sync::Arc::new(
+                scheduler::TranslationInterchangeArtifactExpiryWorkRegistration,
+            ));
+        }
         Ok(())
     }
 }

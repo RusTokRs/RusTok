@@ -21,6 +21,7 @@ use uuid::Uuid;
 use crate::{
     TranslationError, TranslationResult,
     entities::{machine_memory_binding, memory_entry, memory_receipt},
+    observability,
 };
 
 const MAX_LOOKUP_LIMIT: u16 = 50;
@@ -223,6 +224,22 @@ impl TranslationMemoryService {
         input: MemoryLookupInput,
     ) -> TranslationResult<Vec<MemorySuggestion>> {
         let tenant_id = authorize(&context, &[Action::Read], PortCallPolicy::read())?;
+        self.lookup_for_authorized_tenant(tenant_id, input).await
+    }
+
+    pub(crate) async fn lookup_for_machine(
+        &self,
+        tenant_id: Uuid,
+        input: MemoryLookupInput,
+    ) -> TranslationResult<Vec<MemorySuggestion>> {
+        self.lookup_for_authorized_tenant(tenant_id, input).await
+    }
+
+    async fn lookup_for_authorized_tenant(
+        &self,
+        tenant_id: Uuid,
+        input: MemoryLookupInput,
+    ) -> TranslationResult<Vec<MemorySuggestion>> {
         validate_lookup(&input)?;
         let normalized_source = normalize_segment(&input.source_text);
         let requested_context = context_fingerprint(
@@ -267,6 +284,7 @@ impl TranslationMemoryService {
                 .then_with(|| left.entry_id.cmp(&right.entry_id))
         });
         suggestions.truncate(usize::from(input.limit));
+        observability::record_memory_lookup(&suggestions);
         Ok(suggestions)
     }
 

@@ -9,7 +9,7 @@ use crate::graphql::types::{
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
-use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
+use crate::modules::ManifestError;
 #[cfg(test)]
 use crate::services::auth_lifecycle::AuthLifecycleError;
 use crate::services::build_event_hub::{
@@ -26,7 +26,7 @@ use crate::services::module_lifecycle::{
 };
 use crate::services::platform_composition::{
     PlatformCompositionBuildError, PlatformCompositionBuildService, PlatformCompositionError,
-    PlatformCompositionService,
+    PlatformCompositionModuleChange, PlatformCompositionModuleMutation,
 };
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -293,16 +293,11 @@ async fn ensure_modules_manage_permission(
     Ok((auth, tenant))
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn persist_manifest_and_request_build(
+async fn request_module_composition_build(
     runtime_ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     registry: &ModuleRegistry,
-    expected_revision: Option<i64>,
-    manifest: ModulesManifest,
-    manifest_diff: ManifestDiff,
-    requested_by: &str,
-    reason: String,
+    mutation: PlatformCompositionModuleMutation,
 ) -> Result<BuildJob> {
     let event_publisher = Arc::new(CompositeBuildEventPublisher::new(vec![
         Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
@@ -314,15 +309,11 @@ async fn persist_manifest_and_request_build(
         )),
     ]));
 
-    let result = PlatformCompositionBuildService::update_manifest_and_request_build(
+    let result = PlatformCompositionBuildService::apply_module_mutation_and_request_build(
         runtime_ctx.db(),
         event_publisher,
         registry,
-        expected_revision,
-        manifest,
-        manifest_diff,
-        requested_by.to_string(),
-        reason,
+        mutation,
     )
     .await
     .map_err(map_platform_composition_build_error)?;
@@ -571,23 +562,18 @@ impl RootMutation {
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let snapshot = PlatformCompositionService::active_snapshot(runtime_ctx.db())
-            .await
-            .map_err(map_platform_composition_error)?;
-        let mut manifest = snapshot.manifest.clone();
-        let manifest_diff =
-            ManifestManager::install_builtin_module(&mut manifest, &slug, Some(version))
-                .map_err(map_manifest_error)?;
-
-        persist_manifest_and_request_build(
+        request_module_composition_build(
             runtime_ctx,
             tenant.id,
             registry,
-            Some(expected_revision.unwrap_or(snapshot.revision)),
-            manifest,
-            manifest_diff,
-            &auth.user_id.to_string(),
-            format!("install module {slug}"),
+            PlatformCompositionModuleMutation {
+                expected_revision,
+                requested_by: auth.user_id.to_string(),
+                change: PlatformCompositionModuleChange::Install {
+                    module_slug: slug,
+                    version,
+                },
+            },
         )
         .await
     }
@@ -602,22 +588,15 @@ impl RootMutation {
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let snapshot = PlatformCompositionService::active_snapshot(runtime_ctx.db())
-            .await
-            .map_err(map_platform_composition_error)?;
-        let mut manifest = snapshot.manifest.clone();
-        let manifest_diff =
-            ManifestManager::uninstall_module(&mut manifest, &slug).map_err(map_manifest_error)?;
-
-        persist_manifest_and_request_build(
+        request_module_composition_build(
             runtime_ctx,
             tenant.id,
             registry,
-            Some(expected_revision.unwrap_or(snapshot.revision)),
-            manifest,
-            manifest_diff,
-            &auth.user_id.to_string(),
-            format!("uninstall module {slug}"),
+            PlatformCompositionModuleMutation {
+                expected_revision,
+                requested_by: auth.user_id.to_string(),
+                change: PlatformCompositionModuleChange::Uninstall { module_slug: slug },
+            },
         )
         .await
     }
@@ -633,22 +612,18 @@ impl RootMutation {
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let snapshot = PlatformCompositionService::active_snapshot(runtime_ctx.db())
-            .await
-            .map_err(map_platform_composition_error)?;
-        let mut manifest = snapshot.manifest.clone();
-        let manifest_diff = ManifestManager::upgrade_module(&mut manifest, &slug, version)
-            .map_err(map_manifest_error)?;
-
-        persist_manifest_and_request_build(
+        request_module_composition_build(
             runtime_ctx,
             tenant.id,
             registry,
-            Some(expected_revision.unwrap_or(snapshot.revision)),
-            manifest,
-            manifest_diff,
-            &auth.user_id.to_string(),
-            format!("upgrade module {slug}"),
+            PlatformCompositionModuleMutation {
+                expected_revision,
+                requested_by: auth.user_id.to_string(),
+                change: PlatformCompositionModuleChange::Upgrade {
+                    module_slug: slug,
+                    version,
+                },
+            },
         )
         .await
     }
@@ -729,28 +704,16 @@ impl RootMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let existing_plan =
-            ModuleLifecycleService::module_operation_recovery_plan(db, operation_id)
-                .await
-                .map_err(map_module_operation_recovery_error)?;
-        if existing_plan.tenant_id != tenant.id {
-            return Err(map_module_operation_recovery_error(
-                ModuleOperationRecoveryError::OperationNotFound,
-            ));
-        }
-
-        let operation = ModuleLifecycleService::retry_failed_post_hook_operation(
+        let plan = ModuleLifecycleService::retry_failed_post_hook_operation(
             db,
             registry,
+            tenant.id,
             operation_id,
             Some(auth.user_id.to_string()),
             idempotency_key,
         )
         .await
         .map_err(map_module_operation_recovery_error)?;
-        let plan = ModuleLifecycleService::module_operation_recovery_plan(db, operation.id)
-            .await
-            .map_err(map_module_operation_recovery_error)?;
 
         Ok(ModuleOperationRecoveryPlan::from(&plan))
     }
@@ -765,19 +728,10 @@ impl RootMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let existing_plan =
-            ModuleLifecycleService::module_operation_recovery_plan(db, operation_id)
-                .await
-                .map_err(map_module_operation_recovery_error)?;
-        if existing_plan.tenant_id != tenant.id {
-            return Err(map_module_operation_recovery_error(
-                ModuleOperationRecoveryError::OperationNotFound,
-            ));
-        }
-
         let module = ModuleLifecycleService::compensate_failed_operation(
             db,
             registry,
+            tenant.id,
             operation_id,
             Some(auth.user_id.to_string()),
             idempotency_key,

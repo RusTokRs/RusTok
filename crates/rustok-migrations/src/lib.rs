@@ -559,7 +559,7 @@ fn sort_migrations_by_dependencies(
 #[cfg(test)]
 mod tests {
     use super::{
-        APPEND_ONLY_MIGRATION_TAIL, MigrationDescriptor, Migrator, sort_migrations_by_dependencies,
+        sort_migrations_by_dependencies, MigrationDescriptor, Migrator, APPEND_ONLY_MIGRATION_TAIL,
     };
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;

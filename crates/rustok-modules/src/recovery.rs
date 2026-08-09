@@ -351,9 +351,7 @@ pub(crate) async fn read_tenant_override_enabled<C: ConnectionTrait>(
         DbBackend::Postgres => {
             "SELECT enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
         }
-        _ => {
-            "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
-        }
+        _ => "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
     };
     db.query_one(Statement::from_sql_and_values(
         backend,
@@ -515,10 +513,8 @@ mod tests {
 
     #[test]
     fn missing_override_state_is_distinct_from_inherited_predecessor() {
-        let legacy = ModuleOperationRecoveryPlan::from_snapshot(
-            snapshot(Some("post-hook: timeout")),
-            None,
-        );
+        let legacy =
+            ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")), None);
         let inherited = ModuleOperationRecoveryPlan::from_snapshot(
             snapshot(Some("post-hook: timeout")),
             Some(ModuleOperationOverrideState {

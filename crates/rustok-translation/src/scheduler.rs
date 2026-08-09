@@ -7,6 +7,7 @@ use rustok_api::{
     ModuleWorkSource, Permission, PortActor, PortContext, Resource,
 };
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistration, ModuleWorkScheduler};
+use rustok_storage::StorageRuntime;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     QueryTrait,
@@ -16,10 +17,13 @@ use uuid::Uuid;
 
 use crate::{
     PurgeMemoryEntryInput, TombstoneMemoryEntryInput, TranslationError, TranslationMemoryService,
-    entities::{machine_memory_binding, memory_entry},
+    entities::{exchange_job, machine_memory_binding, memory_entry},
+    exchange::{expire_interchange_artifact, next_expired_interchange_artifact},
 };
 
 pub const TRANSLATION_MEMORY_RETENTION_WORKER: &str = "translation_memory_retention";
+pub const TRANSLATION_INTERCHANGE_ARTIFACT_EXPIRY_WORKER: &str =
+    "translation_interchange_artifact_expiry";
 const PURGE_GRACE_HOURS: i64 = 24;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -251,12 +255,120 @@ impl ModuleWorkHandler for TranslationMemoryRetentionWorkAdapter {
     }
 }
 
+/// Removes expired private interchange artifacts even when their tenant has no
+/// subsequent Translation request. Metadata remains as content-free audit
+/// evidence after object deletion.
+#[derive(Clone)]
+pub struct TranslationInterchangeArtifactExpiryWorkAdapter {
+    database: DatabaseConnection,
+    storage: StorageRuntime,
+}
+
+impl TranslationInterchangeArtifactExpiryWorkAdapter {
+    pub fn new(database: DatabaseConnection, storage: StorageRuntime) -> Self {
+        Self { database, storage }
+    }
+
+    pub async fn register_with(
+        self,
+        scheduler: &ModuleWorkScheduler,
+    ) -> Result<(), ModuleWorkError> {
+        let adapter = Arc::new(self);
+        scheduler.register(adapter.clone(), adapter).await
+    }
+}
+
+pub(crate) struct TranslationInterchangeArtifactExpiryWorkRegistration;
+
+#[async_trait]
+impl ModuleWorkRegistration for TranslationInterchangeArtifactExpiryWorkRegistration {
+    async fn register(
+        &self,
+        host: &HostRuntimeContext,
+        scheduler: &ModuleWorkScheduler,
+    ) -> Result<(), ModuleWorkError> {
+        let Some(storage) = host.shared_get::<StorageRuntime>() else {
+            return Ok(());
+        };
+        TranslationInterchangeArtifactExpiryWorkAdapter::new(host.db_clone(), storage)
+            .register_with(scheduler)
+            .await
+    }
+}
+
+#[async_trait]
+impl ModuleWorkSource for TranslationInterchangeArtifactExpiryWorkAdapter {
+    async fn claim(&self, worker_slug: &str) -> Result<Option<ModuleWorkItem>, ModuleWorkError> {
+        if worker_slug != TRANSLATION_INTERCHANGE_ARTIFACT_EXPIRY_WORKER {
+            return Ok(None);
+        }
+        let candidate = next_expired_interchange_artifact(&self.database)
+            .await
+            .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
+        Ok(candidate.map(|artifact| ModuleWorkItem {
+            id: artifact.id,
+            tenant_id: artifact.tenant_id,
+            worker_slug: TRANSLATION_INTERCHANGE_ARTIFACT_EXPIRY_WORKER.to_string(),
+            lease_token: Uuid::new_v4().to_string(),
+            payload: serde_json::Value::Null,
+        }))
+    }
+
+    async fn complete(
+        &self,
+        _item: &ModuleWorkItem,
+        _outcome: ModuleWorkOutcome,
+    ) -> Result<(), ModuleWorkError> {
+        // The storage-deleted timestamp is durable completion evidence. A
+        // transient object-store failure leaves it unset and therefore
+        // eligible for a later scheduler pass.
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl ModuleWorkHandler for TranslationInterchangeArtifactExpiryWorkAdapter {
+    fn worker_slug(&self) -> &'static str {
+        TRANSLATION_INTERCHANGE_ARTIFACT_EXPIRY_WORKER
+    }
+
+    async fn execute(&self, item: ModuleWorkItem) -> Result<ModuleWorkOutcome, ModuleWorkError> {
+        if item.worker_slug != TRANSLATION_INTERCHANGE_ARTIFACT_EXPIRY_WORKER {
+            return Err(ModuleWorkError::Handler(
+                "wrong translation interchange artifact expiry worker slug".to_string(),
+            ));
+        }
+        let Some(artifact) = exchange_job::Entity::find_by_id(item.id)
+            .filter(exchange_job::Column::TenantId.eq(item.tenant_id))
+            .one(&self.database)
+            .await
+            .map_err(|error| ModuleWorkError::Source(error.to_string()))?
+        else {
+            return Ok(ModuleWorkOutcome::Completed);
+        };
+        if artifact.storage_deleted_at.is_some() || artifact.expires_at > Utc::now().fixed_offset()
+        {
+            return Ok(ModuleWorkOutcome::Completed);
+        }
+        expire_interchange_artifact(&self.database, &self.storage, &artifact)
+            .await
+            .map_err(|error| ModuleWorkError::Handler(error.to_string()))?;
+        Ok(ModuleWorkOutcome::Completed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
 
+    use bytes::Bytes;
     use chrono::{DateTime, FixedOffset};
+    use rustok_api::HostRuntimeContext;
     use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
+    use rustok_storage::{
+        LocalStorageConfig,
+        object_store::{ObjectStore, path::Path as ObjectPath},
+    };
     use sea_orm::{
         ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DbBackend, EntityTrait,
         PaginatorTrait, Set, Statement,
@@ -267,7 +379,7 @@ mod tests {
     use super::*;
     use crate::{
         TranslationModule,
-        entities::{machine_memory_binding, memory_entry, memory_receipt},
+        entities::{exchange_job, job, machine_memory_binding, memory_entry, memory_receipt},
         migrations,
     };
 
@@ -402,6 +514,85 @@ mod tests {
         scheduler.run_once().await.unwrap()
     }
 
+    async fn artifact_storage() -> (StorageRuntime, tempfile::TempDir) {
+        let directory = tempfile::tempdir().unwrap();
+        let storage = StorageRuntime::local(&LocalStorageConfig {
+            base_dir: directory.path().display().to_string(),
+            base_url: "/private".to_string(),
+            fsync: false,
+        })
+        .unwrap();
+        (storage, directory)
+    }
+
+    async fn insert_expired_interchange_artifact(
+        database: &DatabaseConnection,
+        tenant_id: Uuid,
+        storage: &StorageRuntime,
+    ) -> (Uuid, ObjectPath) {
+        let now = Utc::now().fixed_offset();
+        let job_id = Uuid::new_v4();
+        job::ActiveModel {
+            id: Set(job_id),
+            tenant_id: Set(tenant_id),
+            source_locale: Set("en".to_string()),
+            target_locale: Set("de".to_string()),
+            glossary_id: Set(None),
+            glossary_revision: Set(None),
+            status: Set("open".to_string()),
+            created_by_actor_kind: Set("system".to_string()),
+            created_by_actor_id: Set("scheduler-test".to_string()),
+            idempotency_key: Set(format!("job-{}", job_id.simple())),
+            request_hash: Set("a".repeat(64)),
+            revision: Set(0),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(database)
+        .await
+        .unwrap();
+
+        let artifact_id = Uuid::new_v4();
+        let object_path = ObjectPath::from(format!(
+            "translation/objects/scheduler-test/{artifact_id}.json"
+        ));
+        storage
+            .objects
+            .put(&object_path, Bytes::from_static(b"{}").into())
+            .await
+            .unwrap();
+        exchange_job::ActiveModel {
+            id: Set(artifact_id),
+            tenant_id: Set(tenant_id),
+            job_id: Set(job_id),
+            direction: Set("export".to_string()),
+            status: Set("ready".to_string()),
+            object_key: Set(object_path.to_string()),
+            content_length: Set(2),
+            checksum_sha256: Set("b".repeat(64)),
+            created_by_actor_kind: Set("system".to_string()),
+            created_by_actor_id: Set("scheduler-test".to_string()),
+            idempotency_key: Set(format!("artifact-{}", artifact_id.simple())),
+            request_hash: Set("c".repeat(64)),
+            processing_idempotency_key: Set(None),
+            processing_request_hash: Set(None),
+            processed_by_actor_kind: Set(None),
+            processed_by_actor_id: Set(None),
+            processing_lease_token: Set(None),
+            processing_lease_expires_at: Set(None),
+            processed_at: Set(None),
+            report: Set(serde_json::Value::Null),
+            expires_at: Set(now - Duration::minutes(1)),
+            storage_deleted_at: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(database)
+        .await
+        .unwrap();
+        (artifact_id, object_path)
+    }
+
     #[test]
     fn translation_module_publishes_retention_work_registration() {
         let mut extensions = ModuleRuntimeExtensions::default();
@@ -413,6 +604,105 @@ mod tests {
                 .get::<rustok_runtime::ModuleWorkRegistrations>()
                 .unwrap()
                 .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn scheduled_artifact_expiry_deletes_private_object_for_an_inactive_tenant() {
+        let (database, tenant_id) = fixture().await;
+        let (storage, _storage_directory) = artifact_storage().await;
+        let (artifact_id, object_path) =
+            insert_expired_interchange_artifact(&database, tenant_id, &storage).await;
+        let scheduler = ModuleWorkScheduler::new();
+        TranslationInterchangeArtifactExpiryWorkAdapter::new(database.clone(), storage.clone())
+            .register_with(&scheduler)
+            .await
+            .unwrap();
+
+        assert_eq!(scheduler.run_once().await.unwrap(), 1);
+        let artifact = exchange_job::Entity::find_by_id(artifact_id)
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(artifact.status, "expired");
+        assert!(artifact.storage_deleted_at.is_some());
+        assert!(storage.objects.head(&object_path).await.is_err());
+        assert_eq!(scheduler.run_once().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn duplicate_artifact_expiry_claims_converge_on_one_deleted_object() {
+        let (database, tenant_id) = fixture().await;
+        let (storage, _storage_directory) = artifact_storage().await;
+        let (artifact_id, object_path) =
+            insert_expired_interchange_artifact(&database, tenant_id, &storage).await;
+        let first =
+            TranslationInterchangeArtifactExpiryWorkAdapter::new(database.clone(), storage.clone());
+        let second =
+            TranslationInterchangeArtifactExpiryWorkAdapter::new(database.clone(), storage.clone());
+        let first_item = first
+            .claim(TRANSLATION_INTERCHANGE_ARTIFACT_EXPIRY_WORKER)
+            .await
+            .unwrap()
+            .unwrap();
+        let second_item = second
+            .claim(TRANSLATION_INTERCHANGE_ARTIFACT_EXPIRY_WORKER)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(first_item.id, artifact_id);
+        assert_eq!(second_item.id, artifact_id);
+
+        let (first_outcome, second_outcome) =
+            tokio::join!(first.execute(first_item), second.execute(second_item));
+        assert_eq!(first_outcome.unwrap(), ModuleWorkOutcome::Completed);
+        assert_eq!(second_outcome.unwrap(), ModuleWorkOutcome::Completed);
+        let artifact = exchange_job::Entity::find_by_id(artifact_id)
+            .one(&database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(artifact.status, "expired");
+        assert!(artifact.storage_deleted_at.is_some());
+        assert!(storage.objects.head(&object_path).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn expiry_registration_is_optional_without_storage_but_uses_the_host_handle_when_present()
+    {
+        let (database, tenant_id) = fixture().await;
+        let (storage, _storage_directory) = artifact_storage().await;
+        let (artifact_id, object_path) =
+            insert_expired_interchange_artifact(&database, tenant_id, &storage).await;
+        let scheduler_without_storage = ModuleWorkScheduler::new();
+        TranslationInterchangeArtifactExpiryWorkRegistration
+            .register(
+                &HostRuntimeContext::new(database.clone()),
+                &scheduler_without_storage,
+            )
+            .await
+            .unwrap();
+        assert_eq!(scheduler_without_storage.run_once().await.unwrap(), 0);
+
+        let scheduler = ModuleWorkScheduler::new();
+        TranslationInterchangeArtifactExpiryWorkRegistration
+            .register(
+                &HostRuntimeContext::new(database.clone()).with_shared_value(storage.clone()),
+                &scheduler,
+            )
+            .await
+            .unwrap();
+        assert_eq!(scheduler.run_once().await.unwrap(), 1);
+        assert!(storage.objects.head(&object_path).await.is_err());
+        assert!(
+            exchange_job::Entity::find_by_id(artifact_id)
+                .one(&database)
+                .await
+                .unwrap()
+                .unwrap()
+                .storage_deleted_at
+                .is_some()
         );
     }
 

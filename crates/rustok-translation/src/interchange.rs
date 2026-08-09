@@ -18,7 +18,7 @@ use crate::{
     entities::{job, job_item},
 };
 
-const INTERCHANGE_SCHEMA_VERSION: u16 = 1;
+pub const INTERCHANGE_SCHEMA_VERSION: u16 = 1;
 const MAX_EXPORT_ITEMS: u16 = 200;
 const MAX_FIELDS_PER_ITEM: usize = 200;
 const MAX_FIELD_VALUE_BYTES: usize = 32 * 1024;
@@ -41,6 +41,7 @@ pub struct ImportTranslationItemInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslationInterchangeDocument {
     pub schema_version: u16,
     pub job_id: Uuid,
@@ -50,8 +51,10 @@ pub struct TranslationInterchangeDocument {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslationInterchangeItem {
     pub item_id: Uuid,
+    #[serde(with = "interchange_identity")]
     pub identity: TranslationResourceIdentity,
     pub source_digest: String,
     pub source_revision: OpaqueRevision,
@@ -60,14 +63,76 @@ pub struct TranslationInterchangeItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslationInterchangeField {
     pub key: FieldKey,
     pub source_value: String,
     pub exact_target_value: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_value: Option<String>,
     pub source_hash: String,
     pub required: bool,
     pub max_characters: Option<u32>,
     pub protected_tokens: Vec<String>,
+}
+
+/// The artifact wire format is a camel-case public document even though the
+/// reusable target identity uses Rust field names in its own serialization.
+/// Keeping the conversion here prevents the target SPI's internal serde shape
+/// from leaking into the Translation interchange contract.
+mod interchange_identity {
+    use rustok_translation_targets::{
+        OwnerSlug, ResourceId, ResourceKind, TranslationResourceIdentity,
+    };
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WireIdentity {
+        owner_slug: OwnerSlug,
+        resource_kind: ResourceKind,
+        resource_id: ResourceId,
+        subresource_id: Option<ResourceId>,
+    }
+
+    impl From<&TranslationResourceIdentity> for WireIdentity {
+        fn from(value: &TranslationResourceIdentity) -> Self {
+            Self {
+                owner_slug: value.owner_slug.clone(),
+                resource_kind: value.resource_kind.clone(),
+                resource_id: value.resource_id.clone(),
+                subresource_id: value.subresource_id.clone(),
+            }
+        }
+    }
+
+    impl From<WireIdentity> for TranslationResourceIdentity {
+        fn from(value: WireIdentity) -> Self {
+            Self {
+                owner_slug: value.owner_slug,
+                resource_kind: value.resource_kind,
+                resource_id: value.resource_id,
+                subresource_id: value.subresource_id,
+            }
+        }
+    }
+
+    pub fn serialize<S>(
+        value: &TranslationResourceIdentity,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        WireIdentity::from(value).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<TranslationResourceIdentity, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        WireIdentity::deserialize(deserializer).map(Into::into)
+    }
 }
 
 pub struct TranslationInterchangeService {
@@ -140,6 +205,7 @@ impl TranslationInterchangeService {
                     key: field.descriptor.key.clone(),
                     source_value: field.source_value.clone(),
                     exact_target_value: field.exact_target_value.clone(),
+                    proposed_value: None,
                     source_hash: field.source_hash.clone(),
                     required: field.descriptor.required,
                     max_characters: field.descriptor.max_characters,

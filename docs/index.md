@@ -102,7 +102,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Module Release and Rollback Plan](./modules/module-release-rollback-plan.md) — immutable production release identity, safe update/rollback, and module data readiness.
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
-- [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 39-operation admin contract, guarded human workflow controls, and AI machine-translation workflow
+- [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 49-operation admin contract, guarded human workflow controls, private workflow collaboration, checksum-verified expiring interchange artifacts, fixed-cardinality content-free observability, and AI machine-translation workflow
 - [Machine-readable Translation Surface Registry](./modules/translation-surfaces.json)
 - [Page Builder FBA Registry](./crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
 - [Page Builder Wave Evidence Template](./crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)

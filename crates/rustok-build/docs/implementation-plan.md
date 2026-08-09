@@ -13,6 +13,24 @@ emits an explicit predecessor transition through `BuildRolledBack`. The owner
 event is the only source for event-bus, WebSocket, and GraphQL rollback facts;
 rollback no longer masquerades as `BuildCompleted`.
 
+## Planned Module Release Safety Cutover
+
+The accepted
+[module release safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+makes `rustok-modules` the sole operator-level owner of static release
+selection, predecessor eligibility, rollback, incident outcome, and
+desired-versus-observed rollout. `rustok-build` remains the executor and
+receipt owner for immutable role builds and publication; its receipts must bind
+every automated server/worker role and embedded Leptos/browser artifact in the
+requested distribution.
+
+The current public active-release head and `rollback_build` mutation are an
+explicit cutover gap. Once the `rustok-modules` replacement, outside-candidate
+controller, transports, and convergence evidence are complete, migrate every
+GraphQL/native/CLI caller and delete the duplicate release head, mutation,
+event/DTO surface, schema, tests, and current documentation in the same
+change. Do not dual-write or keep the direct build rollback as a fallback.
+
 ## Verification
 
 - `cargo check -p rustok-build`

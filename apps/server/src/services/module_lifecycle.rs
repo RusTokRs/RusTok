@@ -1,4 +1,4 @@
-use sea_orm::{DatabaseConnection, DbErr, EntityTrait};
+use sea_orm::{DatabaseConnection, DbErr};
 use thiserror::Error;
 
 use rustok_core::ModuleRegistry;
@@ -9,9 +9,6 @@ use rustok_modules::{
     module_operation_recovery_plan, normalize_module_settings,
 };
 
-use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
-use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
-use crate::models::_entities::{module_operations, tenant_modules};
 use crate::modules::{ManifestError, ManifestManager, map_module_settings_validation_error};
 use crate::services::platform_composition::PlatformCompositionService;
 
@@ -22,6 +19,7 @@ pub struct ModuleLifecycleStateSnapshot {
     pub module_slug: String,
     pub enabled: bool,
     pub settings: serde_json::Value,
+    pub operation_id: Option<uuid::Uuid>,
 }
 
 #[derive(Debug, Error)]
@@ -98,7 +96,7 @@ impl ModuleLifecycleService {
         tenant_id: uuid::Uuid,
         module_slug: &str,
         enabled: bool,
-    ) -> Result<tenant_modules::Model, ToggleModuleError> {
+    ) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
         Self::toggle_module_with_actor(db, registry, tenant_id, module_slug, enabled, None).await
     }
 
@@ -109,7 +107,7 @@ impl ModuleLifecycleService {
         module_slug: &str,
         enabled: bool,
         requested_by: Option<String>,
-    ) -> Result<tenant_modules::Model, ToggleModuleError> {
+    ) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
@@ -126,10 +124,12 @@ impl ModuleLifecycleService {
                 "explicit module toggle did not persist a tenant override row".to_string(),
             )
         })?;
-        Ok(TenantModulesEntity::find_by_id(state.id)
-            .one(db)
-            .await?
-            .ok_or_else(|| DbErr::RecordNotFound("tenant_modules.toggle_state".to_string()))?)
+        Ok(ModuleLifecycleStateSnapshot {
+            module_slug: module_slug.to_string(),
+            enabled: state.enabled,
+            settings: result.settings,
+            operation_id: result.operation_id,
+        })
     }
 
     pub async fn module_operation_recovery_plan(
@@ -155,10 +155,11 @@ impl ModuleLifecycleService {
     pub async fn retry_failed_post_hook_operation(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
         operation_id: uuid::Uuid,
         requested_by: Option<String>,
         idempotency_key: uuid::Uuid,
-    ) -> Result<module_operations::Model, ModuleOperationRecoveryError> {
+    ) -> Result<ModuleOperationRecoveryPlan, ModuleOperationRecoveryError> {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
@@ -167,25 +168,20 @@ impl ModuleLifecycleService {
         let retry_operation = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites)
-            .retry_post_hook(operation_id, requested_by, idempotency_key)
+            .retry_post_hook(tenant_id, operation_id, requested_by, idempotency_key)
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
-        ModuleOperationsEntity::find_by_id(retry_operation.id)
-            .one(db)
-            .await?
-            .ok_or(ModuleOperationRecoveryError::OperationNotFound)
+        Ok(retry_operation)
     }
 
     pub async fn compensate_failed_operation(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
         operation_id: uuid::Uuid,
         requested_by: Option<String>,
         idempotency_key: uuid::Uuid,
     ) -> Result<ModuleLifecycleStateSnapshot, ModuleOperationRecoveryError> {
-        let plan = module_operation_recovery_plan(db, operation_id)
-            .await
-            .map_err(map_module_recovery_error)?;
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
@@ -195,31 +191,23 @@ impl ModuleLifecycleService {
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites);
         let result = writer
-            .compensate_failed_operation(operation_id, requested_by, idempotency_key)
+            .compensate_failed_operation(tenant_id, operation_id, requested_by, idempotency_key)
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
+        let module_slug = result.module_slug;
         let policy = writer
-            .effective_policy(plan.tenant_id)
+            .effective_policy(tenant_id)
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
         let (enabled, settings) = match result.state {
-            Some(state) => {
-                let state = TenantModulesEntity::find_by_id(state.id)
-                    .one(db)
-                    .await?
-                    .ok_or_else(|| {
-                        ModuleOperationRecoveryError::Database(DbErr::RecordNotFound(
-                            "tenant_modules.compensation_state".to_string(),
-                        ))
-                    })?;
-                (state.enabled, state.settings)
-            }
-            None => (policy.contains(&plan.module_slug), serde_json::json!({})),
+            Some(state) => (state.enabled, result.settings),
+            None => (policy.contains(&module_slug), serde_json::json!({})),
         };
         Ok(ModuleLifecycleStateSnapshot {
-            module_slug: plan.module_slug,
+            module_slug,
             enabled,
             settings,
+            operation_id: result.operation_id,
         })
     }
 
@@ -229,7 +217,7 @@ impl ModuleLifecycleService {
         tenant_id: uuid::Uuid,
         module_slug: &str,
         settings: serde_json::Value,
-    ) -> Result<tenant_modules::Model, UpdateModuleSettingsError> {
+    ) -> Result<ModuleLifecycleStateSnapshot, UpdateModuleSettingsError> {
         if !settings.is_object() {
             return Err(UpdateModuleSettingsError::InvalidSettings);
         }
@@ -263,12 +251,12 @@ impl ModuleLifecycleService {
             .persist_static_normalized_settings(tenant_id, module_slug, settings)
             .await
             .map_err(map_lifecycle_writer_settings_error)?;
-        TenantModulesEntity::find_by_id(state.id)
-            .one(db)
-            .await?
-            .ok_or_else(|| {
-                DbErr::RecordNotFound("tenant_modules.settings_state".to_string()).into()
-            })
+        Ok(ModuleLifecycleStateSnapshot {
+            module_slug: state.module_slug,
+            enabled: state.enabled,
+            settings: state.settings,
+            operation_id: None,
+        })
     }
 }
 

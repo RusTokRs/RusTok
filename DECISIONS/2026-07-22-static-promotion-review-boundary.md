@@ -1,8 +1,13 @@
 # Static Promotion Review Boundary
 
-Status: Accepted
+Status: Accepted, amended on 2026-08-09
 
 Date: 2026-07-22
+
+The automatic rollback mechanism is amended by
+[Module release rollback safety](./2026-08-06-module-release-rollback-safety.md).
+All other promotion, build, verification, and trust-boundary decisions remain
+in force.
 
 ## Context
 
@@ -133,17 +138,21 @@ head, stores immutable admission/idempotency evidence, and writes its outbox
 event. Release activation records deployable identity; it cannot load native
 code or mutate the running composition.
 
-Rollback is rebuild-only. The owner accepts only the active release's direct,
-non-revoked predecessor and only while the distribution head still identifies
-the active release's build. It revalidates the target admission, terminal and
-composition digests, promotion reviews, and published build facts, then queues
-a new immutable build under distribution CAS. The old artifact cannot become
-active directly. Standard worker completion and verified release activation are
-required again, and the rebuilt artifact digest must reproduce the target. A
-superseding selection or failed/cancelled build cancels the pending request.
-Revocation is a separate authorized exact-replay command under
-release-state CAS. It preserves immutable evidence, clears an active release
-head, and cancels pending rollback requests involving the revoked release.
+Automatic rollback never compiles on the incident path. The canonical static
+release binds the complete immutable role bundle, including every automated
+server/worker role, embedded Leptos artifact, generated registry, and browser
+asset. Before candidate rollout, the owner must retain and rehash the candidate
+release's recorded direct-predecessor bundle and revalidate its admission,
+security, policy, data compatibility, topology, and deployment evidence. Missing bytes
+or evidence makes the transition ineligible for automatic mode.
+
+Rollback creates a new audited owner transition to that exact retained
+predecessor and converges it through the normal desired/observed rollout
+boundary. It neither edits old bytes nor queues a replacement build, and it is
+successful only when the predecessor role bundle is observed healthy. Rebuild
+remains reproducibility evidence or a separately authorized manual recovery
+fallback. Revocation or quarantine preempts a stale rollback decision and
+cancels any transition involving the affected release.
 
 ## Consequences
 
@@ -156,7 +165,8 @@ head, and cancels pending rollback requests involving the revoked release.
 - Removing a promotion from a future distribution requires another complete
   build intent; approval alone never changes runtime behavior.
 - Worker completion alone cannot activate native code. Verified release
-  activation, rebuild-only rollback, and revocation now exist, while deployment
-  remains a separate follow-up owner operation.
+  activation, retained-predecessor rollback, and revocation remain distinct
+  owner transitions, while deployment agents execute only the exact
+  desired/observed rollout contract.
 - The trusted native-distribution worker and the untrusted sandbox-artifact
   build worker are separate processes with different launchers and credentials.

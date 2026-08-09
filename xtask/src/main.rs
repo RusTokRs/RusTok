@@ -17,12 +17,12 @@ mod docs_registry_contracts;
 mod install_dev;
 mod manifest_io;
 mod manifest_validation;
-#[path = "../../crates/rustok-build/src/module_manifest_contribution.rs"]
-mod module_manifest_contribution;
 mod module_boundary_contracts;
 mod module_cli_args;
 mod module_commands;
 mod module_contracts;
+#[path = "../../crates/rustok-build/src/module_manifest_contribution.rs"]
+mod module_manifest_contribution;
 mod module_mutation_commands;
 mod module_operation_previews;
 mod module_permission_contracts;

@@ -154,6 +154,7 @@ fn require_reconciliation_permissions(auth: &AuthContext) -> Result<()> {
 fn map_status(
     status: ForumSearchProjectionReconciliationStatus,
 ) -> GqlForumSearchProjectionReconciliationStatus {
+    let clean = status.is_clean();
     GqlForumSearchProjectionReconciliationStatus {
         checkpoint_revision: status.checkpoint_revision.to_string(),
         checkpoint_event_id: status.checkpoint_event_id,
@@ -165,7 +166,7 @@ fn map_status(
             .non_terminal_inbox_count
             .min(i32::MAX as u64) as i32,
         drift_count: status.drifts.len().min(i32::MAX as usize) as i32,
-        clean: status.is_clean(),
+        clean,
         drifts: status.drifts.into_iter().map(map_drift).collect(),
     }
 }

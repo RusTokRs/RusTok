@@ -41,6 +41,7 @@ import type {
   Glossary,
   GlossaryConcept,
   GlossarySummary,
+  InterchangeArtifact,
   ImportItemInput,
   MemoryEntry,
   MemoryRetentionPolicy,
@@ -51,7 +52,8 @@ import type {
   TranslationOperation,
   TranslationPolicy,
   TranslationResponse,
-  TranslationTarget
+  TranslationTarget,
+  WorkflowNote
 } from './types';
 
 registerAdminModule({
@@ -116,9 +118,26 @@ export function TranslationAdminPage({
   const [reviewerWorkload, setReviewerWorkload] = React.useState<
     ReviewerWorkload[]
   >([]);
+  const [workflowNoteBody, setWorkflowNoteBody] = React.useState('');
+  const [workflowNoteLimit, setWorkflowNoteLimit] = React.useState('50');
+  const [workflowNoteIncludeResolved, setWorkflowNoteIncludeResolved] =
+    React.useState(false);
+  const [workflowNotes, setWorkflowNotes] = React.useState<WorkflowNote[]>([]);
   const [maxExportItems, setMaxExportItems] = React.useState('200');
   const [exportDocument, setExportDocument] = React.useState('');
   const [importDocument, setImportDocument] = React.useState('');
+  const [interchangeArtifacts, setInterchangeArtifacts] = React.useState<
+    InterchangeArtifact[]
+  >([]);
+  const [interchangeArtifactId, setInterchangeArtifactId] = React.useState('');
+  const [interchangeArtifactDocument, setInterchangeArtifactDocument] =
+    React.useState('');
+  const [interchangeArtifactExpiry, setInterchangeArtifactExpiry] =
+    React.useState('86400');
+  const [
+    interchangeArtifactIncludeExpired,
+    setInterchangeArtifactIncludeExpired
+  ] = React.useState(false);
   const [ownerSlug, setOwnerSlug] = React.useState('media');
   const [resourceKind, setResourceKind] = React.useState('asset');
   const [resourceId, setResourceId] = React.useState('');
@@ -278,6 +297,24 @@ export function TranslationAdminPage({
         if (response.kind === 'interchange_document') {
           setExportDocument(JSON.stringify(response.value, null, 2));
         }
+        if (response.kind === 'interchange_artifacts') {
+          setInterchangeArtifacts(response.value);
+        }
+        if (response.kind === 'interchange_artifact') {
+          setInterchangeArtifactId(response.value.id);
+          setInterchangeArtifacts((current) =>
+            upsertInterchangeArtifact(current, response.value)
+          );
+        }
+        if (response.kind === 'interchange_artifact_content') {
+          setInterchangeArtifactId(response.value.artifact.id);
+          setInterchangeArtifactDocument(
+            JSON.stringify(response.value.document, null, 2)
+          );
+          setInterchangeArtifacts((current) =>
+            upsertInterchangeArtifact(current, response.value.artifact)
+          );
+        }
         if (response.kind === 'job') {
           setJobId(response.value.id);
           setJobRevision(String(response.value.revision));
@@ -287,6 +324,18 @@ export function TranslationAdminPage({
         }
         if (response.kind === 'reviewer_workload') {
           setReviewerWorkload(response.value);
+        }
+        if (response.kind === 'workflow_notes') {
+          setWorkflowNotes(response.value);
+        }
+        if (response.kind === 'workflow_note') {
+          setWorkflowNoteBody('');
+          setWorkflowNotes((current) => {
+            const next = current.filter(
+              (note) => note.id !== response.value.id
+            );
+            return [response.value, ...next];
+          });
         }
         if (response.kind === 'item') {
           setJobId(response.value.jobId);
@@ -685,7 +734,10 @@ export function TranslationAdminPage({
                         setReviewerAssigneeKind(parseActorKind(value))
                       }
                     >
-                      <SelectTrigger id='translation-reviewer-kind' className='w-full'>
+                      <SelectTrigger
+                        id='translation-reviewer-kind'
+                        className='w-full'
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -754,18 +806,27 @@ export function TranslationAdminPage({
                 </div>
                 <div className='grid gap-5 xl:grid-cols-2'>
                   <div className='space-y-2'>
-                    <h3 className='text-sm font-medium'>{t('field.queueItems')}</h3>
+                    <h3 className='text-sm font-medium'>
+                      {t('field.queueItems')}
+                    </h3>
                     {reviewerQueue.length === 0 ? (
                       <EmptyState message={t('jobs.reviewersEmpty')} />
                     ) : (
                       <div className='overflow-x-auto rounded-xl border'>
-                        <table className='w-full text-sm' data-testid='translation-reviewer-queue'>
-                          <thead className='bg-muted/50 text-muted-foreground text-left text-xs uppercase tracking-wide'>
+                        <table
+                          className='w-full text-sm'
+                          data-testid='translation-reviewer-queue'
+                        >
+                          <thead className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
                             <tr>
                               <th className='px-3 py-2'>{t('field.itemId')}</th>
-                              <th className='px-3 py-2'>{t('field.reviewer')}</th>
+                              <th className='px-3 py-2'>
+                                {t('field.reviewer')}
+                              </th>
                               <th className='px-3 py-2'>{t('field.status')}</th>
-                              <th className='px-3 py-2'>{t('field.submittedAt')}</th>
+                              <th className='px-3 py-2'>
+                                {t('field.submittedAt')}
+                              </th>
                             </tr>
                           </thead>
                           <tbody className='divide-y'>
@@ -779,8 +840,10 @@ export function TranslationAdminPage({
                                     ? actorLabel(entry.item.assignee)
                                     : t('field.unassigned')}
                                 </td>
-                                <td className='px-3 py-2'>{entry.item.status}</td>
-                                <td className='text-muted-foreground whitespace-nowrap px-3 py-2 text-xs'>
+                                <td className='px-3 py-2'>
+                                  {entry.item.status}
+                                </td>
+                                <td className='text-muted-foreground px-3 py-2 text-xs whitespace-nowrap'>
                                   {entry.submittedAt}
                                 </td>
                               </tr>
@@ -798,16 +861,33 @@ export function TranslationAdminPage({
                       <EmptyState message={t('jobs.reviewersEmpty')} />
                     ) : (
                       <div className='overflow-x-auto rounded-xl border'>
-                        <table className='w-full text-sm' data-testid='translation-reviewer-workload'>
-                          <thead className='bg-muted/50 text-muted-foreground text-left text-xs uppercase tracking-wide'>
+                        <table
+                          className='w-full text-sm'
+                          data-testid='translation-reviewer-workload'
+                        >
+                          <thead className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
                             <tr>
-                              <th className='px-3 py-2'>{t('field.reviewer')}</th>
-                              <th className='px-3 py-2'>{t('field.openItems')}</th>
-                              <th className='px-3 py-2'>{t('field.inReviewItems')}</th>
-                              <th className='px-3 py-2'>{t('field.approvedItems')}</th>
-                              <th className='px-3 py-2'>{t('field.rebaseRequiredItems')}</th>
-                              <th className='px-3 py-2'>{t('field.blockedItems')}</th>
-                              <th className='px-3 py-2'>{t('field.sourceCharacters')}</th>
+                              <th className='px-3 py-2'>
+                                {t('field.reviewer')}
+                              </th>
+                              <th className='px-3 py-2'>
+                                {t('field.openItems')}
+                              </th>
+                              <th className='px-3 py-2'>
+                                {t('field.inReviewItems')}
+                              </th>
+                              <th className='px-3 py-2'>
+                                {t('field.approvedItems')}
+                              </th>
+                              <th className='px-3 py-2'>
+                                {t('field.rebaseRequiredItems')}
+                              </th>
+                              <th className='px-3 py-2'>
+                                {t('field.blockedItems')}
+                              </th>
+                              <th className='px-3 py-2'>
+                                {t('field.sourceCharacters')}
+                              </th>
                             </tr>
                           </thead>
                           <tbody className='divide-y'>
@@ -824,13 +904,21 @@ export function TranslationAdminPage({
                                     ? actorLabel(workload.assignee)
                                     : t('field.unassigned')}
                                 </td>
-                                <td className='px-3 py-2'>{workload.openItems}</td>
-                                <td className='px-3 py-2'>{workload.inReviewItems}</td>
-                                <td className='px-3 py-2'>{workload.approvedItems}</td>
+                                <td className='px-3 py-2'>
+                                  {workload.openItems}
+                                </td>
+                                <td className='px-3 py-2'>
+                                  {workload.inReviewItems}
+                                </td>
+                                <td className='px-3 py-2'>
+                                  {workload.approvedItems}
+                                </td>
                                 <td className='px-3 py-2'>
                                   {workload.rebaseRequiredItems}
                                 </td>
-                                <td className='px-3 py-2'>{workload.blockedItems}</td>
+                                <td className='px-3 py-2'>
+                                  {workload.blockedItems}
+                                </td>
                                 <td className='px-3 py-2'>
                                   {workload.sourceCharacters}
                                 </td>
@@ -922,6 +1010,213 @@ export function TranslationAdminPage({
                     {t('action.importItem')}
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+            <Card className='xl:col-span-2'>
+              <CardHeader>
+                <CardTitle>{t('jobs.interchangeArtifacts')}</CardTitle>
+                <CardDescription>
+                  {t('jobs.interchangeArtifactsDescription')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='space-y-6'>
+                <div className='grid gap-4 lg:grid-cols-3'>
+                  <TextInput
+                    id='translation-interchange-artifact-expiry'
+                    label={t('field.interchangeArtifactExpiry')}
+                    value={interchangeArtifactExpiry}
+                    onChange={setInterchangeArtifactExpiry}
+                  />
+                  <div className='space-y-2'>
+                    <Label htmlFor='translation-interchange-artifact-id'>
+                      {t('field.interchangeArtifactId')}
+                    </Label>
+                    <Input
+                      id='translation-interchange-artifact-id'
+                      value={interchangeArtifactId}
+                      onChange={(event) =>
+                        setInterchangeArtifactId(event.target.value)
+                      }
+                    />
+                  </div>
+                  <label className='flex items-center gap-2 pt-8 text-sm'>
+                    <Checkbox
+                      checked={interchangeArtifactIncludeExpired}
+                      onCheckedChange={(checked) =>
+                        setInterchangeArtifactIncludeExpired(checked === true)
+                      }
+                    />
+                    {t('field.includeExpired')}
+                  </label>
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () => ({
+                          kind: 'create_interchange_export_artifact',
+                          jobId: required(jobId, 'job_id'),
+                          maxItems: exportItemLimit(maxExportItems),
+                          expiresInSeconds: interchangeArtifactExpirySeconds(
+                            interchangeArtifactExpiry
+                          ),
+                          idempotencyKey: commandKey(
+                            'create-interchange-export-artifact'
+                          )
+                        }),
+                        'create-interchange-export-artifact'
+                      )
+                    }
+                  >
+                    {t('action.createInterchangeExportArtifact')}
+                  </Button>
+                  <Button
+                    variant='outline'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(() => ({
+                        kind: 'list_interchange_artifacts',
+                        jobId: optionalText(jobId) ?? null,
+                        includeExpired: interchangeArtifactIncludeExpired,
+                        limit: 50
+                      }))
+                    }
+                  >
+                    {t('action.listInterchangeArtifacts')}
+                  </Button>
+                  <Button
+                    variant='outline'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(() => ({
+                        kind: 'read_interchange_artifact',
+                        artifactId: required(
+                          interchangeArtifactId,
+                          'interchange_artifact_id'
+                        )
+                      }))
+                    }
+                  >
+                    {t('action.readInterchangeArtifact')}
+                  </Button>
+                  <Button
+                    variant='outline'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () => ({
+                          kind: 'process_interchange_import_artifact',
+                          artifactId: required(
+                            interchangeArtifactId,
+                            'interchange_artifact_id'
+                          ),
+                          idempotencyKey: commandKey(
+                            'process-interchange-import-artifact'
+                          )
+                        }),
+                        'process-interchange-import-artifact'
+                      )
+                    }
+                  >
+                    {t('action.processInterchangeImportArtifact')}
+                  </Button>
+                </div>
+                <div className='space-y-2'>
+                  <Label htmlFor='translation-interchange-artifact-document'>
+                    {t('field.interchangeArtifactDocument')}
+                  </Label>
+                  <Textarea
+                    id='translation-interchange-artifact-document'
+                    rows={14}
+                    value={interchangeArtifactDocument}
+                    onChange={(event) =>
+                      setInterchangeArtifactDocument(event.target.value)
+                    }
+                  />
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () => ({
+                          kind: 'store_interchange_import_artifact',
+                          jobId: required(jobId, 'job_id'),
+                          documentJson: required(
+                            interchangeArtifactDocument,
+                            'interchange_artifact_document',
+                            false
+                          ),
+                          expiresInSeconds: interchangeArtifactExpirySeconds(
+                            interchangeArtifactExpiry
+                          ),
+                          idempotencyKey: commandKey(
+                            'store-interchange-import-artifact'
+                          )
+                        }),
+                        'store-interchange-import-artifact'
+                      )
+                    }
+                  >
+                    {t('action.storeInterchangeImportArtifact')}
+                  </Button>
+                </div>
+                {interchangeArtifacts.length === 0 ? (
+                  <EmptyState message={t('jobs.interchangeArtifactsEmpty')} />
+                ) : (
+                  <div className='overflow-x-auto rounded-xl border'>
+                    <table
+                      className='w-full text-sm'
+                      data-testid='translation-interchange-artifacts'
+                    >
+                      <thead className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
+                        <tr>
+                          <th className='px-3 py-2'>
+                            {t('field.interchangeArtifactId')}
+                          </th>
+                          <th className='px-3 py-2'>
+                            {t('field.interchangeDirection')}
+                          </th>
+                          <th className='px-3 py-2'>{t('field.status')}</th>
+                          <th className='px-3 py-2'>{t('field.expiresAt')}</th>
+                          <th className='px-3 py-2'>{t('field.totalItems')}</th>
+                          <th className='px-3 py-2'>{t('field.actions')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className='divide-y'>
+                        {interchangeArtifacts.map((artifact) => (
+                          <tr key={artifact.id}>
+                            <td className='px-3 py-2 font-mono text-xs'>
+                              {artifact.id}
+                            </td>
+                            <td className='px-3 py-2'>{artifact.direction}</td>
+                            <td className='px-3 py-2'>
+                              <Badge variant='outline'>{artifact.status}</Badge>
+                            </td>
+                            <td className='px-3 py-2'>{artifact.expiresAt}</td>
+                            <td className='px-3 py-2'>
+                              {artifact.report?.totalItems ?? '—'}
+                            </td>
+                            <td className='px-3 py-2'>
+                              <Button
+                                size='sm'
+                                variant='ghost'
+                                disabled={pending}
+                                onClick={() =>
+                                  safeRun(() => ({
+                                    kind: 'read_interchange_artifact',
+                                    artifactId: artifact.id
+                                  }))
+                                }
+                              >
+                                {t('action.readInterchangeArtifact')}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -1333,6 +1628,153 @@ export function TranslationAdminPage({
         </TabsContent>
 
         <TabsContent value='workflow' className='space-y-6'>
+          <Card data-testid='translation-workflow-notes'>
+            <CardHeader>
+              <CardTitle>{t('workflow.notes')}</CardTitle>
+              <CardDescription>
+                {t('workflow.notesDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div className='grid gap-4 sm:grid-cols-2'>
+                <TextInput
+                  id='translation-workflow-note-job-id'
+                  label={t('field.jobId')}
+                  value={jobId}
+                  onChange={setJobId}
+                />
+                <TextInput
+                  id='translation-workflow-note-item-id'
+                  label={t('field.workflowNoteItemId')}
+                  value={itemId}
+                  onChange={setItemId}
+                />
+                <TextInput
+                  id='translation-workflow-note-limit'
+                  label={t('field.workflowNoteLimit')}
+                  value={workflowNoteLimit}
+                  onChange={setWorkflowNoteLimit}
+                />
+                <label className='flex items-center gap-2 pt-8 text-sm'>
+                  <Checkbox
+                    checked={workflowNoteIncludeResolved}
+                    onCheckedChange={(checked) =>
+                      setWorkflowNoteIncludeResolved(checked === true)
+                    }
+                  />
+                  {t('field.includeResolved')}
+                </label>
+                <div className='space-y-2 sm:col-span-2'>
+                  <Label htmlFor='translation-workflow-note-body'>
+                    {t('field.workflowNoteBody')}
+                  </Label>
+                  <Textarea
+                    id='translation-workflow-note-body'
+                    rows={4}
+                    value={workflowNoteBody}
+                    onChange={(event) =>
+                      setWorkflowNoteBody(event.target.value)
+                    }
+                  />
+                </div>
+              </div>
+              <div className='flex flex-wrap gap-2'>
+                <Button
+                  variant='outline'
+                  disabled={pending}
+                  onClick={() =>
+                    safeRun(() => ({
+                      kind: 'list_workflow_notes',
+                      jobId: required(jobId, 'job_id'),
+                      ...(optionalText(itemId)
+                        ? { itemId: optionalText(itemId) }
+                        : {}),
+                      includeResolved: workflowNoteIncludeResolved,
+                      limit: workflowNoteItemLimit(workflowNoteLimit)
+                    }))
+                  }
+                >
+                  {t('action.loadWorkflowNotes')}
+                </Button>
+                <Button
+                  disabled={pending}
+                  onClick={() =>
+                    safeRun(
+                      () => ({
+                        kind: 'create_workflow_note',
+                        jobId: required(jobId, 'job_id'),
+                        ...(optionalText(itemId)
+                          ? { itemId: optionalText(itemId) }
+                          : {}),
+                        body: workflowNoteBodyValue(workflowNoteBody),
+                        idempotencyKey: commandKey('create-workflow-note')
+                      }),
+                      'create-workflow-note'
+                    )
+                  }
+                >
+                  {t('action.createWorkflowNote')}
+                </Button>
+              </div>
+              {workflowNotes.length === 0 ? (
+                <EmptyState message={t('workflow.notesEmpty')} />
+              ) : (
+                <div className='space-y-3'>
+                  {workflowNotes.map((note) => {
+                    const isResolved = note.resolvedAt !== null;
+                    return (
+                      <article
+                        key={note.id}
+                        className='space-y-3 rounded-xl border p-4'
+                      >
+                        <div className='flex flex-wrap items-center justify-between gap-2'>
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <Badge
+                              variant={isResolved ? 'secondary' : 'outline'}
+                            >
+                              {isResolved
+                                ? t('workflow.noteResolved')
+                                : t('workflow.noteOpen')}
+                            </Badge>
+                            <span className='text-muted-foreground font-mono text-xs'>
+                              {note.itemId ?? note.jobId}
+                            </span>
+                          </div>
+                          <span className='text-muted-foreground text-xs'>
+                            {actorLabel(note.author)} · {note.createdAt}
+                          </span>
+                        </div>
+                        <p className='text-sm whitespace-pre-wrap'>
+                          {note.body}
+                        </p>
+                        {!isResolved && (
+                          <Button
+                            variant='outline'
+                            disabled={pending}
+                            onClick={() =>
+                              safeRun(
+                                () => ({
+                                  kind: 'resolve_workflow_note',
+                                  noteId: note.id,
+                                  expectedRevision: note.revision,
+                                  idempotencyKey: commandKey(
+                                    'resolve-workflow-note'
+                                  )
+                                }),
+                                'resolve-workflow-note'
+                              )
+                            }
+                          >
+                            {t('action.resolveWorkflowNote')}
+                          </Button>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
           <div className='grid gap-6 xl:grid-cols-2'>
             <Card>
               <CardHeader>
@@ -2736,6 +3178,17 @@ function upsertGlossarySummary(
   return next.sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function upsertInterchangeArtifact(
+  current: InterchangeArtifact[],
+  value: InterchangeArtifact
+): InterchangeArtifact[] {
+  const next = current.filter((artifact) => artifact.id !== value.id);
+  next.push(value);
+  return next.sort((left, right) =>
+    right.createdAt.localeCompare(left.createdAt)
+  );
+}
+
 function required(value: string, field: string, trim = true): string {
   if (!value.trim()) throw new Error(`${field}: value is required`);
   return trim ? value.trim() : value;
@@ -2762,12 +3215,38 @@ function exportItemLimit(value: string): number {
   return parsed;
 }
 
+function interchangeArtifactExpirySeconds(value: string): number {
+  const parsed = integer(value, 'interchange_artifact_expiry_seconds');
+  if (parsed < 300 || parsed > 7 * 24 * 60 * 60) {
+    throw new Error(
+      'interchange_artifact_expiry_seconds: must be between 300 and 604800'
+    );
+  }
+  return parsed;
+}
+
 function reviewerQueueItemLimit(value: string): number {
   const parsed = positiveInteger(value, 'reviewer_queue_limit');
   if (parsed > 200) {
     throw new Error('reviewer_queue_limit: must be between 1 and 200');
   }
   return parsed;
+}
+
+function workflowNoteItemLimit(value: string): number {
+  const parsed = positiveInteger(value, 'workflow_note_limit');
+  if (parsed > 200) {
+    throw new Error('workflow_note_limit: must be between 1 and 200');
+  }
+  return parsed;
+}
+
+function workflowNoteBodyValue(value: string): string {
+  const body = required(value, 'workflow_note_body');
+  if (Array.from(body).length > 4000) {
+    throw new Error('workflow_note_body: must not exceed 4000 characters');
+  }
+  return body;
 }
 
 function optionalActor(kind: ActorKind, id: string): Actor | undefined {
@@ -2930,29 +3409,50 @@ function receiptKey(kind: TranslationResponse['kind']): string {
       ? 'reviewerQueue'
       : kind === 'reviewer_workload'
         ? 'reviewerWorkload'
-    : kind === 'interchange_document'
-      ? 'interchangeExport'
-      : kind === 'provider_progress'
-        ? 'providerProgress'
-        : kind === 'required_progress'
-          ? 'requiredProgress'
-          : kind === 'memory_entries'
-            ? 'memoryEntries'
-            : kind === 'memory_entry'
-              ? 'memoryEntry'
-              : kind === 'memory_suggestions'
-                ? 'memorySuggestions'
-                : kind === 'memory_mutation'
-                  ? 'memoryMutation'
-                  : kind === 'machine_estimate'
-                    ? 'machineEstimate'
-                    : kind === 'machine_proposal'
-                      ? 'machineProposal'
-                      : kind === 'machine_operation_status'
-                        ? 'machineOperationStatus'
-                        : kind === 'machine_cancellation'
-                          ? 'machineCancellation'
-                          : kind;
+        : kind === 'workflow_notes'
+          ? 'workflowNotes'
+          : kind === 'workflow_note'
+            ? 'workflowNote'
+            : kind === 'interchange_document'
+              ? 'interchangeExport'
+              : kind === 'interchange_artifacts'
+                ? 'interchangeArtifacts'
+                : kind === 'interchange_artifact' ||
+                    kind === 'interchange_artifact_content'
+                  ? 'interchangeArtifact'
+                  : kind === 'provider_progress'
+                    ? 'providerProgress'
+                    : kind === 'required_progress'
+                      ? 'requiredProgress'
+                      : kind === 'memory_entries'
+                        ? 'memoryEntries'
+                        : kind === 'memory_entry'
+                          ? 'memoryEntry'
+                          : kind === 'memory_suggestions'
+                            ? 'memorySuggestions'
+                            : kind === 'memory_mutation'
+                              ? 'memoryMutation'
+                              : kind === 'machine_estimate'
+                                ? 'machineEstimate'
+                                : kind === 'machine_proposal'
+                                  ? 'machineProposal'
+                                  : kind === 'machine_operation_status'
+                                    ? 'machineOperationStatus'
+                                    : kind === 'machine_cancellation'
+                                      ? 'machineCancellation'
+                                      : kind;
+}
+
+function interchangeArtifactFacts(
+  artifact: InterchangeArtifact
+): Array<[string, string]> {
+  return [
+    ['Artifact ID', artifact.id],
+    ['Job ID', artifact.jobId],
+    ['Direction', artifact.direction],
+    ['Status', artifact.status],
+    ['Expires at', artifact.expiresAt]
+  ];
 }
 
 function responseFacts(response: TranslationResponse): Array<[string, string]> {
@@ -3020,12 +3520,28 @@ function responseFacts(response: TranslationResponse): Array<[string, string]> {
       return [['Queue items', String(response.value.length)]];
     case 'reviewer_workload':
       return [['Reviewers', String(response.value.length)]];
+    case 'workflow_notes':
+      return [['Workflow notes', String(response.value.length)]];
+    case 'workflow_note':
+      return [
+        ['Workflow note ID', response.value.id],
+        ['Job ID', response.value.jobId],
+        ['Item ID', response.value.itemId ?? 'job scope'],
+        ['Revision', String(response.value.revision)],
+        ['Status', response.value.resolvedAt ? 'resolved' : 'open']
+      ];
     case 'interchange_document':
       return [
         ['Job ID', response.value.jobId],
         ['Schema version', String(response.value.schemaVersion)],
         ['Total items', String(response.value.items.length)]
       ];
+    case 'interchange_artifacts':
+      return [['Interchange artifacts', String(response.value.length)]];
+    case 'interchange_artifact':
+      return interchangeArtifactFacts(response.value);
+    case 'interchange_artifact_content':
+      return interchangeArtifactFacts(response.value.artifact);
     case 'provider_progress':
       return [
         [

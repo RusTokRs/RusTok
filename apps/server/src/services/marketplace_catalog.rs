@@ -739,6 +739,7 @@ pub struct RegistryPlatformBuildStageResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RegistryValidationStageReportRequest {
     #[serde(default = "default_registry_mutation_schema_version")]
     pub schema_version: u32,
@@ -746,7 +747,6 @@ pub struct RegistryValidationStageReportRequest {
     pub dry_run: bool,
     pub stage: String,
     pub status: String,
-    pub detail: Option<String>,
     pub reason_code: Option<String>,
     #[serde(default)]
     pub requeue: bool,
@@ -1167,6 +1167,19 @@ pub fn filter_catalog_modules(
 mod tests {
     use super::*;
     use crate::modules::ModulesManifest;
+
+    #[test]
+    fn validation_stage_report_rejects_removed_detail_field() {
+        let result =
+            serde_json::from_value::<RegistryValidationStageReportRequest>(serde_json::json!({
+                "stage": "targeted_tests",
+                "status": "passed",
+                "detail": "deprecated ignored input",
+                "reason_code": "test_failure",
+            }));
+
+        assert!(result.is_err());
+    }
 
     struct TestProvider {
         key: &'static str,

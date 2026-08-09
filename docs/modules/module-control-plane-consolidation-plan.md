@@ -976,10 +976,11 @@ adapter and must not be used as artifact identity or durable policy state.
 - [x] Move registry ownership, publish-request, release, validation-stage,
   yanking, and governance rules from `RegistryGovernanceService`. Release
   yanking, ownership binding, owner transfer, publish-request rejection,
-  request-changes, hold, resume, and final publication have moved: the server
-  performs authenticated authority checks, then calls
-  `SeaOrmModuleGovernanceService`, which updates the relevant state and writes
-  its governance audit facts in one transaction. Publication atomically writes
+  request-changes, hold, resume, and final publication have moved: the host
+  supplies authenticated actor and privilege facts, while
+  `SeaOrmModuleGovernanceService` locks durable rows, derives the applicable
+  authorization, updates the relevant state, and writes its governance audit
+  facts in one transaction. Publication atomically writes
   the release projection and translations, owner binding or authorized rebind,
   optional approval-override evidence, and request finalization. Validation
   stages are owner-owned: manual report/requeue transitions, remote lease claim,
@@ -1001,8 +1002,9 @@ adapter and must not be used as artifact identity or durable policy state.
   it queued. The server endpoint only queues work; it has no server-local spawn
   path.
   Draft publish-request creation is also owner-owned: the owner persists the
-  request, default-locale metadata, and creation audit fact together after host
-  authorization. Artifact object storage remains a host adapter; its immutable
+  request, default-locale metadata, and creation audit fact together after it
+  derives authorization from the authenticated privilege fact and current
+  owner binding. Artifact object storage remains a host adapter; its immutable
   result is attached by an owner transaction that resets reupload validation
   attempts, transitions the request to `submitted`, and writes audit facts.
 - [x] Move remaining manifest validation that is platform-domain policy into
@@ -1691,6 +1693,61 @@ binary on this host: the unrelated `rustok-storefront` and `rustok-admin`
 cdylib links exhaust linker memory (`LNK1102`). These are environment/worktree
 constraints, not passing server tests.
 
+Focused verification on 2026-08-09 passed `cargo test --locked -p
+rustok-modules --lib` (198 tests) after owner-derived authorization was added
+for publish-request creation, platform/external staging, release yanking, and
+owner transfer. The regression coverage includes denied owner transfer before
+any durable write. The initial default server check then stopped at a dirty
+`rustok-translation` import error; that foreign worktree change was not edited
+in this control-plane slice.
+
+The subsequent 2026-08-09 lifecycle transport closure removed the remaining
+post-command lifecycle ORM rereads. Owner state records now return persisted
+enablement, module slug, and settings, while toggle results carry the exact
+settings fact used by the lifecycle command. GraphQL maps those owner results;
+retry returns the owner operation record and inherited compensation availability
+comes from the owner policy service. Lifecycle state snapshots retain the
+owner-issued operation identity for transition and replay evidence. The focused
+owner snapshot test passed,
+as did the 198-test owner library suite, touched-file `rustfmt --edition 2024`,
+both default and `--no-default-features` `cargo check --locked -p
+rustok-server`, `git diff --check`, `cargo metadata --locked --no-deps`, and
+the module control-plane write-path and lifecycle-bypass guardrails. Server
+checks emitted pre-existing warnings in unrelated packages; no workspace-wide
+compile or test suite is claimed.
+
+The subsequent 2026-08-09 remote validation observability closure moved
+runtime guardrail lease counts behind the governance owner. The owner-issued
+`ModuleRemoteValidationRunnerSnapshot` includes only `running` remote leases,
+so terminal or locally owned stages cannot cause false degradation; a failed
+owner snapshot is critical rather than synthetic zero work. The focused owner
+snapshot test, touched-file `rustfmt --edition 2024`, `git diff --check`,
+`cargo metadata --locked --no-deps`, and the module control-plane write-path
+and lifecycle-bypass guardrails passed. The current `cargo test --locked -p
+rustok-modules --lib` run also passed all 198 tests. The current
+`cargo check --locked -p rustok-server --no-default-features` run also
+completed successfully, with pre-existing warnings outside this slice. The
+focused `remote_executor_guardrail_tests` server unit test passed with
+`--no-default-features`, as did the owner validation-stage normalization and
+server schema regression tests. The `module_lifecycle` integration target was
+attempted with both feature selections, but the host exhausted Windows virtual
+memory while compiling the default UI graph; the subsequent no-default attempt
+inherited an inconsistent target cache. Neither attempt reached the test
+runner, so no lifecycle integration success is claimed.
+
+The follow-up owner-boundary cleanup removed the last server-local registry
+persistence models and moved registry error classification into the
+`ModuleGovernanceError` contract. The focused category/code test passed, as
+did `cargo check --locked -p rustok-server --no-default-features`, touched-file
+`rustfmt --edition 2024`, `git diff --check`, `cargo metadata --locked
+--no-deps`, and both module-control-plane static guards. The server check emits
+pre-existing warnings outside this slice; no workspace-wide compile or test
+suite is claimed.
+The focused remote-transition regression also passed after classifying a
+runner-mismatched remote lease as owner-issued permission denial rather than a
+state conflict. Both remote HTTP paths now preserve that same canonical
+category/code contract.
+
 ## Phase 4 - Isolated Rust Module Build Worker
 
 ### Objective
@@ -1734,9 +1791,11 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   readiness remains permit-free, and SIGTERM/Ctrl+C starts bounded tonic
   graceful shutdown. Cancellation drops and kills every worker-owned child
   process rather than leaving a build running after its RPC future ends. The
-  worker invokes only a fixed image-owned non-symlink OCI job launcher in a fixed
-  workdir with a cleared environment, request-derived deadline, and aggregate
-  streamed stdout/stderr output limit. Startup requires a gVisor or Kata job
+  worker invokes only a fixed image-owned non-symlink OCI job launcher whose
+  SHA-256 digest is configured and rehashed at construction, readiness, and
+  immediately before spawning in a fixed workdir with a cleared environment,
+  request-derived deadline, and aggregate streamed stdout/stderr output limit.
+  Startup requires a gVisor or Kata job
   runtime plus a digest-pinned OCI job image; the launcher receives those fixed
   identities and must create the corresponding isolated OCI job. Its current
   source contract is a digest-addressed `cas://sha256:<hex>` archive from a
@@ -1788,20 +1847,24 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   private Docker configuration.
 - [ ] Run builds as isolated OCI jobs. Production untrusted builds use a
   hardened runtime such as gVisor or Kata where available. The worker now
-  requires an explicit fixed OCI job launcher and `gvisor` or `kata` runtime,
+  requires an explicit SHA-256-pinned OCI job launcher and `gvisor` or `kata` runtime,
   and readiness probes the worker-owned launcher/runtime configuration rather
   than returning an unconditional success. Every launched job must also emit a
   bounded immutable-request-matching OCI receipt, including its opaque job ID,
   fixed image digest, build attempt, dependency-lock digest, toolchain digest,
   WIT digest, and a domain-separated digest of the exact request JSON delivered
-  to the launcher, before the worker accepts its terminal result. Startup and
+  to the launcher, before the worker accepts its terminal result. The receipt
+  schema rejects unknown fields, so a launcher cannot smuggle unreviewed
+  controls into evidence consumed by later code. Startup and
   readiness also require the deployment-owned
   `RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION` file: a bounded, regular JSON
   attestation must match the fixed runtime/image and prove unprivileged,
   host-mount-free, socket-free, host-network/PID-isolated, resource-limited,
-  ephemeral-job settings. The attestation schema rejects unknown fields, there
-  is no attestation-free constructor, and every build rechecks readiness and
-  reloads the deployment-owned file before accepting work. This is
+  ephemeral-job settings. It also binds the exact launcher digest and requires
+  false tenant-database and general-platform-secret access facts. The
+  attestation schema rejects unknown fields, there is no attestation-free
+  constructor, and every build rechecks readiness and reloads the
+  deployment-owned file before accepting work. This is
   configuration-review evidence and does not
   replace deployment evidence that the launcher enforces the corresponding
   controls.
@@ -1812,8 +1875,9 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   platform-storage, and general-secret dependencies or APIs in the worker crate
   and verifies that the untrusted runner is environment-cleared without
   database or credential forwarding. The worker also fails closed without the
-  bounded isolation attestation, while deployment isolation evidence remains
-  required before this item can close.
+  bounded isolation attestation, which binds the launcher digest and requires
+  explicit false tenant-database/general-secret access facts, while deployment
+  isolation evidence remains required before this item can close.
 
 ### 4.2 Build Request Contract
 
@@ -2201,11 +2265,13 @@ trust policy before admission.
   reproducible source identity or an explicit absence reason, an approved
   provenance-policy revision, and an independent quarantine review. The final
   owner transaction requires the current origin-specific stage. The server now
-  exposes an operator-only external-prebuilt staging adapter that derives both
-  actor and quarantine approver from `modules.manage` authority. The parallel
-  platform build-stage adapter derives the tenant exclusively from the
-  authenticated session, requires `modules.manage`, and passes only a completed
-  build ID plus idempotency key to the owner RLS reload. Both staging paths
+  exposes an external-prebuilt staging adapter that derives actor and quarantine
+  approver plus an authenticated `modules.manage` fact. The owner enforces that
+  capability and exact actor/approver equality. The parallel platform build-stage
+  adapter derives the tenant exclusively from the authenticated session and
+  passes only a completed build ID, idempotency key, and authenticated privilege
+  fact to the owner RLS reload; the owner derives the current request manager
+  from binding/requester facts. Both staging paths
   persist and compare their full authenticated immutable command fingerprints
   on replay: platform builds include tenant, build, source, component, and
   actor; external prebuilts include source/provenance/quarantine facts and
@@ -2263,10 +2329,12 @@ trust policy before admission.
   signature, and platform admission whose verified payload digest matches that
   stage; they cannot claim a build-worker
   attestation. The server transport accepts only evidence fields and an
-  idempotency key, deriving the actor and quarantine approver from authenticated
-  `modules.manage` authority. The parallel platform build-stage adapter accepts
-  no caller-supplied tenant identifier and derives its owner RLS scope from the
-  authenticated session.
+  idempotency key, deriving the actor and quarantine approver plus authenticated
+  `modules.manage` fact. The owner enforces both the external operator
+  capability and actor/approver equality. The parallel platform build-stage
+  adapter accepts no caller-supplied tenant identifier and derives its owner
+  RLS scope from the authenticated session; its owner command authorizes the
+  current request manager from durable binding/requester facts.
 - [x] Treat marketplace README, metadata, source comments, test output, and
   artifact text as untrusted content for both UI rendering and AI prompts. The
   registry bundle validator caps the complete upload at 2 MiB before JSON
@@ -2559,6 +2627,34 @@ multi-node reconciliation path consumed by those transports.
   `TenantModuleOverrideSnapshot` list through `EffectivePolicyService`, while
   GraphQL performs transport mapping only. Broader resolver migration remains
   open under the aggregate item above.
+- [x] Remove lifecycle mutation post-command ORM rereads. Toggle, post-hook
+  retry, compensation, and settings writes return owner-issued operation or
+  state facts. The server maps those facts to GraphQL and resolves inherited
+  availability through the owner policy service; it no longer loads
+  `tenant_modules` or `module_operations` models after a lifecycle command.
+- [x] Bind lifecycle recovery to the authenticated tenant in the owner writer.
+  Retry and compensation commands reject a foreign operation as not found
+  before dispatch or state change. Retry returns the completed owner recovery
+  plan, while compensation returns its exact module identity; GraphQL no longer
+  preloads an operation for tenant authorization or reloads its plan after the
+  command.
+- [x] Route GraphQL platform-native install, uninstall, and upgrade through one
+  typed composition adapter. Resolvers provide only authenticated actor,
+  revision, and requested module change; the adapter obtains the durable
+  snapshot, applies the static host-manifest adapter, then invokes the
+  owner-controlled composition-CAS/build transaction. Resolvers no longer
+  load, mutate, validate, serialize, or hash a manifest directly. The
+  `installedModules` query also consumes the adapter's owner-backed installed
+  projection rather than inspecting the manifest in GraphQL.
+- [x] Move remote validation lease observability behind the registry owner. The
+  runtime guardrail receives the active and expired running-remote-lease counts
+  from `SeaOrmModuleGovernanceService`; it no longer queries
+  `registry_validation_stages` through a server model. A failed owner snapshot
+  is a critical guardrail condition rather than a synthetic zero-count success.
+  Manual validation-stage reports likewise pass raw stage/status/reason inputs
+  to the owner, which canonicalizes and validates them before state mutation.
+  The obsolete server stage model, status parser, and ignored `detail` request
+  field were removed; the request rejects unknown fields.
 - [x] Move platform build/release history, active-release, and rollback
   precondition reads behind `rustok-build::BuildService`. The owner enforces
   bounded history pages; GraphQL no longer imports the corresponding SeaORM
@@ -2593,13 +2689,29 @@ multi-node reconciliation path consumed by those transports.
   publish-request existence or post-command model read; the canonical owner
   `not_found` error reaches the HTTP mapper.
   Creation and artifact upload also return the canonical exact status
-  projection. Upload derives its destination through an owner-authorized,
+  projection. Creation carries only authenticated principal and privilege
+  facts; the owner checks the current binding before its write or idempotent
+  replay. Upload derives its destination through an owner-authorized,
   SHA-256 content-addressed slot; the host conditionally creates the object,
   rehashes an existing collision, and may never select a storage key or delete
   a prior artifact inline. Exact retry metadata reuses the attached slot, while
   a mismatch fails before storage attachment. The platform-authoring producer
   uses the same slot contract, leaving retention-aware owner policy as the only
   historical-object cleanup authority.
+  Release yanking also dispatches directly to the owner. The command carries
+  only authenticated principal/privilege facts; the owner locks the exact
+  release, derives authorization from `modules.manage`, the current owner
+  binding, or publisher identity, and returns a minimal owner-issued mutation
+  result without server release-model reads before or after the transition.
+  Owner transfer follows the same path: the owner locks the existing binding,
+  authorizes `modules.manage` or the bound owner, and records the transfer in
+  that transaction. The former server owner/release, publish-request,
+  validation-job, and governance-event SeaORM models, their server-local status
+  mapper, and the unmounted adapter test module were deleted after all
+  production callers moved to owner projections.
+  The registry access middleware now asks only for an
+  owner-derived request authorization snapshot before forwarding to the
+  controller; it no longer loads a publish request or owner binding itself.
   Validation enqueue, manual validation-stage reporting, and approve/reject/
   request-changes/hold/resume responses all consume the exact owner status
   projection after their mutation. The HTTP adapter no longer reads an updated
@@ -2608,7 +2720,9 @@ multi-node reconciliation path consumed by those transports.
   owner-issued `ModuleRemoteValidationStageTransition` and never reread a
   server validation-stage model. The duplicate registry-governance remote
   runner mutation adapter was deleted; only the owner-routed transition path
-  remains.
+  remains. Both remote transition HTTP paths also propagate the owner-issued
+  governance error category/code rather than maintaining a lease-specific
+  error taxonomy; not-found detail remains content-free.
   That exact owner status projection now carries authenticated `can_manage`
   and `can_review` facts. Live validation, validation-stage reporting, and
   moderation authorize through them rather than server-local publish-request
@@ -2628,10 +2742,14 @@ multi-node reconciliation path consumed by those transports.
   Approve, reject, request-changes, hold, and resume previews follow the same
   path; approval override warning text and pending-stage facts remain owner
   derived rather than HTTP-local policy.
-  Owner transfer obtains its exact binding snapshot through the owner before
-  authorization and after the mutation, with no server owner-table read or
-  persistence-model response in that operation.
-- [ ] Map canonical codes/details without reconstructing issue/retry taxonomy.
+  Owner transfer sends only authenticated actor/privilege facts to the owner.
+  The owner locks the binding, derives authorization, and records the transition
+  without a server owner-table preflight or post-command reread.
+- [x] Map canonical codes/details without reconstructing issue/retry taxonomy.
+  `ModuleGovernanceError` now owns a stable category and code contract. HTTP
+  maps only that category to its envelope status, preserves the owner detail
+  where safe, and keeps `not_found` detail content-free; it no longer contains
+  a parallel lifecycle-error taxonomy.
 - [ ] Require typed actor, tenant, permission, idempotency, and revision inputs.
 - [x] Keep subscriptions/build events as transport adapters over owner events.
   Platform rollback now emits the explicit owner `BuildRolledBack` event with
@@ -2948,10 +3066,17 @@ distribution mode, not the default marketplace installation path.
   heartbeat and terminal result; expired leases close the old attempt before
   reclaim. A separate immutable distribution-release ledger, admission record,
   CAS head, and exact-replay operation journal now activate only the current
-  successfully completed build. Direct-predecessor rollback has its own durable
-  request/operation records and queues a new immutable build from the target
-  release snapshot. Revocation records actor, reason, policy, exact replay, and
+  successfully completed build. The currently implemented direct-predecessor
+  rollback has its own durable request/operation records and queues a new
+  immutable build from the target release snapshot. Revocation records actor,
+  reason, policy, exact replay, and
   release-head CAS; revoking either side cancels a pending rollback request.
+- [ ] Replace the rebuild-on-rollback incident path with the accepted
+  [module release rollback safety](./module-release-rollback-plan.md) contract.
+  `rustok-modules` must retain and revalidate the complete direct-predecessor
+  role bundle before rollout and recover it through the normal desired/observed
+  deployment reconciler. Rebuild remains admission/reproducibility evidence or
+  a manual fallback; missing predecessor bytes makes automatic mode ineligible.
 - [ ] Require source availability, trusted ownership, dependency audit, tests,
   static review, and platform-team approval. Approval now requires immutable
   ownership, dependency-audit, test, and static-review evidence references and
@@ -3057,9 +3182,9 @@ distribution mode, not the default marketplace installation path.
   still come only from the compiled registry. A durable native rollout owner
   now handles topology-bound desired/observed convergence; generic
   artifact/sandbox reconciliation remains separate Phase 8 work.
-- [x] Require a new distribution build for promotion, upgrade, removal, or
-  rollback. Promotion selection, replacement, and removal are represented only
-  by a new full-snapshot build intent. Rollback accepts only the active
+- [x] Require a new distribution build for promotion, upgrade, or removal.
+  Promotion selection, replacement, and removal are represented only by a new
+  full-snapshot build intent. The currently implemented rollback accepts only the active
   release's non-revoked direct predecessor, rejects a pending desired build,
   revalidates the target admission/build/composition/promotion evidence, and
   queues a new predecessor-linked build. It never reactivates old binary bytes;
@@ -3069,6 +3194,13 @@ distribution mode, not the default marketplace installation path.
   involved release atomically cancels the pending rollback request.
   Activation, rollback, and revocation share one durable idempotency-key
   namespace, preventing cross-command key reuse.
+- [ ] Cut over rollback atomically to the retained direct-predecessor
+  distribution contract above. Bind every deployed server and worker role,
+  embedded Leptos SSR/hydration artifact, generated registry, and browser asset;
+  expose the complete composition blast radius; and report success only after
+  the predecessor is observed healthy. Delete the superseded rebuild rollback
+  and direct `rustok-build` operator rollback rather than keeping either as a
+  compatibility or fallback path.
 - [x] Do not claim sandbox isolation for native execution. The current
   request/approval and distribution-selection services have no compiler,
   active-composition mutation, or native loader dependency. The worker owner

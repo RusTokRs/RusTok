@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc, time::Instant};
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rustok_api::{
@@ -30,6 +30,7 @@ use crate::{
     },
     glossary::{GlossaryBinding, GlossaryRecord, read_bound_glossary, validate_glossary_binding},
     memory::{AppliedMemorySegment, ingest_applied_segments},
+    observability::{self, WorkflowOperation},
     policy::{read_validated_tenant_locale_policy, validate_job_locales},
     progress::refresh_job_progress,
     qa::evaluate_patch_qa,
@@ -235,6 +236,10 @@ impl TranslationWorkflowService {
             Arc::clone(&self.tenant_locale_policies),
             self.event_bus.clone(),
         )
+    }
+
+    pub fn collaboration_service(&self) -> crate::TranslationCollaborationService {
+        crate::TranslationCollaborationService::new(self.database.clone(), self.event_bus.clone())
     }
 
     pub async fn create_job(
@@ -1231,12 +1236,25 @@ impl TranslationWorkflowService {
         context: PortContext,
         input: ApplyProposalInput,
     ) -> TranslationResult<ApplyRecord> {
+        observability::observe_workflow_operation(
+            WorkflowOperation::ApplyProposal,
+            self.apply_proposal_inner(context, input),
+        )
+        .await
+    }
+
+    async fn apply_proposal_inner(
+        &self,
+        context: PortContext,
+        input: ApplyProposalInput,
+    ) -> TranslationResult<ApplyRecord> {
         let tenant_id = authorize_write(&context, Action::Publish)?;
         let idempotency_key = operation_idempotency_key(&context);
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_apply_operation_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
         {
+            observability::record_apply_replay();
             validate_apply_replay(&existing, &context, &request_hash)?;
             return self.resume_apply_operation(context, existing).await;
         }
@@ -1304,6 +1322,7 @@ impl TranslationWorkflowService {
                 .ok_or(TranslationError::WorkflowRevisionConflict)?;
         if persisted.id != operation_id {
             transaction.rollback().await?;
+            observability::record_apply_replay();
             validate_apply_replay(&persisted, &context, &request_hash)?;
             return self.resume_apply_operation(context, persisted).await;
         }
@@ -1351,6 +1370,18 @@ impl TranslationWorkflowService {
         context: PortContext,
         input: RecoverApplyInput,
     ) -> TranslationResult<ApplyRecord> {
+        observability::observe_workflow_operation(
+            WorkflowOperation::ApplyRecovery,
+            self.recover_apply_inner(context, input),
+        )
+        .await
+    }
+
+    async fn recover_apply_inner(
+        &self,
+        context: PortContext,
+        input: RecoverApplyInput,
+    ) -> TranslationResult<ApplyRecord> {
         let tenant_id = authorize_write_actions(&context, &[Action::Manage, Action::Publish])?;
         validate_recovery_reason(&input.reason)?;
         if input.expected_attempt_count < 0 {
@@ -1361,6 +1392,7 @@ impl TranslationWorkflowService {
         if let Some(existing) =
             find_apply_recovery_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
         {
+            observability::record_apply_replay();
             validate_recovery_replay(&existing, &context, &request_hash)?;
             let operation =
                 find_apply_operation(&self.database, tenant_id, existing.operation_id).await?;
@@ -1425,6 +1457,7 @@ impl TranslationWorkflowService {
                 .ok_or(TranslationError::WorkflowRevisionConflict)?;
         if persisted_recovery.id != recovery_id {
             transaction.rollback().await?;
+            observability::record_apply_replay();
             validate_recovery_replay(&persisted_recovery, &context, &request_hash)?;
             let current =
                 find_apply_operation(&self.database, tenant_id, persisted_recovery.operation_id)
@@ -1566,9 +1599,13 @@ impl TranslationWorkflowService {
         lease_token: Uuid,
     ) -> TranslationResult<ApplyRecord> {
         let event_actor_id = event_actor_id(&context);
+        observability::record_apply_attempt_started();
+        let provider_started_at = Instant::now();
         match provider.apply_patch(context, patch.clone()).await {
             Ok(receipt) => {
+                observability::record_owner_apply_success(provider_started_at.elapsed());
                 if let Err(error) = validate_provider_receipt(&patch, &receipt) {
+                    observability::record_owner_apply_invalid_receipt();
                     record_pending_apply_error(
                         &self.database,
                         &self.event_bus,
@@ -1584,10 +1621,22 @@ impl TranslationWorkflowService {
                     .await?;
                     return Err(error);
                 }
-                self.finalize_apply_operation(operation, receipt, lease_token, event_actor_id)
-                    .await
+                let result = self
+                    .finalize_apply_operation(operation, receipt, lease_token, event_actor_id)
+                    .await;
+                if result.is_ok() {
+                    observability::record_owner_apply_completed();
+                } else {
+                    observability::record_owner_apply_finalization_failure();
+                }
+                result
             }
             Err(error) => {
+                observability::record_owner_apply_failure(
+                    port_error_kind(error.kind.clone()),
+                    error.retryable,
+                    provider_started_at.elapsed(),
+                );
                 self.record_owner_apply_error(&operation, &error, lease_token, event_actor_id)
                     .await?;
                 Err(error.into())
@@ -1997,7 +2046,7 @@ fn authorize_write_actions(context: &PortContext, actions: &[Action]) -> Transla
     Uuid::parse_str(&context.tenant_id).map_err(|_| TranslationError::InvalidTenantId)
 }
 
-fn actor_kind(context: &PortContext) -> &'static str {
+pub(crate) fn actor_kind(context: &PortContext) -> &'static str {
     actor_kind_value(&context.actor.kind)
 }
 
@@ -2009,7 +2058,7 @@ pub(crate) fn actor_kind_value(kind: &PortActorKind) -> &'static str {
     }
 }
 
-fn event_actor_id(context: &PortContext) -> Option<Uuid> {
+pub(crate) fn event_actor_id(context: &PortContext) -> Option<Uuid> {
     Uuid::parse_str(&context.actor.id)
         .ok()
         .filter(|actor_id| !actor_id.is_nil())
@@ -2085,7 +2134,7 @@ fn enforce_assignment(item: &job_item::Model, context: &PortContext) -> Translat
     Err(TranslationError::ItemAssignedToAnotherActor)
 }
 
-fn workflow_actor(kind: &str, id: &str) -> TranslationResult<rustok_api::PortActor> {
+pub(crate) fn workflow_actor(kind: &str, id: &str) -> TranslationResult<rustok_api::PortActor> {
     let actor = match kind {
         "user" => rustok_api::PortActor::user(id),
         "service" => rustok_api::PortActor::service(id),
@@ -2099,7 +2148,7 @@ fn workflow_actor(kind: &str, id: &str) -> TranslationResult<rustok_api::PortAct
     Ok(actor)
 }
 
-fn next_revision(revision: i64) -> TranslationResult<i64> {
+pub(crate) fn next_revision(revision: i64) -> TranslationResult<i64> {
     revision
         .checked_add(1)
         .ok_or(TranslationError::WorkflowRevisionConflict)

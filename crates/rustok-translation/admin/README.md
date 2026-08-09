@@ -25,8 +25,16 @@ typed transport contract shared by its native and GraphQL runtime profiles.
   selection. No entry is selected implicitly.
 - Expose bounded immutable job export and atomic per-item import through the
   module-owned interchange service and canonical QA path.
+- Expose private object-storage interchange artifact create/list/read/store/
+  process operations. Artifact bytes never enter the admin contract except as
+  the bounded document selected for an explicit read or store; expiry,
+  checksum, exclusive import-processing leases, and aggregate conflict
+  reporting remain module-owned.
 - Expose bounded reviewer queue and workload reads derived from current job-item
   and proposal evidence without introducing an admin-owned workflow store.
+- Expose bounded private, append-only job/item workflow notes through the
+  Translation owner service. Note bodies are never sent to Translation Memory,
+  machine translation, owner application, or workflow-event payloads.
 - Keep Translation business rules in `rustok-translation`.
 - Consume owner content only through the Translation module's neutral provider
   registry.
@@ -34,7 +42,9 @@ typed transport contract shared by its native and GraphQL runtime profiles.
 ## Interactions
 
 The native adapter receives `HostRuntimeContext` from the host and calls
-Translation services directly. The GraphQL adapter uses `rustok-graphql`.
+Translation services directly. It reads an optional host `StorageRuntime` only
+for private interchange artifacts and fails that lifecycle closed when it is
+absent. The GraphQL adapter uses `rustok-graphql`.
 The Leptos root consumes only the transport facade. Neither adapter reads owner
 tables.
 
@@ -42,11 +52,13 @@ tables.
 
 - `TranslationAdmin`
 
-The package-internal typed boundary contains 41 operations. Native and GraphQL
+The package-internal typed boundary contains 49 operations. Native and GraphQL
 adapters cover the same set, and the workbench exposes the machine-translation
 estimate, generation, status, cancellation, and recovery flow alongside
 revision-guarded assignment/unassignment, bounded reviewer queue and workload
-reads, blocked-item retry, job cancellation, and owner-apply recovery. GraphQL
+reads, private workflow-note list/create/resolve, object-storage artifact
+create/list/read/store/process, blocked-item retry, job
+cancellation, and owner-apply recovery. GraphQL
 documents are validated against the
 module-owned schema so the host cannot bypass or redefine the rendered module
 surface.

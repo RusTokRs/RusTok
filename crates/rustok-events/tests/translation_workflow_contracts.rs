@@ -9,12 +9,20 @@ fn workflow_family_registers_all_content_free_contracts() {
     let schemas = event_schemas()
         .filter(|schema| schema.event_type.starts_with("translation."))
         .collect::<Vec<_>>();
-    assert_eq!(schemas.len(), 13);
+    assert_eq!(schemas.len(), 15);
     assert!(event_schema("translation.job.created").is_some());
     assert!(event_schema("translation.job.completed").is_some());
     assert!(event_schema("translation.item.retry_requested").is_some());
     assert!(event_schema("translation.apply.completed").is_some());
     assert!(event_schema("translation.apply.recovery_requested").is_some());
+    assert!(event_schema("translation.note.created").is_some());
+    assert!(event_schema("translation.note.resolved").is_some());
+
+    for event_type in ["translation.note.created", "translation.note.resolved"] {
+        let fields = event_schema(event_type).unwrap().fields;
+        assert!(fields.iter().any(|field| field.name == "note_id"));
+        assert!(!fields.iter().any(|field| field.name == "body"));
+    }
 }
 
 #[test]

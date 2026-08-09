@@ -1,101 +1,275 @@
 # Module release rollback safety
 
 - Date: 2026-08-06
-- Status: Accepted
+- Status: Accepted, amended on 2026-08-09
+- Supersedes in part:
+  - the rebuild-on-rollback rule in
+    [Static Promotion Review Boundary](./2026-07-22-static-promotion-review-boundary.md);
+  - caller-selected migration compatibility in the current artifact rollback
+    command; and
+  - any direct operator rollback path owned by `rustok-build`.
 
 ## Context
 
 RusToK needs an operator-friendly production module update experience: users
-must be able to identify the selected and previous releases, start an update,
-understand a failed rollout, and return to a verified predecessor when that is
-safe. The platform is a compiled, distributed application, not a plugin
-directory whose files can be overwritten in place.
+must be able to identify the serving, candidate, and previous releases; start
+one update; understand rejection or failure; and return to a verified direct
+predecessor when that is safe.
 
-Existing module-control-plane contracts already retain immutable artifact and
-static-distribution release identities, predecessor lineage, audit/outbox
-facts, migration checkpoints, artifact-data snapshots, and desired/observed
-native rollout state. They do not justify automatic restoration of committed
-database data. A source, sandbox, build, or rollout check alone cannot prove
-that an old release remains correct after an irreversible data change.
+The platform is a compiled, distributed application with dynamic artifacts,
+not a plugin directory whose files can be overwritten. Dynamic rollback is
+scoped to an installation. Native code, the server, embedded Leptos surfaces,
+generated registries, and browser assets are deployed as a complete compiled
+distribution and cannot be rolled back as isolated files.
+
+The repository currently has overlapping static release state:
+
+- `rustok-build` exposes an active release and direct rollback mutation;
+- `rustok-modules` owns the platform composition projection;
+- `rustok-modules` also owns static-distribution release and desired/observed
+  rollout state.
+
+The `rustok-build` rollback changes database statuses and emits an event but
+does not prove deployment or health convergence. The static-distribution
+rollback queues a new build, which makes compiler, worker, source CAS,
+toolchain, signing, and verifier availability part of the incident path.
+Neither is the required bounded automatic recovery contract.
+
+Existing control-plane contracts retain immutable artifacts, predecessor
+lineage, audit/outbox facts, migration checkpoints, artifact-data snapshots,
+security state, and desired/observed native rollout facts. They do not justify
+automatic restoration of committed database data. Sandbox, build, migration
+transaction, or rollout evidence alone cannot prove that the predecessor
+remains correct after live writes or an irreversible effect.
 
 ## Decision
 
-Production versioning and rollback are one owner-controlled lifecycle. A
-production release is an immutable identity binding source, dependency lock,
-build and test evidence, artifact digest, policy/admission facts, and executor
-facts. Update and rollback are audited transitions between such identities;
-they never replace source or artifact bytes.
+### Canonical Owner and Release Units
 
-`rustok-modules` is the sole owner of release selection, predecessor retention,
-update preflight, rollback, incident receipts, and desired-versus-observed
-rollout state. Hosts, UI adapters, CLI adapters, Alloy, sandboxes, deployment
-agents, and module owners consume this owner contract and do not create a
-second release ledger or rollback path.
+Production versioning, update safety, rollback eligibility, and incident
+outcome are one `rustok-modules`-owned lifecycle. A production release is an
+immutable identity binding source, dependency lock, build/test evidence,
+artifact and role digests, admission/policy facts, migration facts, and
+executor facts. Live topology, controller authority, node observations, and
+deployment receipts belong to a rollout operation rather than the release.
+
+`rustok-modules` is the sole operator-level owner of:
+
+- module update intent and exact preflight decision;
+- selected/serving/candidate/direct-predecessor facts;
+- rollback unit, compatibility and observation policy;
+- durable operation, complete cross-scope conflict fence set, and one
+  automatic attempt;
+- rollback selection, desired/observed rollout, retention hold, and incident
+  outcome; and
+- the shared operator projection and command result.
+
+`rustok-build` remains an immutable role-build/publication executor that
+returns receipts. `rustok-migrations` remains the neutral trusted migration
+executor. Sandboxes and deployment agents execute narrow owner-authorized work.
+None owns a second update, rollback, or incident decision.
+
+The atomic implementation cutover removes the public `rustok-build` active
+release/rollback mutation, its duplicate mutable head, and every direct
+GraphQL/native/CLI caller. No dual-write or compatibility path is retained.
+
+The release and rollback unit is:
+
+- one exact platform- or tenant-scoped installation for a dynamic artifact; if
+  dependency resolution changes other installations, the complete changed
+  lock graph joins the unit; or
+- the complete immutable role distribution for static/native code. The
+  recovery operation separately binds its exact topology snapshot.
+
+A static rollback can therefore return every module co-released in the direct
+predecessor composition. Operator preflight shows that complete blast radius.
+Unchanged dynamic dependencies and active dependents are eligibility evidence,
+not mutation targets.
+
+### Static Incident Path
+
+Automatic static recovery redeploys the retained immutable direct-predecessor
+role bundle. Before the candidate serves, the owner must prove that all required
+server, worker, embedded Leptos, generated-registry, and browser-asset bytes and
+receipts are retained; rehash them; and revalidate current admission, security,
+policy, data compatibility, topology, and deployment authority.
+
+Rollback creates a new audited transition but neither edits artifact bytes nor
+compiles a replacement. It uses the normal desired/observed rollout reconciler,
+and succeeds only when the predecessor role bundle is observed healthy.
+Rebuild remains release-admission/reproducibility evidence or a manual recovery
+fallback. Missing predecessor bytes or evidence makes automatic mode
+ineligible.
+
+### Executable Transition Decision
+
+Update mode is computed for one exact predecessor-to-candidate update and its
+candidate-to-predecessor recovery within one live scope. Documentation,
+semantic versions, a sandbox run, a module
+declaration, or caller input cannot authorize it.
+
+`rustok-modules` persists an immutable decision bound to the releases, rollback
+unit, dependency and active-dependent closure, configuration/data/schema and
+migration checkpoint, security/policy/topology revisions, health policy,
+retention, recovery evidence, and evidence digests. The owner reloads these
+facts under revision/fence checks before every state-changing transition.
+Missing, stale, contradictory, or unverifiable evidence fails closed into
+maintenance.
+
+The current caller-selected `migration_rollback_mode` authority is removed.
+Migration policy retains the existing `reversible`, `compensating`, and
+`prohibited` values as owner evidence, but `reversible` is necessary rather
+than sufficient.
 
 An update has one operator-visible mode:
 
-- **Automatic** is allowed only when the exact direct predecessor and its
-  enabled dependency closure remain admitted, unrevoked, retained, and
-  compatible with the expanded schema and live data. During a bounded
-  observation window, deterministic startup, readiness, rollout-deadline, and
-  policy-threshold failures may initiate one audited rollback to that
-  predecessor. A failed return does not retry or oscillate; it produces a
-  controlled stopped or degraded outcome.
-- **Maintenance** is required for unproven predecessor compatibility,
-  compensation, irreversible conversion, destructive cleanup, or incompatible
-  schema change. Automatic rollback is not available after a compensating or
-  irreversible checkpoint begins.
+- **Automatic** is available only when the direct predecessor and exact
+  dependency closure remain admitted, unquarantined, unrevoked, retained, and
+  compatible with every intermediate live state. A bounded observation window
+  permits one candidate-attributed recovery attempt. Data is never restored.
+- **Maintenance** applies to unproven compatibility, non-transactional or
+  mixed-fleet-incompatible DDL, compensation, destructive cleanup,
+  irreversible conversion, unsafe durable work, or unsafe external side
+  effects. Maintenance never performs automatic rollback.
 
-Migration policy remains an independent owner declaration with the existing
-`reversible`, `compensating`, and `prohibited` values. It is not sufficient on
-its own to authorize automatic rollback: predecessor and dependency-closure
-compatibility must also be proven.
+A failure before the desired rollout or any deployment/serving mutation is an
+update rejection: predecessor capacity is unchanged and no rollback attempt is
+consumed. Once rollout has displaced, stopped, or reduced predecessor capacity,
+a candidate startup/readiness failure is a rollout failure and may reserve the
+single recovery attempt even before the candidate serves traffic. The
+observation window still begins only with the first candidate traffic. An
+arbitrary older release is a new admitted update, not rollback.
 
-The normal data strategy is forward-compatible `expand -> migrate -> contract`.
-Backward-compatible expansion and resumable, idempotent backfill may occur
-before and during the automatic rollback window. Destructive cleanup,
-irreversible conversion, and incompatible constraints are later finalization
-steps after that window closes. A temporary compatibility bridge requires a
-named owner and removal condition in the affected module plan.
+A later update starts only after the preceding operation is terminal and its
+selected, desired, and observed-serving state is converged across the conflict
+set. Starting it atomically closes the previous code-rollback eligibility and
+establishes the then-serving release as the new direct predecessor. Outstanding
+compatibility, finalization, retention, recovery-point, durable-work,
+client-lifetime, incident, audit, and legal-hold obligations remain durable
+under their owners and are included in the new decision and conflict set. The
+new update cannot release or forget them, and an earlier release never remains
+a hidden two-hop rollback target.
 
-Database restoration is a separately authorized recovery operation. It never
-automatically overwrites live production data, because writes after a snapshot
-would be lost. Module-scoped recovery is available only for explicit module
-data ownership boundaries with a tested consistent restore procedure; otherwise
-the recovery boundary is platform-level PostgreSQL recovery.
+### Durable Operation and Failure Attribution
 
-The neutral `rustok-sandbox` is an evidence and preflight layer for dynamic
-artifacts. Alloy may use it for authoring and draft testing, but neither Alloy
-nor the sandbox owns production release activation, rollback, or database
-migration. Static/native compositions use their existing isolated build/test
-and rollout evidence rather than claiming WebAssembly sandbox isolation.
+One owner operation derives the complete conflict-key set for the rollback
+unit, schema/data owners, dependency and active-dependent installations,
+topology, and affected namespaces. It acquires or fences that set atomically in
+canonical order before mutation; a scope-local lease cannot authorize a
+cross-scope change. The set serializes update, rollback,
+disable/deactivate/uninstall, quarantine/revoke,
+migration/backfill/finalization, restore/purge, and retention collection. Every
+external phase has immutable request binding, monotonic checkpoint, fenced
+lease, idempotent terminal receipt, and restart reconciliation. Process or node
+loss cannot create a second automatic attempt.
 
-Next.js build and deployment remain optional manual host operations and are
-outside this automatic rollback lifecycle.
+Before the first compensating or irreversible effect, the owner durably closes
+automatic eligibility and establishes required traffic, job, and write fences.
+A crash never reopens that gate. Failure after it creates a
+recovery-required outcome.
+
+Trusted observations are fresh and bound to the exact release, rollout scope,
+topology, and pinned health policy. Module self-report, ordinary business/input
+errors, missing telemetry, or a platform-wide database, broker, network, or
+provider outage cannot alone authorize module rollback. A dependency symptom
+counts only when a bounded predecessor/control cohort remains healthy and the
+pinned policy attributes the regression to the candidate. Quarantine,
+revocation, policy, topology, migration, and retention changes preempt stale
+decisions.
+
+Static recovery authority and its bounded evaluator remain available outside
+the candidate application and embedded UI. The deployment controller receives
+only the exact operation, candidate, predecessor, topology, policy, deadline,
+and one-use recovery authorization; it cannot select releases, run DDL, or
+restore data.
+
+### Data, Durable Work, and Finalization
+
+The normal strategy is forward-compatible `expand -> migrate -> contract`, but
+automatic mode may rely only on one canonical internal contract. It may leave
+additive schema artifacts in place; it must not introduce old/new adapters,
+fallback decoders, dual read/write paths, or parallel internal contracts.
+Semantic changes that require those mechanisms are maintenance-only.
+
+For automatic mode, both N and N+1 must correctly read, write, validate, index,
+and serialize every intermediate database/configuration state. The same
+compatibility proof covers public/native transports, artifact bindings, events,
+outbox payloads, schedules, queued jobs, retries, caches/indexes, and active
+dependents. N+1 work remaining after return to N must be safely consumable,
+drained under the bounded authority below, cancelled, or visibly dead-lettered
+and reconciled.
+
+Retention never grants execution eligibility. An N+1-pinned work item may run
+after rollback only under a bounded item-specific drain authorization that
+creates no new work, serves no traffic, revalidates capability, security, and
+policy state, and is cancelled by quarantine or revocation. Otherwise the item
+is cancelled or visibly dead-lettered for reconciliation.
+
+Code rollback does not undo payments, emails, webhooks, published events, or
+other external mutations. Such effects must be compatible, idempotent, fenced,
+or covered by a tested reconciliation procedure for automatic mode.
+
+Destructive cleanup is a separate maintenance finalization. Elapsed time is not
+authority. Finalization requires an accepted/converged candidate, explicit
+rollback-window closure, completed backfills and invariants, no old nodes/work
+or incompatible client assets, no incident/recovery/rollback, and satisfied
+retention/recovery/legal/audit conditions.
+
+### Recovery Points
+
+Database restoration is a separately authorized recovery operation and never
+automatically overwrites live production data.
+
+Module-scoped recovery exists only for an explicit data ownership boundary
+with a complete, bounded, tested snapshot/restore procedure. Artifact-data
+restore retains its empty-target rule. Cross-module native data normally
+requires platform PostgreSQL recovery.
+
+Recovery fences traffic/writes/workers, preserves the failed live state,
+restores into an isolated or empty target, verifies identities, security,
+domain invariants, objects, projections, outbox/offsets and external effects,
+records measured RPO/RTO, and only then performs a separately authorized
+cutover or merge.
+
+### Frontend Boundary
+
+Embedded Leptos server and browser artifacts are part of the static role bundle
+and its rollback evidence. Dynamic declarative UI, localization, permissions,
+and bindings move with their admitted artifact.
+
+Next.js build/deployment remains optional and manual. It is outside automatic
+readiness, health, and rollback and cannot claim success for this lifecycle.
 
 ## Consequences
 
-- The shared operator projection exposes selected release, predecessor,
-  candidate, update mode, rollout outcome, rollback eligibility, and incident
-  correlation identity. Its commands are update, observe, manual rollback, and
-  disable/stop; it exposes no direct release-pointer, artifact-byte,
-  registry-mutation, or database-restore operation.
-- Every stateful module records runtime kind, data boundary, migration policy,
-  update mode, predecessor and dependency-closure compatibility evidence,
-  snapshot/recovery boundary, backfill behavior, rollback-window close
-  condition, and verification in its existing implementation plan.
-- Modules without this evidence fail closed into maintenance mode. Stateless
-  modules may enter automatic mode once the central owner verifies their
-  release and dependency facts.
-- Automatic mode requires tests for `N -> N+1 -> N`, rejected candidates,
-  failed readiness, revoked predecessors, duplicate commands, failed
-  predecessor return, and rollout timeout. Maintenance mode requires proof
-  that automatic rollback is denied and a recovery-required incident is
-  recorded after its irreversible checkpoint.
+- Every updateable module, including a stateless module, records a local
+  release/data readiness block. Stateless modules still account for
+  dependencies, durable work, contracts, health, and external effects.
+- The central readiness board reports evidence but never grants production
+  eligibility.
+- The shared operator projection distinguishes selected from serving state,
+  shows the rollback unit and blast radius, update mode/reason, observation and
+  rollback windows, migration/point-of-no-return facts, fence state,
+  eligibility/denial reasons, recovery progress, and sanitized diagnostics.
+- Automatic recovery succeeds only after the direct predecessor is observed
+  healthy. A pointer write, queued build, or process launch is intermediate.
+- Manual rollback uses the same executable decision, direct-predecessor rule,
+  fence, and convergence definition and is available only while current facts
+  prove eligibility.
+- Full logs remain protected, tenant-isolated, bounded, redacted, and separate
+  from typed owner receipts and fixed-cardinality metrics.
+- Verification includes mixed N/N+1 reads/writes and durable work, process loss
+  at every phase, concurrency and security races, external-outage
+  non-triggering, retention/GC holds, outside-candidate static recovery,
+  irreversible-gate races, tenant isolation, finalization denial, and measured
+  restore drills.
 
 ## Related Documents
 
 - [Module Release and Rollback Plan](../docs/modules/module-release-rollback-plan.md)
 - [Module artifact rollback boundary](./2026-07-13-module-artifact-rollback-boundary.md)
+- [Static promotion review boundary](./2026-07-22-static-promotion-review-boundary.md)
 - [Durable artifact-data snapshot and guarded restore](./2026-07-22-artifact-data-snapshot-restore.md)
+- [Artifact security state boundary](./2026-07-22-artifact-security-state-boundary.md)
+- [Shared owner-operation receipt ledger](./2026-08-03-owner-operation-receipts.md)
 - [Neutral sandbox foundation](./2026-07-11-neutral-sandbox-foundation.md)

@@ -209,6 +209,7 @@ contains(
 );
 for (const runtimeEvidence of [
   "native_interchange_executes_authenticated_http_parity",
+  "native_interchange_artifacts_execute_authenticated_http_parity",
   "native_policy_and_glossary_execute_authenticated_http_parity",
   "native_human_workflow_memory_and_progress_execute_http_parity",
   "native_qa_rejection_and_job_cancellation_execute_http_parity",
@@ -248,10 +249,20 @@ const rustOperations = [
   "ReadMemoryEntry",
   "LookupMemory",
   "ReadJobProgress",
+  "ReadReviewerQueue",
+  "ReadReviewerWorkload",
+  "ListWorkflowNotes",
+  "ListInterchangeArtifacts",
+  "ReadInterchangeArtifact",
   "ExportJob",
   "ReadProviderProgress",
   "ReadRequiredProviderProgress",
   "ReplacePolicy",
+  "CreateWorkflowNote",
+  "ResolveWorkflowNote",
+  "CreateInterchangeExportArtifact",
+  "StoreInterchangeImportArtifact",
+  "ProcessInterchangeImportArtifact",
   "CreateGlossary",
   "UpdateGlossary",
   "ReplaceGlossaryTerms",
@@ -296,7 +307,18 @@ const sharedWorkbenchOperations = [
   "list_memory_entries",
   "read_memory_entry",
   "lookup_memory",
+  "read_job_progress",
+  "read_reviewer_queue",
+  "read_reviewer_workload",
+  "list_workflow_notes",
+  "list_interchange_artifacts",
+  "read_interchange_artifact",
   "replace_policy",
+  "create_workflow_note",
+  "resolve_workflow_note",
+  "create_interchange_export_artifact",
+  "store_interchange_import_artifact",
+  "process_interchange_import_artifact",
   "create_glossary",
   "update_glossary",
   "replace_glossary_terms",
@@ -307,7 +329,6 @@ const sharedWorkbenchOperations = [
   "create_job",
   "export_job",
   "import_item",
-  "read_job_progress",
   "rebuild_job_progress",
   "sync_inventory",
   "rebuild_inventory",
@@ -378,6 +399,37 @@ for (const marker of [
     source.leptos,
     marker,
     `${files.leptos}: Workflow UI is missing recovery control ${marker}`,
+  );
+}
+for (const marker of [
+  "core::list_interchange_artifacts_operation",
+  "core::read_interchange_artifact_operation",
+  "core::create_interchange_export_artifact_operation",
+  "core::store_interchange_import_artifact_operation",
+  "core::process_interchange_import_artifact_operation",
+]) {
+  contains(
+    source.leptos,
+    marker,
+    `${files.leptos}: Workflow UI is missing interchange artifact control ${marker}`,
+  );
+}
+for (const operation of [
+  "ListInterchangeArtifacts",
+  "ReadInterchangeArtifact",
+  "CreateInterchangeExportArtifact",
+  "StoreInterchangeImportArtifact",
+  "ProcessInterchangeImportArtifact",
+]) {
+  contains(
+    source.native,
+    `TranslationAdminOperation::${operation}`,
+    `${files.native}: native adapter is missing interchange artifact operation ${operation}`,
+  );
+  contains(
+    source.graphql,
+    `TranslationAdminOperation::${operation}`,
+    `${files.graphql}: GraphQL adapter is missing interchange artifact operation ${operation}`,
   );
 }
 for (const operation of [

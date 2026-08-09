@@ -181,6 +181,7 @@ impl SeaOrmModuleAuthoringPublishService {
             name: command.name.clone(),
             description: command.description.clone(),
             actor_principal: author_principal(&command.context.actor_id),
+            actor_can_manage_modules: false,
         };
         request.validate()?;
         Ok(request)
@@ -427,6 +428,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
                 build_request_id: command.build_request_id,
                 idempotency_key,
                 actor_principal: actor_principal.clone(),
+                actor_can_manage_modules: false,
             })
             .await?;
         let validation_job = self

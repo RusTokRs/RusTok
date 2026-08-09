@@ -3,7 +3,7 @@ id: doc://crates/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-09
 ---
 
 # Translation implementation plan
@@ -148,6 +148,32 @@ selection.
   and deterministic QA. Matching GraphQL export/import fields, native and
   GraphQL admin operations, and Leptos/Next Jobs controls now expose the same
   bounded interchange contract.
+- Translation-owned interchange artifacts now persist only bounded document
+  bytes at private tenant-scoped object-storage keys in a canonical camel-case
+  wire document. The
+  `translation_exchange_jobs` metadata records lifecycle, actor/idempotency
+  binding, an exclusive short-lived import-processing lease, SHA-256 checksum,
+  size, expiry/deletion, and content-free aggregate import outcomes; it does
+  not duplicate document content. Reads verify size and checksum; a
+  Translation-owned runtime worker deletes expired private objects even for an
+  inactive tenant, and absent runtime storage fails closed. Export/import
+  artifacts have a 5-minute to 7-day lifetime and an 8 MiB cap. An import
+  starts only with enough remaining lifetime for the bounded lease, and
+  concurrent retries fail retryably rather than executing twice. GraphQL,
+  registered native HTTP, Leptos, and Next expose the same create/list/read/
+  store/process lifecycle; direct bounded interchange remains the distinct
+  inline/paste workflow.
+- Translation now owns a lazily registered, fixed-cardinality
+  `rustok_translation_*` telemetry collector and matching content-free tracing
+  spans. It covers provider operation success/failure/latency, checkpoint
+  freshness and elapsed age, authorized workflow-progress snapshots, owner
+  apply attempts/replays/errors, Translation Memory match kind, QA violation
+  family/severity, and interchange size/duration/rejection/import/expiry
+  outcomes. It has no tenant, resource, object-key, cursor, locale, business
+  text, or arbitrary provider-error label. Per-tenant job state remains the
+  authorized progress read model, and broker-backed event lag remains a
+  runtime consumer/outbox concern that must use durable positions rather than
+  event age or opaque cursor values.
 - Deterministic QA is implemented for resource lifecycle, required fields,
   empty required values, character limits, excluded fields, explicit protected
   tokens, whitespace shape, and unchanged-value warnings. It runs on save,
@@ -162,8 +188,10 @@ selection.
   package for the same control plane: one typed operation/response contract, an
   SSR/hydrate native `#[server]` adapter over `HostRuntimeContext`, and a
   CSR/headless GraphQL adapter over `rustok-graphql`. Both paths cover the same
-  41 operations, including the six glossary and six memory operations,
-  bounded job export and atomic item import, reviewer queue/workload reads, plus
+  49 operations, including the six glossary and six memory operations,
+  bounded job export and atomic item import, object-storage interchange
+  artifact create/list/read/store/process, reviewer queue/workload reads, and
+  private append-only job/item workflow-note list/create/resolve operations, plus
   non-billable machine-translation estimation, machine-proposal generation,
   status, cancellation, and recovery. Both module-owned workbenches expose the
   same machine workflow controls plus revision-guarded assignment/unassignment,
@@ -176,10 +204,11 @@ selection.
 - Registered HTTP server-function tests now execute the Translation control
   plane through the URL-encoded Leptos protocol and the same dispatch and
   owner-service paths used by the host. Runtime evidence covers policy,
-  glossary lifecycle, bounded interchange, assignment, manual proposal
+  glossary lifecycle, bounded direct interchange and object-storage artifacts,
+  assignment, manual proposal
   save/submit/review/apply, deterministic QA rejection, cancellation, retry,
   unknown-outcome apply recovery, job progress and rebuild, reviewer queue and
-  workload reads, Translation Memory lookup/lifecycle, inventory sync/full
+  workload reads, private workflow-note create/list/resolve, Translation Memory lookup/lifecycle, inventory sync/full
   rebuild, provider/required-target progress, and machine generation/status/
   cancellation/audited recovery through
   a deterministic neutral `MachineTranslationPort` factory. It also covers
@@ -300,12 +329,17 @@ selection.
   - the matching Next package uses the host GraphQL executor, host locale, and
     the same URL-owned `tab`, `glossary_id`, and `memory_entry_id` selection
     contracts;
-  - an authenticated GraphQL schema test executes bounded export/import through
-    the real `AuthContext` and `RequestContext`, and verifies invalid bounds,
-    stale source rejection, cross-tenant isolation, and mismatched tenant
-    denial;
+  - authenticated GraphQL schema tests execute bounded direct export/import and
+    the private object-storage artifact create/list/read/store/process lifecycle
+    through the real `AuthContext` and `RequestContext`; they verify invalid
+    bounds, stale source rejection, aggregate import outcomes, cross-tenant
+    isolation, and mismatched tenant denial;
+  - the artifact GraphQL fixture explicitly supplies `StorageRuntime`. The
+    production server still needs to compose that initialized runtime for a
+    Translation-only GraphQL profile instead of gating it on `mod-media`;
   - registered native HTTP server-function tests execute policy, glossaries,
-    bounded interchange, assignment, manual workflow/apply, QA rejection,
+    bounded direct interchange and private object-storage artifacts, assignment,
+    manual workflow/apply, QA rejection,
     cancellation, retry, apply recovery, job progress, reviewer queue/workload,
     Translation Memory, inventory rebuild, provider/required-target progress,
     and machine generation/status/cancellation/recovery with URL-encoded requests and
@@ -340,7 +374,8 @@ selection.
    production-database multi-replica evidence.
 2. Registered native HTTP server-function parity is runtime-verified for
    recovery, assignment, cancellation, retry, policy, glossaries, Translation
-   Memory, QA, progress, reviewer queue/workload, inventory, interchange, and
+   Memory, QA, progress, reviewer queue/workload, inventory, direct interchange,
+   private artifact lifecycle, and
    manual workflow operations.
 3. File-backed independent-pool and separate-process evidence is complete for
    automated Translation Memory retention: duplicate replica claims converge
@@ -352,8 +387,12 @@ selection.
    registered native read-policy function, including tenant cache/resolution,
    locale, JWT/session/RBAC, channel, rate-limit, security headers, and
    cross-tenant rejection. Authenticated GraphQL and registered native HTTP
-   tests separately cover bounded interchange, malformed bounds, stale source
-   rejection, tenant isolation, and successful import through canonical QA.
+   tests separately cover bounded direct interchange and private artifact
+   lifecycle, malformed bounds, stale source rejection, tenant isolation, and
+   successful import through canonical QA.
+   The server GraphQL host must also attach initialized `StorageRuntime` when
+   Translation is enabled without Media before the artifact lifecycle can claim
+   that deployment-profile evidence.
 5. Registered HTTP parity for machine generation/status/cancellation/recovery
    is runtime-verified through a deterministic neutral provider, including
    degraded health and audited stuck-save recovery. Production-provider

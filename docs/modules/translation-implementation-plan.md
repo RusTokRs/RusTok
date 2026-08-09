@@ -36,7 +36,7 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is the active cross-cutting implementation plan. As of 2026-08-03:
+This is the active cross-cutting implementation plan. As of 2026-08-09:
 
 - the dependency boundary for machine translation now exists:
   `rustok-translation` owns `MachineTranslationPort`, `rustok-ai` owns
@@ -109,7 +109,7 @@ This is the active cross-cutting implementation plan. As of 2026-08-03:
   target discovery, policy, job/provider progress, inventory
   synchronization/rebuild, and every implemented workflow command. Its
   capability-owned runtime factory consumes only neutral typed host values.
-  `rustok-translation-admin` adds one typed 41-operation transport contract,
+  `rustok-translation-admin` adds one typed 49-operation transport contract,
   SSR/hydrate native `#[server]` execution over `HostRuntimeContext`,
   CSR/headless execution through `rustok-graphql`, and the module-owned Leptos
   workbench. The matching `@rustok/translation-admin` package renders the Next
@@ -122,7 +122,25 @@ This is the active cross-cutting implementation plan. As of 2026-08-03:
   proposal generation/status/cancellation/recovery. Both workbenches also
   expose the same revision-guarded item assignment/unassignment, bounded
   reviewer queue and workload reads, blocked-item retry, job cancellation, and
-  owner-apply recovery commands.
+  owner-apply recovery commands. Private workflow-note list/create/resolve is
+  also implemented as Translation-owned collaboration: notes bind to a job and
+  optional item, use actor-bound idempotency and resolution CAS, and their
+  bodies never enter memory, machine requests, owner application, or events.
+  Translation-owned interchange artifacts now complement the bounded direct
+  export/import path: their documents are stored only at private tenant-scoped
+  object keys, while `translation_exchange_jobs` retains authorization,
+  idempotency, an exclusive short-lived import-processing lease, checksum,
+  size, expiry, deletion, and aggregate conflict-report evidence. Reads verify
+  the object size and SHA-256 checksum; a missing storage runtime fails closed.
+  Artifacts are bounded to 8 MiB and a 5-minute to 7-day lifetime. A
+  Translation-owned runtime worker deletes their private object on expiry even
+  without a later tenant request, and artifacts expose no blob URL or document
+  content through events. An import starts only when its remaining artifact
+  lifetime can cover the bounded lease; concurrent retries fail retryably
+  instead of racing. The
+  module-level GraphQL fixture supplies storage explicitly; the server still
+  must attach initialized `StorageRuntime` to a Translation-only GraphQL host
+  rather than gate it on `mod-media`;
   Live browser, accessibility, module-disablement, and authenticated transport
   evidence remain open;
 - deterministic QA now runs on proposal save, review submission, and approval.
@@ -945,9 +963,10 @@ mutation of transaction history.
 
 The current GraphQL control plane and the `rustok-translation-admin` native
 adapter expose policy, progress, inventory, reviewed workflow, versioned
-glossary, Translation Memory, bounded interchange, and derived reviewer queue
-and workload operations through one 41-operation client
-contract. The manifest publishes its module-owned six-tab Leptos workbench,
+glossary, Translation Memory, bounded direct interchange plus private
+object-storage-backed artifact lifecycle, derived reviewer queue and workload
+operations, and private workflow-note collaboration through one 49-operation
+client contract. The manifest publishes its module-owned six-tab Leptos workbench,
 while `@rustok/translation-admin` renders the matching Next workbench through
 the same GraphQL contract. Both keep glossary and memory selection in
 URL-owned `glossary_id` and `memory_entry_id`. The contract will extend as
@@ -959,13 +978,15 @@ later domain capabilities land, for:
 - draft save and proposal history;
 - assignment, review, approval, and apply;
 - additional memory propagation and automation;
-- additional interchange batch orchestration beyond atomic per-item import;
+- third-party interchange/TMS orchestration beyond the current bounded
+  artifact lifecycle;
 - additional glossary operator context;
 - import/export lifecycle and reports.
 
 REST is reserved for bounded streaming import/export, webhooks if a future TMS
 integration requires them, and operational endpoints. Large files do not pass
-through unbounded GraphQL JSON.
+through unbounded GraphQL JSON; the current stored-artifact document is capped
+at 8 MiB before it reaches object storage.
 
 Subscriptions may publish progress and job state, but polling remains bounded
 and supported for clients without websocket transport. Mutation failure never
@@ -1097,6 +1118,15 @@ Publish content-free metrics and traces for:
 
 Dashboards must separate system health from tenant content progress. Metrics
 labels cannot contain resource IDs with unbounded cardinality or business text.
+The implemented Translation observer reports fixed-cardinality provider
+operation availability/latency, checkpoint freshness and elapsed age, owner
+apply attempts/replays/error kind, memory strongest-match kind, QA family and
+severity, and interchange size/duration/rejection/import/expiry outcomes. It
+creates content-free spans for provider, workflow, and interchange boundaries.
+Per-tenant job/item state remains in the authorized progress read model rather
+than a global metric. The remaining event-lag work belongs at the runtime
+consumer/outbox boundary and must use a durable consumer position; it must not
+infer lag from event age or an opaque Translation cursor.
 
 ### Resilience
 
@@ -1362,14 +1392,23 @@ Deliverables:
 - [x] bounded reviewer queues and workload views derived from current
   tenant-scoped workflow evidence, with explicit queue/workload limits,
   assignee filtering, unassigned work, and GraphQL/native/Leptos/Next parity;
-- [ ] comments/notes;
+- [x] private workflow-note collaboration: tenant-scoped append-only notes
+  bound to a job and optional item, bounded body/list limits, actor-bound
+  idempotency, explicit resolution CAS, content-free events, and native,
+  GraphQL, Leptos, and Next parity. This does not use `rustok-comments`, whose
+  public discussion/RBAC contract is not a Translation workflow boundary;
 - [x] bounded direct import/export with immutable owner evidence, per-item
   validation/conflict outcomes, and GraphQL/native/Leptos/Next parity;
-- [ ] object-storage-backed interchange artifacts with expiry and aggregate
-  conflict reports;
+- [x] object-storage-backed interchange artifacts with bounded private object
+  storage, canonical camel-case documents, checksum-verified reads, 5-minute
+  to 7-day expiry/deletion through a Translation-owned runtime worker, and
+  aggregate per-item conflict reports across GraphQL/native/Leptos/Next;
 - [x] progress dashboards, transactional projection upkeep, and idempotent
   rebuild/repair operations across GraphQL/native/Leptos/Next surfaces;
-- [ ] provider/event lag and workflow observability.
+- [ ] complete broker-backed Translation event-consumer lag evidence. The
+  module-side fixed-cardinality provider/workflow/memory/QA/interchange metrics
+  and content-free spans are implemented; do not substitute event age or an
+  opaque cursor for durable consumer-position lag.
 
 Done when a translation can round-trip through manual editing, memory,
 glossary, export/import, review, and owner apply without losing identities,

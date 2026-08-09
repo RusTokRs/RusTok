@@ -31,9 +31,12 @@ const MEMORY_MUTATION_FIELDS: &str =
     "entryId revision state retentionPolicy retainUntil tombstonedAt";
 const JOB_FIELDS: &str =
     "id sourceLocale targetLocale glossary { glossaryId revision } status revision";
-const INTERCHANGE_DOCUMENT_FIELDS: &str = "schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue sourceHash required maxCharacters protectedTokens } }";
+const INTERCHANGE_DOCUMENT_FIELDS: &str = "schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue proposedValue sourceHash required maxCharacters protectedTokens } }";
+const INTERCHANGE_ARTIFACT_FIELDS: &str = "id jobId direction status contentLength checksumSha256 expiresAt processedAt report { totalItems acceptedItems conflictItems rejectedItems outcomes { itemId status } } createdAt updatedAt";
+const INTERCHANGE_ARTIFACT_CONTENT_FIELDS: &str = "artifact { id jobId direction status contentLength checksumSha256 expiresAt processedAt report { totalItems acceptedItems conflictItems rejectedItems outcomes { itemId status } } createdAt updatedAt } document { schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue proposedValue sourceHash required maxCharacters protectedTokens } } }";
 const REVIEWER_QUEUE_FIELDS: &str = "item { id jobId ownerSlug resourceKind resourceId subresourceId status assignee { kind id } sourceDigest revision } proposalId proposalRevision submittedAt";
 const REVIEWER_WORKLOAD_FIELDS: &str = "jobId assignee { kind id } openItems missingItems draftItems inReviewItems approvedItems applyingItems rebaseRequiredItems blockedItems sourceCharacters";
+const WORKFLOW_NOTE_FIELDS: &str = "id jobId itemId body author { kind id } revision resolvedAt resolvedBy { kind id } createdAt updatedAt";
 
 pub async fn execute(
     context: TranslationAdminTransportContext,
@@ -89,8 +92,17 @@ pub async fn execute(
         TranslationAdminOperation::ReadReviewerWorkload { .. } => Ok(
             TranslationAdminResponse::ReviewerWorkloads(field_value(&data, field)?),
         ),
+        TranslationAdminOperation::ListWorkflowNotes { .. } => Ok(
+            TranslationAdminResponse::WorkflowNotes(field_value(&data, field)?),
+        ),
         TranslationAdminOperation::ExportJob { .. } => Ok(
             TranslationAdminResponse::InterchangeDocument(field_value(&data, field)?),
+        ),
+        TranslationAdminOperation::ListInterchangeArtifacts { .. } => Ok(
+            TranslationAdminResponse::InterchangeArtifacts(field_value(&data, field)?),
+        ),
+        TranslationAdminOperation::ReadInterchangeArtifact { .. } => Ok(
+            TranslationAdminResponse::InterchangeArtifactContent(field_value(&data, field)?),
         ),
         TranslationAdminOperation::ReadProviderProgress { .. } => Ok(
             TranslationAdminResponse::ProviderProgress(field_value(&data, field)?),
@@ -101,6 +113,15 @@ pub async fn execute(
         TranslationAdminOperation::CreateJob { .. } => {
             Ok(TranslationAdminResponse::Job(field_value(&data, field)?))
         }
+        TranslationAdminOperation::CreateWorkflowNote { .. }
+        | TranslationAdminOperation::ResolveWorkflowNote { .. } => Ok(
+            TranslationAdminResponse::WorkflowNote(field_value(&data, field)?),
+        ),
+        TranslationAdminOperation::CreateInterchangeExportArtifact { .. }
+        | TranslationAdminOperation::StoreInterchangeImportArtifact { .. }
+        | TranslationAdminOperation::ProcessInterchangeImportArtifact { .. } => Ok(
+            TranslationAdminResponse::InterchangeArtifact(field_value(&data, field)?),
+        ),
         TranslationAdminOperation::AddItem { .. } => {
             let item: GraphqlJobItem = field_value(&data, field)?;
             Ok(TranslationAdminResponse::Item(item.into()))
@@ -243,6 +264,21 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
             json!({ "input": { "jobId": job_id } }),
             "translationReviewerWorkload",
         ),
+        TranslationAdminOperation::ListWorkflowNotes {
+            job_id,
+            item_id,
+            include_resolved,
+            limit,
+        } => (
+            format!("query TranslationWorkflowNotes($input: TranslationWorkflowNotesInput!) {{ translationWorkflowNotes(input: $input) {{ {WORKFLOW_NOTE_FIELDS} }} }}"),
+            json!({ "input": {
+                "jobId": job_id,
+                "itemId": item_id,
+                "includeResolved": include_resolved,
+                "limit": limit,
+            }}),
+            "translationWorkflowNotes",
+        ),
         TranslationAdminOperation::ExportJob { job_id, max_items } => (
             format!(
                 "query ExportTranslationJob($input: ExportTranslationJobInput!) {{ exportTranslationJob(input: $input) {{ {INTERCHANGE_DOCUMENT_FIELDS} }} }}"
@@ -252,6 +288,28 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
                 "maxItems": max_items,
             }}),
             "exportTranslationJob",
+        ),
+        TranslationAdminOperation::ListInterchangeArtifacts {
+            job_id,
+            include_expired,
+            limit,
+        } => (
+            format!(
+                "query TranslationInterchangeArtifacts($input: TranslationInterchangeArtifactsInput!) {{ translationInterchangeArtifacts(input: $input) {{ {INTERCHANGE_ARTIFACT_FIELDS} }} }}"
+            ),
+            json!({ "input": {
+                "jobId": job_id,
+                "includeExpired": include_expired,
+                "limit": limit,
+            }}),
+            "translationInterchangeArtifacts",
+        ),
+        TranslationAdminOperation::ReadInterchangeArtifact { artifact_id } => (
+            format!(
+                "query TranslationInterchangeArtifact($input: ReadTranslationInterchangeArtifactInput!) {{ translationInterchangeArtifact(input: $input) {{ {INTERCHANGE_ARTIFACT_CONTENT_FIELDS} }} }}"
+            ),
+            json!({ "input": { "artifactId": artifact_id } }),
+            "translationInterchangeArtifact",
         ),
         TranslationAdminOperation::ReadProviderProgress {
             owner_slug,
@@ -417,6 +475,81 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
                 "idempotencyKey": idempotency_key,
             }}),
             "createTranslationJob",
+        ),
+        TranslationAdminOperation::CreateWorkflowNote {
+            job_id,
+            item_id,
+            body,
+            idempotency_key,
+        } => (
+            format!("mutation CreateTranslationWorkflowNote($input: CreateTranslationWorkflowNoteInput!) {{ createTranslationWorkflowNote(input: $input) {{ {WORKFLOW_NOTE_FIELDS} }} }}"),
+            json!({ "input": {
+                "jobId": job_id,
+                "itemId": item_id,
+                "body": body,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "createTranslationWorkflowNote",
+        ),
+        TranslationAdminOperation::ResolveWorkflowNote {
+            note_id,
+            expected_revision,
+            idempotency_key,
+        } => (
+            format!("mutation ResolveTranslationWorkflowNote($input: ResolveTranslationWorkflowNoteInput!) {{ resolveTranslationWorkflowNote(input: $input) {{ {WORKFLOW_NOTE_FIELDS} }} }}"),
+            json!({ "input": {
+                "noteId": note_id,
+                "expectedRevision": expected_revision,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "resolveTranslationWorkflowNote",
+        ),
+        TranslationAdminOperation::CreateInterchangeExportArtifact {
+            job_id,
+            max_items,
+            expires_in_seconds,
+            idempotency_key,
+        } => (
+            format!(
+                "mutation CreateTranslationInterchangeExportArtifact($input: CreateTranslationInterchangeExportArtifactInput!) {{ createTranslationInterchangeExportArtifact(input: $input) {{ {INTERCHANGE_ARTIFACT_FIELDS} }} }}"
+            ),
+            json!({ "input": {
+                "jobId": job_id,
+                "maxItems": max_items,
+                "expiresInSeconds": expires_in_seconds,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "createTranslationInterchangeExportArtifact",
+        ),
+        TranslationAdminOperation::StoreInterchangeImportArtifact {
+            job_id,
+            document_json,
+            expires_in_seconds,
+            idempotency_key,
+        } => (
+            format!(
+                "mutation StoreTranslationInterchangeImportArtifact($input: StoreTranslationInterchangeImportArtifactInput!) {{ storeTranslationInterchangeImportArtifact(input: $input) {{ {INTERCHANGE_ARTIFACT_FIELDS} }} }}"
+            ),
+            json!({ "input": {
+                "jobId": job_id,
+                "documentJson": document_json,
+                "expiresInSeconds": expires_in_seconds,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "storeTranslationInterchangeImportArtifact",
+        ),
+        TranslationAdminOperation::ProcessInterchangeImportArtifact {
+            artifact_id,
+            idempotency_key,
+        } => (
+            format!(
+                "mutation ProcessTranslationInterchangeImportArtifact($input: ProcessTranslationInterchangeImportArtifactInput!) {{ processTranslationInterchangeImportArtifact(input: $input) {{ {INTERCHANGE_ARTIFACT_FIELDS} }} }}"
+            ),
+            json!({ "input": {
+                "artifactId": artifact_id,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "processTranslationInterchangeImportArtifact",
         ),
         TranslationAdminOperation::AddItem {
             job_id,
@@ -901,9 +1034,23 @@ mod tests {
             TranslationAdminOperation::ReadReviewerWorkload {
                 job_id: "00000000-0000-0000-0000-000000000001".to_string(),
             },
+            TranslationAdminOperation::ListWorkflowNotes {
+                job_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                item_id: Some("00000000-0000-0000-0000-000000000002".to_string()),
+                include_resolved: true,
+                limit: 50,
+            },
             TranslationAdminOperation::ExportJob {
                 job_id: "00000000-0000-0000-0000-000000000001".to_string(),
                 max_items: 200,
+            },
+            TranslationAdminOperation::ListInterchangeArtifacts {
+                job_id: Some("00000000-0000-0000-0000-000000000001".to_string()),
+                include_expired: true,
+                limit: 50,
+            },
+            TranslationAdminOperation::ReadInterchangeArtifact {
+                artifact_id: "00000000-0000-0000-0000-000000000007".to_string(),
             },
             TranslationAdminOperation::ReadProviderProgress {
                 owner_slug: "media".to_string(),
@@ -970,6 +1117,33 @@ mod tests {
                 target_locale: "de".to_string(),
                 glossary: None,
                 idempotency_key: "job-1".to_string(),
+            },
+            TranslationAdminOperation::CreateWorkflowNote {
+                job_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                item_id: Some("00000000-0000-0000-0000-000000000002".to_string()),
+                body: "Private reviewer context".to_string(),
+                idempotency_key: "workflow-note-create-1".to_string(),
+            },
+            TranslationAdminOperation::ResolveWorkflowNote {
+                note_id: "00000000-0000-0000-0000-000000000006".to_string(),
+                expected_revision: 0,
+                idempotency_key: "workflow-note-resolve-1".to_string(),
+            },
+            TranslationAdminOperation::CreateInterchangeExportArtifact {
+                job_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                max_items: 50,
+                expires_in_seconds: 86_400,
+                idempotency_key: "interchange-export-artifact-1".to_string(),
+            },
+            TranslationAdminOperation::StoreInterchangeImportArtifact {
+                job_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                document_json: r#"{"schemaVersion":1,"jobId":"00000000-0000-0000-0000-000000000001","sourceLocale":"en","targetLocale":"de","items":[]}"#.to_string(),
+                expires_in_seconds: 86_400,
+                idempotency_key: "interchange-import-artifact-1".to_string(),
+            },
+            TranslationAdminOperation::ProcessInterchangeImportArtifact {
+                artifact_id: "00000000-0000-0000-0000-000000000007".to_string(),
+                idempotency_key: "interchange-process-artifact-1".to_string(),
             },
             TranslationAdminOperation::AddItem {
                 job_id: "00000000-0000-0000-0000-000000000001".to_string(),

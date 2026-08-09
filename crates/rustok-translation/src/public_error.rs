@@ -44,6 +44,9 @@ pub fn map_translation_public_error(
         ),
         TranslationError::JobNotFound
         | TranslationError::ItemNotFound
+        | TranslationError::WorkflowNoteNotFound
+        | TranslationError::InterchangeArtifactNotFound
+        | TranslationError::InterchangeArtifactExpired
         | TranslationError::ProposalNotFound
         | TranslationError::JobProgressNotFound
         | TranslationError::GlossaryNotFound
@@ -95,6 +98,8 @@ pub fn map_translation_public_error(
         | TranslationError::InvalidMachineRecoveryReason
         | TranslationError::MachineRecoveryRevisionMismatch
         | TranslationError::MachineRecoveryAlreadyRequested
+        | TranslationError::InterchangeArtifactNotReady
+        | TranslationError::InterchangeArtifactAlreadyProcessed
         | TranslationError::MemoryRetentionConflict(_) => (
             TranslationPublicErrorKind::BadInput,
             "Translation request is invalid".to_string(),
@@ -105,6 +110,7 @@ pub fn map_translation_public_error(
         TranslationError::Provider {
             retryable: true, ..
         }
+        | TranslationError::InterchangeArtifactInProgress
         | TranslationError::MachineRecoveryResultUnavailable
         | TranslationError::Database(_) => (
             TranslationPublicErrorKind::Internal,
@@ -169,5 +175,18 @@ mod tests {
         assert_eq!(public.code, "TRANSLATION_REQUEST_INVALID");
         assert!(!public.retryable);
         assert!(!rendered.contains("owner-payload=private"));
+    }
+
+    #[test]
+    fn active_artifact_processing_is_retryable() {
+        let public = map_translation_public_error(
+            &TranslationError::InterchangeArtifactInProgress,
+            "test",
+            "translation_test",
+        );
+
+        assert_eq!(public.kind, TranslationPublicErrorKind::Internal);
+        assert_eq!(public.code, "TRANSLATION_TEMPORARILY_UNAVAILABLE");
+        assert!(public.retryable);
     }
 }

@@ -9,6 +9,11 @@ non-symlink regular files bound to lowercase SHA-256 digests. Their bytes are
 re-hashed at construction, readiness, and every invocation. Neither executable
 is selected by a build request.
 
+`validate_fixed_program` is the shared closed validation primitive for another
+deployment-owned helper at an isolated worker boundary. It gives the OCI-job
+launcher the same absolute-path, non-symlink, and exact-digest invariants as
+the broker and Cosign executable instead of duplicating that security logic.
+
 The broker receives one bounded JSON request with contract
 `rustok.registry_credential.request`, registry, repository, and minimum lease
 duration. It returns only `rustok.registry_credential.response` for the same

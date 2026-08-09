@@ -1,5 +1,4 @@
 use rustok_core::events::BackpressureState;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -9,6 +8,7 @@ use crate::middleware::rate_limit::{
 };
 use crate::services::event_bus::SharedEventBus;
 use crate::services::event_transport_factory::EventRuntime;
+use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, ToSchema)]
@@ -256,7 +256,7 @@ pub async fn collect_runtime_guardrail_snapshot(
             &mut observed_status,
             RuntimeGuardrailStatus::Critical,
             &mut reasons,
-            "remote executor is enabled but missing shared token configuration".to_string(),
+            remote_executor_critical_reason(remote_executor.token_configured).to_string(),
         );
     }
 
@@ -370,34 +370,20 @@ async fn collect_remote_executor_snapshot(
         };
     }
 
-    let active_claims =
-        crate::models::registry_validation_stage::Entity::find()
-            .filter(crate::models::registry_validation_stage::Column::RunnerKind.eq("remote"))
-            .filter(crate::models::registry_validation_stage::Column::Status.eq(
-                crate::models::registry_validation_stage::RegistryValidationStageStatus::Running,
-            ))
-            .count(ctx.db())
+    let (active_claims, expired_claims, lease_snapshot_available) =
+        match RegistryGovernanceService::new(ctx.db_clone())
+            .remote_validation_runner_snapshot()
             .await
-            .unwrap_or(0);
-    let expired_claims = crate::models::registry_validation_stage::Entity::find()
-        .filter(crate::models::registry_validation_stage::Column::RunnerKind.eq("remote"))
-        .filter(
-            crate::models::registry_validation_stage::Column::ClaimExpiresAt.lt(chrono::Utc::now()),
-        )
-        .count(ctx.db())
-        .await
-        .unwrap_or(0);
+        {
+            Ok(snapshot) => (snapshot.active_claims, snapshot.expired_claims, true),
+            Err(_) => (0, 0, false),
+        };
     let token_configured = config
         .shared_token
         .as_deref()
         .is_some_and(|value| !value.trim().is_empty());
-    let state = if !token_configured {
-        RuntimeGuardrailStatus::Critical
-    } else if expired_claims > 0 {
-        RuntimeGuardrailStatus::Degraded
-    } else {
-        RuntimeGuardrailStatus::Ok
-    };
+    let state =
+        remote_executor_guardrail_state(token_configured, lease_snapshot_available, expired_claims);
 
     RemoteExecutorGuardrailSnapshot {
         enabled: true,
@@ -407,6 +393,61 @@ async fn collect_remote_executor_snapshot(
         active_claims,
         expired_claims,
         state,
+    }
+}
+
+fn remote_executor_guardrail_state(
+    token_configured: bool,
+    lease_snapshot_available: bool,
+    expired_claims: u64,
+) -> RuntimeGuardrailStatus {
+    if !token_configured || !lease_snapshot_available {
+        RuntimeGuardrailStatus::Critical
+    } else if expired_claims > 0 {
+        RuntimeGuardrailStatus::Degraded
+    } else {
+        RuntimeGuardrailStatus::Ok
+    }
+}
+
+fn remote_executor_critical_reason(token_configured: bool) -> &'static str {
+    if token_configured {
+        "remote executor could not read owner-issued validation lease observability facts"
+    } else {
+        "remote executor is enabled but missing shared token configuration"
+    }
+}
+
+#[cfg(test)]
+mod remote_executor_guardrail_tests {
+    use super::*;
+
+    #[test]
+    fn owner_snapshot_failure_is_critical_and_distinct_from_missing_token() {
+        assert_eq!(
+            remote_executor_guardrail_state(true, false, 0),
+            RuntimeGuardrailStatus::Critical
+        );
+        assert_eq!(
+            remote_executor_critical_reason(true),
+            "remote executor could not read owner-issued validation lease observability facts"
+        );
+        assert_eq!(
+            remote_executor_guardrail_state(false, true, 0),
+            RuntimeGuardrailStatus::Critical
+        );
+        assert_eq!(
+            remote_executor_critical_reason(false),
+            "remote executor is enabled but missing shared token configuration"
+        );
+        assert_eq!(
+            remote_executor_guardrail_state(true, true, 1),
+            RuntimeGuardrailStatus::Degraded
+        );
+        assert_eq!(
+            remote_executor_guardrail_state(true, true, 0),
+            RuntimeGuardrailStatus::Ok
+        );
     }
 }
 

@@ -12,6 +12,10 @@ use crate::model::{
 pub const TAB_QUERY_KEY: &str = "tab";
 pub const GLOSSARY_ID_QUERY_KEY: &str = "glossary_id";
 pub const MEMORY_ENTRY_ID_QUERY_KEY: &str = "memory_entry_id";
+const MAX_INTERCHANGE_ARTIFACT_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_INTERCHANGE_ARTIFACT_ITEMS: u16 = 200;
+const MIN_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS: u32 = 300;
+const MAX_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS: u32 = 7 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TranslationAdminTab {
@@ -321,6 +325,41 @@ pub fn operation_receipt_view_model(
                 workloads.len().to_string(),
             )],
         },
+        TranslationAdminResponse::WorkflowNotes(notes) => OperationReceiptViewModel {
+            title_key: "translation.receipt.workflowNotes",
+            fallback_title: "Workflow notes",
+            facts: vec![fact(
+                "translation.field.workflowNotes",
+                "Workflow notes",
+                notes.len().to_string(),
+            )],
+        },
+        TranslationAdminResponse::WorkflowNote(note) => OperationReceiptViewModel {
+            title_key: "translation.receipt.workflowNote",
+            fallback_title: "Workflow note updated",
+            facts: vec![
+                fact(
+                    "translation.field.workflowNoteId",
+                    "Workflow note ID",
+                    note.id.clone(),
+                ),
+                fact("translation.field.jobId", "Job ID", note.job_id.clone()),
+                fact(
+                    "translation.field.revision",
+                    "Revision",
+                    note.revision.to_string(),
+                ),
+                fact(
+                    "translation.field.status",
+                    "Status",
+                    if note.resolved_at.is_some() {
+                        "resolved".to_string()
+                    } else {
+                        "open".to_string()
+                    },
+                ),
+            ],
+        },
         TranslationAdminResponse::InterchangeDocument(document) => OperationReceiptViewModel {
             title_key: "translation.receipt.interchangeExport",
             fallback_title: "Interchange document exported",
@@ -338,6 +377,27 @@ pub fn operation_receipt_view_model(
                 ),
             ],
         },
+        TranslationAdminResponse::InterchangeArtifacts(artifacts) => OperationReceiptViewModel {
+            title_key: "translation.receipt.interchangeArtifacts",
+            fallback_title: "Interchange artifacts loaded",
+            facts: vec![fact(
+                "translation.field.interchangeArtifacts",
+                "Interchange artifacts",
+                artifacts.len().to_string(),
+            )],
+        },
+        TranslationAdminResponse::InterchangeArtifact(artifact) => OperationReceiptViewModel {
+            title_key: "translation.receipt.interchangeArtifact",
+            fallback_title: "Interchange artifact updated",
+            facts: interchange_artifact_facts(&fact, artifact),
+        },
+        TranslationAdminResponse::InterchangeArtifactContent(content) => {
+            OperationReceiptViewModel {
+                title_key: "translation.receipt.interchangeArtifact",
+                fallback_title: "Interchange artifact loaded",
+                facts: interchange_artifact_facts(&fact, &content.artifact),
+            }
+        }
         TranslationAdminResponse::ProviderProgress(progress) => OperationReceiptViewModel {
             title_key: "translation.receipt.providerProgress",
             fallback_title: "Provider progress",
@@ -643,6 +703,30 @@ pub fn operation_receipt_view_model(
             ],
         },
     }
+}
+
+fn interchange_artifact_facts(
+    fact: &impl Fn(&'static str, &'static str, String) -> ReceiptFact,
+    artifact: &crate::model::InterchangeArtifact,
+) -> Vec<ReceiptFact> {
+    vec![
+        fact(
+            "translation.field.interchangeArtifactId",
+            "Artifact ID",
+            artifact.id.clone(),
+        ),
+        fact("translation.field.jobId", "Job ID", artifact.job_id.clone()),
+        fact(
+            "translation.field.status",
+            "Status",
+            artifact.status.clone(),
+        ),
+        fact(
+            "translation.field.interchangeDirection",
+            "Direction",
+            artifact.direction.clone(),
+        ),
+    ]
 }
 
 pub fn create_job_with_glossary_operation(
@@ -982,6 +1066,77 @@ pub fn read_reviewer_workload_operation(
     })
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct WorkflowNotesOperationInput<'a> {
+    pub job_id: &'a str,
+    pub item_id: &'a str,
+    pub include_resolved: bool,
+    pub limit: &'a str,
+}
+
+pub fn list_workflow_notes_operation(
+    input: WorkflowNotesOperationInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let limit = parse_u16("workflow_note_limit", input.limit)?;
+    if limit == 0 || limit > 200 {
+        return Err(CommandInputError {
+            field: "workflow_note_limit",
+            message: "must be between 1 and 200".to_string(),
+        });
+    }
+    Ok(TranslationAdminOperation::ListWorkflowNotes {
+        job_id: required_text("job_id", input.job_id)?,
+        item_id: normalize_ui_text(input.item_id),
+        include_resolved: input.include_resolved,
+        limit,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CreateWorkflowNoteOperationInput<'a> {
+    pub job_id: &'a str,
+    pub item_id: &'a str,
+    pub body: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+pub fn create_workflow_note_operation(
+    input: CreateWorkflowNoteOperationInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let body = required_text("workflow_note_body", input.body)?;
+    if body.chars().count() > 4_000 {
+        return Err(CommandInputError {
+            field: "workflow_note_body",
+            message: "must not exceed 4000 characters".to_string(),
+        });
+    }
+    Ok(TranslationAdminOperation::CreateWorkflowNote {
+        job_id: required_text("job_id", input.job_id)?,
+        item_id: normalize_ui_text(input.item_id),
+        body,
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
+    })
+}
+
+pub fn resolve_workflow_note_operation(
+    note_id: &str,
+    expected_revision: &str,
+    idempotency_key: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let expected_revision = parse_i64("expected_revision", expected_revision)?;
+    if expected_revision < 0 {
+        return Err(CommandInputError {
+            field: "expected_revision",
+            message: "must be zero or greater".to_string(),
+        });
+    }
+    Ok(TranslationAdminOperation::ResolveWorkflowNote {
+        note_id: required_text("workflow_note_id", note_id)?,
+        expected_revision,
+        idempotency_key: required_text("idempotency_key", idempotency_key)?,
+    })
+}
+
 pub fn export_job_operation(
     job_id: &str,
     max_items: &str,
@@ -997,6 +1152,147 @@ pub fn export_job_operation(
         job_id: required_text("job_id", job_id)?,
         max_items,
     })
+}
+
+pub struct ListInterchangeArtifactsOperationInput<'a> {
+    pub job_id: Option<&'a str>,
+    pub include_expired: bool,
+    pub limit: &'a str,
+}
+
+pub fn list_interchange_artifacts_operation(
+    input: ListInterchangeArtifactsOperationInput<'_>,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let limit = parse_u16("interchange_artifact_limit", input.limit)?;
+    if limit == 0 || limit > MAX_INTERCHANGE_ARTIFACT_ITEMS {
+        return Err(CommandInputError {
+            field: "interchange_artifact_limit",
+            message: format!("must be between 1 and {MAX_INTERCHANGE_ARTIFACT_ITEMS}"),
+        });
+    }
+    Ok(TranslationAdminOperation::ListInterchangeArtifacts {
+        job_id: input.job_id.and_then(normalize_ui_text),
+        include_expired: input.include_expired,
+        limit,
+    })
+}
+
+pub fn read_interchange_artifact_operation(
+    artifact_id: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(TranslationAdminOperation::ReadInterchangeArtifact {
+        artifact_id: required_text("interchange_artifact_id", artifact_id)?,
+    })
+}
+
+pub fn create_interchange_export_artifact_operation(
+    job_id: &str,
+    max_items: &str,
+    expires_in_seconds: &str,
+    idempotency_key: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let max_items = parse_u16("interchange_artifact_max_items", max_items)?;
+    if max_items == 0 || max_items > MAX_INTERCHANGE_ARTIFACT_ITEMS {
+        return Err(CommandInputError {
+            field: "interchange_artifact_max_items",
+            message: format!("must be between 1 and {MAX_INTERCHANGE_ARTIFACT_ITEMS}"),
+        });
+    }
+    Ok(TranslationAdminOperation::CreateInterchangeExportArtifact {
+        job_id: required_text("job_id", job_id)?,
+        max_items,
+        expires_in_seconds: parse_interchange_artifact_expiry(expires_in_seconds)?,
+        idempotency_key: required_text("idempotency_key", idempotency_key)?,
+    })
+}
+
+pub fn store_interchange_import_artifact_operation(
+    job_id: &str,
+    document_json: &str,
+    expires_in_seconds: &str,
+    idempotency_key: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let job_id = required_text("job_id", job_id)?;
+    let document_json = canonical_interchange_artifact_document(document_json, &job_id)?;
+    Ok(TranslationAdminOperation::StoreInterchangeImportArtifact {
+        job_id,
+        document_json,
+        expires_in_seconds: parse_interchange_artifact_expiry(expires_in_seconds)?,
+        idempotency_key: required_text("idempotency_key", idempotency_key)?,
+    })
+}
+
+pub fn process_interchange_import_artifact_operation(
+    artifact_id: &str,
+    idempotency_key: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    Ok(
+        TranslationAdminOperation::ProcessInterchangeImportArtifact {
+            artifact_id: required_text("interchange_artifact_id", artifact_id)?,
+            idempotency_key: required_text("idempotency_key", idempotency_key)?,
+        },
+    )
+}
+
+fn parse_interchange_artifact_expiry(value: &str) -> Result<u32, CommandInputError> {
+    let value = value.trim().parse::<u32>().map_err(|_| CommandInputError {
+        field: "interchange_artifact_expiry_seconds",
+        message: "must be a whole number of seconds".to_string(),
+    })?;
+    if !(MIN_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS..=MAX_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS)
+        .contains(&value)
+    {
+        return Err(CommandInputError {
+            field: "interchange_artifact_expiry_seconds",
+            message: format!(
+                "must be between {MIN_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS} and {MAX_INTERCHANGE_ARTIFACT_EXPIRY_SECONDS}",
+            ),
+        });
+    }
+    Ok(value)
+}
+
+fn canonical_interchange_artifact_document(
+    document_json: &str,
+    job_id: &str,
+) -> Result<String, CommandInputError> {
+    if document_json.len() > MAX_INTERCHANGE_ARTIFACT_DOCUMENT_BYTES {
+        return Err(CommandInputError {
+            field: "interchange_artifact_document",
+            message: format!("must not exceed {MAX_INTERCHANGE_ARTIFACT_DOCUMENT_BYTES} bytes",),
+        });
+    }
+    let document = serde_json::from_str::<InterchangeDocument>(document_json).map_err(|error| {
+        CommandInputError {
+            field: "interchange_artifact_document",
+            message: format!("must be an interchange document: {error}"),
+        }
+    })?;
+    if document.schema_version != 1 || document.job_id != job_id {
+        return Err(CommandInputError {
+            field: "interchange_artifact_document",
+            message: "must match schema version 1 and the selected job".to_string(),
+        });
+    }
+    if document.items.is_empty()
+        || document.items.len() > usize::from(MAX_INTERCHANGE_ARTIFACT_ITEMS)
+    {
+        return Err(CommandInputError {
+            field: "interchange_artifact_document",
+            message: format!("must contain between 1 and {MAX_INTERCHANGE_ARTIFACT_ITEMS} items",),
+        });
+    }
+    let canonical = serde_json::to_string(&document).map_err(|error| CommandInputError {
+        field: "interchange_artifact_document",
+        message: format!("could not serialize the interchange document: {error}"),
+    })?;
+    if canonical.len() > MAX_INTERCHANGE_ARTIFACT_DOCUMENT_BYTES {
+        return Err(CommandInputError {
+            field: "interchange_artifact_document",
+            message: format!("must not exceed {MAX_INTERCHANGE_ARTIFACT_DOCUMENT_BYTES} bytes",),
+        });
+    }
+    Ok(canonical)
 }
 
 pub fn interchange_document_json(
@@ -1687,6 +1983,88 @@ mod tests {
             import_item_operation("{}", "import-key").unwrap_err().field,
             "import_document"
         );
+
+        assert!(matches!(
+            create_interchange_export_artifact_operation("job-1", "200", "86400", "artifact-key")
+                .unwrap(),
+            TranslationAdminOperation::CreateInterchangeExportArtifact {
+                max_items: 200,
+                expires_in_seconds: 86400,
+                ..
+            }
+        ));
+        assert_eq!(
+            create_interchange_export_artifact_operation("job-1", "0", "86400", "artifact-key")
+                .unwrap_err()
+                .field,
+            "interchange_artifact_max_items"
+        );
+        assert_eq!(
+            create_interchange_export_artifact_operation("job-1", "1", "299", "artifact-key")
+                .unwrap_err()
+                .field,
+            "interchange_artifact_expiry_seconds"
+        );
+        let document = r#"{
+            "schemaVersion": 1,
+            "jobId": "job-1",
+            "sourceLocale": "en",
+            "targetLocale": "de",
+            "items": [{
+                "itemId": "item-1",
+                "identity": {
+                    "ownerSlug": "media",
+                    "resourceKind": "asset",
+                    "resourceId": "asset-1",
+                    "subresourceId": null
+                },
+                "sourceDigest": "source-digest",
+                "sourceRevision": "resource-1",
+                "targetRevision": null,
+                "fields": [{
+                    "key": "title",
+                    "sourceValue": "Hero",
+                    "exactTargetValue": null,
+                    "proposedValue": "Held",
+                    "sourceHash": "source-hash",
+                    "required": true,
+                    "maxCharacters": 200,
+                    "protectedTokens": []
+                }]
+            }]
+        }"#;
+        assert!(matches!(
+            store_interchange_import_artifact_operation("job-1", document, "86400", "store-key")
+                .unwrap(),
+            TranslationAdminOperation::StoreInterchangeImportArtifact {
+                job_id,
+                expires_in_seconds: 86400,
+                ..
+            } if job_id == "job-1"
+        ));
+        assert_eq!(
+            store_interchange_import_artifact_operation("job-2", document, "86400", "store-key")
+                .unwrap_err()
+                .field,
+            "interchange_artifact_document"
+        );
+        assert!(matches!(
+            list_interchange_artifacts_operation(ListInterchangeArtifactsOperationInput {
+                job_id: Some("job-1"),
+                include_expired: false,
+                limit: "50",
+            })
+            .unwrap(),
+            TranslationAdminOperation::ListInterchangeArtifacts {
+                job_id: Some(job_id),
+                limit: 50,
+                ..
+            } if job_id == "job-1"
+        ));
+        assert!(matches!(
+            process_interchange_import_artifact_operation("artifact-1", "process-key").unwrap(),
+            TranslationAdminOperation::ProcessInterchangeImportArtifact { .. }
+        ));
     }
 
     #[test]
@@ -1809,6 +2187,82 @@ mod tests {
             .unwrap_err()
             .field,
             "reviewer_queue_limit"
+        );
+    }
+
+    #[test]
+    fn workflow_note_commands_are_typed_bounded_and_private_by_default() {
+        let list = list_workflow_notes_operation(WorkflowNotesOperationInput {
+            job_id: " job-1 ",
+            item_id: " item-1 ",
+            include_resolved: false,
+            limit: "50",
+        })
+        .unwrap();
+        assert!(matches!(
+            list,
+            TranslationAdminOperation::ListWorkflowNotes {
+                job_id,
+                item_id: Some(item_id),
+                include_resolved: false,
+                limit: 50,
+            } if job_id == "job-1" && item_id == "item-1"
+        ));
+
+        let create = create_workflow_note_operation(CreateWorkflowNoteOperationInput {
+            job_id: "job-1",
+            item_id: "",
+            body: " private reviewer context ",
+            idempotency_key: "create-workflow-note",
+        })
+        .unwrap();
+        assert!(matches!(
+            create,
+            TranslationAdminOperation::CreateWorkflowNote {
+                item_id: None,
+                body,
+                ..
+            } if body == "private reviewer context"
+        ));
+
+        assert!(matches!(
+            resolve_workflow_note_operation("note-1", "0", "resolve-workflow-note").unwrap(),
+            TranslationAdminOperation::ResolveWorkflowNote {
+                note_id,
+                expected_revision: 0,
+                ..
+            } if note_id == "note-1"
+        ));
+        assert_eq!(
+            list_workflow_notes_operation(WorkflowNotesOperationInput {
+                limit: "201",
+                ..WorkflowNotesOperationInput {
+                    job_id: "job-1",
+                    item_id: "",
+                    include_resolved: false,
+                    limit: "50",
+                }
+            })
+            .unwrap_err()
+            .field,
+            "workflow_note_limit"
+        );
+        assert_eq!(
+            create_workflow_note_operation(CreateWorkflowNoteOperationInput {
+                job_id: "job-1",
+                item_id: "",
+                body: &"x".repeat(4_001),
+                idempotency_key: "create-workflow-note",
+            })
+            .unwrap_err()
+            .field,
+            "workflow_note_body"
+        );
+        assert_eq!(
+            resolve_workflow_note_operation("note-1", "-1", "resolve-workflow-note")
+                .unwrap_err()
+                .field,
+            "expected_revision"
         );
     }
 

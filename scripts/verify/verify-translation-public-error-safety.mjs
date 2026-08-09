@@ -68,8 +68,8 @@ requireText(
 const ownerVariantCount = (
   errorSource.match(/^\s{4}[A-Z][A-Za-z0-9_]*(?:\s*\{|\s*\(|,)/gm) ?? []
 ).length;
-if (ownerVariantCount !== 83) {
-  failures.push(`${paths.error}: expected 83 TranslationError variants, found ${ownerVariantCount}`);
+if (ownerVariantCount !== 89) {
+  failures.push(`${paths.error}: expected 89 TranslationError variants, found ${ownerVariantCount}`);
 }
 
 for (const marker of [
@@ -81,6 +81,9 @@ for (const marker of [
   '"forbidden"',
   'TranslationError::JobNotFound',
   '| TranslationError::ItemNotFound',
+  '| TranslationError::WorkflowNoteNotFound',
+  '| TranslationError::InterchangeArtifactNotFound',
+  '| TranslationError::InterchangeArtifactExpired',
   '| TranslationError::ProposalNotFound',
   '| TranslationError::JobProgressNotFound',
   '| TranslationError::GlossaryNotFound',
@@ -100,6 +103,8 @@ for (const marker of [
   '| TranslationError::GlossaryRevisionUnavailable { .. }',
   '| TranslationError::MemoryRevisionConflict { .. }',
   '| TranslationError::MachineOperationTerminal(_)',
+  '| TranslationError::InterchangeArtifactNotReady',
+  '| TranslationError::InterchangeArtifactAlreadyProcessed',
   '| TranslationError::MemoryRetentionConflict(_)',
   'TranslationPublicErrorKind::BadInput',
   '"Translation request is invalid".to_string()',
@@ -107,6 +112,7 @@ for (const marker of [
   '"bad_input"',
   'TranslationError::Provider {',
   'retryable: true, ..',
+  '| TranslationError::InterchangeArtifactInProgress',
   '| TranslationError::MachineRecoveryResultUnavailable',
   '| TranslationError::Database(_)',
   '"Translation service is temporarily unavailable".to_string()',

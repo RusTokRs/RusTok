@@ -6,6 +6,8 @@ import type {
   Glossary,
   GlossarySummary,
   InventoryResult,
+  InterchangeArtifact,
+  InterchangeArtifactContent,
   InterchangeDocument,
   Job,
   JobItem,
@@ -26,7 +28,8 @@ import type {
   TranslationOperation,
   TranslationPolicy,
   TranslationResponse,
-  TranslationTarget
+  TranslationTarget,
+  WorkflowNote
 } from './types';
 
 const POLICY_FIELDS =
@@ -65,11 +68,16 @@ const MEMORY_MUTATION_FIELDS =
 const JOB_FIELDS =
   'id sourceLocale targetLocale glossary { glossaryId revision } status revision';
 const INTERCHANGE_DOCUMENT_FIELDS =
-  'schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue sourceHash required maxCharacters protectedTokens } }';
+  'schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue proposedValue sourceHash required maxCharacters protectedTokens } }';
+const INTERCHANGE_ARTIFACT_FIELDS =
+  'id jobId direction status contentLength checksumSha256 expiresAt processedAt report { totalItems acceptedItems conflictItems rejectedItems outcomes { itemId status } } createdAt updatedAt';
+const INTERCHANGE_ARTIFACT_CONTENT_FIELDS = `artifact { ${INTERCHANGE_ARTIFACT_FIELDS} } document { ${INTERCHANGE_DOCUMENT_FIELDS} }`;
 const REVIEWER_QUEUE_FIELDS =
   'item { id jobId ownerSlug resourceKind resourceId subresourceId status assignee { kind id } sourceDigest revision } proposalId proposalRevision submittedAt';
 const REVIEWER_WORKLOAD_FIELDS =
   'jobId assignee { kind id } openItems missingItems draftItems inReviewItems approvedItems applyingItems rebaseRequiredItems blockedItems sourceCharacters';
+const WORKFLOW_NOTE_FIELDS =
+  'id jobId itemId body author { kind id } revision resolvedAt resolvedBy { kind id } createdAt updatedAt';
 
 type RequestContext = {
   graphql: AdminGraphqlExecutor;
@@ -349,6 +357,48 @@ export async function executeTranslationOperation(
       );
       return { kind: 'job', value: data.createTranslationJob };
     }
+    case 'create_workflow_note': {
+      const input = withoutKind(operation);
+      const data = await request<
+        { input: typeof input },
+        { createTranslationWorkflowNote: WorkflowNote }
+      >(
+        context,
+        `mutation CreateTranslationWorkflowNote(
+          $input: CreateTranslationWorkflowNoteInput!
+        ) {
+          createTranslationWorkflowNote(input: $input) {
+            ${WORKFLOW_NOTE_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'workflow_note',
+        value: data.createTranslationWorkflowNote
+      };
+    }
+    case 'resolve_workflow_note': {
+      const input = withoutKind(operation);
+      const data = await request<
+        { input: typeof input },
+        { resolveTranslationWorkflowNote: WorkflowNote }
+      >(
+        context,
+        `mutation ResolveTranslationWorkflowNote(
+          $input: ResolveTranslationWorkflowNoteInput!
+        ) {
+          resolveTranslationWorkflowNote(input: $input) {
+            ${WORKFLOW_NOTE_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'workflow_note',
+        value: data.resolveTranslationWorkflowNote
+      };
+    }
     case 'read_job_progress': {
       const data = await request<
         { jobId: string },
@@ -398,6 +448,28 @@ export async function executeTranslationOperation(
         value: data.translationReviewerWorkload
       };
     }
+    case 'list_workflow_notes': {
+      const input = {
+        jobId: operation.jobId,
+        itemId: operation.itemId ?? null,
+        includeResolved: operation.includeResolved,
+        limit: operation.limit
+      };
+      const data = await request<
+        { input: typeof input },
+        { translationWorkflowNotes: WorkflowNote[] }
+      >(
+        context,
+        `query TranslationWorkflowNotes($input: TranslationWorkflowNotesInput!) {
+          translationWorkflowNotes(input: $input) { ${WORKFLOW_NOTE_FIELDS} }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'workflow_notes',
+        value: data.translationWorkflowNotes
+      };
+    }
     case 'export_job': {
       const input = {
         jobId: operation.jobId,
@@ -418,6 +490,120 @@ export async function executeTranslationOperation(
       return {
         kind: 'interchange_document',
         value: data.exportTranslationJob
+      };
+    }
+    case 'list_interchange_artifacts': {
+      const input = {
+        jobId: operation.jobId ?? null,
+        includeExpired: operation.includeExpired,
+        limit: operation.limit
+      };
+      const data = await request<
+        { input: typeof input },
+        { translationInterchangeArtifacts: InterchangeArtifact[] }
+      >(
+        context,
+        `query TranslationInterchangeArtifacts($input: TranslationInterchangeArtifactsInput!) {
+          translationInterchangeArtifacts(input: $input) { ${INTERCHANGE_ARTIFACT_FIELDS} }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'interchange_artifacts',
+        value: data.translationInterchangeArtifacts
+      };
+    }
+    case 'read_interchange_artifact': {
+      const input = { artifactId: operation.artifactId };
+      const data = await request<
+        { input: typeof input },
+        { translationInterchangeArtifact: InterchangeArtifactContent }
+      >(
+        context,
+        `query TranslationInterchangeArtifact($input: ReadTranslationInterchangeArtifactInput!) {
+          translationInterchangeArtifact(input: $input) { ${INTERCHANGE_ARTIFACT_CONTENT_FIELDS} }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'interchange_artifact_content',
+        value: data.translationInterchangeArtifact
+      };
+    }
+    case 'create_interchange_export_artifact': {
+      const input = {
+        jobId: operation.jobId,
+        maxItems: operation.maxItems,
+        expiresInSeconds: operation.expiresInSeconds,
+        idempotencyKey: operation.idempotencyKey
+      };
+      const data = await request<
+        { input: typeof input },
+        { createTranslationInterchangeExportArtifact: InterchangeArtifact }
+      >(
+        context,
+        `mutation CreateTranslationInterchangeExportArtifact(
+          $input: CreateTranslationInterchangeExportArtifactInput!
+        ) {
+          createTranslationInterchangeExportArtifact(input: $input) {
+            ${INTERCHANGE_ARTIFACT_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'interchange_artifact',
+        value: data.createTranslationInterchangeExportArtifact
+      };
+    }
+    case 'store_interchange_import_artifact': {
+      const input = {
+        jobId: operation.jobId,
+        documentJson: operation.documentJson,
+        expiresInSeconds: operation.expiresInSeconds,
+        idempotencyKey: operation.idempotencyKey
+      };
+      const data = await request<
+        { input: typeof input },
+        { storeTranslationInterchangeImportArtifact: InterchangeArtifact }
+      >(
+        context,
+        `mutation StoreTranslationInterchangeImportArtifact(
+          $input: StoreTranslationInterchangeImportArtifactInput!
+        ) {
+          storeTranslationInterchangeImportArtifact(input: $input) {
+            ${INTERCHANGE_ARTIFACT_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'interchange_artifact',
+        value: data.storeTranslationInterchangeImportArtifact
+      };
+    }
+    case 'process_interchange_import_artifact': {
+      const input = {
+        artifactId: operation.artifactId,
+        idempotencyKey: operation.idempotencyKey
+      };
+      const data = await request<
+        { input: typeof input },
+        { processTranslationInterchangeImportArtifact: InterchangeArtifact }
+      >(
+        context,
+        `mutation ProcessTranslationInterchangeImportArtifact(
+          $input: ProcessTranslationInterchangeImportArtifactInput!
+        ) {
+          processTranslationInterchangeImportArtifact(input: $input) {
+            ${INTERCHANGE_ARTIFACT_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'interchange_artifact',
+        value: data.processTranslationInterchangeImportArtifact
       };
     }
     case 'rebuild_job_progress': {

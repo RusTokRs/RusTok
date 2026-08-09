@@ -14,12 +14,12 @@ use crate::policy::{
 use crate::{
     ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
     ControlPlaneInfrastructure, ModuleDefinitionCatalog, ModuleDefinitionError,
-    ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy, ModuleEffectivePolicyError,
-    ModuleEffectivePolicyTransitionCoordinator, ModuleExecutionDispatcher,
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
-    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecoveryError,
-    ModuleOperationRequest, ModuleOperationStoreError, ModulePolicyRevisionTransition,
-    ModulePostHookRetryRequest, SeaOrmArtifactInstallationStore,
+    ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy,
+    ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
+    ModuleExecutionDispatcher, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
+    ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecoveryError,
+    ModuleOperationRecoveryPlan, ModuleOperationRequest, ModuleOperationStoreError,
+    ModulePolicyRevisionTransition, ModulePostHookRetryRequest, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModulePolicyRevisionConsumer, TenantModuleOverride, TenantModuleSettingsRecord,
     TenantModuleSettingsRequest, TenantModuleStateStore,
@@ -153,13 +153,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         self.co_requisites = co_requisites
             .into_iter()
             .flat_map(|(module_slug, required_modules)| {
-                required_modules.into_iter().map(move |(required_module_slug, version_requirement)| {
-                    ModuleEffectivePolicyCoRequisite {
-                        module_slug: module_slug.clone(),
-                        required_module_slug,
-                        version_requirement,
-                    }
-                })
+                required_modules.into_iter().map(
+                    move |(required_module_slug, version_requirement)| {
+                        ModuleEffectivePolicyCoRequisite {
+                            module_slug: module_slug.clone(),
+                            required_module_slug,
+                            version_requirement,
+                        }
+                    },
+                )
             })
             .collect();
         self
@@ -248,13 +250,19 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     /// may differ while Product co-requisites are staged and is not a retry gate.
     pub async fn retry_post_hook(
         &self,
+        tenant_id: Uuid,
         operation_id: Uuid,
         requested_by: Option<String>,
         idempotency_key: Uuid,
-    ) -> Result<ModuleOperationRecord, ModuleLifecycleDbWriterError> {
+    ) -> Result<ModuleOperationRecoveryPlan, ModuleLifecycleDbWriterError> {
         let plan = module_operation_recovery_plan(&self.db, operation_id)
             .await
             .map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        if plan.tenant_id != tenant_id {
+            return Err(ModuleLifecycleDbWriterError::Recovery(
+                ModuleOperationRecoveryError::OperationNotFound,
+            ));
+        }
         let (catalog, current_override_enabled, current_settings) = self
             .recovery_execution_context(plan.tenant_id, &plan.module_slug)
             .await?;
@@ -270,7 +278,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 ));
             }
         };
-        retry_failed_post_hook_operation(
+        let operation = retry_failed_post_hook_operation(
             &self.db,
             &dispatcher,
             ModulePostHookRetryRequest {
@@ -282,7 +290,10 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             },
         )
         .await
-        .map_err(ModuleLifecycleDbWriterError::Recovery)
+        .map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        module_operation_recovery_plan(&self.db, operation.id)
+            .await
+            .map_err(ModuleLifecycleDbWriterError::Recovery)
     }
 
     /// Compensates a post-hook failure only while the exact committed tenant
@@ -291,6 +302,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     /// the row when the predecessor was inherited/default selection.
     pub async fn compensate_failed_operation(
         &self,
+        tenant_id: Uuid,
         operation_id: Uuid,
         requested_by: Option<String>,
         idempotency_key: Uuid,
@@ -303,6 +315,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let plan = module_operation_recovery_plan(&self.db, operation_id)
             .await
             .map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        if plan.tenant_id != tenant_id {
+            return Err(ModuleLifecycleDbWriterError::Recovery(
+                ModuleOperationRecoveryError::OperationNotFound,
+            ));
+        }
         if plan.issue != ModuleOperationIssue::PostHookFailed {
             return Err(ModuleLifecycleDbWriterError::Recovery(
                 ModuleOperationRecoveryError::NotRetryable(plan.issue.as_str().to_string()),
@@ -315,12 +332,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 ),
             ));
         }
-        let (
-            _,
-            current_override_enabled,
-            effective_enabled_modules,
-            _,
-        ) = self
+        let (_, current_override_enabled, effective_enabled_modules, _) = self
             .recovery_policy_context(plan.tenant_id, &plan.module_slug)
             .await?;
         let current_effective_enabled = effective_enabled_modules.contains(&plan.module_slug);

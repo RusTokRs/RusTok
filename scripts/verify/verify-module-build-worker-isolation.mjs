@@ -161,19 +161,26 @@ try {
   const buildContract = fs.readFileSync(buildContractPath, 'utf8');
   if (
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_LAUNCHER') ||
+    !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_LAUNCHER_DIGEST') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_RUNTIME') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION') ||
     !jobLauncher.includes('load_isolation_attestation') ||
+    !jobLauncher.includes('validate_fixed_program') ||
     !jobLauncher.includes('MAX_ISOLATION_ATTESTATION_BYTES') ||
     !jobLauncher.includes('#[serde(deny_unknown_fields)]') ||
     !jobLauncher.includes('isolation_attestation') ||
     !jobLauncher.includes('network_mode') ||
+    !jobLauncher.includes('launcher_digest') ||
+    !jobLauncher.includes('tenant_database_access') ||
+    !jobLauncher.includes('general_platform_secret_access') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_REQUEST_DIGEST') ||
     !jobLauncher.includes('OciJobRuntime') ||
     !jobLauncher.includes('verify_oci_job_receipt') ||
     !jobLauncher.includes('oci-job-receipt.json') ||
     !jobLauncher.includes('OCI_JOB_RECEIPT_PROTOCOL_VERSION') ||
+    !jobLauncher.includes('struct OciJobReceipt') ||
+    !jobLauncher.includes('oci_job_receipt_rejects_unknown_fields') ||
     !jobLauncher.includes('oci_job_request_digest') ||
     !jobLauncher.includes('"attempt"') ||
     !jobLauncher.includes('"dependency_lock_digest"') ||

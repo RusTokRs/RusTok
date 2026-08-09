@@ -38,6 +38,7 @@ pub struct InterchangeField {
     pub key: String,
     pub source_value: String,
     pub exact_target_value: Option<String>,
+    pub proposed_value: Option<String>,
     pub source_hash: String,
     pub required: bool,
     pub max_characters: Option<u32>,
@@ -63,6 +64,46 @@ pub struct InterchangeDocument {
     pub source_locale: String,
     pub target_locale: String,
     pub items: Vec<InterchangeItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeArtifactItemOutcome {
+    pub item_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeConflictReport {
+    pub total_items: u16,
+    pub accepted_items: u16,
+    pub conflict_items: u16,
+    pub rejected_items: u16,
+    pub outcomes: Vec<InterchangeArtifactItemOutcome>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeArtifact {
+    pub id: String,
+    pub job_id: String,
+    pub direction: String,
+    pub status: String,
+    pub content_length: u64,
+    pub checksum_sha256: String,
+    pub expires_at: String,
+    pub processed_at: Option<String>,
+    pub report: Option<InterchangeConflictReport>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeArtifactContent {
+    pub artifact: InterchangeArtifact,
+    pub document: InterchangeDocument,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -262,6 +303,20 @@ pub enum TranslationAdminOperation {
     ReadReviewerWorkload {
         job_id: String,
     },
+    ListWorkflowNotes {
+        job_id: String,
+        item_id: Option<String>,
+        include_resolved: bool,
+        limit: u16,
+    },
+    ListInterchangeArtifacts {
+        job_id: Option<String>,
+        include_expired: bool,
+        limit: u16,
+    },
+    ReadInterchangeArtifact {
+        artifact_id: String,
+    },
     ExportJob {
         job_id: String,
         max_items: u16,
@@ -280,6 +335,33 @@ pub enum TranslationAdminOperation {
     ReplacePolicy {
         expected_revision: i64,
         required_target_locales: Vec<String>,
+        idempotency_key: String,
+    },
+    CreateWorkflowNote {
+        job_id: String,
+        item_id: Option<String>,
+        body: String,
+        idempotency_key: String,
+    },
+    ResolveWorkflowNote {
+        note_id: String,
+        expected_revision: i64,
+        idempotency_key: String,
+    },
+    CreateInterchangeExportArtifact {
+        job_id: String,
+        max_items: u16,
+        expires_in_seconds: u32,
+        idempotency_key: String,
+    },
+    StoreInterchangeImportArtifact {
+        job_id: String,
+        document_json: String,
+        expires_in_seconds: u32,
+        idempotency_key: String,
+    },
+    ProcessInterchangeImportArtifact {
+        artifact_id: String,
         idempotency_key: String,
     },
     CreateGlossary {
@@ -527,6 +609,21 @@ impl TranslationAdminOperation {
             }
             | Self::RebuildJobProgress {
                 idempotency_key, ..
+            }
+            | Self::CreateWorkflowNote {
+                idempotency_key, ..
+            }
+            | Self::ResolveWorkflowNote {
+                idempotency_key, ..
+            }
+            | Self::CreateInterchangeExportArtifact {
+                idempotency_key, ..
+            }
+            | Self::StoreInterchangeImportArtifact {
+                idempotency_key, ..
+            }
+            | Self::ProcessInterchangeImportArtifact {
+                idempotency_key, ..
             } => Some(idempotency_key),
             Self::ReadPolicy
             | Self::ReadMachineOperationStatus { .. }
@@ -539,6 +636,9 @@ impl TranslationAdminOperation {
             | Self::ReadJobProgress { .. }
             | Self::ReadReviewerQueue { .. }
             | Self::ReadReviewerWorkload { .. }
+            | Self::ListWorkflowNotes { .. }
+            | Self::ListInterchangeArtifacts { .. }
+            | Self::ReadInterchangeArtifact { .. }
             | Self::ExportJob { .. }
             | Self::ReadProviderProgress { .. }
             | Self::ReadRequiredProviderProgress { .. }
@@ -562,7 +662,12 @@ pub enum TranslationAdminResponse {
     JobProgress(JobProgress),
     ReviewerQueue(Vec<ReviewerQueueItem>),
     ReviewerWorkloads(Vec<ReviewerWorkload>),
+    WorkflowNotes(Vec<WorkflowNote>),
+    WorkflowNote(WorkflowNote),
     InterchangeDocument(InterchangeDocument),
+    InterchangeArtifacts(Vec<InterchangeArtifact>),
+    InterchangeArtifact(InterchangeArtifact),
+    InterchangeArtifactContent(InterchangeArtifactContent),
     ProviderProgress(ProviderProgress),
     RequiredProviderProgress(RequiredProviderProgress),
     Job(Job),
@@ -745,6 +850,21 @@ pub struct ReviewerWorkload {
     pub rebase_required_items: u64,
     pub blocked_items: u64,
     pub source_characters: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowNote {
+    pub id: String,
+    pub job_id: String,
+    pub item_id: Option<String>,
+    pub body: String,
+    pub author: Actor,
+    pub revision: i64,
+    pub resolved_at: Option<String>,
+    pub resolved_by: Option<Actor>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -973,6 +1093,33 @@ mod tests {
                 glossary: None,
                 idempotency_key: "create-job".to_string(),
             },
+            TranslationAdminOperation::CreateWorkflowNote {
+                job_id: "job-1".to_string(),
+                item_id: Some("item-1".to_string()),
+                body: "Private reviewer context".to_string(),
+                idempotency_key: "create-workflow-note".to_string(),
+            },
+            TranslationAdminOperation::ResolveWorkflowNote {
+                note_id: "note-1".to_string(),
+                expected_revision: 0,
+                idempotency_key: "resolve-workflow-note".to_string(),
+            },
+            TranslationAdminOperation::CreateInterchangeExportArtifact {
+                job_id: "job-1".to_string(),
+                max_items: 50,
+                expires_in_seconds: 86_400,
+                idempotency_key: "create-interchange-export-artifact".to_string(),
+            },
+            TranslationAdminOperation::StoreInterchangeImportArtifact {
+                job_id: "job-1".to_string(),
+                document_json: "{}".to_string(),
+                expires_in_seconds: 86_400,
+                idempotency_key: "store-interchange-import-artifact".to_string(),
+            },
+            TranslationAdminOperation::ProcessInterchangeImportArtifact {
+                artifact_id: "artifact-1".to_string(),
+                idempotency_key: "process-interchange-import-artifact".to_string(),
+            },
             TranslationAdminOperation::AddItem {
                 job_id: "job-1".to_string(),
                 identity,
@@ -1112,6 +1259,14 @@ mod tests {
                 glossary_id: "glossary-1".to_string(),
                 revision: None,
             },
+            TranslationAdminOperation::ListInterchangeArtifacts {
+                job_id: Some("job-1".to_string()),
+                include_expired: false,
+                limit: 50,
+            },
+            TranslationAdminOperation::ReadInterchangeArtifact {
+                artifact_id: "artifact-1".to_string(),
+            },
             TranslationAdminOperation::ReadJobProgress {
                 job_id: "job-1".to_string(),
             },
@@ -1126,6 +1281,12 @@ mod tests {
             },
             TranslationAdminOperation::ReadReviewerWorkload {
                 job_id: "job-1".to_string(),
+            },
+            TranslationAdminOperation::ListWorkflowNotes {
+                job_id: "job-1".to_string(),
+                item_id: Some("item-1".to_string()),
+                include_resolved: true,
+                limit: 50,
             },
             TranslationAdminOperation::ExportJob {
                 job_id: "job-1".to_string(),

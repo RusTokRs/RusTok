@@ -116,6 +116,25 @@ deterministic QA, assignment, actor, deadline, idempotency, and later
 review/approval/application rules remain unchanged. Interchange never applies
 owner data directly.
 
+### Private workflow collaboration
+
+Translation owns private, append-only workflow notes attached to a job and,
+optionally, one job item. They are workflow context for translators and
+reviewers, not public content and not a second comment system.
+
+The generic `rustok-comments` capability keeps its own public discussion and
+`comments`-resource RBAC contract. Reusing it here would bypass Translation
+job/item tenant and participant authorization or force that generic module to
+own Translation workflow semantics. Therefore it is not a dependency of this
+capability.
+
+Note creation is actor-bound and idempotent; listing is tenant/job scoped and
+bounded; resolution is an irreversible explicit-revision transition. Note bodies
+remain in Translation workflow storage only: they are excluded from Translation
+Memory ingestion and lookup, machine-translation requests, owner apply payloads,
+and workflow event bodies. Events publish only note/job/item identifiers and
+revisions for audit and projection purposes.
+
 ### Settings
 
 Settings are eligible only after their owner declares stable localized leaf

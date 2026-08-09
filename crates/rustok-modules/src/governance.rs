@@ -151,9 +151,8 @@ const VALIDATION_WORK_ITEM_INVALID_ERROR: &str =
 const VALIDATION_JOB_RETRY_ERROR: &str =
     "Validation job delivery failed before artifact checks completed.";
 
-/// Authenticated host input for a durable release-yank transition.
-/// Authorization is evaluated by the host authority adapter before this owner
-/// command reaches registry persistence.
+/// Authenticated host input for a durable release-yank transition. The owner
+/// derives authorization from the durable release publisher and owner binding.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleReleaseYankCommand {
     pub slug: String,
@@ -161,6 +160,18 @@ pub struct ModuleReleaseYankCommand {
     pub reason: String,
     pub reason_code: String,
     pub actor_principal: serde_json::Value,
+    /// An authenticated host fact which the owner combines with durable
+    /// publisher and owner identities.
+    pub actor_can_manage_modules: bool,
+}
+
+/// Owner-issued facts from one completed release-yank transition. The result
+/// intentionally exposes only the release fields a transport needs to build
+/// its response and never a persistence model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleReleaseYankResult {
+    pub request_id: Option<String>,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -168,6 +179,9 @@ pub struct ModuleOwnerTransferCommand {
     pub slug: String,
     pub new_owner_principal: serde_json::Value,
     pub actor_principal: serde_json::Value,
+    /// An authenticated host fact. The owner still reloads and locks the
+    /// durable binding before it authorizes the transfer.
+    pub actor_can_manage_modules: bool,
     pub reason: String,
     pub reason_code: String,
 }
@@ -242,17 +256,14 @@ pub struct ModulePublishRequestPublicationCommand {
 }
 
 /// Authenticated host input for a manual validation-stage transition or a new
-/// validation attempt. Authorization remains a host concern; state-machine
-/// enforcement and audit persistence are owner concerns.
+/// validation attempt. The owner canonicalizes the stage, status, and reason
+/// before state-machine enforcement and audit persistence.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleValidationStageReportCommand {
     pub request_id: String,
     pub stage_key: String,
     pub status: String,
     pub actor_principal: serde_json::Value,
-    /// Untrusted transport observation. The owner validates presence for the
-    /// current protocol but never persists or emits this value.
-    pub detail: String,
     pub reason_code: Option<String>,
     pub requeue: bool,
 }
@@ -320,6 +331,15 @@ pub struct ModuleRemoteValidationClaim {
     pub suggested_blocked_reason_code: String,
     pub artifact_checksum_sha256: String,
     pub crate_name: String,
+}
+
+/// Owner-issued observability facts for remote validation work that is still
+/// leased by a runner. Terminal or locally-owned stages are deliberately not
+/// included in either count.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleRemoteValidationRunnerSnapshot {
+    pub active_claims: u64,
+    pub expired_claims: u64,
 }
 
 /// Host-authorized request to enqueue durable automated validation. The owner
@@ -656,6 +676,9 @@ pub struct ModulePublishRequestCreateCommand {
     pub name: String,
     pub description: String,
     pub actor_principal: serde_json::Value,
+    /// An authenticated host fact. The owner combines it with the durable
+    /// owner binding before accepting a new request.
+    pub actor_can_manage_modules: bool,
 }
 
 /// The origin is immutable release provenance, not a caller-selected trust
@@ -732,6 +755,9 @@ pub struct ModuleExternalPrebuiltStageCommand {
     pub quarantine_approved_by_principal: serde_json::Value,
     pub idempotency_key: Uuid,
     pub actor_principal: serde_json::Value,
+    /// An authenticated platform privilege required for the external-artifact
+    /// quarantine decision.
+    pub actor_can_manage_modules: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -888,6 +914,9 @@ pub struct ModulePublishPlatformBuildStageCommand {
     pub build_request_id: Uuid,
     pub idempotency_key: Uuid,
     pub actor_principal: serde_json::Value,
+    /// An authenticated host fact. The owner combines it with the durable
+    /// request and owner-binding identities before staging the build.
+    pub actor_can_manage_modules: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -917,6 +946,7 @@ impl ModuleOwnerTransferCommand {
             || self.reason.trim().is_empty()
             || self.new_owner_principal.is_null()
             || self.actor_principal.is_null()
+            || governance_principal_user_id(&self.new_owner_principal).is_none()
         {
             return Err(ModuleGovernanceError::InvalidOwnerTransferCommand);
         }
@@ -1047,10 +1077,22 @@ impl ModulePublishRequestPublicationCommand {
 }
 
 impl ModuleValidationStageReportCommand {
+    fn normalized(mut self) -> Result<Self, ModuleGovernanceError> {
+        self.request_id = self.request_id.trim().to_string();
+        self.stage_key = self.stage_key.trim().to_ascii_lowercase();
+        self.status = self.status.trim().to_ascii_lowercase();
+        self.reason_code = self
+            .reason_code
+            .take()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty());
+        self.validate()?;
+        Ok(self)
+    }
+
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
             || self.stage_key.trim().is_empty()
-            || self.detail.trim().is_empty()
             || !self.actor_principal.is_object()
             || !matches!(
                 self.status.as_str(),
@@ -2107,8 +2149,9 @@ impl SeaOrmModuleGovernanceService {
         Err(ModuleGovernanceError::PublishRequestArtifactReplayConflict)
     }
 
-    /// Creates a draft publish request, default-locale metadata, and audit fact
-    /// atomically. Authorization remains a host concern.
+    /// Creates an authorized draft publish request, default-locale metadata,
+    /// and audit fact atomically. The owner verifies the current durable owner
+    /// binding before writing or replaying the request.
     pub async fn create_publish_request(
         &self,
         command: ModulePublishRequestCreateCommand,
@@ -2124,6 +2167,18 @@ impl SeaOrmModuleGovernanceService {
         let backend = tx.get_database_backend();
         let mark = |n| placeholder(backend, n);
         let now = database_now(backend);
+        let owner_principal = if command.actor_can_manage_modules {
+            None
+        } else {
+            governance_owner_principal_for_slug(&tx, backend, &command.slug, true).await?
+        };
+        if !governance_actor_can_create_publish_request(
+            owner_principal.as_ref(),
+            &command.actor_principal,
+            command.actor_can_manage_modules,
+        ) {
+            return Err(ModuleGovernanceError::PublishRequestCreationUnauthorized);
+        }
         let existing = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -2386,7 +2441,9 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, status, artifact_origin, artifact_checksum_sha256 \
+                    "SELECT slug, version, status, artifact_origin, artifact_checksum_sha256, \
+                            CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
+                            CAST(publisher_principal AS TEXT) AS publisher_principal \
                      FROM registry_publish_requests WHERE id = {}{request_lock}",
                     mark(1),
                 ),
@@ -2404,6 +2461,22 @@ impl SeaOrmModuleGovernanceService {
         let checksum: Option<String> = request
             .try_get("", "artifact_checksum_sha256")
             .map_err(store_error)?;
+        let requested_by_principal = required_json_text(&request, "requested_by_principal")?;
+        let publisher_principal = optional_json_text(&request, "publisher_principal")?;
+        let owner_principal = if command.actor_can_manage_modules {
+            None
+        } else {
+            governance_owner_principal_for_slug(&tx, backend, &slug, true).await?
+        };
+        if !governance_actor_can_manage_request_principals(
+            &requested_by_principal,
+            publisher_principal.as_ref(),
+            owner_principal.as_ref(),
+            &command.actor_principal,
+            command.actor_can_manage_modules,
+        ) {
+            return Err(ModuleGovernanceError::PublishRequestPlatformBuildStagingUnauthorized);
+        }
         if artifact_origin != ModulePublicationArtifactOrigin::PlatformBuilt.as_str()
             || !matches!(status.as_str(), "submitted" | "validating" | "approved")
             || slug != completed.request.expected_module_slug
@@ -2702,6 +2775,11 @@ impl SeaOrmModuleGovernanceService {
         command: ModuleExternalPrebuiltStageCommand,
     ) -> Result<ModuleExternalPrebuiltStageResult, ModuleGovernanceError> {
         command.validate()?;
+        if !command.actor_can_manage_modules
+            || command.actor_principal != command.quarantine_approved_by_principal
+        {
+            return Err(ModuleGovernanceError::PublishRequestExternalPrebuiltStagingUnauthorized);
+        }
         let (source_evidence_kind, source_reference, source_digest, source_absence_reason) =
             match &command.source_evidence {
                 ModuleExternalSourceEvidence::Reproducible { reference, digest } => (
@@ -3464,48 +3542,113 @@ impl SeaOrmModuleGovernanceService {
     pub async fn yank_release(
         &self,
         command: ModuleReleaseYankCommand,
-    ) -> Result<(), ModuleGovernanceError> {
+    ) -> Result<ModuleReleaseYankResult, ModuleGovernanceError> {
         command.validate()?;
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let tx = self.db.begin().await.map_err(store_error)?;
         let backend = tx.get_database_backend();
-        let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
-        let now = if backend == sea_orm::DbBackend::Postgres {
-            "NOW()"
+        let mark = |n| placeholder(backend, n);
+        let now = database_now(backend);
+        let release_lock = if backend == DbBackend::Postgres {
+            " FOR UPDATE"
         } else {
-            "datetime('now')"
+            ""
         };
-        let release = tx.query_one(Statement::from_sql_and_values(backend, format!("SELECT id, request_id, CAST(publisher_principal AS TEXT) AS publisher_principal FROM registry_module_releases WHERE slug = {} AND version = {}", mark(1), mark(2)), vec![command.slug.clone().into(), command.version.clone().into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::ReleaseNotFound)?;
-        let release_id: String = release
-            .try_get("", "id")
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let request_id: Option<String> = release
-            .try_get("", "request_id")
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let publisher: serde_json::Value = serde_json::from_str(
-            &release
-                .try_get::<String>("", "publisher_principal")
-                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?,
-        )
-        .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let update = tx.execute(Statement::from_sql_and_values(backend, format!("UPDATE registry_module_releases SET status = 'yanked', yanked_reason = {}, yanked_by_principal = {}, yanked_at = {now}, updated_at = {now} WHERE id = {}", mark(1), mark(2), mark(3)), vec![command.reason.clone().into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), release_id.clone().into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let release = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT id, request_id, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
+                     FROM registry_module_releases WHERE slug = {} AND version = {}{release_lock}",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![command.slug.clone().into(), command.version.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .ok_or(ModuleGovernanceError::ReleaseNotFound)?;
+        let release_id: String = required_column(&release, "id")?;
+        let request_id: Option<String> = optional_column(&release, "request_id")?;
+        let status: String = required_column(&release, "status")?;
+        let publisher = required_json_text(&release, "publisher_principal")?;
+        let owner_principal = if command.actor_can_manage_modules {
+            None
+        } else {
+            governance_owner_principal_for_slug(&tx, backend, &command.slug, true).await?
+        };
+        if !governance_actor_can_manage_release(
+            &publisher,
+            owner_principal.as_ref(),
+            &command.actor_principal,
+            command.actor_can_manage_modules,
+        ) {
+            return Err(ModuleGovernanceError::ReleaseYankUnauthorized);
+        }
+        if status == "yanked" {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(ModuleReleaseYankResult { request_id, status });
+        }
+        if status != "active" {
+            return Err(ModuleGovernanceError::ReleaseCannotBeYanked(status));
+        }
+        let update = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE registry_module_releases SET status = 'yanked', yanked_reason = {}, \
+                     yanked_by_principal = {}, yanked_at = {now}, updated_at = {now} WHERE id = {}",
+                    mark(1),
+                    mark(2),
+                    mark(3),
+                ),
+                vec![
+                    command.reason.clone().into(),
+                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                    release_id.clone().into(),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
         if update.rows_affected() != 1 {
             return Err(ModuleGovernanceError::ReleaseNotFound);
         }
-        tx.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, {}, 'release_yanked', {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)), vec![self.infrastructure.prefixed_id("rge").into(), command.slug.into(), request_id.into(), release_id.into(), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(publisher))), Value::Json(Some(Box::new(serde_json::json!({"version": command.version, "status": "yanked", "reason_code": command.reason_code, "reason": command.reason}))) )])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        tx.commit()
-            .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        Ok(())
+        tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_governance_events \
+                 (id, slug, request_id, release_id, event_type, actor_principal, \
+                  publisher_principal, details, created_at) \
+                 VALUES ({}, {}, {}, {}, 'release_yanked', {}, {}, {}, {now})",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+                mark(5),
+                mark(6),
+                mark(7),
+            ),
+            vec![
+                self.infrastructure.prefixed_id("rge").into(),
+                command.slug.into(),
+                request_id.clone().into(),
+                release_id.into(),
+                Value::Json(Some(Box::new(command.actor_principal))),
+                Value::Json(Some(Box::new(publisher))),
+                Value::Json(Some(Box::new(serde_json::json!({
+                    "version": command.version,
+                    "status": "yanked",
+                    "reason_code": command.reason_code,
+                    "reason": command.reason,
+                })))),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+        tx.commit().await.map_err(store_error)?;
+        Ok(ModuleReleaseYankResult {
+            request_id,
+            status: "yanked".to_string(),
+        })
     }
 
     /// Transfers a registry slug binding and records its immutable audit fact
@@ -3533,25 +3676,16 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
-        let owner = tx
-            .query_one(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
-                     FROM registry_module_owners WHERE slug = {}",
-                    mark(1)
-                ),
-                vec![command.slug.clone().into()],
-            ))
-            .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
+        let previous_owner = governance_owner_principal_for_slug(&tx, backend, &command.slug, true)
+            .await?
             .ok_or(ModuleGovernanceError::OwnerBindingNotFound)?;
-        let previous_owner: serde_json::Value = serde_json::from_str(
-            &owner
-                .try_get::<String>("", "owner_principal")
-                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?,
-        )
-        .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if !governance_actor_can_transfer_owner(
+            &previous_owner,
+            &command.actor_principal,
+            command.actor_can_manage_modules,
+        ) {
+            return Err(ModuleGovernanceError::OwnerTransferUnauthorized);
+        }
         if previous_owner == command.new_owner_principal {
             return Err(ModuleGovernanceError::OwnerUnchanged);
         }
@@ -4237,7 +4371,7 @@ impl SeaOrmModuleGovernanceService {
         &self,
         command: ModuleValidationStageReportCommand,
     ) -> Result<(), ModuleGovernanceError> {
-        command.validate()?;
+        let command = command.normalized()?;
         let tx = self
             .db
             .begin()
@@ -5660,6 +5794,63 @@ impl SeaOrmModuleGovernanceService {
             }));
         }
         Ok(None)
+    }
+
+    /// Returns remote-runner lease counts from the registry owner. Expired
+    /// claims are a subset of active claims: both require a remote runner and
+    /// the durable `running` stage state.
+    pub async fn remote_validation_runner_snapshot(
+        &self,
+    ) -> Result<ModuleRemoteValidationRunnerSnapshot, ModuleGovernanceError> {
+        let backend = self.db.get_database_backend();
+        let mark = |n| {
+            if backend == sea_orm::DbBackend::Postgres {
+                format!("${n}")
+            } else {
+                format!("?{n}")
+            }
+        };
+        let now = self.infrastructure.now();
+        let snapshot = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT COUNT(*) AS active_claims, \
+                     COALESCE(SUM(CASE WHEN claim_expires_at < {} THEN 1 ELSE 0 END), 0) \
+                     AS expired_claims \
+                     FROM registry_validation_stages \
+                     WHERE runner_kind = 'remote' AND status = 'running'",
+                    mark(1),
+                ),
+                vec![now.into()],
+            ))
+            .await
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?
+            .ok_or_else(|| {
+                ModuleGovernanceError::Store(
+                    "remote validation runner snapshot did not return an aggregate row".to_string(),
+                )
+            })?;
+        let active_claims: i64 = snapshot
+            .try_get("", "active_claims")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+        let expired_claims: i64 = snapshot
+            .try_get("", "expired_claims")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+
+        Ok(ModuleRemoteValidationRunnerSnapshot {
+            active_claims: u64::try_from(active_claims).map_err(|_| {
+                ModuleGovernanceError::Store(
+                    "remote validation active claim count is negative".to_string(),
+                )
+            })?,
+            expired_claims: u64::try_from(expired_claims).map_err(|_| {
+                ModuleGovernanceError::Store(
+                    "remote validation expired claim count is negative".to_string(),
+                )
+            })?,
+        })
     }
 
     /// Requeues every remote lease that is still expired when its transaction
@@ -8145,20 +8336,58 @@ fn governance_actor_can_manage_request(
     actor: Option<&ModuleGovernanceActorContext>,
 ) -> bool {
     actor.is_some_and(|actor| {
-        actor.can_manage_modules
-            || principal_matches_governance_actor(
-                owner_binding.map(|owner| &owner.owner_principal),
-                &actor.principal,
-            )
-            || (owner_binding.is_none()
-                && (principal_matches_governance_actor(
-                    Some(&request.requested_by_principal),
-                    &actor.principal,
-                ) || principal_matches_governance_actor(
-                    request.publisher_principal.as_ref(),
-                    &actor.principal,
-                )))
+        governance_actor_can_manage_request_principals(
+            &request.requested_by_principal,
+            request.publisher_principal.as_ref(),
+            owner_binding.map(|owner| &owner.owner_principal),
+            &actor.principal,
+            actor.can_manage_modules,
+        )
     })
+}
+
+fn governance_actor_can_manage_request_principals(
+    requested_by_principal: &serde_json::Value,
+    publisher_principal: Option<&serde_json::Value>,
+    owner_principal: Option<&serde_json::Value>,
+    actor_principal: &serde_json::Value,
+    actor_can_manage_modules: bool,
+) -> bool {
+    actor_can_manage_modules
+        || principal_matches_governance_actor(owner_principal, actor_principal)
+        || (owner_principal.is_none()
+            && (principal_matches_governance_actor(Some(requested_by_principal), actor_principal)
+                || principal_matches_governance_actor(publisher_principal, actor_principal)))
+}
+
+fn governance_actor_can_create_publish_request(
+    owner_principal: Option<&serde_json::Value>,
+    actor_principal: &serde_json::Value,
+    actor_can_manage_modules: bool,
+) -> bool {
+    actor_can_manage_modules
+        || principal_matches_governance_actor(owner_principal, actor_principal)
+        || (owner_principal.is_none() && governance_principal_user_id(actor_principal).is_some())
+}
+
+fn governance_actor_can_manage_release(
+    publisher_principal: &serde_json::Value,
+    owner_principal: Option<&serde_json::Value>,
+    actor_principal: &serde_json::Value,
+    actor_can_manage_modules: bool,
+) -> bool {
+    actor_can_manage_modules
+        || principal_matches_governance_actor(Some(publisher_principal), actor_principal)
+        || principal_matches_governance_actor(owner_principal, actor_principal)
+}
+
+fn governance_actor_can_transfer_owner(
+    owner_principal: &serde_json::Value,
+    actor_principal: &serde_json::Value,
+    actor_can_manage_modules: bool,
+) -> bool {
+    actor_can_manage_modules
+        || principal_matches_governance_actor(Some(owner_principal), actor_principal)
 }
 
 fn governance_actor_can_review_request(
@@ -8530,6 +8759,34 @@ fn optional_json_text(
     row.try_get::<Option<String>>("", column)
         .map_err(store_error)?
         .map(|value| serde_json::from_str(&value).map_err(store_error))
+        .transpose()
+}
+
+async fn governance_owner_principal_for_slug(
+    transaction: &DatabaseTransaction,
+    backend: DbBackend,
+    slug: &str,
+    lock: bool,
+) -> Result<Option<serde_json::Value>, ModuleGovernanceError> {
+    let row_lock = if lock && backend == DbBackend::Postgres {
+        " FOR UPDATE"
+    } else {
+        ""
+    };
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
+                 FROM registry_module_owners WHERE slug = {}{row_lock}",
+                placeholder(backend, 1),
+            ),
+            vec![slug.to_string().into()],
+        ))
+        .await
+        .map_err(store_error)?;
+    row.as_ref()
+        .map(|row| required_json_text(row, "owner_principal"))
         .transpose()
 }
 
@@ -9454,6 +9711,19 @@ fn validation_stage_transition_allowed(
     })
 }
 
+/// Transport-neutral classification for the canonical module-governance error
+/// contract. Hosts map this category to their own envelopes without recreating
+/// the owner lifecycle taxonomy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleGovernanceErrorCategory {
+    InvalidInput,
+    PermissionDenied,
+    NotFound,
+    Conflict,
+    Internal,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ModuleGovernanceError {
     #[error("registry lifecycle query requires a module slug")]
@@ -9490,9 +9760,7 @@ pub enum ModuleGovernanceError {
     InvalidPublishRequestPublicationCommand,
     #[error("approval override requires a reason and validation-stage evidence")]
     InvalidPublishApprovalOverride,
-    #[error(
-        "validation-stage report requires request ID, stage key, known status, detail, and actor"
-    )]
+    #[error("validation-stage report requires request ID, stage key, known status, and actor")]
     InvalidValidationStageReportCommand,
     #[error(
         "validation stage `{stage_key}` is not required for artifact origin `{artifact_origin}`"
@@ -9577,14 +9845,28 @@ pub enum ModuleGovernanceError {
     InvalidValidationStageReasonCode(String),
     #[error("published release was not found")]
     ReleaseNotFound,
+    #[error("actor is not authorized to yank this published release")]
+    ReleaseYankUnauthorized,
+    #[error("published release in status `{0}` cannot be yanked")]
+    ReleaseCannotBeYanked(String),
     #[error("registry owner binding was not found")]
     OwnerBindingNotFound,
+    #[error("actor is not authorized to transfer this registry owner binding")]
+    OwnerTransferUnauthorized,
     #[error("registry owner is already bound to the requested principal")]
     OwnerUnchanged,
     #[error("registry owner is already bound to a different principal")]
     OwnerAlreadyBound,
     #[error("registry publish request was not found")]
     PublishRequestNotFound,
+    #[error("actor is not authorized to create this registry publish request")]
+    PublishRequestCreationUnauthorized,
+    #[error("actor is not authorized to stage a platform build for this registry publish request")]
+    PublishRequestPlatformBuildStagingUnauthorized,
+    #[error(
+        "actor is not authorized to stage an external prebuilt artifact for this registry publish request"
+    )]
+    PublishRequestExternalPrebuiltStagingUnauthorized,
     #[error("published release `{slug}@{version}` already exists")]
     PublishRequestReleaseAlreadyActive { slug: String, version: String },
     #[error("registry publish request in status `{0}` cannot be rejected")]
@@ -9687,12 +9969,178 @@ pub enum ModuleGovernanceError {
     Store(String),
 }
 
+impl ModuleGovernanceError {
+    /// Classifies an owner failure without exposing persistence or lifecycle
+    /// details to transport adapters. Unrecognized future variants fail closed
+    /// as internal errors until their public classification is explicit.
+    pub const fn category(&self) -> ModuleGovernanceErrorCategory {
+        match self {
+            Self::InvalidLifecycleQuery
+            | Self::InvalidOwnerBindingQuery
+            | Self::InvalidPublishArtifactDownloadQuery
+            | Self::InvalidPublishRequestStatusQuery
+            | Self::InvalidYankCommand
+            | Self::InvalidYankReasonCode(_)
+            | Self::InvalidOwnerTransferCommand
+            | Self::InvalidOwnerBindCommand
+            | Self::InvalidPublishRequestRejectCommand
+            | Self::InvalidPublishRequestChangesCommand
+            | Self::InvalidPublishRequestHoldCommand
+            | Self::InvalidPublishRequestResumeCommand
+            | Self::InvalidPublishRequestPublicationCommand
+            | Self::InvalidPublishApprovalOverride
+            | Self::InvalidValidationStageReportCommand
+            | Self::ValidationStageNotRequiredForArtifactOrigin { .. }
+            | Self::OwnerEvidenceValidationStageCannotBeReported(_)
+            | Self::InvalidValidationStageRequeue
+            | Self::InvalidRemoteValidationLeaseCommand
+            | Self::InvalidValidationJobEnqueueCommand
+            | Self::InvalidValidationJobClaimCommand
+            | Self::InvalidValidationJobResultCommand
+            | Self::InvalidValidationJobRetryCommand
+            | Self::InvalidPublishRequestCreateCommand
+            | Self::InvalidPublishArtifactAttachCommand
+            | Self::InvalidPublicationEvidenceCommand
+            | Self::InvalidPlatformPublicationEvidenceRequest
+            | Self::InvalidBuildServiceAttestationCommand
+            | Self::InvalidPlatformAdmissionCommand
+            | Self::InvalidPlatformBuildStageCommand
+            | Self::InvalidExternalPrebuiltStageCommand
+            | Self::InvalidAlloyAuthoredStageCommand
+            | Self::InvalidRemoteValidationClaimStage(_)
+            | Self::InvalidOwnerTransferReasonCode(_)
+            | Self::InvalidPublishRequestRejectReasonCode(_)
+            | Self::InvalidPublishRequestChangesReasonCode(_)
+            | Self::InvalidPublishRequestHoldReasonCode(_)
+            | Self::InvalidPublishRequestResumeReasonCode(_)
+            | Self::InvalidPublishApprovalOverrideReasonCode(_)
+            | Self::InvalidValidationStageReasonCode(_) => {
+                ModuleGovernanceErrorCategory::InvalidInput
+            }
+            Self::PublicationEvidenceAuthorityReserved
+            | Self::PublishRequestCreationUnauthorized
+            | Self::PublishRequestPlatformBuildStagingUnauthorized
+            | Self::PublishRequestExternalPrebuiltStagingUnauthorized
+            | Self::ReleaseYankUnauthorized
+            | Self::OwnerTransferUnauthorized
+            | Self::PublishRequestArtifactUploadUnauthorized
+            | Self::RemoteValidationLeaseRunnerMismatch => {
+                ModuleGovernanceErrorCategory::PermissionDenied
+            }
+            Self::ReleaseNotFound
+            | Self::OwnerBindingNotFound
+            | Self::PublishRequestNotFound
+            | Self::ValidationJobNotFound
+            | Self::ValidationStageNotFound
+            | Self::RemoteValidationLeaseNotFound => ModuleGovernanceErrorCategory::NotFound,
+            Self::OwnerUnchanged
+            | Self::OwnerAlreadyBound
+            | Self::ReleaseCannotBeYanked(_)
+            | Self::PublishRequestCreationConflict
+            | Self::PlatformPublicationEvidenceSourceUnavailable
+            | Self::PublishRequestReleaseAlreadyActive { .. }
+            | Self::PublishRequestCannotBeRejected(_)
+            | Self::PublishRequestCannotRequestChanges(_)
+            | Self::PublishRequestCannotBeHeld(_)
+            | Self::PublishRequestCannotBeResumed(_)
+            | Self::PublishRequestCannotBePublished(_)
+            | Self::PublishedRequestMissingRelease
+            | Self::PublishRequestCannotAttachArtifact(_)
+            | Self::PublishRequestArtifactReplayConflict
+            | Self::PublishRequestCannotRecordPublicationEvidence(_)
+            | Self::PublishRequestCannotReportValidationStage(_)
+            | Self::PublishRequestCannotQueueValidation(_)
+            | Self::ValidationJobNotRunning(_)
+            | Self::ValidationJobRequestStateMismatch(_)
+            | Self::PublishRequestMissingArtifactStorageKey
+            | Self::PublishRequestMissingArtifactChecksum
+            | Self::PublishRequestInvalidArtifactChecksum
+            | Self::PublishRequestMissingArtifactSize
+            | Self::PublishRequestMissingPlatformBuildStage
+            | Self::PublishRequestMissingExternalPrebuiltStage
+            | Self::PublishRequestMissingAlloyAuthoredStage
+            | Self::PublishRequestArtifactOriginUnclassified
+            | Self::PublishRequestMissingAuthorSignature
+            | Self::PublishRequestMissingCanonicalArtifactContract
+            | Self::PublishRequestMissingBuildOrPlatformAdmission
+            | Self::PublishRequestMissingExternalPlatformAdmission
+            | Self::PublishRequestMissingAlloyPlatformAdmission
+            | Self::PublishRequestMissingTranslations
+            | Self::PublishRequestInvalidTranslations
+            | Self::RemoteValidationLeaseNotRunning(_)
+            | Self::RemoteValidationLeaseExpired
+            | Self::InvalidValidationStageTransition { .. }
+            | Self::PublishRequestInvalidHeldFromStatus
+            | Self::PlatformBuildStageIdempotencyConflict
+            | Self::ExternalPrebuiltStageIdempotencyConflict
+            | Self::AlloyAuthoredStageIdempotencyConflict
+            | Self::PublicationIdempotencyConflict
+            | Self::PublishedRequestMissingIdempotencyRecord => {
+                ModuleGovernanceErrorCategory::Conflict
+            }
+            Self::Store(_)
+            | Self::InvalidLifecycleArtifactOrigin(_)
+            | Self::InvalidPublishRequestStatus(_) => ModuleGovernanceErrorCategory::Internal,
+        }
+    }
+
+    /// Stable owner-issued code for transport envelopes. The detail remains the
+    /// error display text where the selected category permits exposing it.
+    pub const fn code(&self) -> &'static str {
+        match self.category() {
+            ModuleGovernanceErrorCategory::InvalidInput => "module_governance_invalid_input",
+            ModuleGovernanceErrorCategory::PermissionDenied => {
+                "module_governance_permission_denied"
+            }
+            ModuleGovernanceErrorCategory::NotFound => "module_governance_not_found",
+            ModuleGovernanceErrorCategory::Conflict => "module_governance_conflict",
+            ModuleGovernanceErrorCategory::Internal => "module_governance_internal",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
     use super::*;
     use crate::{ArtifactPayloadKind, TrustEvidenceKind, TrustEvidenceReference};
+
+    #[test]
+    fn governance_error_categories_and_codes_are_stable() {
+        let cases = [
+            (
+                ModuleGovernanceError::InvalidLifecycleQuery,
+                ModuleGovernanceErrorCategory::InvalidInput,
+                "module_governance_invalid_input",
+            ),
+            (
+                ModuleGovernanceError::ReleaseYankUnauthorized,
+                ModuleGovernanceErrorCategory::PermissionDenied,
+                "module_governance_permission_denied",
+            ),
+            (
+                ModuleGovernanceError::PublishRequestNotFound,
+                ModuleGovernanceErrorCategory::NotFound,
+                "module_governance_not_found",
+            ),
+            (
+                ModuleGovernanceError::PublicationIdempotencyConflict,
+                ModuleGovernanceErrorCategory::Conflict,
+                "module_governance_conflict",
+            ),
+            (
+                ModuleGovernanceError::Store("persistence failure".to_string()),
+                ModuleGovernanceErrorCategory::Internal,
+                "module_governance_internal",
+            ),
+        ];
+
+        for (error, category, code) in cases {
+            assert_eq!(error.category(), category);
+            assert_eq!(error.code(), code);
+        }
+    }
 
     fn trust_evidence(digest_character: char) -> Vec<TrustEvidenceReference> {
         [
@@ -9729,6 +10177,7 @@ mod tests {
             name: "Sample module".to_string(),
             description: "A publish request description long enough for policy.".to_string(),
             actor_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
+            actor_can_manage_modules: false,
         }
     }
 
@@ -9789,10 +10238,132 @@ mod tests {
         changed.description =
             "A different publish request description long enough for policy.".to_string();
         let changed = publish_request_create_identity(&changed).expect("changed identity");
+        let mut privilege_changed = command;
+        privilege_changed.actor_can_manage_modules = true;
+        let privilege_changed =
+            publish_request_create_identity(&privilege_changed).expect("privilege-bound identity");
 
         assert_eq!(first, repeated);
         assert_eq!(first.0, format!("rpr_{}", first.1));
         assert_ne!(first, changed);
+        assert_ne!(first, privilege_changed);
+    }
+
+    #[test]
+    fn publish_request_authorization_is_derived_from_durable_owner_facts() {
+        let publisher = serde_json::json!({ "kind": "user", "id": "publisher" });
+        let owner = serde_json::json!({ "kind": "user", "id": "owner" });
+        let unrelated = serde_json::json!({ "kind": "user", "id": "unrelated" });
+        let worker = serde_json::json!({ "kind": "service", "id": "worker" });
+
+        assert!(governance_actor_can_create_publish_request(
+            None, &publisher, false,
+        ));
+        assert!(!governance_actor_can_create_publish_request(
+            None, &worker, false,
+        ));
+        assert!(governance_actor_can_create_publish_request(
+            Some(&owner),
+            &owner,
+            false,
+        ));
+        assert!(!governance_actor_can_create_publish_request(
+            Some(&owner),
+            &publisher,
+            false,
+        ));
+        assert!(governance_actor_can_create_publish_request(
+            Some(&owner),
+            &unrelated,
+            true,
+        ));
+
+        assert!(governance_actor_can_manage_request_principals(
+            &publisher,
+            Some(&publisher),
+            None,
+            &publisher,
+            false,
+        ));
+        assert!(!governance_actor_can_manage_request_principals(
+            &publisher,
+            Some(&publisher),
+            Some(&owner),
+            &publisher,
+            false,
+        ));
+        assert!(governance_actor_can_manage_request_principals(
+            &publisher,
+            Some(&publisher),
+            Some(&owner),
+            &owner,
+            false,
+        ));
+        assert!(governance_actor_can_manage_request_principals(
+            &publisher,
+            Some(&publisher),
+            Some(&owner),
+            &unrelated,
+            true,
+        ));
+        assert!(governance_actor_can_manage_release(
+            &publisher, None, &publisher, false,
+        ));
+        assert!(governance_actor_can_manage_release(
+            &publisher,
+            Some(&owner),
+            &owner,
+            false,
+        ));
+        assert!(!governance_actor_can_manage_release(
+            &publisher,
+            Some(&owner),
+            &unrelated,
+            false,
+        ));
+        assert!(governance_actor_can_transfer_owner(&owner, &owner, false));
+        assert!(!governance_actor_can_transfer_owner(
+            &owner, &unrelated, false
+        ));
+        assert!(governance_actor_can_transfer_owner(
+            &owner, &unrelated, true
+        ));
+    }
+
+    #[tokio::test]
+    async fn owner_rejects_unprivileged_publish_request_creation_before_writing() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE registry_module_owners (\
+                    slug TEXT PRIMARY KEY, owner_principal TEXT NOT NULL, \
+                    bound_by_principal TEXT NOT NULL, bound_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("owner schema");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_module_owners \
+                 (slug, owner_principal, bound_by_principal, bound_at, updated_at) VALUES \
+                 ('sample_module', '{\"kind\":\"user\",\"id\":\"owner\"}', \
+                  '{\"kind\":\"user\",\"id\":\"operator\"}', datetime('now'), datetime('now'))"
+                    .to_string(),
+            ))
+            .await
+            .expect("owner fixture");
+        let service = SeaOrmModuleGovernanceService::new(database);
+        assert_eq!(
+            service
+                .create_publish_request(publish_request_create_command())
+                .await,
+            Err(ModuleGovernanceError::PublishRequestCreationUnauthorized)
+        );
     }
 
     #[test]
@@ -10594,6 +11165,7 @@ mod tests {
             reason: "security remediation".to_string(),
             reason_code: "unrecognized".to_string(),
             actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+            actor_can_manage_modules: false,
         };
         assert!(matches!(
             command.validate(),
@@ -10681,6 +11253,7 @@ mod tests {
             }),
             idempotency_key: Uuid::new_v4(),
             actor_principal: serde_json::json!({ "kind": "operator", "id": "publisher" }),
+            actor_can_manage_modules: true,
         };
         assert!(command.validate().is_ok());
 
@@ -10692,6 +11265,49 @@ mod tests {
             unclassified_absence.validate(),
             Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand)
         ));
+    }
+
+    #[tokio::test]
+    async fn owner_rejects_external_prebuilt_staging_without_operator_quarantine_authority() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        let service = SeaOrmModuleGovernanceService::new(database);
+        let command = ModuleExternalPrebuiltStageCommand {
+            request_id: "request-1".to_string(),
+            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            source_evidence: ModuleExternalSourceEvidence::Unavailable {
+                reason_code: "source_unavailable".to_string(),
+            },
+            provenance_reference: "https://evidence.example/provenance.json".to_string(),
+            provenance_digest: format!("sha256:{}", "b".repeat(64)),
+            provenance_policy_revision: "external-provenance-policy".to_string(),
+            quarantine_review_reference: "https://reviews.example/quarantine/1".to_string(),
+            quarantine_policy_revision: "external-quarantine-policy".to_string(),
+            quarantine_approved_by_principal: serde_json::json!({
+                "kind": "user",
+                "id": "security-operator",
+            }),
+            idempotency_key: Uuid::new_v4(),
+            actor_principal: serde_json::json!({
+                "kind": "user",
+                "id": "security-operator",
+            }),
+            actor_can_manage_modules: false,
+        };
+        assert_eq!(
+            service.stage_external_prebuilt(command.clone()).await,
+            Err(ModuleGovernanceError::PublishRequestExternalPrebuiltStagingUnauthorized)
+        );
+
+        let mut mismatched_approver = command;
+        mismatched_approver.actor_can_manage_modules = true;
+        mismatched_approver.quarantine_approved_by_principal =
+            serde_json::json!({ "kind": "user", "id": "other-operator" });
+        assert_eq!(
+            service.stage_external_prebuilt(mismatched_approver).await,
+            Err(ModuleGovernanceError::PublishRequestExternalPrebuiltStagingUnauthorized)
+        );
     }
 
     #[test]
@@ -10714,6 +11330,25 @@ mod tests {
             .validate(),
             Err(ModuleGovernanceError::InvalidValidationJobEnqueueCommand)
         ));
+    }
+
+    #[test]
+    fn validation_stage_report_normalizes_transport_values_inside_owner() {
+        let command = ModuleValidationStageReportCommand {
+            request_id: " request-1 ".to_string(),
+            stage_key: " TARGETED_TESTS ".to_string(),
+            status: " PASSED ".to_string(),
+            actor_principal: serde_json::json!({ "kind": "user", "id": "reviewer" }),
+            reason_code: Some(" TEST_FAILURE ".to_string()),
+            requeue: false,
+        }
+        .normalized()
+        .expect("owner normalizes a valid stage report");
+
+        assert_eq!(command.request_id, "request-1");
+        assert_eq!(command.stage_key, "targeted_tests");
+        assert_eq!(command.status, "passed");
+        assert_eq!(command.reason_code.as_deref(), Some("test_failure"));
     }
 
     #[test]
@@ -10767,6 +11402,41 @@ mod tests {
             .validate(),
             Err(ModuleGovernanceError::InvalidValidationStageReasonCode(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn remote_validation_runner_snapshot_counts_only_running_remote_claims() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_validation_stages (\
+                id TEXT PRIMARY KEY, status TEXT NOT NULL, runner_kind TEXT NULL, \
+                claim_expires_at TEXT NULL\
+             )",
+            "INSERT INTO registry_validation_stages \
+             (id, status, runner_kind, claim_expires_at) VALUES \
+             ('remote-expired', 'running', 'remote', '2000-01-01T00:00:00Z'), \
+             ('remote-active', 'running', 'remote', '2999-01-01T00:00:00Z'), \
+             ('remote-without-expiry', 'running', 'remote', NULL), \
+             ('remote-terminal', 'passed', 'remote', '2000-01-01T00:00:00Z'), \
+             ('owner-expired', 'running', 'owner_evidence', '2000-01-01T00:00:00Z')",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("schema or fixture");
+        }
+
+        let snapshot = SeaOrmModuleGovernanceService::new(database)
+            .remote_validation_runner_snapshot()
+            .await
+            .expect("owner snapshot");
+        assert_eq!(snapshot.active_claims, 3);
+        assert_eq!(snapshot.expired_claims, 1);
     }
 
     #[test]
@@ -10905,6 +11575,7 @@ mod tests {
                 reason: "critical regression".to_string(),
                 reason_code: "critical_regression".to_string(),
                 actor_principal: serde_json::json!({ "subject": "operator" }),
+                actor_can_manage_modules: true,
             })
             .await
             .expect("yank release");
@@ -11001,11 +11672,26 @@ mod tests {
                 .await
                 .expect("schema or fixture");
         }
-        SeaOrmModuleGovernanceService::new(database.clone())
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        assert_eq!(
+            service
+                .transfer_owner(ModuleOwnerTransferCommand {
+                    slug: "sample_module".to_string(),
+                    new_owner_principal: serde_json::json!({ "kind": "user", "id": "next" }),
+                    actor_principal: serde_json::json!({ "kind": "user", "id": "unrelated" }),
+                    actor_can_manage_modules: false,
+                    reason: "maintenance handoff".to_string(),
+                    reason_code: "maintenance_handoff".to_string(),
+                })
+                .await,
+            Err(ModuleGovernanceError::OwnerTransferUnauthorized)
+        );
+        service
             .transfer_owner(ModuleOwnerTransferCommand {
                 slug: "sample_module".to_string(),
                 new_owner_principal: serde_json::json!({ "kind": "user", "id": "next" }),
                 actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+                actor_can_manage_modules: true,
                 reason: "maintenance handoff".to_string(),
                 reason_code: "maintenance_handoff".to_string(),
             })

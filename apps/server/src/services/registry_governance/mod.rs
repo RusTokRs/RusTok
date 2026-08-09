@@ -2,23 +2,15 @@ use anyhow::{Context, anyhow};
 use object_store::{ObjectStoreExt, PutMode, path::Path};
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
 use rustok_storage::StorageRuntime;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::models::registry_module_owner::{self, Entity as RegistryModuleOwnerEntity};
-use crate::models::registry_module_release::{
-    self, Entity as RegistryModuleReleaseEntity, RegistryModuleReleaseStatus,
-};
-use crate::models::registry_publish_request::RegistryPublishRequestStatus;
-use crate::models::registry_validation_stage::RegistryValidationStageStatus;
 use crate::services::marketplace_catalog::{RegistryPublishArtifactOrigin, RegistryPublishRequest};
 use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
 use thiserror::Error;
 
 pub use rustok_modules::MODULE_PUBLISH_ARTIFACT_MAX_BYTES;
-const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
-    &["compile_smoke", "targeted_tests", "security_policy_review"];
 pub use rustok_modules::REGISTRY_APPROVE_OVERRIDE_REASON_CODES;
 pub use rustok_modules::REGISTRY_HOLD_REASON_CODES;
 pub use rustok_modules::REGISTRY_OWNER_TRANSFER_REASON_CODES;
@@ -294,13 +286,6 @@ pub mod publishing;
 pub mod releases;
 pub mod validation;
 
-// #[cfg(test)]
-// mod tests;
-
-pub use publishing::request_status_label;
-pub use releases::release_status_label;
-pub use validation::validation_stage_status_label;
-
 impl RegistryGovernanceService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db, storage: None }
@@ -317,6 +302,17 @@ impl RegistryGovernanceService {
 
     pub(crate) fn publication_service(&self) -> SeaOrmModuleGovernanceService {
         ModuleControlPlane::new(self.db.clone()).publication()
+    }
+
+    /// Exposes registry-owner remote lease facts to host observability without
+    /// allowing the server to query validation-stage persistence directly.
+    pub async fn remote_validation_runner_snapshot(
+        &self,
+    ) -> anyhow::Result<rustok_modules::ModuleRemoteValidationRunnerSnapshot> {
+        self.publication_service()
+            .remote_validation_runner_snapshot()
+            .await
+            .map_err(anyhow::Error::new)
     }
 
     fn require_storage(&self) -> anyhow::Result<&StorageRuntime> {
@@ -384,88 +380,8 @@ impl RegistryGovernanceService {
     }
 }
 
-fn follow_up_gate_detail(gate: &str) -> &'static str {
-    match gate {
-        "compile_smoke" => "Compile smoke awaits exact platform build-worker validation evidence.",
-        "targeted_tests" => "Targeted tests await exact platform build-worker validation evidence.",
-        "security_policy_review" => {
-            "Security and policy review await exact origin-specific owner evidence."
-        }
-        _ => "External follow-up gate is still pending.",
-    }
-}
-
-pub(crate) fn principal_from_json(value: &serde_json::Value) -> RegistryPrincipalRef {
-    RegistryPrincipalRef::from_json_value(value)
-}
-
-pub(crate) fn optional_principal_from_json(
-    value: &Option<serde_json::Value>,
-) -> Option<RegistryPrincipalRef> {
-    value.as_ref().map(principal_from_json)
-}
-
-pub(crate) fn principal_display_label(value: &serde_json::Value) -> String {
-    principal_from_json(value).label().to_string()
-}
-
-pub(crate) fn optional_principal_display_label(
-    value: &Option<serde_json::Value>,
-) -> Option<String> {
-    optional_principal_from_json(value).map(|principal| principal.label().to_string())
-}
-
-fn principal_matches_ref(value: &serde_json::Value, principal: &RegistryPrincipalRef) -> bool {
-    let left = principal_from_json(value);
-    if left.is_user() && principal.is_user() {
-        return left.user_id() == principal.user_id();
-    }
-    left.subject == principal.subject || left.persisted_label() == principal.persisted_label()
-}
-
-fn optional_principal_matches_ref(
-    value: &Option<serde_json::Value>,
-    principal: &RegistryPrincipalRef,
-) -> bool {
-    value
-        .as_ref()
-        .is_some_and(|persisted| principal_matches_ref(persisted, principal))
-}
-
 fn authority_actor(authority: &RegistryAuthority) -> &str {
     authority.principal.label()
-}
-
-fn authority_can_create_publish_request(
-    authority: &RegistryAuthority,
-    owner: Option<&registry_module_owner::Model>,
-) -> bool {
-    authority.can_manage_modules
-        || optional_principal_matches_ref(
-            &owner.map(|owner| owner.owner_principal.clone()),
-            &authority.principal,
-        )
-        || owner.is_none() && authority.principal.is_user()
-}
-
-fn authority_can_manage_release(
-    authority: &RegistryAuthority,
-    release: &registry_module_release::Model,
-    owner: Option<&registry_module_owner::Model>,
-) -> bool {
-    authority.can_manage_modules
-        || principal_matches_ref(&release.publisher, &authority.principal)
-        || optional_principal_matches_ref(
-            &owner.map(|owner| owner.owner_principal.clone()),
-            &authority.principal,
-        )
-}
-
-fn authority_can_transfer_registry_owner(
-    authority: &RegistryAuthority,
-    binding: &RegistryModuleOwnerSnapshot,
-) -> bool {
-    authority.can_manage_modules || binding.owner == authority.principal
 }
 
 pub(crate) fn normalize_reason_code(

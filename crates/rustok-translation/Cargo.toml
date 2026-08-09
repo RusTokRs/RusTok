@@ -13,22 +13,29 @@ runtime = ["rustok-api/runtime", "dep:rustok-runtime"]
 [dependencies]
 async-trait.workspace = true
 async-graphql = { workspace = true, optional = true }
+bytes = "1.0"
 chrono.workspace = true
+hex.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-runtime = { workspace = true, optional = true }
+rustok-storage.workspace = true
 rustok-tenant.workspace = true
+rustok-telemetry.workspace = true
 rustok-translation-targets.workspace = true
+prometheus.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 unicode-normalization.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+tempfile = "3.27"
 tokio.workspace = true

@@ -6,7 +6,9 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction, DbErr};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
+use crate::modules::{
+    InstalledManifestModule, ManifestDiff, ManifestError, ManifestManager, ModulesManifest,
+};
 use rustok_build::build::Model as Build;
 use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
 use rustok_modules::{
@@ -54,7 +56,43 @@ pub struct PlatformCompositionBuildResult {
     pub build: Build,
 }
 
+/// Host-authenticated intent to change the active platform-native module set.
+/// The composition adapter obtains the durable snapshot, applies the static
+/// manifest adapter, and delegates the revision-guarded write to the owner.
+#[derive(Debug, Clone)]
+pub enum PlatformCompositionModuleChange {
+    Install {
+        module_slug: String,
+        version: String,
+    },
+    Uninstall {
+        module_slug: String,
+    },
+    Upgrade {
+        module_slug: String,
+        version: String,
+    },
+}
+
+/// Context supplied by an authenticated host transport. It intentionally
+/// carries no manifest or digest: those are derived by the platform adapter
+/// and composition owner respectively.
+#[derive(Debug, Clone)]
+pub struct PlatformCompositionModuleMutation {
+    pub expected_revision: Option<i64>,
+    pub requested_by: String,
+    pub change: PlatformCompositionModuleChange,
+}
+
 pub struct PlatformCompositionBuildService;
+
+struct PlatformCompositionBuildCommand {
+    expected_revision: Option<i64>,
+    manifest: ModulesManifest,
+    manifest_diff: ManifestDiff,
+    requested_by: String,
+    reason: String,
+}
 
 struct ServerCompositionBuildEnqueuer {
     manifest: ModulesManifest,
@@ -120,6 +158,16 @@ impl PlatformCompositionService {
         Ok(Self::active_snapshot(db).await?.manifest)
     }
 
+    /// Returns the installed platform-native module projection from the
+    /// durable active composition. GraphQL and native transports must not
+    /// inspect the manifest directly.
+    pub async fn installed_modules(
+        db: &DatabaseConnection,
+    ) -> Result<Vec<InstalledManifestModule>, PlatformCompositionError> {
+        let manifest = Self::active_manifest(db).await?;
+        Ok(ManifestManager::installed_modules(&manifest))
+    }
+
     pub async fn update_manifest(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
@@ -180,20 +228,65 @@ impl PlatformCompositionService {
 }
 
 impl PlatformCompositionBuildService {
-    #[allow(clippy::too_many_arguments)]
-    pub async fn update_manifest_and_request_build(
+    /// Applies one static module mutation to the active composition and
+    /// enqueues its build through the owner-controlled transaction. GraphQL
+    /// and native transports provide only authenticated mutation intent.
+    pub async fn apply_module_mutation_and_request_build(
         db: &DatabaseConnection,
         event_publisher: std::sync::Arc<dyn BuildEventPublisher>,
         registry: &rustok_core::ModuleRegistry,
-        expected_revision: Option<i64>,
-        manifest: ModulesManifest,
-        manifest_diff: ManifestDiff,
-        requested_by: String,
-        reason: String,
+        mutation: PlatformCompositionModuleMutation,
     ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
+        let snapshot = PlatformCompositionService::active_snapshot(db).await?;
+        let mut manifest = snapshot.manifest;
+        let (manifest_diff, reason) = match mutation.change {
+            PlatformCompositionModuleChange::Install {
+                module_slug,
+                version,
+            } => (
+                ManifestManager::install_builtin_module(&mut manifest, &module_slug, Some(version))
+                    .map_err(PlatformCompositionError::from)?,
+                format!("install module {module_slug}"),
+            ),
+            PlatformCompositionModuleChange::Uninstall { module_slug } => (
+                ManifestManager::uninstall_module(&mut manifest, &module_slug)
+                    .map_err(PlatformCompositionError::from)?,
+                format!("uninstall module {module_slug}"),
+            ),
+            PlatformCompositionModuleChange::Upgrade {
+                module_slug,
+                version,
+            } => (
+                ManifestManager::upgrade_module(&mut manifest, &module_slug, version)
+                    .map_err(PlatformCompositionError::from)?,
+                format!("upgrade module {module_slug}"),
+            ),
+        };
+        let command = PlatformCompositionBuildCommand {
+            expected_revision: Some(mutation.expected_revision.unwrap_or(snapshot.revision)),
+            manifest,
+            manifest_diff,
+            requested_by: mutation.requested_by,
+            reason,
+        };
+        Self::update_manifest_and_request_build(db, event_publisher, registry, command).await
+    }
+
+    async fn update_manifest_and_request_build(
+        db: &DatabaseConnection,
+        event_publisher: std::sync::Arc<dyn BuildEventPublisher>,
+        registry: &rustok_core::ModuleRegistry,
+        command: PlatformCompositionBuildCommand,
+    ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
+        let PlatformCompositionBuildCommand {
+            expected_revision,
+            manifest,
+            manifest_diff,
+            requested_by,
+            reason,
+        } = command;
         ManifestManager::validate_with_registry(&manifest, registry)
             .map_err(PlatformCompositionError::from)?;
-        PlatformCompositionService::active_snapshot(db).await?;
         let manifest_json = PlatformCompositionService::manifest_snapshot_json(&manifest)?;
         let enqueuer = ServerCompositionBuildEnqueuer {
             manifest,

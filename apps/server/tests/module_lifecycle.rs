@@ -1121,10 +1121,28 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     );
     assert!(plan.correlation_id.is_some());
 
+    let foreign_tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, foreign_tenant_id).await;
+    let foreign_retry = ModuleLifecycleService::retry_failed_post_hook_operation(
+        &db,
+        &registry,
+        foreign_tenant_id,
+        failed_operation.id,
+        Some("admin:foreign-tenant".to_string()),
+        uuid::Uuid::new_v4(),
+    )
+    .await
+    .expect_err("recovery must not cross the authenticated tenant boundary");
+    assert!(matches!(
+        foreign_retry,
+        ModuleOperationRecoveryError::OperationNotFound
+    ));
+
     let retry_idempotency_key = uuid::Uuid::new_v4();
     let retry_operation = ModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
+        tenant_id,
         failed_operation.id,
         Some("admin:retry".to_string()),
         retry_idempotency_key,
@@ -1132,15 +1150,13 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     .await
     .expect("post-hook retry should succeed");
 
-    assert_eq!(
-        retry_operation.status,
-        ModuleOperationStatus::Committed.as_str()
-    );
+    assert_eq!(retry_operation.status, ModuleOperationStatus::Committed);
     assert_eq!(retry_operation.requested_by.as_deref(), Some("admin:retry"));
     assert!(retry_operation.requested_enabled);
     assert!(retry_operation.previous_effective_enabled);
     assert!(retry_operation.error_message.is_none());
-    assert_ne!(retry_operation.id, failed_operation.id);
+    assert_ne!(retry_operation.operation_id, Some(failed_operation.id));
+    assert!(retry_operation.operation_id.is_some());
     assert_eq!(
         retry_operation.correlation_id,
         Some(failed_operation.id.to_string())
@@ -1162,13 +1178,17 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     let replayed_operation = ModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
+        tenant_id,
         failed_operation.id,
         Some("admin:retry".to_string()),
         retry_idempotency_key,
     )
     .await
     .expect("same retry idempotency key should replay the journal operation");
-    assert_eq!(replayed_operation.id, retry_operation.id);
+    assert_eq!(
+        replayed_operation.operation_id,
+        retry_operation.operation_id
+    );
     assert_eq!(post_enable_calls.load(Ordering::SeqCst), 2);
 }
 
@@ -1205,6 +1225,7 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
     let err = ModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
+        tenant_id,
         failed_operation.id,
         Some("admin:retry".to_string()),
         uuid::Uuid::new_v4(),
@@ -1243,29 +1264,52 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
         .await
         .expect("query failed operation")
         .expect("failed operation exists");
+
+    let foreign_tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, foreign_tenant_id).await;
+    let foreign_compensation = ModuleLifecycleService::compensate_failed_operation(
+        &db,
+        &registry,
+        foreign_tenant_id,
+        failed_operation.id,
+        Some("admin:foreign-tenant".to_string()),
+        uuid::Uuid::new_v4(),
+    )
+    .await
+    .expect_err("compensation must not cross the authenticated tenant boundary");
+    assert!(matches!(
+        foreign_compensation,
+        ModuleOperationRecoveryError::OperationNotFound
+    ));
+
     let idempotency_key = uuid::Uuid::new_v4();
 
     let compensated = ModuleLifecycleService::compensate_failed_operation(
         &db,
         &registry,
+        tenant_id,
         failed_operation.id,
         Some("admin:compensate".to_string()),
         idempotency_key,
     )
     .await
     .expect("compensation should disable the module");
+    assert_eq!(compensated.module_slug, "billing");
     assert!(!compensated.enabled);
 
     let replayed = ModuleLifecycleService::compensate_failed_operation(
         &db,
         &registry,
+        tenant_id,
         failed_operation.id,
         Some("admin:compensate".to_string()),
         idempotency_key,
     )
     .await
     .expect("same compensation key should replay the reverse operation");
-    assert_eq!(replayed.id, compensated.id);
+    assert_eq!(replayed.module_slug, "billing");
+    assert_eq!(replayed.operation_id, compensated.operation_id);
+    assert!(compensated.operation_id.is_some());
     assert_eq!(post_disable_calls.load(Ordering::SeqCst), 1);
 
     let compensation = module_operations::Entity::find()
@@ -1275,6 +1319,7 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
         .await
         .expect("query compensation operation")
         .expect("compensation operation exists");
+    assert_eq!(compensated.operation_id, Some(compensation.id));
     assert_eq!(
         compensation.status,
         ModuleOperationStatus::Committed.as_str()

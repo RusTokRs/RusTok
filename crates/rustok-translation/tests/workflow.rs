@@ -11,29 +11,40 @@ use std::{
 use async_graphql::{EmptySubscription, Request, Schema, Variables};
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
-use rustok_api::{Action, Permission, PortActor, PortContext, PortError, Resource, TenantLocale};
+use rustok_api::{
+    Action, Permission, PortActor, PortContext, PortError, Resource, TenantLocale,
+    manifest_hash::hash_manifest,
+};
 #[cfg(feature = "graphql")]
 use rustok_api::{AuthContext, RequestContext};
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
+use rustok_storage::{
+    LocalStorageConfig, StorageRuntime,
+    object_store::{ObjectStoreExt, path::Path},
+};
 use rustok_tenant::{
     ReplaceTenantLocalePolicyRequest, TenantLocalePolicyEntry, TenantLocalePolicyPort,
     TenantLocalePolicyProjection,
 };
 use rustok_translation::{
     AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
-    CreateGlossaryInput, CreateJobInput, ExportTranslationJobInput, GlossaryBinding,
-    GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossaryTermPolicy, GlossaryVariant,
-    ImportTranslationItemInput, MemoryListInput, MemoryLookupInput, MemoryMatchKind,
-    MemoryRetentionPolicy, ProposalOrigin, ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput,
-    ReplaceGlossaryTermsInput, RetryItemInput, ReviewerQueueInput, ReviewerWorkloadInput,
-    SaveProposalInput, SetMemoryRetentionInput, SubmitProposalInput, TombstoneMemoryEntryInput,
-    TranslationError, TranslationGlossaryService, TranslationMemoryService,
+    CreateGlossaryInput, CreateInterchangeExportArtifactInput, CreateJobInput,
+    CreateWorkflowNoteInput, ExportTranslationJobInput, GlossaryBinding, GlossaryConcept,
+    GlossaryMatchKind, GlossaryScope, GlossaryTermPolicy, GlossaryVariant,
+    ImportTranslationItemInput, ListInterchangeArtifactsInput, ListWorkflowNotesInput,
+    MemoryListInput, MemoryLookupInput, MemoryMatchKind, MemoryRetentionPolicy,
+    ProcessInterchangeImportArtifactInput, ProposalOrigin, ProposalValue, PurgeMemoryEntryInput,
+    ReadInterchangeArtifactInput, RecoverApplyInput, ReplaceGlossaryTermsInput,
+    ResolveWorkflowNoteInput, RetryItemInput, ReviewerQueueInput, ReviewerWorkloadInput,
+    SaveProposalInput, SetMemoryRetentionInput, StoreInterchangeImportArtifactInput,
+    SubmitProposalInput, TombstoneMemoryEntryInput, TranslationError, TranslationExchangeService,
+    TranslationGlossaryService, TranslationInterchangeArtifactStatus, TranslationMemoryService,
     TranslationProgressService, TranslationWorkflowService, UnassignItemInput,
     entities::{
-        apply_operation, apply_receipt, apply_recovery, assignment, cancellation, job, job_item,
-        job_progress, memory_entry, memory_receipt, proposal, retry,
+        apply_operation, apply_receipt, apply_recovery, assignment, cancellation, exchange_job,
+        job, job_item, job_progress, memory_entry, memory_receipt, proposal, retry,
     },
-    migrations,
+    migrations, parse_artifact_document,
 };
 use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueRevision, OwnerSlug,
@@ -50,6 +61,7 @@ use sea_orm::{
     PaginatorTrait, QueryFilter, Statement, sea_query::Expr,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
+use tempfile::TempDir;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -289,6 +301,47 @@ async fn fixture() -> (DatabaseConnection, TranslationWorkflowService, Uuid) {
     (database, service, tenant_id)
 }
 
+async fn exchange_fixture() -> (
+    DatabaseConnection,
+    TranslationWorkflowService,
+    TranslationExchangeService,
+    StorageRuntime,
+    TempDir,
+    Uuid,
+) {
+    let (database, tenant_id) = test_database().await;
+    let apply_state = Arc::new(ApplyProviderState::default());
+    let registry = snapshot_registry(apply_state);
+    let storage_directory = tempfile::tempdir().unwrap();
+    let storage = StorageRuntime::local(&LocalStorageConfig {
+        base_dir: storage_directory.path().display().to_string(),
+        base_url: "/media".to_string(),
+        fsync: false,
+    })
+    .unwrap();
+    let workflow = TranslationWorkflowService::new(
+        database.clone(),
+        Arc::clone(&registry),
+        Arc::new(TestTenantLocalePolicies),
+        test_event_bus(&database),
+    );
+    let exchange = TranslationExchangeService::new(
+        database.clone(),
+        registry,
+        Arc::new(TestTenantLocalePolicies),
+        test_event_bus(&database),
+        storage.clone(),
+    );
+    (
+        database,
+        workflow,
+        exchange,
+        storage,
+        storage_directory,
+        tenant_id,
+    )
+}
+
 async fn seed_tenant(database: &DatabaseConnection, tenant_id: Uuid) {
     database
         .execute(Statement::from_sql_and_values(
@@ -368,11 +421,40 @@ async fn graphql_fixture() -> (DatabaseConnection, TranslationSchema, Uuid) {
         event_bus,
         None,
         None,
+        None,
     );
     let schema = Schema::build(TranslationQuery, TranslationMutation, EmptySubscription)
         .data(runtime)
         .finish();
     (database, schema, tenant_id)
+}
+
+#[cfg(feature = "graphql")]
+async fn graphql_interchange_artifact_fixture()
+-> (DatabaseConnection, TranslationSchema, TempDir, Uuid) {
+    let (database, tenant_id) = test_database().await;
+    let registry = snapshot_registry(Arc::new(ApplyProviderState::default()));
+    let event_bus = test_event_bus(&database);
+    let storage_directory = tempfile::tempdir().unwrap();
+    let storage = StorageRuntime::local(&LocalStorageConfig {
+        base_dir: storage_directory.path().display().to_string(),
+        base_url: "/private".to_string(),
+        fsync: false,
+    })
+    .unwrap();
+    let runtime = TranslationGraphqlRuntimeData::new(
+        database.clone(),
+        registry,
+        Arc::new(TestTenantLocalePolicies),
+        event_bus,
+        Some(storage),
+        None,
+        None,
+    );
+    let schema = Schema::build(TranslationQuery, TranslationMutation, EmptySubscription)
+        .data(runtime)
+        .finish();
+    (database, schema, storage_directory, tenant_id)
 }
 
 #[cfg(feature = "graphql")]
@@ -387,6 +469,7 @@ fn graphql_request(
         Action::Create,
         Action::Read,
         Action::Update,
+        Action::Resolve,
         Action::Import,
         Action::Export,
     ]
@@ -661,6 +744,275 @@ async fn bounded_interchange_exports_owner_snapshot_and_imports_through_canonica
     assert_eq!(proposal.status, "draft");
 }
 
+#[tokio::test]
+async fn interchange_artifacts_are_tenant_scoped_expiring_and_report_conflicts() {
+    let (database, workflow, exchange, storage, _storage_directory, tenant_id) =
+        exchange_fixture().await;
+    assert!(matches!(
+        parse_artifact_document(
+            &"x".repeat(rustok_translation::MAX_INTERCHANGE_ARTIFACT_BYTES + 1)
+        ),
+        Err(TranslationError::InvalidRequest(_))
+    ));
+    let job = workflow
+        .create_job(
+            write_context(tenant_id, "artifact-create-job"),
+            job_input("de"),
+        )
+        .await
+        .unwrap();
+    let item = workflow
+        .add_item(
+            write_context(tenant_id, "artifact-add-item"),
+            AddItemInput {
+                job_id: job.id,
+                identity: identity("asset-interchange-artifact"),
+            },
+        )
+        .await
+        .unwrap();
+
+    let export_context = write_context(tenant_id, "artifact-export");
+    let exported = exchange
+        .create_export_artifact(
+            export_context.clone(),
+            CreateInterchangeExportArtifactInput {
+                job_id: job.id,
+                max_items: 10,
+                expires_in_seconds: 300,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(exported.status, TranslationInterchangeArtifactStatus::Ready);
+    let exported_replay = exchange
+        .create_export_artifact(
+            export_context,
+            CreateInterchangeExportArtifactInput {
+                job_id: job.id,
+                max_items: 10,
+                expires_in_seconds: 300,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(exported_replay.id, exported.id);
+
+    let exported_content = exchange
+        .read_artifact(
+            read_context(tenant_id),
+            ReadInterchangeArtifactInput {
+                artifact_id: exported.id,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(exported_content.document.items.len(), 1);
+    assert_eq!(exported_content.document.items[0].item_id, item.id);
+    assert_eq!(
+        exported_content.document.items[0].fields[0].proposed_value,
+        None
+    );
+
+    let other_tenant_id = Uuid::new_v4();
+    seed_tenant(&database, other_tenant_id).await;
+    let isolated = exchange
+        .read_artifact(
+            read_context(other_tenant_id),
+            ReadInterchangeArtifactInput {
+                artifact_id: exported.id,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        isolated,
+        TranslationError::InterchangeArtifactNotFound
+    ));
+
+    let mut import_document = exported_content.document.clone();
+    import_document.items[0].fields[0].proposed_value = Some("Titel".to_string());
+    let import = exchange
+        .store_import_artifact(
+            write_context(tenant_id, "artifact-store-import"),
+            StoreInterchangeImportArtifactInput {
+                job_id: job.id,
+                document: import_document,
+                expires_in_seconds: 300,
+            },
+        )
+        .await
+        .unwrap();
+    let process_context = write_context(tenant_id, "artifact-process-import");
+    let process_input = ProcessInterchangeImportArtifactInput {
+        artifact_id: import.id,
+    };
+    let process_request_hash = hash_manifest(&process_input).unwrap();
+    exchange_job::Entity::update_many()
+        .col_expr(
+            exchange_job::Column::Status,
+            Expr::value(TranslationInterchangeArtifactStatus::Processing.as_str()),
+        )
+        .col_expr(
+            exchange_job::Column::ProcessingIdempotencyKey,
+            Expr::value(process_context.idempotency_key.clone()),
+        )
+        .col_expr(
+            exchange_job::Column::ProcessingRequestHash,
+            Expr::value(process_request_hash),
+        )
+        .col_expr(
+            exchange_job::Column::ProcessedByActorKind,
+            Expr::value("system"),
+        )
+        .col_expr(
+            exchange_job::Column::ProcessedByActorId,
+            Expr::value(process_context.actor.id.clone()),
+        )
+        .col_expr(
+            exchange_job::Column::ProcessingLeaseToken,
+            Expr::value(Some(Uuid::new_v4())),
+        )
+        .col_expr(
+            exchange_job::Column::ProcessingLeaseExpiresAt,
+            Expr::value(Some(
+                (Utc::now() + ChronoDuration::seconds(60)).fixed_offset(),
+            )),
+        )
+        .filter(exchange_job::Column::Id.eq(import.id))
+        .exec(&database)
+        .await
+        .unwrap();
+    let in_progress = exchange
+        .process_import_artifact(process_context.clone(), process_input.clone())
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        in_progress,
+        TranslationError::InterchangeArtifactInProgress
+    ));
+    exchange_job::Entity::update_many()
+        .col_expr(
+            exchange_job::Column::ProcessingLeaseExpiresAt,
+            Expr::value(Some(
+                (Utc::now() - ChronoDuration::seconds(1)).fixed_offset(),
+            )),
+        )
+        .filter(exchange_job::Column::Id.eq(import.id))
+        .exec(&database)
+        .await
+        .unwrap();
+    let completed = exchange
+        .process_import_artifact(process_context.clone(), process_input.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        completed.status,
+        TranslationInterchangeArtifactStatus::Completed
+    );
+    let report = completed.report.as_ref().unwrap();
+    assert_eq!(report.total_items, 1);
+    assert_eq!(report.accepted_items, 1);
+    assert_eq!(report.conflict_items, 0);
+    assert_eq!(report.outcomes[0].status, "imported");
+    let completed_replay = exchange
+        .process_import_artifact(process_context, process_input)
+        .await
+        .unwrap();
+    assert_eq!(completed_replay, completed);
+
+    let mut stale_document = exported_content.document;
+    stale_document.items[0].source_digest = "stale-source-digest".to_string();
+    stale_document.items[0].fields[0].proposed_value = Some("Veraltet".to_string());
+    let stale_import = exchange
+        .store_import_artifact(
+            write_context(tenant_id, "artifact-store-stale"),
+            StoreInterchangeImportArtifactInput {
+                job_id: job.id,
+                document: stale_document,
+                expires_in_seconds: 300,
+            },
+        )
+        .await
+        .unwrap();
+    let stale_completed = exchange
+        .process_import_artifact(
+            write_context(tenant_id, "artifact-process-stale"),
+            ProcessInterchangeImportArtifactInput {
+                artifact_id: stale_import.id,
+            },
+        )
+        .await
+        .unwrap();
+    let stale_report = stale_completed.report.as_ref().unwrap();
+    assert_eq!(stale_report.accepted_items, 0);
+    assert_eq!(stale_report.conflict_items, 1);
+    assert_eq!(stale_report.rejected_items, 0);
+    assert_eq!(stale_report.outcomes[0].status, "source_conflict");
+
+    let export_model = exchange_job::Entity::find_by_id(exported.id)
+        .one(&database)
+        .await
+        .unwrap()
+        .unwrap();
+    exchange_job::Entity::update_many()
+        .col_expr(
+            exchange_job::Column::ExpiresAt,
+            Expr::value((Utc::now() - ChronoDuration::seconds(1)).fixed_offset()),
+        )
+        .filter(exchange_job::Column::Id.eq(exported.id))
+        .exec(&database)
+        .await
+        .unwrap();
+    let expired = exchange
+        .read_artifact(
+            read_context(tenant_id),
+            ReadInterchangeArtifactInput {
+                artifact_id: exported.id,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        expired,
+        TranslationError::InterchangeArtifactExpired
+    ));
+    assert!(matches!(
+        storage
+            .objects
+            .head(&Path::from(export_model.object_key.as_str()))
+            .await,
+        Err(rustok_storage::object_store::Error::NotFound { .. })
+    ));
+    let visible = exchange
+        .list_artifacts(
+            read_context(tenant_id),
+            ListInterchangeArtifactsInput {
+                job_id: Some(job.id),
+                include_expired: false,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!visible.iter().any(|artifact| artifact.id == exported.id));
+    let including_expired = exchange
+        .list_artifacts(
+            read_context(tenant_id),
+            ListInterchangeArtifactsInput {
+                job_id: Some(job.id),
+                include_expired: true,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(including_expired.iter().any(|artifact| {
+        artifact.id == exported.id
+            && artifact.status == TranslationInterchangeArtifactStatus::Expired
+    }));
+}
+
 #[cfg(feature = "graphql")]
 #[tokio::test]
 async fn authenticated_graphql_interchange_enforces_validation_and_tenant_isolation() {
@@ -841,6 +1193,450 @@ async fn authenticated_graphql_interchange_enforces_validation_and_tenant_isolat
         ))
         .await;
     assert_graphql_error_code(&mismatched_context, "PERMISSION_DENIED");
+}
+
+#[cfg(feature = "graphql")]
+#[tokio::test]
+async fn authenticated_graphql_interchange_artifacts_use_private_storage_and_report_conflicts() {
+    const CREATE_JOB: &str = r#"
+        mutation CreateJob($input: CreateTranslationJobInput!) {
+            createTranslationJob(input: $input) { id }
+        }
+    "#;
+    const ADD_ITEM: &str = r#"
+        mutation AddItem($input: AddTranslationJobItemInput!) {
+            addTranslationJobItem(input: $input) { id }
+        }
+    "#;
+    const CREATE_EXPORT: &str = r#"
+        mutation CreateExport($input: CreateTranslationInterchangeExportArtifactInput!) {
+            createTranslationInterchangeExportArtifact(input: $input) {
+                id
+                jobId
+                direction
+                status
+            }
+        }
+    "#;
+    const LIST_ARTIFACTS: &str = r#"
+        query ListArtifacts($input: TranslationInterchangeArtifactsInput!) {
+            translationInterchangeArtifacts(input: $input) {
+                id
+                jobId
+                direction
+                status
+            }
+        }
+    "#;
+    const READ_ARTIFACT: &str = r#"
+        query ReadArtifact($input: ReadTranslationInterchangeArtifactInput!) {
+            translationInterchangeArtifact(input: $input) {
+                artifact { id jobId direction status }
+                document {
+                    schemaVersion
+                    jobId
+                    sourceLocale
+                    targetLocale
+                    items {
+                        itemId
+                        identity { ownerSlug resourceKind resourceId subresourceId }
+                        sourceDigest
+                        sourceRevision
+                        targetRevision
+                        fields {
+                            key
+                            sourceValue
+                            exactTargetValue
+                            proposedValue
+                            sourceHash
+                            required
+                            maxCharacters
+                            protectedTokens
+                        }
+                    }
+                }
+            }
+        }
+    "#;
+    const STORE_IMPORT: &str = r#"
+        mutation StoreImport($input: StoreTranslationInterchangeImportArtifactInput!) {
+            storeTranslationInterchangeImportArtifact(input: $input) {
+                id
+                jobId
+                direction
+                status
+            }
+        }
+    "#;
+    const PROCESS_IMPORT: &str = r#"
+        mutation ProcessImport($input: ProcessTranslationInterchangeImportArtifactInput!) {
+            processTranslationInterchangeImportArtifact(input: $input) {
+                id
+                status
+                processedAt
+                report {
+                    totalItems
+                    acceptedItems
+                    conflictItems
+                    rejectedItems
+                    outcomes { itemId status }
+                }
+            }
+        }
+    "#;
+
+    let (database, schema, _storage_directory, tenant_id) =
+        graphql_interchange_artifact_fixture().await;
+    let create = schema
+        .execute(graphql_request(
+            CREATE_JOB,
+            serde_json::json!({
+                "input": {
+                    "sourceLocale": "en",
+                    "targetLocale": "de",
+                    "idempotencyKey": "graphql-artifact-create-job"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(create.errors.is_empty(), "{:?}", create.errors);
+    let create_data = create.data.into_json().unwrap();
+    let job_id = create_data["createTranslationJob"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let add = schema
+        .execute(graphql_request(
+            ADD_ITEM,
+            serde_json::json!({
+                "input": {
+                    "jobId": job_id,
+                    "identity": {
+                        "ownerSlug": "media",
+                        "resourceKind": "asset",
+                        "resourceId": "asset-graphql-artifact"
+                    },
+                    "idempotencyKey": "graphql-artifact-add-item"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(add.errors.is_empty(), "{:?}", add.errors);
+    let add_data = add.data.into_json().unwrap();
+    let item_id = add_data["addTranslationJobItem"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let create_export = schema
+        .execute(graphql_request(
+            CREATE_EXPORT,
+            serde_json::json!({
+                "input": {
+                    "jobId": job_id,
+                    "maxItems": 10,
+                    "expiresInSeconds": 86400,
+                    "idempotencyKey": "graphql-artifact-create-export"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(
+        create_export.errors.is_empty(),
+        "{:?}",
+        create_export.errors
+    );
+    let export_data = create_export.data.into_json().unwrap();
+    let exported = &export_data["createTranslationInterchangeExportArtifact"];
+    let export_id = exported["id"].as_str().unwrap().to_string();
+    assert_eq!(exported["jobId"], job_id);
+    assert_eq!(exported["direction"], "export");
+    assert_eq!(exported["status"], "ready");
+
+    let listed = schema
+        .execute(graphql_request(
+            LIST_ARTIFACTS,
+            serde_json::json!({
+                "input": {"jobId": job_id, "includeExpired": false, "limit": 10}
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(listed.errors.is_empty(), "{:?}", listed.errors);
+    let listed_data = listed.data.into_json().unwrap();
+    assert_eq!(
+        listed_data["translationInterchangeArtifacts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        listed_data["translationInterchangeArtifacts"][0]["id"],
+        export_id
+    );
+
+    let read = schema
+        .execute(graphql_request(
+            READ_ARTIFACT,
+            serde_json::json!({"input": {"artifactId": export_id}}),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(read.errors.is_empty(), "{:?}", read.errors);
+    let read_data = read.data.into_json().unwrap();
+    let content = &read_data["translationInterchangeArtifact"];
+    assert_eq!(content["artifact"]["id"], export_id);
+    let mut import_document = content["document"].clone();
+    assert_eq!(import_document["items"][0]["itemId"], item_id);
+    import_document["items"][0]["fields"][0]["proposedValue"] =
+        serde_json::Value::String("Held".to_string());
+    let import_document = serde_json::to_string(&import_document).unwrap();
+
+    let store_import = schema
+        .execute(graphql_request(
+            STORE_IMPORT,
+            serde_json::json!({
+                "input": {
+                    "jobId": job_id,
+                    "documentJson": import_document,
+                    "expiresInSeconds": 86400,
+                    "idempotencyKey": "graphql-artifact-store-import"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(store_import.errors.is_empty(), "{:?}", store_import.errors);
+    let store_data = store_import.data.into_json().unwrap();
+    let imported = &store_data["storeTranslationInterchangeImportArtifact"];
+    let import_id = imported["id"].as_str().unwrap().to_string();
+    assert_eq!(imported["direction"], "import");
+    assert_eq!(imported["status"], "ready");
+
+    let processed = schema
+        .execute(graphql_request(
+            PROCESS_IMPORT,
+            serde_json::json!({
+                "input": {
+                    "artifactId": import_id,
+                    "idempotencyKey": "graphql-artifact-process-import"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(processed.errors.is_empty(), "{:?}", processed.errors);
+    let processed_data = processed.data.into_json().unwrap();
+    let report = &processed_data["processTranslationInterchangeImportArtifact"]["report"];
+    assert_eq!(
+        processed_data["processTranslationInterchangeImportArtifact"]["status"],
+        "completed"
+    );
+    assert_eq!(report["totalItems"], 1);
+    assert_eq!(report["acceptedItems"], 1);
+    assert_eq!(report["conflictItems"], 0);
+    assert_eq!(report["rejectedItems"], 0);
+    assert_eq!(report["outcomes"][0]["itemId"], item_id);
+    assert_eq!(report["outcomes"][0]["status"], "imported");
+
+    let other_tenant_id = Uuid::new_v4();
+    seed_tenant(&database, other_tenant_id).await;
+    let isolated = schema
+        .execute(graphql_request(
+            READ_ARTIFACT,
+            serde_json::json!({"input": {"artifactId": import_id}}),
+            other_tenant_id,
+            other_tenant_id,
+        ))
+        .await;
+    assert_graphql_error_code(&isolated, "NOT_FOUND");
+}
+
+#[cfg(feature = "graphql")]
+#[tokio::test]
+async fn authenticated_graphql_workflow_notes_are_private_tenant_scoped_and_resolvable() {
+    const CREATE_JOB: &str = r#"
+        mutation CreateJob($input: CreateTranslationJobInput!) {
+            createTranslationJob(input: $input) { id }
+        }
+    "#;
+    const CREATE_NOTE: &str = r#"
+        mutation CreateNote($input: CreateTranslationWorkflowNoteInput!) {
+            createTranslationWorkflowNote(input: $input) {
+                id
+                jobId
+                itemId
+                body
+                revision
+                resolvedAt
+            }
+        }
+    "#;
+    const LIST_NOTES: &str = r#"
+        query ListNotes($input: TranslationWorkflowNotesInput!) {
+            translationWorkflowNotes(input: $input) {
+                id
+                jobId
+                itemId
+                body
+                revision
+                resolvedAt
+            }
+        }
+    "#;
+    const RESOLVE_NOTE: &str = r#"
+        mutation ResolveNote($input: ResolveTranslationWorkflowNoteInput!) {
+            resolveTranslationWorkflowNote(input: $input) {
+                id
+                revision
+                resolvedAt
+            }
+        }
+    "#;
+
+    let (database, schema, tenant_id) = graphql_fixture().await;
+    let created_job = schema
+        .execute(graphql_request(
+            CREATE_JOB,
+            serde_json::json!({
+                "input": {
+                    "sourceLocale": "en",
+                    "targetLocale": "de",
+                    "idempotencyKey": "graphql-workflow-note-job"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(created_job.errors.is_empty(), "{:?}", created_job.errors);
+    let created_job_data = created_job.data.into_json().unwrap();
+    let job_id = Uuid::parse_str(
+        created_job_data["createTranslationJob"]["id"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+
+    let note_body = "Use the approved terminology before review.";
+    let created_note = schema
+        .execute(graphql_request(
+            CREATE_NOTE,
+            serde_json::json!({
+                "input": {
+                    "jobId": job_id,
+                    "body": note_body,
+                    "idempotencyKey": "graphql-workflow-note-create"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(created_note.errors.is_empty(), "{:?}", created_note.errors);
+    let created_note_data = created_note.data.into_json().unwrap();
+    let note = &created_note_data["createTranslationWorkflowNote"];
+    let note_id = Uuid::parse_str(note["id"].as_str().unwrap()).unwrap();
+    assert_eq!(note["jobId"], job_id.to_string());
+    assert!(note["itemId"].is_null());
+    assert_eq!(note["body"], note_body);
+    assert_eq!(note["revision"], 0);
+    assert!(note["resolvedAt"].is_null());
+
+    let listed = schema
+        .execute(graphql_request(
+            LIST_NOTES,
+            serde_json::json!({
+                "input": {
+                    "jobId": job_id,
+                    "includeResolved": false,
+                    "limit": 50
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(listed.errors.is_empty(), "{:?}", listed.errors);
+    let listed_data = listed.data.into_json().unwrap();
+    let listed_notes = listed_data["translationWorkflowNotes"].as_array().unwrap();
+    assert_eq!(listed_notes.len(), 1);
+    assert_eq!(listed_notes[0]["id"], note_id.to_string());
+    assert_eq!(listed_notes[0]["body"], note_body);
+
+    let resolved = schema
+        .execute(graphql_request(
+            RESOLVE_NOTE,
+            serde_json::json!({
+                "input": {
+                    "noteId": note_id,
+                    "expectedRevision": 0,
+                    "idempotencyKey": "graphql-workflow-note-resolve"
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(resolved.errors.is_empty(), "{:?}", resolved.errors);
+    let resolved_data = resolved.data.into_json().unwrap();
+    let resolved_note = &resolved_data["resolveTranslationWorkflowNote"];
+    assert_eq!(resolved_note["id"], note_id.to_string());
+    assert_eq!(resolved_note["revision"], 1);
+    assert!(resolved_note["resolvedAt"].as_str().is_some());
+
+    let open_notes = schema
+        .execute(graphql_request(
+            LIST_NOTES,
+            serde_json::json!({
+                "input": {
+                    "jobId": job_id,
+                    "includeResolved": false,
+                    "limit": 50
+                }
+            }),
+            tenant_id,
+            tenant_id,
+        ))
+        .await;
+    assert!(open_notes.errors.is_empty(), "{:?}", open_notes.errors);
+    let open_notes_data = open_notes.data.into_json().unwrap();
+    assert!(
+        open_notes_data["translationWorkflowNotes"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    let other_tenant_id = Uuid::new_v4();
+    seed_tenant(&database, other_tenant_id).await;
+    let isolated = schema
+        .execute(graphql_request(
+            LIST_NOTES,
+            serde_json::json!({
+                "input": {
+                    "jobId": job_id,
+                    "includeResolved": true,
+                    "limit": 50
+                }
+            }),
+            other_tenant_id,
+            other_tenant_id,
+        ))
+        .await;
+    assert_graphql_error_code(&isolated, "NOT_FOUND");
 }
 
 #[tokio::test]
@@ -2028,6 +2824,193 @@ async fn reviewer_queue_and_workload_are_assignment_scoped_and_bounded() {
         .list_reviewer_workload(
             read_context(other_tenant_id),
             ReviewerWorkloadInput { job_id },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(isolated, TranslationError::JobNotFound));
+}
+
+#[tokio::test]
+async fn workflow_notes_are_private_bounded_and_actor_bound() {
+    let (database, service, tenant_id) = fixture().await;
+    let collaboration = service.collaboration_service();
+    let job = service
+        .create_job(write_context(tenant_id, "create-note-job"), job_input("de"))
+        .await
+        .unwrap();
+    let item = service
+        .add_item(
+            write_context(tenant_id, "add-note-item"),
+            AddItemInput {
+                job_id: job.id,
+                identity: identity("asset-workflow-note"),
+            },
+        )
+        .await
+        .unwrap();
+
+    let translator_id = Uuid::new_v4();
+    let denied_item_note = collaboration
+        .create_workflow_note(
+            user_write_context(tenant_id, translator_id, Action::Update, "denied-item-note"),
+            CreateWorkflowNoteInput {
+                job_id: job.id,
+                item_id: Some(item.id),
+                body: "This translator is not assigned to the item".to_string(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(denied_item_note, TranslationError::Forbidden));
+
+    let job_note_input = CreateWorkflowNoteInput {
+        job_id: job.id,
+        item_id: None,
+        body: "Please confirm the release terminology before review.".to_string(),
+    };
+    let job_note_context =
+        user_write_context(tenant_id, translator_id, Action::Update, "create-job-note");
+    let job_note = collaboration
+        .create_workflow_note(job_note_context.clone(), job_note_input.clone())
+        .await
+        .unwrap();
+    let job_note_replay = collaboration
+        .create_workflow_note(job_note_context, job_note_input)
+        .await
+        .unwrap();
+    assert_eq!(job_note_replay, job_note);
+    assert_eq!(job_note.author, PortActor::user(translator_id.to_string()));
+    assert_eq!(job_note.revision, 0);
+    assert!(job_note.resolved_at.is_none());
+
+    let other_actor = collaboration
+        .create_workflow_note(
+            user_write_context(tenant_id, Uuid::new_v4(), Action::Update, "create-job-note"),
+            CreateWorkflowNoteInput {
+                job_id: job.id,
+                item_id: None,
+                body: "Please confirm the release terminology before review.".to_string(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        other_actor,
+        TranslationError::IdempotencyActorMismatch
+    ));
+
+    let item_note = collaboration
+        .create_workflow_note(
+            write_context(tenant_id, "create-item-note"),
+            CreateWorkflowNoteInput {
+                job_id: job.id,
+                item_id: Some(item.id),
+                body: "The protected brand token must remain unchanged.".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(item_note.item_id, Some(item.id));
+
+    let unresolved = collaboration
+        .list_workflow_notes(
+            read_context(tenant_id),
+            ListWorkflowNotesInput {
+                job_id: job.id,
+                item_id: None,
+                include_resolved: false,
+                limit: 50,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(unresolved.len(), 2);
+    assert_eq!(unresolved[0].id, item_note.id);
+
+    let invalid_limit = collaboration
+        .list_workflow_notes(
+            read_context(tenant_id),
+            ListWorkflowNotesInput {
+                job_id: job.id,
+                item_id: None,
+                include_resolved: false,
+                limit: 0,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(invalid_limit, TranslationError::InvalidRequest(_)));
+
+    let reviewer_id = Uuid::new_v4();
+    let resolve_context =
+        user_write_context(tenant_id, reviewer_id, Action::Resolve, "resolve-job-note");
+    let resolved = collaboration
+        .resolve_workflow_note(
+            resolve_context.clone(),
+            ResolveWorkflowNoteInput {
+                note_id: job_note.id,
+                expected_revision: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let resolved_replay = collaboration
+        .resolve_workflow_note(
+            resolve_context,
+            ResolveWorkflowNoteInput {
+                note_id: job_note.id,
+                expected_revision: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(resolved_replay, resolved);
+    assert_eq!(resolved.revision, 1);
+    assert_eq!(
+        resolved.resolved_by,
+        Some(PortActor::user(reviewer_id.to_string()))
+    );
+
+    let still_open = collaboration
+        .list_workflow_notes(
+            read_context(tenant_id),
+            ListWorkflowNotesInput {
+                job_id: job.id,
+                item_id: None,
+                include_resolved: false,
+                limit: 50,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(still_open.len(), 1);
+    assert_eq!(still_open[0].id, item_note.id);
+
+    let all_notes = collaboration
+        .list_workflow_notes(
+            read_context(tenant_id),
+            ListWorkflowNotesInput {
+                job_id: job.id,
+                item_id: None,
+                include_resolved: true,
+                limit: 50,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(all_notes.len(), 2);
+
+    let other_tenant_id = Uuid::new_v4();
+    seed_tenant(&database, other_tenant_id).await;
+    let isolated = collaboration
+        .list_workflow_notes(
+            read_context(other_tenant_id),
+            ListWorkflowNotesInput {
+                job_id: job.id,
+                item_id: None,
+                include_resolved: true,
+                limit: 50,
+            },
         )
         .await
         .unwrap_err();

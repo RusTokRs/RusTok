@@ -7,6 +7,8 @@ mod m20260728_000006_create_translation_policies;
 mod m20260729_000007_create_translation_glossaries;
 mod m20260729_000008_create_translation_memory;
 mod m20260729_000009_create_translation_machine_operations;
+mod m20260809_000010_create_translation_workflow_notes;
+mod m20260809_000011_create_translation_exchange_jobs;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -22,6 +24,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260729_000007_create_translation_glossaries::Migration),
         Box::new(m20260729_000008_create_translation_memory::Migration),
         Box::new(m20260729_000009_create_translation_machine_operations::Migration),
+        Box::new(m20260809_000010_create_translation_workflow_notes::Migration),
+        Box::new(m20260809_000011_create_translation_exchange_jobs::Migration),
     ]
 }
 
@@ -62,6 +66,14 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260729_000009_create_translation_machine_operations",
             vec!["m20260729_000008_create_translation_memory"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260809_000010_create_translation_workflow_notes",
+            vec!["m20260729_000009_create_translation_machine_operations"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260809_000011_create_translation_exchange_jobs",
+            vec!["m20260809_000010_create_translation_workflow_notes"],
         ),
     ]
 }

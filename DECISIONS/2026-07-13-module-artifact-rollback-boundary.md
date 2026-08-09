@@ -1,7 +1,10 @@
 # Module artifact rollback boundary
 
 - Date: 2026-07-13
-- Status: Accepted
+- Status: Accepted, amended on 2026-08-09
+
+The operator-level safety and convergence semantics are amended by
+[Module release rollback safety](./2026-08-06-module-release-rollback-safety.md).
 
 ## Context
 
@@ -27,6 +30,14 @@ rejects the command without a partial state change.
 Rollback changes the selected admitted release and its lifecycle state. Runtime
 activation and tenant enablement are separate reconciled operations; neither is
 implicitly changed by the rollback command.
+
+This transaction is the dynamic selection sub-step, not a complete operator
+rollback. `rustok-modules` now computes the exact-transition safety decision
+from owner-loaded evidence; the caller no longer selects migration
+compatibility. The enclosing durable operation owns the dependency/dependent
+conflict set, activation and serving reconciliation, one automatic attempt,
+and the final outcome. Success is reported only after the predecessor is
+observed healthy.
 
 ## Consequences
 

@@ -1108,9 +1108,9 @@ fn normalize_corequisites(
             ));
         }
         if module_slug == required_module_slug {
-            return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
-                "module '{module_slug}' cannot require itself as a co-requisite"
-            )));
+            return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(
+                format!("module '{module_slug}' cannot require itself as a co-requisite"),
+            ));
         }
         let module = catalog.get(&module_slug).ok_or_else(|| {
             ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
@@ -1127,9 +1127,11 @@ fn normalize_corequisites(
             .iter()
             .any(|dependency| dependency.slug == required_module_slug)
         {
-            return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
-                "module '{module_slug}' declares '{required_module_slug}' as both an ordinary dependency and a co-requisite"
-            )));
+            return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(
+                format!(
+                    "module '{module_slug}' declares '{required_module_slug}' as both an ordinary dependency and a co-requisite"
+                ),
+            ));
         }
         if !version_requirement.is_empty() {
             VersionReq::parse(&version_requirement).map_err(|_| {
@@ -1147,9 +1149,11 @@ fn normalize_corequisites(
         let key = (module_slug.clone(), required_module_slug.clone());
         if let Some(existing) = normalized.get(&key) {
             if existing != &version_requirement {
-                return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
-                    "module '{module_slug}' has conflicting co-requisite requirements for '{required_module_slug}'"
-                )));
+                return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(
+                    format!(
+                        "module '{module_slug}' has conflicting co-requisite requirements for '{required_module_slug}'"
+                    ),
+                ));
             }
             continue;
         }
@@ -1181,8 +1185,8 @@ fn corequisite_version_compatible(
         .expect("co-requisite provider was normalized against the catalog");
     let requirement = VersionReq::parse(&co_requisite.version_requirement)
         .expect("co-requisite version requirement was normalized");
-    let version = Version::parse(&provider.version)
-        .expect("co-requisite provider version was normalized");
+    let version =
+        Version::parse(&provider.version).expect("co-requisite provider version was normalized");
     requirement.matches(&version)
 }
 

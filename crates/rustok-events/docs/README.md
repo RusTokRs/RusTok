@@ -41,6 +41,13 @@ shapes, schema metadata, and validation rules.
 - root `user.account_registered` events expose only a stable user identity;
   email addresses and other contact data remain in the auth/user owner.
 
+The rebuild-only rollback and `build.rolled_back` entries above are current
+implementation facts, not the accepted production recovery target. The
+[module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+requires one atomic migration to `rustok-modules`-owned recovery-operation and
+desired/observed rollout facts, with the superseded build rollback events and
+all repository-owned callers deleted in the same change.
+
 ## Sealed event-family contract
 
 `EventContract` is sealed inside this crate. A domain module cannot implement it

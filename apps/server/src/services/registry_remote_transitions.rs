@@ -1,7 +1,7 @@
 use rustok_modules::{
-    ModuleControlPlane, ModuleGovernanceError, ModuleRemoteValidationHeartbeatCommand,
-    ModuleRemoteValidationStageTransition, ModuleRemoteValidationTerminalCommand,
-    ModuleRemoteValidationTerminalOutcome,
+    ModuleControlPlane, ModuleGovernanceError, ModuleGovernanceErrorCategory,
+    ModuleRemoteValidationHeartbeatCommand, ModuleRemoteValidationStageTransition,
+    ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
 };
 use sea_orm::DatabaseConnection;
 
@@ -11,18 +11,15 @@ pub enum RemoteTerminalOutcome {
     Failed,
 }
 
+/// Owner-issued remote-transition failure facts. This adapter preserves the
+/// canonical category and code rather than maintaining a partial local copy of
+/// the governance error taxonomy.
 #[derive(Debug, thiserror::Error)]
-pub enum RegistryRemoteTransitionError {
-    #[error("{0}")]
-    Invalid(String),
-    #[error("{0}")]
-    Forbidden(String),
-    #[error("{0}")]
-    NotFound(String),
-    #[error("{0}")]
-    Conflict(String),
-    #[error("{0}")]
-    Internal(String),
+#[error("{detail}")]
+pub struct RegistryRemoteTransitionError {
+    pub category: ModuleGovernanceErrorCategory,
+    pub code: &'static str,
+    pub detail: String,
 }
 
 pub async fn heartbeat_remote_validation_stage_atomic(
@@ -67,21 +64,27 @@ pub async fn finish_remote_validation_stage_atomic(
 }
 
 fn map_owner_remote_lease_error(error: ModuleGovernanceError) -> RegistryRemoteTransitionError {
-    match error {
-        ModuleGovernanceError::InvalidRemoteValidationLeaseCommand
-        | ModuleGovernanceError::InvalidValidationStageReasonCode(_) => {
-            RegistryRemoteTransitionError::Invalid(error.to_string())
-        }
-        ModuleGovernanceError::RemoteValidationLeaseNotFound => {
-            RegistryRemoteTransitionError::NotFound(error.to_string())
-        }
-        ModuleGovernanceError::RemoteValidationLeaseRunnerMismatch => {
-            RegistryRemoteTransitionError::Forbidden(error.to_string())
-        }
-        ModuleGovernanceError::RemoteValidationLeaseNotRunning(_)
-        | ModuleGovernanceError::RemoteValidationLeaseExpired => {
-            RegistryRemoteTransitionError::Conflict(error.to_string())
-        }
-        _ => RegistryRemoteTransitionError::Internal(error.to_string()),
+    RegistryRemoteTransitionError {
+        category: error.category(),
+        code: error.code(),
+        detail: error.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_transition_preserves_owner_error_contract() {
+        let error = map_owner_remote_lease_error(
+            ModuleGovernanceError::RemoteValidationLeaseRunnerMismatch,
+        );
+
+        assert_eq!(
+            error.category,
+            ModuleGovernanceErrorCategory::PermissionDenied
+        );
+        assert_eq!(error.code, "module_governance_permission_denied");
     }
 }

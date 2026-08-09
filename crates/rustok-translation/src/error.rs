@@ -44,6 +44,18 @@ pub enum TranslationError {
     JobNotWritable(String),
     #[error("translation job item was not found")]
     ItemNotFound,
+    #[error("translation workflow note was not found")]
+    WorkflowNoteNotFound,
+    #[error("translation interchange artifact was not found")]
+    InterchangeArtifactNotFound,
+    #[error("translation interchange artifact has expired")]
+    InterchangeArtifactExpired,
+    #[error("translation interchange artifact is not ready")]
+    InterchangeArtifactNotReady,
+    #[error("translation interchange artifact import is currently being processed")]
+    InterchangeArtifactInProgress,
+    #[error("translation interchange artifact was already processed")]
+    InterchangeArtifactAlreadyProcessed,
     #[error("translation job item does not accept this transition in state `{0}`")]
     ItemNotWritable(String),
     #[error("translation proposal was not found")]
