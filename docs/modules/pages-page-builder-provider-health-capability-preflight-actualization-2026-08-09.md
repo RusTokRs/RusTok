@@ -1,6 +1,6 @@
 # Pages / Page Builder provider-health capability preflight actualization — 2026-08-09
 
-Status: `provider-health-capability-preflight-source-ready / shared-runtime-policy-source-ready / non-mutating-health-preflight-source-ready / runtime-execution-pending / observed-health-acceptance-pending`.
+Status: `provider-health-capability-preflight-source-ready / shared-runtime-policy-source-ready / non-mutating-health-preflight-source-ready / rollout-only-preflight-health-boundary-source-ready / runtime-execution-pending / observed-health-acceptance-pending`.
 
 ## Why this continuation exists
 
@@ -71,7 +71,9 @@ The rollout snapshot continues to expose the configured flags and provider healt
 
 The existing four-profile rollout feature-preflight harness remains a rollout-only acceptance input and continues to claim provider health as `unobserved`.
 
-The GraphQL operation is now health-aware because production semantics require that parity, but observed-health execution belongs to a separate provider-health evidence harness. The existing rollout matrix/preflight packets must not be reinterpreted as observed SLO evidence.
+Because the production GraphQL preflight is now health-aware, that claim is no longer accepted as a static assumption. The harness now reads `pageBuilderRolloutSnapshot` immediately before and after each profile capability preflight and fails closed unless `providerHealthObserved=false` and the health payload is absent on both observations. The retained profile record contains only HTTP status, bounded response-body size/hash and explicit unobserved/payload-absent booleans; the provider-health payload itself is not retained.
+
+This prevents observed `Ready` health from being silently indistinguishable from rollout-only all-on behavior in a packet that claims provider health was unobserved. Observed-health execution still belongs to a separate provider-health evidence harness. The existing rollout matrix/preflight packets must not be reinterpreted as observed SLO evidence.
 
 ## Runtime evidence boundary
 
