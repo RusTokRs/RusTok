@@ -57,7 +57,7 @@ for (const forbidden of [
 }
 
 if (/^\s{2}(push|pull_request):/m.test(workflow)) {
-  fail(`${workflowPath} must remain manually dispatched until the stale artifact is admitted`);
+  fail(`${workflowPath} must remain manually dispatched by contract`);
 }
 
 const generatorPath = 'crates/rustok-events/examples/event_contract_digests.rs';
@@ -78,15 +78,16 @@ requireMarkers(canonicalTestPath, [
 
 const documentationPath = 'crates/rustok-events/docs/event-contract-digest-admission.md';
 requireMarkers(documentationPath, [
-  'Status: `source_complete_maintainer_execution_pending`',
+  'Status: `product_index_family_digest_admitted_maintainer_reverify_pending`',
   '`generate_patch`',
   '`verify`',
   '`contents: read`',
   '`persist-credentials: false`',
   '`event-contract-digests.patch`',
-  'does not commit, push, open a pull request, or alter the repository',
-  'Product Index refresh event family remains blocked',
-  'No workflow, Cargo command, test, verifier, or CI job was executed',
+  'does not automatically write the repository',
+  'The stale-baseline gate is complete',
+  'ProductIndexRefreshEvent',
+  'maintainer-provided Product-family generator output',
 ]);
 
 console.log('[verify-event-contract-digest-admission] canonical digest admission workflow contract verified');
