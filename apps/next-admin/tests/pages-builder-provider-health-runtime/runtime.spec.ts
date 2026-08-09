@@ -1,8 +1,4 @@
-import {
-  test,
-  type BrowserContext,
-  type Page,
-} from "@playwright/test";
+import { test, type BrowserContext, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -52,12 +48,20 @@ const runtimeQuery = `query ProviderHealthRuntimeEvidence {
   }
 }`;
 
+type PredecessorSpec = {
+  environment: string;
+  format: string;
+  status: string;
+  decision?: string;
+  rollback_action?: string;
+};
+
 type RuntimeContract = {
   schema_version: number;
   module: string;
   packet: string;
   status: string;
-  predecessors: Record<string, { environment: string; format: string; status: string }>;
+  predecessors: Record<string, PredecessorSpec>;
   fixtures: Record<string, unknown> & {
     api_origin_environment: string;
     admin_origin_environment: string;
@@ -68,7 +72,12 @@ type RuntimeContract = {
     admin_route_environment: string;
     common_headers_environment: string;
   };
-  output: { environment: string; default_path: string; format: string; status: string };
+  output: {
+    environment: string;
+    default_path: string;
+    format: string;
+    status: string;
+  };
   required_source_files?: string[];
 };
 
@@ -81,7 +90,7 @@ type GraphqlResult = {
   data: Record<string, unknown>;
 };
 type HealthState = "ready" | "degraded" | "unavailable";
-
+type CapabilityExpectation = "allowed" | "feature_disabled";
 type AcceptedHealth = {
   state: HealthState;
   degradation_reasons: string[];
@@ -140,7 +149,10 @@ function requireOrigin(value: string, label: string): string {
   }
   if (
     !["http:", "https:"].includes(parsed.protocol) ||
-    parsed.username || parsed.password || parsed.search || parsed.hash ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
     !["", "/"].includes(parsed.pathname)
   ) {
     fail(`${label} must be credential-free with no path/query/fragment`);
@@ -149,37 +161,63 @@ function requireOrigin(value: string, label: string): string {
 }
 
 function requireRelativePath(value: string, label: string): string {
-  if (!value.startsWith("/") || value.startsWith("//") || /[\u0000\r\n]/u.test(value)) {
-    fail(`${label} must be a same-origin absolute path`);
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.length > 4096 ||
+    /[\u0000\r\n]/u.test(value)
+  ) {
+    fail(`${label} must be a bounded same-origin absolute path`);
   }
   const parsed = new URL(value, "https://evidence.invalid");
+  if (parsed.origin !== "https://evidence.invalid") {
+    fail(`${label} must remain same-origin`);
+  }
   return `${parsed.pathname}${parsed.search}`;
 }
 
 function requireTenantSlug(value: string): string {
   if (
-    value.trim() !== value || value.length === 0 || Buffer.byteLength(value) > 128 ||
+    value.trim() !== value ||
+    value.length === 0 ||
+    Buffer.byteLength(value) > 128 ||
     /[\u0000-\u001f\u007f/\\?#]/u.test(value)
-  ) fail("tenant slug is invalid");
+  ) {
+    fail("tenant slug is invalid");
+  }
   return value;
 }
 
 function requirePageId(value: string): string {
-  if (value.trim() !== value || value.length === 0 || Buffer.byteLength(value) > 256 || /[\u0000\r\n]/u.test(value)) {
-    fail("page id is invalid");
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
+  ) {
+    fail("runtime evidence page id must be a UUID");
   }
-  return value;
+  const normalized = value.toLowerCase();
+  if (normalized === mismatchPageId) {
+    fail("runtime evidence page id collides with non-mutating mismatch sentinel");
+  }
+  return normalized;
 }
 
 function resolveInput(value: string): string {
   return path.isAbsolute(value) ? path.resolve(value) : path.resolve(repoRoot, value);
 }
 
-function regularFileRecord(value: string, label: string, maximumBytes = 8 * 1024 * 1024): FileRecord {
+function regularFileRecord(
+  value: string,
+  label: string,
+  maximumBytes = 8 * 1024 * 1024,
+): FileRecord {
   const absolute = resolveInput(value);
   if (!existsSync(absolute)) fail(`${label} is missing`);
   const link = lstatSync(absolute);
-  if (link.isSymbolicLink() || !link.isFile()) fail(`${label} must be a regular non-symlink file`);
+  if (link.isSymbolicLink() || !link.isFile()) {
+    fail(`${label} must be a regular non-symlink file`);
+  }
   const size = statSync(absolute).size;
   if (size <= 0 || size > maximumBytes) fail(`${label} is outside the bounded size`);
   const bytes = readFileSync(absolute);
@@ -189,20 +227,30 @@ function regularFileRecord(value: string, label: string, maximumBytes = 8 * 1024
 function readJsonInput(value: string, label: string): JsonInput {
   const record = regularFileRecord(value, label);
   try {
-    return { record, document: objectValue(JSON.parse(readFileSync(record.path, "utf8")), label) };
+    return {
+      record,
+      document: objectValue(JSON.parse(readFileSync(record.path, "utf8")), label),
+    };
   } catch (error) {
     fail(`${label} is invalid JSON: ${(error as Error).message}`);
   }
 }
 
 function currentCommit(): string {
-  const value = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
-  if (!/^[0-9a-f]{40}$/u.test(value)) fail("git HEAD is not a canonical lowercase SHA");
+  const value = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).trim();
+  if (!/^[0-9a-f]{40}$/u.test(value)) {
+    fail("git HEAD is not a canonical lowercase SHA");
+  }
   return value;
 }
 
 function canonicalIso(value: unknown, label: string): number {
-  if (typeof value !== "string" || value.length === 0 || value.length > 128) fail(`${label} is invalid`);
+  if (typeof value !== "string" || value.length === 0 || value.length > 128) {
+    fail(`${label} is invalid`);
+  }
   const milliseconds = Date.parse(value);
   if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString() !== value) {
     fail(`${label} must be canonical ISO-8601 UTC`);
@@ -237,18 +285,31 @@ function acceptedHealth(value: unknown): AcceptedHealth {
   if (!["ready", "degraded", "unavailable"].includes(String(snapshot.state))) {
     fail("accepted provider health state is invalid");
   }
-  if (!Array.isArray(snapshot.degradation_reasons) || !snapshot.degradation_reasons.every((reason) => typeof reason === "string")) {
+  if (
+    !Array.isArray(snapshot.degradation_reasons) ||
+    !snapshot.degradation_reasons.every((reason) => typeof reason === "string")
+  ) {
     fail("accepted degradation reasons are invalid");
   }
   const observed = objectValue(snapshot.observed, "accepted provider observations");
   const thresholds = objectValue(snapshot.thresholds, "accepted provider thresholds");
-  for (const [label, candidate] of [...Object.entries(observed), ...Object.entries(thresholds)]) {
-    if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate < 0) fail(`${label} is invalid`);
+  for (const [label, candidate] of [
+    ...Object.entries(observed),
+    ...Object.entries(thresholds),
+  ]) {
+    if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate < 0) {
+      fail(`${label} is invalid`);
+    }
   }
   return snapshot as unknown as AcceptedHealth;
 }
 
-function validateEvidenceChain(identity: JsonInput, evaluation: JsonInput, acceptance: JsonInput, head: string): {
+function validateEvidenceChain(
+  identity: JsonInput,
+  evaluation: JsonInput,
+  acceptance: JsonInput,
+  head: string,
+): {
   sourceCommit: string;
   deploymentId: string;
   deploymentDigest: string;
@@ -259,36 +320,95 @@ function validateEvidenceChain(identity: JsonInput, evaluation: JsonInput, accep
   const identitySpec = contract.predecessors.deployment_identity;
   const evaluationSpec = contract.predecessors.deployment_evaluation;
   const acceptanceSpec = contract.predecessors.owner_acceptance;
-  if (identity.document.format !== identitySpec.format || identity.document.status !== identitySpec.status) fail("identity evidence identity/status drifted");
-  if (evaluation.document.format !== evaluationSpec.format || evaluation.document.status !== evaluationSpec.status) fail("evaluation evidence identity/status drifted");
-  if (acceptance.document.format !== acceptanceSpec.format || acceptance.document.status !== acceptanceSpec.status) fail("owner acceptance identity/status drifted");
+  if (
+    identity.document.format !== identitySpec.format ||
+    identity.document.status !== identitySpec.status
+  ) {
+    fail("identity evidence identity/status drifted");
+  }
+  if (
+    evaluation.document.format !== evaluationSpec.format ||
+    evaluation.document.status !== evaluationSpec.status
+  ) {
+    fail("evaluation evidence identity/status drifted");
+  }
+  if (
+    acceptance.document.format !== acceptanceSpec.format ||
+    acceptance.document.status !== acceptanceSpec.status
+  ) {
+    fail("owner acceptance identity/status drifted");
+  }
+  if (
+    acceptanceSpec.decision !== "accept_for_pages_binding" ||
+    acceptanceSpec.rollback_action !== "restore_unobserved_provider_health"
+  ) {
+    fail("runtime contract owner-acceptance policy drifted");
+  }
 
   const identityDeployment = objectValue(identity.document.deployment, "identity deployment");
-  const evaluationDeployment = objectValue(evaluation.document.deployment, "evaluation deployment");
-  const acceptanceDeployment = objectValue(acceptance.document.deployment, "acceptance deployment");
+  const evaluationDeployment = objectValue(
+    evaluation.document.deployment,
+    "evaluation deployment",
+  );
+  const acceptanceDeployment = objectValue(
+    acceptance.document.deployment,
+    "acceptance deployment",
+  );
   const sourceCommit = String(identityDeployment.source_commit ?? "");
-  if (!/^[0-9a-f]{40}$/u.test(sourceCommit) || sourceCommit !== head) fail("identity source commit does not equal checkout HEAD");
-  if (evaluationDeployment.source_commit !== sourceCommit || acceptanceDeployment.source_commit !== sourceCommit) fail("source commit differs across evidence chain");
+  if (!/^[0-9a-f]{40}$/u.test(sourceCommit) || sourceCommit !== head) {
+    fail("identity source commit does not equal checkout HEAD");
+  }
+  if (
+    evaluationDeployment.source_commit !== sourceCommit ||
+    acceptanceDeployment.source_commit !== sourceCommit
+  ) {
+    fail("source commit differs across evidence chain");
+  }
   const deploymentId = String(identityDeployment.deployment_id ?? "");
-  if (!/^[A-Za-z0-9._:/-]{1,128}$/u.test(deploymentId)) fail("deployment id is invalid");
-  if (evaluationDeployment.deployment_id !== deploymentId || acceptanceDeployment.deployment_id !== deploymentId) fail("deployment id differs across evidence chain");
-  const deploymentDigest = canonicalRepoDigest(identityDeployment.deployment_image_digest, "identity deployment image digest");
-  if (evaluationDeployment.deployment_image_digest !== deploymentDigest || acceptanceDeployment.deployment_image_digest !== deploymentDigest) fail("deployment RepoDigest differs across evidence chain");
+  if (!/^[A-Za-z0-9._:/-]{1,128}$/u.test(deploymentId)) {
+    fail("deployment id is invalid");
+  }
+  if (
+    evaluationDeployment.deployment_id !== deploymentId ||
+    acceptanceDeployment.deployment_id !== deploymentId
+  ) {
+    fail("deployment id differs across evidence chain");
+  }
+  const deploymentDigest = canonicalRepoDigest(
+    identityDeployment.deployment_image_digest,
+    "identity deployment image digest",
+  );
+  if (
+    evaluationDeployment.deployment_image_digest !== deploymentDigest ||
+    acceptanceDeployment.deployment_image_digest !== deploymentDigest
+  ) {
+    fail("deployment RepoDigest differs across evidence chain");
+  }
 
   const capturedAt = identity.document.captured_at;
   canonicalIso(capturedAt, "identity captured_at");
-  if (evaluationDeployment.identity_captured_at !== capturedAt) fail("evaluation identity timestamp is not bound to supplied identity packet");
+  if (evaluationDeployment.identity_captured_at !== capturedAt) {
+    fail("evaluation identity timestamp is not bound to supplied identity packet");
+  }
 
-  const acceptanceDecision = objectValue(acceptance.document.decision, "owner acceptance decision");
+  const acceptanceDecision = objectValue(
+    acceptance.document.decision,
+    "owner acceptance decision",
+  );
   if (
     acceptanceDecision.value !== acceptanceSpec.decision ||
     acceptanceDecision.rollback_action !== acceptanceSpec.rollback_action ||
     acceptanceDecision.owner_identity_is_operator_assertion !== true ||
     acceptanceDecision.cryptographic_signature_present !== false ||
     acceptanceDecision.free_text_reason_retained !== false
-  ) fail("owner acceptance decision contract drifted");
+  ) {
+    fail("owner acceptance decision contract drifted");
+  }
 
-  const acceptanceEvaluation = objectValue(acceptance.document.evaluation, "acceptance evaluation");
+  const acceptanceEvaluation = objectValue(
+    acceptance.document.evaluation,
+    "acceptance evaluation",
+  );
   if (
     acceptanceEvaluation.format !== evaluation.document.format ||
     acceptanceEvaluation.status !== evaluation.document.status ||
@@ -296,18 +416,32 @@ function validateEvidenceChain(identity: JsonInput, evaluation: JsonInput, accep
     acceptanceEvaluation.evaluation_sha256 !== evaluation.record.sha256 ||
     acceptanceEvaluation.raw_evaluation_path_persisted !== false ||
     acceptanceEvaluation.source_hashes_verified_against_checkout !== true
-  ) fail("owner acceptance is not bound to the supplied evaluation packet");
+  ) {
+    fail("owner acceptance is not bound to the supplied evaluation packet");
+  }
 
   const evaluationSnapshot = acceptedHealth(evaluation.document.snapshot);
   const acceptanceSnapshot = acceptedHealth(acceptanceEvaluation.snapshot);
-  if (canonicalJson(evaluationSnapshot) !== canonicalJson(acceptanceSnapshot)) fail("accepted health snapshot differs from evaluator snapshot");
-  const evaluationSlo = objectValue(evaluation.document.slo_evaluation, "evaluation SLO evaluation");
-  const acceptanceSlo = objectValue(acceptanceEvaluation.slo_evaluation, "accepted SLO evaluation");
-  if (canonicalJson(evaluationSlo) !== canonicalJson(acceptanceSlo)) fail("accepted SLO evaluation differs from evaluator SLO evaluation");
+  if (canonicalJson(evaluationSnapshot) !== canonicalJson(acceptanceSnapshot)) {
+    fail("accepted health snapshot differs from evaluator snapshot");
+  }
+  const evaluationSlo = objectValue(
+    evaluation.document.slo_evaluation,
+    "evaluation SLO evaluation",
+  );
+  const acceptanceSlo = objectValue(
+    acceptanceEvaluation.slo_evaluation,
+    "accepted SLO evaluation",
+  );
+  if (canonicalJson(evaluationSlo) !== canonicalJson(acceptanceSlo)) {
+    fail("accepted SLO evaluation differs from evaluator SLO evaluation");
+  }
 
   const healthValidUntil = String(acceptanceEvaluation.health_valid_until ?? "");
   const validUntilMs = canonicalIso(healthValidUntil, "accepted health_valid_until");
-  if (Date.now() > validUntilMs + 5_000) fail("accepted provider health is expired before runtime observation begins");
+  if (Date.now() > validUntilMs + 5_000) {
+    fail("accepted provider health is expired before runtime observation begins");
+  }
 
   const binding = objectValue(acceptance.document.binding, "acceptance binding");
   if (
@@ -316,9 +450,18 @@ function validateEvidenceChain(identity: JsonInput, evaluation: JsonInput, accep
     binding.required_live_source_commit !== sourceCommit ||
     binding.required_deployment_image_digest !== deploymentDigest ||
     binding.failure_action !== acceptanceSpec.rollback_action
-  ) fail("owner acceptance binding contract drifted");
+  ) {
+    fail("owner acceptance binding contract drifted");
+  }
 
-  return { sourceCommit, deploymentId, deploymentDigest, healthValidUntil, health: acceptanceSnapshot, sloEvaluation: acceptanceSlo };
+  return {
+    sourceCommit,
+    deploymentId,
+    deploymentDigest,
+    healthValidUntil,
+    health: acceptanceSnapshot,
+    sloEvaluation: acceptanceSlo,
+  };
 }
 
 function commonHeaders(tenantSlug: string): Record<string, string> {
@@ -327,63 +470,151 @@ function commonHeaders(tenantSlug: string): Record<string, string> {
   const headers: Record<string, string> = { "x-tenant-slug": tenantSlug };
   if (raw === null) return headers;
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch (error) { fail(`${name} is invalid JSON: ${(error as Error).message}`); }
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    fail(`${name} is invalid JSON: ${(error as Error).message}`);
+  }
   const values = objectValue(parsed, name);
   for (const [headerName, value] of Object.entries(values)) {
     const normalized = headerName.toLowerCase();
-    if (!/^[a-z0-9!#$%&'*+.^_`|~-]+$/u.test(normalized) || ["authorization", "cookie", "set-cookie", "host", "content-length"].includes(normalized)) fail(`${name} contains forbidden header ${headerName}`);
-    if (typeof value !== "string" || value.length > 4096 || /[\u0000\r\n]/u.test(value)) fail(`${name} contains invalid header ${headerName}`);
+    if (
+      !/^[a-z0-9!#$%&'*+.^_`|~-]+$/u.test(normalized) ||
+      ["authorization", "cookie", "set-cookie", "host", "content-length"].includes(
+        normalized,
+      )
+    ) {
+      fail(`${name} contains forbidden header ${headerName}`);
+    }
+    if (
+      typeof value !== "string" ||
+      value.length > 4096 ||
+      /[\u0000\r\n]/u.test(value)
+    ) {
+      fail(`${name} contains invalid header ${headerName}`);
+    }
     headers[normalized] = value;
   }
   headers["x-tenant-slug"] = tenantSlug;
   return headers;
 }
 
-async function graphql(context: BrowserContext, query: string, label: string): Promise<GraphqlResult> {
-  const response = await context.request.post(graphqlPath, { data: { query }, failOnStatusCode: false });
+async function graphql(
+  context: BrowserContext,
+  query: string,
+  label: string,
+): Promise<GraphqlResult> {
+  const response = await context.request.post(graphqlPath, {
+    data: { query },
+    failOnStatusCode: false,
+  });
   const body = await response.body();
   if (response.status() !== 200) fail(`${label} did not return HTTP 200`);
   let parsed: unknown;
-  try { parsed = JSON.parse(body.toString("utf8")); } catch { fail(`${label} did not return JSON`); }
+  try {
+    parsed = JSON.parse(body.toString("utf8"));
+  } catch {
+    fail(`${label} did not return JSON`);
+  }
   const envelope = objectValue(parsed, `${label} response`);
-  if (Array.isArray(envelope.errors) && envelope.errors.length > 0) fail(`${label} returned GraphQL errors`);
-  return { status: response.status(), responseBytes: body.length, responseSha256: sha256(body), data: objectValue(envelope.data, `${label} data`) };
+  if (Array.isArray(envelope.errors) && envelope.errors.length > 0) {
+    fail(`${label} returned GraphQL errors`);
+  }
+  return {
+    status: response.status(),
+    responseBytes: body.length,
+    responseSha256: sha256(body),
+    data: objectValue(envelope.data, `${label} data`),
+  };
 }
 
-function validateCapability(value: unknown, capability: string, expected: "allowed" | "feature_disabled"): Record<string, unknown> {
+function validateCapability(
+  value: unknown,
+  capability: "preview" | "properties" | "publish",
+  expected: CapabilityExpectation,
+): Record<string, unknown> {
   const result = objectValue(value, `${capability} preflight`);
-  if (result.capability !== capability.toUpperCase()) fail(`${capability} preflight returned another capability`);
+  if (result.capability !== capability.toUpperCase()) {
+    fail(`${capability} preflight returned another capability`);
+  }
   if (expected === "allowed") {
-    if (result.allowed !== true || result.errorKind !== null || result.errorCode !== null) fail(`${capability} should be allowed`);
-  } else if (result.allowed !== false || result.errorKind !== "feature-disabled" || result.errorCode !== "FEATURE_DISABLED") {
+    if (
+      result.allowed !== true ||
+      result.errorKind !== null ||
+      result.errorCode !== null
+    ) {
+      fail(`${capability} should be allowed`);
+    }
+  } else if (
+    result.allowed !== false ||
+    result.errorKind !== "feature-disabled" ||
+    result.errorCode !== "FEATURE_DISABLED"
+  ) {
     fail(`${capability} must return feature-disabled / FEATURE_DISABLED`);
   }
-  return { capability, allowed: result.allowed, error_kind: result.errorKind, error_code: result.errorCode };
+  return {
+    capability,
+    allowed: result.allowed,
+    error_kind: result.errorKind,
+    error_code: result.errorCode,
+  };
 }
 
-function expectedForHealth(state: HealthState): { preview: "allowed" | "feature_disabled"; properties: "allowed" | "feature_disabled"; publish: "allowed" | "feature_disabled" } {
-  if (state === "ready") return { preview: "allowed", properties: "allowed", publish: "allowed" };
-  if (state === "degraded") return { preview: "allowed", properties: "allowed", publish: "feature_disabled" };
-  return { preview: "feature_disabled", properties: "feature_disabled", publish: "feature_disabled" };
+function expectedForHealth(state: HealthState): {
+  preview: CapabilityExpectation;
+  properties: CapabilityExpectation;
+  publish: CapabilityExpectation;
+} {
+  if (state === "ready") {
+    return { preview: "allowed", properties: "allowed", publish: "allowed" };
+  }
+  if (state === "degraded") {
+    return {
+      preview: "allowed",
+      properties: "allowed",
+      publish: "feature_disabled",
+    };
+  }
+  return {
+    preview: "feature_disabled",
+    properties: "feature_disabled",
+    publish: "feature_disabled",
+  };
 }
 
-function validateGraphqlObservation(result: GraphqlResult, tenantSlug: string, accepted: AcceptedHealth): Record<string, unknown> {
-  const snapshot = objectValue(result.data.pageBuilderRolloutSnapshot, "runtime rollout snapshot");
+function validateGraphqlObservation(
+  result: GraphqlResult,
+  tenantSlug: string,
+  accepted: AcceptedHealth,
+): Record<string, unknown> {
+  const snapshot = objectValue(
+    result.data.pageBuilderRolloutSnapshot,
+    "runtime rollout snapshot",
+  );
   if (
     snapshot.tenantSlug !== tenantSlug ||
-    snapshot.builderEnabled !== true || snapshot.previewEnabled !== true ||
-    snapshot.propertiesEnabled !== true || snapshot.publishEnabled !== true
-  ) fail("runtime evidence requires configured all_on rollout flags");
-  if (snapshot.providerHealthObserved !== true) fail("runtime snapshot did not observe provider health");
+    snapshot.builderEnabled !== true ||
+    snapshot.previewEnabled !== true ||
+    snapshot.propertiesEnabled !== true ||
+    snapshot.publishEnabled !== true
+  ) {
+    fail("runtime evidence requires configured all_on rollout flags");
+  }
+  if (snapshot.providerHealthObserved !== true) {
+    fail("runtime snapshot did not observe provider health");
+  }
   const health = objectValue(snapshot.providerHealth, "runtime provider health");
   if (
     health.state !== accepted.state ||
-    canonicalJson(health.degradationReasons) !== canonicalJson(accepted.degradation_reasons) ||
+    canonicalJson(health.degradationReasons) !==
+      canonicalJson(accepted.degradation_reasons) ||
     health.previewP95Ms !== accepted.observed.preview_p95_ms ||
     health.publishP95Ms !== accepted.observed.publish_p95_ms ||
     health.sanitizeFailureRate !== accepted.observed.sanitize_failure_rate ||
     health.runtimeErrorRate !== accepted.observed.runtime_error_rate
-  ) fail("runtime GraphQL health differs from accepted provider snapshot");
+  ) {
+    fail("runtime GraphQL health differs from accepted provider snapshot");
+  }
   const expected = expectedForHealth(accepted.state);
   return {
     status: result.status,
@@ -393,7 +624,11 @@ function validateGraphqlObservation(result: GraphqlResult, tenantSlug: string, a
     provider_health_observed: true,
     provider_state: accepted.state,
     preview: validateCapability(result.data.preview, "preview", expected.preview),
-    properties: validateCapability(result.data.properties, "properties", expected.properties),
+    properties: validateCapability(
+      result.data.properties,
+      "properties",
+      expected.properties,
+    ),
     publish: validateCapability(result.data.publish, "publish", expected.publish),
     raw_request_or_response_persisted: false,
   };
@@ -401,50 +636,84 @@ function validateGraphqlObservation(result: GraphqlResult, tenantSlug: string, a
 
 async function settleAdminPage(page: Page, adminRoute: string): Promise<void> {
   const response = await page.goto(adminRoute, { waitUntil: "domcontentloaded" });
-  if (response === null || response.status() >= 400) fail("admin runtime evidence route failed");
-  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
-  await page.locator(providerSelector).first().waitFor({ state: "visible", timeout: 15_000 });
+  if (response === null || response.status() >= 400) {
+    fail("admin runtime evidence route failed");
+  }
+  await page
+    .waitForLoadState("networkidle", { timeout: 15_000 })
+    .catch(() => undefined);
+  await page
+    .locator(providerSelector)
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 });
 }
 
-async function workspaceObservation(page: Page, state: HealthState): Promise<Record<string, unknown>> {
+async function workspaceObservation(
+  page: Page,
+  state: HealthState,
+): Promise<Record<string, unknown>> {
   const provider = page.locator(providerSelector).first();
   const providerState = await provider.getAttribute("data-fly-provider-control-state");
   const providerHealth = await provider.getAttribute("data-fly-provider-health");
-  if (providerState !== state || providerHealth !== state) fail("workspace provider control does not match accepted health");
+  if (providerState !== state || providerHealth !== state) {
+    fail("workspace provider control does not match accepted health");
+  }
+
   const preview = page.locator(previewPanelSelector).first();
   await preview.waitFor({ state: "visible", timeout: 15_000 });
-  const previewEnabled = (await preview.getAttribute("data-page-builder-provider-preview")) === "true";
+  const previewEnabled =
+    (await preview.getAttribute("data-page-builder-provider-preview")) === "true";
   const expected = expectedForHealth(state);
-  if (previewEnabled !== (expected.preview === "allowed")) fail("workspace preview capability differs from accepted health");
-  const stateOf = async (selector: string, shouldEnable: boolean): Promise<"enabled" | "disabled" | "hidden"> => {
+  if (previewEnabled !== (expected.preview === "allowed")) {
+    fail("workspace preview capability differs from accepted health");
+  }
+
+  const stateOf = async (
+    selector: string,
+    shouldEnable: boolean,
+  ): Promise<"enabled" | "disabled" | "hidden"> => {
     const fieldset = page.locator(selector).first();
     if ((await fieldset.count()) === 0) {
       if (shouldEnable) fail(`${selector} is unexpectedly hidden`);
       return "hidden";
     }
     const disabled = (await fieldset.getAttribute("disabled")) !== null;
-    if (disabled === shouldEnable) fail(`${selector} capability differs from accepted health`);
+    if (disabled === shouldEnable) {
+      fail(`${selector} capability differs from accepted health`);
+    }
     return disabled ? "disabled" : "enabled";
   };
+
   return {
     provider_control_state: providerState,
     provider_health: providerHealth,
     preview_enabled: previewEnabled,
-    properties: await stateOf(propertiesFieldsetSelector, expected.properties === "allowed"),
+    properties: await stateOf(
+      propertiesFieldsetSelector,
+      expected.properties === "allowed",
+    ),
     publish: await stateOf(publishFieldsetSelector, expected.publish === "allowed"),
   };
 }
 
-async function safeSsrPreviewObservation(page: Page, state: HealthState): Promise<Record<string, unknown>> {
+async function safeSsrPreviewObservation(
+  page: Page,
+  state: HealthState,
+): Promise<Record<string, unknown>> {
+  const button = page.locator(previewPanelSelector).first().locator("button").first();
   if (state === "unavailable") {
-    const button = page.locator(previewPanelSelector).first().locator("button").first();
-    if (!(await button.isDisabled())) fail("unavailable health must disable preview before SSR dispatch");
+    if (!(await button.isDisabled())) {
+      fail("unavailable health must disable preview before SSR dispatch");
+    }
     return { request_attempted: false, ui_blocked: true, mutation_possible: false };
   }
-  const button = page.locator(previewPanelSelector).first().locator("button").first();
-  if (await button.isDisabled()) fail("ready/degraded health unexpectedly disabled preview");
+  if (await button.isDisabled()) {
+    fail("ready/degraded health unexpectedly disabled preview");
+  }
   const requestPromise = page.waitForRequest(
-    (request) => request.method() === "POST" && new URL(request.url()).pathname === capabilityPath,
+    (request) =>
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === capabilityPath,
     { timeout: 15_000 },
   );
   await button.click();
@@ -452,7 +721,12 @@ async function safeSsrPreviewObservation(page: Page, state: HealthState): Promis
   const response = await request.response();
   if (response === null) fail("SSR preview request produced no response");
   const body = await response.body();
-  if (response.status() >= 400 || /capability disabled: preview/iu.test(body.toString("utf8"))) fail("SSR preview was rejected under ready/degraded health");
+  if (
+    response.status() >= 400 ||
+    /capability disabled: preview/iu.test(body.toString("utf8"))
+  ) {
+    fail("SSR preview was rejected under ready/degraded health");
+  }
   return {
     request_attempted: true,
     status: response.status(),
@@ -464,7 +738,12 @@ async function safeSsrPreviewObservation(page: Page, state: HealthState): Promis
   };
 }
 
-async function safeBrowserIntentDenial(adminContext: BrowserContext, pageId: string, intent: "save" | "rename_page", capability: "publish" | "properties"): Promise<Record<string, unknown>> {
+async function safeBrowserIntentDenial(
+  adminContext: BrowserContext,
+  pageId: string,
+  intent: "save" | "rename_page",
+  capability: "publish" | "properties",
+): Promise<Record<string, unknown>> {
   const response = await adminContext.request.post(
     `/api/admin/pages/${encodeURIComponent(pageId)}/builder/intents`,
     {
@@ -472,7 +751,10 @@ async function safeBrowserIntentDenial(adminContext: BrowserContext, pageId: str
         protocol: "fly_iframe",
         instance_id: "pages-provider-health-runtime-evidence",
         intent,
-        payload: intent === "rename_page" ? { page_id: mismatchPageId, new_page_id: "never-applied" } : {},
+        payload:
+          intent === "rename_page"
+            ? { page_id: mismatchPageId, new_page_id: "never-applied" }
+            : {},
         page_id: mismatchPageId,
         sequence: 1,
       },
@@ -481,19 +763,34 @@ async function safeBrowserIntentDenial(adminContext: BrowserContext, pageId: str
   );
   const body = await response.body();
   if (response.status() !== 403) {
-    fail(`${intent} did not return health-limited FLY_CAPABILITY_DENIED; mismatched page id prevents mutation if health was revoked`);
+    fail(
+      `${intent} did not return health-limited FLY_CAPABILITY_DENIED; mismatched page id prevents mutation if health was revoked`,
+    );
   }
   let parsed: unknown;
-  try { parsed = JSON.parse(body.toString("utf8")); } catch { fail(`${intent} denial did not return JSON`); }
+  try {
+    parsed = JSON.parse(body.toString("utf8"));
+  } catch {
+    fail(`${intent} denial did not return JSON`);
+  }
   const problem = objectValue(parsed, `${intent} browser-intent denial`);
   if (
-    problem.status !== 403 || problem.code !== "FLY_CAPABILITY_DENIED" ||
-    problem.intent !== intent || problem.capability !== capability ||
-    !Array.isArray(problem.missing) || !problem.missing.includes(capability)
-  ) fail(`${intent} browser-intent denial contract drifted`);
+    problem.status !== 403 ||
+    problem.code !== "FLY_CAPABILITY_DENIED" ||
+    problem.intent !== intent ||
+    problem.capability !== capability ||
+    !Array.isArray(problem.missing) ||
+    !problem.missing.includes(capability)
+  ) {
+    fail(`${intent} browser-intent denial contract drifted`);
+  }
   return {
-    status: response.status(), response_body_bytes: body.length, response_body_sha256: sha256(body),
-    code: problem.code, capability: problem.capability, intent: problem.intent,
+    status: response.status(),
+    response_body_bytes: body.length,
+    response_body_sha256: sha256(body),
+    code: problem.code,
+    capability: problem.capability,
+    intent: problem.intent,
     mismatch_page_id_used_as_non_mutating_fallback: true,
     raw_request_or_response_persisted: false,
   };
@@ -504,7 +801,9 @@ function outputPath(): string {
   const absolute = resolveInput(raw ?? contract.output.default_path);
   const targetRoot = path.resolve(repoRoot, "target");
   const relative = path.relative(targetRoot, absolute);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) fail("runtime evidence output must remain under target/");
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    fail("runtime evidence output must remain under target/");
+  }
   return absolute;
 }
 
@@ -518,44 +817,95 @@ function writeAtomic(location: string, document: Record<string, unknown>): void 
 
 function sourceHashes(): Record<string, string> {
   const required = contract.required_source_files ?? [];
-  if (required.length === 0) fail("runtime evidence contract has no required source files");
-  return Object.fromEntries(required.map((relativePath) => {
-    const record = regularFileRecord(relativePath, `source file ${relativePath}`);
-    return [relativePath, record.sha256];
-  }));
+  if (required.length === 0) {
+    fail("runtime evidence contract has no required source files");
+  }
+  return Object.fromEntries(
+    required.map((relativePath) => {
+      const record = regularFileRecord(relativePath, `source file ${relativePath}`);
+      return [relativePath, record.sha256];
+    }),
+  );
 }
 
 test("Pages observed provider health is bound across runtime consumers", async ({ browser }) => {
   if (
-    contract.schema_version !== 1 || contract.module !== "pages" ||
+    contract.schema_version !== 1 ||
+    contract.module !== "pages" ||
     contract.packet !== "pages-builder-provider-health-runtime-evidence" ||
     contract.status !== "source_ready_maintainer_execution_pending"
-  ) fail("runtime evidence contract identity drifted");
+  ) {
+    fail("runtime evidence contract identity drifted");
+  }
 
   const head = currentCommit();
-  const identity = readJsonInput(requiredEnvironment(contract.predecessors.deployment_identity.environment), "deployment identity evidence");
-  const evaluation = readJsonInput(requiredEnvironment(contract.predecessors.deployment_evaluation.environment), "deployment evaluation evidence");
-  const acceptance = readJsonInput(requiredEnvironment(contract.predecessors.owner_acceptance.environment), "owner acceptance evidence");
+  const identity = readJsonInput(
+    requiredEnvironment(contract.predecessors.deployment_identity.environment),
+    "deployment identity evidence",
+  );
+  const evaluation = readJsonInput(
+    requiredEnvironment(contract.predecessors.deployment_evaluation.environment),
+    "deployment evaluation evidence",
+  );
+  const acceptance = readJsonInput(
+    requiredEnvironment(contract.predecessors.owner_acceptance.environment),
+    "owner acceptance evidence",
+  );
   const admitted = validateEvidenceChain(identity, evaluation, acceptance, head);
 
-  const apiOrigin = requireOrigin(requiredEnvironment(contract.fixtures.api_origin_environment), "API origin");
-  const adminOrigin = requireOrigin(requiredEnvironment(contract.fixtures.admin_origin_environment), "admin origin");
-  const tenantSlug = requireTenantSlug(requiredEnvironment(contract.fixtures.tenant_slug_environment));
-  const pageId = requirePageId(requiredEnvironment(contract.fixtures.page_id_environment));
-  const adminRoute = requireRelativePath(requiredEnvironment(contract.fixtures.admin_route_environment), "admin route");
-  const apiStorage = regularFileRecord(requiredEnvironment(contract.fixtures.api_storage_state_environment), "API storage state");
-  const adminStorage = regularFileRecord(requiredEnvironment(contract.fixtures.admin_storage_state_environment), "admin storage state");
+  const apiOrigin = requireOrigin(
+    requiredEnvironment(contract.fixtures.api_origin_environment),
+    "API origin",
+  );
+  const adminOrigin = requireOrigin(
+    requiredEnvironment(contract.fixtures.admin_origin_environment),
+    "admin origin",
+  );
+  const tenantSlug = requireTenantSlug(
+    requiredEnvironment(contract.fixtures.tenant_slug_environment),
+  );
+  const pageId = requirePageId(
+    requiredEnvironment(contract.fixtures.page_id_environment),
+  );
+  const adminRoute = requireRelativePath(
+    requiredEnvironment(contract.fixtures.admin_route_environment),
+    "admin route",
+  );
+  const apiStorage = regularFileRecord(
+    requiredEnvironment(contract.fixtures.api_storage_state_environment),
+    "API storage state",
+  );
+  const adminStorage = regularFileRecord(
+    requiredEnvironment(contract.fixtures.admin_storage_state_environment),
+    "admin storage state",
+  );
   const headers = commonHeaders(tenantSlug);
 
-  const apiContext = await browser.newContext({ baseURL: apiOrigin, storageState: apiStorage.path, extraHTTPHeaders: headers });
-  const adminContext = await browser.newContext({ baseURL: adminOrigin, storageState: adminStorage.path, extraHTTPHeaders: headers });
+  const apiContext = await browser.newContext({
+    baseURL: apiOrigin,
+    storageState: apiStorage.path,
+    extraHTTPHeaders: headers,
+  });
+  const adminContext = await browser.newContext({
+    baseURL: adminOrigin,
+    storageState: adminStorage.path,
+    extraHTTPHeaders: headers,
+  });
   const page = await adminContext.newPage();
   const output = outputPath();
   rmSync(output, { force: true });
 
   try {
-    const graphqlBefore = await graphql(apiContext, runtimeQuery, "provider-health runtime snapshot before workspace");
-    const graphqlObservation = validateGraphqlObservation(graphqlBefore, tenantSlug, admitted.health);
+    const graphqlBefore = await graphql(
+      apiContext,
+      runtimeQuery,
+      "provider-health runtime snapshot before workspace",
+    );
+    const graphqlObservation = validateGraphqlObservation(
+      graphqlBefore,
+      tenantSlug,
+      admitted.health,
+    );
 
     await settleAdminPage(page, adminRoute);
     const workspace = await workspaceObservation(page, admitted.health.state);
@@ -563,15 +913,33 @@ test("Pages observed provider health is bound across runtime consumers", async (
 
     const browserIntent: Record<string, unknown>[] = [];
     if (admitted.health.state === "degraded") {
-      browserIntent.push(await safeBrowserIntentDenial(adminContext, pageId, "save", "publish"));
+      browserIntent.push(
+        await safeBrowserIntentDenial(adminContext, pageId, "save", "publish"),
+      );
     } else if (admitted.health.state === "unavailable") {
-      browserIntent.push(await safeBrowserIntentDenial(adminContext, pageId, "save", "publish"));
-      browserIntent.push(await safeBrowserIntentDenial(adminContext, pageId, "rename_page", "properties"));
+      browserIntent.push(
+        await safeBrowserIntentDenial(adminContext, pageId, "save", "publish"),
+      );
+      browserIntent.push(
+        await safeBrowserIntentDenial(
+          adminContext,
+          pageId,
+          "rename_page",
+          "properties",
+        ),
+      );
     }
 
-    const graphqlAfter = await graphql(apiContext, runtimeQuery, "provider-health runtime snapshot after consumers");
+    const graphqlAfter = await graphql(
+      apiContext,
+      runtimeQuery,
+      "provider-health runtime snapshot after consumers",
+    );
     validateGraphqlObservation(graphqlAfter, tenantSlug, admitted.health);
-    if (Date.now() > canonicalIso(admitted.healthValidUntil, "accepted health_valid_until") + 5_000) {
+    if (
+      Date.now() >
+      canonicalIso(admitted.healthValidUntil, "accepted health_valid_until") + 5_000
+    ) {
       fail("provider health expired during runtime evidence collection");
     }
 
@@ -585,9 +953,18 @@ test("Pages observed provider health is bound across runtime consumers", async (
         deployment_image_digest: admitted.deploymentDigest,
       },
       input_packets: {
-        deployment_identity: { bytes: identity.record.bytes, sha256: identity.record.sha256 },
-        deployment_evaluation: { bytes: evaluation.record.bytes, sha256: evaluation.record.sha256 },
-        owner_acceptance: { bytes: acceptance.record.bytes, sha256: acceptance.record.sha256 },
+        deployment_identity: {
+          bytes: identity.record.bytes,
+          sha256: identity.record.sha256,
+        },
+        deployment_evaluation: {
+          bytes: evaluation.record.bytes,
+          sha256: evaluation.record.sha256,
+        },
+        owner_acceptance: {
+          bytes: acceptance.record.bytes,
+          sha256: acceptance.record.sha256,
+        },
         raw_paths_persisted: false,
       },
       source_sha256: sourceHashes(),
