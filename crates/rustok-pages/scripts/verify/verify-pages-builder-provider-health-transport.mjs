@@ -81,25 +81,29 @@ for (const [object, key, expected] of [
 
 for (const marker of [
   "GqlPageBuilderProviderHealthSnapshot",
+  "pub preview_p95_ms: u64",
+  "pub publish_p95_ms: u64",
   "pub provider_health: Option<GqlPageBuilderProviderHealthSnapshot>",
   "provider_health_observed: false",
   "provider_health: None",
-  "ProviderHealthSnapshot::from",
+  "preview_p95_ms: snapshot.observed.preview_p95_ms",
+  "publish_p95_ms: snapshot.observed.publish_p95_ms",
+  "GqlPageBuilderProviderHealthSnapshot::from(health)",
   ".with_provider_health",
-]) {
-  if (marker === "ProviderHealthSnapshot::from") continue;
-  need(sources.owner ?? "", marker, "Pages GraphQL health shape");
-}
-need(sources.owner ?? "", "GqlPageBuilderProviderHealthSnapshot::from(health)", "Pages GraphQL health mapping");
+]) need(sources.owner ?? "", marker, "Pages GraphQL health shape");
 forbid(sources.owner ?? "", "page_builder_provider_health_deployment_evaluation_v1", "Pages GraphQL must not load evaluator evidence directly");
 
 for (const marker of [
   "providerHealthObserved providerHealth { state degradationReasons previewP95Ms publishP95Ms sanitizeFailureRate runtimeErrorRate }",
+  "preview_p95_ms: u64",
+  "publish_p95_ms: u64",
   "fn parse_provider_health(",
   "(false, None) => Ok(None)",
   "(false, Some(_)) => Err",
   "(true, None) => Err",
   "ProviderHealthSnapshot::evaluate(ProviderSloObservations",
+  "preview_p95_ms: payload.preview_p95_ms",
+  "publish_p95_ms: payload.publish_p95_ms",
   "must be finite and between 0 and 1",
   "does not match canonical evaluation",
   "degradationReasons do not match canonical evaluation",
