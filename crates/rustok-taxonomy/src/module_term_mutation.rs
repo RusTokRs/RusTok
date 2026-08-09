@@ -57,7 +57,7 @@ pub async fn update_module_term_in_tx(
         .one(txn)
         .await?;
 
-    let (name, slug, target_revision, created_at) = match existing_translation {
+    let (name, slug, target_revision) = match existing_translation {
         Some(existing) => {
             let name = input.name.clone().unwrap_or_else(|| existing.name.clone());
             validate_term_name(&name)?;
@@ -107,12 +107,7 @@ pub async fn update_module_term_in_tx(
                 ));
             }
 
-            (
-                name,
-                slug,
-                revision,
-                existing.created_at.with_timezone(&Utc),
-            )
+            (name, slug, revision)
         }
         None => {
             let name = input.name.clone().ok_or_else(|| {
@@ -146,7 +141,7 @@ pub async fn update_module_term_in_tx(
             .insert(txn)
             .await?;
 
-            (name, slug, 1, now)
+            (name, slug, 1)
         }
     };
 
@@ -195,7 +190,7 @@ pub async fn update_module_term_in_tx(
         effective_locale: locale,
         name,
         slug,
-        created_at,
+        created_at: term.created_at.with_timezone(&Utc),
     })
 }
 
