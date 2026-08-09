@@ -27,7 +27,7 @@ The synchronized Pages / Page Builder boundary is now:
 
 - Pages source architecture remains complete while execution evidence is open;
 - Forum remains the second production Page Builder consumer with its canonical contribution metadata, Fly adapter/component registry, owner preview and owner-backed property editing source-ready;
-- Pages rollout is server-owned and persisted per tenant; no browser-owned rollout authority was introduced;
+- Pages uses server-owned rollout state persisted per tenant; no browser-owned rollout authority was introduced;
 - the four canonical rollout profiles remain source-exercisable through the bounded rollout runtime matrix, with maintainer execution still pending;
 - standalone browser-intent denial remains `FLY_CAPABILITY_DENIED`, distinct from provider `feature-disabled / FEATURE_DISABLED`;
 - the reference candidate still requires artifact/HTTP, browser, rollout runtime matrix and canonical FEATURE_DISABLED evidence from one exact source/deployment chain;
