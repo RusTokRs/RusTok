@@ -66,12 +66,12 @@ impl ReplyService {
         security: SecurityContext,
         reply_ids: &[Uuid],
     ) -> ForumResult<Vec<(Uuid, Vec<String>)>> {
-        enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         if security.is_public_read() {
             return Err(ForumError::forbidden(
                 "Forum reply locale enumeration requires an authenticated operator context",
             ));
         }
+        enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
         self.inner
             .available_locales_for_replies(tenant_id, security, reply_ids)
             .await
