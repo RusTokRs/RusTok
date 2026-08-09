@@ -8,13 +8,16 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const failures = [];
 const files = {
   contract: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  coreRollout: "crates/rustok-page-builder/src/rollout.rs",
   providerStatus: "crates/rustok-page-builder/admin/src/provider_status.rs",
+  owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
   rollout: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
   facade: "crates/rustok-pages/admin/src/builder.rs",
   composition: "crates/rustok-pages/admin/src/composition.rs",
   adminMain: "apps/admin/src/main.rs",
   serverBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
   transport: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
+  preflightEvidence: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json",
   gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   overlay: "docs/modules/pages-page-builder-provider-health-consumer-binding-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
@@ -46,12 +49,14 @@ const sources = failures.length === 0
 let contract = {};
 let serverBinding = {};
 let transport = {};
+let preflightEvidence = {};
 let gate = {};
 if (failures.length === 0) {
   for (const [label, assign] of [
     ["contract", (value) => (contract = value)],
     ["serverBinding", (value) => (serverBinding = value)],
     ["transport", (value) => (transport = value)],
+    ["preflightEvidence", (value) => (preflightEvidence = value)],
     ["gate", (value) => (gate = value)],
   ]) {
     try {
@@ -74,6 +79,9 @@ if (serverBinding.format !== "pages_builder_provider_health_server_binding_sourc
 if (transport.format !== "pages_builder_provider_health_transport_source_v1") {
   failures.push("transport predecessor format drifted");
 }
+if (preflightEvidence.format !== "pages_builder_provider_health_capability_preflight_source_v1") {
+  failures.push("provider-health capability preflight continuation is missing");
+}
 
 for (const [object, key, expected] of [
   [contract.canonical_provider_status, "configured_rollout_flags_remain_authoritative", true],
@@ -83,6 +91,7 @@ for (const [object, key, expected] of [
   [contract.canonical_provider_status, "degraded_disables_publish", true],
   [contract.canonical_provider_status, "unavailable_disables_builder", true],
   [contract.canonical_provider_status, "runtime_flags_method", "effective_runtime_flags"],
+  [contract.canonical_provider_status, "runtime_flags_shared_policy", "rustok_page_builder::rollout::effective_provider_runtime_flags"],
   [contract.workspace_binding, "fetches_server_owned_rollout_snapshot", true],
   [contract.workspace_binding, "uses_validated_provider_status", true],
   [contract.workspace_binding, "facade_receives_provider_status", true],
@@ -91,23 +100,38 @@ for (const [object, key, expected] of [
   [contract.authoritative_ssr_binding, "missing_health_uses_configured_rollout_flags", true],
   [contract.standalone_browser_intent_binding, "uses_pages_editor_capabilities_for_snapshot", true],
   [contract.standalone_browser_intent_binding, "role_capabilities_evaluated_before_provider_narrowing", true],
+  [contract.non_mutating_capability_preflight, "operation", "pageBuilderCapabilityPreflight"],
+  [contract.non_mutating_capability_preflight, "uses_fresh_provider_health_authority", true],
+  [contract.non_mutating_capability_preflight, "uses_shared_runtime_flags_policy", true],
+  [contract.non_mutating_capability_preflight, "uses_canonical_feature_disabled_guard", true],
   [contract.anti_promotion, "accepted_packet_installed", false],
+  [contract.anti_promotion, "observed_capability_preflight_executed", false],
   [contract.anti_promotion, "pages_reference_consumer_gate_accepted", false],
-  [contract.anti_promotion, "forum_wave_accepted", false],
   [contract.validation, "tests_run", false],
   [contract.validation, "node_verifier_run", false],
-  [contract.validation, "cargo_run", false],
 ]) {
   if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 }
 
 for (const marker of [
+  "pub fn effective_provider_runtime_flags(",
+  "effective.publish_enabled = false",
+]) need(sources.coreRollout ?? "", marker, "shared Page Builder provider runtime policy");
+
+for (const marker of [
   "pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags",
-  "PageBuilderAdminProviderState::Unavailable => BuilderCapabilityFlags",
-  "PageBuilderAdminProviderState::Degraded =>",
-  "flags.publish_enabled = false",
-  "PageBuilderAdminProviderState::Ready | PageBuilderAdminProviderState::Unobserved",
+  "effective_provider_runtime_flags(&self.flags, self.health.as_ref())",
 ]) need(sources.providerStatus ?? "", marker, "canonical provider status runtime flags");
+
+for (const marker of [
+  "fn provider_health_snapshot(ctx: &Context<'_>) -> Option<ProviderHealthSnapshot>",
+  "let provider_health = provider_health_snapshot(ctx);",
+  "effective_provider_runtime_flags(&flags, provider_health.as_ref())",
+  "ensure_capability(&effective_flags, capability_kind)",
+]) need(sources.owner ?? "", marker, "non-mutating provider-health preflight");
+for (const forbidden of ["std::fs::", "RUSTOK_PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH"]) {
+  forbid(sources.owner ?? "", forbidden, "GraphQL query must consume typed runtime authority");
+}
 
 for (const marker of [
   "pub fn provider_status(&self) -> PageBuilderAdminProviderStatus",
@@ -156,24 +180,25 @@ if (gate.current_boundary?.provider_health !== "unobserved") {
 
 for (const marker of [
   "consumer-provider-health-binding-source-ready",
-  "workspace-observed-health-source-ready",
   "authoritative-ssr-health-guard-source-ready",
-  "browser-intent-health-preflight-source-ready",
-  "Pages remains `unobserved` without a live accepted packet",
-  "Tests were not run",
+  "runtime activation remains maintainer-owned",
 ]) need(sources.overlay ?? "", marker, "consumer binding actualization");
 
 for (const marker of [
   "provider-health-consumer-binding-source-ready",
+  "provider-health-capability-preflight-source-ready",
   "pages-page-builder-provider-health-consumer-binding-actualization-2026-08-09.md",
-  "UI / SSR / browser-intent provider-health binding [source-ready]",
+  "health-aware non-mutating capability preflight [source-ready]",
 ]) need(sources.parity ?? "", marker, "plan parity actualization");
 
 if (contract.next_cursor?.provider_health_consumer_binding !== "source_ready_runtime_activation_pending") {
   failures.push("consumer binding cursor drifted");
 }
-if (contract.next_cursor?.retained_identity_evaluator_owner_acceptance !== "maintainer_execution_pending") {
-  failures.push("maintainer runtime evidence cursor drifted");
+if (contract.next_cursor?.provider_health_capability_preflight !== "source_ready_runtime_execution_pending") {
+  failures.push("provider-health capability preflight cursor drifted");
+}
+if (contract.next_cursor?.observed_health_runtime_evidence_harness !== "source_open") {
+  failures.push("observed-health runtime evidence harness must remain next source cursor");
 }
 if (contract.next_cursor?.observed_health_acceptance !== "pending") {
   failures.push("observed health acceptance must remain pending");
@@ -185,4 +210,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("[verify-pages-builder-provider-health-consumer-binding] PASS consumers=workspace+ssr+browser_intent source_ready=true runtime_activation=pending");
+console.log("[verify-pages-builder-provider-health-consumer-binding] PASS consumers=workspace+ssr+browser_intent preflight=health_aware source_ready=true runtime_activation=pending");
