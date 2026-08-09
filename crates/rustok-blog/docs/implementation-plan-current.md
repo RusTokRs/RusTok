@@ -1,22 +1,23 @@
 # rustok-blog canonical implementation cursor
 
-Status: `canonical_source_cursor_actualized_through_slice_103`.
+Status: `canonical_source_cursor_actualized_through_slice_104`.
 
 This document is the canonical **current** source cursor for `rustok-blog`.
 `crates/rustok-blog/docs/implementation-plan.md` remains the long historical baseline and embedded implementation log, but its inline `Current state`, completed-slice list, and `Next results` stop before the later continuation series and must not be used as the live cursor without this file.
 
-The continuation series is authoritative for source work after the historical baseline. Slice 101 establishes this current-cursor boundary. Slice 103 is the latest production/source behavior slice.
+The continuation series is authoritative for source work after the historical baseline. Slice 101 establishes this current-cursor boundary. Slice 104 is the latest production/source behavior slice.
 
 ## Re-audit basis
 
-The source continuation through slice 103 retains the following planning corrections and independent Blog source results:
+The source continuation through slice 104 retains the following planning corrections and independent Blog source results:
 
 - the remote Comments transport is no longer an unimplemented source item;
 - the cached public Comments snapshot is no longer merely planned;
 - the storefront comment-form fallback is not an implementation target because the active storefront has no public Comments write surface;
 - Blog category Translation PostgreSQL migration/concurrent-CAS/change-cursor evidence source is already retained and waits for maintainer execution;
 - Blog tag list pagination is owner-bounded and overflow-safe;
-- Blog tag reads and Search projection now use `blog_post_tags + rustok-taxonomy` as the canonical source rather than `blog_posts.metadata.tags`.
+- Blog tag reads and Search projection use `blog_post_tags + rustok-taxonomy` rather than `blog_posts.metadata.tags` as the canonical source;
+- Blog tag update/delete now retain Taxonomy mutation and Blog-scope Search reindex in one owner transaction.
 
 None of these source states promote runtime evidence.
 
@@ -70,8 +71,6 @@ The legacy `hide_comment_form` token remains compatibility vocabulary in the exi
 
 ### Blog tag list pagination
 
-A fresh source audit after slice 101 found that `TagService::list_tags` accepted an arbitrarily large `per_page` and used unchecked page-offset multiplication, unlike the already bounded Blog category list contract.
-
 Slice 102 makes the owner service authoritative for the response bound and arithmetic safety:
 
 `tag_list_pagination = source_ready_maintainer_execution_pending`
@@ -91,23 +90,39 @@ Slice 103 resolves the cross-owner source question identified by slice 102:
 
 `tag_canonical_projection = source_ready_maintainer_execution_pending`
 
-The accepted ownership boundary is now source-locked:
+The accepted ownership boundary is source-locked:
 
 - `rustok-taxonomy` owns the shared tag dictionary;
 - `rustok-blog` owns post attachments in `blog_post_tags`;
 - `blog_posts.metadata.tags` remains compatibility metadata, but is not a canonical Blog read or Search projection source.
 
-Blog reads seed an explicit empty tag vector for each requested post ID. Therefore an empty relation set no longer becomes a missing map entry that can resurrect stale `metadata.tags` through the existing response fallback path.
+Blog reads seed an explicit empty tag vector for each requested post ID, so an empty relation set cannot resurrect stale metadata tags. Blog Search requires `blog_post_tags`, `taxonomy_terms`, and `taxonomy_term_translations` and resolves attached names through document locale -> `PLATFORM_FALLBACK_LOCALE` -> canonical key.
 
-Blog Search now requires `blog_post_tags`, `taxonomy_terms`, and `taxonomy_term_translations` and resolves attached names through document locale -> `PLATFORM_FALLBACK_LOCALE` -> canonical key. Taxonomy joins are tenant-constrained and tag aggregation remains distinct/deterministic. The retained PostgreSQL harness deliberately keeps stale metadata while expecting projection from relation/Taxonomy rows.
+Runtime promotion still must audit deployed data for metadata-only legacy rows. If such rows exist, backfill owner relations before rollout. No audit/backfill result is claimed.
 
-Runtime promotion must audit deployed data for metadata-only legacy rows. If such rows exist, backfill owner relations before rollout. Slice 103 does not claim that the audit or a backfill was executed.
+### Blog tag mutation atomic reindex
 
-Mutation semantics intentionally remain separate:
+Slice 104 closes the mutation consistency gap exposed by slice 103:
 
-`tag_mutation_atomic_reindex = next_source_gap`
+`tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending`
 
-Slice 103 does **not** change `TagService::update_tag/delete_tag`. The next source slice must define a Taxonomy-owned supplied-transaction mutation API, commit the dictionary mutation and Blog-scope reindex together, and remove Blog's redundant manual pre-delete relation cleanup in favor of the declared FK cascade.
+`rustok-taxonomy` now exposes narrow module-term update/delete functions that accept a supplied `DatabaseTransaction`, tenant/term identity, term kind, module slug, and caller security context. The Taxonomy owner rechecks module scope and term kind and preserves Taxonomy update/read/delete permissions, localized slug uniqueness, translation revision CAS, term revision CAS, and translation-change evidence.
+
+`TagService::update_tag` and `TagService::delete_tag` keep their existing Blog `tags:*` checks, then execute the Taxonomy mutation and:
+
+`ReindexRequested { target_type: "blog", target_id: None }`
+
+through `TransactionalEventBus::publish_root_in_tx` before committing the same transaction.
+
+Canonical delete relation cleanup is:
+
+`tag_delete_relation_cleanup = declared_fk_cascade`
+
+The old manual `blog_post_tags` pre-delete is removed. The existing `blog_post_tags.tag_id -> taxonomy_terms.id ON DELETE CASCADE` relation owns cleanup atomically with the Taxonomy term delete.
+
+The retained source harness covers successful rename + durable reindex, forced outbox failure rollback, and delete cascade + durable reindex. None of those cases were executed by the implementation agent.
+
+The Blog tag source line is source-complete through slice 104. Do not add another tag mutation scaffolding slice without new evidence.
 
 ## Remaining execution-owned results
 
@@ -118,10 +133,11 @@ The concrete retained execution results remain maintainer-owned:
 3. Execute slice 98 PostgreSQL evidence before advancing the Blog category Translation readiness result.
 4. Execute slice 102 tag pagination source/unit evidence before promoting runtime validation.
 5. Execute slice 103 Blog read/Search canonical tag projection evidence and audit deployed data for metadata-only legacy rows before runtime promotion.
-6. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit evidence already retained by the historical plan.
-7. Execute the Blog article richtext cutover/backfill/browser evidence already retained by the historical plan.
+6. Execute slice 104 tag mutation/outbox rollback/delete-cascade harness and then Search projection evidence for rename/delete behavior.
+7. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit evidence already retained by the historical plan.
+8. Execute the Blog article richtext cutover/backfill/browser evidence already retained by the historical plan.
 
-A future source implementation must follow the explicit current cursor. It must not manufacture work by reopening a source-complete or not-applicable track.
+A future autonomous source slice must start from a fresh broad repository audit and identify a genuinely new independent source gap outside the execution-gated tracks above. It must not manufacture work by reopening a source-complete or not-applicable cursor.
 
 ## Superseded historical cursor phrases
 
@@ -136,10 +152,10 @@ The continuation slice files and machine evidence remain the source of detailed 
 
 ## Validation boundary
 
-No tests, Cargo commands, Node verifiers, PostgreSQL/Redis/TCP scenarios, browser targets, formatting, Clippy, builds, workflows, CI, HTTP execution, runtime validation, or production validation were executed by the implementation agent while producing slices 101–103.
+No tests, Cargo commands, Node verifiers, SQLite/PostgreSQL/Redis/TCP scenarios, browser targets, formatting, Clippy, builds, workflows, CI, HTTP execution, Search execution, outbox relay execution, runtime validation, or production validation were executed by the implementation agent while producing slices 101–104.
 
 ## Next cursor
 
-Implement slice 104: `tag_mutation_atomic_reindex`.
+No independent production source gap is claimed after slice 104.
 
-Use a Taxonomy-owned supplied-transaction update/delete path, then commit Blog tag mutation and `ReindexRequested { target_type: "blog", target_id: None }` in the same transaction. Remove the manual pre-delete `blog_post_tags` cleanup and rely on the declared FK cascade. Preserve existing Blog `tags:*` authorization semantics and do not promote runtime evidence.
+Continue only after a fresh broad Blog source audit finds another gap outside the execution-gated tracks above, or after maintainers provide execution results that unlock one of their explicit follow-ups.
