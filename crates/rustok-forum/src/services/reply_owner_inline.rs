@@ -1,6 +1,20 @@
 use crate::dto::{CreateReplyCommandInput, UpdateReplyCommandInput};
 
 impl ReplyService {
+    pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize =
+        reply::ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS;
+
+    pub(crate) async fn available_locales_for_replies(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        reply_ids: &[Uuid],
+    ) -> ForumResult<Vec<(Uuid, Vec<String>)>> {
+        self.inner
+            .available_locales_for_replies(tenant_id, security, reply_ids)
+            .await
+    }
+
     #[instrument(skip(self, security, input))]
     pub async fn create_command(
         &self,
