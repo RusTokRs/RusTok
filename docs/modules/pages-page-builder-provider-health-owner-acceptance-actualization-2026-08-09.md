@@ -43,8 +43,12 @@ Before any decision can be recorded, the runner rechecks:
 - canonical 40-character source commit equals checkout `HEAD`;
 - immutable deployment image identity is a canonical `REPOSITORY@sha256:<digest>`;
 - expected target count equals verified backend target count and remains within the admitted 1..64 inventory;
+- retained query window is still inside the evaluator's 300..86400 second bounds;
+- retained freshness window is still at least 60 seconds and no larger than the query window;
+- retained identity age still covers the full query window and does not exceed the evaluator's maximum admitted age;
+- `evaluated_at` and `identity_captured_at` are canonical ISO-8601 UTC values and agree with retained identity age;
 - target mapping is complete;
-- each retained target has exact current-source admission and no unexpected source in the SLO window;
+- each retained target has exact current-source admission, no unexpected source in the SLO window, and Preview/Publish freshness ages no larger than the retained freshness window;
 - Preview and Publish sample populations are both at least 20;
 - cumulative histogram `+Inf` populations agree with terminal completion populations;
 - provider observations are bounded and finite;
@@ -53,7 +57,7 @@ Before any decision can be recorded, the runner rechecks:
 - the retained SLO pass/fail fields are recomputed;
 - the evaluator packet still claims no Pages observed health, Pages gate acceptance, Forum Wave, FFA or FBA promotion.
 
-An owner cannot use the acceptance runner to bless a mismatched, partial, stale-source-shaped or already-promoted packet.
+An owner cannot use the acceptance runner to bless a mismatched, partial, stale-source-shaped, freshness-invalid or already-promoted packet.
 
 ## Decision semantics
 
@@ -92,7 +96,7 @@ A rejection writes a retained rejection packet and carries no rollback-action va
 
 ## Health state is not forced to ready
 
-Owner acceptance validates the provenance and policy evaluation; it does not rewrite provider state.
+Owner acceptance validates provenance and policy evaluation; it does not rewrite provider state.
 
 A canonical evaluator packet may report:
 
@@ -128,6 +132,7 @@ The packet retains:
 - owner id and decision;
 - explicit rollback action for acceptance;
 - exact deployment id, image RepoDigest and source commit;
+- admitted query/freshness windows and identity age;
 - SHA-256 of the evaluator packet, never its raw path;
 - source-hash verification result;
 - Preview/Publish sample counts;
@@ -170,7 +175,7 @@ The fail-closed source guard is:
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
 ```
 
-It locks the evaluator packet admission, owner decision vocabulary, explicit rollback action, source/deployment binding fields, canonical health/SLO re-evaluation, source hash checks and continued production anti-promotion.
+It locks the evaluator packet admission, owner decision vocabulary, explicit rollback action, source/deployment binding fields, query/freshness/identity-age admission, canonical health/SLO re-evaluation, source hash checks and continued production anti-promotion.
 
 ## Next cursor
 
