@@ -21,7 +21,7 @@ Fresh `main` for this slice is `777002dac974df22d1b3374c7313812f86149a55`. The c
 
 FORUM-34D deliberately did not claim multilingual export completeness because `ReplyResponse` exposes one resolved locale view and does not expose the complete set of stored reply locales. Repeated fallback reads cannot prove completeness: multiple requested locales can resolve to the same stored effective locale.
 
-The next Forum-owned slice therefore exposes exact stored locale enumeration at the existing `ReplyService` owner boundary. It does not add an import/export runner, transport or second reply read model.
+The next Forum-owned slice therefore exposes exact stored locale enumeration at the existing public `ReplyService` owner facade. It does not add an import/export runner, transport or second reply read model.
 
 ## Public owner contract
 
@@ -31,9 +31,14 @@ The next Forum-owned slice therefore exposes exact stored locale enumeration at 
 - the existing trusted `SecurityContext`;
 - a caller-ordered slice of reply UUIDs.
 
-The method:
+The public facade:
 
 - requires `forum_replies:list` through the existing Forum RBAC boundary;
+- rejects `SecurityContext::is_public_read()` before delegating, so this export-oriented metadata cannot become an anonymous reply-existence or locale oracle;
+- delegates through the existing reply owner service rather than exposing raw persistence helpers.
+
+The bounded owner/storage implementation:
+
 - rejects a nil tenant id;
 - accepts at most `ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS = 512` reply IDs;
 - rejects nil reply IDs and duplicate reply IDs;
@@ -43,13 +48,13 @@ The method:
 - returns one `(reply_id, locales)` pair for every requested reply in caller order;
 - fails closed when an existing reply has no stored body locale.
 
-The contract exposes stored locale identities only. It does not return reply content, rendered HTML, author identity, status, votes, solution state or counters.
+The raw batched storage method and its bound remain crate-private. The contract exposes stored locale identities only; it does not return reply content, rendered HTML, author identity, status, votes, solution state or counters.
 
 ## No fallback and no N+1 semantics
 
-Locale enumeration is intentionally not a localized read. It does not call `resolve_by_locale_with_fallback`, does not accept a requested locale and does not synthesize fallback locales.
+Locale enumeration is intentionally not a localized read. The storage implementation does not call `resolve_by_locale_with_fallback`, does not accept a requested locale and does not synthesize fallback locales.
 
-The bounded method performs one tenant-scoped reply existence query and reuses the existing batched body loader for the complete bounded ID set. It does not call `ReplyService::get` or `find_reply` once per ID and therefore does not introduce an N+1 enumeration path.
+The bounded storage method performs one tenant-scoped reply existence query and reuses the existing batched `load_bodies_map` loader for the complete bounded ID set. It does not call `ReplyService::get` or `find_reply` once per ID and therefore does not introduce an N+1 enumeration path. The public facade does not perform per-reply visibility probes because anonymous/public-read contexts are rejected before the owner delegation.
 
 ## Ownership and limits
 
