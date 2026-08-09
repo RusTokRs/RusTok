@@ -19,6 +19,8 @@ Binding is opt-in and requires all of the following environment values:
 
 When the Pages-specific binding variables are all absent, no authority is published and GraphQL remains `providerHealthObserved=false` with no payload. Partial or invalid binding configuration is rejected to the same unobserved state with a bounded warning; it does not turn a provider-health configuration mistake into an application-startup outage.
 
+The configured absolute packet path may be absent when the module starts, so a maintainer can atomically install the accepted packet later. If a path already exists at startup it must resolve to a regular non-symlink file; permission/metadata errors are rejected rather than treated as absence. Actual packet bytes remain strictly bounded and validated on every GraphQL status read.
+
 ## Accepted packet admission
 
 The binding accepts only `pages_builder_provider_health_owner_acceptance_v1` with status `owner_accepted_server_binding_pending` and decision `accept_for_pages_binding`. The accepted rollback action must be `restore_unobserved_provider_health`.
@@ -51,21 +53,42 @@ Server binding does not blindly trust the owner packet's derived snapshot. It re
 - freshness is at least 60 seconds and no larger than the query window;
 - retained identity age covers the query window and is no older than 86400 seconds;
 - Preview and Publish each retain at least 20 samples;
-- evaluator and decision timestamps are canonical UTC millisecond timestamps and owner decision does not predate evaluation;
+- evaluator, decision and `health_valid_until` timestamps are canonical UTC millisecond timestamps;
+- owner decision does not predate evaluation and cannot exceed the retained health deadline beyond the explicit five-second clock-skew tolerance;
+- the maximum retained Preview/Publish freshness age must be finite, non-negative and no greater than the configured freshness bound;
+- the server independently recomputes `health_valid_until` from evaluator time plus **remaining** freshness budget;
 - `ProviderHealthSnapshot::evaluate` is recomputed from retained observations and must equal the retained state, reasons and thresholds;
 - `ProviderSloEvaluation::evaluate` is recomputed and must equal the retained SLO result.
 
 This keeps Rust policy authoritative at the final server binding boundary.
 
-## Freshness lease and rollback
+## Remaining-freshness deadline
 
-The accepted packet is not converted into an indefinitely cached observed-health claim. `PagesProviderHealthAuthority` checks the packet on every `pageBuilderRolloutSnapshot` read and admits health only through a time-bounded lease:
+Owner acceptance no longer restarts the evaluator freshness clock. The evaluator already records an age for each expected target's Preview and Publish last observation. The acceptance runner takes the maximum of those retained ages and derives:
 
 ```text
-observed until = evaluation.evaluated_at + deployment.freshness_seconds
+remaining_freshness_seconds
+  = deployment.freshness_seconds
+  - evaluation.max_target_operation_freshness_age_seconds
+
+health_valid_until
+  = evaluation.evaluated_at
+  + remaining_freshness_seconds
 ```
 
-A five-second future-clock tolerance matches the deployment evaluator boundary. Missing, rejected, malformed, identity-mismatched or expired evidence returns `None`, which preserves the rollout snapshot's default `false + null` provider-health state.
+An `accept_for_pages_binding` decision is rejected when the maintainer clock is already beyond `health_valid_until` plus the five-second skew tolerance. The accepted packet retains both `max_target_operation_freshness_age_seconds` and canonical `health_valid_until` so the server can recompute and verify the same deadline without access to raw Prometheus data.
+
+This avoids silently granting a second full freshness window after evaluator execution or owner review.
+
+## Freshness lease and rollback
+
+The accepted packet is not converted into an indefinitely cached observed-health claim. `PagesProviderHealthAuthority` rereads and revalidates the packet on every `pageBuilderRolloutSnapshot` read. Observed health is admitted only while:
+
+```text
+server_now <= evaluation.health_valid_until + 5s clock-skew tolerance
+```
+
+The deadline itself is derived from the original evaluator freshness budget as described above; the five seconds compensate only for bounded cross-clock skew and do not restart the SLO freshness window. Missing, rejected, malformed, identity-mismatched or expired evidence returns `None`, which preserves the rollout snapshot's default `false + null` provider-health state.
 
 The authority keeps the explicit packet path rather than caching one accepted snapshot forever. An atomic packet replacement from accepted to rejected, packet removal, or later replacement with a new accepted packet changes the next rollout-status read without a process restart. This is the concrete server-side implementation of the accepted rollback action `restore_unobserved_provider_health`.
 
@@ -95,7 +118,7 @@ Therefore server binding source is ready, but UI/SSR/browser-intent health-drive
 
 Source inspection does not claim that deployment identity capture, Prometheus evaluation, owner acceptance, accepted packet installation, observed GraphQL execution, Pages gate acceptance, Forum Wave, FFA or FBA promotion occurred.
 
-Without a live retained accepted packet matching the configured source/deployment identity, Pages remains `unobserved`.
+Without a live retained accepted packet matching the configured source/deployment identity and remaining-freshness deadline, Pages remains `unobserved`.
 
 ## Next cursor
 
@@ -105,7 +128,7 @@ bounded runtime observation [source-ready]
 -> exact deployment identity [source-ready]
 -> deployment evaluator [source-ready]
 -> typed observed-health transport [source-ready]
--> owner acceptance packet [source-ready]
+-> owner acceptance packet + exact health_valid_until [source-ready]
 -> server provider-health binding + hot revoke + freshness lease [source-ready]
 -> retained identity + evaluator + accepted owner packet [maintainer execution pending]
 -> UI / SSR / browser-intent provider-health binding [source-open, runtime activation blocked]
