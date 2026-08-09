@@ -16,7 +16,9 @@ use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogReadRuntime};
 use sea_orm::DatabaseConnection;
 
+mod payment_commands;
 mod payment_reads;
+pub use payment_commands::CommercePaymentCommandRuntime;
 pub use payment_reads::CommercePaymentReadRuntime;
 
 /// Host-selected shipping-option read ports used by mounted commerce GraphQL resolvers.
@@ -328,7 +330,7 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
 /// Provider registries and host-selectable ports available to every commerce GraphQL resolver.
 ///
 /// Hosts supply composed capabilities through `HostRuntimeContext`. The built-in manual provider
-/// registries remain deterministic fallbacks. Mounted Payment, shipping-option,
+/// registries remain deterministic fallbacks. Mounted Payment reads/commands, shipping-option,
 /// fulfillment-lifecycle, Product catalog, and order reads consume host-selected runtime data.
 /// Directly embedded compatibility schemas retain explicit in-process owner-runtime fallbacks.
 #[derive(Clone)]
@@ -338,6 +340,7 @@ pub struct CommerceGraphqlRuntimeData {
     #[cfg(feature = "marketplace-financial")]
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
     payment_read_runtime: CommercePaymentReadRuntime,
+    payment_command_runtime: CommercePaymentCommandRuntime,
     shipping_option_read_runtime: CommerceShippingOptionReadRuntime,
     fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: CommerceOrderReadRuntime,
@@ -361,6 +364,10 @@ impl CommerceGraphqlRuntimeData {
 
     pub fn payment_read_runtime(&self) -> CommercePaymentReadRuntime {
         self.payment_read_runtime.clone()
+    }
+
+    pub fn payment_command_runtime(&self) -> CommercePaymentCommandRuntime {
+        self.payment_command_runtime.clone()
     }
 
     pub fn shipping_option_read_runtime(&self) -> CommerceShippingOptionReadRuntime {
@@ -423,6 +430,9 @@ pub fn attach_schema_data(
                         }),
                 )
             }),
+        payment_command_runtime: inputs
+            .shared_get::<CommercePaymentCommandRuntime>()
+            .unwrap_or_else(|| CommercePaymentCommandRuntime::from_graphql_inputs(inputs)),
         shipping_option_read_runtime: inputs
             .shared_get::<CommerceShippingOptionReadRuntime>()
             .ok_or_else(|| {
@@ -460,12 +470,18 @@ pub(crate) fn payment_provider_registry_from_context(ctx: &Context<'_>) -> Payme
         .unwrap_or_else(PaymentProviderRegistry::with_manual_provider)
 }
 
-pub(crate) fn payment_orchestration_from_context(
+pub(crate) fn payment_command_runtime_from_context(
     ctx: &Context<'_>,
     db: DatabaseConnection,
-) -> crate::PaymentOrchestrationService {
-    crate::PaymentOrchestrationService::new(db)
-        .with_provider_registry(payment_provider_registry_from_context(ctx))
+) -> CommercePaymentCommandRuntime {
+    ctx.data_opt::<CommerceGraphqlRuntimeData>()
+        .map(CommerceGraphqlRuntimeData::payment_command_runtime)
+        .unwrap_or_else(|| {
+            CommercePaymentCommandRuntime::in_process(
+                db,
+                payment_provider_registry_from_context(ctx),
+            )
+        })
 }
 
 pub(crate) fn refund_reconciliation_from_context(
