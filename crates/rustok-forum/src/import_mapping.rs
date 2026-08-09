@@ -241,7 +241,10 @@ fn required_text(
 }
 
 fn optional_text(value: Option<&str>) -> Option<String> {
-    value.map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 
 fn positive_optional(value: Option<i64>) -> Option<i64> {
@@ -307,8 +310,8 @@ fn map_post(
     ensure_positive("topic", record.tid)?;
     let role = match topic_main_posts.get(&record.tid) {
         Some(Some(main_pid)) if *main_pid == record.pid => ForumImportPostRole::TopicBody,
-        Some(_) => ForumImportPostRole::Reply,
-        None => ForumImportPostRole::Unresolved,
+        Some(Some(_)) => ForumImportPostRole::Reply,
+        Some(None) | None => ForumImportPostRole::Unresolved,
     };
     Ok(ForumImportPostCandidate {
         source: source_ref(ForumImportEntityKind::Post, record.pid),
@@ -371,7 +374,10 @@ mod tests {
         assert_eq!(mapped.categories[0].parent_source, None);
         assert_eq!(mapped.topics[0].source.key, "topic:9");
         assert_eq!(
-            mapped.topics[0].author_source.as_ref().map(|value| value.key.as_str()),
+            mapped.topics[0]
+                .author_source
+                .as_ref()
+                .map(|value| value.key.as_str()),
             Some("user:7")
         );
         assert_eq!(mapped.posts[0].role, ForumImportPostRole::TopicBody);
@@ -395,6 +401,35 @@ mod tests {
         let mapped = NodebbForumImportMapper.map_batch(&batch).unwrap();
         assert_eq!(mapped.posts[0].role, ForumImportPostRole::Unresolved);
         assert_eq!(mapped.posts[0].author_source, None);
+    }
+
+    #[test]
+    fn post_role_stays_unresolved_when_topic_has_no_main_post() {
+        let batch = NodebbExportBatch {
+            topics: vec![NodebbTopicRecord {
+                tid: 9,
+                cid: 4,
+                uid: None,
+                title: "No main post yet".to_owned(),
+                slug: None,
+                main_pid: None,
+                timestamp: None,
+                pinned: false,
+                locked: false,
+            }],
+            posts: vec![NodebbPostRecord {
+                pid: 12,
+                tid: 9,
+                uid: None,
+                content: "Ambiguous post".to_owned(),
+                timestamp: None,
+                deleted: false,
+            }],
+            ..Default::default()
+        };
+
+        let mapped = NodebbForumImportMapper.map_batch(&batch).unwrap();
+        assert_eq!(mapped.posts[0].role, ForumImportPostRole::Unresolved);
     }
 
     #[test]
