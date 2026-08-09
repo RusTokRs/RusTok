@@ -154,6 +154,13 @@ function nonNegativeInteger(value, label) {
   return value;
 }
 
+function canonicalIsoTimestamp(value, label) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 128) fail(`${label} is invalid`);
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString() !== value) fail(`${label} must be canonical ISO-8601 UTC`);
+  return milliseconds;
+}
+
 function status(pass) {
   return pass ? "pass" : "fail";
 }
@@ -227,6 +234,22 @@ function requireEvaluation(evaluation, contract, evaluatorContract, head) {
   const expectedTargets = nonNegativeInteger(evaluation.deployment.expected_target_count, "expected target count");
   const verifiedTargets = nonNegativeInteger(evaluation.deployment.verified_backend_target_count, "verified target count");
   if (expectedTargets < 1 || expectedTargets > 64 || expectedTargets !== verifiedTargets) fail("evaluation target counts are incomplete");
+
+  const queryWindow = nonNegativeInteger(evaluation.deployment.query_window_seconds, "query window");
+  const freshnessWindow = nonNegativeInteger(evaluation.deployment.freshness_seconds, "freshness window");
+  const minimumWindow = evaluatorContract.backend_query?.query_window_seconds_minimum;
+  const maximumWindow = evaluatorContract.backend_query?.query_window_seconds_maximum;
+  const minimumFreshness = evaluatorContract.backend_query?.freshness_seconds_minimum;
+  const maximumIdentityAge = evaluatorContract.backend_query?.identity_capture_maximum_age_seconds;
+  if (queryWindow < minimumWindow || queryWindow > maximumWindow) fail("evaluation query window is outside evaluator contract bounds");
+  if (freshnessWindow < minimumFreshness || freshnessWindow > queryWindow) fail("evaluation freshness window is outside evaluator contract bounds");
+  const identityAge = finiteNumber(evaluation.deployment.identity_age_seconds, "identity age");
+  if (identityAge < queryWindow || identityAge > maximumIdentityAge) fail("evaluation identity age is outside admitted bounds");
+  const evaluatedAtMs = canonicalIsoTimestamp(evaluation.evaluated_at, "evaluation evaluated_at");
+  const identityCapturedAtMs = canonicalIsoTimestamp(evaluation.deployment.identity_captured_at, "evaluation identity_captured_at");
+  const timestampAge = (evaluatedAtMs - identityCapturedAtMs) / 1000;
+  if (timestampAge < 0 || Math.abs(timestampAge - identityAge) > 1) fail("evaluation identity age does not match retained timestamps");
+
   if (evaluation.backend?.target_mapping_complete !== true) fail("evaluation target mapping is not complete");
   if (evaluation.backend?.raw_prometheus_url_persisted !== false || evaluation.backend?.raw_promql_persisted !== false || evaluation.backend?.raw_backend_responses_persisted !== false || evaluation.backend?.raw_matcher_values_persisted !== false) {
     fail("evaluation retained raw backend material");
@@ -239,8 +262,8 @@ function requireEvaluation(evaluation, contract, evaluatorContract, head) {
     if (targetIds.has(target.target_id)) fail("evaluation target ids are duplicated");
     targetIds.add(target.target_id);
     if (target.current_source_commit_verified !== true || target.unexpected_source_in_window !== false) fail(`target ${target.target_id} source admission is incomplete`);
-    finiteNumber(target.preview_freshness_age_seconds, `${target.target_id} preview freshness age`);
-    finiteNumber(target.publish_freshness_age_seconds, `${target.target_id} publish freshness age`);
+    finiteNumber(target.preview_freshness_age_seconds, `${target.target_id} preview freshness age`, 0, freshnessWindow);
+    finiteNumber(target.publish_freshness_age_seconds, `${target.target_id} publish freshness age`, 0, freshnessWindow);
   }
 
   const previewSamples = finiteNumber(evaluation.samples?.preview, "preview samples", MINIMUM_SAMPLES_PER_OPERATION);
@@ -287,6 +310,9 @@ function requireEvaluation(evaluation, contract, evaluatorContract, head) {
     deploymentImageDigest,
     deploymentId,
     expectedTargets,
+    queryWindow,
+    freshnessWindow,
+    identityAge,
     previewSamples,
     publishSamples,
     observed,
@@ -369,6 +395,9 @@ function main() {
       source_commit: admitted.sourceCommit,
       expected_target_count: admitted.expectedTargets,
       verified_backend_target_count: admitted.expectedTargets,
+      query_window_seconds: admitted.queryWindow,
+      freshness_seconds: admitted.freshnessWindow,
+      identity_age_seconds: admitted.identityAge,
     },
     evaluation: {
       format: evaluation.format,
