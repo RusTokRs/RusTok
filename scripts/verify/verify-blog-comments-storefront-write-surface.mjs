@@ -45,6 +45,8 @@ const need = (source, marker, label) => {
 const forbid = (source, marker, label) => {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 };
+const exactSingle = (value, expected) =>
+  Array.isArray(value) && value.length === 1 && value[0] === expected;
 
 const evidence = parse(files.evidence);
 const fallback = parse(files.fallback);
@@ -140,8 +142,9 @@ if (fallback) {
   if (
     fallback.fallback_smoke?.status !== 'planned' ||
     fallback.fallback_smoke?.status_scope !== 'cached_read_runtime_execution_only' ||
-    fallback.fallback_smoke?.runtime_evidence !== 'pending'
-  ) failures.push(`${files.fallback}: fallback runtime scope drift`);
+    fallback.fallback_smoke?.runtime_evidence !== 'pending' ||
+    !exactSingle(fallback.fallback_smoke?.profiles, 'embedded_native')
+  ) failures.push(`${files.fallback}: fallback runtime/profile scope drift`);
   const createCase = fallback.fallback_smoke?.cases?.find(
     (entry) => entry.operation === 'create_comment',
   );
@@ -165,6 +168,9 @@ for (const [label, value] of [
 ]) {
   if (!value?.degraded_modes?.includes('hide_comment_form')) {
     failures.push(`${label}: legacy hide_comment_form vocabulary disappeared without schema migration`);
+  }
+  if (!exactSingle(value?.fallback_profiles, 'embedded_native')) {
+    failures.push(`${label}: legacy fallback profile must remain embedded_native`);
   }
 }
 
