@@ -1,4 +1,5 @@
 use crate::dto::BuilderCapabilityKind;
+use crate::health::{ProviderHealthSnapshot, ProviderHealthState};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -280,9 +281,40 @@ pub fn ensure_capability(
     }
 }
 
+/// Derive the effective runtime guard flags from configured rollout plus optional provider health.
+///
+/// Configured rollout remains authoritative and provider state may only narrow it. Invalid or
+/// disabled rollout and observed provider unavailability fail closed to builder-off. Any degraded
+/// provider-control state disables publish while preserving already-disabled rollout capabilities.
+/// Missing health and observed Ready health never grant capabilities beyond configured rollout.
+pub fn effective_provider_runtime_flags(
+    flags: &BuilderCapabilityFlags,
+    health: Option<&ProviderHealthSnapshot>,
+) -> BuilderCapabilityFlags {
+    if flags.validate().is_err()
+        || !flags.builder_enabled
+        || health.is_some_and(|snapshot| snapshot.state == ProviderHealthState::Unavailable)
+    {
+        return BuilderToggleProfile::BuilderOff.flags();
+    }
+
+    let degraded = !flags.preview_enabled
+        || !flags.properties_enabled
+        || !flags.publish_enabled
+        || health.is_some_and(|snapshot| snapshot.state == ProviderHealthState::Degraded);
+    if degraded {
+        let mut effective = flags.clone();
+        effective.publish_enabled = false;
+        effective
+    } else {
+        flags.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::health::{ProviderHealthSnapshot, ProviderSloObservations};
     use serde_json::json;
 
     #[test]
@@ -315,5 +347,57 @@ mod tests {
         ] {
             assert!(BuilderCapabilityFlags::from_module_settings(&settings).is_err());
         }
+    }
+
+    #[test]
+    fn provider_health_runtime_flags_only_narrow_configured_rollout() {
+        let ready = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1_000,
+            publish_p95_ms: 2_000,
+            sanitize_failure_rate: 0.0,
+            runtime_error_rate: 0.0,
+        });
+        assert_eq!(
+            effective_provider_runtime_flags(&BuilderCapabilityFlags::default(), Some(&ready)),
+            BuilderCapabilityFlags::default()
+        );
+        assert_eq!(
+            effective_provider_runtime_flags(&BuilderToggleProfile::PreviewOff.flags(), Some(&ready)),
+            BuilderToggleProfile::PreviewOff.flags()
+        );
+
+        let degraded = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1_600,
+            publish_p95_ms: 2_000,
+            sanitize_failure_rate: 0.0,
+            runtime_error_rate: 0.0,
+        });
+        assert_eq!(
+            effective_provider_runtime_flags(&BuilderCapabilityFlags::default(), Some(&degraded)),
+            BuilderToggleProfile::PublishOff.flags()
+        );
+
+        let unavailable = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1_000,
+            publish_p95_ms: 2_000,
+            sanitize_failure_rate: 0.0,
+            runtime_error_rate: 0.03,
+        });
+        assert_eq!(
+            effective_provider_runtime_flags(&BuilderCapabilityFlags::default(), Some(&unavailable)),
+            BuilderToggleProfile::BuilderOff.flags()
+        );
+
+        let properties_off = BuilderCapabilityFlags {
+            builder_enabled: true,
+            preview_enabled: true,
+            properties_enabled: false,
+            publish_enabled: true,
+        };
+        let effective = effective_provider_runtime_flags(&properties_off, None);
+        assert!(effective.builder_enabled);
+        assert!(effective.preview_enabled);
+        assert!(!effective.properties_enabled);
+        assert!(!effective.publish_enabled);
     }
 }
