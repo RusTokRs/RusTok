@@ -11,7 +11,10 @@ use rustok_fulfillment::{
     in_process_fulfillment_read_port, in_process_shipping_option_admin_read_port,
     in_process_shipping_option_read_port,
 };
-use rustok_order::{OrderAdminCommandRuntime, OrderReadPort, in_process_order_read_port};
+use rustok_order::{
+    OrderAdminCommandRuntime, OrderPostOrderCommandRuntime, OrderReadPort,
+    in_process_order_read_port,
+};
 use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogReadRuntime};
 use sea_orm::DatabaseConnection;
@@ -348,6 +351,7 @@ pub struct CommerceGraphqlRuntimeData {
     fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: CommerceOrderReadRuntime,
     order_admin_command_runtime: OrderAdminCommandRuntime,
+    order_post_order_command_runtime: OrderPostOrderCommandRuntime,
     product_catalog_read_runtime: ProductCatalogReadRuntime,
     product_catalog_command_runtime: ProductCatalogCommandRuntime,
 }
@@ -392,6 +396,10 @@ impl CommerceGraphqlRuntimeData {
 
     pub fn order_admin_command_runtime(&self) -> OrderAdminCommandRuntime {
         self.order_admin_command_runtime.clone()
+    }
+
+    pub fn order_post_order_command_runtime(&self) -> OrderPostOrderCommandRuntime {
+        self.order_post_order_command_runtime.clone()
     }
 
     pub fn product_catalog_read_runtime(&self) -> ProductCatalogReadRuntime {
@@ -469,6 +477,12 @@ pub fn attach_schema_data(
             .ok_or_else(|| {
                 "commerce GraphQL requires OrderAdminCommandRuntime in host composition".to_string()
             })?,
+        order_post_order_command_runtime: inputs
+            .shared_get::<OrderPostOrderCommandRuntime>()
+            .ok_or_else(|| {
+                "commerce GraphQL requires OrderPostOrderCommandRuntime in host composition"
+                    .to_string()
+            })?,
         product_catalog_read_runtime: inputs
             .shared_get::<ProductCatalogReadRuntime>()
             .ok_or_else(|| {
@@ -527,6 +541,16 @@ pub(crate) fn order_admin_command_runtime_from_context(
     ctx.data_opt::<CommerceGraphqlRuntimeData>()
         .map(CommerceGraphqlRuntimeData::order_admin_command_runtime)
         .unwrap_or_else(|| OrderAdminCommandRuntime::in_process(db, event_bus))
+}
+
+pub(crate) fn order_post_order_command_runtime_from_context(
+    ctx: &Context<'_>,
+    db: DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
+) -> OrderPostOrderCommandRuntime {
+    ctx.data_opt::<CommerceGraphqlRuntimeData>()
+        .map(CommerceGraphqlRuntimeData::order_post_order_command_runtime)
+        .unwrap_or_else(|| OrderPostOrderCommandRuntime::in_process(db, event_bus))
 }
 
 pub(crate) fn manual_fulfillment_owner_orchestration_from_context(
