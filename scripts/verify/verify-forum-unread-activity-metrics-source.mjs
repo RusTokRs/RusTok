@@ -98,7 +98,7 @@ for (const marker of [
   "Spam-outcome telemetry remains premature",
   "DuplicateContent",
   "ExternalSpamScore",
-  "no additional database query",
+  "No additional database query",
   "no Cargo command",
 ]) {
   requireText(packet, marker, `${packetPath}: missing ${marker}`);
