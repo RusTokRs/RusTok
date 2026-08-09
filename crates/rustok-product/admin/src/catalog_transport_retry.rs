@@ -8,12 +8,13 @@ use crate::lifecycle_retry_identity::{
 };
 use crate::model::{ProductDetail, ProductDraft};
 
-pub use crate::legacy_transport::fetch_catalog_search_options;
-pub(crate) use crate::legacy_transport::{
-    fetch_bootstrap, fetch_catalog_categories, fetch_effective_product_form, fetch_product,
-    fetch_product_attribute_values, fetch_product_pricing, fetch_products, fetch_shipping_profiles,
+pub use crate::legacy_transport::{
+    fetch_attribute_schemas, fetch_bootstrap, fetch_catalog_categories,
+    fetch_catalog_search_options, fetch_effective_product_form, fetch_product,
+    fetch_product_attribute_values, fetch_product_attributes, fetch_product_pricing,
+    fetch_products, fetch_shipping_profiles,
 };
-pub(crate) use crate::product_schema_graphql::{
+pub use crate::product_schema_graphql::{
     bind_category_attribute, bind_schema_attribute, clear_detached_product_attribute_values,
     create_attribute_schema, create_catalog_category, create_category_attribute_group,
     create_product_attribute, create_product_attribute_option,

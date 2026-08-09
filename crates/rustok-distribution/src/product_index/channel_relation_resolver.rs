@@ -12,7 +12,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::channel_visibility::{
-    ProductChannelVisibility, ProductChannelVisibilityError, decode_product_visibility,
+    MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS, ProductChannelVisibility,
+    ProductChannelVisibilityError, decode_product_visibility,
 };
 
 pub(crate) const MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE: usize = 64;

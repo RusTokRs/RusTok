@@ -5,7 +5,6 @@ use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PreviewPageBuilderInput,
     PublishPageBuilderInput,
 };
-use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use rustok_page_builder_admin::{
     AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
     PageBuilderAdminFacadeFuture, PageBuilderAdminProviderStatus,
@@ -68,9 +67,6 @@ impl PagesBuilderFacade {
         }
     }
 
-    pub fn with_provider_flags(self, provider_flags: BuilderCapabilityFlags) -> Self {
-        self.with_provider_status(PageBuilderAdminProviderStatus::unobserved(provider_flags))
-    }
 
     pub fn with_provider_status(
         mut self,

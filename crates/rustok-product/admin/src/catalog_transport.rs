@@ -6,10 +6,6 @@ mod admin_catalog_graphql;
 mod admin_catalog_native;
 #[path = "transport/graphql_error_safety.rs"]
 mod graphql_error_safety;
-#[path = "transport/graphql_fallback_mutation_error_safety.rs"]
-mod graphql_fallback_mutation_error_safety;
-#[path = "transport/graphql_fallback_mutations.rs"]
-mod graphql_fallback_mutations;
 
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{
@@ -309,82 +305,4 @@ pub(crate) async fn fetch_product_attribute_values(
     legacy::fetch_product_attribute_values(token, tenant_slug, tenant_id, product_id, locale)
         .await
         .map_err(|failure| context.map_error(failure))
-}
-
-pub(crate) async fn create_product(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: ProductDraft,
-) -> Result<ProductDetail, GraphqlHttpError> {
-    let context = graphql_error_safety::GraphqlMutationContext::for_create_product(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::create_product(token, tenant_slug, tenant_id, user_id, draft)
-        .await
-        .map_err(|mutation_error| context.map_error(mutation_error))
-}
-
-pub(crate) async fn update_product(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    id: String,
-    draft: ProductDraft,
-) -> Result<ProductDetail, GraphqlHttpError> {
-    let context = graphql_error_safety::GraphqlMutationContext::for_update_product(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-        id.as_str(),
-    );
-    legacy::update_product(token, tenant_slug, tenant_id, user_id, id, draft)
-        .await
-        .map_err(|mutation_error| context.map_error(mutation_error))
-}
-
-pub(crate) async fn change_product_status(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    id: String,
-    status: &str,
-) -> Result<ProductDetail, GraphqlHttpError> {
-    let context = graphql_error_safety::GraphqlMutationContext::for_change_product_status(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-        id.as_str(),
-        status,
-    );
-    legacy::change_product_status(token, tenant_slug, tenant_id, user_id, id, status)
-        .await
-        .map_err(|mutation_error| context.map_error(mutation_error))
-}
-
-pub(crate) async fn delete_product(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    id: String,
-) -> Result<bool, GraphqlHttpError> {
-    let context = graphql_error_safety::GraphqlMutationContext::for_delete_product(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-        id.as_str(),
-    );
-    legacy::delete_product(token, tenant_slug, tenant_id, user_id, id)
-        .await
-        .map_err(|mutation_error| context.map_error(mutation_error))
 }

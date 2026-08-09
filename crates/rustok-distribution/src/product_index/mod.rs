@@ -40,9 +40,8 @@ pub(crate) use storefront_shadow::{
 mod storefront_shadow_executor;
 #[cfg(test)]
 pub(crate) use storefront_shadow_executor::{
-    ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecution,
-    ProductStorefrontIndexShadowExecutor, ProductStorefrontIndexShadowProjectionError,
-    ProductStorefrontIndexTagHydrationError,
+    ProductStorefrontIndexShadowComparison, ProductStorefrontIndexShadowExecutor,
+    ProductStorefrontIndexShadowProjectionError, ProductStorefrontIndexTagHydrationError,
 };
 #[cfg(test)]
 mod storefront_shadow_eav_postgres_tests;

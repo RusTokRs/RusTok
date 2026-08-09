@@ -1,5 +1,7 @@
+#[cfg(any(feature = "browser-js", test))]
 use fly_browser::{BrowserAdapterConfig, FLY_BROWSER_ADAPTER_JS};
 use leptos::prelude::*;
+#[cfg(any(feature = "browser-js", test))]
 use rustok_page_builder::browser_host::{
     PageBuilderBrowserModuleOptions, page_builder_browser_module,
 };

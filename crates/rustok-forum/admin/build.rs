@@ -1,5 +1,5 @@
 #[path = "../../rustok-build/src/module_manifest_contribution.rs"]
-mod module_manifest_contribution;
+pub mod module_manifest_contribution;
 
 use module_manifest_contribution::normalize_module_contribution_manifest;
 use serde_json::Value;
