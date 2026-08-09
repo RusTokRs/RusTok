@@ -118,6 +118,30 @@ pub fn attach_commerce_provider_registries(
         }
     };
 
+    #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_order::OrderPostOrderCommandRuntime>()
+            .or_else(|| server.shared_get::<rustok_order::OrderPostOrderCommandRuntime>())
+            .or_else(|| {
+                server
+                    .shared_get::<rustok_outbox::TransactionalEventBus>()
+                    .map(|event_bus| {
+                        rustok_order::OrderPostOrderCommandRuntime::in_process(
+                            server.db_clone(),
+                            event_bus,
+                        )
+                    })
+            });
+        match runtime {
+            Some(runtime) => {
+                server.shared_insert(runtime.clone());
+                host.with_shared_value(runtime)
+            }
+            None => host,
+        }
+    };
+
     #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
     let host = {
         let runtime = host
