@@ -17,6 +17,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
+pub mod import_inspection;
 pub mod import_mapping;
 pub mod locale;
 pub mod mentions;
@@ -57,6 +58,7 @@ pub use dto::*;
 pub use entities::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
+pub use import_inspection::*;
 pub use import_mapping::*;
 pub use mentions::*;
 pub use moderation_subject::{
