@@ -160,6 +160,8 @@ if (
   fallbackEvidence?.schema_version !== 2 ||
   fallbackEvidence?.status !== 'source_verified_no_compile' ||
   fallbackEvidence?.runtime_status !== 'not_run' ||
+  fallbackEvidence?.storefront_read_degradation?.cached_thread_snapshot !==
+    'source_verified_no_compile' ||
   !sameSet(
     fallbackEvidence?.storefront_read_degradation?.availability_states ?? [],
     ['AVAILABLE', 'UNAVAILABLE', 'TIMEOUT'],
@@ -183,16 +185,16 @@ for (const marker of [
   'runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()',
   'rustok_blog::CommentService::with_comments_thread_port(',
   'rustok_blog::CommentService::new(runtime_ctx.db_clone(), event_bus)',
-  'comment_service(&runtime_ctx, event_bus.clone())',
-  '.list_for_post_with_locale_fallback(',
-  'SecurityContext::public_read()',
-  'fn comments_read_availability(',
-  'ErrorKind::ExternalService',
+  'let comments = comment_service(&runtime_ctx, event_bus.clone());',
+  'runtime_ctx.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>()',
+  'list_public_comments_with_snapshot(',
+  'availability: map_comments_availability(public_comments.availability)',
+  'cached_snapshot: public_comments.cached_snapshot',
+  'fn map_comments_availability(',
+  'PublicCommentsAvailability::Unavailable',
   'BlogCommentsAvailability::Unavailable',
-  'ErrorKind::Timeout',
+  'PublicCommentsAvailability::Timeout',
   'BlogCommentsAvailability::Timeout',
-  'let Some(availability) = comments_read_availability(&error) else',
-  'return Err(ServerFnError::new(error));',
   'fn storefront_native_runtime_exposes_comments_port_selection()',
   ') -> rustok_blog::CommentService = comment_service;',
 ]) requireMarker(nativeAdapter, marker, nativeAdapterPath);
@@ -208,6 +210,7 @@ if (countMarker(nativeAdapter, 'comment_service(&runtime_ctx, event_bus.clone())
 }
 requireNoMarker(nativeAdapter, 'rustok_comments::CommentsThreadPort', nativeAdapterPath);
 requireNoMarker(nativeAdapter, 'Err(_) => BlogCommentList', nativeAdapterPath);
+requireNoMarker(nativeAdapter, 'fn comments_read_availability(', nativeAdapterPath);
 
 const lookupIndex = nativeAdapter.indexOf(
   'runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()',
@@ -245,4 +248,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog storefront native Comments host selection and typed degradation source boundary is consistent');
+console.log('Blog storefront native Comments host selection and shared cached-snapshot degradation boundary is consistent');
