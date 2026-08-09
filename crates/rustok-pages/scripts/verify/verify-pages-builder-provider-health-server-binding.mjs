@@ -8,6 +8,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const failures = [];
 const files = {
   contract: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
+  consumer: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   binding: "crates/rustok-pages/src/provider_health_binding.rs",
   lib: "crates/rustok-pages/src/lib.rs",
   manifest: "crates/rustok-pages/rustok-module.toml",
@@ -48,11 +49,13 @@ const sources = failures.length === 0
   ? Object.fromEntries(Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]))
   : {};
 let contract = {};
+let consumer = {};
 let acceptance = {};
 let transport = {};
 if (failures.length === 0) {
   for (const [label, assign] of [
     ["contract", (value) => (contract = value)],
+    ["consumer", (value) => (consumer = value)],
     ["acceptance", (value) => (acceptance = value)],
     ["transport", (value) => (transport = value)],
   ]) {
@@ -69,6 +72,9 @@ if (contract.format !== "pages_builder_provider_health_server_binding_source_v1"
 }
 if (contract.status !== "source_ready_maintainer_activation_pending") {
   failures.push("server binding must remain source-ready with maintainer activation pending");
+}
+if (consumer.format !== "pages_builder_provider_health_consumer_binding_source_v1") {
+  failures.push("consumer binding continuation format drifted");
 }
 if (acceptance.format !== "pages_builder_provider_health_owner_acceptance_source_v1") {
   failures.push("owner acceptance predecessor format drifted");
@@ -110,9 +116,11 @@ for (const [object, key, expected] of [
   [contract.hot_replacement, "rejected_to_accepted_transition_requires_restart", false],
   [contract.composition, "module_registration", "PagesModule::register_runtime_extensions"],
   [contract.composition, "graphql_manifest_runtime_data_factory", "graphql::attach_schema_data"],
-  [contract.current_consumer_boundary, "workspace_uses_health_for_capabilities", false],
-  [contract.current_consumer_boundary, "authoritative_ssr_uses_health_for_capabilities", false],
-  [contract.current_consumer_boundary, "standalone_browser_intent_uses_health_for_capabilities", false],
+  [contract.current_consumer_boundary, "workspace_uses_health_for_capabilities", true],
+  [contract.current_consumer_boundary, "workspace_exposes_observed_provider_status", true],
+  [contract.current_consumer_boundary, "authoritative_ssr_uses_health_for_capabilities", true],
+  [contract.current_consumer_boundary, "standalone_browser_intent_uses_health_for_capabilities", true],
+  [contract.current_consumer_boundary, "canonical_consumer_binding_contract", "pages_builder_provider_health_consumer_binding_source_v1"],
   [contract.non_claims, "server_binding_activated_with_live_packet", false],
   [contract.non_claims, "graphql_observed_health_request_executed", false],
   [contract.non_claims, "pages_reference_consumer_gate_accepted", false],
@@ -196,18 +204,18 @@ for (const marker of [
 forbid(sources.owner ?? "", "std::fs::", "GraphQL query must consume runtime authority rather than files directly");
 forbid(sources.owner ?? "", "RUSTOK_PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH", "GraphQL query must not own host configuration");
 
-// Server binding is source-ready, but capability consumers remain rollout-only in this slice.
 for (const marker of [
-  ".flags;",
-  "provider_flags: BuilderCapabilityFlags",
-  ".with_provider_flags(provider_flags)",
-]) need(sources.composition ?? "", marker, "workspace remains rollout-only");
-need(sources.builder ?? "", ".map(PageBuilderAdminProviderStatus::unobserved)", "SSR facade remains rollout-only");
-for (const marker of ["pages_editor_capabilities_for_rollout(", "&rollout.flags"])
-  need(sources.adminMain ?? "", marker, "browser intent remains rollout-only");
-for (const source of [sources.composition ?? "", sources.builder ?? "", sources.adminMain ?? ""]) {
-  forbid(source, "pages_editor_capabilities_for_snapshot(", "health-driven capability binding remains next slice");
-}
+  ".provider_status();",
+  ".with_provider_status(provider_status)",
+]) need(sources.composition ?? "", marker, "workspace consumes validated provider health");
+for (const marker of [
+  "trusted_rollout.effective_runtime_flags()",
+  "compose_fly_page_builder_handlers(store, renderer, effective_flags)",
+]) need(sources.builder ?? "", marker, "SSR consumes health-limited runtime flags");
+for (const marker of [
+  "pages_editor_capabilities_for_snapshot",
+  "pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)",
+]) need(sources.adminMain ?? "", marker, "browser intent consumes validated provider health");
 
 for (const marker of [
   "server-provider-health-binding-source-ready",
@@ -222,19 +230,18 @@ for (const marker of [
 
 for (const marker of [
   "provider-health-server-binding-source-ready",
-  "pages-page-builder-provider-health-server-binding-actualization-2026-08-09.md",
-  "server provider-health binding",
-  "UI / SSR / browser-intent provider-health binding",
+  "provider-health-consumer-binding-source-ready",
+  "pages-page-builder-provider-health-consumer-binding-actualization-2026-08-09.md",
 ]) need(sources.parity ?? "", marker, "plan parity actualization");
 
 if (contract.next_cursor?.server_provider_health_binding !== "source_ready_maintainer_activation_pending") {
   failures.push("server binding cursor drifted");
 }
+if (contract.next_cursor?.ui_ssr_browser_intent_health_binding !== "source_ready_runtime_activation_pending") {
+  failures.push("consumer binding cursor drifted");
+}
 if (contract.next_cursor?.retained_identity_evaluator_owner_acceptance !== "maintainer_execution_pending") {
   failures.push("retained runtime evidence cursor drifted");
-}
-if (contract.next_cursor?.ui_ssr_browser_intent_health_binding !== "source_open_runtime_activation_blocked") {
-  failures.push("consumer binding cursor drifted");
 }
 
 if (failures.length > 0) {
@@ -243,4 +250,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("[verify-pages-builder-provider-health-server-binding] PASS server_binding=source_ready activation=pending consumer_binding=open");
+console.log("[verify-pages-builder-provider-health-server-binding] PASS server_binding=source_ready consumer_binding=source_ready activation=pending");

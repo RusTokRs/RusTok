@@ -53,7 +53,7 @@ type SavedHandler = Arc<dyn Fn(PageMutationResult, Value) + Send + Sync>;
 pub struct PagesBuilderFacade {
     snapshot: SnapshotProvider,
     on_saved: SavedHandler,
-    provider_flags: Option<BuilderCapabilityFlags>,
+    provider_status: Option<PageBuilderAdminProviderStatus>,
 }
 
 impl PagesBuilderFacade {
@@ -64,12 +64,19 @@ impl PagesBuilderFacade {
         Self {
             snapshot: Arc::new(snapshot),
             on_saved: Arc::new(on_saved),
-            provider_flags: None,
+            provider_status: None,
         }
     }
 
-    pub fn with_provider_flags(mut self, provider_flags: BuilderCapabilityFlags) -> Self {
-        self.provider_flags = Some(provider_flags);
+    pub fn with_provider_flags(self, provider_flags: BuilderCapabilityFlags) -> Self {
+        self.with_provider_status(PageBuilderAdminProviderStatus::unobserved(provider_flags))
+    }
+
+    pub fn with_provider_status(
+        mut self,
+        provider_status: PageBuilderAdminProviderStatus,
+    ) -> Self {
+        self.provider_status = Some(provider_status);
         self
     }
 }
@@ -92,9 +99,7 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
     }
 
     fn provider_status(&self) -> Option<PageBuilderAdminProviderStatus> {
-        self.provider_flags
-            .clone()
-            .map(PageBuilderAdminProviderStatus::unobserved)
+        self.provider_status.clone()
     }
 }
 
@@ -301,7 +306,8 @@ async fn dispatch_pages_page_builder_capability(
         on_saved,
     };
     let expected_capability = request.capability();
-    let handlers = compose_fly_page_builder_handlers(store, renderer, trusted_rollout.flags)
+    let effective_flags = trusted_rollout.effective_runtime_flags();
+    let handlers = compose_fly_page_builder_handlers(store, renderer, effective_flags)
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
     let response = handlers
         .handle(&context, &auth, request)

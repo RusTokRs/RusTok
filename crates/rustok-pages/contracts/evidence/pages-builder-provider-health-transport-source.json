@@ -1,6 +1,6 @@
 {
   "format": "pages_builder_provider_health_transport_source_v1",
-  "status": "typed_transport_source_ready_server_binding_blocked_execution_pending",
+  "status": "typed_transport_server_and_consumer_binding_source_ready_execution_pending",
   "provider": "page_builder",
   "predecessors": [
     "page_builder_provider_health_deployment_identity_source_v1",
@@ -18,9 +18,10 @@
       "sanitizeFailureRate",
       "runtimeErrorRate"
     ],
-    "current_server_observed_value": false,
-    "current_server_health_payload": null,
-    "owner_binding_to_retained_evaluator_packet_present": false
+    "default_server_observed_value": false,
+    "default_server_health_payload": null,
+    "server_binding_source_present": true,
+    "fresh_accepted_authority_can_supply_observed_health": true
   },
   "admin_transport": {
     "observed_false_requires_payload_absent": true,
@@ -39,19 +40,21 @@
     "validated_health_retained_as_optional_provider_health_snapshot": true,
     "provider_status_helper_uses_observed_only_when_health_present": true,
     "rollout_only_helper_remains_unobserved": true,
-    "workspace_currently_consumes_flags_only": true,
-    "standalone_browser_intent_currently_consumes_flags_only": true,
-    "authoritative_ssr_currently_consumes_flags_only": true
+    "effective_runtime_flags_use_provider_status": true,
+    "workspace_consumes_validated_provider_status": true,
+    "standalone_browser_intent_consumes_validated_snapshot": true,
+    "authoritative_ssr_consumes_health_limited_runtime_flags": true
   },
   "anti_promotion": {
     "runtime_identity_capture_executed": false,
     "runtime_deployment_evaluator_executed": false,
     "retained_deployment_health_packet_present": false,
-    "owner_acceptance_present": false,
-    "pages_graphql_provider_health_observed": false,
-    "pages_ui_provider_health_bound": false,
-    "pages_ssr_provider_health_bound": false,
-    "standalone_browser_intent_provider_health_bound": false,
+    "owner_acceptance_executed": false,
+    "accepted_packet_installed": false,
+    "pages_graphql_observed_health_executed": false,
+    "pages_ui_provider_health_runtime_executed": false,
+    "pages_ssr_provider_health_runtime_executed": false,
+    "standalone_browser_intent_provider_health_runtime_executed": false,
     "pages_reference_consumer_gate_accepted": false,
     "forum_wave_accepted": false,
     "ffa_promoted": false,
@@ -70,9 +73,7 @@
     "crates/rustok-pages/src/graphql/builder_rollout.rs",
     "crates/rustok-pages/admin/src/transport/builder_rollout_adapter.rs",
     "crates/rustok-pages/admin/src/transport/mod.rs",
-    "crates/rustok-pages/admin/src/builder_rollout_settings.rs"
-  ],
-  "current_unbound_consumers": [
+    "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
     "crates/rustok-pages/admin/src/composition.rs",
     "crates/rustok-pages/admin/src/builder.rs",
     "apps/admin/src/main.rs"
@@ -80,9 +81,9 @@
   "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs",
   "next_cursor": {
     "typed_provider_health_transport": "source_ready",
-    "retained_identity_and_evaluator_runtime_evidence": "maintainer_execution_pending",
-    "owner_acceptance_and_server_binding": "blocked_on_retained_runtime_evidence",
-    "ui_ssr_browser_intent_health_binding": "blocked_on_server_owner_binding",
+    "server_owner_health_binding": "source_ready_maintainer_activation_pending",
+    "ui_ssr_browser_intent_health_binding": "source_ready_runtime_activation_pending",
+    "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
     "observed_health_acceptance": "pending"
   }
 }

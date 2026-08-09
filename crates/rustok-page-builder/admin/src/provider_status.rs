@@ -95,6 +95,30 @@ impl PageBuilderAdminProviderStatus {
             && self.state() != PageBuilderAdminProviderState::Unavailable
     }
 
+    /// Derive the Page Builder runtime guard flags from the same provider status used by the UI.
+    ///
+    /// Rollout flags remain the configured authority and health may only narrow them. Observed
+    /// degradation disables publish, while observed unavailability (or invalid/disabled rollout)
+    /// disables the entire builder. `Unobserved` and `Ready` preserve the configured flags.
+    pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags {
+        match self.state() {
+            PageBuilderAdminProviderState::Unavailable => BuilderCapabilityFlags {
+                builder_enabled: false,
+                preview_enabled: false,
+                properties_enabled: false,
+                publish_enabled: false,
+            },
+            PageBuilderAdminProviderState::Degraded => {
+                let mut flags = self.flags.clone();
+                flags.publish_enabled = false;
+                flags
+            }
+            PageBuilderAdminProviderState::Ready | PageBuilderAdminProviderState::Unobserved => {
+                self.flags.clone()
+            }
+        }
+    }
+
     pub fn limit_capabilities(&self, capabilities: CapabilityState) -> CapabilityState {
         if self.flags.validate().is_err()
             || !self.flags.builder_enabled
@@ -129,6 +153,7 @@ mod tests {
         assert_eq!(status.editor_provider_state(), None);
         assert_eq!(status.limit_capabilities(CapabilityState::full()), CapabilityState::full());
         assert!(status.preview_enabled());
+        assert_eq!(status.effective_runtime_flags(), BuilderCapabilityFlags::default());
     }
 
     #[test]
@@ -140,6 +165,7 @@ mod tests {
         assert!(effective.properties);
         assert!(!effective.publish);
         assert!(status.preview_enabled());
+        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::PublishOff.flags());
     }
 
     #[test]
@@ -152,6 +178,7 @@ mod tests {
         assert!(effective.properties);
         assert!(!effective.publish);
         assert!(!status.preview_enabled());
+        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::PreviewOff.flags());
     }
 
     #[test]
@@ -160,6 +187,7 @@ mod tests {
         assert_eq!(status.state(), PageBuilderAdminProviderState::Unavailable);
         assert_eq!(status.limit_capabilities(CapabilityState::full()), CapabilityState::read_only());
         assert!(!status.preview_enabled());
+        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::BuilderOff.flags());
     }
 
     #[test]
@@ -173,6 +201,7 @@ mod tests {
         let status = PageBuilderAdminProviderStatus::observed(BuilderCapabilityFlags::default(), degraded);
         assert_eq!(status.state(), PageBuilderAdminProviderState::Degraded);
         assert!(!status.limit_capabilities(CapabilityState::full()).publish);
+        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::PublishOff.flags());
 
         let unavailable = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
             preview_p95_ms: 1_000,
@@ -183,5 +212,6 @@ mod tests {
         let status = PageBuilderAdminProviderStatus::observed(BuilderCapabilityFlags::default(), unavailable);
         assert_eq!(status.state(), PageBuilderAdminProviderState::Unavailable);
         assert_eq!(status.limit_capabilities(CapabilityState::full()), CapabilityState::read_only());
+        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::BuilderOff.flags());
     }
 }
