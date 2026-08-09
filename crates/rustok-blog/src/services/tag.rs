@@ -189,7 +189,7 @@ impl TagService {
         });
 
         let total = sortable.len() as u64;
-        let offset = ((page - 1) * per_page) as usize;
+        let offset = tag_page_offset(page, per_page);
         let items = sortable
             .into_iter()
             .skip(offset)
@@ -498,6 +498,11 @@ fn bounded_tag_page_size(value: u64) -> u64 {
     value.clamp(1, MAX_TAGS_PER_PAGE)
 }
 
+fn tag_page_offset(page: u64, per_page: u64) -> usize {
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
+    usize::try_from(offset).unwrap_or(usize::MAX)
+}
+
 fn validate_tag_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Tag name cannot be empty"));
@@ -572,12 +577,19 @@ fn to_tag_response(term: rustok_taxonomy::TaxonomyTermResponse, use_count: i32) 
 
 #[cfg(test)]
 mod pagination_tests {
-    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size};
+    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size, tag_page_offset};
 
     #[test]
     fn tag_page_size_is_bounded_by_owner_service() {
         assert_eq!(bounded_tag_page_size(0), 1);
         assert_eq!(bounded_tag_page_size(20), 20);
         assert_eq!(bounded_tag_page_size(MAX_TAGS_PER_PAGE + 1), MAX_TAGS_PER_PAGE);
+    }
+
+    #[test]
+    fn tag_page_offset_saturates_without_arithmetic_overflow() {
+        assert_eq!(tag_page_offset(1, 20), 0);
+        assert_eq!(tag_page_offset(2, 20), 20);
+        assert_eq!(tag_page_offset(u64::MAX, MAX_TAGS_PER_PAGE), usize::MAX);
     }
 }
