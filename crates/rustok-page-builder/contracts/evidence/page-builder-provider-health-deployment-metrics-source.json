@@ -1,0 +1,83 @@
+{
+  "format": "page_builder_provider_health_deployment_metrics_source_v1",
+  "status": "source_ready_unvalidated",
+  "module": "page_builder",
+  "scope": "deployment_aggregatable_prometheus_metrics",
+  "predecessor": "page_builder_provider_health_runtime_observation_source_v1",
+  "source_contract": {
+    "platform_registry_owner": "rustok-telemetry",
+    "default_fly_runtime_exports_metrics": true,
+    "duration_metric": "rustok_page_builder_provider_operation_duration_seconds",
+    "completion_metric": "rustok_page_builder_provider_operation_completed_total",
+    "freshness_metric": "rustok_page_builder_provider_last_observation_unix_seconds",
+    "operations": ["preview", "publish"],
+    "terminal_outcomes": [
+      "succeeded",
+      "sanitize_failed",
+      "runtime_failed",
+      "other_failed"
+    ],
+    "duration_histogram_contains_preview_threshold_seconds": 1.5,
+    "duration_histogram_contains_publish_threshold_seconds": 3.0,
+    "tenant_label_present": false,
+    "page_label_present": false,
+    "revision_label_present": false,
+    "correlation_label_present": false,
+    "deployment_label_present_in_application_metric": false,
+    "scrape_target_identity_owned_by_metrics_backend": true,
+    "counter_reset_aware_range_aggregation_required": true,
+    "freshness_requires_both_operations": true,
+    "missing_or_stale_expected_target_fails_closed": true,
+    "expected_target_inventory_present": false,
+    "exact_source_deployment_identity_present": false,
+    "pages_admin_health_binding_present": false,
+    "provider_health_observed_promoted": false,
+    "pages_reference_consumer_gate_promoted": false,
+    "ffa_or_fba_promoted": false,
+    "tests_run": false,
+    "static_verifier_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "runtime_execution_run": false,
+    "workflows_or_ci_run": false
+  },
+  "production_sources": [
+    "crates/rustok-telemetry/src/page_builder_provider_metrics.rs",
+    "crates/rustok-telemetry/src/lib.rs",
+    "crates/rustok-page-builder/src/runtime_telemetry.rs",
+    "crates/rustok-page-builder/Cargo.toml"
+  ],
+  "retained_unobserved_consumers": [
+    "crates/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/rustok-pages/admin/src/builder.rs"
+  ],
+  "verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs",
+  "execution": [],
+  "next_cursor": {
+    "deployment_metrics_export": "source_ready_maintainer_execution_pending",
+    "freshness_signal_export": "source_ready_maintainer_execution_pending",
+    "exact_source_deployment_identity": "open",
+    "expected_target_inventory": "open",
+    "pages_provider_status_binding": "blocked_on_exact_deployment_observation_authority",
+    "observed_provider_health_gate": "open"
+  },
+  "explicit_non_claims": [
+    "no_prometheus_scrape_result",
+    "no_deployment_aggregation_result",
+    "no_expected_replica_inventory_result",
+    "no_exact_source_deployment_identity_result",
+    "no_live_slo_acceptance_result",
+    "no_pages_admin_observed_health_result",
+    "no_graphql_provider_health_promotion",
+    "no_reference_consumer_gate_acceptance",
+    "no_ffa_promotion",
+    "no_fba_promotion",
+    "no_test_result",
+    "no_verifier_result",
+    "no_cargo_result",
+    "no_formatting_result",
+    "no_runtime_result",
+    "no_workflow_result",
+    "no_ci_result"
+  ]
+}

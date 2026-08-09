@@ -3,6 +3,7 @@ mod artifact_repair;
 mod builder_rollout;
 mod mutation;
 mod query;
+mod runtime_data;
 mod scenario_baseline;
 mod types;
 
@@ -34,6 +35,8 @@ pub use artifact_repair::{
 pub use builder_rollout::{
     GqlPageBuilderCapability, GqlPageBuilderCapabilityPreflight, GqlPageBuilderRolloutSnapshot,
 };
+pub use runtime_data::PagesGraphqlRuntimeData;
+pub use runtime_data::attach_schema_data;
 pub use scenario_baseline::{
     GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioReleaseStatus,
     SaveGqlPageBuilderScenarioBaselineInput,

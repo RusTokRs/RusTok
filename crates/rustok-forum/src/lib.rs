@@ -20,8 +20,14 @@ pub mod export_mapping;
 pub mod graphql;
 pub mod import_inspection;
 pub mod import_mapping;
+pub mod import_relation_preparation;
+pub mod import_resolution;
+pub mod import_write_preparation;
 pub mod locale;
-pub mod mentions;
+pub mod mentions {
+    include!("mentions_import.rs");
+    include!("mentions.rs");
+}
 pub mod migrations;
 mod moderation_subject;
 mod moderation_transport;
@@ -62,6 +68,9 @@ pub use export_mapping::*;
 pub use graphql::{ForumMutation, ForumQuery};
 pub use import_inspection::*;
 pub use import_mapping::*;
+pub use import_relation_preparation::*;
+pub use import_resolution::*;
+pub use import_write_preparation::*;
 pub use mentions::*;
 pub use moderation_subject::{
     FORUM_MODERATION_MODULE, ForumModerationSubjectAdapterFactory,

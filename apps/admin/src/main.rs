@@ -30,7 +30,7 @@ async fn main() {
         BrowserIntentEnvelope, PagesBrowserIntentAccessError, PagesBrowserIntentProblem,
         PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
         dispatch_pages_browser_intent_with_capabilities, fetch_pages_builder_rollout_snapshot,
-        pages_editor_capabilities_for_rollout, pages_editor_capability_policy_for_role,
+        pages_editor_capabilities_for_snapshot, pages_editor_capability_policy_for_role,
     };
     use serde_json::{Value, json};
 
@@ -73,7 +73,7 @@ async fn main() {
             )
         })?;
         let editor_capabilities =
-            pages_editor_capabilities_for_rollout(role_capabilities, &rollout.flags);
+            pages_editor_capabilities_for_snapshot(role_capabilities, &rollout);
         let default_locale = header_value(&headers, "accept-language")
             .and_then(|language| language.split(',').next().map(str::to_string))
             .unwrap_or_else(|| "en".to_string());

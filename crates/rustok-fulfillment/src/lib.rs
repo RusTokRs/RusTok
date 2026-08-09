@@ -15,6 +15,7 @@ pub mod migrations;
 pub mod ports;
 pub mod providers;
 pub mod services;
+mod shipping_option_admin_command;
 mod shipping_option_read;
 pub mod status;
 
@@ -46,6 +47,12 @@ pub use fulfillment_read::{
 };
 pub use ports::*;
 pub use providers::*;
+pub use shipping_option_admin_command::{
+    CreateAdminShippingOptionRequest, DeactivateAdminShippingOptionRequest,
+    InProcessShippingOptionAdminCommandPort, ReactivateAdminShippingOptionRequest,
+    ShippingOptionAdminCommandPort, ShippingOptionAdminCommandRuntime,
+    UpdateAdminShippingOptionRequest, in_process_shipping_option_admin_command_port,
+};
 pub use shipping_option_read::{
     InProcessShippingOptionAdminReadPort, InProcessShippingOptionReadPort,
     ListAllShippingOptionProjectionsRequest, ListShippingOptionProjectionsRequest,

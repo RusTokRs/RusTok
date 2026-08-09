@@ -13,7 +13,6 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use rustok_page_builder::runtime_context::{
     PageBuilderRuntimeExampleRequest, generate_page_builder_runtime_example,
 };
@@ -22,7 +21,8 @@ use rustok_page_builder::runtime_scenario_release::{
 };
 use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
-    PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext, SsrDraftSessionStore,
+    PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
+    PageBuilderAdminProviderStatus, SsrDraftSessionStore,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use serde_json::{Value, json};
@@ -85,14 +85,14 @@ pub fn PagesAdmin() -> impl IntoView {
             )
             .await
             .map_err(|error| error.to_string())?;
-            let provider_flags = crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
+            let provider_status = crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
                 token,
                 tenant,
             )
             .await
             .map_err(|error| error.to_string())?
-            .flags;
-            Ok(Some((page, baseline, release_status, provider_flags)))
+            .provider_status();
+            Ok(Some((page, baseline, release_status, provider_status)))
         }
     });
 
@@ -177,12 +177,12 @@ pub fn PagesAdmin() -> impl IntoView {
                     }>
                         {move || {
                             workspace_resource.get().map(|result| match result {
-                                Ok(Some((page, baseline, release_status, provider_flags))) => view! {
+                                Ok(Some((page, baseline, release_status, provider_status))) => view! {
                                     <PageWorkspace
                                         page
                                         baseline
                                         release_status
-                                        provider_flags
+                                        provider_status
                                         token
                                         tenant
                                         default_locale=default_locale.clone()
@@ -412,7 +412,7 @@ fn PageWorkspace(
     page: PageDetail,
     baseline: Option<RuntimeScenarioReleaseBaseline>,
     release_status: PageBuilderScenarioReleaseStatus,
-    provider_flags: BuilderCapabilityFlags,
+    provider_status: PageBuilderAdminProviderStatus,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
     default_locale: String,
@@ -564,7 +564,7 @@ fn PageWorkspace(
                             page=page_for_builder
                             baseline
                             release_status
-                            provider_flags
+                            provider_status
                             token
                             tenant
                             default_locale
@@ -615,7 +615,7 @@ fn PagesFlyBuilder(
     page: PageDetail,
     baseline: Option<RuntimeScenarioReleaseBaseline>,
     release_status: PageBuilderScenarioReleaseStatus,
-    provider_flags: BuilderCapabilityFlags,
+    provider_status: PageBuilderAdminProviderStatus,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
     default_locale: String,
@@ -687,7 +687,7 @@ fn PagesFlyBuilder(
                         })
                     },
                 )
-                .with_provider_flags(provider_flags),
+                .with_provider_status(provider_status),
             );
 
             let persistence_error = RwSignal::new(None::<String>);

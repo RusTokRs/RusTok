@@ -89,6 +89,7 @@ const scripts = [
   'verify-product-storefront-search-bound.mjs',
   'verify-index-product-variant-refresh-ledger.mjs',
   'verify-index-product-refresh-canonical-writer.mjs',
+  'verify-index-product-refresh-event-family.mjs',
   'verify-index-product-refresh-relay-step.mjs',
   'verify-index-product-channel-relation-admission.mjs',
   'verify-index-product-channel-relation-ledger.mjs',

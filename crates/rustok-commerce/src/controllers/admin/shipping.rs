@@ -7,12 +7,14 @@ use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use rustok_fulfillment::error::FulfillmentError;
 use rustok_fulfillment::{
-    FulfillmentService, ListAllShippingOptionProjectionsRequest,
-    ReadShippingOptionProjectionRequest,
+    CreateAdminShippingOptionRequest, DeactivateAdminShippingOptionRequest,
+    ListAllShippingOptionProjectionsRequest, ReactivateAdminShippingOptionRequest,
+    ReadShippingOptionProjectionRequest, UpdateAdminShippingOptionRequest,
 };
 use rustok_web::{HttpError, HttpResult};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
@@ -187,51 +189,44 @@ fn map_shipping_profile_error(error: CommerceError) -> HttpError {
     HttpError::new(status, code, message)
 }
 
-fn map_admin_shipping_option_error(
-    context: AdminShippingOptionErrorContext,
-    error: FulfillmentError,
-) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
-        FulfillmentError::Validation(_) => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_fulfillment_invalid",
-            "Fulfillment request is invalid",
-            "validation",
-        ),
-        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        FulfillmentError::InvalidTransition { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_fulfillment_state_conflict",
-            "Fulfillment operation conflicts with the current state",
-            "state_conflict",
-        ),
-        FulfillmentError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_fulfillment_storage_unavailable",
-            "Fulfillment storage is temporarily unavailable",
-            "database",
-        ),
-    };
-    let context = AdminShippingOptionDiagnosticContext::from(&context);
-    let error = AdminShippingDiagnosticError;
-    tracing::error!(
-        error = ?error,
-        owner = ADMIN_SHIPPING_OPTION_OWNER,
-        tenant_id = %context.tenant_id,
-        shipping_option_id = ?context.shipping_option_id,
-        operation = %context.operation,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = ADMIN_SHIPPING_BOUNDARY,
-        "commerce admin shipping option operation failed"
-    );
-    HttpError::new(status, code, message)
+fn admin_shipping_option_command_idempotency_key<T: Serialize>(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    shipping_option_id: Option<Uuid>,
+    operation: &'static str,
+    payload: &T,
+) -> HttpResult<String> {
+    let payload = serde_json::to_vec(payload).map_err(|_| {
+        let error = AdminShippingDiagnosticError;
+        tracing::error!(
+            error = ?error,
+            owner = ADMIN_SHIPPING_OPTION_OWNER,
+            tenant_id = %uuid_shape(tenant_id),
+            shipping_option_id = %optional_uuid_shape(shipping_option_id),
+            operation,
+            error_kind = "request_identity_serialization",
+            public_code = "commerce_admin_fulfillment_failed",
+            boundary = ADMIN_SHIPPING_BOUNDARY,
+            "commerce admin shipping option command identity could not be materialized"
+        );
+        HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_fulfillment_failed",
+            "Fulfillment operation could not be completed safely",
+        )
+    })?;
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(actor_id.as_bytes());
+    digest.update(operation.as_bytes());
+    if let Some(shipping_option_id) = shipping_option_id {
+        digest.update(shipping_option_id.as_bytes());
+    }
+    digest.update(payload);
+    Ok(format!(
+        "commerce-admin-shipping-option:{operation}:{}",
+        hex::encode(digest.finalize())
+    ))
 }
 
 fn admin_shipping_option_read_port_context(
@@ -253,6 +248,24 @@ fn admin_shipping_option_read_port_context(
         Some(channel) => context.with_channel(channel),
         None => context,
     }
+}
+
+fn admin_shipping_option_command_port_context(
+    tenant_id: Uuid,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    shipping_option_id: Option<Uuid>,
+    operation: &'static str,
+    idempotency_key: String,
+) -> PortContext {
+    admin_shipping_option_read_port_context(
+        tenant_id,
+        auth,
+        request_context,
+        shipping_option_id,
+        operation,
+    )
+    .with_idempotency_key(idempotency_key)
 }
 
 fn map_admin_shipping_option_port_error(
@@ -323,7 +336,7 @@ fn map_admin_shipping_option_port_error(
         public_code = code,
         status = %status,
         boundary = ADMIN_SHIPPING_BOUNDARY,
-        "commerce admin shipping option read failed"
+        "commerce admin shipping option owner call failed"
     );
     HttpError::new(status, code, message)
 }
@@ -652,6 +665,7 @@ pub async fn create_shipping_option(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Json(input): Json<CreateShippingOptionInput>,
 ) -> HttpResult<(StatusCode, Json<ShippingOptionResponse>)> {
     ensure_permissions(
@@ -667,12 +681,31 @@ pub async fn create_shipping_option(
     )
     .await?;
 
-    let option = FulfillmentService::new(runtime.db_clone())
-        .create_shipping_option(tenant.id, input)
+    let request = CreateAdminShippingOptionRequest { input };
+    let idempotency_key = admin_shipping_option_command_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        None,
+        "create_shipping_option",
+        &request,
+    )?;
+    let command_context = admin_shipping_option_command_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        None,
+        "create_shipping_option",
+        idempotency_key,
+    );
+    let option = runtime
+        .shipping_option_admin_command_port()
+        .create_shipping_option(command_context.clone(), request)
         .await
         .map_err(|error| {
-            map_admin_shipping_option_error(
+            map_admin_shipping_option_port_error(
                 AdminShippingOptionErrorContext::new(tenant.id, None, "create_shipping_option"),
+                &command_context,
+                "create_admin_shipping_option",
                 error,
             )
         })?;
@@ -752,6 +785,7 @@ pub async fn update_shipping_option(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateShippingOptionInput>,
 ) -> HttpResult<Json<ShippingOptionResponse>> {
@@ -768,12 +802,34 @@ pub async fn update_shipping_option(
     )
     .await?;
 
-    let option = FulfillmentService::new(runtime.db_clone())
-        .update_shipping_option(tenant.id, id, input)
+    let request = UpdateAdminShippingOptionRequest {
+        shipping_option_id: id,
+        input,
+    };
+    let idempotency_key = admin_shipping_option_command_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        "update_shipping_option",
+        &request,
+    )?;
+    let command_context = admin_shipping_option_command_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "update_shipping_option",
+        idempotency_key,
+    );
+    let option = runtime
+        .shipping_option_admin_command_port()
+        .update_shipping_option(command_context.clone(), request)
         .await
         .map_err(|error| {
-            map_admin_shipping_option_error(
+            map_admin_shipping_option_port_error(
                 AdminShippingOptionErrorContext::new(tenant.id, Some(id), "update_shipping_option"),
+                &command_context,
+                "update_admin_shipping_option",
                 error,
             )
         })?;
@@ -797,6 +853,7 @@ pub async fn deactivate_shipping_option(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
@@ -805,16 +862,37 @@ pub async fn deactivate_shipping_option(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let option = FulfillmentService::new(runtime.db_clone())
-        .deactivate_shipping_option(tenant.id, id)
+    let request = DeactivateAdminShippingOptionRequest {
+        shipping_option_id: id,
+    };
+    let idempotency_key = admin_shipping_option_command_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        "deactivate_shipping_option",
+        &request,
+    )?;
+    let command_context = admin_shipping_option_command_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "deactivate_shipping_option",
+        idempotency_key,
+    );
+    let option = runtime
+        .shipping_option_admin_command_port()
+        .deactivate_shipping_option(command_context.clone(), request)
         .await
         .map_err(|error| {
-            map_admin_shipping_option_error(
+            map_admin_shipping_option_port_error(
                 AdminShippingOptionErrorContext::new(
                     tenant.id,
                     Some(id),
                     "deactivate_shipping_option",
                 ),
+                &command_context,
+                "deactivate_admin_shipping_option",
                 error,
             )
         })?;
@@ -838,6 +916,7 @@ pub async fn reactivate_shipping_option(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
@@ -846,16 +925,37 @@ pub async fn reactivate_shipping_option(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let option = FulfillmentService::new(runtime.db_clone())
-        .reactivate_shipping_option(tenant.id, id)
+    let request = ReactivateAdminShippingOptionRequest {
+        shipping_option_id: id,
+    };
+    let idempotency_key = admin_shipping_option_command_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        "reactivate_shipping_option",
+        &request,
+    )?;
+    let command_context = admin_shipping_option_command_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "reactivate_shipping_option",
+        idempotency_key,
+    );
+    let option = runtime
+        .shipping_option_admin_command_port()
+        .reactivate_shipping_option(command_context.clone(), request)
         .await
         .map_err(|error| {
-            map_admin_shipping_option_error(
+            map_admin_shipping_option_port_error(
                 AdminShippingOptionErrorContext::new(
                     tenant.id,
                     Some(id),
                     "reactivate_shipping_option",
                 ),
+                &command_context,
+                "reactivate_admin_shipping_option",
                 error,
             )
         })?;

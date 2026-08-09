@@ -6,6 +6,7 @@ mod index_channel_relation;
 mod index_channel_relation_convergence;
 mod index_channel_relation_freshness;
 mod index_refresh;
+mod index_refresh_event;
 mod index_refresh_publication;
 mod index_refresh_relay;
 mod write_transaction;
@@ -52,6 +53,7 @@ pub use index_refresh::{
     ProductIndexLocaleRefreshRecord, ProductIndexLocaleRefreshSource,
     ProductIndexVariantRefreshRecord, ProductIndexVariantRefreshSource,
 };
+pub use index_refresh_event::CanonicalProductIndexRefreshEventFactory;
 pub use index_refresh_publication::{
     ProductIndexRefreshCanonicalWriter, ProductIndexRefreshContract,
     ProductIndexRefreshContractTarget, ProductIndexRefreshPublicationError,

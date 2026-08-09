@@ -1,0 +1,89 @@
+{
+  "format": "pages_builder_provider_health_transport_source_v1",
+  "status": "typed_transport_server_and_consumer_binding_source_ready_execution_pending",
+  "provider": "page_builder",
+  "predecessors": [
+    "page_builder_provider_health_deployment_identity_source_v1",
+    "page_builder_provider_health_deployment_evaluator_source_v1"
+  ],
+  "graphql_owner": {
+    "query": "pageBuilderRolloutSnapshot",
+    "observed_flag": "providerHealthObserved",
+    "health_payload": "providerHealth",
+    "health_fields": [
+      "state",
+      "degradationReasons",
+      "previewP95Ms",
+      "publishP95Ms",
+      "sanitizeFailureRate",
+      "runtimeErrorRate"
+    ],
+    "default_server_observed_value": false,
+    "default_server_health_payload": null,
+    "server_binding_source_present": true,
+    "fresh_accepted_authority_can_supply_observed_health": true
+  },
+  "admin_transport": {
+    "observed_false_requires_payload_absent": true,
+    "observed_true_requires_payload_present": true,
+    "latency_milliseconds_must_be_non_negative": true,
+    "failure_rates_must_be_finite": true,
+    "failure_rates_minimum": 0.0,
+    "failure_rates_maximum": 1.0,
+    "canonical_snapshot_recomputed_client_side": true,
+    "state_must_equal_canonical_recalculation": true,
+    "degradation_reasons_must_equal_canonical_recalculation": true,
+    "thresholds_taken_from_provider_health_snapshot_evaluate": true,
+    "raw_metric_or_prometheus_input_accepted": false
+  },
+  "admin_snapshot": {
+    "validated_health_retained_as_optional_provider_health_snapshot": true,
+    "provider_status_helper_uses_observed_only_when_health_present": true,
+    "rollout_only_helper_remains_unobserved": true,
+    "effective_runtime_flags_use_provider_status": true,
+    "workspace_consumes_validated_provider_status": true,
+    "standalone_browser_intent_consumes_validated_snapshot": true,
+    "authoritative_ssr_consumes_health_limited_runtime_flags": true
+  },
+  "anti_promotion": {
+    "runtime_identity_capture_executed": false,
+    "runtime_deployment_evaluator_executed": false,
+    "retained_deployment_health_packet_present": false,
+    "owner_acceptance_executed": false,
+    "accepted_packet_installed": false,
+    "pages_graphql_observed_health_executed": false,
+    "pages_ui_provider_health_runtime_executed": false,
+    "pages_ssr_provider_health_runtime_executed": false,
+    "standalone_browser_intent_provider_health_runtime_executed": false,
+    "pages_reference_consumer_gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "validation": {
+    "tests_run": false,
+    "node_verifier_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "graphql_request_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false
+  },
+  "production_sources": [
+    "crates/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/rustok-pages/admin/src/transport/builder_rollout_adapter.rs",
+    "crates/rustok-pages/admin/src/transport/mod.rs",
+    "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
+    "crates/rustok-pages/admin/src/composition.rs",
+    "crates/rustok-pages/admin/src/builder.rs",
+    "apps/admin/src/main.rs"
+  ],
+  "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs",
+  "next_cursor": {
+    "typed_provider_health_transport": "source_ready",
+    "server_owner_health_binding": "source_ready_maintainer_activation_pending",
+    "ui_ssr_browser_intent_health_binding": "source_ready_runtime_activation_pending",
+    "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
+    "observed_health_acceptance": "pending"
+  }
+}

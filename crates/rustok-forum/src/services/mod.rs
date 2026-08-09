@@ -3,6 +3,7 @@
 mod bounded_compat;
 mod category {
     include!("category.rs");
+    include!("category_locale_enumeration.rs");
     include!("category_projection_owner.rs");
     include!("category_visibility_list.rs");
 }
@@ -26,7 +27,10 @@ mod category_lifecycle {
     include!("category_lifecycle_owner.rs");
 }
 mod category_moderation_audience;
-mod category_owner;
+mod category_owner {
+    include!("category_owner.rs");
+    include!("category_owner_locale_enumeration.rs");
+}
 mod category_policy;
 mod category_reply_create_audience;
 mod category_route;
@@ -45,7 +49,10 @@ mod counter_reconciliation;
 mod solution_reconciliation;
 pub mod event;
 #[allow(clippy::collapsible_if, clippy::too_many_arguments)]
-mod mention_relation;
+mod mention_relation {
+    include!("mention_relation_import.rs");
+    include!("mention_relation.rs");
+}
 pub mod mention_reconciliation;
 #[cfg(test)]
 mod mention_relation_tests {
@@ -99,6 +106,7 @@ pub mod subscription;
 #[allow(clippy::collapsible_if)]
 mod topic {
     include!("topic.rs");
+    include!("topic_locale_enumeration.rs");
     include!("topic_inline.rs");
     include!("topic_visibility_list.rs");
     include!("topic_widget_preview.rs");
@@ -115,7 +123,10 @@ mod topic_canonical_resolution;
 mod topic_route;
 mod topic_route_backfill;
 mod topic_create_audience_authorization;
-mod topic_facade;
+mod topic_facade {
+    include!("topic_facade.rs");
+    include!("topic_facade_locale_enumeration.rs");
+}
 mod topic_fork;
 mod topic_merge;
 mod topic_merge_audience_reconciliation;

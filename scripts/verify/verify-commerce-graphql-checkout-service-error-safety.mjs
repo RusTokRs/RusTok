@@ -34,6 +34,7 @@ if (checkoutModuleDeclarations.length !== 1) {
 
 for (const [value, label] of [
   ['mod checkout_boundary {', 'checkout boundary module'],
+  ['use ::rustok_api::{PortContext, PortError, PortErrorKind};', 'typed owner port errors'],
   ['const CHECKOUT_ERROR_BOUNDARY: &str = "commerce_graphql_checkout";', 'checkout boundary constant'],
   ['struct CheckoutServiceDiagnosticError;', 'redacted diagnostic token'],
   ['impl std::fmt::Debug for CheckoutServiceDiagnosticError', 'diagnostic Debug implementation'],
@@ -44,39 +45,39 @@ for (const [value, label] of [
   ['Public {', 'cloneable public envelope variant'],
   ['impl From<Error> for BoundaryError', 'GraphQL conversion'],
   ['impl From<CommerceError> for BoundaryError', 'commerce conversion'],
-  ['impl From<FulfillmentError> for BoundaryError', 'fulfillment conversion'],
-  ['Self::Public {', 'owner error envelope storage'],
-  ['impl From<BoundaryError> for Error', 'public GraphQL conversion'],
-  ['BoundaryError::Graphql(error) => error', 'existing GraphQL error preservation'],
-  ['BoundaryError::Public {', 'public envelope restoration'],
-  ['fn commerce_error_envelope(', 'shipping profile mapper'],
-  ['fn fulfillment_error_envelope(', 'shipping option mapper'],
+  ['pub(crate) fn shipping_option_port_error(', 'shipping option port mapper'],
+  ['fn shipping_option_port_error_envelope(', 'shipping option envelope mapper'],
+  ['PortErrorKind::Validation', 'shipping option validation mapping'],
+  ['PortErrorKind::NotFound if error.code == "fulfillment.shipping_option_not_found"', 'shipping option not-found mapping'],
+  ['PortErrorKind::Conflict', 'shipping option conflict mapping'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'shipping option temporary mapping'],
+  ['PortErrorKind::Forbidden', 'shipping option forbidden fallback'],
+  ['PortErrorKind::InvariantViolation', 'shipping option invariant fallback'],
+  ['owner = "rustok_fulfillment.shipping_option_admin_command"', 'shipping option owner diagnostic'],
+  ['owner_operation,', 'shipping option owner operation diagnostic'],
+  ['correlation_id = %context.correlation_id', 'correlation diagnostic'],
+  ['owner_error_kind = ?error.kind', 'bounded owner kind diagnostic'],
+  ['owner_code_length = error.code.chars().count()', 'bounded owner code diagnostic'],
   ['extensions.set("code", code)', 'stable code extension'],
   ['extensions.set("retryable", retryable)', 'retryability extension'],
-  ['let diagnostic_error = CheckoutServiceDiagnosticError;', 'diagnostic source consumption'],
-  ['error = ?diagnostic_error', 'redacted diagnostic field'],
-  ['owner = "rustok_commerce"', 'commerce owner logging'],
-  ['owner = "rustok_fulfillment"', 'fulfillment owner logging'],
-  ['error_kind,', 'owner error kind logging'],
-  ['public_code = code', 'public code logging'],
-  ['boundary = CHECKOUT_ERROR_BOUNDARY', 'checkout boundary logging'],
+  ['impl From<BoundaryError> for Error', 'public GraphQL conversion'],
+  ['BoundaryError::Graphql(error) => error', 'existing GraphQL error preservation'],
   ['mod async_graphql_shim {', 'async GraphQL result shim'],
-  ['pub use ::async_graphql::{Context, Error, ErrorExtensions, Object};', 'GraphQL API re-export'],
   [
     'pub type Result<T> = std::result::Result<T, super::checkout_boundary::BoundaryError>;',
     'custom checkout result',
   ],
-  ['use self::async_graphql_shim as async_graphql;', 'shim alias'],
-  ['include!("checkout.rs");', 'unchanged checkout resolver inclusion'],
+  ['include!("checkout.rs");', 'checkout resolver inclusion'],
 ]) {
   requireText(facade, value, label);
 }
 
 for (const value of [
-  'Commerce(CommerceError)',
-  'Fulfillment(FulfillmentError)',
+  'FulfillmentError',
   'error = ?error',
   'error = %error',
+  'owner_message = %error.message',
+  'message = %error.message',
   'async_graphql::Error::new(error.to_string())',
   'async_graphql::Error::new(err.to_string())',
   'Error::new(error.to_string())',
@@ -85,44 +86,8 @@ for (const value of [
 ]) {
   forbidText(facade, value, 'checkout facade public and diagnostic boundary');
 }
-for (const value of [
-  'async_graphql::Error::new(error.to_string())',
-  'async_graphql::Error::new(err.to_string())',
-  'Error::new(error.to_string())',
-  'Error::new(err.to_string())',
-  'format!("{error}")',
-]) {
-  forbidText(source, value, 'checkout resolver public boundary');
-}
-
-const redactedDiagnosticFields = facade.match(/error = \?diagnostic_error/g) ?? [];
-if (redactedDiagnosticFields.length !== 2) {
-  failures.push(
-    `expected two redacted checkout service diagnostic fields, found ${redactedDiagnosticFields.length}`,
-  );
-}
 
 for (const [value, label] of [
-  ['CommerceError::Validation(_)', 'commerce validation mapping'],
-  ['CommerceError::InvalidPrice(_)', 'commerce invalid-price mapping'],
-  ['CommerceError::InvalidOptionCombination', 'commerce option mapping'],
-  ['CommerceError::NoVariants', 'commerce no-variants mapping'],
-  ['CommerceError::ShippingProfileNotFound(_)', 'profile not-found mapping'],
-  ['CommerceError::DuplicateShippingProfileSlug(_)', 'profile conflict mapping'],
-  ['CommerceError::Database(_)', 'profile database mapping'],
-  ['CommerceError::ProductNotFound(_)', 'commerce product fallback'],
-  ['CommerceError::VariantNotFound(_)', 'commerce variant fallback'],
-  ['CommerceError::DuplicateHandle { .. }', 'commerce handle fallback'],
-  ['CommerceError::DuplicateSku(_)', 'commerce SKU fallback'],
-  ['CommerceError::InsufficientInventory { .. }', 'commerce inventory fallback'],
-  ['CommerceError::CannotDeletePublished', 'commerce published fallback'],
-  ['CommerceError::Rich(_)', 'commerce rich fallback'],
-  ['CommerceError::Core(_)', 'commerce core fallback'],
-  ['FulfillmentError::Validation(_)', 'fulfillment validation mapping'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'shipping option not-found mapping'],
-  ['FulfillmentError::InvalidTransition { .. }', 'shipping option conflict mapping'],
-  ['FulfillmentError::Database(_)', 'shipping option database mapping'],
-  ['FulfillmentError::FulfillmentNotFound(_)', 'fulfillment fallback mapping'],
   ['"SHIPPING_PROFILE_REQUEST_INVALID"', 'profile validation code'],
   ['"SHIPPING_PROFILE_NOT_FOUND"', 'profile not-found code'],
   ['"SHIPPING_PROFILE_STATE_CONFLICT"', 'profile conflict code'],
@@ -139,12 +104,23 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ['use async_graphql::{Context, ErrorExtensions, Object, Result};', 'resolver Result import'],
+  ['AuthContext, PortActor, PortContext, RequestContext', 'trusted owner call facts'],
+  ['CreateAdminShippingOptionRequest', 'create owner request'],
+  ['UpdateAdminShippingOptionRequest', 'update owner request'],
+  ['DeactivateAdminShippingOptionRequest', 'deactivate owner request'],
+  ['ReactivateAdminShippingOptionRequest', 'reactivate owner request'],
+  ['fn shipping_option_command_context(', 'shipping option command context'],
+  ['PortActor::user(auth.user_id.to_string())', 'authenticated owner actor'],
+  ['.with_idempotency_key(Uuid::new_v4().to_string())', 'ephemeral write identity'],
+  ['.with_deadline(std::time::Duration::from_secs(2))', 'owner deadline'],
+  ['request.channel_slug.as_deref()', 'owner channel propagation'],
+  ['shipping_option_admin_command_runtime_from_context(', 'host-selected owner runtime'],
+  ['.create_shipping_option(command_context.clone(), request)', 'create owner call'],
+  ['.update_shipping_option(command_context.clone(), request)', 'update owner call'],
+  ['.deactivate_shipping_option(command_context.clone(), request)', 'deactivate owner call'],
+  ['.reactivate_shipping_option(command_context.clone(), request)', 'reactivate owner call'],
+  ['checkout_boundary::shipping_option_port_error(', 'bounded owner error mapper'],
   ['use crate::ShippingProfileService;', 'shipping profile service import'],
-  ['use rustok_fulfillment::FulfillmentService;', 'fulfillment service import'],
-  ['async fn create_shipping_option(', 'create shipping option mutation'],
-  ['async fn update_shipping_option(', 'update shipping option mutation'],
-  ['async fn deactivate_shipping_option(', 'deactivate shipping option mutation'],
-  ['async fn reactivate_shipping_option(', 'reactivate shipping option mutation'],
   ['async fn create_shipping_profile(', 'create shipping profile mutation'],
   ['async fn update_shipping_profile(', 'update shipping profile mutation'],
   ['async fn deactivate_shipping_profile(', 'deactivate shipping profile mutation'],
@@ -153,9 +129,21 @@ for (const [value, label] of [
   requireText(source, value, label);
 }
 
-const fulfillmentServiceCalls = source.match(/FulfillmentService::new\(/g) ?? [];
-if (fulfillmentServiceCalls.length !== 4) {
-  failures.push(`expected four shipping-option service call sites, found ${fulfillmentServiceCalls.length}`);
+for (const value of [
+  'use rustok_fulfillment::FulfillmentService;',
+  'FulfillmentService::new(',
+  'async_graphql::Error::new(error.to_string())',
+  'async_graphql::Error::new(err.to_string())',
+  'Error::new(error.to_string())',
+  'Error::new(err.to_string())',
+  'format!("{error}")',
+]) {
+  forbidText(source, value, 'checkout resolver direct owner/public boundary');
+}
+
+const ownerRuntimeCalls = source.match(/shipping_option_admin_command_runtime_from_context\(/g) ?? [];
+if (ownerRuntimeCalls.length !== 4) {
+  failures.push(`expected four shipping-option owner runtime call sites, found ${ownerRuntimeCalls.length}`);
 }
 const shippingProfileServiceCalls = source.match(/ShippingProfileService::new\(/g) ?? [];
 if (shippingProfileServiceCalls.length !== 4) {
@@ -169,5 +157,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL checkout shipping services retain typed public envelopes and emit only redacted owner diagnostics while preserving existing GraphQL errors',
+  '✔ Commerce GraphQL shipping-option writes use the owner command port with bounded errors while Commerce-owned shipping-profile envelopes remain intact',
 );

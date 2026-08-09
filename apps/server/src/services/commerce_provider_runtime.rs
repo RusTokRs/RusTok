@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-/// Attach the host-composed commerce provider registries and owner read runtimes to a capability
+/// Attach the host-composed commerce provider registries and owner runtimes to a capability
 /// runtime.
 ///
 /// Values already installed in `ServerRuntimeContext` or `HostRuntimeContext` are always preserved
@@ -32,6 +32,28 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(registry)
     };
 
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_payment::PaymentCollectionRuntime>()
+            .or_else(|| server.shared_get::<rustok_payment::PaymentCollectionRuntime>())
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentCollectionRuntime::in_process(server.db_clone())
+            });
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_payment::PaymentCartReadRuntime>()
+            .or_else(|| server.shared_get::<rustok_payment::PaymentCartReadRuntime>())
+            .unwrap_or_else(|| rustok_payment::PaymentCartReadRuntime::in_process(server.db_clone()));
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
     #[cfg(feature = "mod-fulfillment")]
     let host = {
         let registry = server
@@ -56,6 +78,20 @@ pub fn attach_commerce_provider_registries(
                 server.shared_insert(runtime.clone());
                 runtime
             });
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-fulfillment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>()
+            .or_else(|| server.shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>())
+            .unwrap_or_else(|| {
+                rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(
+                    server.db_clone(),
+                )
+            });
+        server.shared_insert(runtime.clone());
         host.with_shared_value(runtime)
     };
 
@@ -104,6 +140,30 @@ pub fn attach_commerce_provider_registries(
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
                     .map(|event_bus| {
                         rustok_order::OrderAdminCommandRuntime::in_process(
+                            server.db_clone(),
+                            event_bus,
+                        )
+                    })
+            });
+        match runtime {
+            Some(runtime) => {
+                server.shared_insert(runtime.clone());
+                host.with_shared_value(runtime)
+            }
+            None => host,
+        }
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_order::OrderPostOrderCommandRuntime>()
+            .or_else(|| server.shared_get::<rustok_order::OrderPostOrderCommandRuntime>())
+            .or_else(|| {
+                server
+                    .shared_get::<rustok_outbox::TransactionalEventBus>()
+                    .map(|event_bus| {
+                        rustok_order::OrderPostOrderCommandRuntime::in_process(
                             server.db_clone(),
                             event_bus,
                         )

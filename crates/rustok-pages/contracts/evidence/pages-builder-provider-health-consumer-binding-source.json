@@ -1,0 +1,80 @@
+{
+  "format": "pages_builder_provider_health_consumer_binding_source_v1",
+  "status": "source_ready_runtime_activation_pending",
+  "provider": "page_builder",
+  "predecessors": [
+    "pages_builder_provider_health_transport_source_v1",
+    "pages_builder_provider_health_server_binding_source_v1"
+  ],
+  "canonical_provider_status": {
+    "type": "PageBuilderAdminProviderStatus",
+    "configured_rollout_flags_remain_authoritative": true,
+    "observed_health_may_only_narrow": true,
+    "unobserved_preserves_configured_rollout": true,
+    "ready_preserves_configured_rollout": true,
+    "degraded_disables_publish": true,
+    "unavailable_disables_builder": true,
+    "invalid_rollout_disables_builder": true,
+    "runtime_flags_method": "effective_runtime_flags"
+  },
+  "workspace_binding": {
+    "fetches_server_owned_rollout_snapshot": true,
+    "uses_validated_provider_status": true,
+    "facade_receives_provider_status": true,
+    "observed_health_and_degradation_reasons_reach_admin_provider_controls": true,
+    "health_cannot_grant_host_or_rollout_capabilities": true
+  },
+  "authoritative_ssr_binding": {
+    "rereads_server_owned_snapshot_per_capability_request": true,
+    "verifies_routed_tenant": true,
+    "uses_effective_runtime_flags": true,
+    "degraded_health_publish_request_reaches_canonical_feature_disabled_guard": true,
+    "unavailable_health_preview_and_publish_reach_canonical_feature_disabled_guard": true,
+    "missing_health_uses_configured_rollout_flags": true
+  },
+  "standalone_browser_intent_binding": {
+    "fetches_server_owned_rollout_snapshot": true,
+    "uses_pages_editor_capabilities_for_snapshot": true,
+    "role_capabilities_evaluated_before_provider_narrowing": true,
+    "degraded_health_disables_publish_intent": true,
+    "unavailable_health_forces_read_only_intent_capabilities": true,
+    "missing_health_preserves_rollout_only_behavior": true
+  },
+  "anti_promotion": {
+    "runtime_identity_capture_executed": false,
+    "runtime_deployment_evaluator_executed": false,
+    "owner_acceptance_executed": false,
+    "accepted_packet_installed": false,
+    "observed_graphql_request_executed": false,
+    "health_driven_workspace_behavior_executed": false,
+    "health_driven_ssr_behavior_executed": false,
+    "health_driven_browser_intent_behavior_executed": false,
+    "pages_reference_consumer_gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "validation": {
+    "tests_run": false,
+    "node_verifier_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "graphql_or_http_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false
+  },
+  "production_sources": [
+    "crates/rustok-page-builder/admin/src/provider_status.rs",
+    "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
+    "crates/rustok-pages/admin/src/builder.rs",
+    "crates/rustok-pages/admin/src/composition.rs",
+    "apps/admin/src/main.rs"
+  ],
+  "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs",
+  "next_cursor": {
+    "provider_health_consumer_binding": "source_ready_runtime_activation_pending",
+    "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
+    "observed_provider_health_runtime_behavior": "maintainer_execution_pending",
+    "observed_health_acceptance": "pending"
+  }
+}
