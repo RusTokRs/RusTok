@@ -49,7 +49,10 @@ mod category_visibility;
 mod counter_reconciliation;
 mod solution_reconciliation;
 pub mod event;
-mod import_write;
+mod import_write {
+    include!("import_tombstone_write.rs");
+    include!("import_write.rs");
+}
 #[allow(clippy::collapsible_if, clippy::too_many_arguments)]
 mod mention_relation {
     include!("mention_relation_import.rs");
@@ -95,6 +98,7 @@ mod reply_audience_read;
 mod reply_create_audience_authorization;
 mod reply_facade;
 mod reply_owner {
+    include!("reply_owner_tombstone_import.rs");
     include!("reply_owner_import.rs");
     include!("reply_owner.rs");
     include!("reply_owner_inline.rs");
