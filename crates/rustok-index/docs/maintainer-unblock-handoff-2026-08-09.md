@@ -96,4 +96,8 @@ After any maintainer-run packet is executed:
 - do not add legacy/version-family compatibility for repository-owned pre-release contracts;
 - do not infer admission from source inspection alone.
 
+## Source guard
+
+`scripts/verify/verify-index-maintainer-unblock-handoff.mjs` locks this handoff to the canonical M6 execution command/output blocks, the pending M5 digest sequence, the fail-closed M7 Storefront boundary, the current Index cursor, and this README-visible handoff surface. It must be updated together with the canonical gate documents when an owner execution/admission result legitimately changes one of those states.
+
 This handoff itself executes no Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or `git diff --check`.
