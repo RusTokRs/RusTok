@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "module": "pages",
+  "packet": "pages-builder-provider-health-runtime-evidence",
+  "status": "source_ready_maintainer_execution_pending",
+  "runner": {
+    "kind": "playwright",
+    "working_directory": "apps/next-admin",
+    "config": "playwright.pages-builder-provider-health-runtime.config.ts",
+    "spec": "tests/pages-builder-provider-health-runtime/runtime.spec.ts",
+    "command": ["npx", "--no-install", "playwright", "test", "--config", "playwright.pages-builder-provider-health-runtime.config.ts"]
+  },
+  "predecessors": {
+    "deployment_identity": {
+      "environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_IDENTITY_EVIDENCE",
+      "format": "page_builder_provider_health_deployment_identity_v1",
+      "status": "deployment_identity_verified_health_evaluation_pending"
+    },
+    "deployment_evaluation": {
+      "environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_EVALUATION_EVIDENCE",
+      "format": "page_builder_provider_health_deployment_evaluation_v1",
+      "status": "deployment_health_evaluated_pages_binding_pending"
+    },
+    "owner_acceptance": {
+      "environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_OWNER_ACCEPTANCE",
+      "format": "pages_builder_provider_health_owner_acceptance_v1",
+      "status": "owner_accepted_server_binding_pending",
+      "decision": "accept_for_pages_binding",
+      "rollback_action": "restore_unobserved_provider_health"
+    }
+  },
+  "fixtures": {
+    "api_origin_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_API_ORIGIN",
+    "admin_origin_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_ADMIN_ORIGIN",
+    "api_storage_state_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_API_STORAGE_STATE",
+    "admin_storage_state_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_ADMIN_STORAGE_STATE",
+    "tenant_slug_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_TENANT_SLUG",
+    "page_id_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_PAGE_ID",
+    "admin_route_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_ADMIN_ROUTE",
+    "common_headers_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_COMMON_HEADERS_JSON",
+    "operator_requirements": [
+      "exact source/deployment from retained identity/evaluator/accepted owner packet is currently deployed",
+      "Pages provider-health server binding is configured to the exact accepted owner packet",
+      "Pages rollout is all_on before execution and is not mutated by this harness",
+      "API session has effective pages:read pages:update pages:publish",
+      "standalone admin session uses a role with full Pages builder capabilities"
+    ]
+  },
+  "admission": {
+    "checkout_head_must_equal_identity_evaluation_and_acceptance_source_commit": true,
+    "identity_evaluation_acceptance_deployment_id_must_match": true,
+    "identity_evaluation_acceptance_repo_digest_must_match": true,
+    "identity_captured_at_must_match_evaluation_identity_captured_at": true,
+    "evaluation_evaluated_at_must_match_acceptance_evaluation_evaluated_at": true,
+    "acceptance_evaluation_sha256_must_match_supplied_evaluation": true,
+    "acceptance_health_valid_until_must_be_canonical_and_not_expired_at_harness_start": true,
+    "acceptance_binding_authorized_must_be_true": true,
+    "acceptance_binding_performed_must_be_false": true,
+    "accepted_health_snapshot_must_match_evaluation_snapshot": true,
+    "accepted_slo_evaluation_must_match_evaluation_slo_evaluation": true,
+    "configured_rollout_must_be_all_on": true,
+    "graphql_snapshot_must_observe_health": true,
+    "graphql_health_must_match_accepted_snapshot": true
+  },
+  "observations": {
+    "graphql_snapshot": true,
+    "graphql_non_mutating_capability_preflight": true,
+    "workspace_provider_control": true,
+    "workspace_preview_control": true,
+    "workspace_properties_control": true,
+    "workspace_publish_control": true,
+    "authoritative_ssr_preview_when_ui_allows": true,
+    "standalone_browser_intent_denial_when_health_narrows": true,
+    "publish_mutation_executed": false,
+    "rollout_settings_mutated": false
+  },
+  "expected_by_health": {
+    "ready": {
+      "provider_control_state": "ready",
+      "preview": "allowed",
+      "properties": "allowed",
+      "publish": "allowed",
+      "browser_intent_denial_required": false
+    },
+    "degraded": {
+      "provider_control_state": "degraded",
+      "preview": "allowed",
+      "properties": "allowed",
+      "publish": "feature_disabled",
+      "browser_intent_denial_required": true
+    },
+    "unavailable": {
+      "provider_control_state": "unavailable",
+      "preview": "feature_disabled",
+      "properties": "feature_disabled",
+      "publish": "feature_disabled",
+      "browser_intent_denial_required": true
+    }
+  },
+  "output": {
+    "environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_OUTPUT",
+    "default_path": "target/pages-builder-provider-health-runtime-evidence.json",
+    "format": "pages_builder_provider_health_runtime_evidence_v1",
+    "status": "observed_runtime_evidence_owner_review_pending",
+    "atomic_replace": true,
+    "automatic_owner_acceptance": false,
+    "automatic_gate_acceptance": false,
+    "automatic_ffa_fba_promotion": false
+  },
+  "retained_data": [
+    "exact source commit deployment id and immutable RepoDigest",
+    "input packet byte lengths and SHA-256 hashes",
+    "accepted health state degradation reasons thresholds observations and SLO evaluation",
+    "health_valid_until",
+    "API/admin origin SHA-256 hashes",
+    "tenant slug and page id SHA-256 hashes",
+    "HTTP status and response-body byte lengths/SHA-256 hashes",
+    "workspace provider state and capability booleans",
+    "GraphQL preflight allowed/error kind/error code",
+    "browser-intent bounded denial code/capability/intent"
+  ],
+  "forbidden_retained_data": [
+    "tenant slugs or ids",
+    "page ids",
+    "authorization headers",
+    "cookies",
+    "storage state contents",
+    "tokens or session ids",
+    "raw GraphQL request or response bodies",
+    "raw server-function request or response bodies",
+    "raw owner acceptance file path",
+    "raw evaluator file path",
+    "raw deployment identity file path",
+    "screenshots",
+    "videos",
+    "traces"
+  ],
+  "not_claimed": [
+    "owner observed-health acceptance",
+    "Pages reference-consumer gate accepted",
+    "Forum Page Builder Wave accepted",
+    "FFA promoted",
+    "FBA promoted"
+  ]
+}
