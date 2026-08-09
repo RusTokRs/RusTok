@@ -104,18 +104,17 @@ struct ValidatedAcceptance {
     snapshot: ProviderHealthSnapshot,
     evaluated_at: DateTime<Utc>,
     decided_at: DateTime<Utc>,
-    freshness_seconds: u64,
+    health_valid_until: DateTime<Utc>,
 }
 
 impl ValidatedAcceptance {
     fn snapshot_at(&self, now: DateTime<Utc>) -> Option<ProviderHealthSnapshot> {
-        let latest_allowed = now + Duration::seconds(MAX_CLOCK_SKEW_SECONDS);
+        let skew = Duration::seconds(MAX_CLOCK_SKEW_SECONDS);
+        let latest_allowed = now + skew;
         if latest_allowed < self.evaluated_at || latest_allowed < self.decided_at {
             return None;
         }
-        if now.signed_duration_since(self.evaluated_at)
-            > Duration::seconds(self.freshness_seconds as i64)
-        {
+        if now > self.health_valid_until + skew {
             return None;
         }
         Some(self.snapshot.clone())
@@ -267,14 +266,17 @@ fn validated_acceptance_from_bytes(
     validate_packet(&packet, live_identity)?;
     let evaluated_at = canonical_timestamp(&packet.evaluation.evaluated_at)?;
     let decided_at = canonical_timestamp(&packet.decided_at)?;
-    if decided_at < evaluated_at {
+    let health_valid_until = canonical_timestamp(&packet.evaluation.health_valid_until)?;
+    if decided_at < evaluated_at
+        || decided_at > health_valid_until + Duration::seconds(MAX_CLOCK_SKEW_SECONDS)
+    {
         return Err(PagesProviderHealthBindingError::EvidenceBoundsInvalid);
     }
     Ok(ValidatedAcceptance {
         snapshot: packet.evaluation.snapshot,
         evaluated_at,
         decided_at,
-        freshness_seconds: packet.deployment.freshness_seconds,
+        health_valid_until,
     })
 }
 
@@ -337,11 +339,29 @@ fn validate_packet(
         || !packet.deployment.identity_age_seconds.is_finite()
         || packet.deployment.identity_age_seconds < packet.deployment.query_window_seconds as f64
         || packet.deployment.identity_age_seconds > MAX_IDENTITY_AGE_SECONDS
+        || !packet.evaluation.max_target_operation_freshness_age_seconds.is_finite()
+        || packet.evaluation.max_target_operation_freshness_age_seconds < 0.0
+        || packet.evaluation.max_target_operation_freshness_age_seconds
+            > packet.deployment.freshness_seconds as f64
         || !packet.evaluation.samples.preview.is_finite()
         || !packet.evaluation.samples.publish.is_finite()
         || packet.evaluation.samples.preview < MINIMUM_SAMPLES_PER_OPERATION
         || packet.evaluation.samples.publish < MINIMUM_SAMPLES_PER_OPERATION
     {
+        return Err(PagesProviderHealthBindingError::EvidenceBoundsInvalid);
+    }
+
+    let evaluated_at = canonical_timestamp(&packet.evaluation.evaluated_at)?;
+    let health_valid_until = canonical_timestamp(&packet.evaluation.health_valid_until)?;
+    let remaining_millis = ((packet.deployment.freshness_seconds as f64
+        - packet.evaluation.max_target_operation_freshness_age_seconds)
+        * 1000.0)
+        .floor();
+    if !remaining_millis.is_finite() || remaining_millis < 0.0 || remaining_millis > i64::MAX as f64 {
+        return Err(PagesProviderHealthBindingError::EvidenceBoundsInvalid);
+    }
+    let expected_valid_until = evaluated_at + Duration::milliseconds(remaining_millis as i64);
+    if health_valid_until != expected_valid_until {
         return Err(PagesProviderHealthBindingError::EvidenceBoundsInvalid);
     }
 
@@ -357,7 +377,6 @@ fn validate_packet(
         return Err(PagesProviderHealthBindingError::HealthPolicyMismatch);
     }
 
-    canonical_timestamp(&packet.evaluation.evaluated_at)?;
     canonical_timestamp(&packet.decided_at)?;
     Ok(())
 }
@@ -465,6 +484,8 @@ struct AcceptedEvaluation {
     format: String,
     status: String,
     evaluated_at: String,
+    max_target_operation_freshness_age_seconds: f64,
+    health_valid_until: String,
     evaluation_sha256: String,
     raw_evaluation_path_persisted: bool,
     source_hashes_verified_against_checkout: bool,
@@ -541,13 +562,13 @@ mod tests {
             }),
             evaluated_at,
             decided_at: evaluated_at,
-            freshness_seconds: 60,
+            health_valid_until: evaluated_at + Duration::seconds(60),
         };
         assert!(accepted
-            .snapshot_at(evaluated_at + Duration::seconds(60))
+            .snapshot_at(evaluated_at + Duration::seconds(65))
             .is_some());
         assert!(accepted
-            .snapshot_at(evaluated_at + Duration::seconds(61))
+            .snapshot_at(evaluated_at + Duration::seconds(66))
             .is_none());
     }
 }
