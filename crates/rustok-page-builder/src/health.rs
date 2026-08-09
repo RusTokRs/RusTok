@@ -1,4 +1,10 @@
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
+
+pub const PROVIDER_HEALTH_WINDOW_CAPACITY: usize = 256;
+pub const PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION: usize = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -192,10 +198,190 @@ impl ProviderSloEvaluation {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderHealthOperation {
+    Preview,
+    Publish,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderHealthOutcome {
+    Succeeded,
+    SanitizeFailed,
+    RuntimeFailed,
+    OtherFailed,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ProviderHealthRuntimeSampleCounts {
+    pub preview: usize,
+    pub publish: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ProviderHealthRuntimeSample {
+    elapsed_ms: u64,
+    outcome: ProviderHealthOutcome,
+}
+
+#[derive(Debug, Default)]
+struct ProviderHealthRuntimeWindow {
+    preview: VecDeque<ProviderHealthRuntimeSample>,
+    publish: VecDeque<ProviderHealthRuntimeSample>,
+}
+
+static PROVIDER_HEALTH_RUNTIME_WINDOW: OnceLock<Mutex<ProviderHealthRuntimeWindow>> = OnceLock::new();
+
+/// Record one completed provider operation in the bounded process-local SLO window.
+///
+/// This is deliberately not deployment-wide evidence. The runtime window is reset on process
+/// restart and remains unobserved until both preview and publish have the minimum sample count.
+/// Callers must not promote rollout/Wave gates from this snapshot without separately retained
+/// exact-source deployment evidence.
+pub fn record_provider_health_observation(
+    operation: ProviderHealthOperation,
+    elapsed: Duration,
+    outcome: ProviderHealthOutcome,
+) {
+    let sample = ProviderHealthRuntimeSample {
+        elapsed_ms: elapsed.as_millis().min(u64::MAX as u128) as u64,
+        outcome,
+    };
+    let window = PROVIDER_HEALTH_RUNTIME_WINDOW
+        .get_or_init(|| Mutex::new(ProviderHealthRuntimeWindow::default()));
+    let mut window = window
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let samples = match operation {
+        ProviderHealthOperation::Preview => &mut window.preview,
+        ProviderHealthOperation::Publish => &mut window.publish,
+    };
+    if samples.len() >= PROVIDER_HEALTH_WINDOW_CAPACITY {
+        samples.pop_front();
+    }
+    samples.push_back(sample);
+}
+
+pub fn provider_health_runtime_sample_counts() -> ProviderHealthRuntimeSampleCounts {
+    let Some(window) = PROVIDER_HEALTH_RUNTIME_WINDOW.get() else {
+        return ProviderHealthRuntimeSampleCounts::default();
+    };
+    let window = window
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ProviderHealthRuntimeSampleCounts {
+        preview: window.preview.len(),
+        publish: window.publish.len(),
+    }
+}
+
+/// Return a process-local provider-health snapshot only after a bounded minimum sample exists for
+/// both preview and publish. `None` means unobserved and must never be interpreted as healthy.
+pub fn provider_health_runtime_snapshot() -> Option<ProviderHealthSnapshot> {
+    let window = PROVIDER_HEALTH_RUNTIME_WINDOW.get()?;
+    let window = window
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    snapshot_from_runtime_window(&window)
+}
+
+fn snapshot_from_runtime_window(
+    window: &ProviderHealthRuntimeWindow,
+) -> Option<ProviderHealthSnapshot> {
+    if window.preview.len() < PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION
+        || window.publish.len() < PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION
+    {
+        return None;
+    }
+
+    let preview_p95_ms = p95_ms(&window.preview);
+    let publish_p95_ms = p95_ms(&window.publish);
+    let sanitize_failures = window
+        .publish
+        .iter()
+        .filter(|sample| sample.outcome == ProviderHealthOutcome::SanitizeFailed)
+        .count();
+    let runtime_failures = window
+        .preview
+        .iter()
+        .chain(window.publish.iter())
+        .filter(|sample| sample.outcome == ProviderHealthOutcome::RuntimeFailed)
+        .count();
+    let total_runtime_samples = window.preview.len() + window.publish.len();
+
+    Some(ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+        preview_p95_ms,
+        publish_p95_ms,
+        sanitize_failure_rate: sanitize_failures as f64 / window.publish.len() as f64,
+        runtime_error_rate: runtime_failures as f64 / total_runtime_samples as f64,
+    }))
+}
+
+fn p95_ms(samples: &VecDeque<ProviderHealthRuntimeSample>) -> u64 {
+    let mut values: Vec<_> = samples.iter().map(|sample| sample.elapsed_ms).collect();
+    values.sort_unstable();
+    let rank = ((values.len() * 95 + 99) / 100).saturating_sub(1);
+    values[rank]
+}
+
 const fn status(value: bool) -> ProviderSloStatus {
     if value {
         ProviderSloStatus::Pass
     } else {
         ProviderSloStatus::Fail
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_window_requires_both_operation_sample_floors() {
+        let mut window = ProviderHealthRuntimeWindow::default();
+        for _ in 0..PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION {
+            window.preview.push_back(ProviderHealthRuntimeSample {
+                elapsed_ms: 100,
+                outcome: ProviderHealthOutcome::Succeeded,
+            });
+        }
+        assert!(snapshot_from_runtime_window(&window).is_none());
+        for _ in 0..PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION {
+            window.publish.push_back(ProviderHealthRuntimeSample {
+                elapsed_ms: 200,
+                outcome: ProviderHealthOutcome::Succeeded,
+            });
+        }
+        let snapshot = snapshot_from_runtime_window(&window).expect("observed snapshot");
+        assert_eq!(snapshot.state, ProviderHealthState::Ready);
+        assert_eq!(snapshot.observed.preview_p95_ms, 100);
+        assert_eq!(snapshot.observed.publish_p95_ms, 200);
+    }
+
+    #[test]
+    fn runtime_window_evaluates_terminal_failure_rates() {
+        let mut window = ProviderHealthRuntimeWindow::default();
+        for index in 0..PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION {
+            window.preview.push_back(ProviderHealthRuntimeSample {
+                elapsed_ms: 100 + index as u64,
+                outcome: if index == 0 {
+                    ProviderHealthOutcome::RuntimeFailed
+                } else {
+                    ProviderHealthOutcome::Succeeded
+                },
+            });
+            window.publish.push_back(ProviderHealthRuntimeSample {
+                elapsed_ms: 200 + index as u64,
+                outcome: if index == 0 {
+                    ProviderHealthOutcome::SanitizeFailed
+                } else {
+                    ProviderHealthOutcome::Succeeded
+                },
+            });
+        }
+        let snapshot = snapshot_from_runtime_window(&window).expect("observed snapshot");
+        assert_eq!(snapshot.observed.sanitize_failure_rate, 0.05);
+        assert_eq!(snapshot.observed.runtime_error_rate, 0.025);
+        assert_eq!(snapshot.state, ProviderHealthState::Unavailable);
     }
 }
