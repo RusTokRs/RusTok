@@ -29,6 +29,7 @@ const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const MINIMUM_SAMPLES_PER_OPERATION = 20;
 const COUNT_EPSILON = 1e-6;
+const ACCEPTANCE_CLOCK_SKEW_MS = 5_000;
 const THRESHOLDS = {
   preview_p95_ms: 1500,
   publish_p95_ms: 3000,
@@ -272,15 +273,23 @@ function requireEvaluation(evaluation, contract, evaluatorContract, head) {
   }
   if (!Array.isArray(evaluation.targets) || evaluation.targets.length !== expectedTargets) fail("evaluation retained target set is incomplete");
   const targetIds = new Set();
+  let maximumFreshnessAge = 0;
   for (const target of evaluation.targets) {
     if (!target || typeof target !== "object") fail("evaluation target entry is invalid");
     if (typeof target.target_id !== "string" || target.target_id.length === 0 || target.target_id.length > 256) fail("evaluation target id is invalid");
     if (targetIds.has(target.target_id)) fail("evaluation target ids are duplicated");
     targetIds.add(target.target_id);
     if (target.current_source_commit_verified !== true || target.unexpected_source_in_window !== false) fail(`target ${target.target_id} source admission is incomplete`);
-    finiteNumber(target.preview_freshness_age_seconds, `${target.target_id} preview freshness age`, 0, freshnessWindow);
-    finiteNumber(target.publish_freshness_age_seconds, `${target.target_id} publish freshness age`, 0, freshnessWindow);
+    const previewFreshnessAge = finiteNumber(target.preview_freshness_age_seconds, `${target.target_id} preview freshness age`, 0, freshnessWindow);
+    const publishFreshnessAge = finiteNumber(target.publish_freshness_age_seconds, `${target.target_id} publish freshness age`, 0, freshnessWindow);
+    maximumFreshnessAge = Math.max(maximumFreshnessAge, previewFreshnessAge, publishFreshnessAge);
   }
+  const remainingFreshnessSeconds = freshnessWindow - maximumFreshnessAge;
+  if (!Number.isFinite(remainingFreshnessSeconds) || remainingFreshnessSeconds < 0) {
+    fail("evaluation retained freshness age exceeds the admitted freshness window");
+  }
+  const healthValidUntilMs = Math.floor(evaluatedAtMs + remainingFreshnessSeconds * 1000);
+  const healthValidUntil = new Date(healthValidUntilMs).toISOString();
 
   const previewSamples = finiteNumber(evaluation.samples?.preview, "preview samples", MINIMUM_SAMPLES_PER_OPERATION);
   const publishSamples = finiteNumber(evaluation.samples?.publish, "publish samples", MINIMUM_SAMPLES_PER_OPERATION);
@@ -329,6 +338,9 @@ function requireEvaluation(evaluation, contract, evaluatorContract, head) {
     queryWindow,
     freshnessWindow,
     identityAge,
+    maximumFreshnessAge,
+    healthValidUntilMs,
+    healthValidUntil,
     previewSamples,
     publishSamples,
     observed,
@@ -380,6 +392,7 @@ function main() {
   if (
     contract.owner_decision?.owner_id_pattern !== OWNER_ID_PATTERN_SOURCE ||
     contract.owner_decision?.accepted_rollback_action !== ROLLBACK_ACTION ||
+    contract.owner_decision?.acceptance_clock_skew_tolerance_seconds !== ACCEPTANCE_CLOCK_SKEW_MS / 1000 ||
     !contract.owner_decision?.decisions?.includes(ACCEPT_DECISION) ||
     !contract.owner_decision?.decisions?.includes(REJECT_DECISION) ||
     contract.output?.format !== "pages_builder_provider_health_owner_acceptance_v1" ||
@@ -406,10 +419,14 @@ function main() {
   rmSync(output, { force: true });
 
   const accepted = decision === ACCEPT_DECISION;
+  const decidedAt = new Date();
+  if (accepted && decidedAt.getTime() > admitted.healthValidUntilMs + ACCEPTANCE_CLOCK_SKEW_MS) {
+    fail("accepted decision is outside the retained health freshness deadline");
+  }
   writeAtomic(output, {
     format: contract.output.format,
     status: accepted ? contract.output.accepted_status : contract.output.rejected_status,
-    decided_at: new Date().toISOString(),
+    decided_at: decidedAt.toISOString(),
     decision: {
       value: decision,
       owner_id: ownerId,
@@ -432,6 +449,8 @@ function main() {
       format: evaluation.format,
       status: evaluation.status,
       evaluated_at: evaluation.evaluated_at,
+      max_target_operation_freshness_age_seconds: admitted.maximumFreshnessAge,
+      health_valid_until: admitted.healthValidUntil,
       evaluation_sha256: sha256(evaluationBytes),
       raw_evaluation_path_persisted: false,
       source_hashes_verified_against_checkout: true,

@@ -30,6 +30,7 @@ entry_type = "PagesModule"
 [provides.graphql]
 query = "graphql::PagesQuery"
 mutation = "graphql::PagesMutation"
+runtime_data_factory = "graphql::attach_schema_data"
 
 [provides.http]
 axum_router = "http::axum_router"
