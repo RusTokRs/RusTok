@@ -9,6 +9,7 @@ pub mod orders;
 mod payments_legacy;
 #[path = "payments_owner_reads.rs"]
 pub mod payments;
+pub mod post_order_commands;
 pub mod post_order_reads;
 pub mod products;
 pub mod returns;
@@ -192,7 +193,7 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
         .route(
             "/orders/{id}/returns",
-            axum::routing::post(returns::create_order_return),
+            axum::routing::post(post_order_commands::create_order_return),
         )
         .route(
             "/orders/{id}/returns/decision",
@@ -200,7 +201,7 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
         .route(
             "/orders/{id}/changes",
-            axum::routing::post(changes::create_order_change),
+            axum::routing::post(post_order_commands::create_order_change),
         )
         .route(
             "/order-changes",
@@ -216,7 +217,7 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
         .route(
             "/order-changes/{id}/cancel",
-            axum::routing::post(changes::cancel_order_change),
+            axum::routing::post(post_order_commands::cancel_order_change),
         )
         .route(
             "/returns",
@@ -232,7 +233,7 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
         .route(
             "/returns/{id}/cancel",
-            axum::routing::post(returns::cancel_order_return),
+            axum::routing::post(post_order_commands::cancel_order_return),
         )
         .route(
             "/payment-collections",
