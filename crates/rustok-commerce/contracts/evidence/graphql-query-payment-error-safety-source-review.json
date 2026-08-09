@@ -1,12 +1,15 @@
 {
-  "schema_version": 1,
-  "status": "commerce_graphql_query_payment_error_safety_source_reviewed_unvalidated",
+  "schema_version": 2,
+  "status": "commerce_graphql_payment_read_owner_ports_source_reviewed_unvalidated",
   "reviewed_scope": [
     "crates/rustok-commerce/src/graphql/query.rs",
     "crates/rustok-commerce/src/graphql/safe_query/source.rs",
     "crates/rustok-commerce/src/graphql/safe_query/source/rustok_payment_shim.rs",
-    "crates/rustok-payment/src/services/payment.rs",
-    "crates/rustok-payment/src/error.rs",
+    "crates/rustok-commerce/src/graphql_runtime.rs",
+    "crates/rustok-commerce/src/graphql_runtime/payment_reads.rs",
+    "crates/rustok-payment/src/admin_read.rs",
+    "crates/rustok-payment/src/order_read.rs",
+    "crates/rustok-payment/src/cart_read.rs",
     "scripts/verify/verify-commerce-graphql-query-payment-error-safety.mjs",
     "crates/rustok-commerce/docs/graphql-query-payment-error-safety.md"
   ],
@@ -15,7 +18,15 @@
     "payment_owner_service_preserved": true,
     "payment_owner_read_methods_preserved": true,
     "payment_success_dtos_preserved": true,
-    "typed_payment_error_retained_to_transport": true,
+    "graphql_concrete_payment_service_removed": true,
+    "payment_admin_read_port_reused": true,
+    "payment_order_read_port_reused": true,
+    "payment_cart_read_port_added": true,
+    "graphql_payment_runtime_scoped": true,
+    "host_shared_owner_runtimes_preferred": true,
+    "embedded_in_process_owner_fallback_retained": true,
+    "trusted_actor_channel_locale_propagated": true,
+    "typed_port_error_retained_to_transport": true,
     "payment_collection_not_found_branch_preserved": true,
     "refund_not_found_branch_preserved": true,
     "owner_error_display_used_for_public_response": false,
@@ -37,8 +48,9 @@
     "diagnostic_debug_redacted": true,
     "technical_error_severity_preserved": true,
     "ordinary_rejection_warning_severity_preserved": true,
+    "admin_read_raw_owner_debug_removed": true,
     "graphql_fields_or_dtos_changed": false,
-    "payment_owner_contract_changed": false,
+    "payment_owner_contract_changed": true,
     "commerce_ffa_status_changed": false,
     "commerce_fba_status_changed": false,
     "payment_ffa_status_changed": false,
@@ -55,8 +67,9 @@
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
-    "runtime_proven": false
+    "runtime_proven": false,
+    "remote_adapter_proven": false
   },
   "execution": [],
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, or CI were executed."
+  "validation_disclosure": "Source/GitHub inspection only. No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, CI, runtime calls, or remote-adapter execution were performed."
 }

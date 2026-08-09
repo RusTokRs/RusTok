@@ -16,20 +16,23 @@ const paths = {
   safeSource: 'crates/rustok-commerce/src/graphql/safe_query/source.rs',
   paymentShim:
     'crates/rustok-commerce/src/graphql/safe_query/source/rustok_payment_shim.rs',
+  graphqlRuntime: 'crates/rustok-commerce/src/graphql_runtime.rs',
+  paymentRuntime: 'crates/rustok-commerce/src/graphql_runtime/payment_reads.rs',
+  paymentLib: 'crates/rustok-payment/src/lib.rs',
+  adminRead: 'crates/rustok-payment/src/admin_read.rs',
+  orderRead: 'crates/rustok-payment/src/order_read.rs',
+  cartRead: 'crates/rustok-payment/src/cart_read.rs',
   ownerService: 'crates/rustok-payment/src/services/payment.rs',
-  ownerError: 'crates/rustok-payment/src/error.rs',
+  plan: 'crates/rustok-commerce/docs/implementation-plan.md',
   evidence:
     'crates/rustok-commerce/contracts/evidence/graphql-query-payment-error-safety-source-review.json',
   document: 'crates/rustok-commerce/docs/graphql-query-payment-error-safety.md',
 };
 
-const query = read(paths.query);
-const safeSource = read(paths.safeSource);
-const paymentShim = read(paths.paymentShim);
-const ownerService = read(paths.ownerService);
-const ownerError = read(paths.ownerError);
-const evidence = JSON.parse(read(paths.evidence));
-const document = read(paths.document);
+const sources = Object.fromEntries(
+  Object.entries(paths).map(([key, relativePath]) => [key, read(relativePath)]),
+);
+const evidence = JSON.parse(sources.evidence);
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -38,16 +41,6 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 const countText = (source, value) => source.split(value).length - 1;
-
-function blockBetween(source, start, end, label) {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex + start.length);
-  if (startIndex < 0 || endIndex < 0) {
-    failures.push(`${label}: unable to isolate source block`);
-    return '';
-  }
-  return source.slice(startIndex, endIndex);
-}
 
 for (const marker of [
   'use rustok_payment::PaymentService;',
@@ -59,7 +52,7 @@ for (const marker of [
   '.list_refunds(',
   'Err(rustok_payment::error::PaymentError::PaymentCollectionNotFound(_))',
   'Err(rustok_payment::error::PaymentError::RefundNotFound(_))',
-]) requireText(query, marker, `${paths.query}: unchanged payment query contract`);
+]) requireText(sources.query, marker, `${paths.query}: unchanged payment query contract`);
 
 for (const [marker, expected] of [
   ['PaymentService::new(db.clone())', 7],
@@ -70,7 +63,7 @@ for (const [marker, expected] of [
   ['.get_refund(', 1],
   ['.list_refunds(', 2],
 ]) {
-  const actual = countText(query, marker);
+  const actual = countText(sources.query, marker);
   if (actual !== expected) {
     failures.push(`${paths.query}: expected ${expected} occurrences of ${marker}, found ${actual}`);
   }
@@ -81,97 +74,128 @@ for (const marker of [
   'mod rustok_payment_shim;',
   'use self::rustok_payment_shim as rustok_payment;',
   'include!("../query.rs");',
-]) requireText(safeSource, marker, `${paths.safeSource}: mounted Payment facade`);
+]) requireText(sources.safeSource, marker, `${paths.safeSource}: mounted Payment facade`);
 
 for (const marker of [
-  'inner: ::rustok_payment::PaymentService',
-  'inner: ::rustok_payment::PaymentService::new(db)',
-  'pub(crate) async fn find_reusable_collection_by_cart(',
-  '.find_reusable_collection_by_cart(tenant_id, cart_id)',
-  'pub(crate) async fn find_latest_collection_by_order(',
-  '.find_latest_collection_by_order(tenant_id, order_id)',
-  'pub(crate) async fn get_collection(',
-  '.get_collection(tenant_id, collection_id)',
-  'pub(crate) async fn list_collections(',
-  '.list_collections(tenant_id, input)',
-  'pub(crate) async fn get_refund(',
-  '.get_refund(tenant_id, refund_id)',
-  'pub(crate) async fn list_refunds(',
-  '.list_refunds(tenant_id, input)',
-]) requireText(paymentShim, marker, `${paths.paymentShim}: canonical owner delegation`);
-
-for (const marker of [
+  'PaymentAdminReadPort',
+  'PaymentOrderReadPort',
+  'PaymentCartReadPort',
+  'payment_read_runtime_for_current_graphql_scope',
+  'payment_read_call_context_for_current_graphql_scope',
+  'PortContext::new(',
+  '.with_deadline(std::time::Duration::from_secs(2))',
+  'context.with_channel(channel)',
+  'ReusablePaymentCollectionByCartRequest { cart_id }',
+  'LatestPaymentCollectionByOrderRequest { order_id }',
+  'ReadPaymentCollectionProjectionRequest { collection_id }',
+  'ListPaymentCollectionProjectionsRequest {',
+  'ReadRefundProjectionRequest { refund_id }',
+  'ListRefundProjectionsRequest {',
   'pub(crate) enum PaymentError {',
   'PaymentCollectionNotFound(PaymentQueryError)',
   'RefundNotFound(PaymentQueryError)',
   'Other(PaymentQueryError)',
-  'OwnerPaymentError::PaymentCollectionNotFound(_)',
-  'OwnerPaymentError::RefundNotFound(_)',
+  'PaymentError::from_owner_port',
   'pub(crate) fn to_string(self) -> BoundaryError',
-  'error.into_boundary()',
-]) requireText(paymentShim, marker, `${paths.paymentShim}: typed compatibility conversion`);
-
-const mapper = blockBetween(
-  paymentShim,
-  'fn into_boundary(self) -> BoundaryError {',
-  'pub(crate) mod error {',
-  'typed Payment GraphQL mapper',
-);
-
-for (const [variant, message, code] of [
-  ['OwnerPaymentError::Validation(_)', 'Payment query is invalid', 'PAYMENT_REQUEST_INVALID'],
-  ['OwnerPaymentError::PaymentCollectionNotFound(_)', 'Payment resource was not found', 'PAYMENT_RESOURCE_NOT_FOUND'],
-  ['OwnerPaymentError::InvalidTransition { .. }', 'Payment state conflicts with this query', 'PAYMENT_STATE_CONFLICT'],
-  ['OwnerPaymentError::ProviderUnavailable { .. }', 'Payment data is temporarily unavailable', 'PAYMENT_TEMPORARILY_UNAVAILABLE'],
-  ['OwnerPaymentError::ProviderInvalidResponse { .. }', 'Payment state requires reconciliation', 'PAYMENT_RECONCILIATION_REQUIRED'],
-  ['OwnerPaymentError::ProviderConfiguration { .. }', 'Payment provider configuration is invalid', 'PAYMENT_CONFIGURATION_ERROR'],
-]) {
-  for (const marker of [variant, `"${message}"`, `"${code}"`]) {
-    requireText(mapper, marker, `${paths.paymentShim}: ${code} transport policy`);
-  }
-}
-
-for (const marker of [
-  'owner_detail(&self.error)',
+  'fn is_configuration_error(error: &OwnerPortError)',
+  '"payment.admin_read_configuration"',
+  '"payment.order_read_configuration"',
+  '"payment.cart_read_configuration"',
+  'PAYMENT_REQUEST_INVALID',
+  'PAYMENT_RESOURCE_NOT_FOUND',
+  'PAYMENT_STATE_CONFLICT',
+  'PAYMENT_TEMPORARILY_UNAVAILABLE',
+  'PAYMENT_RECONCILIATION_REQUIRED',
+  'PAYMENT_CONFIGURATION_ERROR',
   'error = ?diagnostic_error',
-  'owner = "rustok_payment"',
-  'owner_operation = self.operation',
-  'correlation_id',
-  'tenant_id = %self.tenant_id',
-  'resource_kind',
-  'resource_id_shape',
-  'owner_detail_shape',
   'owner_detail_length',
-  'public_code = code',
-  'boundary = GRAPHQL_QUERY_PAYMENT_BOUNDARY',
-  'tracing::error!(',
-  'tracing::warn!(',
   'BoundaryError::Public {',
-]) requireText(mapper, marker, `${paths.paymentShim}: bounded Payment diagnostics`);
+]) requireText(sources.paymentShim, marker, `${paths.paymentShim}: owner-port facade`);
 
 for (const forbidden of [
+  '::rustok_payment::PaymentService',
+  'inner: ::rustok_payment::PaymentService',
   'error = ?self.error',
   'error = %self.error',
-  'owner_error = ?self.error',
-  'owner_error = %self.error',
   'message = %self.error',
+  'self.error.message',
   'self.error.to_string()',
-  'format!("{}", self.error)',
-  'format!("{:?}", self.error)',
+  'owner_code =',
   'provider_id =',
   'provider_operation =',
   'validation_message =',
-]) forbidText(mapper, forbidden, `${paths.paymentShim}: raw Payment owner payload`);
+]) forbidText(sources.paymentShim, forbidden, `${paths.paymentShim}: concrete/raw Payment payload`);
 
 for (const marker of [
-  'fn owner_detail(error: &OwnerPaymentError)',
-  'OwnerPaymentError::Database(_) => ("database_redacted", 0)',
-  '"provider_operation_values"',
-  'provider_id.chars()',
-  'operation.chars().count()',
-  'from.chars().count().saturating_add(to.chars().count())',
-  'fn uuid_shape(value: &Uuid)',
-]) requireText(paymentShim, marker, `${paths.paymentShim}: bounded owner detail projection`);
+  'pub struct CommercePaymentReadRuntime',
+  'admin_reads: PaymentAdminReadRuntime',
+  'order_reads: PaymentOrderReadRuntime',
+  'cart_reads: PaymentCartReadRuntime',
+  'pub fn admin_read_port(&self)',
+  'pub fn order_read_port(&self)',
+  'pub fn cart_read_port(&self)',
+  'CURRENT_COMMERCE_PAYMENT_READ_RUNTIME',
+  'CURRENT_COMMERCE_PAYMENT_READ_CALL_CONTEXT',
+  'scope_current_payment_reads',
+  'ctx.data_opt::<AuthContext>()',
+  'ctx.data_opt::<RequestContext>()',
+  'PortActor::service("rustok-commerce.graphql-payment-query")',
+]) requireText(sources.paymentRuntime, marker, `${paths.paymentRuntime}: scoped Payment runtime`);
+
+for (const marker of [
+  'mod payment_reads;',
+  'pub use payment_reads::CommercePaymentReadRuntime;',
+  'payment_reads::scope_current_payment_reads(',
+  'payment_read_runtime: CommercePaymentReadRuntime',
+  'pub fn payment_read_runtime(&self) -> CommercePaymentReadRuntime',
+  '.shared_get::<CommercePaymentReadRuntime>()',
+  '.shared_get::<rustok_payment::PaymentAdminReadRuntime>()',
+  '.shared_get::<rustok_payment::PaymentOrderReadRuntime>()',
+  '.shared_get::<rustok_payment::PaymentCartReadRuntime>()',
+  'PaymentAdminReadRuntime::in_process(inputs.db_clone())',
+  'PaymentOrderReadRuntime::in_process(inputs.db_clone())',
+  'PaymentCartReadRuntime::in_process(inputs.db_clone())',
+  'pub(crate) fn payment_read_call_context_for_current_graphql_scope(',
+  '-> (PortActor, Option<String>, Option<String>)',
+]) requireText(sources.graphqlRuntime, marker, `${paths.graphqlRuntime}: host/runtime bridge`);
+
+for (const marker of [
+  'mod cart_read;',
+  'PaymentCartReadPort',
+  'PaymentCartReadRuntime',
+  'ReusablePaymentCollectionByCartRequest',
+  'in_process_payment_cart_read_port',
+]) requireText(sources.paymentLib, marker, `${paths.paymentLib}: cart read exports`);
+
+for (const marker of [
+  'pub trait PaymentCartReadPort',
+  'pub struct PaymentCartReadRuntime',
+  'context.require_policy(PortCallPolicy::read())',
+  '.find_reusable_collection_by_cart(tenant_id, request.cart_id)',
+  '"payment.cart_read_configuration"',
+  '"payment.cart_read_unavailable"',
+  'error_variant',
+  'cart_id_non_nil',
+]) requireText(sources.cartRead, marker, `${paths.cartRead}: Payment cart owner read`);
+for (const forbidden of ['error = ?error', 'error = %error']) {
+  forbidText(sources.cartRead, forbidden, `${paths.cartRead}: raw owner error`);
+}
+
+for (const marker of [
+  'pub trait PaymentAdminReadPort',
+  'context.require_policy(PortCallPolicy::read())',
+  '"payment.admin_read_configuration"',
+  '"payment.admin_read_unavailable"',
+]) requireText(sources.adminRead, marker, `${paths.adminRead}: Payment admin owner read`);
+forbidText(sources.adminRead, 'error = ?error', `${paths.adminRead}: raw owner debug`);
+forbidText(sources.adminRead, 'error = %error', `${paths.adminRead}: raw owner display`);
+
+for (const marker of [
+  'pub trait PaymentOrderReadPort',
+  '.find_latest_collection_by_order(tenant_id, request.order_id)',
+  '"payment.order_read_configuration"',
+  '"payment.order_read_unavailable"',
+]) requireText(sources.orderRead, marker, `${paths.orderRead}: Payment order owner read`);
 
 for (const marker of [
   'pub struct PaymentService',
@@ -181,34 +205,22 @@ for (const marker of [
   'pub async fn list_collections(',
   'pub async fn get_refund(',
   'pub async fn list_refunds(',
-  'PaymentResult<Option<PaymentCollectionResponse>>',
-  'PaymentResult<PaymentCollectionResponse>',
-  'PaymentResult<(Vec<PaymentCollectionResponse>, u64)>',
-  'PaymentResult<RefundResponse>',
-  'PaymentResult<(Vec<RefundResponse>, u64)>',
-]) requireText(ownerService, marker, `${paths.ownerService}: preserved owner contract`);
+]) requireText(sources.ownerService, marker, `${paths.ownerService}: preserved owner service methods`);
 
-for (const marker of [
-  'pub enum PaymentError',
-  'Validation(String)',
-  'PaymentCollectionNotFound(Uuid)',
-  'PaymentNotFound(Uuid)',
-  'RefundNotFound(Uuid)',
-  'InvalidTransition { from: String, to: String }',
-  'ProviderUnavailable {',
-  'ProviderRejected {',
-  'ProviderInvalidResponse {',
-  'ProviderOutcomeUnknown {',
-  'ProviderConfiguration { provider_id: String }',
-  'Database(#[from] DbErr)',
-]) requireText(ownerError, marker, `${paths.ownerError}: exhaustive owner variants`);
-
-for (const [key, expected] of Object.entries({
+const expectedSourceContract = {
   query_resolver_source_changed: false,
   payment_owner_service_preserved: true,
   payment_owner_read_methods_preserved: true,
   payment_success_dtos_preserved: true,
-  typed_payment_error_retained_to_transport: true,
+  graphql_concrete_payment_service_removed: true,
+  payment_admin_read_port_reused: true,
+  payment_order_read_port_reused: true,
+  payment_cart_read_port_added: true,
+  graphql_payment_runtime_scoped: true,
+  host_shared_owner_runtimes_preferred: true,
+  embedded_in_process_owner_fallback_retained: true,
+  trusted_actor_channel_locale_propagated: true,
+  typed_port_error_retained_to_transport: true,
   payment_collection_not_found_branch_preserved: true,
   refund_not_found_branch_preserved: true,
   owner_error_display_used_for_public_response: false,
@@ -224,15 +236,17 @@ for (const [key, expected] of Object.entries({
   diagnostic_debug_redacted: true,
   technical_error_severity_preserved: true,
   ordinary_rejection_warning_severity_preserved: true,
+  admin_read_raw_owner_debug_removed: true,
   graphql_fields_or_dtos_changed: false,
-  payment_owner_contract_changed: false,
+  payment_owner_contract_changed: true,
   commerce_ffa_status_changed: false,
   commerce_fba_status_changed: false,
   payment_ffa_status_changed: false,
   payment_fba_status_changed: false,
   broad_ecommerce_cleanup_closed: false,
   runtime_evidence_claimed: false,
-})) {
+};
+for (const [key, expected] of Object.entries(expectedSourceContract)) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
   }
@@ -261,6 +275,7 @@ for (const key of [
   'ci_run',
   'compile_proven',
   'runtime_proven',
+  'remote_adapter_proven',
 ]) {
   if (evidence.validation?.[key] !== false) {
     failures.push(`${paths.evidence}: validation.${key} must remain false`);
@@ -271,29 +286,33 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 }
 
 for (const marker of [
-  '# Commerce GraphQL payment query error safety',
+  '# Commerce GraphQL payment query owner-port and error safety',
   'Status: `source_closed_unvalidated`',
-  'The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged.',
-  '`find_reusable_collection_by_cart`',
-  '`find_latest_collection_by_order`',
-  '`get_collection`',
-  '`list_collections`',
-  '`get_refund`',
-  '`list_refunds`',
-  'It does not format the Payment owner error into a public string.',
+  '`PaymentCartReadPort` / `PaymentCartReadRuntime` are the only new Payment owner API',
+  '`CommercePaymentReadRuntime`',
   '`PAYMENT_TEMPORARILY_UNAVAILABLE`',
   '`PAYMENT_RECONCILIATION_REQUIRED`',
-  'Commerce and Payment FFA/FBA status is unchanged.',
-  'The broad ecommerce mapper and public-envelope cleanup remains open.',
-  'No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, or CI were executed.',
-]) requireText(document, marker, `${paths.document}: truthful source contract`);
+  'The broad Commerce topology P0 remains open',
+  'No compile, runtime, mounted GraphQL, remote-adapter, or parity evidence is claimed.',
+]) requireText(sources.document, marker, `${paths.document}: truthful source contract`);
+
+requireText(
+  sources.plan,
+  '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,',
+  `${paths.plan}: broad topology remains open`,
+);
+requireText(
+  sources.plan,
+  'Payment, and Fulfillment concrete services behind host-composed owner ports.',
+  `${paths.plan}: broad topology continuation`,
+);
 
 if (failures.length > 0) {
-  console.error('Commerce GraphQL payment error-safety verification failed:');
+  console.error('Commerce GraphQL payment owner-read verification failed:');
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  'Commerce GraphQL payment reads preserve canonical owner calls and route typed failures through bounded structural envelopes',
+  'Commerce GraphQL Payment reads are source-routed through typed owner ports with bounded envelopes',
 );
