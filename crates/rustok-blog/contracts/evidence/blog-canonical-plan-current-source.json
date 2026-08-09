@@ -9,8 +9,8 @@
   "canonical_current_cursor": "crates/rustok-blog/docs/implementation-plan-current.md",
   "actualization_slice": "crates/rustok-blog/docs/implementation-plan-slice-101.md",
   "historical_baseline_last_embedded_slice": 67,
-  "latest_behavior_slice": 102,
-  "current_recorded_slice": 102,
+  "latest_behavior_slice": 103,
+  "current_recorded_slice": 103,
   "source_tracks": {
     "remote_comments_transport": {
       "status": "source_implemented_maintainer_execution_pending",
@@ -50,15 +50,28 @@
       "database_side_pagination_claimed": false,
       "must_not_reopen_as_source_gap": true
     },
-    "tag_mutation_projection_consistency": {
-      "status": "re_audit_required",
-      "must_define_canonical_search_visible_tag_source": true,
-      "must_define_atomic_reindex_ownership_before_mutation_change": true
+    "tag_canonical_projection": {
+      "status": "source_ready_maintainer_execution_pending",
+      "slice": "crates/rustok-blog/docs/implementation-plan-slice-103.md",
+      "evidence": "crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json",
+      "attachment_source": "blog_post_tags",
+      "dictionary_source": "rustok-taxonomy",
+      "metadata_tags_are_canonical": false,
+      "legacy_data_audit_pending": true,
+      "must_not_reopen_as_source_gap": true
+    },
+    "tag_mutation_atomic_reindex": {
+      "status": "next_source_gap",
+      "canonical_source_defined": true,
+      "taxonomy_supplied_transaction_api_required": true,
+      "blog_scope_reindex_same_transaction_required": true,
+      "manual_predelete_relation_cleanup_must_be_removed": true
     }
   },
   "planning_result": {
-    "independent_production_source_gap_identified": false,
-    "future_autonomous_source_work_requires_fresh_audit": true,
+    "independent_production_source_gap_identified": true,
+    "next_source_gap": "tag_mutation_atomic_reindex",
+    "future_autonomous_source_work_requires_fresh_audit": false,
     "historical_stale_phrases_are_live_instructions": false,
     "production_behavior_changed_since_slice_101": true,
     "ffa_or_fba_promoted": false
@@ -70,6 +83,9 @@
     "no_compile_result",
     "no_database_side_tag_pagination_result",
     "no_postgresql_result",
+    "no_legacy_data_audit_result",
+    "no_legacy_backfill_result",
+    "no_tag_mutation_atomic_reindex_result",
     "no_redis_result",
     "no_tcp_runtime_result",
     "no_browser_result",
