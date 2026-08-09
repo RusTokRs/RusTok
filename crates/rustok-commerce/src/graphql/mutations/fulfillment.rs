@@ -1,16 +1,21 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext,
+    AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     graphql::{GraphQLError, require_module_enabled},
 };
-use rustok_order::{OrderError, OrderService};
+use rustok_order::{
+    CancelOrderRequest as OwnerCancelOrderRequest,
+    DeliverOrderRequest as OwnerDeliverOrderRequest,
+    MarkOrderPaidRequest as OwnerMarkOrderPaidRequest, OrderError, OrderService,
+    ShipOrderRequest as OwnerShipOrderRequest,
+};
 use rustok_payment::error::PaymentError;
 use uuid::Uuid;
 
 use crate::graphql_runtime::{
-    order_change_orchestration_from_context, post_order_orchestration_from_context,
-    return_completion_orchestration_from_context,
+    order_admin_command_runtime_from_context, order_change_orchestration_from_context,
+    post_order_orchestration_from_context, return_completion_orchestration_from_context,
 };
 use crate::{PaymentOrchestrationError, PostOrderOrchestrationError};
 
@@ -52,6 +57,49 @@ fn order_error_envelope(error: &OrderError) -> (&'static str, &'static str, bool
             "Order operation could not be completed safely",
             "ORDER_OPERATION_FAILED",
             false,
+        ),
+    }
+}
+
+fn order_port_error_envelope(
+    error: &PortError,
+) -> (&'static str, &'static str, bool, &'static str) {
+    match &error.kind {
+        PortErrorKind::Validation => (
+            "Order request is invalid",
+            "ORDER_REQUEST_INVALID",
+            false,
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            "Order resource was not found",
+            "ORDER_RESOURCE_NOT_FOUND",
+            false,
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            "Order operation conflicts with the current state",
+            "ORDER_STATE_CONFLICT",
+            false,
+            "state_conflict",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            "Order service is temporarily unavailable",
+            "ORDER_TEMPORARILY_UNAVAILABLE",
+            true,
+            "temporarily_unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            "Order operation could not be completed safely",
+            "ORDER_OPERATION_FAILED",
+            false,
+            "invariant_violation",
+        ),
+        PortErrorKind::Forbidden => (
+            "Order request is invalid",
+            "ORDER_REQUEST_INVALID",
+            false,
+            "forbidden",
         ),
     }
 }
@@ -125,6 +173,31 @@ fn order_mutation_graphql_error(
     public_fulfillment_graphql_error(message, code, retryable)
 }
 
+fn order_owner_graphql_error(
+    tenant_id: Uuid,
+    resource_id: Uuid,
+    operation: &'static str,
+    context: &PortContext,
+    error: PortError,
+) -> async_graphql::Error {
+    let (message, code, retryable, error_kind) = order_port_error_envelope(&error);
+    tracing::error!(
+        owner = "rustok_order.admin_command",
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        resource_id_non_nil = !resource_id.is_nil(),
+        operation,
+        correlation_id = %context.correlation_id,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        error_kind,
+        public_code = code,
+        retryable,
+        boundary = "commerce_graphql_order_command",
+        "commerce GraphQL order owner command failed"
+    );
+    public_fulfillment_graphql_error(message, code, retryable)
+}
+
 fn post_order_graphql_error(
     tenant_id: Uuid,
     resource_id: Uuid,
@@ -152,6 +225,32 @@ fn post_order_graphql_error(
         ),
     };
     public_fulfillment_graphql_error(message, code, retryable)
+}
+
+fn order_command_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    order_id: Uuid,
+    operation: &'static str,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-graphql-order-command:{operation}:{order_id}"),
+    )
+    .with_idempotency_key(format!("graphql-order:{order_id}:{operation}"))
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
 }
 
 #[derive(Default)]
@@ -209,15 +308,28 @@ impl CommerceFulfillmentMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let order = OrderService::new(db.clone(), event_bus.clone())
+        let runtime = order_admin_command_runtime_from_context(ctx, db.clone(), event_bus.clone());
+        let context = order_command_context(ctx, tenant_id, id, "mark_paid")?;
+        let order = runtime
+            .command_port()
             .mark_paid(
-                tenant_id,
-                auth.user_id,
-                id,
-                input.payment_id,
-                input.payment_method,
+                context.clone(),
+                OwnerMarkOrderPaidRequest {
+                    order_id: id,
+                    payment_id: input.payment_id,
+                    payment_method: input.payment_method,
+                },
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                order_owner_graphql_error(
+                    tenant_id,
+                    id,
+                    "mark_order_paid",
+                    &context,
+                    error,
+                )
+            })?;
 
         Ok(order.into())
     }
@@ -241,15 +353,22 @@ impl CommerceFulfillmentMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let order = OrderService::new(db.clone(), event_bus.clone())
-            .ship_order(
-                tenant_id,
-                auth.user_id,
-                id,
-                input.tracking_number,
-                input.carrier,
+        let runtime = order_admin_command_runtime_from_context(ctx, db.clone(), event_bus.clone());
+        let context = order_command_context(ctx, tenant_id, id, "ship")?;
+        let order = runtime
+            .command_port()
+            .ship(
+                context.clone(),
+                OwnerShipOrderRequest {
+                    order_id: id,
+                    tracking_number: input.tracking_number,
+                    carrier: input.carrier,
+                },
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                order_owner_graphql_error(tenant_id, id, "ship_order", &context, error)
+            })?;
 
         Ok(order.into())
     }
@@ -273,9 +392,21 @@ impl CommerceFulfillmentMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let order = OrderService::new(db.clone(), event_bus.clone())
-            .deliver_order(tenant_id, auth.user_id, id, input.delivered_signature)
-            .await?;
+        let runtime = order_admin_command_runtime_from_context(ctx, db.clone(), event_bus.clone());
+        let context = order_command_context(ctx, tenant_id, id, "deliver")?;
+        let order = runtime
+            .command_port()
+            .deliver(
+                context.clone(),
+                OwnerDeliverOrderRequest {
+                    order_id: id,
+                    delivered_signature: input.delivered_signature,
+                },
+            )
+            .await
+            .map_err(|error| {
+                order_owner_graphql_error(tenant_id, id, "deliver_order", &context, error)
+            })?;
 
         Ok(order.into())
     }
@@ -299,9 +430,21 @@ impl CommerceFulfillmentMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let order = OrderService::new(db.clone(), event_bus.clone())
-            .cancel_order(tenant_id, auth.user_id, id, input.reason)
-            .await?;
+        let runtime = order_admin_command_runtime_from_context(ctx, db.clone(), event_bus.clone());
+        let context = order_command_context(ctx, tenant_id, id, "cancel")?;
+        let order = runtime
+            .command_port()
+            .cancel(
+                context.clone(),
+                OwnerCancelOrderRequest {
+                    order_id: id,
+                    reason: input.reason,
+                },
+            )
+            .await
+            .map_err(|error| {
+                order_owner_graphql_error(tenant_id, id, "cancel_order", &context, error)
+            })?;
 
         Ok(order.into())
     }

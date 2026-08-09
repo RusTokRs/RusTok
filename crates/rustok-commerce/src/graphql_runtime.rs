@@ -11,7 +11,7 @@ use rustok_fulfillment::{
     in_process_fulfillment_read_port, in_process_shipping_option_admin_read_port,
     in_process_shipping_option_read_port,
 };
-use rustok_order::{OrderReadPort, in_process_order_read_port};
+use rustok_order::{OrderAdminCommandRuntime, OrderReadPort, in_process_order_read_port};
 use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogReadRuntime};
 use sea_orm::DatabaseConnection;
@@ -333,8 +333,8 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
 ///
 /// Hosts supply composed capabilities through `HostRuntimeContext`. The built-in manual provider
 /// registries remain deterministic fallbacks. Mounted Payment/Fulfillment reads and commands,
-/// shipping-option, Product catalog, and order reads consume host-selected runtime data. Directly
-/// embedded compatibility schemas retain explicit in-process owner-runtime fallbacks.
+/// shipping-option, Product catalog, and order reads/commands consume host-selected runtime data.
+/// Directly embedded compatibility schemas retain explicit in-process owner-runtime fallbacks.
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
@@ -347,6 +347,7 @@ pub struct CommerceGraphqlRuntimeData {
     shipping_option_read_runtime: CommerceShippingOptionReadRuntime,
     fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: CommerceOrderReadRuntime,
+    order_admin_command_runtime: OrderAdminCommandRuntime,
     product_catalog_read_runtime: ProductCatalogReadRuntime,
     product_catalog_command_runtime: ProductCatalogCommandRuntime,
 }
@@ -387,6 +388,10 @@ impl CommerceGraphqlRuntimeData {
 
     pub fn order_read_runtime(&self) -> CommerceOrderReadRuntime {
         self.order_read_runtime.clone()
+    }
+
+    pub fn order_admin_command_runtime(&self) -> OrderAdminCommandRuntime {
+        self.order_admin_command_runtime.clone()
     }
 
     pub fn product_catalog_read_runtime(&self) -> ProductCatalogReadRuntime {
@@ -459,6 +464,11 @@ pub fn attach_schema_data(
             .ok_or_else(|| {
                 "commerce GraphQL requires CommerceOrderReadRuntime in host composition".to_string()
             })?,
+        order_admin_command_runtime: inputs
+            .shared_get::<OrderAdminCommandRuntime>()
+            .ok_or_else(|| {
+                "commerce GraphQL requires OrderAdminCommandRuntime in host composition".to_string()
+            })?,
         product_catalog_read_runtime: inputs
             .shared_get::<ProductCatalogReadRuntime>()
             .ok_or_else(|| {
@@ -507,6 +517,16 @@ pub(crate) fn fulfillment_command_runtime_from_context(
                 .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
             CommerceFulfillmentCommandRuntime::in_process(db, provider_registry)
         })
+}
+
+pub(crate) fn order_admin_command_runtime_from_context(
+    ctx: &Context<'_>,
+    db: DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
+) -> OrderAdminCommandRuntime {
+    ctx.data_opt::<CommerceGraphqlRuntimeData>()
+        .map(CommerceGraphqlRuntimeData::order_admin_command_runtime)
+        .unwrap_or_else(|| OrderAdminCommandRuntime::in_process(db, event_bus))
 }
 
 pub(crate) fn manual_fulfillment_owner_orchestration_from_context(
