@@ -101,7 +101,7 @@ Blog reads seed an explicit empty tag vector for each requested post ID. Therefo
 
 Blog Search now requires `blog_post_tags`, `taxonomy_terms`, and `taxonomy_term_translations` and resolves attached names through document locale -> `PLATFORM_FALLBACK_LOCALE` -> canonical key. Taxonomy joins are tenant-constrained and tag aggregation remains distinct/deterministic. The retained PostgreSQL harness deliberately keeps stale metadata while expecting projection from relation/Taxonomy rows.
 
-Runtime promotion must audit deployed rows for metadata-only legacy tags. If such rows exist, backfill owner relations before rollout. Slice 103 does not claim that the audit or a backfill was executed.
+Runtime promotion must audit deployed data for metadata-only legacy rows. If such rows exist, backfill owner relations before rollout. Slice 103 does not claim that the audit or a backfill was executed.
 
 Mutation semantics intentionally remain separate:
 
@@ -117,7 +117,7 @@ The concrete retained execution results remain maintainer-owned:
 2. Execute slices 95–97 before defining terminal Blog source-row and immutable recovery-audit retention.
 3. Execute slice 98 PostgreSQL evidence before advancing the Blog category Translation readiness result.
 4. Execute slice 102 tag pagination source/unit evidence before promoting runtime validation.
-5. Execute slice 103 Blog read/Search canonical tag projection evidence and audit deployed data for metadata-only legacy tags before runtime promotion.
+5. Execute slice 103 Blog read/Search canonical tag projection evidence and audit deployed data for metadata-only legacy rows before runtime promotion.
 6. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit evidence already retained by the historical plan.
 7. Execute the Blog article richtext cutover/backfill/browser evidence already retained by the historical plan.
 
