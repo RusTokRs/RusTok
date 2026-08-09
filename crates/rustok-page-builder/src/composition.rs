@@ -4,7 +4,7 @@ use crate::rollout::{BuilderCapabilityFlags, BuilderRolloutError};
 use crate::runtime_scenario_release::{
     NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore,
 };
-use crate::runtime_telemetry::{NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeTelemetry};
+use crate::runtime_telemetry::{PageBuilderRuntimeTelemetry, ProviderHealthRuntimeTelemetry};
 use crate::service::{
     AuthorizedPageBuilderHandlers, CapabilityGuardedService, PageBuilderCapabilityAuthorizer,
     PageBuilderCapabilityPortPolicies, PageBuilderProjectStore,
@@ -13,21 +13,23 @@ use crate::service::{
 pub type FlyPageBuilderGuardedService<
     S,
     R,
-    T = NoopPageBuilderRuntimeTelemetry,
+    T = ProviderHealthRuntimeTelemetry,
     B = NoopPageBuilderScenarioBaselineStore,
 > = CapabilityGuardedService<FlyAdapterBackedPageBuilderService<S, R, T, B>>;
 
 pub type FlyPageBuilderHandlers<
     S,
     R,
-    T = NoopPageBuilderRuntimeTelemetry,
+    T = ProviderHealthRuntimeTelemetry,
     B = NoopPageBuilderScenarioBaselineStore,
 > = AuthorizedPageBuilderHandlers<FlyPageBuilderGuardedService<S, R, T, B>>;
 
 /// Compose the default current-only Page Builder server pipeline.
 ///
 /// Consumers provide tenant-scoped persistence and contextual preview rendering ports. The module
-/// owns the service, rollout/port guards and authorization order.
+/// owns the service, rollout/port guards and authorization order. The default pipeline also records
+/// bounded process-local Preview/Publish runtime observations; the health window remains
+/// `unobserved` until its minimum sample floor is satisfied and is not deployment-wide evidence.
 pub fn compose_fly_page_builder_handlers<S, R>(
     store: S,
     renderer: R,
@@ -37,7 +39,11 @@ where
     S: PageBuilderProjectStore,
     R: PageBuilderPreviewRenderingPort,
 {
-    let service = FlyAdapterBackedPageBuilderService::new(store, renderer);
+    let service = FlyAdapterBackedPageBuilderService::with_telemetry(
+        store,
+        renderer,
+        ProviderHealthRuntimeTelemetry::default(),
+    );
     compose_configured_fly_page_builder_handlers(
         service,
         flags,
@@ -49,7 +55,9 @@ where
 /// Compose the current-only Page Builder server pipeline with explicit policies and authorizer.
 ///
 /// Telemetry, scenario baselines and Fly validation policy are configured on `service` before it is
-/// passed here. Invalid rollout flags are rejected before handlers can be exposed.
+/// passed here. Invalid rollout flags are rejected before handlers can be exposed. Explicitly
+/// configured services may still supply another telemetry implementation when a host owns a
+/// different observation sink.
 pub fn compose_configured_fly_page_builder_handlers<S, R, T, B>(
     service: FlyAdapterBackedPageBuilderService<S, R, T, B>,
     flags: BuilderCapabilityFlags,
