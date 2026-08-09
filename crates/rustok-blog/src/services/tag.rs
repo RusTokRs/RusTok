@@ -24,6 +24,7 @@ use crate::error::{BlogError, BlogResult};
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 
 const BLOG_SCOPE_VALUE: &str = "blog";
+const MAX_TAGS_PER_PAGE: u64 = 100;
 
 pub struct TagService {
     db: DatabaseConnection,
@@ -163,7 +164,7 @@ impl TagService {
         let locale =
             normalize_locale(filter.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;
         let page = filter.page.max(1);
-        let per_page = filter.per_page.max(1);
+        let per_page = bounded_tag_page_size(filter.per_page);
 
         let terms = self.list_visible_terms(tenant_id).await?;
         if terms.is_empty() {
@@ -405,8 +406,7 @@ pub(crate) async fn find_post_ids_by_tag(
 
     let alias_ids = taxonomy_term_alias::Entity::find()
         .join(
-            JoinType::InnerJoin,
-            taxonomy_term_alias::Relation::Term.def(),
+            JoinType::InnerJoin, taxonomy_term_alias::Relation::Term.def(),
         )
         .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_term_alias::Column::Slug.eq(&normalized_slug))
@@ -494,6 +494,10 @@ fn global_scope_condition() -> Condition {
         .add(taxonomy_term::Column::ScopeValue.eq(""))
 }
 
+fn bounded_tag_page_size(value: u64) -> u64 {
+    value.clamp(1, MAX_TAGS_PER_PAGE)
+}
+
 fn validate_tag_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Tag name cannot be empty"));
@@ -563,5 +567,17 @@ fn to_tag_response(term: rustok_taxonomy::TaxonomyTermResponse, use_count: i32) 
         slug: term.slug,
         use_count,
         created_at: term.created_at,
+    }
+}
+
+#[cfg(test)]
+mod pagination_tests {
+    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size};
+
+    #[test]
+    fn tag_page_size_is_bounded_by_owner_service() {
+        assert_eq!(bounded_tag_page_size(0), 1);
+        assert_eq!(bounded_tag_page_size(20), 20);
+        assert_eq!(bounded_tag_page_size(MAX_TAGS_PER_PAGE + 1), MAX_TAGS_PER_PAGE);
     }
 }
