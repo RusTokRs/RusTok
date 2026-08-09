@@ -12,6 +12,8 @@ use rustok_page_builder::{
 };
 use sea_orm::DatabaseConnection;
 
+use super::runtime_data::PagesGraphqlRuntimeData;
+
 const MODULE_SLUG: &str = "pages";
 
 #[derive(Clone, Debug, PartialEq, SimpleObject)]
@@ -65,12 +67,9 @@ impl GqlPageBuilderRolloutSnapshot {
         }
     }
 
-    /// Build the transport shape for a deployment-bound provider-health snapshot.
-    ///
-    /// The live Pages query intentionally does not call this until retained deployment evaluator
-    /// evidence has been owner-accepted and bound by server-owned authority. Keeping the mapping
-    /// here makes the future transport explicit without converting source readiness into an
-    /// observed-health claim.
+    /// Add a deployment-bound provider-health snapshot that has already passed host authority and
+    /// freshness admission. The default constructor remains unobserved, so absent, invalid or stale
+    /// authority always preserves `false + None`.
     pub fn with_provider_health(mut self, health: &ProviderHealthSnapshot) -> Self {
         self.provider_health = Some(GqlPageBuilderProviderHealthSnapshot::from(health));
         self.provider_health_observed = self.provider_health.is_some();
@@ -141,10 +140,15 @@ impl PageBuilderRolloutQuery {
         let tenant = ctx.data::<TenantContext>()?;
         ensure_pages_read_authority(auth, tenant)?;
         let flags = load_rollout_flags(db, tenant).await?;
+        let snapshot = GqlPageBuilderRolloutSnapshot::new(tenant, flags);
+        let provider_health = ctx
+            .data_opt::<PagesGraphqlRuntimeData>()
+            .and_then(PagesGraphqlRuntimeData::provider_health_snapshot);
 
-        // Provider health remains deliberately unobserved. A later server-owned binding may call
-        // `with_provider_health` only after retained deployment evaluation and owner acceptance.
-        Ok(GqlPageBuilderRolloutSnapshot::new(tenant, flags))
+        Ok(match provider_health {
+            Some(health) => snapshot.with_provider_health(&health),
+            None => snapshot,
+        })
     }
 
     /// Non-mutating rollout/RBAC preflight for canonical Page Builder capability evidence.
