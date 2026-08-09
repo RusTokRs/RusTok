@@ -306,7 +306,8 @@ pub use topic_merge_read_state_reconciliation::{
     MAX_FORUM_TOPIC_MERGE_READ_STATES, ReconcileForumTopicMergeReadStatesInput,
 };
 pub use topic_merge_subscription_reconciliation::{
-    ForumTopicMergeSubscriptionReconciliationResult, ForumTopicMergeSubscriptionReconciliationService,
+    ForumTopicMergeSubscriptionReconciliationResult,
+    ForumTopicMergeSubscriptionReconciliationService,
     MAX_FORUM_TOPIC_MERGE_SUBSCRIPTION_REASON_LEN, MAX_FORUM_TOPIC_MERGE_SUBSCRIPTIONS,
     ReconcileForumTopicMergeSubscriptionsInput,
 };
