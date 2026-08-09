@@ -9,7 +9,7 @@ This directory contains the detailed technical architecture documentation for `r
 | Indexing Approach | Write Overhead | Cross-Module Filtering | Zero N+1 Queries | Consistency Model | Infrastructure Complexity |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Traditional SQL JOINs** | Low | Slow (Multi-table JOIN bottlenecks) | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
-| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
+| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | Immediate | Single DB |
 | **External Search Sync (Elasticsearch / Algolia)** | High DDL & Row Bloat | Fast | Yes | Eventual (Lag & drift risks) | Heavy JVM/Cloud cluster |
 | **`rustok-index` (JSONB + Keyset Engine)** | **Low (Transactional Outbox Inbox)** | **Ultra-Fast (Derived B-Tree / GIN Indexes)** | **Yes (Single REPEATABLE READ query)** | **Immediate (Transactional Outbox)** | **Pure Rust + PostgreSQL (Zero external dependencies)** |
 
@@ -26,7 +26,7 @@ This directory contains the detailed technical architecture documentation for `r
 
 ## Reference Documents
 
-- [Current Implementation Plan — 2026-08-08](./implementation-plan-current-2026-08-08.md)
+- [Current Implementation Plan — 2026-08-09](./implementation-plan-current-2026-08-09.md)
 - [Maintainer Unblock Handoff — 2026-08-09](./maintainer-unblock-handoff-2026-08-09.md)
 - [Historical Milestone Plan](./implementation-plan.md)
 - [Source Module Integration Contract](./module-source-integration.md)
@@ -35,6 +35,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M5 Product Locale Refresh Owner Ledger](../../rustok-product/docs/index-locale-refresh-ledger.md)
 - [M5 Product Refresh Canonical Writer](../../rustok-product/docs/index-refresh-canonical-writer.md)
 - [M5 Product Refresh Durable Relay Step](../../rustok-product/docs/index-refresh-relay-step.md)
+- [M5 Product Refresh Typed Event Family](../../rustok-product/docs/index-refresh-event-family.md)
 - [M5 Social Graph Production Mutation Route](./m5-social-graph-mutation-route.md)
 - [M5/M6 Source Replay Contract](./m5-m6-source-replay-contract.md)
 - [M6 Explicit Source Absence Watermark](./m6-explicit-source-absence-watermark.md)
