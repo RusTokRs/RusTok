@@ -13,7 +13,7 @@ impl ReplyService {
         security: SecurityContext,
         reply_ids: &[Uuid],
     ) -> ForumResult<Vec<(Uuid, Vec<String>)>> {
-        enforce_scope(&security, Resource::ForumReplies, Action::List)?;
+        enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
 
         if tenant_id.is_nil() {
             return Err(ForumError::Validation(
