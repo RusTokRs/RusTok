@@ -28,6 +28,8 @@ const updateSettingsMutation =
   "mutation RolloutPreflightUpdateSettings($moduleSlug: String!, $settings: String!) { updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings) { moduleSlug enabled settings } }";
 const capabilityPreflightQuery =
   "query RolloutCapabilityPreflight { preview: pageBuilderCapabilityPreflight(capability: PREVIEW) { capability allowed errorKind errorCode } properties: pageBuilderCapabilityPreflight(capability: PROPERTIES) { capability allowed errorKind errorCode } publish: pageBuilderCapabilityPreflight(capability: PUBLISH) { capability allowed errorKind errorCode } }";
+const rolloutSnapshotQuery =
+  "query RolloutFeaturePreflightSnapshot { pageBuilderRolloutSnapshot { providerHealthObserved providerHealth { state } } }";
 
 type FileRecord = {
   path: string;
@@ -389,6 +391,31 @@ async function graphql(
   };
 }
 
+async function assertProviderHealthUnobserved(
+  context: BrowserContext,
+  label: string,
+): Promise<Record<string, unknown>> {
+  const result = await graphql(context, rolloutSnapshotQuery, {}, label);
+  const snapshot = objectValue(
+    result.data.pageBuilderRolloutSnapshot,
+    `${label} rollout snapshot`,
+  );
+  if (
+    snapshot.providerHealthObserved !== false ||
+    snapshot.providerHealth !== null
+  ) {
+    fail(`${label} requires provider health to remain unobserved for rollout-only evidence`);
+  }
+  return {
+    status: result.status,
+    response_body_bytes: result.responseBytes,
+    response_body_sha256: result.responseSha256,
+    provider_health_observed: false,
+    provider_health_payload_present: false,
+    raw_request_or_response_persisted: false,
+  };
+}
+
 async function loadPagesModule(
   context: BrowserContext,
 ): Promise<{ settings: Record<string, unknown>; read: GraphqlResult }> {
@@ -582,7 +609,15 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
     for (const profile of profiles) {
       const settings = withProfile(original.settings, profile.flags);
       const settingsWrite = await writePagesSettings(context, settings);
+      const providerHealthBefore = await assertProviderHealthUnobserved(
+        context,
+        `${profile.id} provider health before feature preflight`,
+      );
       const capabilityPreflight = await runCapabilityPreflight(context, profile);
+      const providerHealthAfter = await assertProviderHealthUnobserved(
+        context,
+        `${profile.id} provider health after feature preflight`,
+      );
       profileObservations[profile.id] = {
         flags: {
           builder_enabled: profile.flags[0],
@@ -591,7 +626,9 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
           publish_enabled: profile.flags[3],
         },
         settings_write: responseRecord(settingsWrite),
+        provider_health_before: providerHealthBefore,
         capability_preflight: capabilityPreflight,
+        provider_health_after: providerHealthAfter,
       };
     }
   } finally {
@@ -674,6 +711,7 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
       tokens_or_session_ids_persisted: false,
       raw_module_settings_persisted: false,
       raw_graphql_bodies_persisted: false,
+      provider_health_payload_persisted: false,
       database_urls_persisted: false,
       traces_persisted: false,
       screenshots_persisted: false,

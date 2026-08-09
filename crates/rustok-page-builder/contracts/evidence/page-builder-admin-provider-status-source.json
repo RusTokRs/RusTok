@@ -11,6 +11,8 @@
     "provider_status_only_narrows_host_capabilities": true,
     "provider_status_only_narrows_runtime_flags": true,
     "effective_runtime_flags_are_canonical": true,
+    "effective_runtime_flags_delegate_to_shared_page_builder_policy": true,
+    "shared_runtime_policy": "rustok_page_builder::rollout::effective_provider_runtime_flags",
     "invalid_rollout_flags_fail_closed_to_unavailable": true,
     "builder_disabled_forces_read_only": true,
     "observed_unavailable_health_forces_read_only": true,

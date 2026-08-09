@@ -80,9 +80,21 @@ if (
   contract.capability_preflight?.permission_mapping_reference_is_source_locked !== true ||
   contract.capability_preflight?.server_feature_dependency_required_in_pages !== false ||
   contract.capability_preflight?.rollout_guard_owner !== "rustok_page_builder::rollout::ensure_capability" ||
+  contract.capability_preflight?.provider_runtime_policy_owner !== "rustok_page_builder::rollout::effective_provider_runtime_flags" ||
   contract.capability_preflight?.feature_disabled_kind !== "feature-disabled" ||
   contract.capability_preflight?.feature_disabled_code !== "FEATURE_DISABLED"
 ) failures.push("canonical feature preflight contract drifted");
+
+if (
+  contract.provider_health_boundary?.harness_purpose !== "rollout_only" ||
+  contract.provider_health_boundary?.provider_health_must_remain_unobserved !== true ||
+  contract.provider_health_boundary?.observation_operation !== "pageBuilderRolloutSnapshot" ||
+  contract.provider_health_boundary?.observe_before_each_profile_preflight !== true ||
+  contract.provider_health_boundary?.observe_after_each_profile_preflight !== true ||
+  contract.provider_health_boundary?.provider_health_payload_must_be_absent !== true ||
+  contract.provider_health_boundary?.fail_if_provider_health_is_observed !== true ||
+  contract.provider_health_boundary?.retained_health_payload !== false
+) failures.push("rollout-only provider-health observation boundary drifted");
 
 if (
   contract.settings_authority?.read_operation !== "tenantModules" ||
@@ -107,6 +119,13 @@ for (const marker of [
   "pageBuilderCapabilityPreflight(capability: PREVIEW)",
   "pageBuilderCapabilityPreflight(capability: PROPERTIES)",
   "pageBuilderCapabilityPreflight(capability: PUBLISH)",
+  "pageBuilderRolloutSnapshot { providerHealthObserved providerHealth { state } }",
+  "async function assertProviderHealthUnobserved(",
+  "snapshot.providerHealthObserved !== false",
+  "snapshot.providerHealth !== null",
+  "provider_health_payload_present: false",
+  "provider_health_before: providerHealthBefore",
+  "provider_health_after: providerHealthAfter",
   'result.errorKind !== "feature-disabled"',
   'result.errorCode !== "FEATURE_DISABLED"',
   "matrixBrowser.sha256 !== browser.record.sha256",
@@ -121,6 +140,7 @@ for (const marker of [
   "feature_preflight_executed: true",
   "gate_accepted: false",
   "provider_health_observed: false",
+  "provider_health_payload_persisted: false",
   "renameSync(temporary, location)",
 ]) need(spec, marker, "feature preflight spec");
 for (const marker of [
@@ -135,7 +155,9 @@ for (const marker of [
   "pub struct GqlPageBuilderCapabilityPreflight",
   "async fn page_builder_capability_preflight(",
   "let required_permission = required_page_builder_permission(capability_kind);",
-  "ensure_capability(&flags, capability_kind)",
+  "let provider_health = provider_health_snapshot(ctx);",
+  "effective_provider_runtime_flags(&flags, provider_health.as_ref())",
+  "ensure_capability(&effective_flags, capability_kind)",
   "PageBuilderErrorKind::FeatureDisabled.as_str()",
   "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
   "fn required_page_builder_permission(capability: BuilderCapabilityKind) -> Permission",
@@ -151,7 +173,7 @@ if (preflightStart < 0 || permissionMappingStart <= preflightStart) {
   failures.push("non-mutating preflight source slice could not be isolated");
 } else {
   const preflight = owner.slice(preflightStart, permissionMappingStart);
-  for (const marker of ["save_project(", "render_preview(", ".publish(", "save_document("]) {
+  for (const marker of ["save_project(", "render_preview(", ".publish(", "save_document(", "std::fs::"]) {
     forbid(preflight, marker, "non-mutating feature preflight");
   }
 }
@@ -169,7 +191,9 @@ for (const marker of [
 for (const marker of [
   "pub fn ensure_capability(",
   "Err(BuilderRolloutError::CapabilityDisabled(capability.as_str()))",
-]) need(rollout, marker, "shared rollout guard");
+  "pub fn effective_provider_runtime_flags(",
+  "provider_health_runtime_flags_only_narrow_configured_rollout",
+]) need(rollout, marker, "shared rollout/provider guard");
 for (const marker of [
   "Self::CapabilityDisabled(_) => PageBuilderErrorKind::FeatureDisabled",
   "Self::CapabilityDisabled(_) => Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)",
@@ -189,17 +213,20 @@ for (const [key, value] of Object.entries(evidence.validation ?? {})) if (value 
 for (const key of [
   "server_owned_non_mutating_preflight_added", "preflight_requires_exact_routed_tenant",
   "preflight_uses_page_builder_permission_mapping", "preflight_uses_shared_rollout_guard",
-  "preflight_allowed_path_has_no_error_contract", "preflight_disabled_kind_is_feature_disabled",
-  "preflight_disabled_code_is_FEATURE_DISABLED", "browser_predecessor_required",
-  "rollout_matrix_predecessor_required", "predecessors_same_source_required",
+  "preflight_uses_shared_provider_runtime_policy", "preflight_allowed_path_has_no_error_contract",
+  "preflight_disabled_kind_is_feature_disabled", "preflight_disabled_code_is_FEATURE_DISABLED",
+  "rollout_only_harness_requires_provider_health_unobserved", "provider_health_observed_before_each_profile",
+  "provider_health_observed_after_each_profile", "provider_health_payload_must_be_absent",
+  "browser_predecessor_required", "rollout_matrix_predecessor_required", "predecessors_same_source_required",
   "rollout_matrix_must_bind_exact_browser_hash", "api_origin_and_deployment_digest_must_match_predecessors",
   "original_settings_restored_in_finally", "restore_semantically_verified", "output_is_atomic",
 ]) if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
 for (const key of [
   "direct_sql_used", "raw_database_access_used", "raw_module_settings_persisted",
-  "raw_graphql_bodies_persisted", "credentials_or_storage_contents_persisted",
-  "automatic_gate_acceptance", "automatic_source_mutation", "automatic_ffa_fba_promotion",
-  "provider_health_observed", "gate_accepted", "forum_wave_accepted", "ffa_promoted", "fba_promoted",
+  "raw_graphql_bodies_persisted", "raw_provider_health_payload_persisted",
+  "credentials_or_storage_contents_persisted", "automatic_gate_acceptance", "automatic_source_mutation",
+  "automatic_ffa_fba_promotion", "provider_health_observed", "gate_accepted", "forum_wave_accepted",
+  "ffa_promoted", "fba_promoted",
 ]) if (evidence.source_contract?.[key] !== false) failures.push(`source_contract.${key} must remain false`);
 
 for (const marker of [
@@ -213,4 +240,4 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-rollout-feature-preflight-harness] PASS source_ready=true execution=not_run gate_accepted=false");
+console.log("[verify-pages-builder-rollout-feature-preflight-harness] PASS source_ready=true health=verified_unobserved execution=not_run gate_accepted=false");

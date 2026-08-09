@@ -1,10 +1,10 @@
 # Pages / Page Builder plan parity actualization — 2026-08-08
 
-Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / provider-health-server-binding-source-ready / provider-health-consumer-binding-source-ready / execution-acceptance-pending`.
+Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / provider-health-server-binding-source-ready / provider-health-consumer-binding-source-ready / provider-health-capability-preflight-source-ready / execution-acceptance-pending`.
 
 ## Current authority
 
-This parity packet now has ten source actualizations:
+This parity packet now has eleven source actualizations:
 
 - the earlier Forum composition reconciliation through PR #3320;
 - `docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md`, which remains the current rollout-specific authority after PRs #3333, #3337, #3345 and #3353;
@@ -15,7 +15,8 @@ This parity packet now has ten source actualizations:
 - `docs/modules/pages-page-builder-provider-health-transport-actualization-2026-08-09.md`;
 - `docs/modules/pages-page-builder-provider-health-owner-acceptance-actualization-2026-08-09.md`;
 - `docs/modules/pages-page-builder-provider-health-server-binding-actualization-2026-08-09.md`;
-- `docs/modules/pages-page-builder-provider-health-consumer-binding-actualization-2026-08-09.md`, which supersedes the earlier consumer-open wording and closes workspace, authoritative SSR and standalone browser-intent provider-health source binding.
+- `docs/modules/pages-page-builder-provider-health-consumer-binding-actualization-2026-08-09.md`, which closes workspace, authoritative SSR and standalone browser-intent provider-health source binding;
+- `docs/modules/pages-page-builder-provider-health-capability-preflight-actualization-2026-08-09.md`, which removes the remaining non-mutating preflight drift by putting admin/SSR/preflight runtime narrowing behind one shared Page Builder core policy.
 
 Older shared/local/central plans remain useful for programme history. Where they conflict with the dated actualizations above, this packet and the newest relevant overlay are the current source truth.
 
@@ -37,13 +38,19 @@ The synchronized Pages / Page Builder source boundary is now:
 - Pages server binding is opt-in and fail-closed over the accepted packet, exact `RUSTOK_SOURCE_COMMIT`, deployment id and immutable RepoDigest; missing, rejected, malformed, mismatched or expired evidence returns the default unobserved GraphQL shape;
 - the accepted packet path is reread on each rollout-status request, so accept/reject/remove/reaccept can revoke or restore observed transport without a process restart;
 - typed admin transport still enforces boolean/payload consistency and independently recomputes canonical `ProviderHealthSnapshot::evaluate` before retaining optional health;
-- `PagesBuilderRolloutSnapshot::provider_status()` is now the canonical Pages consumer seam; missing health yields explicit `Unobserved`, never implicit healthy;
-- `PageBuilderAdminProviderStatus::effective_runtime_flags()` is the single runtime narrowing policy: Ready/Unobserved preserve configured rollout, Degraded disables Publish, and Unavailable disables the builder entirely;
-- Pages workspace now passes the validated full provider status into `PagesBuilderFacade`, so canonical Page Builder admin controls can display observed state/reasons and apply their existing degraded/read-only narrowing;
-- authoritative Preview/Publish SSR rereads the server-owned snapshot per capability request, verifies the routed tenant, derives health-limited runtime flags, and composes the existing canonical Page Builder guards from those flags;
+- `PagesBuilderRolloutSnapshot::provider_status()` remains the canonical Pages consumer seam; missing health yields explicit `Unobserved`, never implicit healthy;
+- provider/rollout runtime narrowing now has one core owner: `rustok_page_builder::rollout::effective_provider_runtime_flags`;
+- that shared policy keeps configured rollout as the upper bound, fails invalid/builder-off or observed Unavailable state to builder-off, and makes every degraded provider-control state publish-off while preserving already-disabled rollout capabilities;
+- `PageBuilderAdminProviderStatus::effective_runtime_flags()` delegates to the shared core policy rather than retaining a second runtime policy implementation;
+- Pages workspace passes the validated full provider status into `PagesBuilderFacade`, so canonical Page Builder admin controls can display observed state/reasons and apply their existing degraded/read-only narrowing;
+- authoritative Preview/Publish SSR rereads the server-owned snapshot per capability request, verifies the routed tenant, derives health-limited runtime flags through the shared policy, and composes the existing canonical Page Builder guards from those flags;
 - therefore observed Degraded health makes Publish reach the existing `FEATURE_DISABLED` guard, while observed Unavailable health makes the builder unavailable through the same guard rather than a parallel Pages-only error path;
 - standalone browser-intent preflight evaluates role capabilities first and then applies `pages_editor_capabilities_for_snapshot`, so provider health can only narrow role/rollout capability state;
-- UI / SSR / browser-intent provider-health binding [source-ready] does not itself prove that a live accepted packet exists or that observed behavior has executed;
+- the non-mutating GraphQL `pageBuilderCapabilityPreflight` now also reads fresh `PagesGraphqlRuntimeData` health and applies `effective_provider_runtime_flags` before canonical `ensure_capability`, eliminating a prior possibility that preflight said Publish was allowed while authoritative SSR denied it under observed Degraded health;
+- permission denial remains separate from provider/rollout capability denial, and `pageBuilderCapabilityPreflight` remains non-mutating with canonical `feature-disabled / FEATURE_DISABLED` output;
+- `pageBuilderRolloutSnapshot` continues to return configured rollout flags separately from optional health; it does not rewrite transport flags to effective values;
+- the existing four-profile rollout feature-preflight harness remains rollout-only and its retained evidence continues to claim provider health `unobserved`; observed-health execution requires a separate evidence harness;
+- UI / SSR / browser-intent provider-health binding [source-ready] and health-aware non-mutating capability preflight [source-ready] do not prove that a live accepted packet exists or that observed behavior has executed;
 - Pages remains `unobserved` in retained execution evidence because live identity capture, evaluator execution, owner acceptance, accepted packet installation and observed consumer behavior have not been executed/retained by this implementation agent;
 - `pages_reference_consumer_gate` remains `accepted = false` with execution pending;
 - Forum observed Wave remains blocked by the Pages gate;
@@ -77,11 +84,13 @@ bounded process-local Preview/Publish observation [source-ready]
 -> owner acceptance packet + exact health_valid_until [source-ready]
 -> server provider-health binding + hot revoke + remaining-freshness lease [source-ready]
 -> UI / SSR / browser-intent provider-health binding [source-ready]
+-> health-aware non-mutating capability preflight [source-ready]
+-> observed-health runtime evidence harness [source-open]
 -> live exact-target identity capture + retained evaluator + accepted owner packet + observed consumer behavior [maintainer execution pending]
 -> observed-health acceptance decision [pending]
 ```
 
-Source inspection alone must not mark execution or acceptance complete. In particular, source-ready health binding cannot replace live exact-deployment evidence or owner acceptance.
+Source inspection alone must not mark execution or acceptance complete. In particular, source-ready health binding or preflight cannot replace live exact-deployment evidence or owner acceptance.
 
 ## Anti-drift guards
 
@@ -99,10 +108,11 @@ crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transpor
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
+crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
 crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
 ```
 
-The new consumer guard locks one shared provider-status policy across workspace UI, authoritative SSR and standalone browser-intent, while preserving the no-live-packet `Unobserved` fallback and all execution/non-promotion claims as false.
+The consumer guard locks workspace/SSR/browser-intent to the shared provider-status path. The provider-health capability-preflight guard locks the shared core runtime policy, GraphQL runtime-health authority, non-mutating canonical `FEATURE_DISABLED` path and the separation between configured snapshot flags and effective runtime flags.
 
 ## Execution boundary
 
@@ -113,10 +123,12 @@ Suggested maintainer commands, intentionally not run:
 ```bash
 node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
 ```
 

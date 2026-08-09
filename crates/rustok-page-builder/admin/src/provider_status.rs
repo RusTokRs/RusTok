@@ -1,6 +1,8 @@
 use fly_ui::{CapabilityState, EditorProviderState};
 use rustok_page_builder::health::{ProviderHealthSnapshot, ProviderHealthState};
-use rustok_page_builder::rollout::BuilderCapabilityFlags;
+use rustok_page_builder::rollout::{
+    BuilderCapabilityFlags, effective_provider_runtime_flags,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageBuilderAdminProviderState {
@@ -95,28 +97,12 @@ impl PageBuilderAdminProviderStatus {
             && self.state() != PageBuilderAdminProviderState::Unavailable
     }
 
-    /// Derive the Page Builder runtime guard flags from the same provider status used by the UI.
+    /// Derive runtime guard flags through the shared Page Builder core policy.
     ///
-    /// Rollout flags remain the configured authority and health may only narrow them. Observed
-    /// degradation disables publish, while observed unavailability (or invalid/disabled rollout)
-    /// disables the entire builder. `Unobserved` and `Ready` preserve the configured flags.
+    /// Keeping this method as the admin facade seam preserves the existing UI/consumer API while
+    /// preventing Pages or another consumer from reimplementing provider-health narrowing.
     pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags {
-        match self.state() {
-            PageBuilderAdminProviderState::Unavailable => BuilderCapabilityFlags {
-                builder_enabled: false,
-                preview_enabled: false,
-                properties_enabled: false,
-                publish_enabled: false,
-            },
-            PageBuilderAdminProviderState::Degraded => {
-                let mut flags = self.flags.clone();
-                flags.publish_enabled = false;
-                flags
-            }
-            PageBuilderAdminProviderState::Ready | PageBuilderAdminProviderState::Unobserved => {
-                self.flags.clone()
-            }
-        }
+        effective_provider_runtime_flags(&self.flags, self.health.as_ref())
     }
 
     pub fn limit_capabilities(&self, capabilities: CapabilityState) -> CapabilityState {
