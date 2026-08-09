@@ -33,6 +33,8 @@ pub struct CommerceHttpRuntime {
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
     order_admin_command_runtime: rustok_order::OrderAdminCommandRuntime,
     payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
+    payment_cart_read_runtime: rustok_payment::PaymentCartReadRuntime,
+    payment_collection_runtime: rustok_payment::PaymentCollectionRuntime,
     payment_admin_read_runtime: rustok_payment::PaymentAdminReadRuntime,
     payment_admin_collection_command_runtime: rustok_payment::PaymentAdminCollectionCommandRuntime,
     payment_admin_refund_command_runtime: rustok_payment::PaymentAdminRefundCommandRuntime,
@@ -110,6 +112,14 @@ impl CommerceHttpRuntime {
 
     fn payment_order_read_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentOrderReadPort> {
         self.payment_order_read_runtime.read_port()
+    }
+
+    fn payment_cart_read_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentCartReadPort> {
+        self.payment_cart_read_runtime.read_port()
+    }
+
+    fn payment_collection_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentCollectionPort> {
+        self.payment_collection_runtime.port()
     }
 
     fn payment_admin_read_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentAdminReadPort> {
@@ -226,6 +236,20 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require PaymentOrderReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let payment_cart_read_runtime = runtime
+            .shared_get::<rustok_payment::PaymentCartReadRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require PaymentCartReadRuntime in HostRuntimeContext"
+                )
+            })?;
+        let payment_collection_runtime = runtime
+            .shared_get::<rustok_payment::PaymentCollectionRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require PaymentCollectionRuntime in HostRuntimeContext"
+                )
+            })?;
         let payment_admin_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
             .unwrap_or_else(|| rustok_payment::PaymentAdminReadRuntime::in_process(runtime.db_clone()));
@@ -280,6 +304,8 @@ impl CommerceHttpRuntime {
             order_read_runtime,
             order_admin_command_runtime,
             payment_order_read_runtime,
+            payment_cart_read_runtime,
+            payment_collection_runtime,
             payment_admin_read_runtime,
             payment_admin_collection_command_runtime,
             payment_admin_refund_command_runtime,
