@@ -31,9 +31,7 @@ impl ServerBlogPublicCommentsSnapshotStore {
     async fn backend(&self) -> Arc<dyn CacheBackend> {
         self.backend
             .get_or_init(|| async {
-                self.cache
-                    .backend(CACHE_PREFIX, SNAPSHOT_TTL, MAX_SNAPSHOT_KEYS)
-                    .await
+                self.cache.backend(CACHE_PREFIX, SNAPSHOT_TTL, MAX_SNAPSHOT_KEYS).await
             })
             .await
             .clone()
