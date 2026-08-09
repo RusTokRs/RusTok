@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-/// Attach the host-composed commerce provider registries and owner read runtimes to a capability
+/// Attach the host-composed commerce provider registries and owner runtimes to a capability
 /// runtime.
 ///
 /// Values already installed in `ServerRuntimeContext` or `HostRuntimeContext` are always preserved
@@ -56,6 +56,20 @@ pub fn attach_commerce_provider_registries(
                 server.shared_insert(runtime.clone());
                 runtime
             });
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-fulfillment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>()
+            .or_else(|| server.shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>())
+            .unwrap_or_else(|| {
+                rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(
+                    server.db_clone(),
+                )
+            });
+        server.shared_insert(runtime.clone());
         host.with_shared_value(runtime)
     };
 

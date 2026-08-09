@@ -1,15 +1,47 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{AuthContext, RequestContext, graphql::require_module_enabled};
+use rustok_api::{
+    AuthContext, PortActor, PortContext, RequestContext, graphql::require_module_enabled,
+};
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
+use rustok_fulfillment::{
+    CreateAdminShippingOptionRequest, DeactivateAdminShippingOptionRequest,
+    ReactivateAdminShippingOptionRequest, UpdateAdminShippingOptionRequest,
+};
 use rustok_payment::{PaymentError, PaymentService};
 use uuid::Uuid;
 
 use crate::ShippingProfileService;
-use rustok_fulfillment::FulfillmentService;
 
 use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
 use super::helpers::*;
+
+fn shipping_option_command_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    shipping_option_id: Option<Uuid>,
+    operation: &'static str,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let resource_id = shipping_option_id.unwrap_or(tenant_id);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-graphql-shipping-option-command:{operation}:{resource_id}"),
+    )
+    .with_idempotency_key(Uuid::new_v4().to_string())
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
+}
 
 #[derive(Default)]
 pub struct CommerceCheckoutMutation;
@@ -210,26 +242,39 @@ impl CommerceCheckoutMutation {
             input.allowed_shipping_profile_slugs.as_ref(),
         )
         .await?;
-        let option = FulfillmentService::new(db.clone())
-            .create_shipping_option(
-                tenant_id,
-                crate::dto::CreateShippingOptionInput {
-                    translations: input
-                        .translations
-                        .into_iter()
-                        .map(|translation| crate::dto::ShippingOptionTranslationInput {
-                            locale: translation.locale,
-                            name: translation.name,
-                        })
-                        .collect(),
-                    currency_code: input.currency_code,
-                    amount: parse_decimal(&input.amount)?,
-                    provider_id: input.provider_id,
-                    allowed_shipping_profile_slugs: input.allowed_shipping_profile_slugs,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
-                },
+        let request = CreateAdminShippingOptionRequest {
+            input: crate::dto::CreateShippingOptionInput {
+                translations: input
+                    .translations
+                    .into_iter()
+                    .map(|translation| crate::dto::ShippingOptionTranslationInput {
+                        locale: translation.locale,
+                        name: translation.name,
+                    })
+                    .collect(),
+                currency_code: input.currency_code,
+                amount: parse_decimal(&input.amount)?,
+                provider_id: input.provider_id,
+                allowed_shipping_profile_slugs: input.allowed_shipping_profile_slugs,
+                metadata: parse_optional_metadata(input.metadata.as_deref())?,
+            },
+        };
+        let command_context =
+            shipping_option_command_context(ctx, tenant_id, None, "create_shipping_option")?;
+        let option = crate::graphql_runtime::shipping_option_admin_command_runtime_from_context(
+            ctx,
+            db.clone(),
+        )
+        .command_port()
+        .create_shipping_option(command_context.clone(), request)
+        .await
+        .map_err(|error| {
+            checkout_boundary::shipping_option_port_error(
+                &command_context,
+                "create_admin_shipping_option",
+                error,
             )
-            .await?;
+        })?;
 
         Ok(option.into())
     }
@@ -256,36 +301,49 @@ impl CommerceCheckoutMutation {
             input.allowed_shipping_profile_slugs.as_ref(),
         )
         .await?;
-        let option = FulfillmentService::new(db.clone())
-            .update_shipping_option(
-                tenant_id,
-                id,
-                crate::dto::UpdateShippingOptionInput {
-                    translations: input.translations.map(|translations| {
-                        translations
-                            .into_iter()
-                            .map(|translation| crate::dto::ShippingOptionTranslationInput {
-                                locale: translation.locale,
-                                name: translation.name,
-                            })
-                            .collect()
-                    }),
-                    currency_code: input.currency_code,
-                    amount: parse_optional_decimal(input.amount.as_deref())?,
-                    provider_id: input.provider_id,
-                    allowed_shipping_profile_slugs: input.allowed_shipping_profile_slugs,
-                    metadata: input
-                        .metadata
-                        .as_deref()
-                        .map(|value| {
-                            serde_json::from_str(value).map_err(|_| {
-                                async_graphql::Error::new("Invalid JSON metadata payload")
-                            })
+        let request = UpdateAdminShippingOptionRequest {
+            shipping_option_id: id,
+            input: crate::dto::UpdateShippingOptionInput {
+                translations: input.translations.map(|translations| {
+                    translations
+                        .into_iter()
+                        .map(|translation| crate::dto::ShippingOptionTranslationInput {
+                            locale: translation.locale,
+                            name: translation.name,
                         })
-                        .transpose()?,
-                },
+                        .collect()
+                }),
+                currency_code: input.currency_code,
+                amount: parse_optional_decimal(input.amount.as_deref())?,
+                provider_id: input.provider_id,
+                allowed_shipping_profile_slugs: input.allowed_shipping_profile_slugs,
+                metadata: input
+                    .metadata
+                    .as_deref()
+                    .map(|value| {
+                        serde_json::from_str(value).map_err(|_| {
+                            async_graphql::Error::new("Invalid JSON metadata payload")
+                        })
+                    })
+                    .transpose()?,
+            },
+        };
+        let command_context =
+            shipping_option_command_context(ctx, tenant_id, Some(id), "update_shipping_option")?;
+        let option = crate::graphql_runtime::shipping_option_admin_command_runtime_from_context(
+            ctx,
+            db.clone(),
+        )
+        .command_port()
+        .update_shipping_option(command_context.clone(), request)
+        .await
+        .map_err(|error| {
+            checkout_boundary::shipping_option_port_error(
+                &command_context,
+                "update_admin_shipping_option",
+                error,
             )
-            .await?;
+        })?;
 
         Ok(option.into())
     }
@@ -432,9 +490,29 @@ impl CommerceCheckoutMutation {
         let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Shipping option deactivation")?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let option = FulfillmentService::new(db.clone())
-            .deactivate_shipping_option(tenant_id, id)
-            .await?;
+        let request = DeactivateAdminShippingOptionRequest {
+            shipping_option_id: id,
+        };
+        let command_context = shipping_option_command_context(
+            ctx,
+            tenant_id,
+            Some(id),
+            "deactivate_shipping_option",
+        )?;
+        let option = crate::graphql_runtime::shipping_option_admin_command_runtime_from_context(
+            ctx,
+            db.clone(),
+        )
+        .command_port()
+        .deactivate_shipping_option(command_context.clone(), request)
+        .await
+        .map_err(|error| {
+            checkout_boundary::shipping_option_port_error(
+                &command_context,
+                "deactivate_admin_shipping_option",
+                error,
+            )
+        })?;
 
         Ok(option.into())
     }
@@ -454,9 +532,29 @@ impl CommerceCheckoutMutation {
         let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Shipping option reactivation")?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let option = FulfillmentService::new(db.clone())
-            .reactivate_shipping_option(tenant_id, id)
-            .await?;
+        let request = ReactivateAdminShippingOptionRequest {
+            shipping_option_id: id,
+        };
+        let command_context = shipping_option_command_context(
+            ctx,
+            tenant_id,
+            Some(id),
+            "reactivate_shipping_option",
+        )?;
+        let option = crate::graphql_runtime::shipping_option_admin_command_runtime_from_context(
+            ctx,
+            db.clone(),
+        )
+        .command_port()
+        .reactivate_shipping_option(command_context.clone(), request)
+        .await
+        .map_err(|error| {
+            checkout_boundary::shipping_option_port_error(
+                &command_context,
+                "reactivate_admin_shipping_option",
+                error,
+            )
+        })?;
 
         Ok(option.into())
     }
