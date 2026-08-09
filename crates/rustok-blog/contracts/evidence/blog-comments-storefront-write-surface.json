@@ -7,6 +7,8 @@
   "actualization": "comment_form_fallback_not_applicable_no_storefront_write_surface",
   "legacy_degraded_mode": "hide_comment_form",
   "legacy_registry_semantics": "compatibility_vocabulary_not_active_storefront_surface",
+  "runner": "scripts/verify/verify-blog-comments-storefront-write-surface.mjs",
+  "self_test": "scripts/verify/verify-blog-comments-storefront-write-surface.test.mjs",
   "source_inventory": {
     "readme": "crates/rustok-blog/storefront/README.md",
     "ui": "crates/rustok-blog/storefront/src/ui/leptos.rs",
