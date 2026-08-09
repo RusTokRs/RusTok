@@ -3,9 +3,14 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
 };
-use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
+use rustok_api::{
+    AuthContext, OptionalAuthContext, PortActor, PortContext, PortError, PortErrorKind,
+    RequestContext, TenantContext,
+};
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
-use rustok_payment::{PaymentError, PaymentService};
+use rustok_payment::{
+    PaymentCollectionCreateOrReuseRequest, ReusablePaymentCollectionByCartRequest,
+};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -18,7 +23,7 @@ const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const STOREFRONT_CHECKOUT_OWNER: &str = "rustok_commerce.storefront_staged_checkout_runtime";
 const STOREFRONT_CHECKOUT_BOUNDARY: &str = "commerce_storefront_checkout_http";
-const STOREFRONT_PAYMENT_COLLECTION_OWNER: &str = "rustok_payment.storefront_payment_collections";
+const STOREFRONT_PAYMENT_COLLECTION_OWNER: &str = "rustok_payment.payment_collection_ports";
 const STOREFRONT_PAYMENT_COLLECTION_BOUNDARY: &str =
     "commerce_storefront_payment_collection_http";
 
@@ -114,14 +119,41 @@ struct StorefrontCheckoutRuntimeErrorFacts {
     text_total_length: usize,
 }
 
-#[derive(Clone, Copy)]
-struct StorefrontPaymentCollectionErrorFacts {
-    error_variant: &'static str,
-    text_field_count: usize,
-    text_total_length: usize,
-    uuid_field_count: usize,
-    uuid_non_nil_count: usize,
-    opaque_payload_present: bool,
+fn storefront_payment_collection_actor(auth: Option<&AuthContext>) -> PortActor {
+    auth.map(|auth| PortActor::user(auth.user_id.to_string()))
+        .unwrap_or_else(|| PortActor::service("rustok-commerce.storefront-payment-collection"))
+}
+
+fn storefront_payment_collection_port_context(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    request_context: &RequestContext,
+    auth: Option<&AuthContext>,
+    operation: &'static str,
+    is_write: bool,
+) -> PortContext {
+    let locale = if request_context.locale.trim().is_empty() {
+        "und"
+    } else {
+        request_context.locale.as_str()
+    };
+    let correlation_id = format!("commerce-storefront-payment-collection:{operation}:{cart_id}");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        storefront_payment_collection_actor(auth),
+        locale,
+        correlation_id,
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let context = match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    };
+    if is_write {
+        context.with_idempotency_key(format!("storefront-payment-collection:{cart_id}"))
+    } else {
+        context
+    }
 }
 
 /// Create payment collection from storefront cart
@@ -177,13 +209,24 @@ pub async fn create_payment_collection(
         cart,
     )
     .await?;
-    let context =
+    let store_context =
         super::resolve_context_from_cart_for_db(runtime.db(), tenant.id, &request_context, &cart)
             .await?;
 
-    let service = PaymentService::new(runtime.db_clone());
-    if let Some(existing) = service
-        .find_reusable_collection_by_cart(tenant.id, cart.id)
+    let read_context = storefront_payment_collection_port_context(
+        tenant.id,
+        cart.id,
+        &request_context,
+        auth.0.as_ref(),
+        "find_reusable_collection_by_cart",
+        false,
+    );
+    if let Some(existing) = runtime
+        .payment_cart_read_port()
+        .find_reusable_collection_by_cart(
+            read_context.clone(),
+            ReusablePaymentCollectionByCartRequest { cart_id: cart.id },
+        )
         .await
         .map_err(|error| {
             payment_collection_http_error(
@@ -195,16 +238,27 @@ pub async fn create_payment_collection(
                     &request_context,
                     "find_reusable_collection_by_cart",
                 ),
+                &read_context,
                 error,
             )
         })?
     {
         return Ok((StatusCode::OK, Json(existing)));
     }
-    let collection = service
-        .create_collection(
-            tenant.id,
-            rustok_payment::dto::CreatePaymentCollectionInput {
+
+    let command_context = storefront_payment_collection_port_context(
+        tenant.id,
+        cart.id,
+        &request_context,
+        auth.0.as_ref(),
+        "create_or_reuse_collection",
+        true,
+    );
+    let collection = runtime
+        .payment_collection_port()
+        .create_or_reuse_collection(
+            command_context.clone(),
+            PaymentCollectionCreateOrReuseRequest {
                 cart_id: Some(cart.id),
                 order_id: None,
                 customer_id: cart.customer_id,
@@ -212,7 +266,7 @@ pub async fn create_payment_collection(
                 amount: cart.total_amount,
                 metadata: super::merge_metadata(
                     input.metadata,
-                    super::cart_context_metadata(&cart, &context),
+                    super::cart_context_metadata(&cart, &store_context),
                 ),
             },
         )
@@ -225,8 +279,9 @@ pub async fn create_payment_collection(
                     cart.id,
                     cart.customer_id,
                     &request_context,
-                    "create_collection",
+                    "create_or_reuse_collection",
                 ),
+                &command_context,
                 error,
             )
         })?;
@@ -459,185 +514,85 @@ fn storefront_checkout_http_error(
     HttpError::new(status, code, message)
 }
 
-fn payment_collection_error_policy(error: &PaymentError) -> StorefrontPaymentCollectionHttpPolicy {
-    match error {
-        PaymentError::Validation(_) => (
+fn payment_collection_error_policy(error: &PortError) -> StorefrontPaymentCollectionHttpPolicy {
+    match &error.kind {
+        PortErrorKind::Validation => (
             StatusCode::BAD_REQUEST,
             "payment_request_invalid",
             "Payment collection request is invalid",
             "validation",
         ),
-        PaymentError::PaymentCollectionNotFound(_)
-        | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => (
+        PortErrorKind::NotFound => (
             StatusCode::NOT_FOUND,
             "payment_resource_not_found",
             "Payment resource was not found",
             "not_found",
         ),
-        PaymentError::InvalidTransition { .. } => (
-            StatusCode::CONFLICT,
-            "payment_state_conflict",
-            "Payment lifecycle conflicts with the requested operation",
-            "state_conflict",
-        ),
-        PaymentError::ProviderUnavailable { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "payment_temporarily_unavailable",
-            "Payment service is temporarily unavailable",
-            "provider_unavailable",
-        ),
-        PaymentError::ProviderConfiguration { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "payment_temporarily_unavailable",
-            "Payment service is temporarily unavailable",
-            "provider_configuration",
-        ),
-        PaymentError::ProviderRejected { .. } => (
+        PortErrorKind::Conflict if error.code == "payment.provider_rejected" => (
             StatusCode::CONFLICT,
             "payment_provider_rejected",
             "Payment provider rejected the requested operation",
             "provider_rejected",
         ),
-        PaymentError::ProviderInvalidResponse { .. } => (
-            StatusCode::CONFLICT,
-            "payment_reconciliation_required",
-            "Payment operation requires reconciliation",
-            "provider_invalid_response",
-        ),
-        PaymentError::ProviderOutcomeUnknown { .. } => (
+        PortErrorKind::Conflict if error.code == "payment.provider_outcome_unknown" => (
             StatusCode::CONFLICT,
             "payment_reconciliation_required",
             "Payment operation requires reconciliation",
             "provider_outcome_unknown",
         ),
-        PaymentError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "payment_storage_unavailable",
-            "Payment service is temporarily unavailable",
-            "database",
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "payment_state_conflict",
+            "Payment lifecycle conflicts with the requested operation",
+            "state_conflict",
         ),
-    }
-}
-
-fn storefront_payment_collection_error_facts(
-    error: &PaymentError,
-) -> StorefrontPaymentCollectionErrorFacts {
-    let (
-        error_variant,
-        text_field_count,
-        text_total_length,
-        uuid_field_count,
-        uuid_non_nil_count,
-        opaque_payload_present,
-    ) = match error {
-        PaymentError::Validation(value) => {
-            ("validation", 1, value.chars().count(), 0, 0, false)
+        PortErrorKind::Unavailable
+            if error.code == "payment.database_unavailable"
+                || error.code == "payment.cart_read_unavailable" =>
+        {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "payment_storage_unavailable",
+                "Payment service is temporarily unavailable",
+                "database",
+            )
         }
-        PaymentError::PaymentCollectionNotFound(id) => (
-            "payment_collection_not_found",
-            0,
-            0,
-            1,
-            if id.is_nil() { 0 } else { 1 },
-            false,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "payment_temporarily_unavailable",
+            "Payment service is temporarily unavailable",
+            "temporarily_unavailable",
         ),
-        PaymentError::PaymentNotFound(id) => (
-            "payment_not_found",
-            0,
-            0,
-            1,
-            if id.is_nil() { 0 } else { 1 },
-            false,
-        ),
-        PaymentError::RefundNotFound(id) => (
-            "refund_not_found",
-            0,
-            0,
-            1,
-            if id.is_nil() { 0 } else { 1 },
-            false,
-        ),
-        PaymentError::InvalidTransition { from, to } => (
-            "invalid_transition",
-            2,
-            from.chars().count() + to.chars().count(),
-            0,
-            0,
-            false,
-        ),
-        PaymentError::ProviderUnavailable {
-            provider_id,
-            operation,
-        } => (
-            "provider_unavailable",
-            2,
-            provider_id.chars().count() + operation.chars().count(),
-            0,
-            0,
-            false,
-        ),
-        PaymentError::ProviderRejected {
-            provider_id,
-            operation,
-        } => (
-            "provider_rejected",
-            2,
-            provider_id.chars().count() + operation.chars().count(),
-            0,
-            0,
-            false,
-        ),
-        PaymentError::ProviderInvalidResponse {
-            provider_id,
-            operation,
-        } => (
+        PortErrorKind::InvariantViolation if error.code == "payment.provider_invalid_response" => (
+            StatusCode::CONFLICT,
+            "payment_reconciliation_required",
+            "Payment operation requires reconciliation",
             "provider_invalid_response",
-            2,
-            provider_id.chars().count() + operation.chars().count(),
-            0,
-            0,
-            false,
         ),
-        PaymentError::ProviderOutcomeUnknown {
-            provider_id,
-            operation,
-        } => (
-            "provider_outcome_unknown",
-            2,
-            provider_id.chars().count() + operation.chars().count(),
-            0,
-            0,
-            false,
-        ),
-        PaymentError::ProviderConfiguration { provider_id } => (
+        PortErrorKind::InvariantViolation if error.code == "payment.provider_not_configured" => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "payment_temporarily_unavailable",
+            "Payment service is temporarily unavailable",
             "provider_configuration",
-            1,
-            provider_id.chars().count(),
-            0,
-            0,
-            false,
         ),
-        PaymentError::Database(_) => ("database", 0, 0, 0, 0, true),
-    };
-    StorefrontPaymentCollectionErrorFacts {
-        error_variant,
-        text_field_count,
-        text_total_length,
-        uuid_field_count,
-        uuid_non_nil_count,
-        opaque_payload_present,
+        PortErrorKind::Forbidden | PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "payment_operation_failed",
+            "Payment operation could not be completed safely",
+            "owner_operation_failed",
+        ),
     }
 }
 
 fn payment_collection_http_error(
     context: StorefrontPaymentCollectionErrorContext,
-    error: PaymentError,
+    port_context: &PortContext,
+    error: PortError,
 ) -> HttpError {
     let (status, code, message, error_kind) = payment_collection_error_policy(&error);
-    let error_facts = storefront_payment_collection_error_facts(&error);
     tracing::error!(
         owner = STOREFRONT_PAYMENT_COLLECTION_OWNER,
+        correlation_id = %port_context.correlation_id,
         tenant_id_non_nil = context.tenant_id_non_nil,
         actor_id_non_nil = context.actor_id_non_nil,
         cart_id_non_nil = context.cart_id_non_nil,
@@ -649,17 +604,14 @@ fn payment_collection_http_error(
         channel_slug_length = ?context.channel_slug_length,
         locale_length = context.locale_length,
         operation = context.operation,
-        error_variant = error_facts.error_variant,
-        error_text_field_count = error_facts.text_field_count,
-        error_text_total_length = error_facts.text_total_length,
-        error_uuid_field_count = error_facts.uuid_field_count,
-        error_uuid_non_nil_count = error_facts.uuid_non_nil_count,
-        error_opaque_payload_present = error_facts.opaque_payload_present,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        retryable = error.retryable,
         error_kind,
         public_code = code,
         status = status.as_u16(),
         boundary = STOREFRONT_PAYMENT_COLLECTION_BOUNDARY,
-        "storefront payment collection operation failed with bounded diagnostics"
+        "storefront payment collection owner call failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
