@@ -57,6 +57,7 @@ pub mod graphql;
 pub mod locale;
 pub mod migrations;
 pub mod openapi;
+pub mod public_comments_snapshot;
 mod reaction_subject;
 pub mod richtext;
 mod seo_targets;
@@ -81,6 +82,10 @@ pub use dto::{
 pub use entities::*;
 pub use error::{BlogError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
+pub use public_comments_snapshot::{
+    PublicCommentsAvailability, PublicCommentsRead, PublicCommentsSnapshotStore,
+    list_public_comments_with_snapshot,
+};
 pub use reaction_subject::{
     BLOG_POST_REACTION_KIND, BLOG_REACTION_SOURCE, BLOG_REACTION_V1_KEY,
     BlogReactionSubjectProviderFactory,

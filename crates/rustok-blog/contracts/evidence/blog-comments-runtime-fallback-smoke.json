@@ -11,12 +11,16 @@
   "source_contract": {
     "consumer_service": "crates/rustok-blog/src/services/comment.rs",
     "consumer_error_mapping": "crates/rustok-blog/src/services/comment.rs",
+    "public_snapshot_policy": "crates/rustok-blog/src/public_comments_snapshot.rs",
     "provider_port_registry": "crates/rustok-comments/contracts/comments-fba-registry.json",
+    "graphql_runtime": "crates/rustok-blog/src/graphql/runtime_data.rs",
     "graphql_owner": "crates/rustok-blog/src/graphql/types.rs",
     "storefront_model": "crates/rustok-blog/storefront/src/model.rs",
     "storefront_graphql": "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
     "storefront_native": "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
-    "storefront_ui": "crates/rustok-blog/storefront/src/ui/leptos.rs"
+    "storefront_ui": "crates/rustok-blog/storefront/src/ui/leptos.rs",
+    "host_snapshot_adapter": "apps/server/src/services/blog_public_comments_snapshot.rs",
+    "host_runtime_composition": "apps/server/src/services/module_event_dispatcher.rs"
   },
   "storefront_read_degradation": {
     "status": "source_verified_no_compile",
@@ -36,22 +40,56 @@
       "Timeout"
     ],
     "propagated_error_policy": "all_other_blog_errors",
+    "cached_thread_snapshot": "source_verified_no_compile",
+    "comment_form_fallback": "planned",
     "degraded_payload": {
-      "items": [],
-      "total": 0
+      "cache_hit": {
+        "cached_snapshot": true,
+        "availability": "preserve_unavailable_or_timeout",
+        "items": "last_valid_approved_public_page",
+        "total": "last_valid_public_total"
+      },
+      "cache_miss": {
+        "cached_snapshot": false,
+        "items": [],
+        "total": 0
+      }
+    },
+    "cache_contract": {
+      "source_of_truth": "comments_owner_only",
+      "write_policy": "successful_public_read_best_effort",
+      "read_policy": "external_service_or_timeout_only",
+      "key_identity": [
+        "tenant_id",
+        "post_id",
+        "requested_locale",
+        "fallback_locale",
+        "page",
+        "per_page"
+      ],
+      "key_encoding": "sha256_of_schema_bound_identity",
+      "envelope_schema_version": 1,
+      "visibility_validation": "exact_identity_same_post_approved_only",
+      "maximum_payload_bytes": 262144,
+      "host_cache_prefix": "blog-public-comments-snapshot-v1",
+      "host_ttl_seconds": 900,
+      "host_max_keys": 10000,
+      "host_cache_owner": "rustok-cache CacheService",
+      "cache_failures": "best_effort_do_not_change_owner_response"
     },
     "ui_states": [
       "comments_temporarily_unavailable_article_still_available",
-      "comments_timeout_article_still_available"
+      "comments_timeout_article_still_available",
+      "comments_unavailable_cached_snapshot_visible",
+      "comments_timeout_cached_snapshot_visible"
     ],
-    "cached_thread_snapshot": "planned",
-    "comment_form_fallback": "planned",
     "runtime_evidence": "pending"
   },
   "fallback_smoke": {
     "status": "planned",
     "profiles": [
-      "embedded_native"
+      "embedded_native",
+      "graphql_storefront"
     ],
     "degraded_modes": [
       "hide_comment_form",
@@ -75,7 +113,7 @@
           "with_error_code(error.code)"
         ],
         "degraded_mode": "hide_comment_form",
-        "expected_consumer_behavior": "planned UI branch; source contract preserves typed unavailable/forbidden/validation errors while runtime fallback evidence remains pending"
+        "expected_consumer_behavior": "comment-form fallback remains planned; source contract preserves typed unavailable/forbidden/validation errors while runtime fallback evidence remains pending"
       },
       {
         "operation": "list_comments_for_target",
@@ -95,7 +133,7 @@
           "with_error_code(error.code)"
         ],
         "degraded_mode": "show_cached_thread_snapshot",
-        "expected_consumer_behavior": "typed unavailable/timeout storefront state is source-verified; cached snapshot runtime fallback remains planned and not executed"
+        "expected_consumer_behavior": "cached public snapshot source is retained for unavailable/timeout reads across GraphQL and native SSR; runtime fallback execution remains pending"
       }
     ],
     "runtime_evidence": "pending"

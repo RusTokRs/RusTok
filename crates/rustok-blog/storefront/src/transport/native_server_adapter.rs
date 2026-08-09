@@ -53,7 +53,10 @@ async fn storefront_blog_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::HostRuntimeContext;
-        use rustok_blog::{BlogPostStatus, ListCommentsFilter, PostListQuery, PostService};
+        use rustok_blog::{
+            BlogPostStatus, PostListQuery, PostService, PublicCommentsSnapshotStore,
+            list_public_comments_with_snapshot,
+        };
         use rustok_channel::ChannelService;
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
@@ -141,35 +144,30 @@ async fn storefront_blog_native(
             });
 
         let selected_post = if let Some(post) = selected_post {
-            let public_comments = match comment_service(&runtime_ctx, event_bus.clone())
-                .list_for_post_with_locale_fallback(
-                    tenant_id,
-                    SecurityContext::public_read(),
-                    post.id,
-                    ListCommentsFilter {
-                        locale: Some(requested_locale.clone()),
-                        page: comments_page.max(1),
-                        per_page: COMMENTS_PAGE_SIZE,
-                    },
-                    Some(fallback_locale.as_str()),
-                )
-                .await
-            {
-                Ok((comments, total)) => BlogCommentList {
-                    availability: BlogCommentsAvailability::Available,
-                    items: comments.into_iter().map(map_comment_list_item).collect(),
-                    total,
-                },
-                Err(error) => {
-                    let Some(availability) = comments_read_availability(&error) else {
-                        return Err(ServerFnError::new(error));
-                    };
-                    BlogCommentList {
-                        availability,
-                        items: Vec::new(),
-                        total: 0,
-                    }
-                }
+            let comments = comment_service(&runtime_ctx, event_bus.clone());
+            let snapshot_store =
+                runtime_ctx.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>();
+            let public_comments = list_public_comments_with_snapshot(
+                &comments,
+                snapshot_store.as_ref(),
+                tenant_id,
+                post.id,
+                requested_locale.as_str(),
+                Some(fallback_locale.as_str()),
+                comments_page,
+                COMMENTS_PAGE_SIZE,
+            )
+            .await
+            .map_err(ServerFnError::new)?;
+            let public_comments = BlogCommentList {
+                availability: map_comments_availability(public_comments.availability),
+                cached_snapshot: public_comments.cached_snapshot,
+                items: public_comments
+                    .items
+                    .into_iter()
+                    .map(map_comment_list_item)
+                    .collect(),
+                total: public_comments.total,
             };
             Some(map_post_detail(post, public_comments))
         } else {
@@ -232,18 +230,15 @@ fn comment_service(
 }
 
 #[cfg(feature = "ssr")]
-fn comments_read_availability(
-    error: &rustok_blog::BlogError,
-) -> Option<BlogCommentsAvailability> {
-    let rustok_blog::BlogError::Rich(error) = error else {
-        return None;
-    };
-    match error.kind {
-        rustok_core::error::ErrorKind::ExternalService => {
-            Some(BlogCommentsAvailability::Unavailable)
+fn map_comments_availability(
+    availability: rustok_blog::PublicCommentsAvailability,
+) -> BlogCommentsAvailability {
+    match availability {
+        rustok_blog::PublicCommentsAvailability::Available => BlogCommentsAvailability::Available,
+        rustok_blog::PublicCommentsAvailability::Unavailable => {
+            BlogCommentsAvailability::Unavailable
         }
-        rustok_core::error::ErrorKind::Timeout => Some(BlogCommentsAvailability::Timeout),
-        _ => None,
+        rustok_blog::PublicCommentsAvailability::Timeout => BlogCommentsAvailability::Timeout,
     }
 }
 
@@ -339,6 +334,9 @@ mod tests {
             &rustok_api::HostRuntimeContext,
             rustok_outbox::TransactionalEventBus,
         ) -> rustok_blog::CommentService = comment_service;
-        let _ = selector;
+        let mapper: fn(
+            rustok_blog::PublicCommentsAvailability,
+        ) -> BlogCommentsAvailability = map_comments_availability;
+        let _ = (selector, mapper);
     }
 }

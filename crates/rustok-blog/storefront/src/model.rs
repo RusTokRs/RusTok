@@ -39,6 +39,8 @@ pub enum BlogCommentsAvailability {
 pub struct BlogCommentList {
     #[serde(default)]
     pub availability: BlogCommentsAvailability,
+    #[serde(default, rename = "cachedSnapshot")]
+    pub cached_snapshot: bool,
     pub items: Vec<BlogCommentListItem>,
     pub total: u64,
 }
