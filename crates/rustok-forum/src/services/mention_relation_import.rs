@@ -85,7 +85,7 @@ impl MentionRelationService {
                 let handles = resolved
                     .users()
                     .iter()
-                    .map(|mention| mention.handle())
+                    .map(|mention| mention.handle().to_string())
                     .collect::<Vec<_>>();
                 if handles.as_slice() != extracted.handles() {
                     return Err(ForumError::Validation(
@@ -127,7 +127,7 @@ impl MentionRelationService {
                         persistence.persist_in_tx(txn, prepared).await?
                     }
                     crate::import_relation_preparation::ForumImportRelationEventMode::EmitAddedTargetEvents => {
-                        if self.event_bus.is_none() {
+                        if extracted.target_count() > 0 && self.event_bus.is_none() {
                             return Err(ForumError::Validation(
                                 "Forum import relation event emission requires an owner event bus"
                                     .to_string(),
