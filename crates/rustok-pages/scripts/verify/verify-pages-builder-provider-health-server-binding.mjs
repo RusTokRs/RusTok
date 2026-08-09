@@ -217,7 +217,7 @@ for (const marker of [
   "restore_unobserved_provider_health",
   "runtime_data_factory",
   "Pages remains `unobserved`",
-  "tests were not run",
+  "Tests were not run",
 ]) need(sources.overlay ?? "", marker, "server binding actualization");
 
 for (const marker of [
