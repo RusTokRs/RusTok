@@ -4,7 +4,7 @@ Status: `source-ready / maintainer-execution-open / owner-write-adapter-open / s
 
 ## Cursor and fresh recheck
 
-FORUM-34A through FORUM-34L are merged before this slice. Fresh `main` for 34M is `dcd2e57e060530ad62ac9c940d97f1b67834f5a4`; there are no newer commits after that 34L merge at slice start.
+FORUM-34A through FORUM-34L are merged before this slice. 34M initially started from the 34L merge `dcd2e57e060530ad62ac9c940d97f1b67834f5a4`. While the slice was being prepared, `main` advanced once to `275f919499a1f81082a6852a83af8c404c215a4c` through Commerce-only PR #3412. That commit does not overlap Forum import/export source, and the 34M branch was rebased onto it before PR review.
 
 Repository search still finds the canonical Forum implementation plan with the stale FORUM-34 planned cursor. The dated packet remains the truthful working cursor; the large canonical roadmap is not replaced wholesale by this slice.
 
