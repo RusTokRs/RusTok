@@ -300,3 +300,7 @@ const fn kind_label(kind: ForumExportReadTargetKind) -> &'static str {
         ForumExportReadTargetKind::Reply => "reply",
     }
 }
+
+#[path = "export_inventory.rs"]
+mod inventory;
+pub use inventory::*;
