@@ -52,7 +52,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn graphql_runtime_data_exposes_comments_port_and_snapshot_selection() {
+    fn graphql_runtime_data_exposes_comments_port_selection() {
         let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> =
             attach_schema_data;
         let selector: fn(
