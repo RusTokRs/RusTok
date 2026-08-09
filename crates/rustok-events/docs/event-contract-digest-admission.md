@@ -14,7 +14,7 @@ admitted commit is `7983092f96e14c002c57451709de936e40c01356`. The maintainer th
 generator again on that exact commit; both completed successfully and the digest diff was empty.
 
 That exact-SHA local execution is the maintainer-provided verification result for the pre-release repository
-boundary. A GitHub Actions `verify` packet is not claimed or fabricated. The repository-owned generator remains
+boundary. No GitHub Actions verification packet is claimed or fabricated. The repository-owned generator remains
 the sole hashing authority.
 
 The baseline gate that blocked `ProductIndexRefreshEvent` is therefore complete. The family may now be added, but
