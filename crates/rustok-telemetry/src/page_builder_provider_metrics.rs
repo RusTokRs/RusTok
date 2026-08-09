@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use prometheus::{HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts, Registry};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+pub const PAGE_BUILDER_PROVIDER_SOURCE_COMMIT_ENV: &str = "RUSTOK_SOURCE_COMMIT";
 pub const PAGE_BUILDER_PROVIDER_OPERATIONS: [&str; 2] = ["preview", "publish"];
 pub const PAGE_BUILDER_PROVIDER_OUTCOMES: [&str; 4] = [
     "succeeded",
@@ -11,6 +12,19 @@ pub const PAGE_BUILDER_PROVIDER_OUTCOMES: [&str; 4] = [
 ];
 
 lazy_static! {
+    /// Runtime source identity for deployment-health target admission.
+    ///
+    /// The label is emitted only when `RUSTOK_SOURCE_COMMIT` is a canonical 40-character Git SHA.
+    /// Missing or malformed source identity therefore leaves the series absent so deployment-health
+    /// capture/evaluation can fail closed instead of treating an unknown image as authoritative.
+    pub static ref PAGE_BUILDER_PROVIDER_BUILD_INFO: IntGaugeVec = IntGaugeVec::new(
+        Opts::new(
+            "rustok_page_builder_provider_build_info",
+            "Canonical source commit reported by this Page Builder provider target"
+        ),
+        &["source_commit"],
+    )
+    .expect("Failed to create Page Builder provider build info gauge");
     pub static ref PAGE_BUILDER_PROVIDER_OPERATION_DURATION_SECONDS: HistogramVec =
         HistogramVec::new(
             HistogramOpts::new(
@@ -43,7 +57,20 @@ lazy_static! {
         .expect("Failed to create Page Builder provider freshness gauge");
 }
 
+fn canonical_source_commit(value: &str) -> Option<String> {
+    let value = value.trim();
+    (value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| value.to_ascii_lowercase())
+}
+
+fn deployed_source_commit() -> Option<String> {
+    std::env::var(PAGE_BUILDER_PROVIDER_SOURCE_COMMIT_ENV)
+        .ok()
+        .and_then(|value| canonical_source_commit(&value))
+}
+
 pub fn register(registry: &Registry) -> Result<(), prometheus::Error> {
+    registry.register(Box::new(PAGE_BUILDER_PROVIDER_BUILD_INFO.clone()))?;
     registry.register(Box::new(
         PAGE_BUILDER_PROVIDER_OPERATION_DURATION_SECONDS.clone(),
     ))?;
@@ -53,6 +80,13 @@ pub fn register(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(
         PAGE_BUILDER_PROVIDER_LAST_OBSERVATION_UNIX_SECONDS.clone(),
     ))?;
+
+    if let Some(source_commit) = deployed_source_commit() {
+        PAGE_BUILDER_PROVIDER_BUILD_INFO
+            .with_label_values(&[source_commit.as_str()])
+            .set(1);
+    }
+
     Ok(())
 }
 
@@ -61,7 +95,9 @@ pub fn register(registry: &Registry) -> Result<(), prometheus::Error> {
 /// Labels are intentionally bounded to the two provider operations and four terminal outcomes.
 /// Tenant, page, revision, correlation, host and deployment identifiers are not metric labels.
 /// Scrape infrastructure owns target/deployment labels so aggregation can remain operationally
-/// bounded and exact deployment identity can be admitted separately.
+/// bounded. The process itself emits only the canonical source commit build-info series; immutable
+/// deployment image digest and expected-target inventory remain execution inputs admitted by the
+/// deployment-identity capture contract.
 pub fn record_page_builder_provider_operation(
     operation: &'static str,
     outcome: &'static str,
@@ -105,5 +141,15 @@ mod tests {
                 "other_failed"
             ]
         );
+    }
+
+    #[test]
+    fn source_commit_identity_is_canonical_and_bounded() {
+        let lower = "0123456789abcdef0123456789abcdef01234567";
+        let upper = "0123456789ABCDEF0123456789ABCDEF01234567";
+        assert_eq!(canonical_source_commit(lower).as_deref(), Some(lower));
+        assert_eq!(canonical_source_commit(upper).as_deref(), Some(lower));
+        assert!(canonical_source_commit("unknown").is_none());
+        assert!(canonical_source_commit("0123456789abcdef").is_none());
     }
 }
