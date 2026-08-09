@@ -93,9 +93,11 @@
   },
   "current_consumer_boundary": {
     "admin_transport_accepts_typed_health": true,
-    "workspace_uses_health_for_capabilities": false,
-    "authoritative_ssr_uses_health_for_capabilities": false,
-    "standalone_browser_intent_uses_health_for_capabilities": false
+    "workspace_uses_health_for_capabilities": true,
+    "workspace_exposes_observed_provider_status": true,
+    "authoritative_ssr_uses_health_for_capabilities": true,
+    "standalone_browser_intent_uses_health_for_capabilities": true,
+    "canonical_consumer_binding_contract": "pages_builder_provider_health_consumer_binding_source_v1"
   },
   "non_claims": {
     "runtime_identity_capture_executed": false,
@@ -119,8 +121,9 @@
   "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs",
   "next_cursor": {
     "server_provider_health_binding": "source_ready_maintainer_activation_pending",
+    "ui_ssr_browser_intent_health_binding": "source_ready_runtime_activation_pending",
     "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
-    "ui_ssr_browser_intent_health_binding": "source_open_runtime_activation_blocked",
+    "observed_provider_health_runtime_behavior": "maintainer_execution_pending",
     "observed_health_acceptance": "pending"
   }
 }
