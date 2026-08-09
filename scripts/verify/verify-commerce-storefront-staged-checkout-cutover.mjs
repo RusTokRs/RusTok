@@ -81,7 +81,10 @@ for (const [source, value, label] of [
   [graphqlCheckout, 'complete_storefront_checkout_input(', 'GraphQL resolver-scoped checkout entrypoint'],
   [graphqlCheckout, 'payment_provider_registry_from_context(ctx)', 'GraphQL host provider registry'],
   [graphqlCheckout, 'storefront_checkout_graphql_error', 'GraphQL stable checkout mapper'],
-  [graphqlCheckout, 'payment_collection_graphql_error(', 'GraphQL stable payment collection mapper'],
+  [graphqlCheckout, 'PaymentCollectionCreateOrReuseRequest', 'GraphQL payment collection owner request'],
+  [graphqlCheckout, '.collection_create_or_reuse_port()', 'GraphQL payment collection owner port'],
+  [graphqlCheckout, '.create_or_reuse_collection(', 'GraphQL payment collection owner operation'],
+  [graphqlCheckout, 'payment_collection_owner_graphql_error(', 'GraphQL stable payment collection mapper'],
   [graphqlCheckout, 'extensions.set("code", code)', 'GraphQL public error code extension'],
   [graphqlCheckout, 'extensions.set("retryable", retryable)', 'GraphQL public retryability extension'],
   [graphqlCheckout, 'extensions.set("reconciliation_required", reconciliation_required)', 'GraphQL payment reconciliation extension'],
@@ -131,6 +134,7 @@ for (const [source, value, label] of [
   [restCheckout, 'recovering_checkout_http_error', 'REST private staged error mapper drift'],
   [restCheckout, 'staged_checkout_http_error', 'REST private checkout error mapper drift'],
   [restCheckout, 'err.to_string()', 'REST raw payment error display'],
+  [graphqlCheckout, 'PaymentService::new(', 'GraphQL concrete Payment service construction'],
   [graphqlCheckout, 'Error::new(error.to_string())', 'GraphQL raw checkout error display'],
   [graphqlCheckout, '.find_reusable_collection_by_cart(tenant_id, cart.id)\n            .await?', 'GraphQL raw reusable payment error propagation'],
   [nativeCheckout, 'ServerFnError::new(error.to_string())', 'native raw checkout error display'],
@@ -163,5 +167,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime with host-selected Product ports; recovery failures retain typed correlation context without raw stderr output',
+  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to typed owner boundaries with host-selected Product/Payment capabilities; recovery failures retain typed correlation context without raw stderr output',
 );
