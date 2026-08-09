@@ -40,6 +40,26 @@ for (const marker of [
   requireText(graphql, marker, `${graphqlPath}: missing ${marker}`);
 }
 
+const ownerCall = graphql.indexOf(
+  ".tree_authenticated_owner_visible_with_audience_context(",
+);
+const ownerAwait = graphql.indexOf(".await?;", ownerCall);
+const observation = graphql.indexOf(
+  "observe_category_tree_locale_resolution(&tree.roots);",
+  ownerAwait,
+);
+const response = graphql.indexOf("Ok(tree.into())", observation);
+if (
+  ownerCall < 0 ||
+  ownerAwait <= ownerCall ||
+  observation <= ownerAwait ||
+  response <= observation
+) {
+  throw new Error(
+    `${graphqlPath}: expected owner call -> await -> locale observation -> response ordering`,
+  );
+}
+
 const observerStart = graphql.indexOf("fn category_tree_locale_resolution_outcome(");
 const gqlTypeStart = graphql.indexOf("#[derive(SimpleObject)]", observerStart);
 if (observerStart < 0 || gqlTypeStart <= observerStart) {
