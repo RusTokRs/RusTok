@@ -49,7 +49,10 @@ mod counter_reconciliation;
 mod solution_reconciliation;
 pub mod event;
 #[allow(clippy::collapsible_if, clippy::too_many_arguments)]
-mod mention_relation;
+mod mention_relation {
+    include!("mention_relation.rs");
+    include!("mention_relation_import.rs");
+}
 pub mod mention_reconciliation;
 #[cfg(test)]
 mod mention_relation_tests {
