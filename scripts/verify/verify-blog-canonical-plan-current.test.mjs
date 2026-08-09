@@ -26,6 +26,7 @@ const files = [
   'crates/rustok-blog/docs/implementation-plan-slice-99.md',
   'crates/rustok-blog/docs/implementation-plan-slice-100.md',
   'crates/rustok-blog/docs/implementation-plan-slice-101.md',
+  'crates/rustok-blog/docs/implementation-plan-slice-102.md',
   'crates/rustok-blog/docs/README.md',
   'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json',
   'crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json',
@@ -33,6 +34,7 @@ const files = [
   'crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json',
   'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
   'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
+  'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
 ];
 
 function absolute(root, relativePath) {
@@ -86,7 +88,7 @@ test('accepts the canonical Blog current implementation cursor', () => {
   try {
     const result = run(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /cursor=slice-101/);
+    assert.match(result.stdout, /cursor=slice-102/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -164,6 +166,34 @@ test('rejects a cached snapshot regression back to planned source work', () => {
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /storefront fallback current-state drift/);
+});
+
+test('rejects reopening the tag pagination source gap', () => {
+  const result = rejects((root) => {
+    mutateJson(
+      root,
+      'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json',
+      (value) => {
+        value.source_tracks.tag_list_pagination.status = 'planned';
+      },
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /tag pagination track drift/);
+});
+
+test('rejects claiming database-side tag pagination', () => {
+  const result = rejects((root) => {
+    mutateJson(
+      root,
+      'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
+      (value) => {
+        value.source_contract.database_side_pagination_claimed = true;
+      },
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /tag pagination source evidence drift/);
 });
 
 test('rejects listing the historical plan before the canonical current cursor', () => {
