@@ -71,8 +71,10 @@
     "source_hash_verification_retained": true
   },
   "binding_boundary": {
-    "accepted_packet_can_authorize_future_server_binding": true,
-    "accepted_packet_does_not_perform_server_binding": true,
+    "accepted_packet_can_authorize_server_binding": true,
+    "accepted_packet_does_not_itself_install_or_activate_binding": true,
+    "server_binding_source_ready": true,
+    "consumer_binding_source_ready": true,
     "server_binding_must_revalidate_exact_source_commit": true,
     "server_binding_must_revalidate_exact_deployment_image_digest": true,
     "server_binding_must_enforce_health_valid_until": true,
@@ -84,11 +86,12 @@
     "runtime_identity_capture_executed": false,
     "runtime_deployment_evaluator_executed": false,
     "owner_acceptance_executed": false,
-    "server_binding_performed": false,
-    "pages_provider_health_observed": false,
-    "pages_ui_provider_health_bound": false,
-    "pages_ssr_provider_health_bound": false,
-    "standalone_browser_intent_provider_health_bound": false,
+    "accepted_packet_installed": false,
+    "server_binding_runtime_activated": false,
+    "pages_provider_health_observed_runtime": false,
+    "pages_ui_provider_health_runtime_executed": false,
+    "pages_ssr_provider_health_runtime_executed": false,
+    "standalone_browser_intent_provider_health_runtime_executed": false,
     "pages_reference_consumer_gate_accepted": false,
     "forum_wave_accepted": false,
     "ffa_promoted": false,
@@ -112,9 +115,9 @@
   ],
   "next_cursor": {
     "owner_acceptance_packet": "source_ready_maintainer_execution_pending",
-    "retained_identity_and_evaluator_runtime_evidence": "maintainer_execution_pending",
-    "server_owner_health_binding": "blocked_on_accepted_owner_packet",
-    "ui_ssr_browser_intent_health_binding": "blocked_on_server_owner_binding",
+    "server_owner_health_binding": "source_ready_maintainer_activation_pending",
+    "ui_ssr_browser_intent_health_binding": "source_ready_runtime_activation_pending",
+    "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
     "observed_health_acceptance": "pending"
   }
 }
