@@ -27,6 +27,7 @@ This directory contains the detailed technical architecture documentation for `r
 ## Reference Documents
 
 - [Current Implementation Plan — 2026-08-08](./implementation-plan-current-2026-08-08.md)
+- [Maintainer Unblock Handoff — 2026-08-09](./maintainer-unblock-handoff-2026-08-09.md)
 - [Historical Milestone Plan](./implementation-plan.md)
 - [Source Module Integration Contract](./module-source-integration.md)
 - [M5 Mutation Event Commit/Ack Contract](./m5-mutation-event-ack-contract.md)
