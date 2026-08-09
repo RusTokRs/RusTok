@@ -36,6 +36,7 @@
     "admin_storage_state_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_ADMIN_STORAGE_STATE",
     "tenant_slug_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_TENANT_SLUG",
     "page_id_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_PAGE_ID",
+    "page_id_format": "uuid",
     "admin_route_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_ADMIN_ROUTE",
     "common_headers_environment": "RUSTOK_PAGES_PROVIDER_HEALTH_RUNTIME_COMMON_HEADERS_JSON",
     "operator_requirements": [
@@ -60,7 +61,9 @@
     "accepted_slo_evaluation_must_match_evaluation_slo_evaluation": true,
     "configured_rollout_must_be_all_on": true,
     "graphql_snapshot_must_observe_health": true,
-    "graphql_health_must_match_accepted_snapshot": true
+    "graphql_health_must_match_accepted_snapshot": true,
+    "browser_intent_mismatch_sentinel_is_non_uuid": true,
+    "browser_intent_probe_cannot_target_fixture_page": true
   },
   "observations": {
     "graphql_snapshot": true,
