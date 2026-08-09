@@ -33,11 +33,11 @@ The next Forum-owned slice therefore exposes exact stored locale enumeration at 
 
 The public facade:
 
-- requires `forum_replies:list` through the existing Forum RBAC boundary;
-- rejects `SecurityContext::is_public_read()` before delegating, so this export-oriented metadata cannot become an anonymous reply-existence or locale oracle;
+- explicitly rejects `SecurityContext::is_public_read()`, so this export-oriented metadata cannot become an anonymous reply-existence or locale oracle;
+- requires `forum_replies:manage`, not ordinary list/read authority;
 - delegates through the existing reply owner service rather than exposing raw persistence helpers.
 
-The bounded owner/storage implementation:
+The internal owner and storage layers repeat the `forum_replies:manage` check before storage access. The bounded storage implementation then:
 
 - rejects a nil tenant id;
 - accepts at most `ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS = 512` reply IDs;
@@ -54,7 +54,7 @@ The raw batched storage method and its bound remain crate-private. The contract 
 
 Locale enumeration is intentionally not a localized read. The storage implementation does not call `resolve_by_locale_with_fallback`, does not accept a requested locale and does not synthesize fallback locales.
 
-The bounded storage method performs one tenant-scoped reply existence query and reuses the existing batched `load_bodies_map` loader for the complete bounded ID set. It does not call `ReplyService::get` or `find_reply` once per ID and therefore does not introduce an N+1 enumeration path. The public facade does not perform per-reply visibility probes because anonymous/public-read contexts are rejected before the owner delegation.
+The bounded storage method performs one tenant-scoped reply existence query and reuses the existing batched `load_bodies_map` loader for the complete bounded ID set. It does not call `ReplyService::get` or `find_reply` once per ID and therefore does not introduce an N+1 enumeration path. The public facade does not perform per-reply visibility probes because anonymous/public-read contexts are rejected before the owner delegation and the operation requires manage authority.
 
 ## Ownership and limits
 
