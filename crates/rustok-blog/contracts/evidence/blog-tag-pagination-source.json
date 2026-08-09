@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "tag_list_pagination",
+  "owner": "rustok-blog",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "source_contract": {
+    "service": "crates/rustok-blog/src/services/tag.rs",
+    "dto": "crates/rustok-blog/src/dto/tag.rs",
+    "maximum_page_size": 100,
+    "minimum_page_size": 1,
+    "owner_service_clamps_page_size": true,
+    "dto_documents_minimum_page": true,
+    "dto_documents_page_size_bounds": true,
+    "page_offset_uses_saturating_arithmetic": true,
+    "page_offset_uses_checked_usize_conversion": true,
+    "extreme_page_cannot_overflow_offset_arithmetic": true,
+    "total_count_semantics_changed": false,
+    "sort_order_changed": false,
+    "tag_visibility_scope_changed": false,
+    "database_side_pagination_claimed": false,
+    "production_behavior_changed": true,
+    "database_schema_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "source_harness": {
+    "path": "crates/rustok-blog/src/services/tag.rs",
+    "module": "services::tag::pagination_tests",
+    "tests": [
+      "tag_page_size_is_bounded_by_owner_service",
+      "tag_page_offset_saturates_without_arithmetic_overflow"
+    ],
+    "status": "executable_no_run",
+    "runtime_status": "not_run"
+  },
+  "open_follow_up": {
+    "tag_mutation_projection_consistency": "re_audit_required",
+    "reason": "TagService update/delete mutate Taxonomy or Blog relations while Search currently projects tag text from blog_posts.metadata.tags; this slice deliberately does not redefine that ownership boundary"
+  },
+  "execution": [],
+  "explicit_non_claims": [
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_compile_result",
+    "no_database_side_pagination_result",
+    "no_postgresql_result",
+    "no_browser_result",
+    "no_http_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}
