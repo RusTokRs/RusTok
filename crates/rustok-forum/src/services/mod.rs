@@ -2,6 +2,7 @@
 
 mod bounded_compat;
 mod category {
+    include!("category_import.rs");
     include!("category.rs");
     include!("category_locale_enumeration.rs");
     include!("category_projection_owner.rs");
@@ -48,6 +49,7 @@ mod category_visibility;
 mod counter_reconciliation;
 mod solution_reconciliation;
 pub mod event;
+mod import_write;
 #[allow(clippy::collapsible_if, clippy::too_many_arguments)]
 mod mention_relation {
     include!("mention_relation_import.rs");
@@ -93,6 +95,7 @@ mod reply_audience_read;
 mod reply_create_audience_authorization;
 mod reply_facade;
 mod reply_owner {
+    include!("reply_owner_import.rs");
     include!("reply_owner.rs");
     include!("reply_owner_inline.rs");
 }
@@ -105,6 +108,7 @@ pub mod storefront_read_state {
 pub mod subscription;
 #[allow(clippy::collapsible_if)]
 mod topic {
+    include!("topic_import.rs");
     include!("topic.rs");
     include!("topic_locale_enumeration.rs");
     include!("topic_inline.rs");
@@ -200,6 +204,9 @@ pub use solution_reconciliation::{
     ForumSolutionReconciliationService,
 };
 pub use event::ForumEventService;
+pub use import_write::{
+    ForumImportWriteResult, ForumImportWriteService, MAX_FORUM_IMPORT_APPLY_RECORDS_PER_BATCH,
+};
 #[allow(unused_imports)]
 pub(crate) use mention_relation::MentionRelationService;
 pub use moderation::ModerationService;
