@@ -80,7 +80,7 @@
   "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs",
   "next_cursor": {
     "provider_health_capability_preflight": "source_ready_runtime_execution_pending",
-    "observed_health_runtime_evidence_harness": "source_open",
+    "observed_health_runtime_evidence_harness": "source_ready_maintainer_execution_pending",
     "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
     "observed_health_acceptance": "pending"
   }

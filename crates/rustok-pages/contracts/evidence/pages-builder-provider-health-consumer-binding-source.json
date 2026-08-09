@@ -87,7 +87,7 @@
   "next_cursor": {
     "provider_health_consumer_binding": "source_ready_runtime_activation_pending",
     "provider_health_capability_preflight": "source_ready_runtime_execution_pending",
-    "observed_health_runtime_evidence_harness": "source_open",
+    "observed_health_runtime_evidence_harness": "source_ready_maintainer_execution_pending",
     "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
     "observed_provider_health_runtime_behavior": "maintainer_execution_pending",
     "observed_health_acceptance": "pending"

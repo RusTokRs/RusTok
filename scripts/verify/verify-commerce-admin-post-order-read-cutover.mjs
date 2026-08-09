@@ -30,17 +30,18 @@ const count = (source, value) => source.split(value).length - 1;
 
 for (const [source, value, label] of [
   [router, 'pub mod post_order_reads;', 'mounted admin read module'],
+  [router, 'pub mod post_order_commands;', 'mounted admin command module'],
   [router, 'axum::routing::get(post_order_reads::list_order_returns)', 'mounted return list'],
   [router, 'axum::routing::get(post_order_reads::show_order_return)', 'mounted return detail'],
   [router, 'axum::routing::get(post_order_reads::list_order_changes)', 'mounted change list'],
   [router, 'axum::routing::get(post_order_reads::show_order_change)', 'mounted change detail'],
-  [router, 'axum::routing::post(returns::create_order_return)', 'return creation remains mounted mutation'],
+  [router, 'axum::routing::post(post_order_commands::create_order_return)', 'return creation owner mutation'],
   [router, 'axum::routing::post(returns::create_order_return_decision)', 'return decision remains mounted orchestration'],
   [router, 'axum::routing::post(returns::complete_order_return)', 'return completion remains mounted orchestration'],
-  [router, 'axum::routing::post(returns::cancel_order_return)', 'return cancel remains mounted mutation'],
-  [router, 'axum::routing::post(changes::create_order_change)', 'change creation remains mounted mutation'],
+  [router, 'axum::routing::post(post_order_commands::cancel_order_return)', 'return cancel owner mutation'],
+  [router, 'axum::routing::post(post_order_commands::create_order_change)', 'change creation owner mutation'],
   [router, 'axum::routing::post(changes::apply_order_change)', 'change apply remains mounted orchestration'],
-  [router, 'axum::routing::post(changes::cancel_order_change)', 'change cancel remains mounted mutation'],
+  [router, 'axum::routing::post(post_order_commands::cancel_order_change)', 'change cancel owner mutation'],
   [reads, 'ListOrderReturnProjectionsRequest {', 'typed return list request'],
   [reads, 'ReadOrderReturnProjectionRequest { return_id: id }', 'typed return detail request'],
   [reads, 'ListOrderChangeProjectionsRequest {', 'typed change list request'],
@@ -58,12 +59,12 @@ for (const [source, value, label] of [
   [reads, 'per_page: pagination.limit()', 'clamped owner page size'],
   [reads, 'data: page.items,', 'typed page items'],
   [reads, 'page.total', 'owner pagination total'],
-  [returns, '.create_return(tenant.id, id, input)', 'return mutation remains concrete owner command'],
+  [returns, '.create_return(tenant.id, id, input)', 'legacy return mutation compatibility source'],
   [returns, '.complete_return(tenant.id, auth.user_id, id, command)', 'return completion remains orchestration'],
-  [returns, '.cancel_return(tenant.id, id, input)', 'return cancel remains concrete owner command'],
-  [changes, '.create_order_change(tenant.id, actor_id, id, input)', 'change creation remains concrete owner command'],
+  [returns, '.cancel_return(tenant.id, id, input)', 'legacy return cancel compatibility source'],
+  [changes, '.create_order_change(tenant.id, actor_id, id, input)', 'legacy change mutation compatibility source'],
   [changes, '.apply_order_change(tenant.id, id, input.difference_refund, input.metadata)', 'change apply remains orchestration'],
-  [changes, '.cancel_order_change(tenant.id, id, input)', 'change cancel remains concrete owner command'],
+  [changes, '.cancel_order_change(tenant.id, id, input)', 'legacy change cancel compatibility source'],
   [note, '## Admin post-order read cutover', 'focused admin cutover note'],
   [note, 'all mounted complete/post-order reads cut over, unvalidated', 'focused status'],
 ]) requireText(source, value, label);
@@ -131,5 +132,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Mounted admin return/order-change list and detail routes use typed owner projections with preserved ORDERS_READ, filters, pagination, actor/channel/locale/deadline context, while POST mutations remain unchanged',
+  '✔ Mounted admin return/order-change reads use typed owner projections while create/cancel writes use the owner command module and payment-coupled orchestration remains unchanged',
 );
