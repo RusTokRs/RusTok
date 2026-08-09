@@ -27,7 +27,7 @@ const packet = read(packetPath);
 for (const marker of [
   "pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;",
   "pub(crate) async fn available_locales_for_replies(",
-  "enforce_scope(&security, Resource::ForumReplies, Action::List)?;",
+  "enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;",
   "tenant_id.is_nil()",
   "reply_ids.len() > Self::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS",
   "let mut seen = BTreeSet::new();",
@@ -83,6 +83,7 @@ for (const marker of [
   "pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize =",
   "reply::ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS;",
   "pub(crate) async fn available_locales_for_replies(",
+  "enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;",
   ".available_locales_for_replies(tenant_id, security, reply_ids)",
 ]) {
   requireText(owner, marker, `${ownerPath}: missing owner delegation marker ${marker}`);
@@ -92,9 +93,9 @@ for (const marker of [
   "pub const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize =",
   "reply_owner::ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS;",
   "pub async fn available_locales_for_replies(",
-  "enforce_scope(&security, Resource::ForumReplies, Action::List)?;",
   "if security.is_public_read()",
   "Forum reply locale enumeration requires an authenticated operator context",
+  "enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;",
   ".available_locales_for_replies(tenant_id, security, reply_ids)",
 ]) {
   requireText(facade, marker, `${facadePath}: missing public owner marker ${marker}`);
@@ -126,7 +127,7 @@ for (const marker of [
   "canonical Forum ledger still says `FORUM-34` is `planned`",
   "exact stored locale enumeration",
   "MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS = 512",
-  "requires `forum_replies:list`",
+  "requires `forum_replies:manage`",
   "rejects `SecurityContext::is_public_read()`",
   "anonymous reply-existence or locale oracle",
   "raw batched storage method and its bound remain crate-private",
