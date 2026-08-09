@@ -212,3 +212,47 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
     assert_eq!(blog_scoped_terms.len(), 1);
     assert_eq!(blog_scoped_terms[0].canonical_key, "backend");
 }
+
+#[tokio::test]
+async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus);
+    let security = admin();
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            security.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Canonical tag relation".to_string(),
+                content: rustok_blog::richtext::article_document_from_plain_text(
+                    &"Body".to_string(),
+                ),
+                excerpt: None,
+                slug: Some("canonical-tag-relation".to_string()),
+                publish: true,
+                tags: vec!["stale-metadata-tag".to_string()],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+            },
+        )
+        .await
+        .expect("post should be created");
+
+    blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .exec(&db)
+        .await
+        .expect("test should remove canonical relations while leaving compatibility metadata intact");
+
+    let post = post_service
+        .get_post(tenant_id, security, post_id, "en")
+        .await
+        .expect("post should load after relation removal");
+    assert!(post.tags.is_empty());
+}
