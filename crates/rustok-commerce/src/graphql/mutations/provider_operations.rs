@@ -1,13 +1,20 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
-use rustok_api::{Permission, graphql::require_module_enabled};
+use rustok_api::{
+    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
+    graphql::require_module_enabled,
+};
 use rustok_fulfillment::error::FulfillmentError;
-use rustok_payment::error::PaymentError;
+use rustok_payment::{
+    AuthorizeAdminPaymentCollectionRequest, CancelAdminPaymentCollectionRequest,
+    CancelAdminRefundRequest, CaptureAdminPaymentCollectionRequest, CompleteAdminRefundRequest,
+    CreateAdminRefundRequest,
+};
 use uuid::Uuid;
 
 use crate::graphql_runtime::{
-    fulfillment_orchestration_from_context, payment_orchestration_from_context,
+    fulfillment_orchestration_from_context, payment_command_runtime_from_context,
 };
-use crate::{FulfillmentOrchestrationError, PaymentOrchestrationError};
+use crate::FulfillmentOrchestrationError;
 
 use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
 use super::helpers::*;
@@ -23,55 +30,76 @@ fn public_provider_graphql_error(
     })
 }
 
-fn payment_error_envelope(error: &PaymentError) -> (&'static str, &'static str, bool) {
-    match error {
-        PaymentError::Validation(_) => (
-            "Payment request is invalid",
-            "PAYMENT_REQUEST_INVALID",
+fn payment_command_error_envelope(
+    error: &PortError,
+) -> (&'static str, &'static str, bool, &'static str) {
+    match error.code.as_str() {
+        "payment.refund_reserved_reconciliation_required"
+        | "payment.provider_invalid_response"
+        | "payment.provider_outcome_unknown" => (
+            "Payment operation requires reconciliation",
+            "PAYMENT_RECONCILIATION_REQUIRED",
             false,
+            "reconciliation_required",
         ),
-        PaymentError::PaymentCollectionNotFound(_)
-        | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => (
-            "Payment resource was not found",
-            "PAYMENT_RESOURCE_NOT_FOUND",
-            false,
-        ),
-        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
-            "Payment operation conflicts with the current state",
-            "PAYMENT_STATE_CONFLICT",
-            false,
-        ),
-        PaymentError::ProviderUnavailable { .. } | PaymentError::Database(_) => (
+        "payment.refund_reserved_provider_unavailable"
+        | "payment.provider_unavailable"
+        | "payment.database_unavailable" => (
             "Payment service is temporarily unavailable",
             "PAYMENT_TEMPORARILY_UNAVAILABLE",
             true,
+            "temporarily_unavailable",
         ),
-        PaymentError::ProviderInvalidResponse { .. }
-        | PaymentError::ProviderOutcomeUnknown { .. } => (
-            "Payment operation requires reconciliation",
-            "PAYMENT_RECONCILIATION_REQUIRED",
-            false,
-        ),
-        PaymentError::ProviderConfiguration { .. } => (
+        "payment.provider_not_configured" => (
             "Payment operation is not configured",
             "PAYMENT_CONFIGURATION_ERROR",
             false,
+            "configuration",
         ),
-    }
-}
-
-fn payment_orchestration_error_envelope(
-    error: &PaymentOrchestrationError,
-) -> (&'static str, &'static str, bool) {
-    match error {
-        PaymentOrchestrationError::Provider(source)
-        | PaymentOrchestrationError::Payment(source) => payment_error_envelope(source),
-        PaymentOrchestrationError::ProviderAfterRefundReservation { .. } => (
-            "Payment operation requires reconciliation",
-            "PAYMENT_RECONCILIATION_REQUIRED",
+        "payment.provider_rejected" | "payment.invalid_transition" => (
+            "Payment operation conflicts with the current state",
+            "PAYMENT_STATE_CONFLICT",
             false,
+            "state_conflict",
         ),
+        _ => match &error.kind {
+            PortErrorKind::Validation => (
+                "Payment request is invalid",
+                "PAYMENT_REQUEST_INVALID",
+                false,
+                "validation",
+            ),
+            PortErrorKind::NotFound => (
+                "Payment resource was not found",
+                "PAYMENT_RESOURCE_NOT_FOUND",
+                false,
+                "not_found",
+            ),
+            PortErrorKind::Conflict => (
+                "Payment operation conflicts with the current state",
+                "PAYMENT_STATE_CONFLICT",
+                false,
+                "state_conflict",
+            ),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                "Payment service is temporarily unavailable",
+                "PAYMENT_TEMPORARILY_UNAVAILABLE",
+                true,
+                "temporarily_unavailable",
+            ),
+            PortErrorKind::InvariantViolation => (
+                "Payment operation requires reconciliation",
+                "PAYMENT_RECONCILIATION_REQUIRED",
+                false,
+                "reconciliation_required",
+            ),
+            PortErrorKind::Forbidden => (
+                "Payment request is invalid",
+                "PAYMENT_REQUEST_INVALID",
+                false,
+                "forbidden",
+            ),
+        },
     }
 }
 
@@ -133,16 +161,24 @@ fn payment_provider_graphql_error(
     tenant_id: Uuid,
     resource_id: Uuid,
     operation: &'static str,
-    error: PaymentOrchestrationError,
+    context: &PortContext,
+    error: PortError,
 ) -> async_graphql::Error {
+    let (message, code, retryable, error_kind) = payment_command_error_envelope(&error);
     tracing::error!(
-        error = ?error,
-        tenant_id = %tenant_id,
-        resource_id = %resource_id,
+        owner = "rustok_payment",
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        resource_id_non_nil = !resource_id.is_nil(),
         operation,
-        "commerce GraphQL payment provider operation failed"
+        correlation_id = %context.correlation_id,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        error_kind,
+        public_code = code,
+        retryable,
+        boundary = "commerce_graphql_payment_command",
+        "commerce GraphQL payment owner command failed"
     );
-    let (message, code, retryable) = payment_orchestration_error_envelope(&error);
     public_provider_graphql_error(message, code, retryable)
 }
 
@@ -161,6 +197,86 @@ fn fulfillment_provider_graphql_error(
     );
     let (message, code, retryable) = fulfillment_orchestration_error_envelope(&error);
     public_provider_graphql_error(message, code, retryable)
+}
+
+fn payment_collection_command_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    collection_id: Uuid,
+    operation: &'static str,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-graphql-payment-command:{operation}:{collection_id}"),
+    )
+    .with_idempotency_key(format!(
+        "graphql-payment-collection:{collection_id}:{operation}"
+    ))
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
+}
+
+fn payment_refund_create_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    collection_id: Uuid,
+    creation_key: &str,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-graphql-payment-command:create_refund:{collection_id}"),
+    )
+    .with_idempotency_key(creation_key.to_string())
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
+}
+
+fn payment_refund_transition_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    refund_id: Uuid,
+    operation: &'static str,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-graphql-payment-command:{operation}:{refund_id}"),
+    )
+    .with_idempotency_key(format!("graphql-refund:{refund_id}:{operation}"))
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
 }
 
 #[derive(Default)]
@@ -182,20 +298,32 @@ impl CommerceProviderMutation {
             "Permission denied: payments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let collection = payment_orchestration_from_context(ctx, db.clone())
-            .authorize_collection(
-                tenant_id,
-                id,
-                crate::dto::AuthorizePaymentInput {
-                    provider_id: input.provider_id,
-                    provider_payment_id: input.provider_payment_id,
-                    amount: parse_optional_decimal(input.amount.as_deref())?,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+        let runtime = payment_command_runtime_from_context(ctx, db.clone());
+        let context =
+            payment_collection_command_context(ctx, tenant_id, id, "authorize_payment_collection")?;
+        let collection = runtime
+            .collection_command_port()
+            .authorize_payment_collection(
+                context.clone(),
+                AuthorizeAdminPaymentCollectionRequest {
+                    collection_id: id,
+                    input: crate::dto::AuthorizePaymentInput {
+                        provider_id: input.provider_id,
+                        provider_payment_id: input.provider_payment_id,
+                        amount: parse_optional_decimal(input.amount.as_deref())?,
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(tenant_id, id, "authorize_payment_collection", error)
+                payment_provider_graphql_error(
+                    tenant_id,
+                    id,
+                    "authorize_payment_collection",
+                    &context,
+                    error,
+                )
             })?;
         Ok(collection.into())
     }
@@ -214,18 +342,30 @@ impl CommerceProviderMutation {
             "Permission denied: payments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let collection = payment_orchestration_from_context(ctx, db.clone())
-            .capture_collection(
-                tenant_id,
-                id,
-                crate::dto::CapturePaymentInput {
-                    amount: parse_optional_decimal(input.amount.as_deref())?,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+        let runtime = payment_command_runtime_from_context(ctx, db.clone());
+        let context =
+            payment_collection_command_context(ctx, tenant_id, id, "capture_payment_collection")?;
+        let collection = runtime
+            .collection_command_port()
+            .capture_payment_collection(
+                context.clone(),
+                CaptureAdminPaymentCollectionRequest {
+                    collection_id: id,
+                    input: crate::dto::CapturePaymentInput {
+                        amount: parse_optional_decimal(input.amount.as_deref())?,
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(tenant_id, id, "capture_payment_collection", error)
+                payment_provider_graphql_error(
+                    tenant_id,
+                    id,
+                    "capture_payment_collection",
+                    &context,
+                    error,
+                )
             })?;
         Ok(collection.into())
     }
@@ -244,18 +384,30 @@ impl CommerceProviderMutation {
             "Permission denied: payments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let collection = payment_orchestration_from_context(ctx, db.clone())
-            .cancel_collection(
-                tenant_id,
-                id,
-                crate::dto::CancelPaymentInput {
-                    reason: input.reason,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+        let runtime = payment_command_runtime_from_context(ctx, db.clone());
+        let context =
+            payment_collection_command_context(ctx, tenant_id, id, "cancel_payment_collection")?;
+        let collection = runtime
+            .collection_command_port()
+            .cancel_payment_collection(
+                context.clone(),
+                CancelAdminPaymentCollectionRequest {
+                    collection_id: id,
+                    input: crate::dto::CancelPaymentInput {
+                        reason: input.reason,
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(tenant_id, id, "cancel_payment_collection", error)
+                payment_provider_graphql_error(
+                    tenant_id,
+                    id,
+                    "cancel_payment_collection",
+                    &context,
+                    error,
+                )
             })?;
         Ok(collection.into())
     }
@@ -275,15 +427,25 @@ impl CommerceProviderMutation {
             "Permission denied: payments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let refund = payment_orchestration_from_context(ctx, db.clone())
-            .create_refund_idempotent(
-                tenant_id,
-                payment_collection_id,
-                idempotency_key,
-                crate::dto::CreateRefundInput {
-                    amount: parse_decimal(&input.amount)?,
-                    reason: input.reason,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+        let runtime = payment_command_runtime_from_context(ctx, db.clone());
+        let context = payment_refund_create_context(
+            ctx,
+            tenant_id,
+            payment_collection_id,
+            idempotency_key.as_str(),
+        )?;
+        let refund = runtime
+            .refund_command_port()
+            .create_refund(
+                context.clone(),
+                CreateAdminRefundRequest {
+                    collection_id: payment_collection_id,
+                    creation_key: idempotency_key,
+                    input: crate::dto::CreateRefundInput {
+                        amount: parse_decimal(&input.amount)?,
+                        reason: input.reason,
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
@@ -292,6 +454,7 @@ impl CommerceProviderMutation {
                     tenant_id,
                     payment_collection_id,
                     "create_refund",
+                    &context,
                     error,
                 )
             })?;
@@ -312,17 +475,28 @@ impl CommerceProviderMutation {
             "Permission denied: payments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let refund = payment_orchestration_from_context(ctx, db.clone())
+        let runtime = payment_command_runtime_from_context(ctx, db.clone());
+        let context = payment_refund_transition_context(ctx, tenant_id, id, "complete_refund")?;
+        let refund = runtime
+            .refund_command_port()
             .complete_refund(
-                tenant_id,
-                id,
-                crate::dto::CompleteRefundInput {
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                context.clone(),
+                CompleteAdminRefundRequest {
+                    refund_id: id,
+                    input: crate::dto::CompleteRefundInput {
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(tenant_id, id, "complete_refund", error)
+                payment_provider_graphql_error(
+                    tenant_id,
+                    id,
+                    "complete_refund",
+                    &context,
+                    error,
+                )
             })?;
         Ok(refund.into())
     }
@@ -341,18 +515,29 @@ impl CommerceProviderMutation {
             "Permission denied: payments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let refund = payment_orchestration_from_context(ctx, db.clone())
+        let runtime = payment_command_runtime_from_context(ctx, db.clone());
+        let context = payment_refund_transition_context(ctx, tenant_id, id, "cancel_refund")?;
+        let refund = runtime
+            .refund_command_port()
             .cancel_refund(
-                tenant_id,
-                id,
-                crate::dto::CancelRefundInput {
-                    reason: input.reason,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                context.clone(),
+                CancelAdminRefundRequest {
+                    refund_id: id,
+                    input: crate::dto::CancelRefundInput {
+                        reason: input.reason,
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(tenant_id, id, "cancel_refund", error)
+                payment_provider_graphql_error(
+                    tenant_id,
+                    id,
+                    "cancel_refund",
+                    &context,
+                    error,
+                )
             })?;
         Ok(refund.into())
     }
