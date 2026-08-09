@@ -1,0 +1,69 @@
+{
+  "format": "page_builder_provider_health_runtime_observation_source_v1",
+  "status": "source_ready_unvalidated",
+  "module": "page_builder",
+  "scope": "process_local_runtime_observation",
+  "source_contract": {
+    "default_fly_composition_records_runtime_health": true,
+    "preview_source_operation": "render_preview",
+    "publish_source_operation": "save_project",
+    "load_project_excluded": true,
+    "window_capacity_per_operation": 256,
+    "minimum_preview_samples": 20,
+    "minimum_publish_samples": 20,
+    "snapshot_absent_below_sample_floor": true,
+    "process_restart_resets_window": true,
+    "provider_health_snapshot_uses_existing_pilot_thresholds": true,
+    "terminal_success_and_failure_are_recorded": true,
+    "sanitize_failure_rate_uses_telemetry_visible_publish_failures_only": true,
+    "runtime_error_rate_uses_telemetry_visible_preview_and_publish_failures_only": true,
+    "pre_telemetry_validation_and_inspection_are_not_included": true,
+    "bounded_pending_call_correlation": true,
+    "deployment_wide_aggregation_present": false,
+    "deployment_freshness_contract_present": false,
+    "pages_admin_health_binding_present": false,
+    "provider_health_observed_promoted": false,
+    "pages_reference_consumer_gate_promoted": false,
+    "ffa_or_fba_promoted": false,
+    "tests_run": false,
+    "static_verifier_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "runtime_execution_run": false,
+    "workflows_or_ci_run": false
+  },
+  "production_sources": [
+    "crates/rustok-page-builder/src/health.rs",
+    "crates/rustok-page-builder/src/runtime_telemetry.rs",
+    "crates/rustok-page-builder/src/composition.rs",
+    "crates/rustok-page-builder/src/adapters/fly_service.rs"
+  ],
+  "retained_unobserved_consumers": [
+    "crates/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/rustok-pages/admin/src/builder.rs"
+  ],
+  "verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs",
+  "execution": [],
+  "next_cursor": {
+    "deployment_aggregation_and_freshness_contract": "open",
+    "exact_source_deployment_identity": "open",
+    "pages_provider_status_binding": "blocked_on_deployment_observation_authority",
+    "observed_provider_health_gate": "open"
+  },
+  "explicit_non_claims": [
+    "no_deployment_wide_provider_health_result",
+    "no_live_slo_acceptance_result",
+    "no_pages_admin_observed_health_result",
+    "no_graphql_provider_health_promotion",
+    "no_reference_consumer_gate_acceptance",
+    "no_ffa_promotion",
+    "no_fba_promotion",
+    "no_test_result",
+    "no_verifier_result",
+    "no_cargo_result",
+    "no_formatting_result",
+    "no_runtime_result",
+    "no_workflow_result",
+    "no_ci_result"
+  ]
+}

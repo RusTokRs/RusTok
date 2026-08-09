@@ -21,6 +21,7 @@ const files = {
   slice102: 'crates/rustok-blog/docs/implementation-plan-slice-102.md',
   slice103: 'crates/rustok-blog/docs/implementation-plan-slice-103.md',
   slice104: 'crates/rustok-blog/docs/implementation-plan-slice-104.md',
+  slice105: 'crates/rustok-blog/docs/implementation-plan-slice-105.md',
   docsIndex: 'crates/rustok-blog/docs/README.md',
   tcpTransport: 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json',
   tcpServer: 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json',
@@ -31,6 +32,7 @@ const files = {
   tagPagination: 'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
   tagProjection: 'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
   tagMutation: 'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
+  postCategoryName: 'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
 };
 
 function absolute(relativePath) { return path.join(repoRoot, relativePath); }
@@ -76,6 +78,7 @@ const slice101 = read(files.slice101);
 const slice102 = read(files.slice102);
 const slice103 = read(files.slice103);
 const slice104 = read(files.slice104);
+const slice105 = read(files.slice105);
 const docsIndex = read(files.docsIndex);
 const tcpTransport = json(files.tcpTransport);
 const tcpServer = json(files.tcpServer);
@@ -86,6 +89,7 @@ const writeSurface = json(files.writeSurface);
 const tagPagination = json(files.tagPagination);
 const tagProjection = json(files.tagProjection);
 const tagMutation = json(files.tagMutation);
+const postCategoryName = json(files.postCategoryName);
 
 if (evidence) {
   if (
@@ -102,8 +106,8 @@ if (evidence) {
     evidence.canonical_current_cursor !== files.current ||
     evidence.actualization_slice !== files.slice101 ||
     evidence.historical_baseline_last_embedded_slice !== 67 ||
-    evidence.latest_behavior_slice !== 104 ||
-    evidence.current_recorded_slice !== 104
+    evidence.latest_behavior_slice !== 105 ||
+    evidence.current_recorded_slice !== 105
   ) failures.push(`${files.evidence}: cursor path/version drift`);
 
   const tracks = evidence.source_tracks ?? {};
@@ -166,6 +170,19 @@ if (evidence) {
     tracks.tag_mutation_atomic_reindex?.declared_fk_cascade_used !== true ||
     tracks.tag_mutation_atomic_reindex?.must_not_reopen_as_source_gap !== true
   ) failures.push(`${files.evidence}: tag mutation atomic-reindex track drift`);
+  if (
+    tracks.post_category_name_projection?.status !== 'source_ready_maintainer_execution_pending' ||
+    tracks.post_category_name_projection?.slice !== files.slice105 ||
+    tracks.post_category_name_projection?.evidence !== files.postCategoryName ||
+    tracks.post_category_name_projection?.category_identity_source !== 'blog_posts.category_id' ||
+    tracks.post_category_name_projection?.category_name_source !== 'blog_category_translations.name' ||
+    tracks.post_category_name_projection?.detail_projection_present !== true ||
+    tracks.post_category_name_projection?.authenticated_list_projection_present !== true ||
+    tracks.post_category_name_projection?.public_list_projection_present !== true ||
+    tracks.post_category_name_projection?.list_batch_projection !== true ||
+    tracks.post_category_name_projection?.category_translation_readiness_promoted !== false ||
+    tracks.post_category_name_projection?.must_not_reopen_as_source_gap !== true
+  ) failures.push(`${files.evidence}: post category-name projection track drift`);
 
   if (
     evidence.planning_result?.independent_production_source_gap_identified !== false ||
@@ -252,6 +269,22 @@ if (
   !Array.isArray(tagMutation?.execution) || tagMutation.execution.length !== 0
 ) failures.push(`${files.tagMutation}: tag mutation atomic-reindex source evidence drift`);
 
+if (
+  postCategoryName?.status !== 'source_verified_no_compile' ||
+  postCategoryName?.runtime_status !== 'not_run' ||
+  postCategoryName?.source_contract?.category_identity_source !== 'blog_posts.category_id' ||
+  postCategoryName?.source_contract?.category_name_source !== 'blog_category_translations.name' ||
+  postCategoryName?.source_contract?.tenant_bound_translation_query !== true ||
+  postCategoryName?.source_contract?.detail_projection_present !== true ||
+  postCategoryName?.source_contract?.authenticated_list_projection_present !== true ||
+  postCategoryName?.source_contract?.public_list_projection_present !== true ||
+  postCategoryName?.source_contract?.list_projection_uses_batch_category_query !== true ||
+  postCategoryName?.source_contract?.category_translation_readiness_promoted !== false ||
+  postCategoryName?.planning_result?.post_category_name_source_complete !== true ||
+  postCategoryName?.planning_result?.additional_category_name_projection_scaffolding_required !== false ||
+  !Array.isArray(postCategoryName?.execution) || postCategoryName.execution.length !== 0
+) failures.push(`${files.postCategoryName}: post category-name projection source evidence drift`);
+
 for (const [source, marker, label] of [
   [slice97, 'Status: `canonical_outbox_relay_postgres_evidence_source_ready_maintainer_execution_pending`.', files.slice97],
   [slice98, 'Status: `category_translation_postgres_evidence_source_ready_maintainer_execution_pending`.', files.slice98],
@@ -260,6 +293,7 @@ for (const [source, marker, label] of [
   [slice102, 'Status: `tag_list_pagination_owner_bound_source_ready_maintainer_execution_pending`.', files.slice102],
   [slice103, 'Status: `tag_canonical_read_search_projection_source_ready_maintainer_execution_pending`.', files.slice103],
   [slice104, 'Status: `tag_mutation_atomic_reindex_source_ready_maintainer_execution_pending`.', files.slice104],
+  [slice105, 'Status: `post_category_name_projection_source_ready_maintainer_execution_pending`.', files.slice105],
 ]) need(source, marker, label);
 
 need(slice97, 'After retained maintainer execution of slices 95–97, define bounded lifecycle and', files.slice97);
@@ -270,9 +304,10 @@ need(slice102, 'Re-audit Blog tag mutation/projection consistency as a separate 
 need(slice103, 'Implement `tag_mutation_atomic_reindex` as slice 104', files.slice103);
 need(slice103, 'metadata-only rows', files.slice103);
 need(slice104, 'Do not add another tag mutation scaffolding slice without new evidence.', files.slice104);
+need(slice105, 'No additional category-name projection scaffolding is required after this slice.', files.slice105);
 
 for (const marker of [
-  'Status: `canonical_source_cursor_actualized_through_slice_104`.',
+  'Status: `canonical_source_cursor_actualized_through_slice_105`.',
   '`remote_comments_transport = source_implemented_maintainer_execution_pending`',
   '`category_translation_postgres = source_ready_maintainer_execution_pending`',
   '`cached_public_comments_snapshot = source_ready_maintainer_execution_pending`',
@@ -281,11 +316,13 @@ for (const marker of [
   '`tag_canonical_projection = source_ready_maintainer_execution_pending`',
   '`tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending`',
   '`tag_delete_relation_cleanup = declared_fk_cascade`',
+  '`post_category_name_projection = source_ready_maintainer_execution_pending`',
   'do not advance that source work before retained maintainer execution of slices 95–97',
   'This does **not** claim database-side pagination.',
   'metadata-only legacy rows',
   'source-complete through slice 104',
-  'No independent production source gap is claimed after slice 104.',
+  'source-complete through slice 105',
+  'No independent production source gap is claimed after slice 105.',
   '## Superseded historical cursor phrases',
   'No tests, Cargo commands, Node verifiers',
 ]) need(current, marker, files.current);
@@ -332,4 +369,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('[verify-blog-canonical-plan-current] PASS cursor=slice-104 behavior-through=slice-104 execution=not-run');
+console.log('[verify-blog-canonical-plan-current] PASS cursor=slice-105 behavior-through=slice-105 execution=not-run');

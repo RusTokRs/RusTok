@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "post_category_name_projection",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "owner": "rustok-blog",
+  "source_contract": {
+    "category_identity_source": "blog_posts.category_id",
+    "category_name_source": "blog_category_translations.name",
+    "tenant_bound_translation_query": true,
+    "detail_projection_present": true,
+    "authenticated_list_projection_present": true,
+    "public_list_projection_present": true,
+    "list_projection_uses_batch_category_query": true,
+    "list_projection_avoids_per_post_category_query": true,
+    "category_ids_deduplicated_before_query": true,
+    "requested_locale_precedence": true,
+    "tenant_fallback_precedence": true,
+    "platform_fallback_precedence": true,
+    "first_available_fallback_retained": true,
+    "missing_category_or_translation_returns_none": true,
+    "category_translation_write_semantics_changed": false,
+    "category_translation_readiness_promoted": false,
+    "search_projection_source_changed": false,
+    "database_schema_changed": false,
+    "graphql_schema_changed": false,
+    "http_schema_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "production_source": "crates/rustok-blog/src/services/post.rs",
+  "dto_source": "crates/rustok-blog/src/dto/post.rs",
+  "source_harness": {
+    "path": "crates/rustok-blog/tests/post_category_name_projection.rs",
+    "status": "executable_no_run",
+    "suggested_command": "cargo test -p rustok-blog --test post_category_name_projection -- --exact",
+    "runtime_status": "not_run"
+  },
+  "verifier": "scripts/verify/verify-blog-post-category-name-projection-source.mjs",
+  "self_test": "scripts/verify/verify-blog-post-category-name-projection-source.test.mjs",
+  "planning_result": {
+    "post_category_name_source_complete": true,
+    "additional_category_name_projection_scaffolding_required": false,
+    "next_autonomous_source_work_requires_fresh_audit": true
+  },
+  "execution": [],
+  "explicit_non_claims": [
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_compile_result",
+    "no_sqlite_result",
+    "no_postgresql_result",
+    "no_category_translation_readiness_result",
+    "no_search_runtime_result",
+    "no_graphql_runtime_result",
+    "no_http_runtime_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}

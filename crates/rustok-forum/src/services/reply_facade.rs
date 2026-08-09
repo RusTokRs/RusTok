@@ -30,6 +30,9 @@ pub struct ReplyService {
 }
 
 impl ReplyService {
+    pub const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize =
+        reply_owner::ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS;
+
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self::with_optional_audience_facts(db, event_bus, None)
     }
@@ -55,6 +58,23 @@ impl ReplyService {
             ),
             db,
         }
+    }
+
+    pub async fn available_locales_for_replies(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        reply_ids: &[Uuid],
+    ) -> ForumResult<Vec<(Uuid, Vec<String>)>> {
+        if security.is_public_read() {
+            return Err(ForumError::forbidden(
+                "Forum reply locale enumeration requires an authenticated operator context",
+            ));
+        }
+        enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
+        self.inner
+            .available_locales_for_replies(tenant_id, security, reply_ids)
+            .await
     }
 
     pub async fn create(

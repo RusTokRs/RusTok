@@ -22,6 +22,7 @@ const files = [
   'crates/rustok-blog/docs/implementation-plan-slice-102.md',
   'crates/rustok-blog/docs/implementation-plan-slice-103.md',
   'crates/rustok-blog/docs/implementation-plan-slice-104.md',
+  'crates/rustok-blog/docs/implementation-plan-slice-105.md',
   'crates/rustok-blog/docs/README.md',
   'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json',
   'crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json',
@@ -32,6 +33,7 @@ const files = [
   'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
   'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
   'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
+  'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
 ];
 function absolute(root, relativePath) { return path.join(root, relativePath); }
 function write(root, relativePath, content) {
@@ -74,7 +76,7 @@ test('accepts the canonical Blog current implementation cursor', () => {
   try {
     const result = run(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /cursor=slice-104/);
+    assert.match(result.stdout, /cursor=slice-105/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -183,6 +185,27 @@ test('rejects premature tag mutation runtime promotion', () => {
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /tag mutation atomic-reindex source evidence drift/);
+});
+
+test('rejects reopening post category-name projection after slice 105', () => {
+  const result = rejects((root) => {
+    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
+      value.source_tracks.post_category_name_projection.status = 'planned';
+    });
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /post category-name projection track drift/);
+});
+
+test('rejects premature post category-name runtime promotion', () => {
+  const result = rejects((root) => {
+    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json', (value) => {
+      value.runtime_status = 'validated';
+      value.execution.push({ command: 'not-run' });
+    });
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /post category-name projection source evidence drift/);
 });
 
 test('rejects listing the historical plan before the canonical current cursor', () => {

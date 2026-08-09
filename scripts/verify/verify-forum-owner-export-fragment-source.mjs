@@ -1,0 +1,142 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+
+function read(path) {
+  return fs.readFileSync(path, "utf8");
+}
+
+function requireText(text, marker, message) {
+  if (!text.includes(marker)) throw new Error(message);
+}
+
+function requireAbsent(text, marker, message) {
+  if (text.includes(marker)) throw new Error(message);
+}
+
+const mappingPath = "crates/rustok-forum/src/export_mapping.rs";
+const libPath = "crates/rustok-forum/src/lib.rs";
+const packetPath = "docs/modules/forum-34-owner-export-fragment-actualization-2026-08-09.md";
+
+const mapping = read(mappingPath);
+const lib = read(libPath);
+const packet = read(packetPath);
+
+for (const marker of [
+  'pub const FORUM_EXPORT_SCHEMA_V1: &str = "rustok.forum.export.v1";',
+  "pub const MAX_FORUM_EXPORT_OWNER_VIEWS_PER_FRAGMENT: usize = 512;",
+  "#[derive(Clone, Debug)]\npub struct ForumExportOwnerViewBatch",
+  "pub tenant_id: Uuid,",
+  "pub struct ForumExportUserRef",
+  "pub struct ForumExportCategoryRecord",
+  "pub struct ForumExportTopicRecord",
+  "pub struct ForumExportReplyRecord",
+  "pub struct ForumExportFragment",
+  "pub enum ForumExportMappingError",
+  "NilTenantId",
+  "pub struct ForumOwnerExportMapper;",
+  "pub fn map_fragment(",
+  "ensure_tenant_scope(batch.tenant_id)?;",
+  "tenant_id: batch.tenant_id,",
+  "view.effective_locale",
+  "view.body.document.clone()",
+  "view.content.document.clone()",
+  "export_user_ref(view.author_id)",
+  "view.solution_reply_id",
+  "DuplicateLocalizedView",
+  "BTreeSet<(Uuid, String)>",
+]) {
+  requireText(mapping, marker, `${mappingPath}: missing ${marker}`);
+}
+
+const inputStart = mapping.indexOf("#[derive(Clone, Debug)]\npub struct ForumExportOwnerViewBatch");
+const nextRecordStart = mapping.indexOf("#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]", inputStart + 1);
+if (inputStart < 0 || nextRecordStart <= inputStart) {
+  throw new Error(`${mappingPath}: owner-view input source boundary is invalid`);
+}
+const ownerViewInput = mapping.slice(inputStart, nextRecordStart);
+for (const forbidden of ["Serialize", "Deserialize", "#[serde("]) {
+  requireAbsent(
+    ownerViewInput,
+    forbidden,
+    `${mappingPath}: owner-view input must remain a non-wire in-process type: ${forbidden}`,
+  );
+}
+
+for (const marker of ["pub mod export_mapping;", "pub use export_mapping::*;"]) {
+  requireText(lib, marker, `${libPath}: missing public export mapping marker ${marker}`);
+}
+
+for (const forbidden of [
+  "sea_orm",
+  "DatabaseConnection",
+  "DatabaseTransaction",
+  "Entity::",
+  "ActiveModel",
+  "async fn",
+  ".await",
+  "Service::new",
+  "PortContext",
+  "SecurityContext",
+  "register_runtime_extensions",
+  "std::fs",
+  "reqwest",
+  "INSERT ",
+  "UPDATE ",
+  "DELETE ",
+  ".insert(",
+  ".update(",
+  ".delete(",
+]) {
+  requireAbsent(
+    mapping,
+    forbidden,
+    `${mappingPath}: export fragment mapping must remain side-effect free: ${forbidden}`,
+  );
+}
+
+for (const forbiddenOutputField of [
+  "pub html:",
+  "pub body_plain_text:",
+  "pub content_plain_text:",
+  "pub content_preview:",
+  "pub vote_score:",
+  "pub current_user_vote:",
+  "pub is_subscribed:",
+  "pub topic_count:",
+  "pub reply_count:",
+  "pub is_solution:",
+]) {
+  requireAbsent(
+    mapping,
+    forbiddenOutputField,
+    `${mappingPath}: export records must not promote viewer/derived field ${forbiddenOutputField}`,
+  );
+}
+
+for (const marker of [
+  "FORUM-34D",
+  "shared-runner-blocked",
+  "locale-enumeration-open",
+  "ReplyReadModel` contains only `content_preview`",
+  "already-authorized full owner responses",
+  "not a wire contract",
+  "does not implement `Serialize` or `Deserialize`",
+  "serializable contract begins at `ForumExportFragment`",
+  "explicit non-nil `tenant_id`",
+  "does not replace owner authorization",
+  "uses `effective_locale`, never `requested_locale`",
+  "does **not** claim multilingual export completeness",
+  "`ReplyResponse` currently does not",
+  "canonical `RichTextDocument`",
+  "does not declare that a source RusTok user UUID can be reused",
+  "TranslationInterchangeService",
+  "not a neutral module data migration runner",
+  "no generic `ImportRunner`, `ImportAdapter`, `ImportJob`, `ExportRunner` or `rustok-import` framework",
+  "Taxonomy/Channel owner boundaries",
+  "no test, Cargo command",
+]) {
+  requireText(packet, marker, `${packetPath}: missing ${marker}`);
+}
+
+console.log("Forum FORUM-34D owner export fragment source: ok");
