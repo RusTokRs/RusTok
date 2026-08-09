@@ -15,7 +15,8 @@ const files = {
   builder: "crates/rustok-pages/admin/src/builder.rs",
   adminMain: "apps/admin/src/main.rs",
   evidence: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
-  overlay: "docs/modules/pages-page-builder-provider-health-transport-actualization-2026-08-09.md",
+  serverBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
+  consumerBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
 
@@ -43,34 +44,50 @@ const sources = failures.length === 0
   ? Object.fromEntries(Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]))
   : {};
 let evidence = {};
+let serverBinding = {};
+let consumerBinding = {};
 if (failures.length === 0) {
-  try {
-    evidence = JSON.parse(sources.evidence);
-  } catch (error) {
-    failures.push(`evidence: invalid JSON: ${error.message}`);
+  for (const [label, assign] of [
+    ["evidence", (value) => (evidence = value)],
+    ["serverBinding", (value) => (serverBinding = value)],
+    ["consumerBinding", (value) => (consumerBinding = value)],
+  ]) {
+    try {
+      assign(JSON.parse(sources[label]));
+    } catch (error) {
+      failures.push(`${label}: invalid JSON: ${error.message}`);
+    }
   }
 }
 
 if (evidence.format !== "pages_builder_provider_health_transport_source_v1") {
   failures.push("evidence format drifted");
 }
-if (evidence.status !== "typed_transport_source_ready_server_binding_blocked_execution_pending") {
+if (evidence.status !== "typed_transport_server_and_consumer_binding_source_ready_execution_pending") {
   failures.push("evidence status drifted");
+}
+if (serverBinding.format !== "pages_builder_provider_health_server_binding_source_v1") {
+  failures.push("server binding continuation format drifted");
+}
+if (consumerBinding.format !== "pages_builder_provider_health_consumer_binding_source_v1") {
+  failures.push("consumer binding continuation format drifted");
 }
 
 for (const [object, key, expected] of [
-  [evidence.graphql_owner, "current_server_observed_value", false],
-  [evidence.graphql_owner, "current_server_health_payload", null],
-  [evidence.graphql_owner, "owner_binding_to_retained_evaluator_packet_present", false],
+  [evidence.graphql_owner, "default_server_observed_value", false],
+  [evidence.graphql_owner, "default_server_health_payload", null],
+  [evidence.graphql_owner, "server_binding_source_present", true],
+  [evidence.graphql_owner, "fresh_accepted_authority_can_supply_observed_health", true],
   [evidence.admin_transport, "observed_false_requires_payload_absent", true],
   [evidence.admin_transport, "observed_true_requires_payload_present", true],
   [evidence.admin_transport, "canonical_snapshot_recomputed_client_side", true],
   [evidence.admin_transport, "state_must_equal_canonical_recalculation", true],
   [evidence.admin_transport, "degradation_reasons_must_equal_canonical_recalculation", true],
-  [evidence.admin_snapshot, "workspace_currently_consumes_flags_only", true],
-  [evidence.admin_snapshot, "standalone_browser_intent_currently_consumes_flags_only", true],
-  [evidence.anti_promotion, "pages_graphql_provider_health_observed", false],
-  [evidence.anti_promotion, "owner_acceptance_present", false],
+  [evidence.admin_snapshot, "effective_runtime_flags_use_provider_status", true],
+  [evidence.admin_snapshot, "workspace_consumes_validated_provider_status", true],
+  [evidence.admin_snapshot, "standalone_browser_intent_consumes_validated_snapshot", true],
+  [evidence.admin_snapshot, "authoritative_ssr_consumes_health_limited_runtime_flags", true],
+  [evidence.anti_promotion, "accepted_packet_installed", false],
   [evidence.anti_promotion, "pages_reference_consumer_gate_accepted", false],
   [evidence.validation, "tests_run", false],
   [evidence.validation, "node_verifier_run", false],
@@ -90,6 +107,7 @@ for (const marker of [
   "publish_p95_ms: snapshot.observed.publish_p95_ms",
   "GqlPageBuilderProviderHealthSnapshot::from(health)",
   ".with_provider_health",
+  "PagesGraphqlRuntimeData::provider_health_snapshot",
 ]) need(sources.owner ?? "", marker, "Pages GraphQL health shape");
 forbid(sources.owner ?? "", "page_builder_provider_health_deployment_evaluation_v1", "Pages GraphQL must not load evaluator evidence directly");
 
@@ -127,49 +145,44 @@ for (const marker of [
   "pub fn provider_status(&self) -> PageBuilderAdminProviderStatus",
   "PageBuilderAdminProviderStatus::observed(self.flags.clone(), health)",
   "PageBuilderAdminProviderStatus::unobserved(self.flags.clone())",
+  "pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags",
   "pages_editor_capabilities_for_rollout(",
   "pages_editor_capabilities_for_snapshot(",
 ]) need(sources.snapshot ?? "", marker, "validated admin snapshot");
 
-// The transport is source-ready, but no current production consumer may activate observed health.
 for (const marker of [
-  ".flags;",
-  "provider_flags: BuilderCapabilityFlags",
-  ".with_provider_flags(provider_flags)",
-]) need(sources.composition ?? "", marker, "workspace remains rollout-only");
-need(sources.builder ?? "", ".map(PageBuilderAdminProviderStatus::unobserved)", "SSR facade remains unobserved");
+  ".provider_status();",
+  ".with_provider_status(provider_status)",
+]) need(sources.composition ?? "", marker, "workspace observed health propagation");
 for (const marker of [
-  "pages_editor_capabilities_for_rollout(",
-  "&rollout.flags",
-]) need(sources.adminMain ?? "", marker, "standalone browser intent remains rollout-only");
-for (const source of [sources.composition ?? "", sources.builder ?? "", sources.adminMain ?? ""]) {
-  forbid(source, "pages_editor_capabilities_for_snapshot(", "observed health consumer binding must remain absent");
-}
-
+  "provider_status: Option<PageBuilderAdminProviderStatus>",
+  "pub fn with_provider_status(",
+  "trusted_rollout.effective_runtime_flags()",
+  "compose_fly_page_builder_handlers(store, renderer, effective_flags)",
+]) need(sources.builder ?? "", marker, "SSR observed health propagation");
 for (const marker of [
-  "typed-observed-health-transport-source-ready",
-  "server-owner-health-binding-blocked",
-  "boolean/payload consistency",
-  "canonical `ProviderHealthSnapshot::evaluate`",
-  "Pages remains `unobserved`",
-  "tests were not run",
-]) need(sources.overlay ?? "", marker, "health transport actualization");
+  "pages_editor_capabilities_for_snapshot",
+  "pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)",
+]) need(sources.adminMain ?? "", marker, "standalone browser intent observed health propagation");
 
 for (const marker of [
   "provider-health-transport-source-ready",
-  "pages-page-builder-provider-health-transport-actualization-2026-08-09.md",
-  "typed observed-health transport",
-  "Pages remains `unobserved`",
+  "provider-health-server-binding-source-ready",
+  "provider-health-consumer-binding-source-ready",
+  "UI / SSR / browser-intent provider-health binding [source-ready]",
 ]) need(sources.parity ?? "", marker, "plan parity actualization");
 
 if (evidence.next_cursor?.typed_provider_health_transport !== "source_ready") {
   failures.push("typed provider-health transport must be source-ready");
 }
-if (evidence.next_cursor?.retained_identity_and_evaluator_runtime_evidence !== "maintainer_execution_pending") {
-  failures.push("runtime evidence must remain maintainer-execution pending");
+if (evidence.next_cursor?.server_owner_health_binding !== "source_ready_maintainer_activation_pending") {
+  failures.push("server owner binding cursor drifted");
 }
-if (evidence.next_cursor?.owner_acceptance_and_server_binding !== "blocked_on_retained_runtime_evidence") {
-  failures.push("server owner binding must remain blocked on retained runtime evidence");
+if (evidence.next_cursor?.ui_ssr_browser_intent_health_binding !== "source_ready_runtime_activation_pending") {
+  failures.push("consumer health binding cursor drifted");
+}
+if (evidence.next_cursor?.retained_identity_evaluator_owner_acceptance !== "maintainer_execution_pending") {
+  failures.push("runtime evidence must remain maintainer-execution pending");
 }
 
 if (failures.length > 0) {
@@ -178,4 +191,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("[verify-pages-builder-provider-health-transport] PASS transport=source_ready server_binding=blocked pages_health=unobserved");
+console.log("[verify-pages-builder-provider-health-transport] PASS transport=source_ready server_binding=source_ready consumer_binding=source_ready execution=pending");
