@@ -78,6 +78,8 @@
     "counter_reset_aware_function": "increase",
     "histogram_quantile": 0.95,
     "histogram_aggregation": "sum cumulative bucket increases across identity-admitted targets before quantile evaluation",
+    "histogram_completion_population_must_match": true,
+    "population_consistency_tolerance_fraction": 0.000001,
     "minimum_preview_samples": 20,
     "minimum_publish_samples": 20,
     "sample_floor_failure": "fail_closed",
@@ -111,6 +113,7 @@
     "target_selector_sha256_retained": true,
     "source_commit_retained": true,
     "deployment_image_digest_retained": true,
+    "completion_and_histogram_sample_counts_retained": true,
     "provider_health_snapshot_retained": true,
     "slo_evaluation_retained": true
   },
