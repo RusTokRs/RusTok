@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -9,9 +9,9 @@ use rustok_api::{
 };
 use rustok_payment::{
     AuthorizeAdminPaymentCollectionRequest, CancelAdminPaymentCollectionRequest,
-    CaptureAdminPaymentCollectionRequest, ListPaymentCollectionProjectionsRequest,
-    ListRefundProjectionsRequest, ReadPaymentCollectionProjectionRequest,
-    ReadRefundProjectionRequest,
+    CancelAdminRefundRequest, CaptureAdminPaymentCollectionRequest, CompleteAdminRefundRequest,
+    CreateAdminRefundRequest, ListPaymentCollectionProjectionsRequest, ListRefundProjectionsRequest,
+    ReadPaymentCollectionProjectionRequest, ReadRefundProjectionRequest,
 };
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
@@ -23,14 +23,17 @@ use super::{
     ListPaymentCollectionsParams, ListRefundsParams,
 };
 use crate::dto::{
-    AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput, PaymentCollectionResponse,
-    RefundResponse,
+    AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
+    CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse, RefundResponse,
 };
 
+const MAX_REFUND_CREATION_KEY_LENGTH: usize = 191;
 const ADMIN_PAYMENT_READ_OWNER: &str = "rustok_payment.admin_read";
 const ADMIN_PAYMENT_READ_BOUNDARY: &str = "commerce_admin_payment_read_http";
 const ADMIN_PAYMENT_COMMAND_OWNER: &str = "rustok_payment.admin_collection_command";
 const ADMIN_PAYMENT_COMMAND_BOUNDARY: &str = "commerce_admin_payment_collection_command_http";
+const ADMIN_REFUND_COMMAND_OWNER: &str = "rustok_payment.admin_refund_command";
+const ADMIN_REFUND_COMMAND_BOUNDARY: &str = "commerce_admin_refund_command_http";
 
 type AdminPaymentReadHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 type AdminPaymentCommandHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
@@ -72,6 +75,48 @@ fn admin_payment_collection_command_context(
     .with_idempotency_key(format!(
         "admin-payment-collection:{collection_id}:{operation}"
     ))
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn admin_refund_create_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    collection_id: Uuid,
+    creation_key: &str,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-refund-command:create:{collection_id}"),
+    )
+    .with_idempotency_key(creation_key.to_string())
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn admin_refund_transition_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    refund_id: Uuid,
+    operation: &'static str,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-refund-command:{operation}:{refund_id}"),
+    )
+    .with_idempotency_key(format!("admin-refund:{refund_id}:{operation}"))
     .with_deadline(std::time::Duration::from_secs(2));
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
@@ -122,6 +167,18 @@ fn payment_read_error_policy(error: &PortError) -> AdminPaymentReadHttpPolicy {
 
 fn payment_command_error_policy(error: &PortError) -> AdminPaymentCommandHttpPolicy {
     match error.code.as_str() {
+        "payment.refund_reserved_reconciliation_required" => (
+            StatusCode::CONFLICT,
+            "commerce_admin_refund_reconciliation_required",
+            "Refund remains reserved while the provider outcome is reconciled",
+            "refund_reconciliation_required",
+        ),
+        "payment.refund_reserved_provider_unavailable" => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_refund_provider_unavailable",
+            "Refund remains reserved and the provider operation may be retried safely",
+            "refund_provider_unavailable",
+        ),
         "payment.provider_unavailable" => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_payment_provider_unavailable",
@@ -250,6 +307,37 @@ fn map_payment_command_error(
         status = %status,
         boundary = ADMIN_PAYMENT_COMMAND_BOUNDARY,
         "commerce admin payment owner command failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_refund_command_error(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    collection_id: Option<Uuid>,
+    refund_id: Option<Uuid>,
+    operation: &'static str,
+    context: &PortContext,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = payment_command_error_policy(&error);
+    tracing::error!(
+        owner = ADMIN_REFUND_COMMAND_OWNER,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        collection_id_present = collection_id.is_some(),
+        collection_id_non_nil = collection_id.map(|value| !value.is_nil()).unwrap_or(false),
+        refund_id_present = refund_id.is_some(),
+        refund_id_non_nil = refund_id.map(|value| !value.is_nil()).unwrap_or(false),
+        operation,
+        correlation_id = %context.correlation_id,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
+        "commerce admin refund owner command failed"
     );
     HttpError::new(status, code, message)
 }
@@ -515,6 +603,69 @@ pub async fn cancel_payment_collection(
 }
 
 #[utoipa::path(
+    post,
+    path = "/admin/payment-collections/{id}/refunds",
+    tag = "admin",
+    params(
+        ("id" = Uuid, Path, description = "Payment collection ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable refund creation identity, maximum 191 bytes")
+    ),
+    request_body = CreateRefundInput,
+    responses(
+        (status = 201, description = "Refund created or replayed", body = RefundResponse),
+        (status = 400, description = "Missing, invalid, or conflicting idempotency key"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Payment collection not found")
+    )
+)]
+pub async fn create_refund(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    Json(input): Json<CreateRefundInput>,
+) -> HttpResult<(StatusCode, Json<RefundResponse>)> {
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
+    let creation_key = refund_creation_key(&headers)?;
+    let context = admin_refund_create_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        creation_key.as_str(),
+    );
+    let refund = runtime
+        .payment_admin_refund_command_port()
+        .create_refund(
+            context.clone(),
+            CreateAdminRefundRequest {
+                collection_id: id,
+                creation_key,
+                input,
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_refund_command_error(
+                tenant.id,
+                auth.user_id,
+                Some(id),
+                None,
+                "create_refund",
+                &context,
+                error,
+            )
+        })?;
+    Ok((StatusCode::CREATED, Json(refund)))
+}
+
+#[utoipa::path(
     get,
     path = "/admin/refunds",
     tag = "admin",
@@ -606,4 +757,129 @@ pub async fn show_refund(
             )
         })?;
     Ok(Json(refund))
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/refunds/{id}/complete",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Refund ID")),
+    request_body = CompleteRefundInput,
+    responses((status = 200, description = "Refund completed", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Refund not found"))
+)]
+pub async fn complete_refund(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CompleteRefundInput>,
+) -> HttpResult<Json<RefundResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
+    let context = admin_refund_transition_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "complete",
+    );
+    let refund = runtime
+        .payment_admin_refund_command_port()
+        .complete_refund(
+            context.clone(),
+            CompleteAdminRefundRequest {
+                refund_id: id,
+                input,
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_refund_command_error(
+                tenant.id,
+                auth.user_id,
+                None,
+                Some(id),
+                "complete_refund",
+                &context,
+                error,
+            )
+        })?;
+    Ok(Json(refund))
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/refunds/{id}/cancel",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Refund ID")),
+    request_body = CancelRefundInput,
+    responses((status = 200, description = "Refund cancelled", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Refund not found"))
+)]
+pub async fn cancel_refund(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CancelRefundInput>,
+) -> HttpResult<Json<RefundResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
+    let context = admin_refund_transition_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "cancel",
+    );
+    let refund = runtime
+        .payment_admin_refund_command_port()
+        .cancel_refund(
+            context.clone(),
+            CancelAdminRefundRequest {
+                refund_id: id,
+                input,
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_refund_command_error(
+                tenant.id,
+                auth.user_id,
+                None,
+                Some(id),
+                "cancel_refund",
+                &context,
+                error,
+            )
+        })?;
+    Ok(Json(refund))
+}
+
+fn refund_creation_key(headers: &HeaderMap) -> HttpResult<String> {
+    let value = headers
+        .get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            HttpError::bad_request(
+                "refund_idempotency_key_required",
+                "Idempotency-Key header is required",
+            )
+        })?;
+    if value.len() > MAX_REFUND_CREATION_KEY_LENGTH {
+        return Err(HttpError::bad_request(
+            "refund_idempotency_key_invalid",
+            format!("Idempotency-Key must contain at most {MAX_REFUND_CREATION_KEY_LENGTH} bytes"),
+        ));
+    }
+    Ok(value.to_string())
 }

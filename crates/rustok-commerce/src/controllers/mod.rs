@@ -31,6 +31,7 @@ pub struct CommerceHttpRuntime {
     payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
     payment_admin_read_runtime: rustok_payment::PaymentAdminReadRuntime,
     payment_admin_collection_command_runtime: rustok_payment::PaymentAdminCollectionCommandRuntime,
+    payment_admin_refund_command_runtime: rustok_payment::PaymentAdminRefundCommandRuntime,
     product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     product_catalog_command_runtime: rustok_product::ProductCatalogCommandRuntime,
     #[cfg(feature = "marketplace-financial")]
@@ -97,6 +98,12 @@ impl CommerceHttpRuntime {
         &self,
     ) -> std::sync::Arc<dyn rustok_payment::PaymentAdminCollectionCommandPort> {
         self.payment_admin_collection_command_runtime.command_port()
+    }
+
+    fn payment_admin_refund_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_payment::PaymentAdminRefundCommandPort> {
+        self.payment_admin_refund_command_runtime.command_port()
     }
 
     fn product_catalog_read_port(
@@ -182,6 +189,14 @@ impl CommerceHttpRuntime {
                     payment_provider_registry.clone(),
                 )
             });
+        let payment_admin_refund_command_runtime = runtime
+            .shared_get::<rustok_payment::PaymentAdminRefundCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentAdminRefundCommandRuntime::in_process(
+                    runtime.db_clone(),
+                    payment_provider_registry.clone(),
+                )
+            });
         let product_catalog_read_runtime = runtime
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
             .ok_or_else(|| {
@@ -218,6 +233,7 @@ impl CommerceHttpRuntime {
             payment_order_read_runtime,
             payment_admin_read_runtime,
             payment_admin_collection_command_runtime,
+            payment_admin_refund_command_runtime,
             product_catalog_read_runtime,
             product_catalog_command_runtime,
             #[cfg(feature = "marketplace-financial")]
