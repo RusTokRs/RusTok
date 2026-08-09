@@ -1,3 +1,4 @@
+mod admin_manual_fulfillment_orchestration;
 pub mod checkout;
 #[path = "checkout_compensation_error_safe.rs"]
 mod checkout_compensation;
@@ -72,6 +73,7 @@ mod staged_checkout;
 #[path = "../storefront_staged_checkout_runtime.rs"]
 pub mod storefront_staged_checkout_runtime;
 
+pub(crate) use admin_manual_fulfillment_orchestration::AdminManualFulfillmentOrchestrationService;
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
 pub use checkout_compensation::{
     CheckoutCompensationError, CheckoutCompensationResult, CheckoutCompensationService,

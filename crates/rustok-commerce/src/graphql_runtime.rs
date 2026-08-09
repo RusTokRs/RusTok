@@ -16,6 +16,9 @@ use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogReadRuntime};
 use sea_orm::DatabaseConnection;
 
+mod payment_reads;
+pub use payment_reads::CommercePaymentReadRuntime;
+
 /// Host-selected shipping-option read ports used by mounted commerce GraphQL resolvers.
 ///
 /// The application host composes this runtime once and carries it through
@@ -190,10 +193,9 @@ tokio::task_local! {
 
 /// Resolver-scoped bridge from schema runtime data to private compatibility facades.
 ///
-/// The mounted extension carries shipping-option, fulfillment-lifecycle, order, and Product catalog
-/// owner read/command ports plus validated order actor/channel/locale and fulfillment public-channel
-/// facts so every included Commerce resolver uses host-selected adapters and request-owned context
-/// for the current async task.
+/// The mounted extension carries Payment, shipping-option, fulfillment-lifecycle, order, and
+/// Product owner capabilities plus validated request-owned identity/channel/locale facts so every
+/// included Commerce resolver uses host-selected adapters for the current async task.
 #[derive(Default)]
 pub struct CommerceShippingOptionReadScope;
 
@@ -219,8 +221,12 @@ impl Extension for CommerceShippingOptionReadScopeExtension {
         let order_call_context = CommerceOrderReadCallContext::from_extension_context(ctx);
         let fulfillment_call_context =
             CommerceFulfillmentReadCallContext::from_extension_context(ctx);
-        CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME
-            .scope(
+        let payment_call_context =
+            payment_reads::CommercePaymentReadCallContext::from_extension_context(ctx);
+        payment_reads::scope_current_payment_reads(
+            runtime_data.payment_read_runtime(),
+            payment_call_context,
+            CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME.scope(
                 runtime_data.shipping_option_read_runtime(),
                 CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME.scope(
                     runtime_data.fulfillment_lifecycle_read_runtime(),
@@ -241,8 +247,9 @@ impl Extension for CommerceShippingOptionReadScopeExtension {
                         ),
                     ),
                 ),
-            )
-            .await
+            ),
+        )
+        .await
     }
 }
 
@@ -284,6 +291,22 @@ pub(crate) fn order_read_call_context_for_current_graphql_scope() -> CommerceOrd
         .unwrap_or_default()
 }
 
+pub(crate) fn payment_read_runtime_for_current_graphql_scope(
+    db: DatabaseConnection,
+) -> CommercePaymentReadRuntime {
+    payment_reads::runtime_for_current_graphql_scope(db)
+}
+
+pub(crate) fn payment_read_call_context_for_current_graphql_scope(
+) -> (PortActor, Option<String>, Option<String>) {
+    let context = payment_reads::call_context_for_current_graphql_scope();
+    (
+        context.actor(),
+        context.channel().map(str::to_owned),
+        context.locale().map(str::to_owned),
+    )
+}
+
 pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope(
     db: DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
@@ -305,15 +328,16 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
 /// Provider registries and host-selectable ports available to every commerce GraphQL resolver.
 ///
 /// Hosts supply composed capabilities through `HostRuntimeContext`. The built-in manual provider
-/// registries remain deterministic fallbacks. Mounted shipping-option, fulfillment-lifecycle,
-/// Product catalog reads/commands, and order reads consume host-selected runtime data. Directly
-/// embedded compatibility schemas retain explicit in-process owner-runtime fallbacks.
+/// registries remain deterministic fallbacks. Mounted Payment, shipping-option,
+/// fulfillment-lifecycle, Product catalog, and order reads consume host-selected runtime data.
+/// Directly embedded compatibility schemas retain explicit in-process owner-runtime fallbacks.
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
     #[cfg(feature = "marketplace-financial")]
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
+    payment_read_runtime: CommercePaymentReadRuntime,
     shipping_option_read_runtime: CommerceShippingOptionReadRuntime,
     fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: CommerceOrderReadRuntime,
@@ -333,6 +357,10 @@ impl CommerceGraphqlRuntimeData {
     #[cfg(feature = "marketplace-financial")]
     pub fn marketplace_financial_runtime(&self) -> crate::MarketplaceFinancialRuntime {
         self.marketplace_financial_runtime.clone()
+    }
+
+    pub fn payment_read_runtime(&self) -> CommercePaymentReadRuntime {
+        self.payment_read_runtime.clone()
     }
 
     pub fn shipping_option_read_runtime(&self) -> CommerceShippingOptionReadRuntime {
@@ -374,6 +402,27 @@ pub fn attach_schema_data(
                 "commerce marketplace-financial GraphQL requires MarketplaceFinancialRuntime in host composition"
                     .to_string()
             })?,
+        payment_read_runtime: inputs
+            .shared_get::<CommercePaymentReadRuntime>()
+            .unwrap_or_else(|| {
+                CommercePaymentReadRuntime::new(
+                    inputs
+                        .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
+                        .unwrap_or_else(|| {
+                            rustok_payment::PaymentAdminReadRuntime::in_process(inputs.db_clone())
+                        }),
+                    inputs
+                        .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
+                        .unwrap_or_else(|| {
+                            rustok_payment::PaymentOrderReadRuntime::in_process(inputs.db_clone())
+                        }),
+                    inputs
+                        .shared_get::<rustok_payment::PaymentCartReadRuntime>()
+                        .unwrap_or_else(|| {
+                            rustok_payment::PaymentCartReadRuntime::in_process(inputs.db_clone())
+                        }),
+                )
+            }),
         shipping_option_read_runtime: inputs
             .shared_get::<CommerceShippingOptionReadRuntime>()
             .ok_or_else(|| {

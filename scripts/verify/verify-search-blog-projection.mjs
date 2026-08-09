@@ -53,6 +53,9 @@ for (const table of [
   "blog_post_translations",
   "blog_post_channel_visibility",
   "blog_category_translations",
+  "blog_post_tags",
+  "taxonomy_terms",
+  "taxonomy_term_translations",
 ]) {
   requireMarker(projector, `to_regclass('${table}')`, projectorPath);
 }
@@ -63,9 +66,20 @@ for (const marker of [
   "DELETE FROM search_documents",
   "pub(crate) async fn delete_tenant",
   '"delete_blog_scope"',
+  "FROM blog_post_tags relation",
+  "JOIN taxonomy_terms term",
+  "LEFT JOIN taxonomy_term_translations localized",
+  "LEFT JOIN taxonomy_term_translations fallback",
+  "localized.tenant_id = p.tenant_id",
+  "fallback.tenant_id = p.tenant_id",
+  "COALESCE(localized.name, fallback.name, term.canonical_key)",
 ]) {
   requireMarker(projector, marker, projectorPath);
 }
+for (const marker of [
+  "jsonb_array_elements_text",
+  "p.metadata -> 'tags'",
+]) rejectMarker(projector, marker, projectorPath);
 
 for (const marker of [
   "DomainEvent::TenantModuleToggled",
@@ -99,6 +113,11 @@ for (const marker of [
   'SET search_path TO "{schema_name}", public',
   "full_blog_reindex_replaces_only_current_tenant_blog_documents",
   "blog_events_upsert_publish_archive_and_delete_search_document",
+  "blog_reindex_projects_attached_taxonomy_tags_not_metadata_snapshot",
+  "stale-metadata-only",
+  "CREATE TABLE taxonomy_terms",
+  "CREATE TABLE taxonomy_term_translations",
+  "CREATE TABLE blog_post_tags",
   "blog_module_disable_cleans_scope_and_enable_rebuilds_it",
   "targeted_reindex_removes_stale_document_when_source_post_is_missing",
 ]) {
@@ -117,8 +136,17 @@ if (evidence) {
   for (const target of [routingTestPath, postgresTestPath]) {
     if (!targets.includes(target)) failures.push(`${evidencePath}: missing test target ${target}`);
   }
+  if (
+    evidence.production_contract?.blog_tag_attachment_source !== "blog_post_tags" ||
+    evidence.production_contract?.tag_dictionary_source !== "taxonomy_terms + taxonomy_term_translations" ||
+    evidence.production_contract?.legacy_metadata_tags_are_projection_source !== false
+  ) failures.push(`${evidencePath}: canonical Blog tag projection source drift`);
   const caseNames = new Set((evidence.cases ?? []).map((item) => item.name));
-  for (const caseName of ["module_toggle_cleanup_rebuild", "targeted_missing_post_cleanup"]) {
+  for (const caseName of [
+    "module_toggle_cleanup_rebuild",
+    "targeted_missing_post_cleanup",
+    "canonical_taxonomy_tag_projection",
+  ]) {
     if (!caseNames.has(caseName)) failures.push(`${evidencePath}: missing case ${caseName}`);
   }
 }

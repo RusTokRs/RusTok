@@ -1,4 +1,13 @@
+use std::{
+    sync::{
+        OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+};
+
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
+use prometheus::{IntCounterVec, Opts};
 use rustok_api::Permission;
 use rustok_api::{
     AuthContext, RequestContext, TenantContext,
@@ -7,7 +16,6 @@ use rustok_api::{
 };
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
-use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{
@@ -18,6 +26,13 @@ use crate::{
 use super::ForumGraphqlRuntimeData;
 
 const MODULE_SLUG: &str = "forum";
+const CATEGORY_TREE_LOCALE_OUTCOME_EXACT: &str = "exact";
+const CATEGORY_TREE_LOCALE_OUTCOME_FALLBACK: &str = "fallback";
+const CATEGORY_TREE_LOCALE_OUTCOME_MISSING: &str = "missing";
+
+static FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_TOTAL: OnceLock<IntCounterVec> = OnceLock::new();
+static FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_REGISTERED: AtomicBool =
+    AtomicBool::new(false);
 
 #[derive(Default)]
 pub(crate) struct ForumCategoryTreeQuery;
@@ -82,6 +97,7 @@ impl ForumCategoryTreeQuery {
             MAX_FORUM_CATEGORY_TREE_NODES,
             tree.total_nodes as usize,
         );
+        observe_category_tree_locale_resolution(&tree.roots);
 
         Ok(tree.into())
     }
@@ -111,6 +127,68 @@ fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid
         }
         Some(requested_tenant_id) => Ok(requested_tenant_id),
         None => Ok(tenant.id),
+    }
+}
+
+fn category_tree_locale_resolution_outcome(
+    requested_locale: &str,
+    effective_locale: &str,
+    available_locale_count: usize,
+) -> &'static str {
+    if available_locale_count == 0 {
+        CATEGORY_TREE_LOCALE_OUTCOME_MISSING
+    } else if requested_locale == effective_locale {
+        CATEGORY_TREE_LOCALE_OUTCOME_EXACT
+    } else {
+        CATEGORY_TREE_LOCALE_OUTCOME_FALLBACK
+    }
+}
+
+fn forum_graphql_category_tree_locale_resolution_counter() -> Option<&'static IntCounterVec> {
+    let counter = FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_TOTAL.get_or_init(|| {
+        IntCounterVec::new(
+            Opts::new(
+                "rustok_forum_graphql_category_tree_locale_resolution_total",
+                "Forum GraphQL category-tree nodes by fixed locale resolution outcome",
+            ),
+            &["outcome"],
+        )
+        .expect("Forum GraphQL category-tree locale metric descriptor must be valid")
+    });
+
+    if FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_REGISTERED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+        && rustok_telemetry::register_runtime_collector(Box::new(counter.clone())).is_err()
+    {
+        FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_REGISTERED
+            .store(false, Ordering::Release);
+        return None;
+    }
+
+    Some(counter)
+}
+
+fn observe_category_tree_locale_resolution(nodes: &[CategoryTreeNode]) {
+    let Some(counter) = forum_graphql_category_tree_locale_resolution_counter() else {
+        return;
+    };
+
+    observe_category_tree_locale_resolution_with_counter(counter, nodes);
+}
+
+fn observe_category_tree_locale_resolution_with_counter(
+    counter: &IntCounterVec,
+    nodes: &[CategoryTreeNode],
+) {
+    for node in nodes {
+        let outcome = category_tree_locale_resolution_outcome(
+            &node.requested_locale,
+            &node.effective_locale,
+            node.available_locales.len(),
+        );
+        counter.with_label_values(&[outcome]).inc();
+        observe_category_tree_locale_resolution_with_counter(counter, &node.children);
     }
 }
 
@@ -211,6 +289,11 @@ mod tests {
 
     use crate::graphql::ForumQuery;
 
+    use super::{
+        CATEGORY_TREE_LOCALE_OUTCOME_EXACT, CATEGORY_TREE_LOCALE_OUTCOME_FALLBACK,
+        CATEGORY_TREE_LOCALE_OUTCOME_MISSING, category_tree_locale_resolution_outcome,
+    };
+
     #[test]
     fn schema_exposes_recursive_forum_category_tree() {
         let schema =
@@ -225,5 +308,21 @@ mod tests {
         assert!(sdl.contains("isArchived: Boolean!"));
         assert!(sdl.contains("children: [GqlForumCategoryTreeNode!]!"));
         assert!(sdl.contains("breadcrumbs: [GqlForumCategoryBreadcrumb!]!"));
+    }
+
+    #[test]
+    fn category_tree_locale_outcomes_are_fixed_and_hide_locale_values() {
+        assert_eq!(
+            category_tree_locale_resolution_outcome("ru", "ru", 1),
+            CATEGORY_TREE_LOCALE_OUTCOME_EXACT
+        );
+        assert_eq!(
+            category_tree_locale_resolution_outcome("tenant-secret", "different-secret", 2),
+            CATEGORY_TREE_LOCALE_OUTCOME_FALLBACK
+        );
+        assert_eq!(
+            category_tree_locale_resolution_outcome("tenant-secret", "tenant-secret", 0),
+            CATEGORY_TREE_LOCALE_OUTCOME_MISSING
+        );
     }
 }

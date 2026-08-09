@@ -45,6 +45,8 @@ const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
 const graphql = requireMarkers(graphqlPath, [
   'async fn run_index_replay(',
   '.run_interruptible(operator_context, request, || stop_handle.is_stopping())',
+  'async fn run_index_replay_targeted(',
+  '.run_targeted(operator_context, request)',
   'async fn run_index_replay_shadow(',
   '.get::<IndexReplayShadowTransportRuntime>()',
   'pub locale: Option<String>',
@@ -87,12 +89,11 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'schema-wide or exact-locale invocation',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_targeted_host_guard_transport_pending`.',
-  '`Shadow` host dispatch is source-complete',
-  '`IndexReplayOperatorRuntime::run_shadow`',
-  '`runIndexReplayShadow` is a dedicated transport',
-  'Locale-safe continuation and dry-run execution',
-  '## Targeted PostgreSQL composition and host dispatch',
+  'Status: `source_complete_targeted_graphql_execution_pending`.',
+  '`Shadow` host dispatch remains `IndexReplayOperatorRuntime::run_shadow`',
+  '`runIndexReplayShadow` remains a dedicated transport',
+  'one current unversioned envelope',
+  '## Targeted GraphQL transport',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
@@ -101,6 +102,7 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
+  'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
 ]);
 
-console.log('[verify-index-replay-shadow-host-dispatch] Shadow remains modules:manage-guarded/no-write while Targeted now shares the same request-bound host authority without changing Shadow lifecycle semantics');
+console.log('[verify-index-replay-shadow-host-dispatch] Shadow remains modules:manage-guarded/no-write while Targeted uses its own guarded exact-key GraphQL surface without changing Shadow lifecycle semantics');

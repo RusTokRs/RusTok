@@ -26,10 +26,15 @@ pub struct CommerceHttpRuntime {
     shipping_option_read_runtime: crate::graphql_runtime::CommerceShippingOptionReadRuntime,
     fulfillment_lifecycle_read_runtime:
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime,
+    fulfillment_admin_command_runtime: rustok_fulfillment::FulfillmentAdminCommandRuntime,
+    fulfillment_admin_create_command_runtime:
+        rustok_fulfillment::FulfillmentAdminCreateCommandRuntime,
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
     order_admin_command_runtime: rustok_order::OrderAdminCommandRuntime,
     payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
     payment_admin_read_runtime: rustok_payment::PaymentAdminReadRuntime,
+    payment_admin_collection_command_runtime: rustok_payment::PaymentAdminCollectionCommandRuntime,
+    payment_admin_refund_command_runtime: rustok_payment::PaymentAdminRefundCommandRuntime,
     product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     product_catalog_command_runtime: rustok_product::ProductCatalogCommandRuntime,
     #[cfg(feature = "marketplace-financial")]
@@ -76,6 +81,18 @@ impl CommerceHttpRuntime {
             .fulfillment_read_port()
     }
 
+    fn fulfillment_admin_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentAdminCommandPort> {
+        self.fulfillment_admin_command_runtime.command_port()
+    }
+
+    fn fulfillment_admin_create_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentAdminCreateCommandPort> {
+        self.fulfillment_admin_create_command_runtime.command_port()
+    }
+
     fn order_read_port(&self) -> std::sync::Arc<dyn rustok_order::OrderReadPort> {
         self.order_read_runtime.order_read_port()
     }
@@ -90,6 +107,18 @@ impl CommerceHttpRuntime {
 
     fn payment_admin_read_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentAdminReadPort> {
         self.payment_admin_read_runtime.read_port()
+    }
+
+    fn payment_admin_collection_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_payment::PaymentAdminCollectionCommandPort> {
+        self.payment_admin_collection_command_runtime.command_port()
+    }
+
+    fn payment_admin_refund_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_payment::PaymentAdminRefundCommandPort> {
+        self.payment_admin_refund_command_runtime.command_port()
     }
 
     fn product_catalog_read_port(
@@ -126,6 +155,12 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require TransactionalEventBus in HostRuntimeContext"
                 )
             })?;
+        let payment_provider_registry = runtime
+            .shared_get::<PaymentProviderRegistry>()
+            .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
+        let fulfillment_provider_registry = runtime
+            .shared_get::<FulfillmentProviderRegistry>()
+            .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
         let shipping_option_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceShippingOptionReadRuntime>()
             .ok_or_else(|| {
@@ -140,6 +175,22 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require CommerceFulfillmentLifecycleReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let fulfillment_admin_command_runtime = runtime
+            .shared_get::<rustok_fulfillment::FulfillmentAdminCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process(
+                    runtime.db_clone(),
+                    fulfillment_provider_registry.clone(),
+                )
+            });
+        let fulfillment_admin_create_command_runtime = runtime
+            .shared_get::<rustok_fulfillment::FulfillmentAdminCreateCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_fulfillment::FulfillmentAdminCreateCommandRuntime::in_process(
+                    runtime.db_clone(),
+                    fulfillment_provider_registry.clone(),
+                )
+            });
         let order_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceOrderReadRuntime>()
             .ok_or_else(|| {
@@ -164,6 +215,22 @@ impl CommerceHttpRuntime {
         let payment_admin_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
             .unwrap_or_else(|| rustok_payment::PaymentAdminReadRuntime::in_process(runtime.db_clone()));
+        let payment_admin_collection_command_runtime = runtime
+            .shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentAdminCollectionCommandRuntime::in_process(
+                    runtime.db_clone(),
+                    payment_provider_registry.clone(),
+                )
+            });
+        let payment_admin_refund_command_runtime = runtime
+            .shared_get::<rustok_payment::PaymentAdminRefundCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentAdminRefundCommandRuntime::in_process(
+                    runtime.db_clone(),
+                    payment_provider_registry.clone(),
+                )
+            });
         let product_catalog_read_runtime = runtime
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
             .ok_or_else(|| {
@@ -189,18 +256,18 @@ impl CommerceHttpRuntime {
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
-            payment_provider_registry: runtime
-                .shared_get::<PaymentProviderRegistry>()
-                .unwrap_or_else(PaymentProviderRegistry::with_manual_provider),
-            fulfillment_provider_registry: runtime
-                .shared_get::<FulfillmentProviderRegistry>()
-                .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
+            payment_provider_registry,
+            fulfillment_provider_registry,
             shipping_option_read_runtime,
             fulfillment_lifecycle_read_runtime,
+            fulfillment_admin_command_runtime,
+            fulfillment_admin_create_command_runtime,
             order_read_runtime,
             order_admin_command_runtime,
             payment_order_read_runtime,
             payment_admin_read_runtime,
+            payment_admin_collection_command_runtime,
+            payment_admin_refund_command_runtime,
             product_catalog_read_runtime,
             product_catalog_command_runtime,
             #[cfg(feature = "marketplace-financial")]

@@ -1,18 +1,21 @@
 use std::sync::Arc;
 
 use rustok_blog::{
-    BlogModule, CreatePostInput, ListTagsFilter, PostService, TagService, entities::blog_post_tag,
+    BlogModule, CreatePostInput, ListTagsFilter, PostService, TagService, UpdateTagInput,
+    entities::blog_post_tag,
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_outbox::TransactionalEventBus;
+use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_outbox::{SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    entities::taxonomy_term,
+    entities::{taxonomy_term, taxonomy_term_translation},
 };
 use sea_orm::{
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder,
 };
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 async fn setup_blog_test_db() -> DatabaseConnection {
@@ -38,6 +41,10 @@ async fn setup() -> (
 ) {
     let db = setup_blog_test_db().await;
     let schema = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&schema)
+        .await
+        .expect("outbox migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
@@ -211,4 +218,266 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
         .expect("blog-scoped terms should load");
     assert_eq!(blog_scoped_terms.len(), 1);
     assert_eq!(blog_scoped_terms[0].canonical_key, "backend");
+}
+
+#[tokio::test]
+async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus);
+    let security = admin();
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            security.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Canonical tag relation".to_string(),
+                content: rustok_blog::richtext::article_document_from_plain_text(
+                    &"Body".to_string(),
+                ),
+                excerpt: None,
+                slug: Some("canonical-tag-relation".to_string()),
+                publish: true,
+                tags: vec!["stale-metadata-tag".to_string()],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+            },
+        )
+        .await
+        .expect("post should be created");
+
+    blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .exec(&db)
+        .await
+        .expect("test should remove canonical relations while leaving compatibility metadata intact");
+
+    let post = post_service
+        .get_post(tenant_id, security, post_id, "en")
+        .await
+        .expect("post should load after relation removal");
+    assert!(post.tags.is_empty());
+}
+
+#[tokio::test]
+async fn tag_update_commits_dictionary_change_and_blog_reindex_together() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus);
+    let tag_service = TagService::new(db.clone());
+    let security = admin();
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            security.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Atomic tag update".to_string(),
+                content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                excerpt: None,
+                slug: Some("atomic-tag-update".to_string()),
+                publish: true,
+                tags: vec!["rust".to_string()],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+            },
+        )
+        .await
+        .expect("post should be created");
+    let tag_id = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .one(&db)
+        .await
+        .expect("relation lookup should work")
+        .expect("post should have one tag")
+        .tag_id;
+
+    let updated = tag_service
+        .update_tag(
+            tenant_id,
+            tag_id,
+            security.clone(),
+            UpdateTagInput {
+                locale: "en".to_string(),
+                name: Some("backend".to_string()),
+                slug: None,
+            },
+        )
+        .await
+        .expect("tag update should commit");
+    assert_eq!(updated.name, "backend");
+    assert_eq!(updated.slug, "backend");
+
+    let post = post_service
+        .get_post(tenant_id, security, post_id, "en")
+        .await
+        .expect("post should resolve renamed taxonomy tag");
+    assert_eq!(post.tags, vec!["backend".to_string()]);
+
+    let event = SysEvents::find()
+        .order_by_desc(rustok_outbox::entity::Column::CreatedAt)
+        .one(&db)
+        .await
+        .expect("outbox lookup should work")
+        .expect("tag update should retain one durable reindex event");
+    let envelope: EventEnvelope = serde_json::from_value(event.payload)
+        .expect("outbox payload should decode as canonical event envelope");
+    assert_eq!(envelope.tenant_id, tenant_id);
+    assert!(matches!(
+        envelope.event,
+        DomainEvent::ReindexRequested { ref target_type, target_id: None }
+            if target_type == "blog"
+    ));
+}
+
+#[tokio::test]
+async fn tag_update_rolls_back_when_blog_reindex_outbox_write_fails() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus);
+    let tag_service = TagService::new(db.clone());
+    let security = admin();
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            security.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Rollback tag update".to_string(),
+                content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                excerpt: None,
+                slug: Some("rollback-tag-update".to_string()),
+                publish: true,
+                tags: vec!["rust".to_string()],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+            },
+        )
+        .await
+        .expect("post should be created");
+    let tag_id = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .one(&db)
+        .await
+        .expect("relation lookup should work")
+        .expect("post should have one tag")
+        .tag_id;
+
+    db.execute_unprepared("DROP TABLE sys_events")
+        .await
+        .expect("test should make canonical outbox persistence unavailable");
+
+    tag_service
+        .update_tag(
+            tenant_id,
+            tag_id,
+            security,
+            UpdateTagInput {
+                locale: "en".to_string(),
+                name: Some("backend".to_string()),
+                slug: None,
+            },
+        )
+        .await
+        .expect_err("outbox failure must abort the owner transaction");
+
+    let translation = taxonomy_term_translation::Entity::find()
+        .filter(taxonomy_term_translation::Column::TermId.eq(tag_id))
+        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_translation::Column::Locale.eq("en"))
+        .one(&db)
+        .await
+        .expect("translation lookup should work")
+        .expect("rolled-back translation should remain");
+    assert_eq!(translation.name, "rust");
+    assert_eq!(translation.slug, "rust");
+    assert_eq!(translation.revision, 1);
+
+    let term = taxonomy_term::Entity::find_by_id(tag_id)
+        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+        .one(&db)
+        .await
+        .expect("term lookup should work")
+        .expect("rolled-back term should remain");
+    assert_eq!(term.revision, 1);
+}
+
+#[tokio::test]
+async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus);
+    let tag_service = TagService::new(db.clone());
+    let security = admin();
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            security.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Atomic tag delete".to_string(),
+                content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                excerpt: None,
+                slug: Some("atomic-tag-delete".to_string()),
+                publish: true,
+                tags: vec!["rust".to_string()],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+            },
+        )
+        .await
+        .expect("post should be created");
+    let tag_id = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .one(&db)
+        .await
+        .expect("relation lookup should work")
+        .expect("post should have one tag")
+        .tag_id;
+
+    tag_service
+        .delete_tag(tenant_id, tag_id, security)
+        .await
+        .expect("tag delete should commit");
+
+    assert!(
+        taxonomy_term::Entity::find_by_id(tag_id)
+            .one(&db)
+            .await
+            .expect("term lookup should work")
+            .is_none()
+    );
+    assert!(
+        blog_post_tag::Entity::find()
+            .filter(blog_post_tag::Column::TagId.eq(tag_id))
+            .one(&db)
+            .await
+            .expect("relation lookup should work")
+            .is_none()
+    );
+    assert_eq!(
+        SysEvents::find()
+            .all(&db)
+            .await
+            .expect("outbox lookup should work")
+            .len(),
+        1
+    );
 }

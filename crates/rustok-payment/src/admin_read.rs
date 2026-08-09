@@ -241,9 +241,14 @@ fn map_payment_error(
             false,
             "conflict",
         ),
-        PaymentError::ProviderUnavailable { .. }
-        | PaymentError::ProviderConfiguration { .. }
-        | PaymentError::Database(_) => (
+        PaymentError::ProviderConfiguration { .. } => (
+            PortErrorKind::Unavailable,
+            "payment.admin_read_configuration",
+            "payment read capability is temporarily unavailable",
+            true,
+            "provider_configuration",
+        ),
+        PaymentError::ProviderUnavailable { .. } | PaymentError::Database(_) => (
             PortErrorKind::Unavailable,
             "payment.admin_read_unavailable",
             "payment read capability is temporarily unavailable",
@@ -276,7 +281,6 @@ fn map_payment_error(
             deadline_ms = ?context.deadline_ms,
             error_variant,
             boundary = PAYMENT_ADMIN_READ_BOUNDARY,
-            error = ?error,
             "payment admin read owner operation failed"
         );
     } else {

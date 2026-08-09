@@ -127,28 +127,31 @@ for (const forbidden of [
 }
 
 requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
-  'Status: `source_complete_host_guard_transport_pending`.',
+  'Status: `source_complete_transport_execution_pending`.',
   '`IndexReplayTargetedExecutor`',
-  'requested key admission',
+  'active-schema admission',
   'Missing requested keys',
   'does not infer deletion',
   'source-owned mutation event UUID',
   'does not add a checkpoint for partial progress',
   '## PostgreSQL/runtime composition',
-  'dedicated authorization-first Targeted public transport',
+  '## GraphQL transport',
+  '`runIndexReplayTargeted(input: ...)`',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_targeted_host_guard_transport_pending`.',
+  'Status: `source_complete_targeted_graphql_execution_pending`.',
   '## Targeted mutation application',
   '`IndexReplayTargetedExecutor`',
   'validates requested keys against the active schema',
   'Missing requested keys are allowed',
   '## Targeted PostgreSQL composition and host dispatch',
+  '## Targeted GraphQL transport',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
   'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
+  'There is no remaining independent source-only M6 replay expansion justified by the current contract.',
 ]);
 requireMarkers('crates/rustok-index/docs/README.md', [
   '[M6 Targeted Replay Mutation Application](./m6-targeted-replay-mutation-application.md)',
@@ -156,6 +159,7 @@ requireMarkers('crates/rustok-index/docs/README.md', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-replay-targeted-application.mjs'",
   "'verify-index-replay-targeted-host-dispatch.mjs'",
+  "'verify-index-replay-targeted-graphql-transport.mjs'",
 ]);
 
-console.log('[verify-index-replay-targeted-application] Targeted application remains storage-neutral, validates exact keys before load, preflights the whole batch, and converges exact retry while host composition is guarded separately');
+console.log('[verify-index-replay-targeted-application] Targeted application stays storage-neutral and exact-key/batch safe while PostgreSQL composition, host authorization and dedicated GraphQL remain separate guarded layers');

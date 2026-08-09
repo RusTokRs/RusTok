@@ -3,6 +3,8 @@ use rustok_api::Permission;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod admin_command;
+mod admin_create_command;
 pub mod checkout_execution;
 mod checkout_execution_typed;
 pub mod dto;
@@ -16,6 +18,17 @@ pub mod services;
 mod shipping_option_read;
 pub mod status;
 
+pub use admin_command::{
+    CancelAdminFulfillmentRequest, DeliverAdminFulfillmentRequest, FulfillmentAdminCommandPort,
+    FulfillmentAdminCommandRuntime, InProcessFulfillmentAdminCommandPort,
+    ReopenAdminFulfillmentRequest, ReshipAdminFulfillmentRequest, ShipAdminFulfillmentRequest,
+    in_process_fulfillment_admin_command_port,
+};
+pub use admin_create_command::{
+    CreateAdminFulfillmentRequest, FulfillmentAdminCreateCommandPort,
+    FulfillmentAdminCreateCommandRuntime, InProcessFulfillmentAdminCreateCommandPort,
+    in_process_fulfillment_admin_create_command_port,
+};
 pub use checkout_execution::{
     CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
     EnsureCheckoutFulfillmentsRequest, InProcessCheckoutFulfillmentExecutionPort,

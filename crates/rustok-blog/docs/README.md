@@ -10,6 +10,15 @@ semantics. Comments lifecycle events are consumed by Blog's durable idempotent
 reply-count projection, which publishes `BlogPostUpdated` in the same projection
 transaction.
 
+## Planning cursor
+
+Use [Current Implementation Cursor](./implementation-plan-current.md) for the
+live Blog source status and next autonomous cursor. The long
+[Implementation Plan](./implementation-plan.md) is the historical baseline and
+embedded implementation log; its inline current-state and next-results sections
+predate the later standalone continuation slices and must not be treated as the
+live cursor without the current-cursor document.
+
 ## Purpose
 
 - publish the canonical Blog runtime contract for posts, categories, and tag relations;
@@ -139,7 +148,8 @@ Tests in `tests/contract_surface.rs`, `tests/module.rs`, and `tests/integration.
 ## Related documents
 
 - [README crate](../README.md)
-- [Implementation Plan](./implementation-plan.md)
+- [Current Implementation Cursor](./implementation-plan-current.md)
+- [Historical Implementation Plan](./implementation-plan.md)
 - [CRATE_API](../CRATE_API.md)
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)

@@ -6,709 +6,75 @@ import './verify-blog-comments-storefront-native-port-injection.test.mjs';
 import './verify-blog-comments-admin-native-port-injection.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const verifier = path.resolve('scripts/verify/verify-blog-comments-port-boundary.mjs');
-const operations = [
-  'create_comment',
-  'get_comment',
-  'list_comments_for_target',
-  'list_public_comments_for_target',
-  'update_comment',
-  'set_comment_status',
-  'delete_comment',
-];
-const injectionConstructor = 'CommentService::with_comments_thread_port';
-const injectionSignature = 'fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService';
-const injectionTest =
-  'services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port';
-const injectionCommand =
-  `cargo test -p rustok-blog --lib ${injectionTest} -- --exact`;
-const httpHarnessTest = 'controllers::tests::blog_http_runtime_exposes_comments_port_selection';
-const httpHarnessCommand = `cargo test -p rustok-blog --lib ${httpHarnessTest} -- --exact`;
-const graphqlHarnessTest =
-  'graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection';
-const graphqlHarnessCommand =
-  `cargo test -p rustok-blog --lib ${graphqlHarnessTest} -- --exact`;
-const storefrontHarnessTest =
-  'transport::native_server_adapter::tests::storefront_native_runtime_exposes_comments_port_selection';
-const storefrontHarnessCommand =
-  `cargo test -p rustok-blog-storefront --features ssr ${storefrontHarnessTest} -- --exact`;
-const adminHarnessTest =
-  'transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection';
-const adminHarnessCommand =
-  `cargo test -p rustok-blog-admin --features ssr ${adminHarnessTest} -- --exact`;
+const files = {
+  matrix: 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json',
+  fallback: 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
+  httpEvidence: 'crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json',
+  graphqlEvidence: 'crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json',
+  storefrontEvidence:
+    'crates/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json',
+  adminEvidence: 'crates/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json',
+  providerRegistry: 'crates/rustok-comments/contracts/comments-fba-registry.json',
+  consumerRegistry: 'crates/rustok-blog/contracts/blog-fba-registry.json',
+  facade: 'crates/rustok-blog/src/lib.rs',
+  service: 'crates/rustok-blog/src/services/comment.rs',
+  snapshot: 'crates/rustok-blog/src/public_comments_snapshot.rs',
+  httpRuntime: 'crates/rustok-blog/src/controllers/mod.rs',
+  httpController: 'crates/rustok-blog/src/controllers/comments.rs',
+  manifest: 'crates/rustok-blog/rustok-module.toml',
+  graphqlModule: 'crates/rustok-blog/src/graphql/mod.rs',
+  graphqlRuntime: 'crates/rustok-blog/src/graphql/runtime_data.rs',
+  graphqlTypes: 'crates/rustok-blog/src/graphql/types.rs',
+  graphqlMutation: 'crates/rustok-blog/src/graphql/mutation.rs',
+  storefrontModel: 'crates/rustok-blog/storefront/src/model.rs',
+  storefrontGraphql: 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs',
+  storefrontNative: 'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs',
+  storefrontUi: 'crates/rustok-blog/storefront/src/ui/leptos.rs',
+  adminNative: 'crates/rustok-blog/admin/src/transport/native_server_adapter.rs',
+  hostSnapshot: 'apps/server/src/services/blog_public_comments_snapshot.rs',
+  hostComposition: 'apps/server/src/services/module_event_dispatcher.rs',
+  serverBuild: 'apps/server/build.rs',
+  serverSchema: 'apps/server/src/graphql/schema.rs',
+  plan: 'crates/rustok-blog/docs/implementation-plan.md',
+  slice99: 'crates/rustok-blog/docs/implementation-plan-slice-99.md',
+};
 
-function write(root, relativePath, content) {
+function copy(root, relativePath) {
   const target = path.join(root, relativePath);
   mkdirSync(path.dirname(target), { recursive: true });
-  writeFileSync(target, content);
+  writeFileSync(target, readFileSync(relativePath));
 }
 
-function fixture({
-  directBypass = false,
-  missingDeadline = false,
-  missingIdempotency = false,
-  missingPublicRead = false,
-  missingAvailabilityField = false,
-  broadNativeFallback = false,
-  missingGraphqlAvailability = false,
-  missingUiState = false,
-  missingInjectionConstructor = false,
-  missingInjectionHarness = false,
-  injectionRuntimePromoted = false,
-  statusDrift = false,
-  fallbackPromoted = false,
-} = {}) {
+function mutate(root, relativePath, transform) {
+  const target = path.join(root, relativePath);
+  const source = readFileSync(target, 'utf8');
+  writeFileSync(target, transform(source));
+}
+
+function mutateJson(root, relativePath, transform) {
+  mutate(root, relativePath, (source) => {
+    const value = JSON.parse(source);
+    transform(value);
+    return JSON.stringify(value, null, 2);
+  });
+}
+
+function fixture(mutator) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-port-'));
-  const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
-  const fallbackEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
-  const httpEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json';
-  const graphqlEvidencePath =
-    'crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json';
-  const storefrontEvidencePath =
-    'crates/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json';
-  const adminEvidencePath =
-    'crates/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json';
-  const facadePath = 'crates/rustok-blog/src/lib.rs';
-  const servicePath = 'crates/rustok-blog/src/services/comment.rs';
-  const httpRuntimePath = 'crates/rustok-blog/src/controllers/mod.rs';
-  const httpControllerPath = 'crates/rustok-blog/src/controllers/comments.rs';
-  const manifestPath = 'crates/rustok-blog/rustok-module.toml';
-  const graphqlModulePath = 'crates/rustok-blog/src/graphql/mod.rs';
-  const graphqlRuntimeDataPath = 'crates/rustok-blog/src/graphql/runtime_data.rs';
-  const graphqlOwnerPath = 'crates/rustok-blog/src/graphql/types.rs';
-  const graphqlMutationPath = 'crates/rustok-blog/src/graphql/mutation.rs';
-  const serverCodegenPath = 'apps/server/build.rs';
-  const serverSchemaPath = 'apps/server/src/graphql/schema.rs';
-  const storefrontModelPath = 'crates/rustok-blog/storefront/src/model.rs';
-  const storefrontGraphqlPath = 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs';
-  const storefrontNativePath = 'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs';
-  const storefrontUiPath = 'crates/rustok-blog/storefront/src/ui/leptos.rs';
-  const adminNativePath = 'crates/rustok-blog/admin/src/transport/native_server_adapter.rs';
-  const providerRegistryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
-  const consumerRegistryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
-
-  write(root, facadePath, 'pub use rustok_comments::CommentsThreadPort;');
-
-  write(
-    root,
-    servicePath,
-    `
-comments_thread_port: Arc<dyn CommentsThreadPort>
-${missingInjectionConstructor ? '' : `
-let comments_thread_port = in_process_comments_thread_port(db.clone(), event_bus);
-Self::with_comments_thread_port(db, comments_thread_port)
-pub fn with_comments_thread_port(
-comments_thread_port: Arc<dyn CommentsThreadPort>,
-Self {
-            db,
-            comments_thread_port,
-        }
-`}
-${missingInjectionHarness ? '' : `
-mod port_injection_tests
-fn comment_service_accepts_an_injected_comments_thread_port()
-) -> CommentService = CommentService::with_comments_thread_port;
-`}
-.comments_thread_port
-.create_comment(
-.get_comment(
-.list_comments_for_target(
-${missingPublicRead ? '' : '.list_public_comments_for_target('}
-.update_comment(
-.set_comment_status(
-.delete_comment(
-comments_write_port_context(
-comments_read_port_context(
-comments_public_read_port_context(
-PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR)
-${missingDeadline ? '' : '.with_deadline(std::time::Duration::from_secs(2))'}
-${missingIdempotency ? '' : '.with_idempotency_key(format!("{correlation_id}:command:{command_id}"))'}
-PortErrorKind::NotFound => rustok_core::error::ErrorKind::NotFound
-PortErrorKind::Forbidden => rustok_core::error::ErrorKind::Forbidden
-PortErrorKind::Validation => rustok_core::error::ErrorKind::Validation
-PortErrorKind::Unavailable => rustok_core::error::ErrorKind::ExternalService
-PortErrorKind::Timeout => rustok_core::error::ErrorKind::Timeout
-BlogError::Rich(Box::new(
-.with_error_code(error.code)
-body: input.content
-content: record.body
-content_text: record.body_text
-Self::ensure_blog_target(&existing)?
-ensure_post_exists
-DomainCreateCommentInput
-TARGET_TYPE_BLOG_POST
-post_id
-${directBypass ? '.comments.get_comment(' : ''}
-`,
-  );
-
-  write(
-    root,
-    httpRuntimePath,
-    `
-use rustok_comments::CommentsThreadPort;
-use std::sync::Arc;
-comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
-fn comment_service(&self) -> CommentService {
-if let Some(comments_thread_port) = self.comments_thread_port.clone() {
-CommentService::with_comments_thread_port(self.db_clone(), comments_thread_port)
-} else {
-CommentService::new(self.db_clone(), self.event_bus())
-}
-}
-comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>()
-mod tests
-fn blog_http_runtime_exposes_comments_port_selection()
-let selector: fn(&BlogHttpRuntime) -> CommentService = BlogHttpRuntime::comment_service;
-`,
-  );
-  write(root, httpControllerPath, 'let service = runtime.comment_service();');
-
-  write(
-    root,
-    manifestPath,
-    '[provides.graphql]\nquery = "graphql::BlogQuery"\nmutation = "graphql::BlogMutation"\nruntime_data_factory = "graphql::attach_schema_data"',
-  );
-  write(
-    root,
-    graphqlModulePath,
-    'mod runtime_data;\npub use runtime_data::{BlogGraphqlRuntimeData, attach_schema_data};',
-  );
-  write(
-    root,
-    serverCodegenPath,
-    'graphql_runtime_data_factory: Option<String> graphql_runtime_data_factory_expr builder = builder.data({factory}(inputs)?);',
-  );
-  write(
-    root,
-    serverSchemaPath,
-    'schema_codegen::attach_module_graphql_data(builder, &graphql_runtime_inputs)',
-  );
-  write(
-    root,
-    graphqlRuntimeDataPath,
-    `
-use rustok_api::graphql::GraphqlRuntimeInputs;
-use rustok_comments::CommentsThreadPort;
-comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
-pub fn attach_schema_data(
-inputs.shared_get::<Arc<dyn CommentsThreadPort>>()
-pub(crate) fn comment_service(
-match self.comments_thread_port.clone()
-Some(comments_thread_port)
-CommentService::with_comments_thread_port(db, comments_thread_port)
-None => CommentService::new(db, event_bus)
-fn graphql_runtime_data_exposes_comments_port_selection()
-let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String>
-BlogGraphqlRuntimeData::comment_service;
-`,
-  );
-
-  write(
-    root,
-    storefrontModelPath,
-    `
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum BlogCommentsAvailability {
-Available,
-Unavailable,
-Timeout,
-}
-${missingAvailabilityField ? '' : 'pub availability: BlogCommentsAvailability'}
-`,
-  );
-  write(
-    root,
-    storefrontNativePath,
-    `
-use std::sync::Arc;
-#[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]
-let runtime_ctx = expect_context::<HostRuntimeContext>();
-fn comment_service(
-runtime_ctx: &rustok_api::HostRuntimeContext,
-runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()
-rustok_blog::CommentService::with_comments_thread_port(
-rustok_blog::CommentService::new(runtime_ctx.db_clone(), event_bus)
-comment_service(&runtime_ctx, event_bus.clone())
-.list_for_post_with_locale_fallback(
-SecurityContext::public_read()
-fn comments_read_availability(
-rustok_core::error::ErrorKind::ExternalService
-Some(BlogCommentsAvailability::Unavailable)
-rustok_core::error::ErrorKind::Timeout
-Some(BlogCommentsAvailability::Timeout)
-let Some(availability) = comments_read_availability(&error) else
-return Err(ServerFnError::new(error));
-availability: BlogCommentsAvailability::Available
-items: Vec::new()
-total: 0
-${broadNativeFallback ? 'Err(_) => BlogCommentList' : ''}
-fn storefront_native_runtime_exposes_comments_port_selection()
-) -> rustok_blog::CommentService = comment_service;
-`,
-  );
-  write(
-    root,
-    graphqlOwnerPath,
-    `
-use super::runtime_data::BlogGraphqlRuntimeData;
-async fn public_comments(
-let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
-let service = runtime.comment_service(db.clone(), event_bus.clone());
-async fn moderation_comments(
-let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
-let service = runtime.comment_service(db.clone(), event_bus.clone());
-pub enum GqlBlogCommentsAvailability
-pub availability: GqlBlogCommentsAvailability
-fn graphql_comments_read_availability(error: &BlogError)
-ErrorKind::ExternalService => Some(GqlBlogCommentsAvailability::Unavailable)
-ErrorKind::Timeout => Some(GqlBlogCommentsAvailability::Timeout)
-${missingGraphqlAvailability ? '' : 'let Some(availability) = graphql_comments_read_availability(&error) else'}
-return Err(async_graphql::Error::new(error.to_string()));
-GqlBlogCommentsAvailability::Available
-`,
-  );
-  write(
-    root,
-    graphqlMutationPath,
-    `
-use super::runtime_data::BlogGraphqlRuntimeData;
-async fn moderate_comment(
-let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
-runtime
-.comment_service(db.clone(), event_bus.clone())
-`,
-  );
-  write(
-    root,
-    storefrontGraphqlPath,
-    'publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability total items',
-  );
-  write(
-    root,
-    storefrontUiPath,
-    missingUiState
-      ? ''
-      : `
-comments.availability != BlogCommentsAvailability::Available
-BlogCommentsAvailability::Unavailable
-BlogCommentsAvailability::Timeout
-Comments are temporarily unavailable. The article is still available.
-Comments took too long to load. The article is still available.
-`,
-  );
-
-  write(
-    root,
-    adminNativePath,
-    `
-use std::sync::Arc;
-struct NativeContext {
-comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>
-}
-let runtime = expect_context::<HostRuntimeContext>();
-if auth.tenant_id != tenant.id
-runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()
-fn comment_service(context: &NativeContext) -> rustok_blog::CommentService {
-context.comments_thread_port.clone()
-rustok_blog::CommentService::with_comments_thread_port(
-rustok_blog::CommentService::new(context.db.clone(), context.event_bus.clone())
-}
-fn require_manage_permission(
-&[rustok_api::Permission::BLOG_POSTS_MANAGE]
-"Permission denied: blog_posts:manage required"
-#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]
-require_manage_permission(&context.auth)?;
-comment_service(&context)
-page: page.max(1)
-per_page: per_page.clamp(1, 100)
-.list_for_post_with_locale_fallback(
-.map_err(ServerFnError::new)?;
-#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]
-require_manage_permission(&context.auth)?;
-comment_service(&context)
-.moderate_comment(
-.map_err(ServerFnError::new)?;
-#[cfg(feature = "ssr")]
-fn optional_text
-fn admin_native_runtime_exposes_comments_port_selection()
-let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_service;
-`,
-  );
-
-  const cases = operations.map((operation) => ({
-    operation,
-    assertions: ['typed_port_error_mapping', 'context_deadline_preserved'],
-    runtime_evidence: 'pending',
-  }));
-  write(
-    root,
-    evidencePath,
-    JSON.stringify({
-      schema_version: 3,
-      module: 'blog',
-      surface: 'comments_port_boundary',
-      role: 'consumer',
-      provider: 'comments',
-      generated_from: consumerRegistryPath,
-      status: statusDrift ? 'runtime_verified' : 'source_verified_no_compile',
-      compile_policy: 'not_run_by_request',
-      source_contract: {
-        consumer_service: servicePath,
-        provider_registry: providerRegistryPath,
-        consumer_registry: consumerRegistryPath,
-        injection_constructor: injectionConstructor,
-      },
-      profiles: {
-        source_verified: ['in_process'],
-        pending: ['remote_adapter_placeholder'],
-      },
-      adapter_injection: {
-        status: 'executable_no_run',
-        runtime_status: injectionRuntimePromoted ? 'passed' : 'not_run',
-        source: servicePath,
-        constructor: injectionConstructor,
-        signature: injectionSignature,
-        test: injectionTest,
-        command: injectionCommand,
-        default_profile: 'in_process',
-        remote_transport_implementation: 'pending',
-      },
-      cases,
-      fallback_smoke: {
-        status: 'planned',
-        profiles: ['embedded_native'],
-        degraded_modes: ['hide_comment_form', 'show_cached_thread_snapshot'],
-        runtime_evidence: 'pending',
-      },
-    }),
-  );
-
-  write(
-    root,
-    httpEvidencePath,
-    JSON.stringify({
-      schema_version: 1,
-      module: 'blog',
-      surface: 'comments_http_port_injection',
-      role: 'consumer',
-      provider: 'comments',
-      status: 'source_verified_no_compile',
-      compile_policy: 'not_run_by_request',
-      runtime_status: 'not_run',
-      source_contract: {
-        http_runtime: httpRuntimePath,
-        moderation_controller: httpControllerPath,
-        consumer_service: servicePath,
-        consumer_matrix: evidencePath,
-      },
-      profiles: {
-        source_verified: ['in_process_fallback', 'host_injected_port_selection'],
-        pending: ['remote_transport_implementation'],
-      },
-      composition: {
-        host_context: 'rustok_api::HostRuntimeContext',
-        shared_value: 'Arc<dyn CommentsThreadPort>',
-        lookup: 'HostRuntimeContext::shared_get',
-        selector: 'BlogHttpRuntime::comment_service',
-        injected_constructor: 'CommentService::with_comments_thread_port',
-        fallback_constructor: 'CommentService::new',
-        http_operation: 'moderate_comment',
-      },
-      harness: {
-        status: 'executable_no_run',
-        runtime_status: 'not_run',
-        source: httpRuntimePath,
-        test: httpHarnessTest,
-        command: httpHarnessCommand,
-      },
-      non_claims: [],
-    }),
-  );
-
-  write(
-    root,
-    graphqlEvidencePath,
-    JSON.stringify({
-      schema_version: 1,
-      module: 'blog',
-      surface: 'comments_graphql_port_injection',
-      role: 'consumer',
-      provider: 'comments',
-      status: 'source_verified_no_compile',
-      compile_policy: 'not_run_by_request',
-      runtime_status: 'not_run',
-      source_contract: {
-        module_manifest: manifestPath,
-        graphql_module: graphqlModulePath,
-        runtime_data: graphqlRuntimeDataPath,
-        comment_reads: graphqlOwnerPath,
-        comment_mutation: graphqlMutationPath,
-        consumer_service: servicePath,
-        consumer_matrix: evidencePath,
-        server_codegen: serverCodegenPath,
-        server_schema: serverSchemaPath,
-      },
-      profiles: {
-        source_verified: ['in_process_fallback', 'host_injected_port_selection'],
-        pending: ['remote_transport_implementation'],
-      },
-      composition: {
-        host_inputs: 'rustok_api::graphql::GraphqlRuntimeInputs',
-        manifest_factory: 'graphql::attach_schema_data',
-        schema_attachment: 'schema_codegen::attach_module_graphql_data',
-        schema_data: 'BlogGraphqlRuntimeData',
-        shared_value: 'Arc<dyn CommentsThreadPort>',
-        lookup: 'GraphqlRuntimeInputs::shared_get',
-        selector: 'BlogGraphqlRuntimeData::comment_service',
-        injected_constructor: 'CommentService::with_comments_thread_port',
-        fallback_constructor: 'CommentService::new',
-        graphql_operations: ['public_comments', 'moderation_comments', 'moderate_comment'],
-      },
-      harness: {
-        status: 'executable_no_run',
-        runtime_status: 'not_run',
-        source: graphqlRuntimeDataPath,
-        test: graphqlHarnessTest,
-        command: graphqlHarnessCommand,
-      },
-      registration: {
-        standalone_verifier:
-          'scripts/verify/verify-blog-comments-graphql-port-injection.mjs',
-        focused_fixture:
-          'scripts/verify/verify-blog-comments-graphql-port-injection.test.mjs',
-        blog_fba_package_chain: 'pending',
-      },
-    }),
-  );
-
-  write(
-    root,
-    storefrontEvidencePath,
-    JSON.stringify({
-      schema_version: 1,
-      module: 'blog',
-      surface: 'comments_storefront_native_port_injection',
-      role: 'consumer',
-      provider: 'comments',
-      status: 'source_verified_no_compile',
-      compile_policy: 'not_run_by_request',
-      runtime_status: 'not_run',
-      source_contract: {
-        blog_facade: facadePath,
-        native_adapter: storefrontNativePath,
-        consumer_service: servicePath,
-        consumer_matrix: evidencePath,
-        fallback_evidence: fallbackEvidencePath,
-      },
-      profiles: {
-        source_verified: ['in_process_fallback', 'host_injected_port_selection'],
-        pending: ['remote_transport_implementation'],
-      },
-      composition: {
-        host_context: 'rustok_api::HostRuntimeContext',
-        shared_value: 'Arc<dyn rustok_blog::CommentsThreadPort>',
-        facade_reexport: 'pub use rustok_comments::CommentsThreadPort;',
-        lookup: 'HostRuntimeContext::shared_get',
-        selector: 'comment_service',
-        injected_constructor: 'CommentService::with_comments_thread_port',
-        fallback_constructor: 'CommentService::new',
-        native_endpoint: 'blog/storefront-data',
-        operation: 'list_public_comments_for_target',
-      },
-      availability: {
-        states: ['AVAILABLE', 'UNAVAILABLE', 'TIMEOUT'],
-        degraded_error_kinds: ['ExternalService', 'Timeout'],
-        propagated_error_policy: 'all_other_blog_errors',
-      },
-      harness: {
-        status: 'executable_no_run',
-        runtime_status: 'not_run',
-        source: storefrontNativePath,
-        test: storefrontHarnessTest,
-        command: storefrontHarnessCommand,
-      },
-      registration: {
-        standalone_verifier:
-          'scripts/verify/verify-blog-comments-storefront-native-port-injection.mjs',
-        focused_fixture:
-          'scripts/verify/verify-blog-comments-storefront-native-port-injection.test.mjs',
-        blog_fba_package_chain: 'pending',
-      },
-      non_claims: [
-        'no remote network transport is implemented',
-        'no Rust or JavaScript test was run',
-        'no compile, database, browser, workflow, CI, or production result is recorded',
-      ],
-    }),
-  );
-
-  write(
-    root,
-    adminEvidencePath,
-    JSON.stringify({
-      schema_version: 1,
-      module: 'blog',
-      surface: 'comments_admin_native_port_injection',
-      role: 'consumer',
-      provider: 'comments',
-      status: 'source_verified_no_compile',
-      compile_policy: 'not_run_by_request',
-      runtime_status: 'not_run',
-      source_contract: {
-        admin_adapter: adminNativePath,
-        consumer_service: servicePath,
-        consumer_matrix: evidencePath,
-      },
-      profiles: {
-        source_verified: ['in_process_fallback', 'host_injected_port_selection'],
-        pending: ['remote_transport_implementation'],
-      },
-      composition: {
-        host_context: 'rustok_api::HostRuntimeContext',
-        native_context: 'NativeContext',
-        shared_value: 'Arc<dyn rustok_blog::CommentsThreadPort>',
-        lookup: 'HostRuntimeContext::shared_get',
-        selector: 'comment_service',
-        injected_constructor: 'CommentService::with_comments_thread_port',
-        fallback_constructor: 'CommentService::new',
-        native_endpoints: [
-          'blog/admin/moderation-comments',
-          'blog/admin/moderate-comment',
-        ],
-        port_operations: [
-          'list_comments_for_target',
-          'get_comment',
-          'set_comment_status',
-        ],
-      },
-      authorization: {
-        tenant_binding: 'AuthContext.tenant_id == TenantContext.id',
-        permission: 'blog_posts:manage',
-        checked_before_port_call: true,
-      },
-      moderation_policy: {
-        read_pagination: 'page >= 1; 1 <= per_page <= 100',
-        error_policy: 'all_blog_errors_propagated',
-        storefront_degradation_reused: false,
-      },
-      harness: {
-        status: 'executable_no_run',
-        runtime_status: 'not_run',
-        source: adminNativePath,
-        test: adminHarnessTest,
-        command: adminHarnessCommand,
-      },
-      registration: {
-        standalone_verifier:
-          'scripts/verify/verify-blog-comments-admin-native-port-injection.mjs',
-        focused_fixture:
-          'scripts/verify/verify-blog-comments-admin-native-port-injection.test.mjs',
-        blog_fba_package_chain: 'pending',
-      },
-      non_claims: [
-        'no remote network transport is implemented',
-        'no admin moderation error is degraded to an empty success payload',
-        'no Rust or JavaScript test was run',
-        'no compile, database, browser, workflow, CI, or production result is recorded',
-      ],
-    }),
-  );
-
-  write(
-    root,
-    fallbackEvidencePath,
-    JSON.stringify({
-      schema_version: 2,
-      module: 'blog',
-      role: 'consumer',
-      provider: 'comments',
-      generated_from: consumerRegistryPath,
-      status: 'source_verified_no_compile',
-      runner: 'scripts/verify/verify-blog-comments-port-boundary.mjs',
-      compile_policy: 'not_run_by_request',
-      runtime_status: 'not_run',
-      source_contract: {
-        consumer_service: servicePath,
-        consumer_error_mapping: servicePath,
-        provider_port_registry: providerRegistryPath,
-        graphql_owner: graphqlOwnerPath,
-        storefront_model: storefrontModelPath,
-        storefront_graphql: storefrontGraphqlPath,
-        storefront_native: storefrontNativePath,
-        storefront_ui: storefrontUiPath,
-      },
-      storefront_read_degradation: {
-        status: 'source_verified_no_compile',
-        runtime_status: 'not_run',
-        operation: 'list_public_comments_for_target',
-        transports: ['graphql', 'native_ssr'],
-        availability_states: ['AVAILABLE', 'UNAVAILABLE', 'TIMEOUT'],
-        degraded_error_kinds: ['ExternalService', 'Timeout'],
-        propagated_error_policy: 'all_other_blog_errors',
-        degraded_payload: { items: [], total: 0 },
-        cached_thread_snapshot: 'planned',
-        comment_form_fallback: 'planned',
-        runtime_evidence: 'pending',
-      },
-      fallback_smoke: {
-        status: 'planned',
-        profiles: ['embedded_native'],
-        degraded_modes: ['hide_comment_form', 'show_cached_thread_snapshot'],
-        cases: [
-          {
-            operation: 'create_comment',
-            source_markers: ['ensure_post_exists', 'DomainCreateCommentInput', 'comments_thread_port', 'comments_write_port_context'],
-            typed_error_markers: ['PortErrorKind::Forbidden', 'PortErrorKind::Validation', 'PortErrorKind::Unavailable', 'ErrorKind::ExternalService', 'with_error_code(error.code)'],
-            degraded_mode: 'hide_comment_form',
-          },
-          {
-            operation: 'list_comments_for_target',
-            source_markers: ['list_comments_for_target', 'TARGET_TYPE_BLOG_POST', 'post_id', 'comments_read_port_context'],
-            typed_error_markers: ['PortErrorKind::NotFound', 'PortErrorKind::Unavailable', 'PortErrorKind::Timeout', 'ErrorKind::ExternalService', 'ErrorKind::Timeout', 'with_error_code(error.code)'],
-            degraded_mode: 'show_cached_thread_snapshot',
-          },
-        ],
-        runtime_evidence: 'pending',
-      },
-    }),
-  );
-
-  write(root, providerRegistryPath, JSON.stringify({ ports: [{ name: 'CommentsThreadPort', operations }] }));
-  write(
-    root,
-    consumerRegistryPath,
-    JSON.stringify({
-      provider_dependencies: [{ module: 'comments', port: 'CommentsThreadPort', operations }],
-      contract_tests: {
-        status: 'source_verified_no_compile',
-        runtime_status: 'pending',
-        adapter_injection: {
-          status: 'executable_no_run',
-          runtime_status: injectionRuntimePromoted ? 'passed' : 'not_run',
-          source: servicePath,
-          constructor: injectionConstructor,
-          signature: injectionSignature,
-          test: injectionTest,
-          command: injectionCommand,
-          remote_transport_implementation: 'pending',
-        },
-        cases: operations.map((operation) => ({ operation })),
-        fallback_smoke: { status: fallbackPromoted ? 'source_verified_no_compile' : 'planned' },
-      },
-    }),
-  );
-  write(
-    root,
-    'crates/rustok-blog/docs/implementation-plan.md',
-    'blog-comments-consumer-static-matrix.json blog-comments-runtime-fallback-smoke.json blog-comments-http-port-injection.json verify-blog-comments-http-port-injection.mjs verify-blog-comments-http-port-injection.test.mjs blog-comments-graphql-port-injection.json verify-blog-comments-graphql-port-injection.mjs verify-blog-comments-graphql-port-injection.test.mjs blog-comments-storefront-native-port-injection.json verify-blog-comments-storefront-native-port-injection.mjs verify-blog-comments-storefront-native-port-injection.test.mjs blog-comments-admin-native-port-injection.json verify-blog-comments-admin-native-port-injection.mjs verify-blog-comments-admin-native-port-injection.test.mjs BlogGraphqlRuntimeData graphql::attach_schema_data schema_codegen::attach_module_graphql_data GraphQL Comments host selection is source-locked storefront native SSR Comments host selection is source-locked admin native SSR Comments host selection is source-locked Blog FBA package-chain registration remains pending verify:blog:comments-port-boundary test:verify:blog:comments-port-boundary source_verified_no_compile typed storefront comments availability CommentService::with_comments_thread_port BlogHttpRuntime::comment_service HTTP moderation remote transport remains pending remote network transport remains pending cached snapshot and comment-form fallback remain planned Slice 59 Slice 60 Slice 61 Slice 62 Slice 63 Slice 64 Slice 65 Slice 66',
-  );
-
+  for (const relativePath of Object.values(files)) copy(root, relativePath);
+  mutator?.(root);
   return root;
 }
 
@@ -720,8 +86,8 @@ function run(root) {
   });
 }
 
-function rejects(options) {
-  const root = fixture(options);
+function rejects(mutator) {
+  const root = fixture(mutator);
   try {
     return run(root);
   } finally {
@@ -729,7 +95,11 @@ function rejects(options) {
   }
 }
 
-test('accepts the canonical Blog Comments consumer port boundary', () => {
+function removeMarker(file, marker) {
+  return (root) => mutate(root, file, (source) => source.replace(marker, ''));
+}
+
+test('accepts the canonical Blog Comments consumer and cached snapshot boundary', () => {
   const root = fixture();
   try {
     const result = run(root);
@@ -739,66 +109,103 @@ test('accepts the canonical Blog Comments consumer port boundary', () => {
   }
 });
 
-test('rejects a direct CommentsService bypass', () => {
-  assert.notEqual(rejects({ directBypass: true }).status, 0);
-});
-
-test('rejects a port context without deadline', () => {
-  assert.notEqual(rejects({ missingDeadline: true }).status, 0);
-});
-
-test('rejects writes without idempotency keys', () => {
-  assert.notEqual(rejects({ missingIdempotency: true }).status, 0);
-});
-
-test('rejects removal of the approved public-read port operation', () => {
-  assert.notEqual(rejects({ missingPublicRead: true }).status, 0);
-});
-
-test('rejects removal of the Comments port injection constructor', () => {
-  const result = rejects({ missingInjectionConstructor: true });
+test('rejects a direct Comments service bypass', () => {
+  const result = rejects((root) =>
+    mutate(root, files.service, (source) => `${source}\nself.comments.get_comment(`),
+  );
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /with_comments_thread_port/);
 });
 
-test('rejects removal of the compile-only injection harness', () => {
-  const result = rejects({ missingInjectionHarness: true });
+test('rejects removal of the approved-only snapshot validation', () => {
+  const result = rejects(
+    removeMarker(files.snapshot, 'item.post_id == identity.post_id && item.status == "approved"'),
+  );
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /port_injection_tests|injected_comments_thread_port/);
 });
 
-test('rejects runtime promotion of the unexecuted injection harness', () => {
-  const result = rejects({ injectionRuntimePromoted: true });
+test('rejects removal of the bounded snapshot payload limit', () => {
+  const result = rejects(
+    removeMarker(files.snapshot, 'MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES: usize = 256 * 1024'),
+  );
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /base injection seam drift/);
 });
 
-test('rejects a storefront model without typed availability', () => {
-  assert.notEqual(rejects({ missingAvailabilityField: true }).status, 0);
-});
-
-test('rejects broad native fallback for every error', () => {
-  const result = rejects({ broadNativeFallback: true });
+test('rejects snapshot fallback for non-availability errors', () => {
+  const result = rejects(
+    removeMarker(files.snapshot, 'return Err(error);'),
+  );
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /forbidden Err\(_\) => BlogCommentList/);
 });
 
-test('rejects GraphQL degradation without typed classification', () => {
-  assert.notEqual(rejects({ missingGraphqlAvailability: true }).status, 0);
+test('rejects removal of GraphQL cached-snapshot disclosure', () => {
+  const result = rejects(
+    removeMarker(files.graphqlTypes, 'cached_snapshot: read.cached_snapshot'),
+  );
+  assert.notEqual(result.status, 0);
 });
 
-test('rejects removal of the storefront unavailable and timeout state', () => {
-  assert.notEqual(rejects({ missingUiState: true }).status, 0);
+test('rejects removal of the native snapshot store lookup', () => {
+  const result = rejects(
+    removeMarker(
+      files.storefrontNative,
+      'shared_get::<Arc<dyn PublicCommentsSnapshotStore>>()',
+    ),
+  );
+  assert.notEqual(result.status, 0);
+});
+
+test('rejects removal of stale snapshot UI disclosure', () => {
+  const result = rejects(
+    removeMarker(files.storefrontUi, 'Showing a recent cached snapshot.'),
+  );
+  assert.notEqual(result.status, 0);
+});
+
+test('rejects a host snapshot adapter that creates a Redis client directly', () => {
+  const result = rejects((root) =>
+    mutate(root, files.hostSnapshot, (source) => `${source}\nredis::Client::open("redis://example")`),
+  );
+  assert.notEqual(result.status, 0);
+});
+
+test('rejects removal of host runtime snapshot registration', () => {
+  const result = rejects(
+    removeMarker(
+      files.hostComposition,
+      'blog_public_comments_snapshot::register(&mut extensions, &runtime_ctx);',
+    ),
+  );
+  assert.notEqual(result.status, 0);
+});
+
+test('rejects fallback evidence that demotes cached snapshot to planned', () => {
+  const result = rejects((root) =>
+    mutateJson(root, files.fallback, (evidence) => {
+      evidence.storefront_read_degradation.cached_thread_snapshot = 'planned';
+    }),
+  );
+  assert.notEqual(result.status, 0);
+});
+
+test('rejects fallback evidence that claims comment-form completion', () => {
+  const result = rejects((root) =>
+    mutateJson(root, files.fallback, (evidence) => {
+      evidence.storefront_read_degradation.comment_form_fallback = 'source_verified_no_compile';
+    }),
+  );
+  assert.notEqual(result.status, 0);
 });
 
 test('rejects runtime status promotion without execution', () => {
-  const result = rejects({ statusDrift: true });
+  const result = rejects((root) =>
+    mutateJson(root, files.fallback, (evidence) => {
+      evidence.runtime_status = 'passed';
+    }),
+  );
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /status drift/);
 });
 
-test('rejects source promotion of planned cached snapshot and form fallback', () => {
-  const result = rejects({ fallbackPromoted: true });
+test('rejects cached snapshot plan drift', () => {
+  const result = rejects((root) => writeFileSync(path.join(root, files.slice99), ''));
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /contract-test status drift/);
 });

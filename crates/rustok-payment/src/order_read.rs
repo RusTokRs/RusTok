@@ -124,9 +124,15 @@ fn map_payment_error(
             "conflict",
             false,
         ),
-        PaymentError::ProviderUnavailable { .. }
-        | PaymentError::ProviderConfiguration { .. }
-        | PaymentError::Database(_) => (
+        PaymentError::ProviderConfiguration { .. } => (
+            PortErrorKind::Unavailable,
+            "payment.order_read_configuration",
+            "payment storage is temporarily unavailable",
+            true,
+            "provider_configuration",
+            true,
+        ),
+        PaymentError::ProviderUnavailable { .. } | PaymentError::Database(_) => (
             PortErrorKind::Unavailable,
             "payment.order_read_unavailable",
             "payment storage is temporarily unavailable",

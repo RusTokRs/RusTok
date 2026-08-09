@@ -4,7 +4,7 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
     DatabaseTransaction, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait,
+    RelationTrait, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -12,9 +12,11 @@ use uuid::Uuid;
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
 use rustok_core::SecurityContext;
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    UpdateTaxonomyTermInput,
+    CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyScopeType,
+    TaxonomyService, TaxonomyTermKind, delete_module_term_in_tx, update_module_term_in_tx,
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
 };
 
@@ -24,6 +26,7 @@ use crate::error::{BlogError, BlogResult};
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 
 const BLOG_SCOPE_VALUE: &str = "blog";
+const MAX_TAGS_PER_PAGE: u64 = 100;
 
 pub struct TagService {
     db: DatabaseConnection,
@@ -106,28 +109,31 @@ impl TagService {
         ensure_module_owned_term(&term)?;
 
         let locale = normalize_locale(&input.locale)?;
-        let term = TaxonomyService::new(self.db.clone())
-            .update_term(
-                tenant_id,
-                tag_id,
-                security,
-                UpdateTaxonomyTermInput {
-                    locale: locale.clone(),
-                    name: input.name,
-                    slug: input.slug,
-                    description: None,
-                    status: None,
-                    aliases: None,
-                },
-            )
-            .await?;
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        let term = update_module_term_in_tx(
+            &txn,
+            tenant_id,
+            tag_id,
+            &security,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+            ModuleTermUpdateInput {
+                locale: locale.clone(),
+                name: input.name,
+                slug: input.slug,
+            },
+        )
+        .await?;
+        publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
+        txn.commit().await.map_err(BlogError::from)?;
+
         let use_count = self
             .count_tag_usage_map(tenant_id, &[tag_id])
             .await?
             .remove(&tag_id)
             .unwrap_or_default();
 
-        Ok(to_tag_response(term, use_count))
+        Ok(to_tag_mutation_response(term, use_count))
     }
 
     #[instrument(skip(self, security))]
@@ -141,14 +147,18 @@ impl TagService {
         enforce_owned_scope(&security, Resource::Tags, Action::Delete, term.id)?;
         ensure_module_owned_term(&term)?;
 
-        blog_post_tag::Entity::delete_many()
-            .filter(blog_post_tag::Column::TagId.eq(tag_id))
-            .exec(&self.db)
-            .await?;
-
-        TaxonomyService::new(self.db.clone())
-            .delete_term(tenant_id, tag_id, security)
-            .await?;
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        delete_module_term_in_tx(
+            &txn,
+            tenant_id,
+            tag_id,
+            &security,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+        )
+        .await?;
+        publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
+        txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
 
@@ -163,7 +173,7 @@ impl TagService {
         let locale =
             normalize_locale(filter.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;
         let page = filter.page.max(1);
-        let per_page = filter.per_page.max(1);
+        let per_page = bounded_tag_page_size(filter.per_page);
 
         let terms = self.list_visible_terms(tenant_id).await?;
         if terms.is_empty() {
@@ -188,7 +198,7 @@ impl TagService {
         });
 
         let total = sortable.len() as u64;
-        let offset = ((page - 1) * per_page) as usize;
+        let offset = tag_page_offset(page, per_page);
         let items = sortable
             .into_iter()
             .skip(offset)
@@ -294,6 +304,24 @@ impl TagService {
     }
 }
 
+async fn publish_blog_reindex_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+) -> BlogResult<()> {
+    TransactionalEventBus::publish_root_in_tx(
+        txn,
+        tenant_id,
+        actor_id,
+        DomainEvent::ReindexRequested {
+            target_type: "blog".to_string(),
+            target_id: None,
+        },
+    )
+    .await
+    .map_err(BlogError::from)
+}
+
 pub(crate) async fn sync_post_tags_in_tx(
     db: &DatabaseConnection,
     txn: &DatabaseTransaction,
@@ -350,6 +378,12 @@ pub(crate) async fn load_post_tags_map(
         return Ok(HashMap::new());
     }
 
+    let mut tags_by_post = post_ids
+        .iter()
+        .copied()
+        .map(|post_id| (post_id, Vec::new()))
+        .collect::<HashMap<_, _>>();
+
     let relations = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::PostId.is_in(post_ids.to_vec()))
         .order_by_asc(blog_post_tag::Column::CreatedAt)
@@ -357,7 +391,7 @@ pub(crate) async fn load_post_tags_map(
         .await?;
 
     if relations.is_empty() {
-        return Ok(HashMap::new());
+        return Ok(tags_by_post);
     }
 
     let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
@@ -365,7 +399,6 @@ pub(crate) async fn load_post_tags_map(
         .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
         .await?;
 
-    let mut tags_by_post: HashMap<Uuid, Vec<String>> = HashMap::new();
     for relation in relations {
         if let Some(name) = names.get(&relation.tag_id) {
             tags_by_post
@@ -405,8 +438,7 @@ pub(crate) async fn find_post_ids_by_tag(
 
     let alias_ids = taxonomy_term_alias::Entity::find()
         .join(
-            JoinType::InnerJoin,
-            taxonomy_term_alias::Relation::Term.def(),
+            JoinType::InnerJoin, taxonomy_term_alias::Relation::Term.def(),
         )
         .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_term_alias::Column::Slug.eq(&normalized_slug))
@@ -494,6 +526,15 @@ fn global_scope_condition() -> Condition {
         .add(taxonomy_term::Column::ScopeValue.eq(""))
 }
 
+fn bounded_tag_page_size(value: u64) -> u64 {
+    value.clamp(1, MAX_TAGS_PER_PAGE)
+}
+
+fn tag_page_offset(page: u64, per_page: u64) -> usize {
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
+    usize::try_from(offset).unwrap_or(usize::MAX)
+}
+
 fn validate_tag_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Tag name cannot be empty"));
@@ -563,5 +604,37 @@ fn to_tag_response(term: rustok_taxonomy::TaxonomyTermResponse, use_count: i32) 
         slug: term.slug,
         use_count,
         created_at: term.created_at,
+    }
+}
+
+fn to_tag_mutation_response(term: ModuleTermMutationResult, use_count: i32) -> TagResponse {
+    TagResponse {
+        id: term.id,
+        tenant_id: term.tenant_id,
+        locale: term.locale,
+        effective_locale: term.effective_locale,
+        name: term.name,
+        slug: term.slug,
+        use_count,
+        created_at: term.created_at,
+    }
+}
+
+#[cfg(test)]
+mod pagination_tests {
+    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size, tag_page_offset};
+
+    #[test]
+    fn tag_page_size_is_bounded_by_owner_service() {
+        assert_eq!(bounded_tag_page_size(0), 1);
+        assert_eq!(bounded_tag_page_size(20), 20);
+        assert_eq!(bounded_tag_page_size(MAX_TAGS_PER_PAGE + 1), MAX_TAGS_PER_PAGE);
+    }
+
+    #[test]
+    fn tag_page_offset_saturates_without_arithmetic_overflow() {
+        assert_eq!(tag_page_offset(1, 20), 0);
+        assert_eq!(tag_page_offset(2, 20), 20);
+        assert_eq!(tag_page_offset(u64::MAX, MAX_TAGS_PER_PAGE), usize::MAX);
     }
 }

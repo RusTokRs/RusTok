@@ -1,4 +1,13 @@
+use std::{
+    sync::{
+        OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+};
+
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
+use prometheus::{IntCounterVec, Opts};
 use rustok_api::{
     AuthContext, RequestContext, TenantContext,
     graphql::{GraphQLError, PaginationInput, require_module_enabled, resolve_graphql_locale},
@@ -7,7 +16,6 @@ use rustok_channel::ChannelService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
-use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{ForumTopicAudienceListService, TopicListItem};
@@ -15,6 +23,14 @@ use crate::{ForumTopicAudienceListService, TopicListItem};
 use super::types::*;
 
 const MODULE_SLUG: &str = "forum";
+const STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_EXACT: &str = "exact";
+const STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_FALLBACK: &str = "fallback";
+const STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_MISSING: &str = "missing";
+
+static FORUM_GRAPHQL_STOREFRONT_TOPIC_LIST_LOCALE_RESOLUTION_TOTAL: OnceLock<IntCounterVec> =
+    OnceLock::new();
+static FORUM_GRAPHQL_STOREFRONT_TOPIC_LIST_LOCALE_RESOLUTION_REGISTERED: AtomicBool =
+    AtomicBool::new(false);
 
 #[derive(Default)]
 pub struct ForumStorefrontAudienceTopicsQuery;
@@ -68,6 +84,7 @@ impl ForumStorefrontAudienceTopicsQuery {
             list_started_at.elapsed().as_secs_f64(),
             page.total,
         );
+        observe_storefront_topic_list_locale_resolution(&page.items);
 
         let items = page
             .items
@@ -88,6 +105,60 @@ impl ForumStorefrontAudienceTopicsQuery {
             offset,
             limit,
         ))
+    }
+}
+
+fn storefront_topic_list_locale_resolution_outcome(
+    requested_locale: &str,
+    effective_locale: &str,
+    available_locale_count: usize,
+) -> &'static str {
+    if available_locale_count == 0 {
+        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_MISSING
+    } else if requested_locale == effective_locale {
+        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_EXACT
+    } else {
+        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_FALLBACK
+    }
+}
+
+fn forum_graphql_storefront_topic_list_locale_resolution_counter() -> Option<&'static IntCounterVec> {
+    let counter = FORUM_GRAPHQL_STOREFRONT_TOPIC_LIST_LOCALE_RESOLUTION_TOTAL.get_or_init(|| {
+        IntCounterVec::new(
+            Opts::new(
+                "rustok_forum_graphql_storefront_topic_list_locale_resolution_total",
+                "Forum GraphQL storefront topic-list items by fixed locale resolution outcome",
+            ),
+            &["outcome"],
+        )
+        .expect("Forum GraphQL storefront topic-list locale metric descriptor must be valid")
+    });
+
+    if FORUM_GRAPHQL_STOREFRONT_TOPIC_LIST_LOCALE_RESOLUTION_REGISTERED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+        && rustok_telemetry::register_runtime_collector(Box::new(counter.clone())).is_err()
+    {
+        FORUM_GRAPHQL_STOREFRONT_TOPIC_LIST_LOCALE_RESOLUTION_REGISTERED
+            .store(false, Ordering::Release);
+        return None;
+    }
+
+    Some(counter)
+}
+
+fn observe_storefront_topic_list_locale_resolution(items: &[TopicListItem]) {
+    let Some(counter) = forum_graphql_storefront_topic_list_locale_resolution_counter() else {
+        return;
+    };
+
+    for item in items {
+        let outcome = storefront_topic_list_locale_resolution_outcome(
+            &item.requested_locale,
+            &item.effective_locale,
+            item.available_locales.len(),
+        );
+        counter.with_label_values(&[outcome]).inc();
     }
 }
 
@@ -156,5 +227,39 @@ fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopicListItem {
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
         created_at: topic.created_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_EXACT,
+        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_FALLBACK,
+        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_MISSING,
+        storefront_topic_list_locale_resolution_outcome,
+    };
+
+    #[test]
+    fn storefront_topic_list_locale_outcomes_are_fixed_and_hide_locale_values() {
+        assert_eq!(
+            storefront_topic_list_locale_resolution_outcome("ru", "ru", 1),
+            STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_EXACT
+        );
+        assert_eq!(
+            storefront_topic_list_locale_resolution_outcome(
+                "tenant-secret",
+                "different-secret",
+                2,
+            ),
+            STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_FALLBACK
+        );
+        assert_eq!(
+            storefront_topic_list_locale_resolution_outcome(
+                "tenant-secret",
+                "tenant-secret",
+                0,
+            ),
+            STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_MISSING
+        );
     }
 }

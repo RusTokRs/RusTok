@@ -108,6 +108,8 @@ const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
 const graphql = requireMarkers(graphqlPath, [
   'const MAX_LOCALE_BYTES: usize = 32;',
   'const MAX_CONTINUATION_BYTES: usize = 16 * 1024;',
+  'pub struct IndexReplayTargetedRunInput',
+  'async fn run_index_replay_targeted(',
   'pub struct IndexReplayShadowRunInput',
   'pub locale: Option<String>',
   'pub continuation: Option<String>',
@@ -145,7 +147,7 @@ const inputEnd = graphql.indexOf('\n}', inputStart);
 const input = graphql.slice(inputStart, inputEnd);
 for (const forbidden of [
   'tenant', 'actor', 'worker', 'page_limit', 'max_pages', 'heartbeat', 'lease',
-  'partition', 'source_name', 'job_id', 'checkpoint', 'cancel', 'retry', 'StopHandle', 'Uuid',
+  'partition', 'source_name', 'job_id', 'checkpoint', 'cancel', 'retry', 'StopHandle', 'Uuid', 'mode',
 ]) {
   if (input.includes(forbidden)) fail(`Shadow GraphQL input contains caller-owned field marker ${forbidden}`);
 }
@@ -170,7 +172,8 @@ requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'continuation.clone()',
 ]);
 requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
-  'Status: `full_and_shadow_locale_source_complete_execution_pending`.',
+  'Status: `full_shadow_targeted_source_complete_execution_pending`.',
+  '`runIndexReplayTargeted(input: ...)`',
   '`runIndexReplayShadow(input: ...)`',
   'optional canonicalizable locale',
   'same fixed source page limit and maximum-page count (`100 × 8`)',
@@ -184,10 +187,10 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   '`runIndexReplayShadow`',
 ]);
 requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
-  'Status: `source_complete_targeted_host_guard_transport_pending`.',
-  '`runIndexReplayShadow`',
-  'Locale-safe continuation and dry-run execution',
-  '## Targeted PostgreSQL composition and host dispatch',
+  'Status: `source_complete_targeted_graphql_execution_pending`.',
+  '`runIndexReplayShadow` remains a dedicated transport',
+  'one current unversioned envelope',
+  '## Targeted GraphQL transport',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
@@ -196,4 +199,4 @@ requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.
   'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
 ]);
 
-console.log('[verify-index-replay-shadow-graphql-transport] Shadow GraphQL remains authorization-first/locale-scoped/sealed while Targeted now has separate guarded host dispatch and no public transport overlap');
+console.log('[verify-index-replay-shadow-graphql-transport] Shadow GraphQL remains authorization-first/locale-scoped/sealed while Targeted uses a separate exact-key guarded GraphQL command');
