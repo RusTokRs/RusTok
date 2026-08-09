@@ -24,6 +24,7 @@ pub struct CommerceHttpRuntime {
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
     shipping_option_read_runtime: crate::graphql_runtime::CommerceShippingOptionReadRuntime,
+    shipping_option_admin_command_runtime: rustok_fulfillment::ShippingOptionAdminCommandRuntime,
     fulfillment_lifecycle_read_runtime:
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime,
     fulfillment_admin_command_runtime: rustok_fulfillment::FulfillmentAdminCommandRuntime,
@@ -74,6 +75,12 @@ impl CommerceHttpRuntime {
     ) -> std::sync::Arc<dyn rustok_fulfillment::ShippingOptionAdminReadPort> {
         self.shipping_option_read_runtime
             .shipping_option_admin_read_port()
+    }
+
+    fn shipping_option_admin_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_fulfillment::ShippingOptionAdminCommandPort> {
+        self.shipping_option_admin_command_runtime.command_port()
     }
 
     fn fulfillment_read_port(&self) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentReadPort> {
@@ -168,6 +175,13 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require CommerceShippingOptionReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let shipping_option_admin_command_runtime = runtime
+            .shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(
+                    runtime.db_clone(),
+                )
+            });
         let fulfillment_lifecycle_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime>()
             .ok_or_else(|| {
@@ -259,6 +273,7 @@ impl CommerceHttpRuntime {
             payment_provider_registry,
             fulfillment_provider_registry,
             shipping_option_read_runtime,
+            shipping_option_admin_command_runtime,
             fulfillment_lifecycle_read_runtime,
             fulfillment_admin_command_runtime,
             fulfillment_admin_create_command_runtime,
