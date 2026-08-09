@@ -44,7 +44,7 @@ Each normalized locale becomes one `ForumExportReadTarget { kind, id, locale }`.
 
 Expansion is bounded independently from the source-ID ceiling. If multilingual expansion would produce more than 512 localized targets, planning fails with `TooManyTargets` as soon as target 513 would be appended.
 
-This means a request with a small number of highly multilingual resources cannot silently create a read batch that 34F would reject later. Once the 512 ceiling is reached, later resource kinds are not queried.
+This means a request with a small number of highly multilingual resources cannot silently create a read batch that 34F would reject later. If overflow occurs while expanding one resource kind, later kinds are not queried. If an earlier kind finishes at exactly 512 targets and a later kind is requested, that later locale query may still run before its first target is rejected as target 513.
 
 ## Ownership and side effects
 
