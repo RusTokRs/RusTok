@@ -69,14 +69,14 @@ This is import-candidate validation only. It does not replace the final Forum ow
 
 ## Topic-body versus reply classification
 
-NodeBB topic body identity can depend on `mainPid`. FORUM-34A deliberately avoids cross-page guessing.
+NodeBB topic body identity can depend on `mainPid`. FORUM-34A deliberately avoids cross-page or missing-source guessing.
 
-For a post whose topic is present in the same bounded batch:
+For a post whose topic is present in the same bounded batch **and carries a positive `mainPid`**:
 
 - matching `mainPid` -> `TopicBody`;
-- other post -> `Reply`.
+- another post for that topic -> `Reply`.
 
-If the topic is outside the current batch, the role is `Unresolved`. The mapper does not silently treat that post as a reply. A future shared runner can resolve the topic/main-post relationship using its own bounded source/checkpoint state.
+If the topic is outside the current batch, or the topic has no positive `mainPid`, the role is `Unresolved`. The mapper does not silently treat an ambiguous post as a reply. A future shared runner can resolve the topic/main-post relationship using its own bounded source/checkpoint state.
 
 ## Ownership and safety
 
