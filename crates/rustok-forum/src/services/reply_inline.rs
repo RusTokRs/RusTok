@@ -1,6 +1,81 @@
+use std::collections::BTreeSet;
+
+use rustok_content::available_locales_from;
+
 use crate::dto::UpdateReplyCommandInput;
 
 impl ReplyService {
+    pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;
+
+    pub(crate) async fn available_locales_for_replies(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        reply_ids: &[Uuid],
+    ) -> ForumResult<Vec<(Uuid, Vec<String>)>> {
+        enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
+
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Forum reply locale enumeration requires a non-nil tenant id".to_string(),
+            ));
+        }
+        if reply_ids.len() > Self::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS {
+            return Err(ForumError::Validation(format!(
+                "Forum reply locale enumeration exceeds {} reply ids: {}",
+                Self::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS,
+                reply_ids.len()
+            )));
+        }
+        if reply_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut seen = BTreeSet::new();
+        for reply_id in reply_ids {
+            if reply_id.is_nil() {
+                return Err(ForumError::Validation(
+                    "Forum reply locale enumeration requires non-nil reply ids".to_string(),
+                ));
+            }
+            if !seen.insert(*reply_id) {
+                return Err(ForumError::Validation(format!(
+                    "Forum reply locale enumeration contains duplicate reply id {reply_id}"
+                )));
+            }
+        }
+
+        let existing = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply::Column::Id.is_in(reply_ids.to_vec()))
+            .all(&self.db)
+            .await?;
+        let existing_ids = existing
+            .into_iter()
+            .map(|reply| reply.id)
+            .collect::<BTreeSet<_>>();
+        for reply_id in reply_ids {
+            if !existing_ids.contains(reply_id) {
+                return Err(ForumError::ReplyNotFound(*reply_id));
+            }
+        }
+
+        let mut bodies_by_reply = self.load_bodies_map(tenant_id, reply_ids).await?;
+        let mut result = Vec::with_capacity(reply_ids.len());
+        for reply_id in reply_ids {
+            let bodies = bodies_by_reply.remove(reply_id).unwrap_or_default();
+            let locales = available_locales_from(&bodies, |body| body.locale.as_str());
+            if locales.is_empty() {
+                return Err(ForumError::Validation(format!(
+                    "Forum reply {reply_id} has no stored locale body"
+                )));
+            }
+            result.push((*reply_id, locales));
+        }
+
+        Ok(result)
+    }
+
     pub(crate) async fn update_with_inline_relations(
         &self,
         tenant_id: Uuid,
