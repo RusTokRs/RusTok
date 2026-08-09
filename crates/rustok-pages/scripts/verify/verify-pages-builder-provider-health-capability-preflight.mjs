@@ -14,7 +14,9 @@ const files = {
   runtimeData: "crates/rustok-pages/src/graphql/runtime_data.rs",
   pagesSnapshot: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
   pagesFacade: "crates/rustok-pages/admin/src/builder.rs",
+  rolloutHarnessContract: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
   rolloutHarnessEvidence: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
+  rolloutHarnessSpec: "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
   consumerBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   serverBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
   gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
@@ -51,6 +53,7 @@ const sources = Object.fromEntries(
   Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]),
 );
 const contract = JSON.parse(sources.contract);
+const rolloutHarnessContract = JSON.parse(sources.rolloutHarnessContract);
 const rolloutHarnessEvidence = JSON.parse(sources.rolloutHarnessEvidence);
 const consumerBinding = JSON.parse(sources.consumerBinding);
 const serverBinding = JSON.parse(sources.serverBinding);
@@ -79,6 +82,10 @@ for (const [object, key, expected] of [
   [contract.graphql_preflight, "snapshot_continues_to_return_configured_flags_separately_from_health", true],
   [contract.rollout_feature_preflight_isolation, "existing_four_profile_harness_remains_rollout_only", true],
   [contract.rollout_feature_preflight_isolation, "existing_harness_claims_provider_health_observed", false],
+  [contract.rollout_feature_preflight_isolation, "existing_harness_observes_unobserved_health_before_each_profile", true],
+  [contract.rollout_feature_preflight_isolation, "existing_harness_observes_unobserved_health_after_each_profile", true],
+  [contract.rollout_feature_preflight_isolation, "existing_harness_fails_closed_if_health_is_observed", true],
+  [contract.rollout_feature_preflight_isolation, "existing_harness_retains_raw_health_payload", false],
   [contract.anti_promotion, "observed_graphql_preflight_executed", false],
   [contract.anti_promotion, "pages_reference_consumer_gate_accepted", false],
   [contract.validation, "tests_run", false],
@@ -147,9 +154,39 @@ for (const marker of [
   "compose_fly_page_builder_handlers(store, renderer, effective_flags)",
 ]) need(sources.pagesFacade, marker, "authoritative SSR shared-policy path");
 
-if (rolloutHarnessEvidence.source_contract?.provider_health_observed !== false) {
-  failures.push("existing four-profile feature preflight harness must remain provider-health unobserved");
+if (
+  rolloutHarnessContract.provider_health_boundary?.harness_purpose !== "rollout_only" ||
+  rolloutHarnessContract.provider_health_boundary?.provider_health_must_remain_unobserved !== true ||
+  rolloutHarnessContract.provider_health_boundary?.observe_before_each_profile_preflight !== true ||
+  rolloutHarnessContract.provider_health_boundary?.observe_after_each_profile_preflight !== true ||
+  rolloutHarnessContract.provider_health_boundary?.provider_health_payload_must_be_absent !== true ||
+  rolloutHarnessContract.provider_health_boundary?.fail_if_provider_health_is_observed !== true ||
+  rolloutHarnessContract.provider_health_boundary?.retained_health_payload !== false
+) failures.push("existing rollout feature-preflight provider-health boundary drifted");
+for (const key of [
+  "rollout_only_harness_requires_provider_health_unobserved",
+  "provider_health_observed_before_each_profile",
+  "provider_health_observed_after_each_profile",
+  "provider_health_payload_must_be_absent",
+]) {
+  if (rolloutHarnessEvidence.source_contract?.[key] !== true) {
+    failures.push(`rollout harness source_contract.${key} must be true`);
+  }
 }
+if (
+  rolloutHarnessEvidence.source_contract?.provider_health_observed !== false ||
+  rolloutHarnessEvidence.source_contract?.raw_provider_health_payload_persisted !== false
+) failures.push("existing rollout feature-preflight must remain provider-health-unobserved without raw health retention");
+for (const marker of [
+  "pageBuilderRolloutSnapshot { providerHealthObserved providerHealth { state } }",
+  "async function assertProviderHealthUnobserved(",
+  "snapshot.providerHealthObserved !== false",
+  "snapshot.providerHealth !== null",
+  "provider_health_before: providerHealthBefore",
+  "provider_health_after: providerHealthAfter",
+  "provider_health_payload_persisted: false",
+]) need(sources.rolloutHarnessSpec, marker, "rollout-only live provider-health proof");
+
 if (consumerBinding.format !== "pages_builder_provider_health_consumer_binding_source_v1") {
   failures.push("consumer-binding predecessor format drifted");
 }
@@ -189,4 +226,4 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-provider-health-capability-preflight] PASS source_ready=true runtime_execution=pending");
+console.log("[verify-pages-builder-provider-health-capability-preflight] PASS source_ready=true rollout_harness_health=fail_closed_unobserved runtime_execution=pending");
