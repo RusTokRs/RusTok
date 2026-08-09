@@ -9,8 +9,8 @@
   "canonical_current_cursor": "crates/rustok-blog/docs/implementation-plan-current.md",
   "actualization_slice": "crates/rustok-blog/docs/implementation-plan-slice-101.md",
   "historical_baseline_last_embedded_slice": 67,
-  "latest_behavior_slice": 103,
-  "current_recorded_slice": 103,
+  "latest_behavior_slice": 104,
+  "current_recorded_slice": 104,
   "source_tracks": {
     "remote_comments_transport": {
       "status": "source_implemented_maintainer_execution_pending",
@@ -61,17 +61,21 @@
       "must_not_reopen_as_source_gap": true
     },
     "tag_mutation_atomic_reindex": {
-      "status": "next_source_gap",
+      "status": "source_ready_maintainer_execution_pending",
+      "slice": "crates/rustok-blog/docs/implementation-plan-slice-104.md",
+      "evidence": "crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json",
       "canonical_source_defined": true,
-      "taxonomy_supplied_transaction_api_required": true,
-      "blog_scope_reindex_same_transaction_required": true,
-      "manual_predelete_relation_cleanup_must_be_removed": true
+      "taxonomy_owner_transaction_api_present": true,
+      "blog_scope_reindex_same_transaction": true,
+      "manual_predelete_relation_cleanup_removed": true,
+      "declared_fk_cascade_used": true,
+      "must_not_reopen_as_source_gap": true
     }
   },
   "planning_result": {
-    "independent_production_source_gap_identified": true,
-    "next_source_gap": "tag_mutation_atomic_reindex",
-    "future_autonomous_source_work_requires_fresh_audit": false,
+    "independent_production_source_gap_identified": false,
+    "next_source_gap": null,
+    "future_autonomous_source_work_requires_fresh_audit": true,
     "historical_stale_phrases_are_live_instructions": false,
     "production_behavior_changed_since_slice_101": true,
     "ffa_or_fba_promoted": false
@@ -83,9 +87,10 @@
     "no_compile_result",
     "no_database_side_tag_pagination_result",
     "no_postgresql_result",
+    "no_sqlite_tag_mutation_result",
     "no_legacy_data_audit_result",
     "no_legacy_backfill_result",
-    "no_tag_mutation_atomic_reindex_result",
+    "no_tag_mutation_atomic_reindex_runtime_result",
     "no_redis_result",
     "no_tcp_runtime_result",
     "no_browser_result",

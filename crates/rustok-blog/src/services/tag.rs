@@ -4,7 +4,7 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
     DatabaseTransaction, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait,
+    RelationTrait, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -12,9 +12,11 @@ use uuid::Uuid;
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
 use rustok_core::SecurityContext;
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    UpdateTaxonomyTermInput,
+    CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyScopeType,
+    TaxonomyService, TaxonomyTermKind, delete_module_term_in_tx, update_module_term_in_tx,
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
 };
 
@@ -107,28 +109,31 @@ impl TagService {
         ensure_module_owned_term(&term)?;
 
         let locale = normalize_locale(&input.locale)?;
-        let term = TaxonomyService::new(self.db.clone())
-            .update_term(
-                tenant_id,
-                tag_id,
-                security,
-                UpdateTaxonomyTermInput {
-                    locale: locale.clone(),
-                    name: input.name,
-                    slug: input.slug,
-                    description: None,
-                    status: None,
-                    aliases: None,
-                },
-            )
-            .await?;
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        let term = update_module_term_in_tx(
+            &txn,
+            tenant_id,
+            tag_id,
+            &security,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+            ModuleTermUpdateInput {
+                locale: locale.clone(),
+                name: input.name,
+                slug: input.slug,
+            },
+        )
+        .await?;
+        publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
+        txn.commit().await.map_err(BlogError::from)?;
+
         let use_count = self
             .count_tag_usage_map(tenant_id, &[tag_id])
             .await?
             .remove(&tag_id)
             .unwrap_or_default();
 
-        Ok(to_tag_response(term, use_count))
+        Ok(to_tag_mutation_response(term, use_count))
     }
 
     #[instrument(skip(self, security))]
@@ -142,14 +147,18 @@ impl TagService {
         enforce_owned_scope(&security, Resource::Tags, Action::Delete, term.id)?;
         ensure_module_owned_term(&term)?;
 
-        blog_post_tag::Entity::delete_many()
-            .filter(blog_post_tag::Column::TagId.eq(tag_id))
-            .exec(&self.db)
-            .await?;
-
-        TaxonomyService::new(self.db.clone())
-            .delete_term(tenant_id, tag_id, security)
-            .await?;
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        delete_module_term_in_tx(
+            &txn,
+            tenant_id,
+            tag_id,
+            &security,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+        )
+        .await?;
+        publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
+        txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
 
@@ -293,6 +302,24 @@ impl TagService {
         }
         Ok(counts)
     }
+}
+
+async fn publish_blog_reindex_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+) -> BlogResult<()> {
+    TransactionalEventBus::publish_root_in_tx(
+        txn,
+        tenant_id,
+        actor_id,
+        DomainEvent::ReindexRequested {
+            target_type: "blog".to_string(),
+            target_id: None,
+        },
+    )
+    .await
+    .map_err(BlogError::from)
 }
 
 pub(crate) async fn sync_post_tags_in_tx(
@@ -572,6 +599,19 @@ fn to_tag_response(term: rustok_taxonomy::TaxonomyTermResponse, use_count: i32) 
         id: term.id,
         tenant_id: term.tenant_id,
         locale: term.requested_locale,
+        effective_locale: term.effective_locale,
+        name: term.name,
+        slug: term.slug,
+        use_count,
+        created_at: term.created_at,
+    }
+}
+
+fn to_tag_mutation_response(term: ModuleTermMutationResult, use_count: i32) -> TagResponse {
+    TagResponse {
+        id: term.id,
+        tenant_id: term.tenant_id,
+        locale: term.locale,
         effective_locale: term.effective_locale,
         name: term.name,
         slug: term.slug,

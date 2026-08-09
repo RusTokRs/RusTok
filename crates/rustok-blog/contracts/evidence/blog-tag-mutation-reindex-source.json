@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "tag_mutation_atomic_reindex",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "ownership": {
+    "dictionary_owner": "rustok-taxonomy",
+    "attachment_owner": "rustok-blog",
+    "search_projection_owner": "rustok-search",
+    "module_scope": "blog",
+    "term_kind": "tag"
+  },
+  "production_contract": {
+    "taxonomy_module_mutation_api": "crates/rustok-taxonomy/src/module_term_mutation.rs",
+    "taxonomy_export": "crates/rustok-taxonomy/src/lib.rs",
+    "blog_tag_service": "crates/rustok-blog/src/services/tag.rs",
+    "blog_tag_relation_migration": "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
+    "canonical_outbox_api": "rustok_outbox::TransactionalEventBus::publish_root_in_tx",
+    "update_uses_supplied_transaction": true,
+    "delete_uses_supplied_transaction": true,
+    "taxonomy_update_permission_preserved": true,
+    "taxonomy_read_permission_preserved_for_update_response": true,
+    "taxonomy_delete_permission_preserved": true,
+    "module_scope_rechecked_by_taxonomy_owner": true,
+    "term_kind_rechecked_by_taxonomy_owner": true,
+    "translation_revision_cas_preserved": true,
+    "term_revision_cas_preserved": true,
+    "translation_change_evidence_same_transaction": true,
+    "blog_reindex_same_transaction": true,
+    "blog_reindex_target_type": "blog",
+    "blog_reindex_target_id": null,
+    "manual_predelete_relation_cleanup_removed": true,
+    "relation_cleanup_uses_declared_fk_cascade": true,
+    "tag_service_constructor_changed": false,
+    "database_schema_changed": false,
+    "search_projection_source_changed": false,
+    "production_behavior_changed": true,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "source_harness": {
+    "path": "crates/rustok-blog/tests/taxonomy_tags.rs",
+    "status": "executable_no_run",
+    "runtime_status": "not_run",
+    "cases": [
+      "tag_update_commits_dictionary_change_and_blog_reindex_together",
+      "tag_update_rolls_back_when_blog_reindex_outbox_write_fails",
+      "tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex"
+    ]
+  },
+  "execution_requirements": [
+    "execute the Blog taxonomy tag harness with the canonical sys_events migration",
+    "confirm one durable Blog-scope ReindexRequested commits with a successful tag update",
+    "confirm forced canonical outbox failure rolls back the Taxonomy translation and term revisions",
+    "confirm tag delete removes blog_post_tags only through the declared taxonomy_terms FK cascade",
+    "execute Search Blog projection evidence after update/delete and confirm renamed/deleted tags are reflected"
+  ],
+  "planning_result": {
+    "tag_mutation_source_complete": true,
+    "additional_tag_mutation_scaffolding_required": false,
+    "next_autonomous_source_work_requires_fresh_audit": true
+  },
+  "execution": [],
+  "explicit_non_claims": [
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_compile_result",
+    "no_sqlite_result",
+    "no_postgresql_result",
+    "no_search_runtime_result",
+    "no_outbox_runtime_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}
