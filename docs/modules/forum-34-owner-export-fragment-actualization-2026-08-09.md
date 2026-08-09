@@ -6,7 +6,15 @@ Status: `source-ready / maintainer-execution-open / shared-runner-blocked / loca
 
 FORUM-34A through FORUM-34C established runner-neutral NodeBB source mapping, bounded dependency inspection and source-local category-cycle rejection.
 
-Fresh `main` before this slice was `2b8f569a7a9297b5bfd77a4b8940707c165fb403`. The only commit after FORUM-34C was Commerce/Payment owner-port work; no Forum source overlapped. Fresh repository search still finds no neutral shared import/export runner, `rustok-import` owner crate, generic `ImportRunner`, `ImportAdapter`, `ImportJob`, checkpoint or receipt API suitable for Forum composition.
+Fresh `main` before this slice was `2b8f569a7a9297b5bfd77a4b8940707c165fb403`. The only commit after FORUM-34C at slice start was Commerce/Payment owner-port work; no Forum source overlapped. Repository search found no neutral shared import/export runner, `rustok-import` owner crate, generic `ImportRunner`, `ImportAdapter`, `ImportJob`, `ExportRunner`, checkpoint or receipt API suitable for Forum composition.
+
+## Concurrent main recheck
+
+While this slice was being prepared, `main` advanced to `d448bad036e59f5a76cd8038420c1be59d3be168`, including `5be73a352b5b8b3c7c3e2ff0979cf37399a4d257` (`feat: implement translation interchange module and establish module governance and lifecycle services`). The compare from the slice base contains no `crates/rustok-forum/*` changes.
+
+The new `rustok-translation::TranslationInterchangeService` is a specialized Translation workflow boundary: it exports/imports Translation job items under Translation RBAC, source/target locales, Translation-owned job persistence and translation resource snapshots/proposals. It is not a neutral module data migration runner and does not provide Forum category/topic/reply checkpoint, receipt, replay or source-to-target identity semantics.
+
+Fresh searches after that change still find no generic `ImportRunner`, `ImportAdapter`, `ImportJob`, `ExportRunner` or `rustok-import` framework. Translation interchange should be reused for translation workflows where appropriate; it must not be repurposed as the missing generic Forum migration runner.
 
 ## Export boundary selected
 
@@ -39,9 +47,15 @@ The mapper does not call those services itself. Enumeration, pagination, RBAC co
 
 `ForumOwnerExportMapper::map_fragment` preserves caller order and rejects a fragment above 512 total category/topic/reply owner views.
 
+## Input provenance boundary
+
+`ForumExportOwnerViewBatch` is deliberately an in-process composition input, **not a wire contract**. It derives only `Clone, Debug`; it does not implement `Serialize` or `Deserialize` and carries no serde defaults.
+
+That keeps arbitrary external JSON from being treated as an already-authorized owner response batch. A future operator export reader must first perform the real Forum owner reads under trusted tenant/RBAC context and only then construct this batch in process. The serializable contract begins at `ForumExportFragment`, after mapping and validation.
+
 ## Tenant scope
 
-Every input owner-view batch now requires an explicit non-nil `tenant_id`, and the same tenant identifier is written to the export fragment envelope.
+Every input owner-view batch requires an explicit non-nil `tenant_id`, and the same tenant identifier is written to the export fragment envelope.
 
 The mapper cannot independently prove the tenant of an already-materialized response because the response DTOs intentionally do not repeat tenant identity. The future export reader/runner must therefore obtain all responses through owner calls bound to the exact same trusted tenant context and pass that tenant into the mapper.
 
@@ -76,6 +90,8 @@ The mapper deliberately drops presentation/viewer-derived values:
 - reply `is_solution` duplicate state, because the topic `solution_reply_id` relation is the exported current solution authority.
 
 Votes/reputation remain separate FORUM-34 resources when their owner export contracts exist; they are not reconstructed from aggregate scores.
+
+Tags and channel slugs are source references carried by the Forum record. A future importer must resolve/write them through the proper Taxonomy/Channel owner boundaries rather than treating the export mapper as authority over those shared owners.
 
 ## Identity boundary
 
