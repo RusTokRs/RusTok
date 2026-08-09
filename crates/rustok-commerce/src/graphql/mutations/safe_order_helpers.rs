@@ -1,6 +1,9 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Result};
-use rustok_api::{AuthContext, graphql::GraphQLError};
-use rustok_order::{OrderError, OrderService};
+use rustok_api::{
+    AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext,
+    graphql::GraphQLError,
+};
+use rustok_order::ReadOrderProjectionRequest;
 use uuid::Uuid;
 
 pub(crate) use super::cart_safe_helpers::*;
@@ -86,88 +89,94 @@ fn public_graphql_error(
     })
 }
 
-fn storefront_order_graphql_error_policy(
-    context: &mut StorefrontOrderGraphqlErrorContext,
-    error: &OrderError,
-) -> StorefrontGraphqlPolicy {
-    match error {
-        OrderError::Validation(_) => (
+fn storefront_order_graphql_error_policy(error: &PortError) -> StorefrontGraphqlPolicy {
+    match &error.kind {
+        PortErrorKind::Validation | PortErrorKind::Forbidden => (
             "Order request is invalid",
             "ORDER_REQUEST_INVALID",
             false,
             "validation",
         ),
-        OrderError::OrderNotFound(order_id) => {
-            context.order_id = Some(*order_id);
-            (
-                "Order resource was not found",
-                "ORDER_RESOURCE_NOT_FOUND",
-                false,
-                "order_not_found",
-            )
-        }
-        OrderError::OrderReturnNotFound(order_return_id) => {
-            context.order_return_id = Some(*order_return_id);
-            (
-                "Order resource was not found",
-                "ORDER_RESOURCE_NOT_FOUND",
-                false,
-                "order_return_not_found",
-            )
-        }
-        OrderError::OrderChangeNotFound(order_change_id) => {
-            context.order_change_id = Some(*order_change_id);
-            (
-                "Order resource was not found",
-                "ORDER_RESOURCE_NOT_FOUND",
-                false,
-                "order_change_not_found",
-            )
-        }
-        OrderError::InvalidTransition { .. } => (
+        PortErrorKind::NotFound => (
+            "Order resource was not found",
+            "ORDER_RESOURCE_NOT_FOUND",
+            false,
+            "order_not_found",
+        ),
+        PortErrorKind::Conflict => (
             "Order operation conflicts with the current state",
             "ORDER_STATE_CONFLICT",
             false,
             "state_conflict",
         ),
-        OrderError::Database(_) => (
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             "Order service is temporarily unavailable",
             "ORDER_TEMPORARILY_UNAVAILABLE",
             true,
-            "database",
+            "temporarily_unavailable",
         ),
-        OrderError::Core(_) => (
+        PortErrorKind::InvariantViolation => (
             "Order operation could not be completed safely",
             "ORDER_OPERATION_FAILED",
             false,
-            "core",
+            "invariant_violation",
         ),
     }
 }
 
 fn order_graphql_error(
-    mut context: StorefrontOrderGraphqlErrorContext,
-    error: OrderError,
+    context: StorefrontOrderGraphqlErrorContext,
+    port_context: &PortContext,
+    error: PortError,
 ) -> async_graphql::Error {
-    let (message, code, retryable, error_kind) =
-        storefront_order_graphql_error_policy(&mut context, &error);
+    let (message, code, retryable, error_kind) = storefront_order_graphql_error_policy(&error);
     tracing::error!(
-        error = ?error,
         owner = STOREFRONT_ORDER_GRAPHQL_OWNER,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        customer_id = %context.customer_id,
-        order_id = ?context.order_id,
-        order_return_id = ?context.order_return_id,
-        order_change_id = ?context.order_change_id,
+        tenant_id_non_nil = !context.tenant_id.is_nil(),
+        actor_id_non_nil = !context.actor_id.is_nil(),
+        customer_id_non_nil = !context.customer_id.is_nil(),
+        order_id_non_nil = context.order_id.is_some_and(|value| !value.is_nil()),
+        order_return_id_present = context.order_return_id.is_some(),
+        order_change_id_present = context.order_change_id.is_some(),
         operation = %context.operation,
+        correlation_id = %port_context.correlation_id,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
         error_kind,
         public_code = code,
         retryable,
         boundary = STOREFRONT_GRAPHQL_HELPER_BOUNDARY,
-        "commerce GraphQL storefront order helper failed"
+        "commerce GraphQL storefront order owner read failed"
     );
     public_graphql_error(message, code, retryable)
+}
+
+fn storefront_order_read_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    auth: &AuthContext,
+    tenant_default_locale: &str,
+    order_id: Uuid,
+) -> PortContext {
+    let locale = if tenant_default_locale.trim().is_empty() {
+        "und"
+    } else {
+        tenant_default_locale
+    };
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-storefront-order-access:{order_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match ctx
+        .data_opt::<RequestContext>()
+        .and_then(|request| request.channel_slug.as_deref())
+    {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
 }
 
 fn shipping_profile_graphql_error_policy(
@@ -269,6 +278,7 @@ pub(crate) async fn ensure_storefront_order_access(
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let tenant = ctx.data::<TenantContext>()?;
     let customer_id = super::cart_safe_helpers::resolve_optional_storefront_customer_id(
         db,
         tenant_id,
@@ -277,8 +287,26 @@ pub(crate) async fn ensure_storefront_order_access(
     .await?
     .ok_or_else(|| <FieldError as GraphQLError>::unauthenticated())?;
 
-    let order = OrderService::new(db.clone(), event_bus.clone())
-        .get_order(tenant_id, order_id)
+    let runtime = crate::graphql_runtime::order_read_runtime_for_current_graphql_scope(
+        db.clone(),
+        event_bus.clone(),
+    );
+    let port_context = storefront_order_read_context(
+        ctx,
+        tenant_id,
+        auth,
+        tenant.default_locale.as_str(),
+        order_id,
+    );
+    let order = runtime
+        .order_read_port()
+        .read_order_projection(
+            port_context.clone(),
+            ReadOrderProjectionRequest {
+                order_id,
+                tenant_default_locale: None,
+            },
+        )
         .await
         .map_err(|error| {
             order_graphql_error(
@@ -289,6 +317,7 @@ pub(crate) async fn ensure_storefront_order_access(
                     order_id,
                     "ensure_storefront_order_access",
                 ),
+                &port_context,
                 error,
             )
         })?;
