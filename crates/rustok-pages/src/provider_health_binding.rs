@@ -6,11 +6,8 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
-use rustok_page_builder::health::{
-    ProviderHealthSnapshot, ProviderSloEvaluation, ProviderSloObservations,
-};
+use rustok_page_builder::health::{ProviderHealthSnapshot, ProviderSloEvaluation};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub const PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH_ENV: &str =
@@ -102,53 +99,15 @@ impl PagesProviderHealthLiveIdentity {
 }
 
 #[derive(Debug, Clone)]
-pub struct PagesProviderHealthAuthority {
+struct ValidatedAcceptance {
     snapshot: ProviderHealthSnapshot,
     evaluated_at: DateTime<Utc>,
     decided_at: DateTime<Utc>,
     freshness_seconds: u64,
-    source_commit: String,
-    deployment_id: String,
-    deployment_image_digest: String,
-    acceptance_sha256: String,
 }
 
-impl PagesProviderHealthAuthority {
-    pub fn from_accepted_packet_bytes(
-        bytes: &[u8],
-        live_identity: &PagesProviderHealthLiveIdentity,
-    ) -> Result<Self, PagesProviderHealthBindingError> {
-        if bytes.is_empty() || bytes.len() as u64 > MAX_ACCEPTANCE_PACKET_BYTES {
-            return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
-        }
-        let packet: OwnerAcceptancePacket =
-            serde_json::from_slice(bytes).map_err(|_| PagesProviderHealthBindingError::InvalidJson)?;
-        validate_packet(&packet, live_identity)?;
-
-        let evaluated_at = canonical_timestamp(&packet.evaluation.evaluated_at)?;
-        let decided_at = canonical_timestamp(&packet.decided_at)?;
-        if decided_at < evaluated_at {
-            return Err(PagesProviderHealthBindingError::EvidenceBoundsInvalid);
-        }
-
-        let acceptance_sha256 = format!("{:x}", Sha256::digest(bytes));
-        Ok(Self {
-            snapshot: packet.evaluation.snapshot,
-            evaluated_at,
-            decided_at,
-            freshness_seconds: packet.deployment.freshness_seconds,
-            source_commit: packet.deployment.source_commit,
-            deployment_id: packet.deployment.deployment_id,
-            deployment_image_digest: packet.deployment.deployment_image_digest,
-            acceptance_sha256,
-        })
-    }
-
-    pub fn current_snapshot(&self) -> Option<ProviderHealthSnapshot> {
-        self.snapshot_at(Utc::now())
-    }
-
-    pub fn snapshot_at(&self, now: DateTime<Utc>) -> Option<ProviderHealthSnapshot> {
+impl ValidatedAcceptance {
+    fn snapshot_at(&self, now: DateTime<Utc>) -> Option<ProviderHealthSnapshot> {
         let skew = Duration::seconds(MAX_CLOCK_SKEW_SECONDS);
         if now + skew < self.evaluated_at || now + skew < self.decided_at {
             return None;
@@ -160,21 +119,79 @@ impl PagesProviderHealthAuthority {
         }
         Some(self.snapshot.clone())
     }
+}
+
+#[derive(Debug, Clone)]
+enum PagesProviderHealthAuthoritySource {
+    RetainedPacket(PathBuf),
+    Static(ValidatedAcceptance),
+}
+
+#[derive(Debug, Clone)]
+pub struct PagesProviderHealthAuthority {
+    live_identity: PagesProviderHealthLiveIdentity,
+    source: PagesProviderHealthAuthoritySource,
+}
+
+impl PagesProviderHealthAuthority {
+    pub fn from_accepted_packet_bytes(
+        bytes: &[u8],
+        live_identity: &PagesProviderHealthLiveIdentity,
+    ) -> Result<Self, PagesProviderHealthBindingError> {
+        let accepted = validated_acceptance_from_bytes(bytes, live_identity)?;
+        Ok(Self {
+            live_identity: live_identity.clone(),
+            source: PagesProviderHealthAuthoritySource::Static(accepted),
+        })
+    }
+
+    pub fn from_retained_packet_path(
+        path: PathBuf,
+        live_identity: PagesProviderHealthLiveIdentity,
+    ) -> Result<Self, PagesProviderHealthBindingError> {
+        if !path.is_absolute() {
+            return Err(PagesProviderHealthBindingError::AcceptancePathNotAbsolute);
+        }
+        if let Ok(metadata) = fs::symlink_metadata(&path) {
+            if !metadata.file_type().is_file()
+                || metadata.file_type().is_symlink()
+                || metadata.len() == 0
+                || metadata.len() > MAX_ACCEPTANCE_PACKET_BYTES
+            {
+                return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
+            }
+        }
+        Ok(Self {
+            live_identity,
+            source: PagesProviderHealthAuthoritySource::RetainedPacket(path),
+        })
+    }
+
+    pub fn current_snapshot(&self) -> Option<ProviderHealthSnapshot> {
+        self.snapshot_at(Utc::now())
+    }
+
+    pub fn snapshot_at(&self, now: DateTime<Utc>) -> Option<ProviderHealthSnapshot> {
+        let accepted = match &self.source {
+            PagesProviderHealthAuthoritySource::RetainedPacket(path) => {
+                let bytes = read_retained_packet(path).ok()?;
+                validated_acceptance_from_bytes(&bytes, &self.live_identity).ok()?
+            }
+            PagesProviderHealthAuthoritySource::Static(accepted) => accepted.clone(),
+        };
+        accepted.snapshot_at(now)
+    }
 
     pub fn source_commit(&self) -> &str {
-        &self.source_commit
+        &self.live_identity.source_commit
     }
 
     pub fn deployment_id(&self) -> &str {
-        &self.deployment_id
+        &self.live_identity.deployment_id
     }
 
     pub fn deployment_image_digest(&self) -> &str {
-        &self.deployment_image_digest
-    }
-
-    pub fn acceptance_sha256(&self) -> &str {
-        &self.acceptance_sha256
+        &self.live_identity.deployment_image_digest
     }
 }
 
@@ -187,9 +204,8 @@ pub fn page_builder_provider_health_authority_from_environment(
     let image_digest = environment_value(PAGES_PROVIDER_HEALTH_DEPLOYMENT_IMAGE_DIGEST_ENV)?;
     let source_commit = environment_value(PAGE_BUILDER_PROVIDER_HEALTH_SOURCE_COMMIT_ENV)?;
 
-    let any_configured = acceptance_path.is_some()
-        || deployment_id.is_some()
-        || image_digest.is_some();
+    let any_configured =
+        acceptance_path.is_some() || deployment_id.is_some() || image_digest.is_some();
     if !any_configured {
         return Ok(None);
     }
@@ -201,23 +217,12 @@ pub fn page_builder_provider_health_authority_from_environment(
 
     let live_identity =
         PagesProviderHealthLiveIdentity::new(source_commit, deployment_id, image_digest)?;
-    let path = PathBuf::from(acceptance_path);
-    if !path.is_absolute() {
-        return Err(PagesProviderHealthBindingError::AcceptancePathNotAbsolute);
-    }
-    let metadata = fs::symlink_metadata(&path)
-        .map_err(|_| PagesProviderHealthBindingError::InvalidAcceptanceFile)?;
-    if !metadata.file_type().is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.len() == 0
-        || metadata.len() > MAX_ACCEPTANCE_PACKET_BYTES
-    {
-        return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
-    }
-    let bytes = fs::read(&path).map_err(|_| PagesProviderHealthBindingError::InvalidAcceptanceFile)?;
-    PagesProviderHealthAuthority::from_accepted_packet_bytes(&bytes, &live_identity)
-        .map(Arc::new)
-        .map(Some)
+    PagesProviderHealthAuthority::from_retained_packet_path(
+        PathBuf::from(acceptance_path),
+        live_identity,
+    )
+    .map(Arc::new)
+    .map(Some)
 }
 
 fn environment_value(key: &'static str) -> Result<Option<String>, PagesProviderHealthBindingError> {
@@ -229,6 +234,46 @@ fn environment_value(key: &'static str) -> Result<Option<String>, PagesProviderH
             Err(PagesProviderHealthBindingError::InvalidEnvironmentUnicode)
         }
     }
+}
+
+fn read_retained_packet(path: &PathBuf) -> Result<Vec<u8>, PagesProviderHealthBindingError> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| PagesProviderHealthBindingError::InvalidAcceptanceFile)?;
+    if !metadata.file_type().is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() == 0
+        || metadata.len() > MAX_ACCEPTANCE_PACKET_BYTES
+    {
+        return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
+    }
+    let bytes = fs::read(path).map_err(|_| PagesProviderHealthBindingError::InvalidAcceptanceFile)?;
+    if bytes.is_empty() || bytes.len() as u64 > MAX_ACCEPTANCE_PACKET_BYTES {
+        return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
+    }
+    Ok(bytes)
+}
+
+fn validated_acceptance_from_bytes(
+    bytes: &[u8],
+    live_identity: &PagesProviderHealthLiveIdentity,
+) -> Result<ValidatedAcceptance, PagesProviderHealthBindingError> {
+    if bytes.is_empty() || bytes.len() as u64 > MAX_ACCEPTANCE_PACKET_BYTES {
+        return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
+    }
+    let packet: OwnerAcceptancePacket =
+        serde_json::from_slice(bytes).map_err(|_| PagesProviderHealthBindingError::InvalidJson)?;
+    validate_packet(&packet, live_identity)?;
+    let evaluated_at = canonical_timestamp(&packet.evaluation.evaluated_at)?;
+    let decided_at = canonical_timestamp(&packet.decided_at)?;
+    if decided_at < evaluated_at {
+        return Err(PagesProviderHealthBindingError::EvidenceBoundsInvalid);
+    }
+    Ok(ValidatedAcceptance {
+        snapshot: packet.evaluation.snapshot,
+        evaluated_at,
+        decided_at,
+        freshness_seconds: packet.deployment.freshness_seconds,
+    })
 }
 
 fn validate_packet(
@@ -361,7 +406,9 @@ fn canonical_repo_digest(value: &str) -> bool {
     };
     !repository.is_empty()
         && repository.len() <= 1024
-        && !repository.bytes().any(|byte| byte.is_ascii_whitespace() || byte == b'@')
+        && !repository
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace() || byte == b'@')
         && canonical_sha256(digest)
 }
 
@@ -444,6 +491,7 @@ struct BindingAuthority {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_page_builder::health::ProviderSloObservations;
 
     #[test]
     fn binding_environment_names_are_pages_owned_and_source_identity_is_shared() {
@@ -482,7 +530,7 @@ mod tests {
         let evaluated_at = DateTime::parse_from_rfc3339("2026-08-09T18:00:00.000Z")
             .unwrap()
             .with_timezone(&Utc);
-        let authority = PagesProviderHealthAuthority {
+        let accepted = ValidatedAcceptance {
             snapshot: ProviderHealthSnapshot::evaluate(ProviderSloObservations {
                 preview_p95_ms: 100,
                 publish_p95_ms: 200,
@@ -492,12 +540,12 @@ mod tests {
             evaluated_at,
             decided_at: evaluated_at,
             freshness_seconds: 60,
-            source_commit: "a".repeat(40),
-            deployment_id: "prod-eu".to_string(),
-            deployment_image_digest: format!("repo@sha256:{}", "b".repeat(64)),
-            acceptance_sha256: "c".repeat(64),
         };
-        assert!(authority.snapshot_at(evaluated_at + Duration::seconds(60)).is_some());
-        assert!(authority.snapshot_at(evaluated_at + Duration::seconds(61)).is_none());
+        assert!(accepted
+            .snapshot_at(evaluated_at + Duration::seconds(60))
+            .is_some());
+        assert!(accepted
+            .snapshot_at(evaluated_at + Duration::seconds(61))
+            .is_none());
     }
 }
