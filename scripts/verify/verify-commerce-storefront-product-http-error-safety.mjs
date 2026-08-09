@@ -14,6 +14,7 @@ const controller = read('crates/rustok-commerce/src/controllers/store/products.r
 const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
 const catalogService = read('crates/rustok-product/src/services/catalog.rs');
 const catalogTags = read('crates/rustok-product/src/services/catalog/tags.rs');
+const productPorts = read('crates/rustok-product/src/ports.rs');
 const storefrontChannel = read('crates/rustok-commerce/src/storefront_channel.rs');
 const failures = [];
 
@@ -57,20 +58,21 @@ const showHandler = between(
   '/// List available storefront regions',
   'storefront product detail handler',
 );
+const ownerMapper = between(
+  controller,
+  'fn map_storefront_product_port_error(',
+  'fn map_storefront_auxiliary_port_error(',
+  'storefront product owner mapper',
+);
 
 for (const [value, label] of [
   ['http::StatusCode', 'HTTP status import'],
   ['CommerceError,', 'typed commerce error import'],
   ['fn map_storefront_product_error(', 'typed storefront product mapper'],
   ['fn map_storefront_product_database_error(', 'direct database mapper'],
+  ['fn map_storefront_product_port_error(', 'owner port mapper'],
   ['CommerceError::Database(error)', 'database owner wrapping'],
-  ['error = ?error', 'raw internal error logging'],
   ['operation,', 'operation logging'],
-  ['tenant_id = %tenant_id', 'tenant logging'],
-  ['product_id = ?product_id', 'optional product logging'],
-  ['error_kind,', 'error-kind logging'],
-  ['public_code = code', 'public-code logging'],
-  ['status = %status', 'status logging'],
   ['boundary = "commerce_storefront_product_http"', 'product boundary logging'],
   ['HttpError::new(status, code, message)', 'static HTTP envelope construction'],
 ]) {
@@ -116,7 +118,6 @@ for (const value of [
   'err.to_string()',
   'error.to_string()',
   'error.message',
-  'error.code',
   'HttpError::bad_request(',
 ]) {
   forbidText(productBoundary, value, 'unsafe storefront product public conversion');
@@ -148,33 +149,60 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ['ensure_storefront_channel_enabled_for_db(', 'detail channel guard'],
-  ['.get_product_with_locale_fallback(', 'localized product read'],
-  ['tenant.id,', 'detail tenant argument'],
-  ['request_context.locale.as_str()', 'detail locale argument'],
-  ['Some(tenant.default_locale.as_str())', 'detail fallback locale'],
-  ['"show_product"', 'detail operation label'],
-  ['product.status != product::ProductStatus::Active', 'active visibility check'],
-  ['product.published_at.is_none()', 'published visibility check'],
+  ['runtime\n        .product_catalog_read_port()', 'host-selected product read port'],
+  ['.read_storefront_product_projection(', 'owner detail read'],
+  ['StorefrontProductProjectionSubject::ProductId { product_id: id }', 'detail product identity'],
+  ['locale: Some(request_context.locale.clone())', 'detail requested locale'],
+  ['fallback_locale: Some(tenant.default_locale.clone())', 'detail tenant fallback locale'],
+  ['public_channel_slug,', 'detail public channel'],
+  ['"read_storefront_product_projection"', 'owner operation label'],
   ['"commerce_store_not_found"', 'hidden product not-found code'],
-  ['apply_public_channel_inventory_to_product(', 'public inventory projection'],
-  ['public_channel_slug.as_deref()', 'public channel inventory argument'],
-  ['"show_product_inventory"', 'inventory operation label'],
   ['Ok(Json(product))', 'detail response'],
 ]) {
   requireText(showHandler, value, label);
 }
+for (const value of [
+  'CatalogService::new(',
+  '.get_product_with_locale_fallback(',
+  'product.status != product::ProductStatus::Active',
+  'apply_public_channel_inventory_to_product(',
+  'show_product_inventory',
+]) {
+  forbidText(showHandler, value, 'stale concrete product detail path');
+}
+
+for (const [value, label] of [
+  ['PortErrorKind::Validation', 'owner validation mapping'],
+  ['PortErrorKind::NotFound', 'owner not-found mapping'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'owner unavailable mapping'],
+  ['PortErrorKind::Conflict | PortErrorKind::Forbidden | PortErrorKind::InvariantViolation', 'owner fail-closed mapping'],
+  ['owner = "rustok_product"', 'owner diagnostic identity'],
+  ['correlation_id = %context.correlation_id', 'correlation diagnostic'],
+  ['owner_error_kind = ?error.kind', 'owner error-kind diagnostic'],
+  ['owner_code_length = error.code.chars().count()', 'bounded owner code diagnostic'],
+  ['retryable = error.retryable', 'owner retryability diagnostic'],
+]) {
+  requireText(ownerMapper, value, label);
+}
+for (const value of ['error = ?error', 'error.message', 'error.to_string()', 'err.to_string()']) {
+  forbidText(ownerMapper, value, 'raw owner detail diagnostic');
+}
 
 const serviceMapperUses = productBoundary.match(/map_storefront_product_error\(/g) ?? [];
-if (serviceMapperUses.length !== 4) {
+if (serviceMapperUses.length !== 3) {
   failures.push(
-    `expected service mapper definition, database delegation, tag callsite, and detail callsite, found ${serviceMapperUses.length}`,
+    `expected service mapper definition, database delegation, and tag callsite, found ${serviceMapperUses.length}`,
   );
 }
 const databaseMapperUses = productBoundary.match(/map_storefront_product_database_error\(/g) ?? [];
-if (databaseMapperUses.length !== 4) {
+if (databaseMapperUses.length !== 3) {
   failures.push(
-    `expected database mapper definition plus product page, translations, and inventory callsites, found ${databaseMapperUses.length}`,
+    `expected database mapper definition plus product page and translations callsites, found ${databaseMapperUses.length}`,
   );
+}
+const ownerMapperUses = productBoundary.match(/map_storefront_product_port_error\(/g) ?? [];
+if (ownerMapperUses.length !== 2) {
+  failures.push(`expected owner mapper definition plus detail callsite, found ${ownerMapperUses.length}`);
 }
 
 for (const [value, label] of [
@@ -204,6 +232,9 @@ for (const [content, value, label] of [
   [catalogTags, 'pub async fn load_product_tag_map(', 'catalog tag operation'],
   [catalogTags, '-> CommerceResult<HashMap<Uuid, Vec<String>>>', 'typed tag result'],
   [catalogTags, 'CommerceError::Validation(error.to_string())', 'taxonomy error ownership'],
+  [productPorts, 'async fn read_storefront_product_projection(', 'owner storefront detail capability'],
+  [productPorts, 'StorefrontProductProjectionSubject::ProductId { product_id }', 'owner product-id subject'],
+  [productPorts, 'get_published_product_by_id_with_locale_fallback(', 'owner published detail implementation'],
   [storefrontChannel, 'pub(crate) async fn apply_public_channel_inventory_to_product(', 'inventory projection operation'],
   [storefrontChannel, '-> Result<(), sea_orm::DbErr>', 'typed inventory database result'],
   [storefrontChannel, 'load_inventory_projection_by_variant_for_public_channel(', 'inventory owner call'],
