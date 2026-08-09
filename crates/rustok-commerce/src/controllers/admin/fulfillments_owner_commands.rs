@@ -13,11 +13,13 @@ use uuid::Uuid;
 pub use super::fulfillments_legacy::*;
 use super::{super::CommerceHttpRuntime, super::common::ensure_permissions};
 use crate::dto::{
-    CancelFulfillmentInput, DeliverFulfillmentInput, FulfillmentResponse, ReopenFulfillmentInput,
-    ReshipFulfillmentInput, ShipFulfillmentInput,
+    CancelFulfillmentInput, CreateFulfillmentInput, DeliverFulfillmentInput, FulfillmentResponse,
+    ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput,
 };
+use crate::services::AdminManualFulfillmentOrchestrationService;
 
 const ADMIN_FULFILLMENT_COMMAND_OWNER: &str = "rustok_fulfillment.admin_command";
+const ADMIN_FULFILLMENT_CREATE_OWNER: &str = "rustok_fulfillment.admin_create_command";
 const ADMIN_FULFILLMENT_COMMAND_BOUNDARY: &str = "commerce_admin_fulfillment_command_http";
 
 type AdminFulfillmentCommandHttpPolicy =
@@ -42,6 +44,63 @@ fn admin_fulfillment_command_context(
         Some(channel) => context.with_channel(channel),
         None => context,
     }
+}
+
+fn admin_fulfillment_create_read_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    order_id: Uuid,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-fulfillment-create-read:{order_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn admin_fulfillment_create_command_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    input: &CreateFulfillmentInput,
+) -> Result<PortContext, HttpError> {
+    let payload = serde_json::to_vec(input).map_err(|_| {
+        HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_fulfillment_failed",
+            "Fulfillment operation could not be completed safely",
+        )
+    })?;
+    let first = fnv1a64(&payload, 0xcbf29ce484222325);
+    let second = fnv1a64(&payload, 0x84222325cbf29ce4);
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-fulfillment-create-command:{}", input.order_id),
+    )
+    .with_idempotency_key(format!(
+        "admin-fulfillment:create:{}:{first:016x}{second:016x}",
+        input.order_id
+    ))
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
+}
+
+fn fnv1a64(bytes: &[u8], offset_basis: u64) -> u64 {
+    bytes.iter().fold(offset_basis, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+    })
 }
 
 fn fulfillment_command_error_policy(error: &PortError) -> AdminFulfillmentCommandHttpPolicy {
@@ -130,6 +189,81 @@ fn map_fulfillment_command_error(
         "commerce admin fulfillment owner command failed"
     );
     HttpError::new(status, code, message)
+}
+
+fn map_fulfillment_create_error(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_id: Uuid,
+    context: &PortContext,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = fulfillment_command_error_policy(&error);
+    tracing::error!(
+        owner = ADMIN_FULFILLMENT_CREATE_OWNER,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        order_id_non_nil = !order_id.is_nil(),
+        operation = "create_fulfillment",
+        correlation_id = %context.correlation_id,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        "commerce admin fulfillment cross-owner create failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/fulfillments",
+    tag = "admin",
+    request_body = CreateFulfillmentInput,
+    responses(
+        (status = 201, description = "Fulfillment created", body = FulfillmentResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order not found")
+    )
+)]
+pub async fn create_fulfillment(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Json(input): Json<CreateFulfillmentInput>,
+) -> HttpResult<(StatusCode, Json<FulfillmentResponse>)> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_CREATE],
+        "Permission denied: fulfillments:create required",
+    )?;
+    let order_id = input.order_id;
+    let read_context =
+        admin_fulfillment_create_read_context(&tenant, &auth, &request_context, order_id);
+    let write_context =
+        admin_fulfillment_create_command_context(&tenant, &auth, &request_context, &input)?;
+    let service = AdminManualFulfillmentOrchestrationService::new(
+        runtime.order_read_port(),
+        runtime.fulfillment_read_port(),
+        runtime.shipping_option_read_port(),
+        runtime.fulfillment_admin_create_command_port(),
+    );
+    let fulfillment = service
+        .create_manual_fulfillment(read_context, write_context.clone(), input)
+        .await
+        .map_err(|error| {
+            map_fulfillment_create_error(
+                tenant.id,
+                auth.user_id,
+                order_id,
+                &write_context,
+                error,
+            )
+        })?;
+    Ok((StatusCode::CREATED, Json(fulfillment)))
 }
 
 #[utoipa::path(
