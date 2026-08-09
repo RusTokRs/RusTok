@@ -18,6 +18,8 @@
     "authoritative_ssr_preview_checked_when_allowed": true,
     "unavailable_preview_is_blocked_before_ssr_request": true,
     "standalone_browser_intent_denial_checked_when_health_narrows": true,
+    "runtime_page_id_fixture_must_be_uuid": true,
+    "browser_intent_mismatch_sentinel_is_non_uuid": true,
     "browser_intent_probe_uses_mismatched_page_id_as_non_mutating_fallback": true,
     "publish_mutation_is_never_executed": true,
     "raw_evidence_paths_persisted": false,
