@@ -39,20 +39,14 @@ const requireBefore = (content, first, second, label) => {
 const profileMapper = between(
   shipping,
   'fn map_shipping_profile_error(',
-  'fn map_admin_shipping_option_error(',
+  'fn admin_shipping_option_command_idempotency_key',
   'shipping-profile mapper',
 );
-const mutationMapper = between(
-  shipping,
-  'fn map_admin_shipping_option_error(',
-  'fn admin_shipping_option_read_port_context(',
-  'shipping-option mutation mapper',
-);
-const readMapper = between(
+const ownerMapper = between(
   shipping,
   'fn map_admin_shipping_option_port_error(',
   'async fn validate_shipping_option_profile_inputs(',
-  'shipping-option read mapper',
+  'shipping-option owner-port mapper',
 );
 const validationHelper = between(
   shipping,
@@ -95,38 +89,23 @@ requireBefore(
 );
 
 for (const [value, label] of [
-  ['FulfillmentError::Validation(_)', 'mutation validation mapping'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'mutation not-found mapping'],
-  ['FulfillmentError::FulfillmentNotFound(_)', 'mutation fulfillment mapping'],
-  ['FulfillmentError::InvalidTransition { .. }', 'mutation conflict mapping'],
-  ['FulfillmentError::Database(_)', 'mutation unavailable mapping'],
-  ['"commerce_admin_fulfillment_invalid"', 'mutation invalid code'],
-  ['"commerce_admin_not_found"', 'mutation not-found code'],
-  ['"commerce_admin_fulfillment_state_conflict"', 'mutation conflict code'],
-  ['"commerce_admin_fulfillment_storage_unavailable"', 'mutation unavailable code'],
-  ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'mutation context projection'],
-  ['let error = AdminShippingDiagnosticError;', 'mutation diagnostic shadow'],
-  ['HttpError::new(status, code, message)', 'mutation static envelope'],
-]) requireText(mutationMapper, value, label);
-
-for (const [value, label] of [
-  ['PortErrorKind::Validation', 'read validation kind'],
-  ['PortErrorKind::NotFound', 'read not-found kind'],
-  ['PortErrorKind::Conflict', 'read conflict kind'],
-  ['PortErrorKind::Forbidden', 'read forbidden kind'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'read unavailable kinds'],
-  ['PortErrorKind::InvariantViolation', 'read invariant kind'],
-  ['StatusCode::UNAUTHORIZED', 'read forbidden status'],
-  ['StatusCode::INTERNAL_SERVER_ERROR', 'read invariant status'],
-  ['"commerce_permission_denied"', 'read forbidden code'],
-  ['"commerce_admin_fulfillment_failed"', 'read invariant code'],
-  ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'read route context projection'],
-  ['let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);', 'read port context projection'],
-  ['let error = AdminShippingOptionPortDiagnosticError {', 'read diagnostic error shadow'],
-  ['internal_code = %error.code', 'read stable owner code'],
-  ['retryable = error.retryable', 'read retryability'],
-  ['HttpError::new(status, code, message)', 'read static envelope'],
-]) requireText(readMapper, value, label);
+  ['PortErrorKind::Validation', 'owner validation kind'],
+  ['PortErrorKind::NotFound', 'owner not-found kind'],
+  ['PortErrorKind::Conflict', 'owner conflict kind'],
+  ['PortErrorKind::Forbidden', 'owner forbidden kind'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'owner unavailable kinds'],
+  ['PortErrorKind::InvariantViolation', 'owner invariant kind'],
+  ['StatusCode::UNAUTHORIZED', 'owner forbidden status'],
+  ['StatusCode::INTERNAL_SERVER_ERROR', 'owner invariant status'],
+  ['"commerce_permission_denied"', 'owner forbidden code'],
+  ['"commerce_admin_fulfillment_failed"', 'owner invariant code'],
+  ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'owner route context projection'],
+  ['let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);', 'owner port context projection'],
+  ['let error = AdminShippingOptionPortDiagnosticError {', 'owner diagnostic error shadow'],
+  ['internal_code = %error.code', 'owner stable code'],
+  ['retryable = error.retryable', 'owner retryability'],
+  ['HttpError::new(status, code, message)', 'owner static envelope'],
+]) requireText(ownerMapper, value, label);
 
 for (const [value, label] of [
   ['ShippingProfileService::new(db.clone())', 'profile validation service'],
@@ -159,11 +138,14 @@ for (const [value, label] of [
   ['.list_all_shipping_option_projections(', 'admin list read operation'],
   ['.shipping_option_read_port()', 'detail read port'],
   ['.read_shipping_option_projection(', 'detail read operation'],
-  ['FulfillmentService::new(runtime.db_clone())', 'shipping-option mutation owner'],
-  ['.create_shipping_option(tenant.id, input)', 'create option operation'],
-  ['.update_shipping_option(tenant.id, id, input)', 'update option operation'],
-  ['.deactivate_shipping_option(tenant.id, id)', 'deactivate option operation'],
-  ['.reactivate_shipping_option(tenant.id, id)', 'reactivate option operation'],
+  ['.shipping_option_admin_command_port()', 'shipping-option command owner'],
+  ['.create_shipping_option(command_context.clone(), request)', 'create option operation'],
+  ['.update_shipping_option(command_context.clone(), request)', 'update option operation'],
+  ['.deactivate_shipping_option(command_context.clone(), request)', 'deactivate option operation'],
+  ['.reactivate_shipping_option(command_context.clone(), request)', 'reactivate option operation'],
+  ['admin_shipping_option_command_idempotency_key(', 'write admission identity'],
+  ['admin_shipping_option_command_port_context(', 'write port context'],
+  ['.with_idempotency_key(idempotency_key)', 'write idempotency context'],
   ['ShippingProfileService::new(runtime.db_clone())', 'shipping-profile owner'],
   ['.list_shipping_profiles(', 'list profile operation'],
   ['.create_shipping_profile(tenant.id, input)', 'create profile operation'],
@@ -188,19 +170,18 @@ for (const value of [
   'format!("{}: {}", error.code, error.message)',
   'HttpError::bad_request("commerce_operation_failed"',
   '.map_err(super::map_fulfillment_error)?;',
-]) forbidText(shipping, value, 'unsafe admin shipping public conversion');
+  'use rustok_fulfillment::error::FulfillmentError;',
+  'FulfillmentService::new(runtime.db_clone())',
+  'map_admin_shipping_option_error(',
+]) forbidText(shipping, value, 'unsafe or legacy admin shipping public conversion');
 
 const profileMapperUses = shipping.match(/map_shipping_profile_error/g) ?? [];
 if (profileMapperUses.length !== 8) {
   failures.push(`expected profile mapper definition plus seven uses, found ${profileMapperUses.length}`);
 }
-const mutationMapperUses = shipping.match(/map_admin_shipping_option_error\(/g) ?? [];
-if (mutationMapperUses.length !== 5) {
-  failures.push(`expected mutation mapper definition plus four uses, found ${mutationMapperUses.length}`);
-}
-const readMapperUses = shipping.match(/map_admin_shipping_option_port_error\(/g) ?? [];
-if (readMapperUses.length !== 3) {
-  failures.push(`expected read mapper definition plus two uses, found ${readMapperUses.length}`);
+const ownerMapperUses = shipping.match(/map_admin_shipping_option_port_error\(/g) ?? [];
+if (ownerMapperUses.length !== 7) {
+  failures.push(`expected owner mapper definition plus six uses, found ${ownerMapperUses.length}`);
 }
 const validationUses = shipping.match(/validate_shipping_option_profile_inputs\(/g) ?? [];
 if (validationUses.length !== 3) {
@@ -222,5 +203,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin shipping profiles and options preserve HTTP policy while emitting only bounded diagnostics',
+  '✔ Commerce admin shipping profiles and options preserve HTTP policy through bounded owner ports',
 );

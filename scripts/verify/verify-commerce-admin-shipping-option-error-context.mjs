@@ -42,17 +42,23 @@ const diagnosticProjection = between(
   'fn map_shipping_profile_error(',
   'admin shipping diagnostic projection',
 );
-const mutationMapper = between(
+const identityBuilder = between(
   shipping,
-  'fn map_admin_shipping_option_error(',
+  'fn admin_shipping_option_command_idempotency_key',
   'fn admin_shipping_option_read_port_context(',
-  'admin shipping-option mutation mapper',
+  'admin shipping-option command identity builder',
 );
 const readContextBuilder = between(
   shipping,
   'fn admin_shipping_option_read_port_context(',
-  'fn map_admin_shipping_option_port_error(',
+  'fn admin_shipping_option_command_port_context(',
   'admin shipping-option read context builder',
+);
+const commandContextBuilder = between(
+  shipping,
+  'fn admin_shipping_option_command_port_context(',
+  'fn map_admin_shipping_option_port_error(',
+  'admin shipping-option command context builder',
 );
 const portMapper = between(
   shipping,
@@ -132,38 +138,27 @@ for (const [value, label] of [
 ]) requireText(diagnosticProjection, value, label);
 
 for (const [value, label] of [
+  ['serde_json::to_vec(payload)', 'payload-bound command identity'],
+  ['digest.update(tenant_id.as_bytes())', 'tenant-bound identity'],
+  ['digest.update(actor_id.as_bytes())', 'actor-bound identity'],
+  ['digest.update(operation.as_bytes())', 'operation-bound identity'],
+  ['digest.update(shipping_option_id.as_bytes())', 'resource-bound identity'],
+  ['digest.update(payload)', 'payload digest'],
+  ['commerce-admin-shipping-option:{operation}:', 'scoped command identity prefix'],
+]) requireText(identityBuilder, value, label);
+
+for (const [value, label] of [
   ['PortActor::user(auth.user_id.to_string())', 'authenticated actor'],
   ['request_context.locale.as_str()', 'request locale'],
   ['format!("commerce-admin-shipping-option:{operation}:{resource_id}")', 'resource correlation id'],
-  ['with_deadline(std::time::Duration::from_secs(2))', 'read deadline'],
+  ['with_deadline(std::time::Duration::from_secs(2))', 'deadline'],
   ['request_context.channel_slug.as_deref()', 'channel propagation'],
 ]) requireText(readContextBuilder, value, label);
 
 for (const [value, label] of [
-  ['FulfillmentError::Validation(_)', 'mutation validation variant'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'mutation option not-found variant'],
-  ['FulfillmentError::FulfillmentNotFound(_)', 'mutation fulfillment not-found variant'],
-  ['FulfillmentError::InvalidTransition { .. }', 'mutation conflict variant'],
-  ['FulfillmentError::Database(_)', 'mutation database variant'],
-  ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'mutation context shadow'],
-  ['let error = AdminShippingDiagnosticError;', 'mutation error shadow'],
-  ['error = ?error', 'redacted mutation error event'],
-  ['tenant_id = %context.tenant_id', 'bounded mutation tenant event'],
-  ['shipping_option_id = ?context.shipping_option_id', 'bounded mutation option event'],
-  ['HttpError::new(status, code, message)', 'mutation static envelope'],
-]) requireText(mutationMapper, value, label);
-requireBefore(
-  mutationMapper,
-  'FulfillmentError::Validation(_)',
-  'let context = AdminShippingOptionDiagnosticContext::from(&context);',
-  'mutation typed policy selection',
-);
-requireBefore(
-  mutationMapper,
-  'let error = AdminShippingDiagnosticError;',
-  'tracing::error!(',
-  'mutation diagnostic shadow',
-);
+  ['admin_shipping_option_read_port_context(', 'shared bounded context'],
+  ['.with_idempotency_key(idempotency_key)', 'write policy identity'],
+]) requireText(commandContextBuilder, value, label);
 
 for (const [value, label] of [
   ['PortErrorKind::Validation', 'port validation kind'],
@@ -185,6 +180,7 @@ for (const [value, label] of [
   ['internal_code = %error.code', 'stable code event'],
   ['retryable = error.retryable', 'retryability event'],
   ['HttpError::new(status, code, message)', 'port static envelope'],
+  ['"commerce admin shipping option owner call failed"', 'shared owner-call diagnostic'],
 ]) requireText(portMapper, value, label);
 requireBefore(
   portMapper,
@@ -222,15 +218,20 @@ for (const [block, operation, request, label] of [
   forbidText(block, 'FulfillmentService::new(', `${label} concrete service`);
 }
 
-for (const [block, operation, label] of [
-  [createRoute, '.create_shipping_option(tenant.id, input)', 'create route'],
-  [updateRoute, '.update_shipping_option(tenant.id, id, input)', 'update route'],
-  [deactivateRoute, '.deactivate_shipping_option(tenant.id, id)', 'deactivate route'],
-  [reactivateRoute, '.reactivate_shipping_option(tenant.id, id)', 'reactivate route'],
+for (const [block, request, operation, label] of [
+  [createRoute, 'CreateAdminShippingOptionRequest { input }', '.create_shipping_option(command_context.clone(), request)', 'create route'],
+  [updateRoute, 'UpdateAdminShippingOptionRequest {', '.update_shipping_option(command_context.clone(), request)', 'update route'],
+  [deactivateRoute, 'DeactivateAdminShippingOptionRequest {', '.deactivate_shipping_option(command_context.clone(), request)', 'deactivate route'],
+  [reactivateRoute, 'ReactivateAdminShippingOptionRequest {', '.reactivate_shipping_option(command_context.clone(), request)', 'reactivate route'],
 ]) {
-  requireText(block, 'FulfillmentService::new(runtime.db_clone())', `${label} lifecycle service`);
-  requireText(block, operation, `${label} service operation`);
-  requireText(block, 'map_admin_shipping_option_error(', `${label} typed mapper`);
+  requireText(block, 'admin_shipping_option_command_idempotency_key(', `${label} command identity`);
+  requireText(block, 'admin_shipping_option_command_port_context(', `${label} command context`);
+  requireText(block, '.shipping_option_admin_command_port()', `${label} owner command port`);
+  requireText(block, request, `${label} typed request`);
+  requireText(block, operation, `${label} owner operation`);
+  requireText(block, 'map_admin_shipping_option_port_error(', `${label} typed mapper`);
+  forbidText(block, 'FulfillmentService::new(', `${label} concrete service`);
+  forbidText(block, 'map_admin_shipping_option_error(', `${label} legacy mutation mapper`);
 }
 
 for (const value of [
@@ -240,15 +241,20 @@ for (const value of [
   'error.message',
   'format!("{}: {}", error.code, error.message)',
   '.map_err(super::map_fulfillment_error)?;',
+  'use rustok_fulfillment::error::FulfillmentError;',
 ]) forbidText(shipping, value, 'unsafe admin shipping-option public conversion');
 
-const mutationMapperUses = shipping.match(/map_admin_shipping_option_error\(/g) ?? [];
-if (mutationMapperUses.length !== 5) {
-  failures.push(`expected mutation mapper definition plus four uses, found ${mutationMapperUses.length}`);
-}
 const portMapperUses = shipping.match(/map_admin_shipping_option_port_error\(/g) ?? [];
-if (portMapperUses.length !== 3) {
-  failures.push(`expected port mapper definition plus two read uses, found ${portMapperUses.length}`);
+if (portMapperUses.length !== 7) {
+  failures.push(`expected port mapper definition plus six route uses, found ${portMapperUses.length}`);
+}
+const commandContextUses = shipping.match(/admin_shipping_option_command_port_context\(/g) ?? [];
+if (commandContextUses.length !== 5) {
+  failures.push(`expected command context definition plus four uses, found ${commandContextUses.length}`);
+}
+const commandIdentityUses = shipping.match(/admin_shipping_option_command_idempotency_key\(/g) ?? [];
+if (commandIdentityUses.length !== 5) {
+  failures.push(`expected command identity definition plus four uses, found ${commandIdentityUses.length}`);
 }
 
 if (failures.length > 0) {
@@ -258,5 +264,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin shipping-option reads and mutations retain typed policy while emitting only bounded diagnostics',
+  '✔ Commerce admin shipping-option reads and commands use bounded owner-port context and diagnostics',
 );
