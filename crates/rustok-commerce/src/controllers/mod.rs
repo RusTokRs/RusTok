@@ -32,6 +32,7 @@ pub struct CommerceHttpRuntime {
         rustok_fulfillment::FulfillmentAdminCreateCommandRuntime,
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
     order_admin_command_runtime: rustok_order::OrderAdminCommandRuntime,
+    order_post_order_command_runtime: rustok_order::OrderPostOrderCommandRuntime,
     payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
     payment_cart_read_runtime: rustok_payment::PaymentCartReadRuntime,
     payment_collection_runtime: rustok_payment::PaymentCollectionRuntime,
@@ -70,6 +71,8 @@ impl CommerceHttpRuntime {
             crate::graphql_runtime::CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone());
         let order_admin_command_runtime =
             rustok_order::OrderAdminCommandRuntime::in_process(db.clone(), event_bus.clone());
+        let order_post_order_command_runtime =
+            rustok_order::OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus.clone());
         let payment_order_read_runtime =
             rustok_payment::PaymentOrderReadRuntime::in_process(db.clone());
         let payment_cart_read_runtime =
@@ -108,6 +111,7 @@ impl CommerceHttpRuntime {
             fulfillment_admin_create_command_runtime,
             order_read_runtime,
             order_admin_command_runtime,
+            order_post_order_command_runtime,
             payment_order_read_runtime,
             payment_cart_read_runtime,
             payment_collection_runtime,
@@ -184,6 +188,12 @@ impl CommerceHttpRuntime {
 
     fn order_admin_command_port(&self) -> std::sync::Arc<dyn rustok_order::OrderAdminCommandPort> {
         self.order_admin_command_runtime.command_port()
+    }
+
+    fn order_post_order_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_order::OrderPostOrderCommandPort> {
+        self.order_post_order_command_runtime.command_port()
     }
 
     fn payment_order_read_port(&self) -> std::sync::Arc<dyn rustok_payment::PaymentOrderReadPort> {
@@ -305,6 +315,13 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require OrderAdminCommandRuntime in HostRuntimeContext"
                 )
             })?;
+        let order_post_order_command_runtime = runtime
+            .shared_get::<rustok_order::OrderPostOrderCommandRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require OrderPostOrderCommandRuntime in HostRuntimeContext"
+                )
+            })?;
         let payment_order_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
             .ok_or_else(|| {
@@ -379,6 +396,7 @@ impl CommerceHttpRuntime {
             fulfillment_admin_create_command_runtime,
             order_read_runtime,
             order_admin_command_runtime,
+            order_post_order_command_runtime,
             payment_order_read_runtime,
             payment_cart_read_runtime,
             payment_collection_runtime,
