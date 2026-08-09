@@ -20,6 +20,7 @@ pub mod export_mapping;
 pub mod graphql;
 pub mod import_inspection;
 pub mod import_mapping;
+pub mod import_resolution;
 pub mod locale;
 pub mod mentions;
 pub mod migrations;
@@ -62,6 +63,7 @@ pub use export_mapping::*;
 pub use graphql::{ForumMutation, ForumQuery};
 pub use import_inspection::*;
 pub use import_mapping::*;
+pub use import_resolution::*;
 pub use mentions::*;
 pub use moderation_subject::{
     FORUM_MODERATION_MODULE, ForumModerationSubjectAdapterFactory,
