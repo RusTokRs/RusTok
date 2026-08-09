@@ -107,7 +107,7 @@ Stale Comments are therefore visible but never presented as live.
 
 The existing fail-closed source boundary remains authoritative:
 
-- `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json` is advanced to schema v3;
+- `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json` remains schema v2 and is extended additively with the cached-snapshot contract;
 - `scripts/verify/verify-blog-comments-port-boundary.mjs` source-locks the shared snapshot policy, host cache bounds, GraphQL/native parity, UI stale disclosure, and preserved fail-closed error policy.
 
 The broader fallback smoke remains `planned` because comment-form fallback is still a separate unfinished result.
