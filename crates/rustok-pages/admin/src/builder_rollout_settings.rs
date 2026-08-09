@@ -17,6 +17,10 @@ impl PagesBuilderRolloutSnapshot {
             None => PageBuilderAdminProviderStatus::unobserved(self.flags.clone()),
         }
     }
+
+    pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags {
+        self.provider_status().effective_runtime_flags()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -65,9 +69,9 @@ pub fn pages_editor_capabilities_for_rollout(
     PageBuilderAdminProviderStatus::unobserved(flags.clone()).limit_capabilities(capabilities)
 }
 
-/// Apply a fully validated provider-health snapshot when a future caller has explicit owner
-/// authority to consume it. Current Pages UI/SSR call sites intentionally continue using the
-/// rollout-only helper above until retained deployment evaluator evidence is accepted and bound.
+/// Apply the validated provider-health snapshot carried by the server-owned rollout snapshot.
+/// Missing health remains explicitly unobserved; observed health may only narrow the configured
+/// rollout and the already evaluated host tenant/RBAC capabilities.
 pub fn pages_editor_capabilities_for_snapshot(
     capabilities: CapabilityState,
     snapshot: &PagesBuilderRolloutSnapshot,
@@ -124,5 +128,22 @@ mod tests {
         assert!(effective.properties);
         assert!(!effective.publish);
         assert_eq!(snapshot.flags, BuilderCapabilityFlags::default());
+        assert_eq!(
+            snapshot.effective_runtime_flags(),
+            BuilderToggleProfile::PublishOff.flags()
+        );
+    }
+
+    #[test]
+    fn missing_health_preserves_configured_runtime_flags() {
+        let snapshot = PagesBuilderRolloutSnapshot {
+            flags: BuilderToggleProfile::PreviewOff.flags(),
+            tenant_slug: "pages-tenant".to_string(),
+            provider_health: None,
+        };
+        assert_eq!(
+            snapshot.effective_runtime_flags(),
+            BuilderToggleProfile::PreviewOff.flags()
+        );
     }
 }
