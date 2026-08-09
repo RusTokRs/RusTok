@@ -1,22 +1,23 @@
 # rustok-blog canonical implementation cursor
 
-Status: `canonical_source_cursor_actualized_through_slice_100`.
+Status: `canonical_source_cursor_actualized_through_slice_102`.
 
 This document is the canonical **current** source cursor for `rustok-blog`.
 `crates/rustok-blog/docs/implementation-plan.md` remains the long historical baseline and embedded implementation log, but its inline `Current state`, completed-slice list, and `Next results` stop before the later continuation series and must not be used as the live cursor without this file.
 
-The continuation series is authoritative for source work after the historical baseline. Slice 101 records this actualization; the latest production/source behavior slice before this plan-only correction is slice 100.
+The continuation series is authoritative for source work after the historical baseline. Slice 101 establishes this current-cursor boundary. Slice 102 is the latest production/source behavior slice.
 
 ## Re-audit basis
 
-Fresh `main` was re-audited after slices 98–100. The retained continuation artifacts show that several phrases still present in the historical baseline are stale as current instructions:
+The source continuation through slice 102 retains the following planning corrections and independent Blog source result:
 
 - the remote Comments transport is no longer an unimplemented source item;
 - the cached public Comments snapshot is no longer merely planned;
 - the storefront comment-form fallback is not an implementation target because the active storefront has no public Comments write surface;
-- Blog category Translation PostgreSQL migration/concurrent-CAS/change-cursor evidence source is already retained and waits for maintainer execution.
+- Blog category Translation PostgreSQL migration/concurrent-CAS/change-cursor evidence source is already retained and waits for maintainer execution;
+- Blog tag list pagination is now owner-bounded and overflow-safe after a fresh audit outside those execution-gated tracks.
 
-These are planning corrections only. They do not promote runtime evidence.
+None of these source states promote runtime evidence.
 
 ## Current source tracks
 
@@ -66,17 +67,41 @@ Canonical interpretation:
 
 The legacy `hide_comment_form` token remains compatibility vocabulary in the existing FBA registries; it is not authorization to invent a new storefront write surface.
 
+### Blog tag list pagination
+
+A fresh source audit after slice 101 found that `TagService::list_tags` accepted an arbitrarily large `per_page` and used unchecked page-offset multiplication, unlike the already bounded Blog category list contract.
+
+Slice 102 makes the owner service authoritative for the response bound and arithmetic safety:
+
+`tag_list_pagination = source_ready_maintainer_execution_pending`
+
+The retained contract is:
+
+- `1 <= per_page <= 100` in the owner service;
+- matching Utoipa parameter metadata in `ListTagsFilter`;
+- saturating `u64` page-offset arithmetic plus checked `usize` conversion;
+- unchanged visibility, usage-count ordering, locale resolution and total-count semantics.
+
+This does **not** claim database-side pagination. Eligible tag terms, usage counts and translations are still materialized before the existing usage-count sort/page slice.
+
+The same audit exposed a separate cross-owner question rather than resolving it implicitly:
+
+`tag_mutation_projection_consistency = re_audit_required`
+
+Post reads resolve current tag names through `blog_post_tags -> rustok-taxonomy`, while Blog Search currently projects tag text from `blog_posts.metadata.tags`. Any update/delete fix must first define the canonical source and atomic/reindex ownership instead of adding direct cross-module SQL.
+
 ## Remaining execution-owned results
 
-The source re-audit identifies no independent production source gap inside the tracks above. The remaining concrete results are maintainer execution or explicitly execution-gated follow-ups:
+The concrete retained execution results remain maintainer-owned:
 
 1. Execute the retained Comments transport/composition, PostgreSQL, restart/ambiguity, canonical relay, and cached-snapshot evidence at an exact revision.
 2. Execute slices 95–97 before defining terminal Blog source-row and immutable recovery-audit retention.
 3. Execute slice 98 PostgreSQL evidence before advancing the Blog category Translation readiness result.
-4. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit evidence already retained by the historical plan.
-5. Execute the Blog article richtext cutover/backfill/browser evidence already retained by the historical plan.
+4. Execute slice 102 tag pagination source/unit evidence before promoting runtime validation.
+5. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit evidence already retained by the historical plan.
+6. Execute the Blog article richtext cutover/backfill/browser evidence already retained by the historical plan.
 
-A future autonomous source slice must start from a fresh repository audit and identify a genuinely new independent source gap. It must not manufacture work by reopening a source-complete or not-applicable cursor.
+A future source implementation must still start from a fresh ownership audit. It must not manufacture work by reopening a source-complete or not-applicable cursor.
 
 ## Superseded historical cursor phrases
 
@@ -87,14 +112,12 @@ The following phrases may remain in the historical baseline as records of earlie
 - `PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence are still required before production inventory enablement`;
 - `then implement the remote network transport`.
 
-The continuation slice files and machine evidence remain the source of detailed ownership/non-claim history. This file only defines the current planning cursor.
+The continuation slice files and machine evidence remain the source of detailed ownership/non-claim history. This file defines the current planning cursor.
 
 ## Validation boundary
 
-No tests, Cargo commands, Node verifiers, PostgreSQL/Redis/TCP scenarios, browser targets, formatting, Clippy, builds, workflows, CI, HTTP execution, runtime validation, or production validation were executed by the implementation agent while producing this actualization.
+No tests, Cargo commands, Node verifiers, PostgreSQL/Redis/TCP scenarios, browser targets, formatting, Clippy, builds, workflows, CI, HTTP execution, runtime validation, or production validation were executed by the implementation agent while producing slices 101–102.
 
 ## Next cursor
 
-No independent production source gap is claimed by this actualization.
-
-Continue only after a fresh repository audit finds a new source gap outside the execution-gated tracks above, or after maintainers provide execution results that unlock one of their explicit follow-ups.
+Re-audit Blog tag mutation/projection consistency as a separate ownership problem. Determine the canonical Search-visible tag source and the atomic/reindex behavior required for `TagService::update_tag/delete_tag` before changing those production mutation semantics.

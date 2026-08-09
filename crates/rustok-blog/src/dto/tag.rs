@@ -48,8 +48,10 @@ pub struct TagListItem {
 pub struct ListTagsFilter {
     pub locale: Option<String>,
     #[serde(default = "default_page")]
+    #[param(minimum = 1)]
     pub page: u64,
     #[serde(default = "default_per_page")]
+    #[param(minimum = 1, maximum = 100)]
     pub per_page: u64,
 }
 

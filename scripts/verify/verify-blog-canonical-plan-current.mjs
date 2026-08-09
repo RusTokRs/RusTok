@@ -18,6 +18,7 @@ const files = {
   slice99: 'crates/rustok-blog/docs/implementation-plan-slice-99.md',
   slice100: 'crates/rustok-blog/docs/implementation-plan-slice-100.md',
   slice101: 'crates/rustok-blog/docs/implementation-plan-slice-101.md',
+  slice102: 'crates/rustok-blog/docs/implementation-plan-slice-102.md',
   docsIndex: 'crates/rustok-blog/docs/README.md',
   tcpTransport: 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json',
   tcpServer: 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json',
@@ -25,6 +26,7 @@ const files = {
   translationPostgres: 'crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json',
   fallback: 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
   writeSurface: 'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
+  tagPagination: 'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
 };
 
 function absolute(relativePath) {
@@ -76,6 +78,7 @@ const slice98 = read(files.slice98);
 const slice99 = read(files.slice99);
 const slice100 = read(files.slice100);
 const slice101 = read(files.slice101);
+const slice102 = read(files.slice102);
 const docsIndex = read(files.docsIndex);
 const tcpTransport = json(files.tcpTransport);
 const tcpServer = json(files.tcpServer);
@@ -83,10 +86,11 @@ const tcpListener = json(files.tcpListener);
 const translationPostgres = json(files.translationPostgres);
 const fallback = json(files.fallback);
 const writeSurface = json(files.writeSurface);
+const tagPagination = json(files.tagPagination);
 
 if (evidence) {
   if (
-    evidence.schema_version !== 1 ||
+    evidence.schema_version !== 2 ||
     evidence.module !== 'blog' ||
     evidence.surface !== 'canonical_implementation_cursor' ||
     evidence.status !== 'source_verified_no_compile' ||
@@ -99,8 +103,8 @@ if (evidence) {
     evidence.canonical_current_cursor !== files.current ||
     evidence.actualization_slice !== files.slice101 ||
     evidence.historical_baseline_last_embedded_slice !== 67 ||
-    evidence.latest_behavior_slice !== 100 ||
-    evidence.current_recorded_slice !== 101
+    evidence.latest_behavior_slice !== 102 ||
+    evidence.current_recorded_slice !== 102
   ) failures.push(`${files.evidence}: cursor path/version drift`);
 
   const tracks = evidence.source_tracks ?? {};
@@ -113,8 +117,7 @@ if (evidence) {
   ) failures.push(`${files.evidence}: remote Comments track drift`);
 
   if (
-    tracks.comments_source_retention?.status !==
-      'blocked_until_slices_95_97_execution' ||
+    tracks.comments_source_retention?.status !== 'blocked_until_slices_95_97_execution' ||
     tracks.comments_source_retention?.blocking_slice !== files.slice97 ||
     tracks.comments_source_retention?.must_not_advance_before_execution !== true
   ) failures.push(`${files.evidence}: Comments source-retention gate drift`);
@@ -144,10 +147,26 @@ if (evidence) {
   ) failures.push(`${files.evidence}: storefront write-surface track drift`);
 
   if (
+    tracks.tag_list_pagination?.status !== 'source_ready_maintainer_execution_pending' ||
+    tracks.tag_list_pagination?.slice !== files.slice102 ||
+    tracks.tag_list_pagination?.evidence !== files.tagPagination ||
+    tracks.tag_list_pagination?.maximum_page_size !== 100 ||
+    tracks.tag_list_pagination?.offset_overflow_safe !== true ||
+    tracks.tag_list_pagination?.database_side_pagination_claimed !== false ||
+    tracks.tag_list_pagination?.must_not_reopen_as_source_gap !== true
+  ) failures.push(`${files.evidence}: tag pagination track drift`);
+
+  if (
+    tracks.tag_mutation_projection_consistency?.status !== 're_audit_required' ||
+    tracks.tag_mutation_projection_consistency?.must_define_canonical_search_visible_tag_source !== true ||
+    tracks.tag_mutation_projection_consistency?.must_define_atomic_reindex_ownership_before_mutation_change !== true
+  ) failures.push(`${files.evidence}: tag mutation/projection cursor drift`);
+
+  if (
     evidence.planning_result?.independent_production_source_gap_identified !== false ||
     evidence.planning_result?.future_autonomous_source_work_requires_fresh_audit !== true ||
     evidence.planning_result?.historical_stale_phrases_are_live_instructions !== false ||
-    evidence.planning_result?.production_behavior_changed !== false ||
+    evidence.planning_result?.production_behavior_changed_since_slice_101 !== true ||
     evidence.planning_result?.ffa_or_fba_promoted !== false ||
     !Array.isArray(evidence.execution) ||
     evidence.execution.length !== 0
@@ -191,8 +210,7 @@ if (
 ) failures.push(`${files.translationPostgres}: Translation PostgreSQL source status drift`);
 
 if (
-  fallback?.storefront_read_degradation?.cached_thread_snapshot !==
-    'source_verified_no_compile' ||
+  fallback?.storefront_read_degradation?.cached_thread_snapshot !== 'source_verified_no_compile' ||
   fallback?.storefront_read_degradation?.runtime_evidence !== 'pending' ||
   !sameSet(fallback?.storefront_read_degradation?.transports, ['graphql', 'native_ssr']) ||
   fallback?.storefront_write_surface?.comment_form_fallback !==
@@ -201,8 +219,7 @@ if (
 
 if (
   writeSurface?.status !== 'source_verified_absent' ||
-  writeSurface?.actualization !==
-    'comment_form_fallback_not_applicable_no_storefront_write_surface' ||
+  writeSurface?.actualization !== 'comment_form_fallback_not_applicable_no_storefront_write_surface' ||
   writeSurface?.source_contract?.create_comment_surface_present !== false ||
   writeSurface?.source_contract?.comment_form_present !== false ||
   writeSurface?.planning_effect?.new_storefront_write_surface_authorized !== false ||
@@ -210,43 +227,41 @@ if (
   writeSurface.execution.length !== 0
 ) failures.push(`${files.writeSurface}: storefront write-surface evidence drift`);
 
+if (
+  tagPagination?.status !== 'source_verified_no_compile' ||
+  tagPagination?.runtime_status !== 'not_run' ||
+  tagPagination?.source_contract?.maximum_page_size !== 100 ||
+  tagPagination?.source_contract?.owner_service_clamps_page_size !== true ||
+  tagPagination?.source_contract?.extreme_page_cannot_overflow_offset_arithmetic !== true ||
+  tagPagination?.source_contract?.database_side_pagination_claimed !== false ||
+  !Array.isArray(tagPagination?.execution) ||
+  tagPagination.execution.length !== 0
+) failures.push(`${files.tagPagination}: tag pagination source evidence drift`);
+
 for (const [source, marker, label] of [
   [slice97, 'Status: `canonical_outbox_relay_postgres_evidence_source_ready_maintainer_execution_pending`.', files.slice97],
   [slice98, 'Status: `category_translation_postgres_evidence_source_ready_maintainer_execution_pending`.', files.slice98],
   [slice99, 'Status: `storefront_cached_public_comments_snapshot_source_ready_maintainer_execution_pending`.', files.slice99],
   [slice100, 'Status: `storefront_comment_form_fallback_not_applicable_source_verified`.', files.slice100],
+  [slice102, 'Status: `tag_list_pagination_owner_bound_source_ready_maintainer_execution_pending`.', files.slice102],
 ]) need(source, marker, label);
 
-need(
-  slice97,
-  'After retained maintainer execution of slices 95–97, define bounded lifecycle and',
-  files.slice97,
-);
-need(
-  slice98,
-  'The Comments audit track remains independently blocked on maintainer execution',
-  files.slice98,
-);
-need(
-  slice99,
-  'comment-form fallback is still a separate unfinished result',
-  files.slice99,
-);
-need(
-  slice100,
-  'comment_form_fallback = not_applicable_no_storefront_write_surface',
-  files.slice100,
-);
+need(slice97, 'After retained maintainer execution of slices 95–97, define bounded lifecycle and', files.slice97);
+need(slice98, 'The Comments audit track remains independently blocked on maintainer execution', files.slice98);
+need(slice99, 'comment-form fallback is still a separate unfinished result', files.slice99);
+need(slice100, 'comment_form_fallback = not_applicable_no_storefront_write_surface', files.slice100);
+need(slice102, 'Re-audit Blog tag mutation/projection consistency as a separate ownership slice.', files.slice102);
 
 for (const marker of [
-  'Status: `canonical_source_cursor_actualized_through_slice_100`.',
+  'Status: `canonical_source_cursor_actualized_through_slice_102`.',
   '`remote_comments_transport = source_implemented_maintainer_execution_pending`',
   '`category_translation_postgres = source_ready_maintainer_execution_pending`',
   '`cached_public_comments_snapshot = source_ready_maintainer_execution_pending`',
   '`comment_form_fallback = not_applicable_no_storefront_write_surface`',
+  '`tag_list_pagination = source_ready_maintainer_execution_pending`',
+  '`tag_mutation_projection_consistency = re_audit_required`',
   'do not advance that source work before retained maintainer execution of slices 95–97',
-  'The source re-audit identifies no independent production source gap',
-  'A future autonomous source slice must start from a fresh repository audit',
+  'This does **not** claim database-side pagination.',
   '## Superseded historical cursor phrases',
   'No tests, Cargo commands, Node verifiers',
 ]) need(current, marker, files.current);
@@ -298,5 +313,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '[verify-blog-canonical-plan-current] PASS cursor=slice-101 behavior-through=slice-100 execution=not-run',
+  '[verify-blog-canonical-plan-current] PASS cursor=slice-102 behavior-through=slice-102 execution=not-run',
 );
