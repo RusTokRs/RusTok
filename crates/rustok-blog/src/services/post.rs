@@ -28,7 +28,9 @@ use serde_json::Value;
 use crate::dto::{
     CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSummary, UpdatePostInput,
 };
-use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
+use crate::entities::{
+    blog_category_translation, blog_post, blog_post_channel_visibility, blog_post_translation,
+};
 use crate::error::{BlogError, BlogResult};
 use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
 use crate::services::category::CategoryService;
@@ -636,6 +638,18 @@ impl PostService {
             fallback_locale.as_deref(),
         )
         .await?;
+        let category_ids = posts
+            .iter()
+            .filter_map(|post| post.category_id)
+            .collect::<Vec<_>>();
+        let category_names_map = self
+            .load_category_names_map(
+                tenant_id,
+                &category_ids,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await?;
 
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
@@ -661,7 +675,9 @@ impl PostService {
                 author_id: post.author_id,
                 author_name: None,
                 category_id: post.category_id,
-                category_name: None,
+                category_name: post
+                    .category_id
+                    .and_then(|category_id| category_names_map.get(&category_id).cloned()),
                 tags,
                 featured_image_url: post.featured_image_url.clone(),
                 channel_slugs: channel_slugs_map
@@ -734,6 +750,18 @@ impl PostService {
             fallback_locale.as_deref(),
         )
         .await?;
+        let category_ids = posts
+            .iter()
+            .filter_map(|post| post.category_id)
+            .collect::<Vec<_>>();
+        let category_names_map = self
+            .load_category_names_map(
+                tenant_id,
+                &category_ids,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await?;
 
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
@@ -759,7 +787,9 @@ impl PostService {
                 author_id: post.author_id,
                 author_name: None,
                 category_id: post.category_id,
-                category_name: None,
+                category_name: post
+                    .category_id
+                    .and_then(|category_id| category_names_map.get(&category_id).cloned()),
                 tags,
                 featured_image_url: post.featured_image_url.clone(),
                 channel_slugs: channel_slugs_map
@@ -867,6 +897,58 @@ impl PostService {
                 .push(translation);
         }
         Ok(map)
+    }
+
+    async fn load_category_names_map(
+        &self,
+        tenant_id: Uuid,
+        category_ids: &[Uuid],
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<HashMap<Uuid, String>> {
+        if category_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut category_ids = category_ids.to_vec();
+        category_ids.sort_unstable();
+        category_ids.dedup();
+
+        let translations = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(blog_category_translation::Column::CategoryId.is_in(category_ids.clone()))
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+
+        let mut translations_by_category: HashMap<
+            Uuid,
+            Vec<blog_category_translation::Model>,
+        > = HashMap::new();
+        for translation in translations {
+            translations_by_category
+                .entry(translation.category_id)
+                .or_default()
+                .push(translation);
+        }
+
+        let mut names = HashMap::new();
+        for category_id in category_ids {
+            let Some(translations) = translations_by_category.get(&category_id) else {
+                continue;
+            };
+            let resolved = resolve_by_locale_with_fallback(
+                translations,
+                locale,
+                fallback_locale,
+                |translation| translation.locale.as_str(),
+            );
+            if let Some(translation) = resolved.item {
+                names.insert(category_id, translation.name.clone());
+            }
+        }
+
+        Ok(names)
     }
 
     async fn load_channel_slugs(&self, post_id: Uuid) -> BlogResult<Vec<String>> {
@@ -1072,6 +1154,19 @@ impl PostService {
             fallback_locale,
         )
         .await?;
+        let category_name = if let Some(category_id) = post.category_id {
+            self.load_category_names_map(
+                post.tenant_id,
+                &[category_id],
+                locale,
+                fallback_locale,
+            )
+            .await?
+            .get(&category_id)
+            .cloned()
+        } else {
+            None
+        };
         let resolved = resolve_translation_record(&translations, locale, fallback_locale);
         let translation = resolved.translation;
         let body = match translation {
@@ -1097,7 +1192,7 @@ impl PostService {
             excerpt: translation.and_then(|item| item.excerpt.clone()),
             status: storage_to_status(&post.status)?,
             category_id: post.category_id,
-            category_name: None,
+            category_name,
             tags: tags_map
                 .get(&post.id)
                 .cloned()
