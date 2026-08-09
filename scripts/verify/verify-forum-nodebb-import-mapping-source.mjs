@@ -43,7 +43,9 @@ for (const marker of [
   "author_ref(record.uid)",
   "positive_optional(record.main_pid)",
   "topic_main_posts.get(&record.tid)",
-  "ForumImportPostRole::Unresolved",
+  "Some(Some(_)) => ForumImportPostRole::Reply",
+  "Some(None) | None => ForumImportPostRole::Unresolved",
+  "post_role_stays_unresolved_when_topic_has_no_main_post",
 ]) {
   requireText(mapping, marker, `${mappingPath}: missing ${marker}`);
 }
@@ -125,6 +127,7 @@ for (const marker of [
   "does **not** create a Forum-only runner",
   "NodeBB numeric identities are preserved only as external source references",
   "never manufactures RusTok UUIDs",
+  "or the topic has no positive `mainPid`",
   "role is `Unresolved`",
   "final Forum owner validation",
   "Forum export adapter",
