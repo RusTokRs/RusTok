@@ -95,7 +95,7 @@ accepted deployment health authority
 -> standalone browser-intent capability narrowing
 ```
 
-That does not mean observed health has been activated or accepted in production. Runtime activation remains maintainer-owned.
+That does not mean observed health has been activated or accepted in production; runtime activation remains maintainer-owned.
 
 A real observed-health execution still requires the existing exact chain:
 
