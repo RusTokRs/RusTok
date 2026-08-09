@@ -927,6 +927,7 @@ impl TranslationExchangeService {
     }
 }
 
+#[cfg(feature = "runtime")]
 pub(crate) async fn next_expired_interchange_artifact(
     database: &DatabaseConnection,
 ) -> TranslationResult<Option<exchange_job::Model>> {
