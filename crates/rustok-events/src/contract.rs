@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::{
     BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
     ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
-    RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent,
-    TranslationWorkflowEvent, ValidateEvent,
+    ProductIndexRefreshEvent, RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent,
+    SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -47,6 +47,8 @@ pub enum ContractEventPayload {
     MarketplaceListing(MarketplaceListingEvent),
     #[serde(rename = "marketplace_seller")]
     MarketplaceSeller(MarketplaceSellerEvent),
+    #[serde(rename = "product_index_refresh")]
+    ProductIndexRefresh(ProductIndexRefreshEvent),
     #[serde(rename = "rbac_artifact_permission")]
     RbacArtifactPermission(RbacArtifactPermissionEvent),
     #[serde(rename = "rbac_role_mutation")]
@@ -68,6 +70,7 @@ impl ContractEventPayload {
             Self::ForumSearchProjection(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
             Self::MarketplaceSeller(event) => event.event_type(),
+            Self::ProductIndexRefresh(event) => event.event_type(),
             Self::RbacArtifactPermission(event) => event.event_type(),
             Self::RbacRoleMutation(event) => event.event_type(),
             Self::Reactions(event) => event.event_type(),
@@ -84,6 +87,7 @@ impl ContractEventPayload {
             Self::ForumSearchProjection(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
             Self::MarketplaceSeller(event) => event.schema_version(),
+            Self::ProductIndexRefresh(event) => event.schema_version(),
             Self::RbacArtifactPermission(event) => event.schema_version(),
             Self::RbacRoleMutation(event) => event.schema_version(),
             Self::Reactions(event) => event.schema_version(),
@@ -102,6 +106,7 @@ impl ValidateEvent for ContractEventPayload {
             Self::ForumSearchProjection(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),
             Self::MarketplaceSeller(event) => event.validate(),
+            Self::ProductIndexRefresh(event) => event.validate(),
             Self::RbacArtifactPermission(event) => event.validate(),
             Self::RbacRoleMutation(event) => event.validate(),
             Self::Reactions(event) => event.validate(),
