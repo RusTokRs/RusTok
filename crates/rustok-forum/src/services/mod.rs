@@ -50,8 +50,8 @@ mod solution_reconciliation;
 pub mod event;
 #[allow(clippy::collapsible_if, clippy::too_many_arguments)]
 mod mention_relation {
-    include!("mention_relation.rs");
     include!("mention_relation_import.rs");
+    include!("mention_relation.rs");
 }
 pub mod mention_reconciliation;
 #[cfg(test)]
@@ -306,8 +306,7 @@ pub use topic_merge_read_state_reconciliation::{
     MAX_FORUM_TOPIC_MERGE_READ_STATES, ReconcileForumTopicMergeReadStatesInput,
 };
 pub use topic_merge_subscription_reconciliation::{
-    ForumTopicMergeSubscriptionReconciliationResult,
-    ForumTopicMergeSubscriptionReconciliationService,
+    ForumTopicMergeSubscriptionReconciliationResult, ForumTopicMergeSubscriptionReconciliationService,
     MAX_FORUM_TOPIC_MERGE_SUBSCRIPTION_REASON_LEN, MAX_FORUM_TOPIC_MERGE_SUBSCRIPTIONS,
     ReconcileForumTopicMergeSubscriptionsInput,
 };
