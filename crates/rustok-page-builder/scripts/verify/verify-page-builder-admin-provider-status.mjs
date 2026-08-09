@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const failures = [];
 const files = {
+  coreRollout: "crates/rustok-page-builder/src/rollout.rs",
   status: "crates/rustok-page-builder/admin/src/provider_status.rs",
   facade: "crates/rustok-page-builder/admin/src/transport/mod.rs",
   canvas: "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
@@ -68,6 +69,7 @@ for (const key of [
   "provider_status_only_narrows_host_capabilities",
   "provider_status_only_narrows_runtime_flags",
   "effective_runtime_flags_are_canonical",
+  "effective_runtime_flags_delegate_to_shared_page_builder_policy",
   "invalid_rollout_flags_fail_closed_to_unavailable",
   "builder_disabled_forces_read_only",
   "observed_unavailable_health_forces_read_only",
@@ -85,6 +87,10 @@ for (const key of [
 ]) {
   if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
 }
+if (
+  evidence.source_contract?.shared_runtime_policy !==
+  "rustok_page_builder::rollout::effective_provider_runtime_flags"
+) failures.push("shared Page Builder runtime policy identity drifted");
 for (const key of ["tests_run", "static_verifier_run", "cargo_run", "formatting_run", "browser_run", "workflows_or_ci_run"]) {
   if (evidence.source_contract?.[key] !== false) failures.push(`source_contract.${key} must remain false`);
 }
@@ -94,6 +100,15 @@ if (consumerEvidence.format !== "pages_builder_provider_health_consumer_binding_
 if (consumerEvidence.status !== "source_ready_runtime_activation_pending") {
   failures.push("Pages provider-health consumer runtime activation must remain pending");
 }
+
+for (const marker of [
+  "pub fn effective_provider_runtime_flags(",
+  "flags.validate().is_err()",
+  "ProviderHealthState::Unavailable",
+  "ProviderHealthState::Degraded",
+  "effective.publish_enabled = false",
+  "provider_health_runtime_flags_only_narrow_configured_rollout",
+]) need(sources.coreRollout, marker, "shared runtime flag policy");
 
 for (const marker of [
   "pub enum PageBuilderAdminProviderState",
@@ -109,13 +124,15 @@ for (const marker of [
   "!self.flags.publish_enabled",
   "pub fn preview_enabled",
   "pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags",
-  "PageBuilderAdminProviderState::Unavailable => BuilderCapabilityFlags",
-  "PageBuilderAdminProviderState::Degraded =>",
-  "flags.publish_enabled = false",
-  "PageBuilderAdminProviderState::Ready | PageBuilderAdminProviderState::Unobserved",
+  "effective_provider_runtime_flags(&self.flags, self.health.as_ref())",
   "pub fn limit_capabilities",
   "CapabilityState::read_only()",
 ]) need(sources.status, marker, "provider status contract");
+forbid(
+  sources.status,
+  "PageBuilderAdminProviderState::Unavailable => BuilderCapabilityFlags",
+  "admin provider status must delegate runtime flag derivation to shared core policy",
+);
 
 for (const marker of [
   "unobserved_all_on_status_does_not_claim_healthy_or_reduce_capabilities",
@@ -211,4 +228,4 @@ if (failures.length > 0) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-page-builder-admin-provider-status] PASS source_ready=true runtime_narrowing=canonical execution=pending");
+console.log("[verify-page-builder-admin-provider-status] PASS source_ready=true runtime_narrowing=shared execution=pending");
