@@ -1,10 +1,10 @@
 # Pages / Page Builder plan parity actualization — 2026-08-08
 
-Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / execution-acceptance-pending`.
+Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / execution-acceptance-pending`.
 
 ## Current authority
 
-This parity packet now has seven source actualizations:
+This parity packet now has eight source actualizations:
 
 - the earlier Forum composition reconciliation through PR #3320;
 - `docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md`, which supersedes older rollout-specific wording after PRs #3333, #3337, #3345 and #3353;
@@ -12,9 +12,10 @@ This parity packet now has seven source actualizations:
 - `docs/modules/page-builder-provider-health-deployment-metrics-actualization-2026-08-09.md`, which exports the same terminal observations through platform-owned deployment-aggregatable Prometheus metrics and a per-operation freshness signal;
 - `docs/modules/page-builder-provider-health-deployment-identity-actualization-2026-08-09.md`, which defines the exact source/deployment identity and expected-target inventory capture contract;
 - `docs/modules/page-builder-provider-health-deployment-evaluator-actualization-2026-08-09.md`, which defines the fail-closed backend evaluator over identity-admitted targets;
-- `docs/modules/pages-page-builder-provider-health-transport-actualization-2026-08-09.md`, which defines a typed observed-health GraphQL/admin transport with canonical client revalidation while deliberately leaving server owner binding and production consumer activation blocked.
+- `docs/modules/pages-page-builder-provider-health-transport-actualization-2026-08-09.md`, which defines a typed observed-health GraphQL/admin transport with canonical client revalidation while deliberately leaving server owner binding and production consumer activation blocked;
+- `docs/modules/pages-page-builder-provider-health-owner-acceptance-actualization-2026-08-09.md`, which defines the fail-closed owner acceptance packet over retained deployment evaluation while deliberately leaving acceptance execution and server binding pending.
 
-The larger shared/local/central plans remain useful for the full Pages/Page Builder programme. Where an older paragraph still refers to hardcoded Pages rollout flags, rollout binding as pending, a matrix that is only executable but not source-defined, or a reference candidate that consumes only artifact/browser evidence, the rollout actualization is the current source cursor. Where older text says there is no live provider-health observation source or transport at all, the 2026-08-09 provider-health overlays are the current refinement: local Preview/Publish observation, deployment-aggregatable metrics/freshness, exact source/deployment identity + expected-target inventory, the deployment-health evaluator, and typed observed-health transport are source-ready. Pages remains `unobserved` because the exact identity/evaluator packets have not been executed and retained for an admitted deployment, no owner acceptance/server binding exists, and current production consumers still use rollout-only status.
+The larger shared/local/central plans remain useful for the full Pages/Page Builder programme. Where an older paragraph still refers to hardcoded Pages rollout flags, rollout binding as pending, a matrix that is only executable but not source-defined, or a reference candidate that consumes only artifact/browser evidence, the rollout actualization is the current source cursor. Where older text says there is no live provider-health observation, transport or owner-acceptance source at all, the 2026-08-09 provider-health overlays are the current refinement: local Preview/Publish observation, deployment-aggregatable metrics/freshness, exact source/deployment identity + expected-target inventory, the deployment-health evaluator, typed observed-health transport, and the owner acceptance packet are source-ready. Pages remains `unobserved` because the exact identity/evaluator packets and owner acceptance have not been executed and retained for an admitted deployment, no server binding exists, and current production consumers still use rollout-only status.
 
 ## Current source truth
 
@@ -29,7 +30,7 @@ The synchronized source boundary is now:
 - the four canonical rollout profiles have a bounded real-consumer runtime-matrix harness with production settings writes, Pages reads, UI/SSR/bypass checks and verified settings restoration;
 - standalone browser-intent denial remains the distinct `FLY_CAPABILITY_DENIED` security contract;
 - the canonical provider degraded error catalog is separately proved through a non-mutating server-owned `feature-disabled / FEATURE_DISABLED` capability preflight;
-- the reference candidate requires artifact/HTTP, browser, runtime-matrix and canonical feature-preflight packets bound to one exact source/deployment chain;
+- the reference candidate requires artifact/HTTP, browser, rollout runtime matrix and canonical feature-preflight packets bound to one exact source/deployment chain;
 - default Fly composition retains bounded process-local Preview/Publish terminal observations through the existing runtime-telemetry seam, with a 256-sample cap per operation and no health snapshot below 20 Preview plus 20 Publish samples;
 - the same matched terminal calls export platform-owned Prometheus duration histograms, terminal outcome counters and per-operation last-observation timestamps with fixed `preview|publish` / terminal-outcome labels only;
 - deployment metrics deliberately carry no tenant/page/revision/correlation/deployment application labels; scrape/discovery infrastructure owns target identity and reset-aware aggregation;
@@ -40,15 +41,17 @@ The synchronized source boundary is now:
 - Prometheus `time()` is the evaluator clock; the query window is explicitly bounded to 300..86400 seconds and Preview/Publish freshness is required for every expected target with an explicit freshness bound no larger than that window;
 - evaluator aggregation is reset-aware through `increase(...)`, requires at least 20 Preview and 20 Publish terminal completions, sums cumulative histogram buckets across admitted targets before p95 evaluation, and applies the same 1500ms / 3000ms / 1% / 1% provider-health policy as Rust `ProviderHealthSnapshot::evaluate`;
 - a retained deployment health evaluator packet can therefore contain a deployment-bound provider snapshot and SLO evaluation without raw Prometheus URL, raw PromQL, raw backend responses, raw target matcher values or credential values;
-- Pages GraphQL now has a typed optional provider-health payload alongside `providerHealthObserved`, while the current server owner still returns literal `provider_health_observed: false` plus `provider_health: None`;
-- the stateless admin transport enforces boolean/payload consistency, rejects negative latency or non-finite/out-of-range failure rates, recomputes canonical `ProviderHealthSnapshot::evaluate`, and rejects transported state/reasons that do not match that canonical result;
+- Pages GraphQL has a typed optional provider-health payload alongside `providerHealthObserved`, while the current server owner still returns literal `provider_health_observed: false` plus `provider_health: None`;
+- the stateless admin transport enforces boolean/payload consistency, rejects invalid failure rates, recomputes canonical `ProviderHealthSnapshot::evaluate`, and rejects transported state/reasons that do not match that canonical result;
 - `PagesBuilderRolloutSnapshot` can retain validated optional health and derive `PageBuilderAdminProviderStatus`, but current workspace, authoritative SSR facade and standalone browser-intent paths deliberately continue to consume flags only;
-- typed observed-health transport therefore cannot silently promote health before retained runtime evidence and owner acceptance/server binding exist;
+- the owner acceptance packet runner admits only retained `page_builder_provider_health_deployment_evaluation_v1` evidence under repository `target/`, requires evaluation source commit to equal checkout `HEAD`, rehashes the evaluator source set against the checkout, rejects incomplete target/sample/histogram populations and recomputes health state/reasons/SLO evaluation before recording any decision;
+- accepted owner evidence requires explicit `accept_for_pages_binding` plus rollback action `restore_unobserved_provider_health`; rejection is also retained, while the owner identifier is explicitly an operator assertion rather than a cryptographic signature;
+- an accepted owner acceptance packet can authorize a future server binding, but source readiness does not perform that binding and cannot silently promote Pages health;
 - raw metrics target URLs, metric bodies and credential values are not retained by identity capture; target URL/body digests and credential environment names are retained instead;
 - the image RepoDigest association remains a maintainer-reviewed external fact because the running process cannot cryptographically derive its post-push RepoDigest from source SHA alone;
-- source inspection does not execute target identity capture, Prometheus queries or the deployment evaluator and does not produce runtime health evidence;
+- source inspection does not execute target identity capture, Prometheus queries, the deployment evaluator or owner acceptance and does not produce runtime health evidence;
 - the process-local window remains restartable and is not deployment-wide health authority; pre-telemetry validation/inspection is outside its current measurement boundary;
-- Pages remains `unobserved`: `provider_health_observed = false` and current admin provider health are intentionally not promoted until a retained deployment health evaluator packet exists for the admitted deployment and owner acceptance/server binding is explicit;
+- Pages remains `unobserved`: `provider_health_observed = false` and current admin provider health are intentionally not promoted until retained deployment evaluator evidence and an accepted owner acceptance packet exist for the admitted deployment and the server binding revalidates exact deployment authority;
 - `pages_reference_consumer_gate` remains `accepted = false` and `execution_gate = pending`;
 - Forum browser/runtime/deployment evidence and observed Wave remain blocked by the Pages gate;
 - FFA/FBA promotion remains unclaimed.
@@ -78,13 +81,14 @@ bounded process-local Preview/Publish observation [source-ready]
 -> exact source/deployment identity + expected-target inventory contract [source-ready]
 -> deployment health backend evaluator [source-ready]
 -> typed observed-health transport [source-ready]
--> live exact-target identity capture + retained deployment health evaluator packet [maintainer execution pending]
--> owner acceptance + server provider-health binding [blocked]
--> UI / SSR / browser-intent provider-health binding [blocked]
+-> owner acceptance packet [source-ready / maintainer execution pending]
+-> live exact-target identity capture + retained deployment health evaluator packet + accepted owner packet [maintainer execution pending]
+-> server provider-health binding [blocked on accepted owner packet]
+-> UI / SSR / browser-intent provider-health binding [blocked on server binding]
 -> observed-health acceptance decision [pending]
 ```
 
-Source inspection alone must not mark any execution or acceptance step complete. Raw/process-local, unbound Prometheus observations, a source-ready inventory contract without a live complete target capture, a source-ready evaluator without retained runtime output, or a typed transport without owner-bound server authority must not be substituted for exact deployment provider-health evidence.
+Source inspection alone must not mark any execution or acceptance step complete. Raw/process-local, unbound Prometheus observations, a source-ready inventory contract without a live complete target capture, a source-ready evaluator without retained runtime output, a typed transport without owner-bound server authority, or an unexecuted owner acceptance packet source must not be substituted for exact deployment provider-health evidence.
 
 ## Anti-drift guard
 
@@ -109,15 +113,16 @@ crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-de
 crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
 crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
+crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
 ```
 
-The first guard locks the bounded process-local window. The second locks platform metric names, bounded label vocabulary, registry wiring and reset-aware aggregation/freshness source. The third locks release source identity, build-info, complete expected-target inventory and fail-closed direct capture. The fourth locks complete backend target mapping, exact-source window admission, backend-clock freshness, sample floors, histogram aggregation and Rust health-policy parity. The fifth locks the typed GraphQL/admin health shape, boolean/payload consistency, canonical client re-evaluation and the continued absence of server/UI/SSR/browser-intent health binding.
+The first guard locks the bounded process-local window. The second locks platform metric names, bounded label vocabulary, registry wiring and reset-aware aggregation/freshness source. The third locks release source identity, build-info, complete expected-target inventory and fail-closed direct capture. The fourth locks complete backend target mapping, exact-source window admission, backend-clock freshness, sample floors, histogram aggregation and Rust health-policy parity. The fifth locks the typed GraphQL/admin health shape, boolean/payload consistency, canonical client re-evaluation and the continued absence of server/UI/SSR/browser-intent health binding. The sixth locks the owner acceptance packet, exact evaluator/source/deployment admission, canonical health/SLO re-evaluation, explicit rollback action and continued absence of server binding.
 
 The Pages reference-consumer gate continues to list the plan-parity verifier as a required source guard.
 
 ## Execution boundary
 
-No tests, Node verifiers, Cargo commands, formatting, builds, Prometheus scrapes, backend queries, deployment identity captures, evaluator executions, GraphQL/HTTP requests, Playwright/browser runs, workflows, CI, migrations or runtime evidence were executed by this slice.
+No tests, Node verifiers, Cargo commands, formatting, builds, Prometheus scrapes, backend queries, deployment identity captures, evaluator executions, owner acceptance executions, GraphQL/HTTP requests, Playwright/browser runs, workflows, CI, migrations or runtime evidence were executed by this slice.
 
 Suggested maintainer commands, intentionally not run:
 
@@ -128,6 +133,7 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-heal
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-server-snapshot.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
 ```
