@@ -1579,14 +1579,22 @@ the complete predecessor role composition, including embedded Leptos assets,
 and deploys already retained and revalidated immutable bytes rather than
 compiling during the incident.
 
+`rustok-build` owns canonical role-plan/validation primitives, while
+`rustok-static-distribution-worker` is the sole static role-bundle
+executor/publisher and returns one canonical receipt. Release identity binds
+the immutable bundle; live topology, controller authority, observations, and
+deployment receipts bind the rollout operation. Outside-candidate recovery
+uses atomically reserved single-operation authority whose exact replay resumes
+idempotently and whose divergent replay is denied.
+
 The target adds one crash-recoverable operation, canonical conflict-set
 acquisition, one automatic attempt, trusted candidate-attributed health
 evaluation, pre-traffic recovery after predecessor displacement, an
 outside-candidate static control path, mixed N/N+1 data and bounded drain
 evidence, and a point-of-no-return gate before irreversible effects. It never
 automatically restores production data. The current direct `rustok-build`
-operator rollback,
-rebuild-on-rollback path, and caller-selected artifact migration mode are
+operator rollback, rebuild-on-rollback path, and caller-selected artifact
+migration mode are
 removed atomically with their canonical replacement; no compatibility path is
 retained.
 

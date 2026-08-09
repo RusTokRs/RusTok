@@ -255,8 +255,9 @@ The target owner retains and revalidates the complete direct-predecessor role
 bundle before rollout, then redeploys those exact immutable server, worker,
 embedded Leptos, generated-registry, and browser-asset bytes through the normal
 desired/observed reconciler. Rebuild remains reproducibility evidence or a
-manual fallback. The current rebuild request is therefore an explicit cutover
-gap, not the completed automatic recovery path.
+separately admitted maintenance update through the same owner lifecycle; it is
+never a rollback fallback. The current rebuild request is therefore an
+explicit cutover gap, not the completed automatic recovery path.
 
 `ModuleControlPlane::static_distribution_rollout` owns the next deployment
 boundary. A topology resolver returns one sorted, bounded node set with a

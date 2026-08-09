@@ -3076,7 +3076,9 @@ distribution mode, not the default marketplace installation path.
   `rustok-modules` must retain and revalidate the complete direct-predecessor
   role bundle before rollout and recover it through the normal desired/observed
   deployment reconciler. Rebuild remains admission/reproducibility evidence or
-  a manual fallback; missing predecessor bytes makes automatic mode ineligible.
+  a separately admitted maintenance update through the same owner lifecycle;
+  it is never a rollback fallback, and missing predecessor bytes makes
+  automatic mode ineligible.
 - [ ] Require source availability, trusted ownership, dependency audit, tests,
   static review, and platform-team approval. Approval now requires immutable
   ownership, dependency-audit, test, and static-review evidence references and

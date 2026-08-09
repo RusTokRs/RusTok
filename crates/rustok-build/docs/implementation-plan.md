@@ -19,10 +19,12 @@ The accepted
 [module release safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
 makes `rustok-modules` the sole operator-level owner of static release
 selection, predecessor eligibility, rollback, incident outcome, and
-desired-versus-observed rollout. `rustok-build` remains the executor and
-receipt owner for immutable role builds and publication; its receipts must bind
-every automated server/worker role and embedded Leptos/browser artifact in the
-requested distribution.
+desired-versus-observed rollout. `rustok-build` remains the plan/validation
+owner for canonical role builds and shared non-operator build primitives.
+`rustok-static-distribution-worker` is the sole static role-bundle
+executor/publisher and returns one canonical digest-bound role-bundle receipt
+covering every automated server/worker role and embedded Leptos/browser
+artifact. `rustok-build` must not retain a second static publisher.
 
 The current public active-release head and `rollback_build` mutation are an
 explicit cutover gap. Once the `rustok-modules` replacement, outside-candidate

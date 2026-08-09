@@ -40,8 +40,11 @@ the accepted
 The atomic target makes `rustok-modules` the sole operator-level owner of
 static release selection, predecessor eligibility, recovery, desired/observed
 rollout, and incident outcome. `rustok-build` remains the immutable role-build
-and publication executor and returns digest-bound receipts; it does not retain
-an independent public active-release head or rollback command.
+plan/validation owner and shared non-operator build foundation.
+`rustok-static-distribution-worker` is the sole static role-bundle
+executor/publisher and returns one canonical digest-bound receipt.
+`rustok-build` retains neither a second static publisher nor an independent
+public active-release head or rollback command.
 
 The cutover migrates all GraphQL, native, and CLI callers and removes the
 duplicate head, mutation, event/DTO surface, schema, tests, and current

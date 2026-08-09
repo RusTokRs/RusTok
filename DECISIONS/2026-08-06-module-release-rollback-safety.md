@@ -49,9 +49,11 @@ remains correct after live writes or an irreversible effect.
 Production versioning, update safety, rollback eligibility, and incident
 outcome are one `rustok-modules`-owned lifecycle. A production release is an
 immutable identity binding source, dependency lock, build/test evidence,
-artifact and role digests, admission/policy facts, migration facts, and
-executor facts. Live topology, controller authority, node observations, and
-deployment receipts belong to a rollout operation rather than the release.
+artifact/UI and role digests, declared migration/data-contract facts, and
+executor identity. Immutable admission evidence is attached to the release
+record, but current policy/security revisions, topology, controller authority,
+node observations, and deployment receipts belong to an update/rollout
+operation. Changing those live facts does not create a new artifact release.
 
 `rustok-modules` is the sole operator-level owner of:
 
@@ -64,10 +66,13 @@ deployment receipts belong to a rollout operation rather than the release.
   outcome; and
 - the shared operator projection and command result.
 
-`rustok-build` remains an immutable role-build/publication executor that
-returns receipts. `rustok-migrations` remains the neutral trusted migration
-executor. Sandboxes and deployment agents execute narrow owner-authorized work.
-None owns a second update, rollback, or incident decision.
+`rustok-build` owns canonical role-plan construction/validation and shared
+non-operator build primitives. `rustok-static-distribution-worker` is the sole
+trusted executor/publisher for an owner-authorized complete static role bundle
+and returns one canonical static role-bundle receipt. There is no second static
+publisher. `rustok-migrations` remains the neutral trusted migration executor.
+Sandboxes and deployment agents execute narrow owner-authorized work. None owns
+a second update, rollback, or incident decision.
 
 The atomic implementation cutover removes the public `rustok-build` active
 release/rollback mutation, its duplicate mutable head, and every direct
@@ -89,16 +94,17 @@ not mutation targets.
 ### Static Incident Path
 
 Automatic static recovery redeploys the retained immutable direct-predecessor
-role bundle. Before the candidate serves, the owner must prove that all required
-server, worker, embedded Leptos, generated-registry, and browser-asset bytes and
-receipts are retained; rehash them; and revalidate current admission, security,
+role bundle. Before candidate rollout begins, the owner must prove that all
+required server, worker, embedded Leptos, generated-registry, and browser-asset
+bytes and receipts are retained; rehash them; and revalidate current admission, security,
 policy, data compatibility, topology, and deployment authority.
 
 Rollback creates a new audited transition but neither edits artifact bytes nor
 compiles a replacement. It uses the normal desired/observed rollout reconciler,
 and succeeds only when the predecessor role bundle is observed healthy.
-Rebuild remains release-admission/reproducibility evidence or a manual recovery
-fallback. Missing predecessor bytes or evidence makes automatic mode
+Rebuild remains release-admission/reproducibility evidence or a separately
+admitted maintenance update through the same owner lifecycle. It is never a
+rollback fallback. Missing predecessor bytes or evidence makes automatic mode
 ineligible.
 
 ### Executable Transition Decision
@@ -115,6 +121,14 @@ retention, recovery evidence, and evidence digests. The owner reloads these
 facts under revision/fence checks before every state-changing transition.
 Missing, stale, contradictory, or unverifiable evidence fails closed into
 maintenance.
+
+Preflight requires no conflicting nonterminal operation and converged selected,
+desired, and observed-serving state across the conflict set. It returns an
+immutable preview of mode, mutation unit, blast radius, denial/eligibility
+reasons, rollback-window effect, migration/point-of-no-return facts, fences,
+and recovery action. Apply binds that exact receipt; changed evidence requires
+a fresh preview. Static composition and maintenance updates require explicit
+confirmation.
 
 The current caller-selected `migration_rollback_mode` authority is removed.
 Migration policy retains the existing `reversible`, `compensating`, and
@@ -155,18 +169,26 @@ a hidden two-hop rollback target.
 One owner operation derives the complete conflict-key set for the rollback
 unit, schema/data owners, dependency and active-dependent installations,
 topology, and affected namespaces. It acquires or fences that set atomically in
-canonical order before mutation; a scope-local lease cannot authorize a
-cross-scope change. The set serializes update, rollback,
+the fixed release-unit, data/migration-owner, namespace, and topology order
+before mutation; a scope-local lease cannot authorize a cross-scope change.
+The set serializes update, rollback,
 disable/deactivate/uninstall, quarantine/revoke,
 migration/backfill/finalization, restore/purge, and retention collection. Every
 external phase has immutable request binding, monotonic checkpoint, fenced
 lease, idempotent terminal receipt, and restart reconciliation. Process or node
-loss cannot create a second automatic attempt.
+loss cannot create a second automatic attempt. Transactional phases use CAS and
+idempotency; leases are limited to asynchronous or external work.
 
 Before the first compensating or irreversible effect, the owner durably closes
 automatic eligibility and establishes required traffic, job, and write fences.
 A crash never reopens that gate. Failure after it creates a
 recovery-required outcome.
+
+Maintenance execution proceeds from that gate through the exact authorized
+migration/effect and candidate rollout to observed serving health. It is not
+accepted at the gate. Any migration, rollout, or health failure after the gate
+is recovery-required. Cancellation before the gate is safe; a failed candidate
+is never automatically retried and requires a fresh update/preflight.
 
 Trusted observations are fresh and bound to the exact release, rollout scope,
 topology, and pinned health policy. Module self-report, ordinary business/input
@@ -175,13 +197,22 @@ provider outage cannot alone authorize module rollback. A dependency symptom
 counts only when a bounded predecessor/control cohort remains healthy and the
 pinned policy attributes the regression to the candidate. Quarantine,
 revocation, policy, topology, migration, and retention changes preempt stale
-decisions.
+decisions. Quarantine/revocation atomically cancels or supersedes a conflicting
+stale operation rather than waiting behind its external lease.
+
+A single-node topology cannot use statistical attribution that requires a
+control cohort. If trusted telemetry remains missing after candidate traffic
+until the pinned deadline, candidate traffic is fenced and the operation runs
+its one recovery when eligibility remains proven; otherwise it becomes
+recovery-required.
 
 Static recovery authority and its bounded evaluator remain available outside
 the candidate application and embedded UI. The deployment controller receives
 only the exact operation, candidate, predecessor, topology, policy, deadline,
-and one-use recovery authorization; it cannot select releases, run DDL, or
-restore data.
+and single-operation recovery authorization. Reservation/consumption is
+persisted atomically: exact same-operation replay resumes idempotently, while a
+divergent request or second operation is denied. The controller cannot select
+releases, run DDL, or restore data.
 
 ### Data, Durable Work, and Finalization
 
@@ -229,7 +260,8 @@ Recovery fences traffic/writes/workers, preserves the failed live state,
 restores into an isolated or empty target, verifies identities, security,
 domain invariants, objects, projections, outbox/offsets and external effects,
 records measured RPO/RTO, and only then performs a separately authorized
-cutover or merge.
+cutover. The platform defines no generic merge into live data; any merge is an
+owner-specific, tested, separately authorized recovery contract.
 
 ### Frontend Boundary
 
@@ -252,10 +284,15 @@ readiness, health, and rollback and cannot claim success for this lifecycle.
   rollback windows, migration/point-of-no-return facts, fence state,
   eligibility/denial reasons, recovery progress, and sanitized diagnostics.
 - Automatic recovery succeeds only after the direct predecessor is observed
-  healthy. A pointer write, queued build, or process launch is intermediate.
-- Manual rollback uses the same executable decision, direct-predecessor rule,
-  fence, and convergence definition and is available only while current facts
-  prove eligibility.
+  healthy and every required durable-work/external-effect reconciliation is
+  terminal. A pointer write, queued build, process launch, or restored traffic
+  with unresolved reconciliation is intermediate.
+- Manual rollback uses a fresh executable decision, direct-predecessor rule,
+  fence set, and convergence definition. Its window begins at candidate
+  acceptance, after retention started before rollout, and closes at
+  finalization or the next converged update; current configuration, security,
+  dependency, data, migration, and retention facts can make it ineligible
+  sooner.
 - Full logs remain protected, tenant-isolated, bounded, redacted, and separate
   from typed owner receipts and fixed-cardinality metrics.
 - Verification includes mixed N/N+1 reads/writes and durable work, process loss

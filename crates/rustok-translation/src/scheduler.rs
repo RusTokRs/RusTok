@@ -367,7 +367,7 @@ mod tests {
     use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
     use rustok_storage::{
         LocalStorageConfig,
-        object_store::{ObjectStore, path::Path as ObjectPath},
+        object_store::{ObjectStoreExt, path::Path as ObjectPath},
     };
     use sea_orm::{
         ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DbBackend, EntityTrait,

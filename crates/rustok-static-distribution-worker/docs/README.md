@@ -4,6 +4,12 @@ The worker is a trusted native-distribution CI boundary. It is intentionally a
 different process from `rustok-module-build-worker`, which compiles untrusted
 module source into sandbox artifacts.
 
+The accepted release-safety target makes this worker the sole executor and
+publisher of the complete static role bundle. It consumes the canonical role
+plan, emits one digest-bound role-bundle receipt, and owns no release or rollout
+decision. `rustok-build` must not provide a parallel static publisher; see the
+[release safety ADR](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md).
+
 ## Runtime contract
 
 Startup requires the following fixed deployment configuration:

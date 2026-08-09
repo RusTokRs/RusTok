@@ -89,7 +89,7 @@ the old operator paths as compatibility fallbacks.
 
 | Term | Meaning |
 | --- | --- |
-| release | Immutable source, dependency, build, artifact, admission, policy, and executor identity |
+| release | Immutable source, dependency, build, artifact/UI, declared migration/data-contract, and executor identity; live policy and rollout facts are separate |
 | selected release | Owner-selected durable intent |
 | desired rollout | Exact release and role state that the deployment operation must converge |
 | serving release | Release actually observed serving the recorded rollout scope |
@@ -128,10 +128,12 @@ new artifact release.
 
 Automatic static recovery must not compile on the incident critical path. The
 exact predecessor artifacts must already be retained and revalidated before
-the candidate serves. A rebuild remains release-admission and reproducibility
-evidence, or a new fully admitted update; it is not the automatic recovery
-action. This decision supersedes the rebuild-on-rollback portion of the static
-promotion boundary. The current direct `rustok-build` release rollback and the
+candidate rollout begins. A rebuild remains release-admission and
+reproducibility evidence, or a separately admitted maintenance update through
+the same owner lifecycle; it is never a rollback fallback. This decision
+supersedes the
+rebuild-on-rollback portion of the static promotion boundary. The current
+direct `rustok-build` release rollback and the
 current rebuild-on-failure path must be replaced together, leaving one
 `rustok-modules`-owned transition.
 
@@ -144,7 +146,8 @@ rollout checks.
 | Owner | Responsibility in this plan |
 | --- | --- |
 | `rustok-modules` | Update request, executable preflight decision, direct predecessor, operation/fence state, observation policy, automatic recovery authorization, incident outcome, retention hold, and operator projection |
-| `rustok-build` and static build workers | Exact build job and immutable artifact/evidence execution behind an owner port; no independent operator rollback or release-safety decision |
+| `rustok-build` | Canonical role-build plan construction/validation and shared non-operator build primitives; no static release head, rollback command, or second static publisher |
+| `rustok-static-distribution-worker` | Sole trusted executor and publisher for one owner-authorized complete static role bundle; returns the single canonical static role-bundle receipt |
 | `rustok-migrations` and operations CLI adapters | Validate and execute only the exact owner-approved native migration phase; they do not choose update mode, rollback target, or restore policy |
 | `rustok-sandbox` | Bounded dynamic-artifact execution evidence; it does not prove database safety or own production activation |
 | deployment controller and node agents | Apply only the exact desired role artifacts, enforce an operation-bound recovery authorization when application nodes are unavailable, and report authenticated topology-bound observations |
@@ -153,9 +156,11 @@ rollout checks.
 
 The controller that can recover a failed static rollout must run outside the
 candidate application process. It receives only one immutable operation,
-candidate, direct predecessor, topology, health policy, deadline, and one-use
-recovery authorization. It cannot choose another release, run DDL, restore
-data, or widen scope.
+candidate, direct predecessor, topology, health policy, deadline, and
+single-operation recovery authorization. The owner reserves/consumes that
+authorization atomically: an exact same-operation replay resumes idempotently,
+while any divergent request or second operation is denied. The controller
+cannot choose another release, run DDL, restore data, or widen scope.
 
 ## Non-Negotiable Safety Invariants
 
@@ -236,7 +241,7 @@ flowchart TD
     D --> E["Candidate first serves; observation starts"]
     E -->|healthy| F["Candidate accepted"]
     E -->|candidate-attributed failure| G["One direct-predecessor recovery"]
-    G -->|predecessor observed healthy| H["Recovered with incident evidence"]
+    G -->|predecessor healthy and reconciliation terminal| H["Recovered with incident evidence"]
     G -->|return fails or target becomes ineligible| I["Stopped or fenced; recovery required"]
     B -->|maintenance| J["Recovery point and fences verified"]
     J -->|not ready or safely cancelled| C
@@ -276,8 +281,10 @@ The preflight receipt binds at least:
 - retained predecessor and recovery-point readiness; and
 - normalized denial reasons and evidence references.
 
-Missing or stale evidence selects maintenance. A module-wide statement such as
-“reversible” is necessary evidence where applicable, but never sufficient.
+Missing or stale automatic evidence selects maintenance. If the required
+maintenance recovery/fence evidence is also unavailable, preflight rejects the
+update. A module-wide statement such as “reversible” is necessary evidence
+where applicable, but never sufficient.
 
 Preflight returns an immutable operator preview containing the exact mode,
 changed lock graph or static composition, scope and blast radius, denial and
@@ -355,6 +362,11 @@ automatic eligibility. A failure after that point becomes
 tested compensation, or separately authorized isolated restore/cutover.
 Returning predecessor code is allowed only after that procedure proves the
 predecessor compatible with the resulting live state.
+
+Committing the gate is not success. The owner must execute the exact authorized
+migration/effect, roll out the candidate, and observe serving health. Any
+migration, rollout, or health failure after the gate remains
+`recovery_required`.
 
 ### Manual Rollback
 
@@ -576,6 +588,10 @@ server and embedded Leptos UI. Next.js remains outside the profile.
 - [ ] Make `rustok-modules` the one operator-level transition owner while
   retaining `rustok-build`, `rustok-migrations`, sandbox, and deployment as
   narrow execution/evidence ports.
+- [ ] Keep one static build layering: `rustok-build` owns the canonical role
+  plan/validation primitives, `rustok-static-distribution-worker` is the sole
+  complete role-bundle executor/publisher, and one unversioned role-bundle
+  receipt crosses back to `rustok-modules`.
 - [ ] Atomically remove the current direct `rustok-build` operator rollback and
   rebuild-on-rollback path when the canonical replacement and every caller are
   ready.
@@ -612,11 +628,12 @@ server and embedded Leptos UI. Next.js remains outside the profile.
   canonical conflict-key set across rollback units, data/schema owners,
   dependencies/dependents, topology, and affected namespaces.
 - [ ] Persist monotonic phases, one automatic attempt, immutable requests,
-  leases, idempotent receipts, outbox facts, and restart reconciliation.
+  external-work leases, idempotent receipts, outbox facts, and restart
+  reconciliation; transactional phases use CAS rather than leases.
 - [ ] Revalidate security, policy, topology, checkpoint, and predecessor
   retention before every mutation.
 - [ ] Add the outside-candidate automatic evaluator/control path with
-  operation-bound authority.
+  atomically reserved same-operation replay authority.
 
 ### 3. Implement the Safe Data Path
 
@@ -648,7 +665,9 @@ server and embedded Leptos UI. Next.js remains outside the profile.
 
 - [ ] Bind the full server/role composition, platform-native and promoted
   modules, embedded Leptos artifacts, generated registries, browser assets,
-  migration plan, and topology to one immutable release.
+  and declared migration/data contract to one immutable release.
+- [ ] Bind live topology, controller authority, observations, and deployment
+  receipts to the rollout operation rather than the release identity.
 - [ ] Retain and revalidate the complete predecessor artifact set before
   candidate rollout; protect it from GC while any operation/window/incident or
   legal/audit hold exists.
@@ -691,6 +710,9 @@ server and embedded Leptos UI. Next.js remains outside the profile.
 | authority | forged caller `reversible`/`compensating` input, stale receipt, wrong tenant/scope/topology, or untrusted module health cannot authorize rollback |
 | concurrency | platform update vs tenant rollback, shared-schema/dependency finalization, graph revision, and rollback/revoke/uninstall/restore/GC races atomically fence the complete conflict set without deadlock or partial acquisition |
 | crash recovery | process loss before and after every external effect/checkpoint/outbox boundary resumes exact work and never creates a second automatic attempt |
+| recovery authorization | exact replay resumes the same reserved outside-candidate action; divergent replay or another operation cannot consume or create a second authorization |
+| build layering | only the static-distribution worker publishes one complete role bundle and canonical receipt; `rustok-build` cannot publish a competing static release |
+| release identity | changing topology/controller/observations creates or revises a rollout operation without changing immutable release identity |
 | health attribution | candidate crash triggers recovery; PostgreSQL, broker, network, or provider outage alone does not; single-node mode rejects statistical triggers requiring a control cohort |
 | mixed fleet | concurrent N and N+1 reads/writes, configuration, APIs, bindings, caches/indexes, events, outbox, schedules, and jobs remain correct before and after return to N |
 | durable work | N+1-pinned retry after rollback uses a no-new-work/no-traffic item authorization or is safely cancelled/visibly dead-lettered; revocation blocks drain and no item is silently rerouted or lost |
@@ -703,6 +725,8 @@ server and embedded Leptos UI. Next.js remains outside the profile.
 | preview/cancel | stale apply or unconfirmed static/maintenance preview is rejected; cancellation before mutation is clean, while cancellation after predecessor displacement follows recovery policy |
 | release succession | `N -> N+1 -> N+2` closes old code-rollback eligibility but preserves unfinished compatibility, cleanup, client/work, recovery, and hold obligations while rollback remains direct-predecessor only |
 | telemetry deadline | missing trusted telemetry after candidate traffic fences candidate traffic and yields one proven recovery or `recovery_required`, never indefinite observation |
+| maintenance convergence | point-of-no-return is followed by the authorized effect and observed candidate health; no post-gate failure can be reported accepted |
+| manual rollback | original update preview is never authority; fresh current evidence controls eligibility and denial is projected immediately |
 | finalization | cleanup is denied while any old node/work/client lifetime, backfill, incident, recovery, or hold remains |
 | restore drill | isolated restore verifies identity, security state, domain invariants, objects, projections, outbox/offset reconciliation, external effects, and measured RPO/RTO |
 | bounded recovery | snapshot capacity/age or incomplete restore evidence blocks maintenance preflight rather than claiming recoverability |
@@ -727,6 +751,8 @@ This plan is complete only when:
   observed healthy direct predecessor with one attempt and operator diagnostics;
 - static recovery works while all candidate application/UI nodes are down;
 - no direct `rustok-build` or module-local operator rollback remains;
+- exactly one static role-bundle executor/publisher and one canonical receipt
+  remain, with live topology and deployment evidence bound only to operations;
 - automatic-eligible modules pass mixed N/N+1 data and durable-work evidence;
 - the point-of-no-return and finalization gates prevent unsafe code rollback;
 - snapshots/restores are bounded, separately authorized, and rehearsed without
@@ -746,4 +772,5 @@ This plan is complete only when:
 - [Module control-plane consolidation plan](./module-control-plane-consolidation-plan.md)
 - [`rustok-modules` implementation plan](../../crates/rustok-modules/docs/implementation-plan.md)
 - [`rustok-build` implementation plan](../../crates/rustok-build/docs/implementation-plan.md)
+- [`rustok-static-distribution-worker` documentation](../../crates/rustok-static-distribution-worker/README.md)
 - [`rustok-migrations` documentation](../../crates/rustok-migrations/README.md)

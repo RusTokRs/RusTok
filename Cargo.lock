@@ -13146,6 +13146,7 @@ dependencies = [
  "chrono",
  "flex",
  "hex",
+ "prometheus",
  "rustok-api",
  "rustok-channel",
  "rustok-content",

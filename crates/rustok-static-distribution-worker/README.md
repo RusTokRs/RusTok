@@ -40,6 +40,17 @@ executor boundary for reviewed native module promotions.
 - It does not share the untrusted WASM module-build worker process.
 - It does not provide a plaintext, in-process, or generation-suffixed service.
 
+## Planned Release-Safety Integration
+
+Under the accepted
+[module release rollback safety decision](../../DECISIONS/2026-08-06-module-release-rollback-safety.md),
+this worker is the sole static role-bundle executor and publisher.
+`rustok-build` supplies canonical role-plan/validation primitives but is not a
+second static publisher. The worker must produce one canonical digest-bound
+receipt covering every required server/worker role, embedded Leptos artifact,
+generated registry, and browser asset. `rustok-modules` alone admits that
+receipt into a release and owns rollout or recovery.
+
 ## Interactions and entry points
 
 - `src/main.rs` configures the mutually authenticated listener.

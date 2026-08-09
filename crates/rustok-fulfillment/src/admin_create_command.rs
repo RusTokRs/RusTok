@@ -332,7 +332,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
 }
 
 fn deserialize_create_label_result(
-    context: &PortContext,
+    _context: &PortContext,
     owner_operation: &'static str,
     operation: &provider_operation::Model,
 ) -> Result<FulfillmentProviderOperationResult, PortError> {

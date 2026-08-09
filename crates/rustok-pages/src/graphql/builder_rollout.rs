@@ -205,6 +205,7 @@ fn ensure_pages_read_authority(auth: &AuthContext, tenant: &TenantContext) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     fn tenant(id: Uuid) -> TenantContext {
         TenantContext {

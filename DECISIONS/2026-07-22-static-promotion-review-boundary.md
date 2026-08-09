@@ -150,9 +150,10 @@ Rollback creates a new audited owner transition to that exact retained
 predecessor and converges it through the normal desired/observed rollout
 boundary. It neither edits old bytes nor queues a replacement build, and it is
 successful only when the predecessor role bundle is observed healthy. Rebuild
-remains reproducibility evidence or a separately authorized manual recovery
-fallback. Revocation or quarantine preempts a stale rollback decision and
-cancels any transition involving the affected release.
+remains reproducibility evidence or a separately admitted maintenance update
+through the same owner lifecycle; it is never a rollback fallback. Revocation
+or quarantine preempts a stale rollback decision and cancels any transition
+involving the affected release.
 
 ## Consequences
 
