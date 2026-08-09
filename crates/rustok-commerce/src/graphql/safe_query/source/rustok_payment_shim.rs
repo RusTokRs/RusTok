@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
+use ::rustok_api::{PortContext, PortError as OwnerPortError, PortErrorKind};
 use ::rustok_payment::{
-    dto::{
-        ListPaymentCollectionsInput, ListRefundsInput, PaymentCollectionResponse, RefundResponse,
-    },
-    error::PaymentError as OwnerPaymentError,
+    LatestPaymentCollectionByOrderRequest, ListPaymentCollectionProjectionsRequest,
+    ListRefundProjectionsRequest, PaymentAdminReadPort, PaymentCartReadPort,
+    PaymentCollectionResponse, PaymentOrderReadPort, ReadPaymentCollectionProjectionRequest,
+    ReadRefundProjectionRequest, RefundResponse, ReusablePaymentCollectionByCartRequest,
+    dto::{ListPaymentCollectionsInput, ListRefundsInput},
 };
 use ::sea_orm::DatabaseConnection;
 use ::uuid::Uuid;
@@ -19,10 +23,6 @@ impl std::fmt::Debug for PaymentQueryDiagnosticError {
     }
 }
 
-fn text_shape(value: &str) -> &'static str {
-    if value.is_empty() { "empty" } else { "present" }
-}
-
 fn uuid_shape(value: &Uuid) -> &'static str {
     if value.is_nil() {
         "uuid_nil"
@@ -31,43 +31,25 @@ fn uuid_shape(value: &Uuid) -> &'static str {
     }
 }
 
-fn owner_detail(error: &OwnerPaymentError) -> (&'static str, usize) {
-    match error {
-        OwnerPaymentError::Validation(value) => (text_shape(value), value.chars().count()),
-        OwnerPaymentError::PaymentCollectionNotFound(value)
-        | OwnerPaymentError::PaymentNotFound(value)
-        | OwnerPaymentError::RefundNotFound(value) => (uuid_shape(value), 0),
-        OwnerPaymentError::InvalidTransition { from, to } => (
-            "two_status_values",
-            from.chars().count().saturating_add(to.chars().count()),
-        ),
-        OwnerPaymentError::ProviderUnavailable {
-            provider_id,
-            operation,
-        }
-        | OwnerPaymentError::ProviderRejected {
-            provider_id,
-            operation,
-        }
-        | OwnerPaymentError::ProviderInvalidResponse {
-            provider_id,
-            operation,
-        }
-        | OwnerPaymentError::ProviderOutcomeUnknown {
-            provider_id,
-            operation,
-        } => (
-            "provider_operation_values",
-            provider_id
-                .chars()
-                .count()
-                .saturating_add(operation.chars().count()),
-        ),
-        OwnerPaymentError::ProviderConfiguration { provider_id } => {
-            (text_shape(provider_id), provider_id.chars().count())
-        }
-        OwnerPaymentError::Database(_) => ("database_redacted", 0),
+fn port_error_kind(kind: &PortErrorKind) -> &'static str {
+    match kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
     }
+}
+
+fn is_configuration_error(error: &OwnerPortError) -> bool {
+    matches!(
+        error.code.as_str(),
+        "payment.admin_read_configuration"
+            | "payment.order_read_configuration"
+            | "payment.cart_read_configuration"
+    )
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -103,7 +85,7 @@ impl PaymentQueryResource {
 
 #[derive(Debug)]
 pub(crate) struct PaymentQueryError {
-    error: OwnerPaymentError,
+    error: OwnerPortError,
     tenant_id: Uuid,
     operation: &'static str,
     resource: PaymentQueryResource,
@@ -111,7 +93,7 @@ pub(crate) struct PaymentQueryError {
 
 impl PaymentQueryError {
     fn new(
-        error: OwnerPaymentError,
+        error: OwnerPortError,
         tenant_id: Uuid,
         operation: &'static str,
         resource: PaymentQueryResource,
@@ -125,56 +107,63 @@ impl PaymentQueryError {
     }
 
     fn into_boundary(self) -> BoundaryError {
-        let (message, code, retryable, error_kind, technical) = match &self.error {
-            OwnerPaymentError::Validation(_) => (
-                "Payment query is invalid",
-                "PAYMENT_REQUEST_INVALID",
-                false,
-                "validation",
-                false,
-            ),
-            OwnerPaymentError::PaymentCollectionNotFound(_)
-            | OwnerPaymentError::PaymentNotFound(_)
-            | OwnerPaymentError::RefundNotFound(_) => (
-                "Payment resource was not found",
-                "PAYMENT_RESOURCE_NOT_FOUND",
-                false,
-                "not_found",
-                false,
-            ),
-            OwnerPaymentError::InvalidTransition { .. }
-            | OwnerPaymentError::ProviderRejected { .. } => (
-                "Payment state conflicts with this query",
-                "PAYMENT_STATE_CONFLICT",
-                false,
-                "state_conflict",
-                false,
-            ),
-            OwnerPaymentError::ProviderUnavailable { .. }
-            | OwnerPaymentError::Database(_) => (
-                "Payment data is temporarily unavailable",
-                "PAYMENT_TEMPORARILY_UNAVAILABLE",
-                true,
-                "temporarily_unavailable",
-                true,
-            ),
-            OwnerPaymentError::ProviderInvalidResponse { .. }
-            | OwnerPaymentError::ProviderOutcomeUnknown { .. } => (
-                "Payment state requires reconciliation",
-                "PAYMENT_RECONCILIATION_REQUIRED",
-                false,
-                "reconciliation_required",
-                true,
-            ),
-            OwnerPaymentError::ProviderConfiguration { .. } => (
+        let configuration = is_configuration_error(&self.error);
+        let (message, code, retryable, error_kind, technical) = if configuration {
+            (
                 "Payment provider configuration is invalid",
                 "PAYMENT_CONFIGURATION_ERROR",
                 false,
                 "configuration",
                 true,
-            ),
+            )
+        } else {
+            match &self.error.kind {
+                PortErrorKind::Validation => (
+                    "Payment query is invalid",
+                    "PAYMENT_REQUEST_INVALID",
+                    false,
+                    "validation",
+                    false,
+                ),
+                PortErrorKind::NotFound => (
+                    "Payment resource was not found",
+                    "PAYMENT_RESOURCE_NOT_FOUND",
+                    false,
+                    "not_found",
+                    false,
+                ),
+                PortErrorKind::Conflict => (
+                    "Payment state conflicts with this query",
+                    "PAYMENT_STATE_CONFLICT",
+                    false,
+                    "state_conflict",
+                    false,
+                ),
+                PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                    "Payment data is temporarily unavailable",
+                    "PAYMENT_TEMPORARILY_UNAVAILABLE",
+                    true,
+                    "temporarily_unavailable",
+                    true,
+                ),
+                PortErrorKind::InvariantViolation => (
+                    "Payment state requires reconciliation",
+                    "PAYMENT_RECONCILIATION_REQUIRED",
+                    false,
+                    "reconciliation_required",
+                    true,
+                ),
+                PortErrorKind::Forbidden => (
+                    "Payment query is invalid",
+                    "PAYMENT_REQUEST_INVALID",
+                    false,
+                    "forbidden",
+                    false,
+                ),
+            }
         };
-        let (owner_detail_shape, owner_detail_length) = owner_detail(&self.error);
+        let owner_detail_shape = port_error_kind(&self.error.kind);
+        let owner_detail_length = self.error.code.chars().count();
         let resource_kind = self.resource.kind();
         let resource_id = self.resource.id();
         let resource_id_shape = uuid_shape(&resource_id);
@@ -228,7 +217,7 @@ impl PaymentQueryError {
 
 pub(crate) mod error {
     use super::{
-        BoundaryError, OwnerPaymentError, PaymentQueryError, PaymentQueryResource, Uuid,
+        BoundaryError, OwnerPortError, PaymentQueryError, PaymentQueryResource, PortErrorKind, Uuid,
     };
 
     #[derive(Debug)]
@@ -239,19 +228,21 @@ pub(crate) mod error {
     }
 
     impl PaymentError {
-        pub(super) fn from_owner(
-            error: OwnerPaymentError,
+        pub(super) fn from_owner_port(
+            error: OwnerPortError,
             tenant_id: Uuid,
             operation: &'static str,
             resource: PaymentQueryResource,
         ) -> Self {
+            let not_found = error.kind == PortErrorKind::NotFound;
+            let collection_not_found =
+                not_found && matches!(resource, PaymentQueryResource::Collection(_));
+            let refund_not_found =
+                not_found && matches!(resource, PaymentQueryResource::Refund(_));
             let error = PaymentQueryError::new(error, tenant_id, operation, resource);
-            if matches!(
-                &error.error,
-                OwnerPaymentError::PaymentCollectionNotFound(_)
-            ) {
+            if collection_not_found {
                 Self::PaymentCollectionNotFound(error)
-            } else if matches!(&error.error, OwnerPaymentError::RefundNotFound(_)) {
+            } else if refund_not_found {
                 Self::RefundNotFound(error)
             } else {
                 Self::Other(error)
@@ -272,13 +263,39 @@ pub(crate) mod error {
 use error::PaymentError;
 
 pub(crate) struct PaymentService {
-    inner: ::rustok_payment::PaymentService,
+    admin_reads: Arc<dyn PaymentAdminReadPort>,
+    order_reads: Arc<dyn PaymentOrderReadPort>,
+    cart_reads: Arc<dyn PaymentCartReadPort>,
 }
 
 impl PaymentService {
     pub(crate) fn new(db: DatabaseConnection) -> Self {
+        let runtime = crate::graphql_runtime::payment_read_runtime_for_current_graphql_scope(db);
         Self {
-            inner: ::rustok_payment::PaymentService::new(db),
+            admin_reads: runtime.admin_read_port(),
+            order_reads: runtime.order_read_port(),
+            cart_reads: runtime.cart_read_port(),
+        }
+    }
+
+    fn context(
+        &self,
+        tenant_id: Uuid,
+        operation: &'static str,
+        resource: PaymentQueryResource,
+    ) -> PortContext {
+        let (actor, channel, locale) =
+            crate::graphql_runtime::payment_read_call_context_for_current_graphql_scope();
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            actor,
+            locale.as_deref().unwrap_or("und"),
+            format!("commerce-graphql-payment:{operation}:{}", resource.id()),
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+        match channel.as_deref() {
+            Some(channel) => context.with_channel(channel),
+            None => context,
         }
     }
 
@@ -287,17 +304,15 @@ impl PaymentService {
         tenant_id: Uuid,
         cart_id: Uuid,
     ) -> Result<Option<PaymentCollectionResponse>, PaymentError> {
-        self.inner
-            .find_reusable_collection_by_cart(tenant_id, cart_id)
+        const OPERATION: &str = "find_reusable_collection_by_cart";
+        let resource = PaymentQueryResource::Cart(cart_id);
+        self.cart_reads
+            .find_reusable_collection_by_cart(
+                self.context(tenant_id, OPERATION, resource),
+                ReusablePaymentCollectionByCartRequest { cart_id },
+            )
             .await
-            .map_err(|error| {
-                PaymentError::from_owner(
-                    error,
-                    tenant_id,
-                    "find_reusable_collection_by_cart",
-                    PaymentQueryResource::Cart(cart_id),
-                )
-            })
+            .map_err(|error| PaymentError::from_owner_port(error, tenant_id, OPERATION, resource))
     }
 
     pub(crate) async fn find_latest_collection_by_order(
@@ -305,17 +320,15 @@ impl PaymentService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> Result<Option<PaymentCollectionResponse>, PaymentError> {
-        self.inner
-            .find_latest_collection_by_order(tenant_id, order_id)
+        const OPERATION: &str = "find_latest_collection_by_order";
+        let resource = PaymentQueryResource::Order(order_id);
+        self.order_reads
+            .find_latest_collection_by_order(
+                self.context(tenant_id, OPERATION, resource),
+                LatestPaymentCollectionByOrderRequest { order_id },
+            )
             .await
-            .map_err(|error| {
-                PaymentError::from_owner(
-                    error,
-                    tenant_id,
-                    "find_latest_collection_by_order",
-                    PaymentQueryResource::Order(order_id),
-                )
-            })
+            .map_err(|error| PaymentError::from_owner_port(error, tenant_id, OPERATION, resource))
     }
 
     pub(crate) async fn get_collection(
@@ -323,17 +336,15 @@ impl PaymentService {
         tenant_id: Uuid,
         collection_id: Uuid,
     ) -> Result<PaymentCollectionResponse, PaymentError> {
-        self.inner
-            .get_collection(tenant_id, collection_id)
+        const OPERATION: &str = "get_collection";
+        let resource = PaymentQueryResource::Collection(collection_id);
+        self.admin_reads
+            .read_payment_collection_projection(
+                self.context(tenant_id, OPERATION, resource),
+                ReadPaymentCollectionProjectionRequest { collection_id },
+            )
             .await
-            .map_err(|error| {
-                PaymentError::from_owner(
-                    error,
-                    tenant_id,
-                    "get_collection",
-                    PaymentQueryResource::Collection(collection_id),
-                )
-            })
+            .map_err(|error| PaymentError::from_owner_port(error, tenant_id, OPERATION, resource))
     }
 
     pub(crate) async fn list_collections(
@@ -341,17 +352,24 @@ impl PaymentService {
         tenant_id: Uuid,
         input: ListPaymentCollectionsInput,
     ) -> Result<(Vec<PaymentCollectionResponse>, u64), PaymentError> {
-        self.inner
-            .list_collections(tenant_id, input)
+        const OPERATION: &str = "list_collections";
+        let resource = PaymentQueryResource::Tenant(tenant_id);
+        let page = self
+            .admin_reads
+            .list_payment_collection_projections(
+                self.context(tenant_id, OPERATION, resource),
+                ListPaymentCollectionProjectionsRequest {
+                    page: input.page,
+                    per_page: input.per_page,
+                    status: input.status,
+                    order_id: input.order_id,
+                    cart_id: input.cart_id,
+                    customer_id: input.customer_id,
+                },
+            )
             .await
-            .map_err(|error| {
-                PaymentError::from_owner(
-                    error,
-                    tenant_id,
-                    "list_collections",
-                    PaymentQueryResource::Tenant(tenant_id),
-                )
-            })
+            .map_err(|error| PaymentError::from_owner_port(error, tenant_id, OPERATION, resource))?;
+        Ok((page.items, page.total))
     }
 
     pub(crate) async fn get_refund(
@@ -359,17 +377,15 @@ impl PaymentService {
         tenant_id: Uuid,
         refund_id: Uuid,
     ) -> Result<RefundResponse, PaymentError> {
-        self.inner
-            .get_refund(tenant_id, refund_id)
+        const OPERATION: &str = "get_refund";
+        let resource = PaymentQueryResource::Refund(refund_id);
+        self.admin_reads
+            .read_refund_projection(
+                self.context(tenant_id, OPERATION, resource),
+                ReadRefundProjectionRequest { refund_id },
+            )
             .await
-            .map_err(|error| {
-                PaymentError::from_owner(
-                    error,
-                    tenant_id,
-                    "get_refund",
-                    PaymentQueryResource::Refund(refund_id),
-                )
-            })
+            .map_err(|error| PaymentError::from_owner_port(error, tenant_id, OPERATION, resource))
     }
 
     pub(crate) async fn list_refunds(
@@ -377,16 +393,22 @@ impl PaymentService {
         tenant_id: Uuid,
         input: ListRefundsInput,
     ) -> Result<(Vec<RefundResponse>, u64), PaymentError> {
-        self.inner
-            .list_refunds(tenant_id, input)
+        const OPERATION: &str = "list_refunds";
+        let resource = PaymentQueryResource::Tenant(tenant_id);
+        let page = self
+            .admin_reads
+            .list_refund_projections(
+                self.context(tenant_id, OPERATION, resource),
+                ListRefundProjectionsRequest {
+                    page: input.page,
+                    per_page: input.per_page,
+                    payment_collection_id: input.payment_collection_id,
+                    order_id: input.order_id,
+                    status: input.status,
+                },
+            )
             .await
-            .map_err(|error| {
-                PaymentError::from_owner(
-                    error,
-                    tenant_id,
-                    "list_refunds",
-                    PaymentQueryResource::Tenant(tenant_id),
-                )
-            })
+            .map_err(|error| PaymentError::from_owner_port(error, tenant_id, OPERATION, resource))?;
+        Ok((page.items, page.total))
     }
 }
