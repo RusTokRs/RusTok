@@ -351,6 +351,12 @@ pub(crate) async fn load_post_tags_map(
         return Ok(HashMap::new());
     }
 
+    let mut tags_by_post = post_ids
+        .iter()
+        .copied()
+        .map(|post_id| (post_id, Vec::new()))
+        .collect::<HashMap<_, _>>();
+
     let relations = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::PostId.is_in(post_ids.to_vec()))
         .order_by_asc(blog_post_tag::Column::CreatedAt)
@@ -358,7 +364,7 @@ pub(crate) async fn load_post_tags_map(
         .await?;
 
     if relations.is_empty() {
-        return Ok(HashMap::new());
+        return Ok(tags_by_post);
     }
 
     let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
@@ -366,7 +372,6 @@ pub(crate) async fn load_post_tags_map(
         .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
         .await?;
 
-    let mut tags_by_post: HashMap<Uuid, Vec<String>> = HashMap::new();
     for relation in relations {
         if let Some(name) = names.get(&relation.tag_id) {
             tags_by_post

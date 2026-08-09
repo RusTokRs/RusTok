@@ -211,6 +211,72 @@ async fn blog_events_upsert_publish_archive_and_delete_search_document() -> Test
 }
 
 #[tokio::test]
+async fn blog_reindex_projects_attached_taxonomy_tags_not_metadata_snapshot() -> TestResult<()> {
+    let Some(test_db) = PostgresSearchTestDb::setup("blog_taxonomy_tags").await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let author_id = Uuid::new_v4();
+    insert_blog_post(
+        &test_db.db,
+        tenant_id,
+        post_id,
+        author_id,
+        "published",
+        "taxonomy-tags",
+        "Taxonomy tags",
+    )
+    .await?;
+
+    test_db
+        .db
+        .execute_unprepared(&format!(
+            r#"
+            UPDATE blog_posts
+            SET metadata = '{{"tags":["stale-metadata-only"]}}'::jsonb
+            WHERE id = '{post_id}' AND tenant_id = '{tenant_id}';
+
+            UPDATE taxonomy_term_translations
+            SET name = 'backend', slug = 'backend'
+            WHERE tenant_id = '{tenant_id}'
+              AND locale = 'en'
+              AND term_id IN (
+                  SELECT relation.tag_id
+                  FROM blog_post_tags relation
+                  WHERE relation.post_id = '{post_id}'
+              )
+              AND name = 'rust';
+            "#
+        ))
+        .await?;
+
+    let handler = SearchIngestionHandler::new(test_db.db.clone());
+    handler
+        .handle(&envelope(
+            tenant_id,
+            Some(author_id),
+            DomainEvent::ReindexRequested {
+                target_type: "blog".to_string(),
+                target_id: Some(post_id),
+            },
+        )?)
+        .await?;
+
+    let document = load_blog_document(&test_db.db, tenant_id, post_id)
+        .await?
+        .expect("Blog post should be projected from canonical tag attachments");
+    assert_eq!(document.payload["tags"], serde_json::json!(["backend", "cms"]));
+    assert_ne!(
+        document.payload["tags"],
+        serde_json::json!(["stale-metadata-only"])
+    );
+
+    test_db.cleanup().await
+}
+
+#[tokio::test]
 async fn full_blog_reindex_replaces_only_current_tenant_blog_documents() -> TestResult<()> {
     let Some(test_db) = PostgresSearchTestDb::setup("blog_reindex").await? else {
         return Ok(());
@@ -485,6 +551,26 @@ async fn create_blog_projection_source_tables(
             name TEXT NOT NULL,
             slug TEXT NOT NULL
         );
+
+        CREATE TABLE taxonomy_terms (
+            id UUID PRIMARY KEY,
+            tenant_id UUID NOT NULL,
+            canonical_key TEXT NOT NULL
+        );
+
+        CREATE TABLE taxonomy_term_translations (
+            id UUID PRIMARY KEY,
+            term_id UUID NOT NULL,
+            tenant_id UUID NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL
+        );
+
+        CREATE TABLE blog_post_tags (
+            post_id UUID NOT NULL,
+            tag_id UUID NOT NULL
+        );
         "#,
     )
     .await?;
@@ -501,6 +587,10 @@ async fn insert_blog_post(
     title: &str,
 ) -> Result<(), sea_orm::DbErr> {
     let translation_id = Uuid::new_v4();
+    let rust_tag_id = Uuid::new_v4();
+    let rust_translation_id = Uuid::new_v4();
+    let cms_tag_id = Uuid::new_v4();
+    let cms_translation_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
         r#"
         INSERT INTO users (id, name)
@@ -512,7 +602,7 @@ async fn insert_blog_post(
             created_at, updated_at, comment_count, view_count, version
         ) VALUES (
             '{post_id}', '{tenant_id}', '{author_id}', '{status}', '{slug}',
-            '{{"tags":["rust","cms"]}}'::jsonb,
+            '{{"tags":["legacy-metadata-only"]}}'::jsonb,
             CASE WHEN '{status}' = 'published' THEN NOW() ELSE NULL END,
             NOW(), NOW(), 4, 12, 1
         );
@@ -527,6 +617,21 @@ async fn insert_blog_post(
 
         INSERT INTO blog_post_channel_visibility (tenant_id, post_id, channel_slug)
         VALUES ('{tenant_id}', '{post_id}', 'web');
+
+        INSERT INTO taxonomy_terms (id, tenant_id, canonical_key)
+        VALUES
+            ('{rust_tag_id}', '{tenant_id}', 'rust'),
+            ('{cms_tag_id}', '{tenant_id}', 'cms');
+
+        INSERT INTO taxonomy_term_translations (id, term_id, tenant_id, locale, name, slug)
+        VALUES
+            ('{rust_translation_id}', '{rust_tag_id}', '{tenant_id}', 'en', 'rust', 'rust'),
+            ('{cms_translation_id}', '{cms_tag_id}', '{tenant_id}', 'en', 'cms', 'cms');
+
+        INSERT INTO blog_post_tags (post_id, tag_id)
+        VALUES
+            ('{post_id}', '{rust_tag_id}'),
+            ('{post_id}', '{cms_tag_id}');
         "#
     ))
     .await?;

@@ -18,7 +18,10 @@
     "event_handler": "crates/rustok-search/src/ingestion.rs",
     "projector": "crates/rustok-search/src/blog_projector.rs",
     "search_migrations": "crates/rustok-search/src/migrations/mod.rs",
-    "source_guardrail": "scripts/verify/verify-search-blog-projection.mjs"
+    "source_guardrail": "scripts/verify/verify-search-blog-projection.mjs",
+    "blog_tag_attachment_source": "blog_post_tags",
+    "tag_dictionary_source": "taxonomy_terms + taxonomy_term_translations",
+    "legacy_metadata_tags_are_projection_source": false
   },
   "cases": [
     {
@@ -27,7 +30,11 @@
     },
     {
       "name": "projected_payload",
-      "expected": "slug, author, tags, channels, publication timestamps, counts, and version are projected from Blog-owned tables"
+      "expected": "slug, author, canonical attached taxonomy tags, channels, publication timestamps, counts, and version are projected from owner tables"
+    },
+    {
+      "name": "canonical_taxonomy_tag_projection",
+      "expected": "Blog tag payload and keywords resolve from blog_post_tags plus tenant-local taxonomy translations for the document locale with platform fallback and canonical-key fallback; stale blog_posts.metadata.tags does not affect projection"
     },
     {
       "name": "full_blog_reindex",
@@ -43,7 +50,7 @@
     },
     {
       "name": "schema_search_path",
-      "expected": "Blog source-table availability and unqualified projector SQL resolve through the same active PostgreSQL search_path"
+      "expected": "Blog, Blog-tag relation, Taxonomy source-table availability and unqualified projector SQL resolve through the same active PostgreSQL search_path"
     },
     {
       "name": "event_routing",
@@ -53,6 +60,8 @@
   "runtime_promotion_requirements": [
     "execute both Rust test targets against PostgreSQL",
     "execute the source guardrail and its fixture target",
+    "retain canonical Blog tag projection evidence proving stale metadata tags are ignored",
+    "audit deployed Blog rows for metadata-only legacy tags and backfill owner relations before rollout if such rows exist",
     "retain migration and pg_trgm permission evidence",
     "retain host event-delivery evidence for disable and enable toggles",
     "retain query visibility evidence for published_only storefront search"
