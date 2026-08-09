@@ -5,7 +5,7 @@ use sea_orm::{
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-use rustok_api::RichTextDocument;
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, RichTextDocument};
 use rustok_content::{RichTextProfile, plain_text};
 use rustok_core::{Error, Result};
 use rustok_telemetry::metrics;
@@ -108,6 +108,9 @@ impl BlogSearchProjector {
                 AND to_regclass('blog_post_translations') IS NOT NULL
                 AND to_regclass('blog_post_channel_visibility') IS NOT NULL
                 AND to_regclass('blog_category_translations') IS NOT NULL
+                AND to_regclass('blog_post_tags') IS NOT NULL
+                AND to_regclass('taxonomy_terms') IS NOT NULL
+                AND to_regclass('taxonomy_term_translations') IS NOT NULL
                 AS available
             "#
             .to_string(),
@@ -174,6 +177,7 @@ impl BlogSearchProjector {
             where_clause.push_str(" AND p.id = $2");
             values.push(post_id.into());
         }
+        let fallback_locale = PLATFORM_FALLBACK_LOCALE;
 
         let sql = format!(
             r#"
@@ -265,14 +269,25 @@ impl BlogSearchProjector {
                     string_agg(tag.tag_name, ' ' ORDER BY tag.tag_name) AS tag_names,
                     COALESCE(jsonb_agg(tag.tag_name ORDER BY tag.tag_name), '[]'::jsonb) AS tag_list
                 FROM (
-                    SELECT DISTINCT BTRIM(tag_value) AS tag_name
-                    FROM jsonb_array_elements_text(
-                        CASE
-                            WHEN jsonb_typeof(p.metadata -> 'tags') = 'array' THEN p.metadata -> 'tags'
-                            ELSE '[]'::jsonb
-                        END
-                    ) AS tag_values(tag_value)
-                    WHERE BTRIM(tag_value) <> ''
+                    SELECT DISTINCT BTRIM(
+                        COALESCE(localized.name, fallback.name, term.canonical_key)
+                    ) AS tag_name
+                    FROM blog_post_tags relation
+                    JOIN taxonomy_terms term
+                      ON term.id = relation.tag_id
+                     AND term.tenant_id = p.tenant_id
+                    LEFT JOIN taxonomy_term_translations localized
+                      ON localized.term_id = term.id
+                     AND localized.tenant_id = p.tenant_id
+                     AND localized.locale = bt.locale
+                    LEFT JOIN taxonomy_term_translations fallback
+                      ON fallback.term_id = term.id
+                     AND fallback.tenant_id = p.tenant_id
+                     AND fallback.locale = '{fallback_locale}'
+                    WHERE relation.post_id = p.id
+                      AND BTRIM(
+                          COALESCE(localized.name, fallback.name, term.canonical_key)
+                      ) <> ''
                 ) tag
             ) tags ON TRUE
             LEFT JOIN LATERAL (
