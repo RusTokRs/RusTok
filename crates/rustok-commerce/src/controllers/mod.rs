@@ -26,6 +26,7 @@ pub struct CommerceHttpRuntime {
     shipping_option_read_runtime: crate::graphql_runtime::CommerceShippingOptionReadRuntime,
     fulfillment_lifecycle_read_runtime:
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime,
+    fulfillment_admin_command_runtime: rustok_fulfillment::FulfillmentAdminCommandRuntime,
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
     order_admin_command_runtime: rustok_order::OrderAdminCommandRuntime,
     payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
@@ -76,6 +77,12 @@ impl CommerceHttpRuntime {
     fn fulfillment_read_port(&self) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentReadPort> {
         self.fulfillment_lifecycle_read_runtime
             .fulfillment_read_port()
+    }
+
+    fn fulfillment_admin_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentAdminCommandPort> {
+        self.fulfillment_admin_command_runtime.command_port()
     }
 
     fn order_read_port(&self) -> std::sync::Arc<dyn rustok_order::OrderReadPort> {
@@ -143,6 +150,9 @@ impl CommerceHttpRuntime {
         let payment_provider_registry = runtime
             .shared_get::<PaymentProviderRegistry>()
             .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
+        let fulfillment_provider_registry = runtime
+            .shared_get::<FulfillmentProviderRegistry>()
+            .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
         let shipping_option_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceShippingOptionReadRuntime>()
             .ok_or_else(|| {
@@ -157,6 +167,14 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require CommerceFulfillmentLifecycleReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let fulfillment_admin_command_runtime = runtime
+            .shared_get::<rustok_fulfillment::FulfillmentAdminCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process(
+                    runtime.db_clone(),
+                    fulfillment_provider_registry.clone(),
+                )
+            });
         let order_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceOrderReadRuntime>()
             .ok_or_else(|| {
@@ -223,11 +241,10 @@ impl CommerceHttpRuntime {
             db: runtime.db_clone(),
             event_bus,
             payment_provider_registry,
-            fulfillment_provider_registry: runtime
-                .shared_get::<FulfillmentProviderRegistry>()
-                .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
+            fulfillment_provider_registry,
             shipping_option_read_runtime,
             fulfillment_lifecycle_read_runtime,
+            fulfillment_admin_command_runtime,
             order_read_runtime,
             order_admin_command_runtime,
             payment_order_read_runtime,
