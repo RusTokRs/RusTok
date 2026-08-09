@@ -69,6 +69,11 @@ Available when `AlloyMcpState` is configured:
 - `alloy_validate_script`
 - `alloy_run_script` requires `expected_version` and executes that immutable
   workspace revision.
+- `alloy_import_published_release` is available only through the authenticated
+  server remote MCP JSON/SSE transport. It derives tenant and actor identity
+  from the durable MCP runtime binding, requires `scripts.manage` plus
+  `modules.manage`, and imports an exact owner-projected Rhai release without
+  returning source bytes. Generic stdio MCP does not advertise this tool.
 - `alloy_scaffold_module`
 - `alloy_review_module_scaffold`
 - `alloy_apply_module_scaffold`

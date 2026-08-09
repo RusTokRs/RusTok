@@ -86,7 +86,7 @@
     ],
     "executor_timeout_observability": "alloy_adapter_records_timeout_outcome",
     "owner": "rustok-sandbox",
-    "brokered_capability_adapter": "alloy::HttpCapabilityBridge via SandboxHost platform.http"
+    "brokered_capability_adapter": "rustok_sandbox::RhaiCapabilityBridge via SandboxHost platform.http"
   },
   "scheduler_hook_contract": {
     "scheduler_phase": "Scheduled",
@@ -229,6 +229,18 @@
       "sandbox_policy_digest",
       "sandbox_capability_grants",
       "platform_admission"
+    ]
+  },
+  "release_capability_contract": {
+    "source_scope": "every_executable_src_rhai_file",
+    "generic_helper": "capability_call_requires_literal_valid_capability_name",
+    "http_helpers": "http_get_http_post_http_request_require_platform_http",
+    "declaration_relation": "descriptor_set_equals_observed_source_set",
+    "rejections": [
+      "missing_declaration",
+      "unused_declaration",
+      "dynamic_capability_name",
+      "reserved_helper_shadowing"
     ]
   },
   "workspace_contract": {

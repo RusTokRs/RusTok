@@ -1,6 +1,7 @@
 # Module Build Worker Transport
 
 - Date: 2026-07-16
+- Amended: 2026-08-09
 - Status: Accepted
 
 ## Context
@@ -67,6 +68,18 @@ request with owner-selected limits, dependency egress, validation profiles,
 WIT, ABI, and target policy and commits it through the durable queue. The
 worker receives the same CAS root as a read-only deployment mount and remains
 unable to publish or mutate source objects.
+
+The accepted release-safety target narrows and replaces that current writer
+boundary atomically. `rustok-modules` preparation owns the single unversioned
+`SourceObjectStore` port, authenticated owner-domain publication, globally
+deduplicated create-only `source_digest` blob, separate RLS-scoped
+`source_receipt_id` over owner/preparation/media-type/length/manifest,
+same-request idempotency, and all-reference retention/collection authority for
+platform, native, WASM, and reviewed-Rhai source
+objects. `CasArchivePublisher` becomes an archive-specialized client/codec path
+and loses direct CAS layout/writer authority; reviewed Rhai bounded-workspace
+objects use the same owner without tar wrapping. Every repository caller and
+worker mount is cut over together, with no dual writer or old-layout fallback.
 
 `rustok-cli module build` is an owner client for this path. It requires explicit
 tenant, actor, project, trace, correlation, and idempotency identity, but it

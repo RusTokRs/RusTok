@@ -30,10 +30,14 @@ use rustok_mcp::{
     McpToolCallAuditEvent, McpToolCallOutcome, McpToolResponse, RegistryToolInvocationError,
     ReviewModuleScaffoldRequest, RotateMcpTokenRequest, RotateMcpTokenResponse,
     ScaffoldModuleRequest, StageMcpModuleScaffoldDraftRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
-    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_MCP_HEALTH,
-    UpdateMcpPolicyRequest, default_tool_requirement, invoke_registry_tool,
+    TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
+    TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_MCP_HEALTH, UpdateMcpPolicyRequest, default_tool_requirement,
+    invoke_registry_tool,
 };
 use tokio_stream::once;
+
+#[cfg(feature = "mod-alloy")]
+use rustok_mcp::{AlloyPublishedReleaseImportRequest, import_published_release};
 
 async fn bootstrap_remote_session(
     State(ctx): State<ServerRuntimeContext>,
@@ -190,6 +194,18 @@ async fn execute_remote_tool_call(
             input.metadata.clone(),
         )
         .await?
+    } else if input.tool_name == TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE {
+        #[cfg(feature = "mod-alloy")]
+        {
+            execute_remote_alloy_published_release_import(ctx, &binding, input.arguments).await?
+        }
+        #[cfg(not(feature = "mod-alloy"))]
+        {
+            envelope_value(McpToolResponse::<()>::error(
+                "tool_not_supported",
+                "Published Alloy release import is unavailable on this server",
+            ))?
+        }
     } else {
         match invoke_registry_tool(
             &registry,
@@ -229,6 +245,106 @@ async fn execute_remote_tool_call(
         tool_name: input.tool_name,
         result,
     })
+}
+
+#[cfg(feature = "mod-alloy")]
+async fn execute_remote_alloy_published_release_import(
+    ctx: &ServerRuntimeContext,
+    binding: &McpRuntimeBinding,
+    arguments: Option<serde_json::Value>,
+) -> Result<serde_json::Value> {
+    let Some(tenant_id) = binding
+        .tenant_id
+        .as_deref()
+        .and_then(|value| Uuid::parse_str(value).ok())
+    else {
+        return envelope_value(McpToolResponse::<()>::error(
+            "tenant_binding_required",
+            "Published Alloy release import requires a tenant-bound MCP runtime",
+        ));
+    };
+    let Some(actor_id) = binding
+        .access_context
+        .identity
+        .as_ref()
+        .map(|identity| identity.actor_id.trim())
+        .filter(|actor_id| !actor_id.is_empty())
+        .map(str::to_owned)
+    else {
+        return envelope_value(McpToolResponse::<()>::error(
+            "identity_required",
+            "Published Alloy release import requires an authenticated MCP identity",
+        ));
+    };
+    let Some(runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() else {
+        return envelope_value(McpToolResponse::<()>::error(
+            "alloy_runtime_unavailable",
+            "Published Alloy release import is unavailable on this server",
+        ));
+    };
+    let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() else {
+        return envelope_value(McpToolResponse::<()>::error(
+            "alloy_source_unavailable",
+            "The canonical published Rhai workspace is unavailable",
+        ));
+    };
+    let request = match arguments {
+        Some(arguments) => {
+            match serde_json::from_value::<AlloyPublishedReleaseImportRequest>(arguments) {
+                Ok(request) => request,
+                Err(_) => {
+                    return envelope_value(McpToolResponse::<()>::error(
+                        "invalid_arguments",
+                        "Published Alloy release import arguments are invalid",
+                    ));
+                }
+            }
+        }
+        None => {
+            return envelope_value(McpToolResponse::<()>::error(
+                "invalid_arguments",
+                "Published Alloy release import arguments are required",
+            ));
+        }
+    };
+    let source = crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
+        ctx.db_clone(),
+        storage,
+    );
+    let runtime = runtime.0.scoped(tenant_id);
+    match import_published_release(runtime.storage, source, tenant_id, actor_id, request).await {
+        Ok(response) => envelope_value(McpToolResponse::success(response)),
+        Err(
+            alloy::AlloyImportError::InvalidCommand
+            | alloy::AlloyImportError::IneligibleRelease
+            | alloy::AlloyImportError::InvalidSource,
+        ) => envelope_value(McpToolResponse::<()>::error(
+            "invalid_alloy_release_import",
+            "The published release cannot be imported as an Alloy Rhai workspace",
+        )),
+        Err(alloy::AlloyImportError::SourceUnavailable(_)) => {
+            envelope_value(McpToolResponse::<()>::error(
+                "alloy_release_import_source_not_found",
+                "The canonical published Rhai workspace is unavailable",
+            ))
+        }
+        Err(alloy::AlloyImportError::IdempotencyConflict) => {
+            envelope_value(McpToolResponse::<()>::error(
+                "alloy_release_import_idempotency_conflict",
+                "Alloy import idempotency key was reused for a different release command",
+            ))
+        }
+        Err(alloy::AlloyImportError::DraftNameConflict) => {
+            envelope_value(McpToolResponse::<()>::error(
+                "alloy_release_import_draft_name_conflict",
+                "An Alloy draft with the requested tenant-scoped name already exists",
+            ))
+        }
+        Err(alloy::AlloyImportError::Storage(_)) => envelope_value(McpToolResponse::<()>::error(
+            "alloy_release_import_failed",
+            "Published Alloy release import failed",
+        )),
+    }
 }
 
 fn is_remote_scaffold_tool(tool_name: &str) -> bool {

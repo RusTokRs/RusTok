@@ -603,6 +603,7 @@ fn schema_registry_covers_all_previously_unregistered_root_event_types() {
         "module.artifact.data_snapshot_created",
         "module.artifact.data_snapshot_restored",
         "module.artifact.data_snapshot_retention_updated",
+        "module.artifact.activated",
         "module.artifact.deactivated",
         "module.artifact.migration_checkpointed",
         "module.artifact.rolled_back",

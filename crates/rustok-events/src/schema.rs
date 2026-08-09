@@ -437,6 +437,11 @@ const MODULE_ARTIFACT_ROLLED_BACK_FIELDS: &[FieldSchema] = &[
     field!("installation_id", "uuid"),
     field!("target_installation_id", "uuid"),
 ];
+const MODULE_ARTIFACT_ACTIVATED_FIELDS: &[FieldSchema] = &[
+    field!("installation_id", "uuid"),
+    field!("predecessor_installation_id", "uuid", optional),
+    field!("revision", "uint64"),
+];
 const MODULE_ARTIFACT_REVISION_FIELDS: &[FieldSchema] = &[
     field!("installation_id", "uuid"),
     field!("revision", "uint64"),
@@ -1481,6 +1486,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Product attribute values changed.",
         fields: PRODUCT_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.activated",
+        version: 1,
+        description: "A module artifact installation became the active scoped selection.",
+        fields: MODULE_ARTIFACT_ACTIVATED_FIELDS,
     },
     EventSchema {
         event_type: "module.artifact.rolled_back",

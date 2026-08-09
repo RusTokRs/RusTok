@@ -26,6 +26,12 @@ resolve the conflict in favor of the accepted architecture decisions.
 
 The ownership decision is fixed by
 [`DECISIONS/2026-07-11-neutral-sandbox-foundation.md`](../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md).
+Production update, direct-predecessor recovery, finalization, and destructive
+data-action semantics are additionally governed by
+[Module release rollback safety](../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+and its [implementation plan](module-release-rollback-plan.md). The accepted
+release-safety contract supersedes the older generic rollback/purge wording
+below wherever they differ.
 
 ## Execution Checkpoint
 
@@ -882,8 +888,10 @@ adapter and must not be used as artifact identity or durable policy state.
   authorization adapter. `EffectivePolicyService` likewise owns the
   tenant override read and Core/default composition shared by server guards,
   GraphQL, and installer adapters. It also supplies the tenant-scoped
-  policy-revision cursor required for commit-time lifecycle serialization. The
-  static write-path verifier rejects direct construction of these extracted
+  policy-revision cursor required for commit-time lifecycle serialization.
+  Lifecycle recovery-plan reads are likewise tenant-bound inside the owner;
+  GraphQL cannot load a global operation then filter its tenant after reading
+  owner state. The static write-path verifier rejects direct construction of these extracted
   SeaORM services outside the owner crate.
   Promotion request and approval are a separate platform-scoped owner
   subservice. It accepts only an active `platform_built` release and reloads the
@@ -1088,7 +1096,10 @@ composition, lifecycle, artifact installation, build-request, and registry
 governance aggregate writes from every server, installer persistence, worker,
 and transport production source. It also rejects direct construction of the
 extracted owner SeaORM services in those sources; all production composition
-must pass through `ModuleControlPlane` in `rustok-modules`.
+must pass through `ModuleControlPlane` in `rustok-modules`. The static
+distribution worker is additionally constrained to immutable build-completion
+evidence: it cannot import release/rollout owner types or owner persistence, so
+deployment receipts remain a distinct rollout-owner concern.
 
 The guard covers raw SQL, protected aggregate `ActiveModel` construction, and
 direct SeaORM `Entity` mutation methods. The unused server runtime database
@@ -1278,10 +1289,12 @@ of an admitted blob.
   failed, inactive, and rolled_back.
 - [x] Store verification evidence references and policy decision revision.
 - [x] Store a durable nullable previous-installation pointer for rollback. The
-  admission transaction selects the latest same-scope installation for the
-  module and writes the self-reference together with the new installation,
-  admission row, and outbox event. A later rollback command advances it with
-  its status transition.
+  admission path leaves the pointer unset because admission is inert. The
+  owner activation operation serializes one `(scope, slug)`, selects at most
+  one active non-uninstalled predecessor, rejects ambiguity, and writes the
+  pointer in the same transaction that makes the candidate active and the
+  predecessor inactive. A later rollback command advances it with its status
+  transition.
 - [x] Store capability grant revision separately from artifact declaration and
   policy revision. The owner supplies it explicitly when constructing the
   installer, and the admission transaction persists it with the installation.
@@ -1585,10 +1598,31 @@ migrations or arbitrary SQL.
 
 ### 3.7 Rollback, Uninstall, and Purge
 
-The owner boundary is fixed by the [module artifact rollback ADR](../../DECISIONS/2026-07-13-module-artifact-rollback-boundary.md): an explicit CAS-revision command selects the durable predecessor, re-evaluates grants, audits actor/reason, and writes an outbox event in one transaction. Runtime activation and tenant enablement remain downstream operations.
+The owner boundary is fixed by the [module artifact rollback ADR](../../DECISIONS/2026-07-13-module-artifact-rollback-boundary.md) as amended by release safety: an explicit CAS-revision command may select only the exact durable direct predecessor fixed from then-serving state, re-evaluates current grants, audits actor/reason, and writes an outbox event in one transaction. Runtime activation and tenant enablement remain downstream operations.
 
-- [x] Rollback selects a previously admitted immutable release; it never edits
-  the failed release.
+- [x] The current selection slice can select a previously admitted immutable
+  release; that broad target is an explicit atomic-cutover gap, not accepted
+  production rollback behavior.
+- [x] Replace broad historical selection with exact durable
+  direct-predecessor selection fixed from then-serving state. The scoped owner
+  activation operation holds one `(scope, slug)` lock, accepts only an
+  admitted/installed/inactive candidate at its expected revision, captures the
+  sole active non-uninstalled predecessor, makes that predecessor inactive,
+  records the candidate pointer and a replayable operation result, makes the
+  candidate active, and writes `module.artifact.activated` in one transaction.
+  It rejects an ambiguous serving state; arbitrary older admitted releases are
+  new admitted updates and never rollback targets.
+- [x] Bind dynamic artifact settings to one stable `data_owner_id` and exact
+  `settings_instance_id`, never to a `(tenant_id, module_slug)` row. Admission
+  creates opaque identities; activation carries them from the direct
+  predecessor only when the admitted registry/repository continuity and the
+  immutable settings-schema digest both match. Dynamic settings reads and
+  writes hold the activation fences, resolve one active scoped installation,
+  validate against that installation's descriptor-bundled schema, and persist
+  only in the tenant-RLS settings-instance owner table. Native/static manifest
+  settings remain the separate `tenant_modules` contract. Schema-changing
+  activation fails closed until the distinct guarded settings-migration path is
+  implemented.
 - [x] Capability grants are re-evaluated for the target release.
 - [x] Data migrations declare whether rollback is reversible, compensating, or
   prohibited. A recorded irreversible checkpoint accepts only an explicit
@@ -1597,12 +1631,16 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   artifact rollback command changes only durable selection/admission state;
   tenant toggles and lifecycle hooks use the separate lifecycle owner path.
 - [x] Every rollback is a new audited operation with actor and reason.
-- [x] Define disable, deactivate, uninstall, and purge as distinct operations:
+- [x] Define disable, deactivate, and uninstall as distinct current operations;
+  `purge` alone is only a non-callable category in the accepted target:
   - disable preserves installation and data;
   - deactivate removes runtime bindings but preserves admitted release/rollback;
   - uninstall removes the scope's selection after dependent checks;
-  - purge deletes retained module data only through an explicit destructive,
-    authorized, audited operation.
+  - `dynamic_artifact_data_purge` deletes only the exact retained
+    structured/index/object boundary through its explicit destructive,
+    authorized, audited operation;
+  - `dynamic_artifact_settings_purge` is a separate target operation with its
+    own settings recovery point, tombstone, receipt, and retention lifecycle.
 - [x] Artifact deactivation is an owner-owned, revision-guarded and idempotent
   binding removal. It requires an active installation, rejects an active direct
   dependent in the same scope, transitions the admission to `inactive`, and
@@ -1623,12 +1661,18 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   and only releases the CAS reference; it does not purge retained data or
   evidence. Its replay contract likewise matches the complete immutable
   command rather than accepting a reused key alone.
-- [x] Structured artifact data purge is a separate destructive operation. It
+- [x] The current structured artifact-data purge is a separate destructive
+  operation. Its generic command/tenant-module attach identity is an explicit
+  cutover gap; the target callable is `dynamic_artifact_data_purge`. It
   is tenant/module/data-contract scoped, revision-guarded and idempotent,
   serializes against data writes, records actor/reason and the deleted-record
   count, emits a transactional-outbox fact, and leaves a durable namespace
   tombstone. A host-owned authorizer must approve lifecycle, retention, and
   legal-hold policy before the operation begins.
+- [ ] Add `dynamic_artifact_settings_purge` as the independently authorized
+  settings-owner operation with its recovery point, tombstone, retention, and
+  restore lifecycle; reject any combined data/settings apply and retain no
+  generic `purge` command after the cutover.
 - [x] Uninstall never silently deletes tenant data, logs, evidence, or rollback
   artifacts. It removes only the scoped selection and its CAS reference;
   retention, legal-hold, audit, and rollback policy remain responsible for any
@@ -2525,7 +2569,12 @@ evolution while sharing the production sandbox and module release contracts.
 - [x] Stage and package immutable Rhai descriptors with source digest/lineage
   and preserve the exact admitted workspace media type through runtime
   resolution.
-- [ ] Validate declared capabilities from observed/declared tool use.
+- [x] Validate declared capabilities from observed source tool use. Alloy scans
+  every executable `src/*.rhai` file before descriptor staging and packaging;
+  `http_*` helpers map to `platform.http`, while `capability_call` requires a
+  literal valid capability name. The descriptor set must match exactly: missing
+  and unused declarations, dynamically selected names, and attempts to shadow
+  a reserved helper fail closed before owner admission.
 - [x] Complete release source/descriptor publication through `rustok-modules`;
   Alloy does not write marketplace tables. The revision-pinned reviewed-source
   staging gate, origin-aware owner artifact upload, and authenticated HTTP /
@@ -2541,19 +2590,45 @@ evolution while sharing the production sandbox and module release contracts.
   `(tenant_id, idempotency_key)` receipt before creating the draft and first
   source revision in the same transaction. Exact replay returns the same
   draft; conflicting replay and duplicate tenant-scoped names fail closed.
-- [ ] Compose the production owner source provider and authenticated import
-  transports. The provider must resolve the exact canonical published release,
-  materialize only its digest-pinned Rhai workspace from CAS/OCI, and reject
-  catalog metadata without the Phase 5.4 publication projection; there is no
-  marketplace DTO or mutable-tag fallback.
+- [x] Compose the production owner source provider and authenticated HTTP /
+  GraphQL import adapters. The host resolves an exact active release only
+  through `rustok-modules`' publication projection, verifies the admitted Rhai
+  workspace media type and source digest, then reads and canonicalizes the
+  digest-pinned workspace from verified CAS bytes. `POST
+  /api/alloy/releases/import` and GraphQL `importPublishedRelease` derive the
+  tenant and actor from host authentication and require both `scripts.manage`
+  and `modules.manage`; neither accepts catalog DTO data or a mutable OCI tag.
+- [x] Compose the tenant-bound remote MCP import adapter. The authenticated
+  `alloy_import_published_release` tool on `/api/mcp/runtime/tools/call` and
+  `/api/mcp/runtime/tools/stream` derives the tenant and actor from the durable
+  MCP runtime binding, requires both `scripts.manage` and `modules.manage`,
+  creates a tenant-scoped Alloy registry, and injects the same owner-backed
+  source provider used by HTTP and GraphQL. Its redacted result exposes only
+  draft identity and immutable parent release lineage; generic stdio MCP does
+  not advertise an import tool without this host composition.
 - [x] Fork contracts record the parent release and never mutate or overwrite
   it. Imported parent identity is persisted on the draft and every immutable
   source revision, and storage rejects replacement or removal.
 - [x] Require a newer semantic version and new source/artifact digest in the
   immutable `ArtifactRelease::fork` contract.
-- [ ] Allow tests and preview against the same WIT/capability policy as the
-  installed parent.
-- [ ] Publish the fork through the same governance pipeline as any release.
+- [x] Allow tests and preview against the same WIT/capability policy as the
+  installed parent. Alloy persists only immutable parent release lineage; for
+  every imported draft execution and revision-pinned workspace test, the host
+  resolves that exact release through `rustok-modules`' active tenant
+  installation and sandbox-policy resolvers. The resolver revalidates
+  admission, lifecycle, descriptor runtime ABI, and policy revision. Missing,
+  disabled, stale, or mismatched parent state fails closed without a default
+  policy fallback; the sandbox test phase remains explicit for broker-side
+  phase constraints. Publication smoke remains deliberately zero-grant while
+  retaining the resolved parent limits.
+- [x] Publish the fork through the same governance pipeline as any release.
+  The revisioned Alloy stager carries the immutable imported parent through the
+  zero-grant smoke and the owner-only stage command. The owner verifies the
+  exact active predecessor, unchanged slug, and strictly newer semantic
+  version, then records direct parent lineage beside the final immutable
+  artifact contract in the same publication transaction. The next published
+  Rhai import reads that owner-persisted lineage; catalog DTOs, mutable tags,
+  and caller-supplied predecessor data are never authoritative.
 
 ### 6.4 Rhai-to-Rust Evolution
 

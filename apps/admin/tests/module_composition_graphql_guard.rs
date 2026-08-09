@@ -117,7 +117,7 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "pub async fn install_module(",
         "INSTALL_MODULE_MUTATION",
         "InstallModuleVariables {",
-        &["slug,", "version,"],
+        &["slug", "version"],
         "Ok(response.install_module)",
     );
     assert_graphql_only_helper(
@@ -125,7 +125,7 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "pub async fn uninstall_module(",
         "UNINSTALL_MODULE_MUTATION",
         "UninstallModuleVariables {",
-        &["slug,"],
+        &["slug"],
         "Ok(response.uninstall_module)",
     );
     assert_graphql_only_helper(
@@ -133,7 +133,7 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "pub async fn upgrade_module(",
         "UPGRADE_MODULE_MUTATION",
         "UpgradeModuleVariables {",
-        &["slug,", "version,"],
+        &["slug", "version"],
         "Ok(response.upgrade_module)",
     );
     assert_graphql_only_helper(
@@ -141,7 +141,7 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "pub async fn toggle_module(",
         "TOGGLE_MODULE_MUTATION",
         "ToggleModuleVariables {",
-        &["module_slug,", "enabled,"],
+        &["module_slug", "enabled"],
         "Ok(response.toggle_module)",
     );
 }
@@ -770,7 +770,9 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
         typed_response: &'a str,
         canonical_return: &'a str,
         foreign_mutations: [&'a str; 3],
-        required_payload_fields: &'a [&'a str],
+        variables_literal: &'a str,
+        variable_fields: &'a [&'a str],
+        request_context_fields: &'a [&'a str],
     }
 
     let cases = [
@@ -784,13 +786,9 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "UPGRADE_MODULE_MUTATION",
                 "TOGGLE_MODULE_MUTATION",
             ],
-            required_payload_fields: &[
-                "InstallModuleVariables {",
-                "slug,",
-                "version,",
-                "token,",
-                "tenant_slug,",
-            ],
+            variables_literal: "InstallModuleVariables {",
+            variable_fields: &["slug", "version"],
+            request_context_fields: &["token", "tenant_slug"],
         },
         Case {
             signature: "pub async fn uninstall_module(",
@@ -802,12 +800,9 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "UPGRADE_MODULE_MUTATION",
                 "TOGGLE_MODULE_MUTATION",
             ],
-            required_payload_fields: &[
-                "UninstallModuleVariables {",
-                "slug,",
-                "token,",
-                "tenant_slug,",
-            ],
+            variables_literal: "UninstallModuleVariables {",
+            variable_fields: &["slug"],
+            request_context_fields: &["token", "tenant_slug"],
         },
         Case {
             signature: "pub async fn upgrade_module(",
@@ -819,13 +814,9 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "UNINSTALL_MODULE_MUTATION",
                 "TOGGLE_MODULE_MUTATION",
             ],
-            required_payload_fields: &[
-                "UpgradeModuleVariables {",
-                "slug,",
-                "version,",
-                "token,",
-                "tenant_slug,",
-            ],
+            variables_literal: "UpgradeModuleVariables {",
+            variable_fields: &["slug", "version"],
+            request_context_fields: &["token", "tenant_slug"],
         },
         Case {
             signature: "pub async fn toggle_module(",
@@ -837,13 +828,9 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "UNINSTALL_MODULE_MUTATION",
                 "UPGRADE_MODULE_MUTATION",
             ],
-            required_payload_fields: &[
-                "ToggleModuleVariables {",
-                "module_slug,",
-                "enabled,",
-                "token,",
-                "tenant_slug,",
-            ],
+            variables_literal: "ToggleModuleVariables {",
+            variable_fields: &["module_slug", "enabled"],
+            request_context_fields: &["token", "tenant_slug"],
         },
     ];
 
@@ -883,13 +870,18 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 case.signature
             );
         }
-        for field in case.required_payload_fields {
-            assert!(
-                helper_body.contains(field),
-                "{} must preserve GraphQL payload/auth forwarding field `{field}`",
-                case.signature
-            );
-        }
+        assert_typed_variables_forward_fields(
+            helper_body,
+            case.variables_literal,
+            case.variable_fields,
+            case.signature,
+        );
+        assert_request_context_fields(
+            helper_body,
+            case.variables_literal,
+            case.request_context_fields,
+            case.signature,
+        );
 
         for forbidden_fragment in [
             ".map_err(",
@@ -1065,16 +1057,66 @@ fn assert_graphql_only_helper(
         helper_body.contains(return_expr),
         "expected helper {signature} to return GraphQL payload directly"
     );
-    for field in forwarded_fields {
-        assert!(
-            helper_body.contains(field),
-            "expected helper {signature} to forward field `{field}` into typed GraphQL payload"
-        );
-    }
+    assert_typed_variables_forward_fields(
+        helper_body,
+        variables_literal,
+        forwarded_fields,
+        signature,
+    );
     assert!(
         !helper_body.contains("combine_native_and_graphql_error"),
         "helper {signature} must not compose native/graphql fallback errors"
     );
+}
+
+fn assert_typed_variables_forward_fields(
+    helper_body: &str,
+    variables_literal: &str,
+    forwarded_fields: &[&str],
+    signature: &str,
+) {
+    let variables_start = helper_body
+        .find(variables_literal)
+        .unwrap_or_else(|| panic!("typed GraphQL variables payload not found in {signature}"));
+    let payload = &helper_body[variables_start + variables_literal.len()..];
+    let payload_end = payload
+        .find('}')
+        .unwrap_or_else(|| panic!("typed GraphQL variables payload is not closed in {signature}"));
+    let payload = &payload[..payload_end];
+
+    for field in forwarded_fields {
+        assert!(
+            payload
+                .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+                .any(|token| token == *field),
+            "expected helper {signature} to forward field `{field}` into typed GraphQL payload"
+        );
+    }
+}
+
+fn assert_request_context_fields(
+    helper_body: &str,
+    variables_literal: &str,
+    request_context_fields: &[&str],
+    signature: &str,
+) {
+    let variables_start = helper_body
+        .find(variables_literal)
+        .unwrap_or_else(|| panic!("typed GraphQL variables payload not found in {signature}"));
+    let request_tail = &helper_body[variables_start + variables_literal.len()..];
+    let variables_end = request_tail
+        .find('}')
+        .unwrap_or_else(|| panic!("typed GraphQL variables payload is not closed in {signature}"));
+    let request_tail = &request_tail[variables_end + 1..];
+
+    for field in request_context_fields {
+        assert!(
+            request_tail
+                .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+                .any(|token| token == *field),
+            "expected helper {signature} to forward request context `{field}`"
+        );
+    }
 }
 
 #[test]
@@ -1300,7 +1342,7 @@ fn lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces() {
         "dependent_validation_failure_does_not_create_journal_row",
         "unknown_module_failure_does_not_create_journal_row",
         "core_module_disable_failure_does_not_create_journal_row",
-        "noop_disable_for_already_disabled_module_does_not_create_journal_row",
+        "repeated_explicit_disable_does_not_create_an_extra_journal_row",
         "noop_enable_for_already_enabled_module_does_not_create_extra_journal_row",
     ] {
         assert!(
@@ -1369,14 +1411,9 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
     let shared_api_path = crate_root.join("src/shared/api/mod.rs");
     let shared_api = fs::read_to_string(&shared_api_path).expect("read shared api.rs");
 
-    let admin_hash_helper = extract_function_block(
-        &admin_transport,
-        "fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String",
-    )
-    .expect("runtime_manifest_hash helper should exist");
     assert!(
-        admin_hash_helper.contains("rustok_api::manifest_hash::hash_manifest(manifest)"),
-        "admin SSR runtime manifest hashing must use the shared typed hash helper"
+        !admin_transport.contains("runtime_manifest_hash"),
+        "admin transport must not restore local composition hashing"
     );
 
     let server_hash_helper = extract_function_block(
@@ -1435,14 +1472,16 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
     }
 
     for server_fragment in [
-        "persist_manifest_and_request_build(",
+        "PlatformCompositionBuildService::apply_module_mutation_and_request_build(",
         "format!(\"platform_state:{}\", result.snapshot.revision)",
         "assert_eq!(result.build.manifest_revision, result.snapshot.revision)",
         "successful_enqueue_keeps_hash_parity_between_snapshot_and_build",
         "successful_enqueue_keeps_manifest_snapshot_parity_with_hash",
         "same_manifest_keeps_hash_and_snapshot_stable_across_revisions",
     ] {
-        let haystack = if server_fragment == "persist_manifest_and_request_build(" {
+        let haystack = if server_fragment
+            == "PlatformCompositionBuildService::apply_module_mutation_and_request_build("
+        {
             server_mutations.as_str()
         } else {
             server_build_tests.as_str()
@@ -1450,6 +1489,15 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
         assert!(
             haystack.contains(server_fragment),
             "server composition surface must preserve manifest parity fragment `{server_fragment}`"
+        );
+    }
+    for owner_fragment in [
+        "ModuleControlPlane::new(db.clone())",
+        ".replace_active_snapshot_and_enqueue(",
+    ] {
+        assert!(
+            server_composition.contains(owner_fragment),
+            "server composition adapter must delegate atomic manifest/build work through `{owner_fragment}`"
         );
     }
 
@@ -1465,17 +1513,11 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
 }
 
 #[test]
-fn runtime_manifest_hash_uses_shared_typed_hash_helper() {
+fn admin_transport_does_not_compute_manifest_hash() {
     let content = read_transport_content();
 
-    let helper_body = extract_function_block(
-        &content,
-        "fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String",
-    )
-    .expect("runtime_manifest_hash helper should exist");
-
     assert!(
-        helper_body.contains("rustok_api::manifest_hash::hash_manifest(manifest)"),
-        "runtime_manifest_hash must use shared typed hash helper"
+        !content.contains("runtime_manifest_hash"),
+        "admin transport must consume the owner-provided manifest hash rather than recomputing it"
     );
 }

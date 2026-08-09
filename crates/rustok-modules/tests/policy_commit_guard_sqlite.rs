@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleRegistry, RusToKModule};
-use rustok_modules::SeaOrmModulePolicyRevisionConsumer;
+use rustok_modules::{
+    ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionTransition,
+    SeaOrmModulePolicyRevisionConsumer,
+};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
     TransactionTrait,
@@ -104,6 +107,61 @@ async fn static_policy_resolves_tenant_override_under_lifecycle_cursor_lock() {
     assert!(
         current_revision.is_none(),
         "commit guard locks but never advances the lifecycle owner cursor"
+    );
+}
+
+#[tokio::test]
+async fn lifecycle_cursor_initializes_empty_and_advances_the_exact_successor() {
+    let db = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let consumer = SeaOrmModulePolicyRevisionConsumer::new(db);
+    let first_revision = format!("sha256:{}", "a".repeat(64));
+    let second_revision = format!("sha256:{}", "b".repeat(64));
+
+    assert_eq!(
+        consumer
+            .current_revision(tenant_id, "module.lifecycle")
+            .await
+            .expect("uninitialized cursor should resolve"),
+        None
+    );
+
+    let first = ModulePolicyRevisionTransition {
+        previous_revision: None,
+        next_revision: first_revision.clone(),
+    };
+    assert_eq!(
+        consumer
+            .apply(tenant_id, "module.lifecycle", &first)
+            .await
+            .expect("first successor should advance"),
+        ModulePolicyRevisionApplyOutcome::Applied
+    );
+    assert_eq!(
+        consumer
+            .current_revision(tenant_id, "module.lifecycle")
+            .await
+            .expect("first cursor revision should resolve"),
+        Some(first_revision.clone())
+    );
+
+    let second = ModulePolicyRevisionTransition {
+        previous_revision: Some(first_revision),
+        next_revision: second_revision.clone(),
+    };
+    assert_eq!(
+        consumer
+            .apply(tenant_id, "module.lifecycle", &second)
+            .await
+            .expect("matching successor should advance"),
+        ModulePolicyRevisionApplyOutcome::Applied
+    );
+    assert_eq!(
+        consumer
+            .current_revision(tenant_id, "module.lifecycle")
+            .await
+            .expect("second cursor revision should resolve"),
+        Some(second_revision)
     );
 }
 

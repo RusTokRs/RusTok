@@ -5,8 +5,7 @@ use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ModuleControlPlane, ModuleLifecycleDbWriterError, ModuleLifecycleExecutionError,
     ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
-    ModuleOperationStoreError, ModuleToggleValidationError, failed_module_operation_recovery_plans,
-    module_operation_recovery_plan, normalize_module_settings,
+    ModuleOperationStoreError, ModuleToggleValidationError, normalize_module_settings,
 };
 
 use crate::modules::{ManifestError, ManifestManager, map_module_settings_validation_error};
@@ -134,22 +133,40 @@ impl ModuleLifecycleService {
 
     pub async fn module_operation_recovery_plan(
         db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
         operation_id: uuid::Uuid,
     ) -> Result<ModuleOperationRecoveryPlan, ModuleOperationRecoveryError> {
-        module_operation_recovery_plan(db, operation_id)
+        let manifest = PlatformCompositionService::active_manifest(db)
             .await
-            .map_err(map_module_recovery_error)
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
+            .recovery_plan(tenant_id, operation_id)
+            .await
+            .map_err(map_lifecycle_writer_recovery_error)
     }
 
     pub async fn failed_module_operation_recovery_plans(
         db: &DatabaseConnection,
+        registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         module_slug: Option<&str>,
     ) -> Result<Vec<ModuleOperationRecoveryPlan>, ModuleOperationRecoveryError> {
-        let plans = failed_module_operation_recovery_plans(db, tenant_id, module_slug)
+        let manifest = PlatformCompositionService::active_manifest(db)
             .await
-            .map_err(map_module_recovery_error)?;
-        Ok(plans)
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
+            .failed_recovery_plans(tenant_id, module_slug)
+            .await
+            .map_err(map_lifecycle_writer_recovery_error)
     }
 
     pub async fn retry_failed_post_hook_operation(

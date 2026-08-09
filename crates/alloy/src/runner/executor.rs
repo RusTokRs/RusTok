@@ -64,7 +64,7 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
     ) -> ExecutionResult {
         let execution_id = ctx.execution_id;
         let started_at = Utc::now();
-        let evidence = self.runtime.execution_evidence(script).ok();
+        let evidence = self.runtime.execution_evidence(script).await.ok();
 
         if ctx.call_depth > self.max_chain_depth {
             warn!(

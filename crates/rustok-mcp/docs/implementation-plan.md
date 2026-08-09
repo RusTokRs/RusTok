@@ -13,6 +13,13 @@ invoker. The server uses it for both remote transport and the admitted-artifact
 `platform.mcp` route, so tool authorization is not reimplemented by either
 host path.
 
+The authenticated remote MCP transport also composes the remote-only
+`alloy_import_published_release` tool. It derives tenant and actor identity
+from the persisted runtime binding, requires `scripts.manage` and
+`modules.manage`, constructs a tenant-scoped Alloy registry, and injects the
+same owner-backed published-Rhai source provider as HTTP and GraphQL. Source
+bytes are never returned; generic stdio MCP does not advertise this operation.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.

@@ -26,6 +26,11 @@ The root envelope uses the nil tenant UUID only for the explicit allow-list of
 platform-capable module events; every other root and typed contract envelope
 rejects the sentinel before persistence or relay.
 
+The dynamic artifact lifecycle publishes `module.artifact.activated` with the
+new installation identity, optional direct-predecessor identity, and positive
+owner revision. Actor, reason, idempotency fingerprint, and the operation
+receipt remain in the lifecycle owner rather than the shared event payload.
+
 The typed-family implementation includes sealed
 `social_graph.relation.state_changed` v1. Its payload contains relation id,
 source/target user ids, canonical relation kind, active state, and revision only.

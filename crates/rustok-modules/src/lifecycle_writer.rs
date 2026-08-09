@@ -11,6 +11,10 @@ use crate::policy::{
     ModuleEffectivePolicyNodeReadinessInput, ModuleEffectivePolicyQuery,
     ModuleEffectivePolicyRuntimeInput,
 };
+use crate::recovery::{
+    failed_module_operation_recovery_plans, module_operation_recovery_plan,
+    retry_failed_post_hook_operation,
+};
 use crate::{
     ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
     ControlPlaneInfrastructure, ModuleDefinitionCatalog, ModuleDefinitionError,
@@ -23,8 +27,9 @@ use crate::{
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModulePolicyRevisionConsumer, TenantModuleOverride, TenantModuleSettingsRecord,
     TenantModuleSettingsRequest, TenantModuleStateStore,
-    artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
-    execute_module_toggle, module_operation_recovery_plan, retry_failed_post_hook_operation,
+    artifact_schema::ArtifactSchemaValidatorCache,
+    artifact_settings::{self, ArtifactSettingsStoreError},
+    execute_module_toggle,
 };
 
 /// Database-backed adapter for module lifecycle execution in a host composition.
@@ -245,6 +250,37 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         .map_err(ModuleLifecycleDbWriterError::Lifecycle)
     }
 
+    /// Returns one recovery plan only when it belongs to the authenticated
+    /// tenant. Hosts must not load a plan globally and filter it after reading
+    /// owner state.
+    pub async fn recovery_plan(
+        &self,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+    ) -> Result<ModuleOperationRecoveryPlan, ModuleLifecycleDbWriterError> {
+        let plan = module_operation_recovery_plan(&self.db, operation_id)
+            .await
+            .map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        if plan.tenant_id != tenant_id {
+            return Err(ModuleLifecycleDbWriterError::Recovery(
+                ModuleOperationRecoveryError::OperationNotFound,
+            ));
+        }
+        Ok(plan)
+    }
+
+    /// Returns failed recovery plans for the authenticated tenant from the
+    /// lifecycle owner journal.
+    pub async fn failed_recovery_plans(
+        &self,
+        tenant_id: Uuid,
+        module_slug: Option<&str>,
+    ) -> Result<Vec<ModuleOperationRecoveryPlan>, ModuleLifecycleDbWriterError> {
+        failed_module_operation_recovery_plans(&self.db, tenant_id, module_slug)
+            .await
+            .map_err(ModuleLifecycleDbWriterError::Recovery)
+    }
+
     /// Retries only a post-hook failure using the exact persisted tenant
     /// override state committed by the original operation. Serving availability
     /// may differ while Product co-requisites are staged and is not a retry gate.
@@ -255,14 +291,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         requested_by: Option<String>,
         idempotency_key: Uuid,
     ) -> Result<ModuleOperationRecoveryPlan, ModuleLifecycleDbWriterError> {
-        let plan = module_operation_recovery_plan(&self.db, operation_id)
-            .await
-            .map_err(ModuleLifecycleDbWriterError::Recovery)?;
-        if plan.tenant_id != tenant_id {
-            return Err(ModuleLifecycleDbWriterError::Recovery(
-                ModuleOperationRecoveryError::OperationNotFound,
-            ));
-        }
+        let plan = self.recovery_plan(tenant_id, operation_id).await?;
         let (catalog, current_override_enabled, current_settings) = self
             .recovery_execution_context(plan.tenant_id, &plan.module_slug)
             .await?;
@@ -312,14 +341,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 ModuleLifecycleExecutionError::InvalidIdempotencyKey,
             ));
         }
-        let plan = module_operation_recovery_plan(&self.db, operation_id)
-            .await
-            .map_err(ModuleLifecycleDbWriterError::Recovery)?;
-        if plan.tenant_id != tenant_id {
-            return Err(ModuleLifecycleDbWriterError::Recovery(
-                ModuleOperationRecoveryError::OperationNotFound,
-            ));
-        }
+        let plan = self.recovery_plan(tenant_id, operation_id).await?;
         if plan.issue != ModuleOperationIssue::PostHookFailed {
             return Err(ModuleLifecycleDbWriterError::Recovery(
                 ModuleOperationRecoveryError::NotRetryable(plan.issue.as_str().to_string()),
@@ -428,43 +450,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 reason: "static settings require trusted host-manifest normalization",
             });
         }
-        if !settings.is_object() {
-            return Err(ModuleLifecycleDbWriterError::ArtifactSettings {
-                module_slug: module_slug.to_string(),
-                reason: "artifact settings must be a JSON object",
-            });
-        }
-        let schema_digest = definition
-            .settings_schema_digest
-            .as_deref()
-            .ok_or_else(|| ModuleLifecycleDbWriterError::ArtifactSettings {
-                module_slug: module_slug.to_string(),
-                reason: "artifact does not declare a settings schema",
-            })?;
-        let schema = definition.settings_schema().ok_or_else(|| {
-            ModuleLifecycleDbWriterError::ArtifactSettings {
-                module_slug: module_slug.to_string(),
-                reason: "artifact settings schema is absent from the admitted bundle",
-            }
-        })?;
-        self.settings_schema_validators
-            .validate(schema_digest, schema, &settings)
-            .map_err(|error| ModuleLifecycleDbWriterError::ArtifactSettings {
-                module_slug: module_slug.to_string(),
-                reason: match error {
-                    ArtifactSchemaValidationError::Compilation => {
-                        "admitted artifact settings schema cannot be compiled"
-                    }
-                    ArtifactSchemaValidationError::Violation => {
-                        "artifact settings do not satisfy the admitted schema"
-                    }
-                    ArtifactSchemaValidationError::CachePoisoned => {
-                        "artifact settings validator cache is unavailable"
-                    }
-                },
-            })?;
-        self.persist_settings_value(tenant_id, definition, settings)
-            .await
+        artifact_settings::persist(
+            &self.db,
+            &self.settings_schema_validators,
+            tenant_id,
+            module_slug,
+            settings,
+        )
+        .await
+        .map_err(|error| map_artifact_settings_error(module_slug, error))
     }
 
     async fn persist_settings_value(
@@ -904,6 +898,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<serde_json::Value, ModuleLifecycleDbWriterError> {
+        let catalog = self.definition_catalog()?;
+        let definition = catalog
+            .get(module_slug)
+            .ok_or_else(|| ModuleLifecycleDbWriterError::UnknownModule(module_slug.to_string()))?;
+        if matches!(&definition.source, ModuleDefinitionSource::Artifact { .. }) {
+            return artifact_settings::load(&self.db, tenant_id, module_slug)
+                .await
+                .map_err(|error| map_artifact_settings_error(module_slug, error));
+        }
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Postgres => {
@@ -976,4 +979,69 @@ fn map_idempotency_command_error(error: ModuleOperationStoreError) -> ModuleLife
 
 fn database_error(error: impl std::fmt::Display) -> ModuleLifecycleDbWriterError {
     ModuleLifecycleDbWriterError::Database(error.to_string())
+}
+
+fn map_artifact_settings_error(
+    module_slug: &str,
+    error: ArtifactSettingsStoreError,
+) -> ModuleLifecycleDbWriterError {
+    match error {
+        ArtifactSettingsStoreError::Database(error) => {
+            ModuleLifecycleDbWriterError::Database(error)
+        }
+        ArtifactSettingsStoreError::InvalidIdentity => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings require a non-nil tenant and canonical module slug",
+            }
+        }
+        ArtifactSettingsStoreError::InvalidValue => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings must be a JSON object",
+            }
+        }
+        ArtifactSettingsStoreError::InstallationUnavailable => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "no active admitted artifact installation is available",
+            }
+        }
+        ArtifactSettingsStoreError::AmbiguousInstallation => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "active admitted artifact installation is ambiguous",
+            }
+        }
+        ArtifactSettingsStoreError::InvalidInstallation => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "active admitted artifact installation metadata is invalid",
+            }
+        }
+        ArtifactSettingsStoreError::MissingSchema => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "active artifact does not declare a settings schema",
+            }
+        }
+        ArtifactSettingsStoreError::SchemaViolation => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings do not satisfy the admitted schema",
+            }
+        }
+        ArtifactSettingsStoreError::ValidatorUnavailable => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings validator is unavailable",
+            }
+        }
+        ArtifactSettingsStoreError::SchemaMismatch => {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings instance schema does not match the active installation",
+            }
+        }
+    }
 }

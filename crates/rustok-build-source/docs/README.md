@@ -16,7 +16,8 @@ digest, archive bytes, source bytes, and file count.
 extracting it. `CasArchiveStore` additionally binds that same parser to an
 exact deployment-owned `cas://sha256:<hex>` identity before materialization.
 
-`CasArchivePublisher` is the matching control-plane writer. It strictly
+In the current implementation, `CasArchivePublisher` is the matching
+archive-specific control-plane writer. It strictly
 inspects the input, copies and rehashes it into a private file under the CAS
 root, and exposes the final `<sha256-hex>.tar` object only through an atomic
 no-replace hard-link commit. Equal concurrent uploads converge. A mismatched
@@ -30,6 +31,19 @@ parent/current-directory paths, links, devices, duplicate entries, overwrites,
 truncated payloads, malformed padding, and non-zero trailing content fail
 closed. Archive bytes, extracted bytes, and entry count are independently
 bounded by the caller.
+
+This direct `<hex>.tar` layout is an explicit release-safety cutover gap. The
+accepted target has the `rustok-modules` preparation-owned
+`SourceObjectStore` publishing globally deduplicated `source_digest` blobs and
+distinct owner/RLS-scoped `source_receipt_id` records over
+owner/preparation/media-type/length/manifest, with one same-request idempotency
+and all-reference retention authority.
+`rustok-build-source` becomes its archive-specialized client while retaining
+the deterministic builder, strict parser, inspector, and materializer. The
+archive-specific writer/layout and every repository caller are removed or
+updated atomically; they do not survive as a fallback. Reviewed Rhai releases
+publish canonical bounded-workspace objects through the generic owner and are
+never tar-wrapped.
 
 The destination must be a new absolute child chosen by the caller under its
 own verified workspace. This crate never removes a pre-existing destination;

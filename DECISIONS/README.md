@@ -15,6 +15,7 @@ column identifies the current canonical decision.
 | ADR | Title | Status |
 | --- | --- | --- |
 | [2026-08-06](./2026-08-06-module-release-rollback-safety.md) | Module release rollback safety | Accepted |
+| [2026-08-06](./2026-08-06-oci-registry-transport-boundary.md) | Platform-owned OCI registry transport boundary | Accepted |
 | [2026-08-03](./2026-08-03-owner-operation-receipts.md) | Shared owner-operation receipt ledger | Accepted |
 | [2026-07-26](./2026-07-26-translation-control-plane-boundary.md) | Translation control plane and owner-owned localized data | Proposed |
 | [2026-07-24](./2026-07-24-index-storage-layout.md) | Physical PostgreSQL layout for the Index Engine | Accepted |
@@ -25,6 +26,7 @@ column identifies the current canonical decision.
 | [2026-07-23](./2026-07-23-remote-event-consumer-delivery.md) | Remote event consumer delivery | Accepted |
 | [2026-07-23](./2026-07-23-event-schema-release-discipline.md) | Event schema release discipline | Accepted |
 | [2026-07-22](./2026-07-22-artifact-security-state-boundary.md) | Artifact security state boundary | Accepted |
+| [2026-07-22](./2026-07-22-artifact-data-snapshot-restore.md) | Durable artifact-data snapshot and guarded restore | Accepted |
 | [2026-07-22](./2026-07-22-channel-binding-policy-boundary.md) | Channel binding policy boundary | Accepted |
 | [2026-07-22](./2026-07-22-effective-module-policy-decision.md) | Effective module policy decision | Accepted |
 | [2026-07-22](./2026-07-22-richtext-capability-boundary.md) | Richtext capability boundary and single-document contract | Accepted |
@@ -41,6 +43,7 @@ column identifies the current canonical decision.
 | [2026-07-13](./2026-07-13-module-artifact-rollback-boundary.md) | Module artifact rollback boundary | Accepted |
 | [2026-07-13](./2026-07-13-module-trust-verification-transport.md) | Module trust-verification transport | Accepted |
 | [2026-07-13](./2026-07-13-agent-principals-and-owner-owned-workflows.md) | Agent principals and owner-owned workflows | Accepted |
+| [2026-07-12](./2026-07-12-installer-topology-composition-identity.md) | Installer topology composition identity | Accepted |
 | [2026-07-11](./2026-07-11-product-storage-integrity-and-request-trust.md) | Product storage integrity and request trust | Accepted |
 | [2026-07-11](./2026-07-11-neutral-sandbox-foundation.md) | Neutral sandbox foundation for Alloy and module artifacts | Accepted |
 | [2026-07-10](./2026-07-10-mcp-management-owner-boundary.md) | MCP management owner boundary | Accepted |

@@ -41,6 +41,9 @@ jobs may list only their controlled namespace prefix.
   assets before reopening writes.
 - For Local storage, coordinate filesystem snapshots with database snapshots and
   choose `fsync=true` when the durability requirement outweighs throughput.
+  The portable installer derives its Local base from
+  `<instance-root>/storage`; this path may be anywhere supported by the host
+  operating system and never enters an object key.
 - For S3-compatible storage, configure provider versioning/retention as required
   and a lifecycle rule that aborts incomplete multipart uploads. RusToK still
   calls multipart abort on controlled failure paths.

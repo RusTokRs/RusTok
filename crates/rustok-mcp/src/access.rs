@@ -5,6 +5,7 @@ use rustok_api::Permission;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::alloy_import::TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE;
 use crate::alloy_tools::{
     TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
     TOOL_ALLOY_GET_SCRIPT, TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS,
@@ -258,6 +259,10 @@ pub fn default_tool_requirement(tool_name: &str) -> McpToolRequirement {
         TOOL_ALLOY_UPDATE_SCRIPT => vec![Permission::SCRIPTS_UPDATE.to_string()],
         TOOL_ALLOY_DELETE_SCRIPT => vec![Permission::SCRIPTS_DELETE.to_string()],
         TOOL_ALLOY_RUN_SCRIPT => vec![Permission::SCRIPTS_EXECUTE.to_string()],
+        TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE => vec![
+            Permission::SCRIPTS_MANAGE.to_string(),
+            Permission::MODULES_MANAGE.to_string(),
+        ],
         TOOL_ALLOY_SCAFFOLD_MODULE
         | TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD
         | TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => vec![Permission::MODULES_MANAGE.to_string()],
@@ -379,6 +384,19 @@ mod tests {
         assert_eq!(
             requirement.required_permissions,
             vec![Permission::SCRIPTS_EXECUTE.to_string()]
+        );
+    }
+
+    #[test]
+    fn maps_published_release_import_to_both_manage_permissions() {
+        let requirement = default_tool_requirement(TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE);
+
+        assert_eq!(
+            requirement.required_permissions,
+            vec![
+                Permission::SCRIPTS_MANAGE.to_string(),
+                Permission::MODULES_MANAGE.to_string(),
+            ]
         );
     }
 

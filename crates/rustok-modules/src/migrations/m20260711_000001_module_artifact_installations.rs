@@ -29,6 +29,8 @@ impl MigrationTrait for Migration {
                     payload_digest TEXT NOT NULL,\
                     entrypoint TEXT NOT NULL,\
                     descriptor JSONB NOT NULL,\
+                    data_owner_id UUID NOT NULL,\
+                    settings_instance_id UUID NOT NULL,\
                     dependency_graph_revision BIGINT NOT NULL,\
                     dependency_graph_digest TEXT NOT NULL,\
                     dependency_lock JSONB NOT NULL,\
@@ -36,6 +38,7 @@ impl MigrationTrait for Migration {
                     CHECK ((scope_kind = 'platform' AND tenant_id IS NULL) OR (scope_kind = 'tenant' AND tenant_id IS NOT NULL))\
                 )",
                 "CREATE INDEX module_artifact_installations_tenant_idx ON module_artifact_installations (tenant_id, slug, version)",
+                "CREATE INDEX module_artifact_installations_data_owner_idx ON module_artifact_installations (data_owner_id, settings_instance_id)",
                 "CREATE UNIQUE INDEX module_artifact_installations_platform_identity ON module_artifact_installations (slug, version, manifest_digest) WHERE scope_kind = 'platform'",
                 "CREATE UNIQUE INDEX module_artifact_installations_tenant_identity ON module_artifact_installations (tenant_id, slug, version, manifest_digest) WHERE scope_kind = 'tenant'",
                 "ALTER TABLE module_artifact_installations ENABLE ROW LEVEL SECURITY",
@@ -58,6 +61,8 @@ impl MigrationTrait for Migration {
                     payload_digest TEXT NOT NULL,\
                     entrypoint TEXT NOT NULL,\
                     descriptor JSON NOT NULL,\
+                    data_owner_id TEXT NOT NULL,\
+                    settings_instance_id TEXT NOT NULL,\
                     dependency_graph_revision INTEGER NOT NULL,\
                     dependency_graph_digest TEXT NOT NULL,\
                     dependency_lock JSON NOT NULL,\
@@ -65,6 +70,7 @@ impl MigrationTrait for Migration {
                     CHECK ((scope_kind = 'platform' AND tenant_id IS NULL) OR (scope_kind = 'tenant' AND tenant_id IS NOT NULL))\
                 )",
                 "CREATE INDEX module_artifact_installations_tenant_idx ON module_artifact_installations (tenant_id, slug, version)",
+                "CREATE INDEX module_artifact_installations_data_owner_idx ON module_artifact_installations (data_owner_id, settings_instance_id)",
                 "CREATE UNIQUE INDEX module_artifact_installations_platform_identity ON module_artifact_installations (slug, version, manifest_digest) WHERE scope_kind = 'platform'",
                 "CREATE UNIQUE INDEX module_artifact_installations_tenant_identity ON module_artifact_installations (tenant_id, slug, version, manifest_digest) WHERE scope_kind = 'tenant'",
             ],
@@ -117,11 +123,11 @@ mod tests {
             .execute_unprepared(
                 "INSERT INTO module_artifact_installations (\
                     installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
-                    slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
+                    slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id, \
                     dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at\
                  ) VALUES (\
                     'a', 'platform', NULL, 'registry.example', 'modules/example', 'sha256:manifest', \
-                    'example', '1.0.0', 'rhai', 'rustok:module/runtime@1', 'sha256:payload', 'main', '{}', \
+                    'example', '1.0.0', 'rhai', 'rustok:module/runtime@1', 'sha256:payload', 'main', '{}', 'owner-a', 'settings-a', \
                     1, 'sha256:graph', '{}', '2026-07-11T00:00:00Z'\
                  )",
             )
@@ -132,11 +138,11 @@ mod tests {
             .execute_unprepared(
                 "INSERT INTO module_artifact_installations (\
                     installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
-                    slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
+                    slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id, \
                     dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at\
                  ) VALUES (\
                     'b', 'platform', NULL, 'registry.example', 'modules/example', 'sha256:manifest', \
-                    'example', '1.0.0', 'rhai', 'rustok:module/runtime@1', 'sha256:payload', 'main', '{}', \
+                    'example', '1.0.0', 'rhai', 'rustok:module/runtime@1', 'sha256:payload', 'main', '{}', 'owner-b', 'settings-b', \
                     1, 'sha256:graph', '{}', '2026-07-11T00:00:00Z'\
                  )",
             )

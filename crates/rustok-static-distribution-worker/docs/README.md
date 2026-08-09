@@ -10,6 +10,13 @@ plan, emits one digest-bound role-bundle receipt, and owns no release or rollout
 decision. `rustok-build` must not provide a parallel static publisher; see the
 [release safety ADR](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md).
 
+The runtime contract below records the currently implemented single-executable
+publisher so its security boundary remains auditable during the cutover. Its
+one-artifact config, request, and receipt are incomplete target behavior. They
+must be replaced atomically by the canonical role plan, per-role outputs and
+asset manifests, one OCI role-bundle root, and one fully bound role-bundle
+receipt; the singular path must not remain as a fallback publisher.
+
 ## Runtime contract
 
 Startup requires the following fixed deployment configuration:
@@ -28,6 +35,10 @@ The launcher and configuration must be absolute non-symlink regular files and
 must match their lowercase SHA-256 digests at startup, readiness, and execution.
 The work root must be an absolute non-symlink directory. Readiness fails closed
 when any of these identities changes.
+For the default local installation, the trusted installer derives the work
+root from `<instance-root>/work/static-distribution`; a dedicated build host may
+choose a different worker-local path. Neither location is release identity or
+a runtime module path.
 
 The strict job-config JSON also pins the CAS root, Cargo and Rustc executables,
 Cargo home, evidence publisher and its configuration, toolchain identity,
@@ -112,9 +123,13 @@ composition manifest only in that isolated workspace. A reclaim removes only
 the known job-owned derived workspace and regenerates it from the unchanged
 create-only inputs; it never mutates the source archives or owner job bundle.
 
-Attempt directories are durable retry/evidence inputs and are not removed by
-the request path. Deployment retention tooling may collect them only after the
-owner attempt is terminal and the evidence retention policy permits deletion.
+After a verified terminal publication, or after bounded failure diagnostics
+have been captured, cleanup deletes the derived workspace immediately. An
+explicit forensic hold may delay that cleanup, but ordinary audit/evidence
+retention is not such a hold. Create-only request inputs, terminal receipts,
+and protected log references remain in the attempt directory until their owner
+retention policy permits collection; they are sufficient to reproduce the
+derived workspace.
 
 ## Verification
 

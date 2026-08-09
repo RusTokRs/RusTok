@@ -49,6 +49,13 @@ from the digest, without a date:
 module-artifact/objects/platform/sha256/{aa}/{bb}/{digest}
 ```
 
+For the portable local/monolith installer target, the Local adapter base is the
+operator-selected `<instance-root>/storage` subtree. The base directory may be
+located anywhere supported by the operating system and is placement only; it
+is never prepended to, persisted in, or hashed into canonical object keys.
+S3-compatible and distributed adapters map the same keys to their configured
+provider and have no required local storage directory.
+
 There is no layout version or persisted backend identifier in keys. The
 current layout is authoritative. A future incompatible layout would require a
 separate migration decision, not a speculative `v1` segment.
@@ -79,6 +86,8 @@ allow-list, and is never accepted from serialized caller claims.
 
 - S3 remains optional; local filesystem storage is the default development
   implementation.
+- The installer derives Local storage from its selected portable instance root;
+  no global Linux path or fixed drive is part of the storage contract.
 - Domain modules depend on the critical `object_store` API just as they depend
   on SeaORM or Tokio; RusToK does not hide it behind forwarding methods.
 - Calendar directories keep operations and manual inspection bounded without

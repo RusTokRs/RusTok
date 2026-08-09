@@ -21,11 +21,33 @@ pub use rustok_modules::REGISTRY_VALIDATION_STAGE_REASON_CODES;
 pub use rustok_modules::REGISTRY_YANK_REASON_CODES;
 
 #[cfg(feature = "mod-alloy")]
+mod alloy_import;
+
+#[cfg(feature = "mod-alloy")]
 pub(crate) fn alloy_release_governance_handle(
     db: DatabaseConnection,
 ) -> alloy::AlloyReleaseGovernanceHandle {
     alloy::AlloyReleaseGovernanceHandle(std::sync::Arc::new(
         ModuleControlPlane::new(db).publication(),
+    ))
+}
+
+#[cfg(feature = "mod-alloy")]
+pub(crate) fn alloy_published_rhai_source_provider_handle(
+    db: DatabaseConnection,
+    storage: StorageRuntime,
+) -> alloy::AlloyPublishedRhaiSourceProviderHandle {
+    alloy::AlloyPublishedRhaiSourceProviderHandle(std::sync::Arc::new(
+        alloy_import::ServerAlloyPublishedRhaiSourceProvider::new(db, storage),
+    ))
+}
+
+#[cfg(feature = "mod-alloy")]
+pub(crate) fn alloy_imported_draft_policy_provider_handle(
+    db: DatabaseConnection,
+) -> alloy::AlloyImportedDraftPolicyProviderHandle {
+    alloy::AlloyImportedDraftPolicyProviderHandle(std::sync::Arc::new(
+        alloy_import::ServerAlloyImportedDraftPolicyProvider::new(db),
     ))
 }
 

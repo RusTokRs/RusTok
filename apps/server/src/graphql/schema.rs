@@ -144,6 +144,8 @@ pub struct GraphqlSchemaDependencies {
     pub alloy_runtime: alloy::SharedAlloyRuntime,
     #[cfg(feature = "mod-alloy")]
     pub alloy_release_governance: alloy::AlloyReleaseGovernanceHandle,
+    #[cfg(feature = "mod-alloy")]
+    pub alloy_published_rhai_source: alloy::AlloyPublishedRhaiSourceProviderHandle,
     #[cfg(all(
         feature = "mod-content",
         feature = "mod-blog",
@@ -173,6 +175,8 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         alloy_runtime,
         #[cfg(feature = "mod-alloy")]
         alloy_release_governance,
+        #[cfg(feature = "mod-alloy")]
+        alloy_published_rhai_source,
         #[cfg(all(
             feature = "mod-content",
             feature = "mod-blog",
@@ -269,7 +273,10 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     };
 
     #[cfg(feature = "mod-alloy")]
-    let builder = builder.data(alloy_runtime).data(alloy_release_governance);
+    let builder = builder
+        .data(alloy_runtime)
+        .data(alloy_release_governance)
+        .data(alloy_published_rhai_source);
 
     #[cfg(all(
         feature = "mod-content",

@@ -99,7 +99,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 ### Implementation Plans and Machine-Readable Contracts
 
 - [Implementation Plans Registry](./modules/implementation-plans-registry.md)
-- [Module Release and Rollback Plan](./modules/module-release-rollback-plan.md) — immutable production release identity, safe update/rollback, and module data readiness.
+- [Module Release and Rollback Plan](./modules/module-release-rollback-plan.md) — end-to-end portable instance-root, source, artifact, installation, update, recovery, retention, and database-safety contract for platform, native, WASM, and Rhai releases.
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 49-operation admin contract, guarded human workflow controls, private workflow collaboration, checksum-verified expiring interchange artifacts, fixed-cardinality content-free observability, and AI machine-translation workflow
@@ -133,7 +133,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Architecture and Foundation
 
-- [ADR: Module release rollback safety](../DECISIONS/2026-08-06-module-release-rollback-safety.md) — immutable production release identity, safe automatic rollback, and controlled data recovery.
+- [ADR: Module release rollback safety](../DECISIONS/2026-08-06-module-release-rollback-safety.md) — canonical artifact planes, complete static role bundles, dynamic installation recovery, safe automatic deployment recovery, and controlled data handling.
 - [ADR: Platform-owned OCI registry transport boundary](../DECISIONS/2026-08-06-oci-registry-transport-boundary.md) — client-enforced OCI egress policy for module publication and admission.
 - [ADR: Translation control plane and owner-owned localized data](../DECISIONS/2026-07-26-translation-control-plane-boundary.md)
 - [ADR: Shared owner-operation receipt ledger](../DECISIONS/2026-08-03-owner-operation-receipts.md)
@@ -145,13 +145,13 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [ADR: Durable artifact-data snapshot and guarded restore](../DECISIONS/2026-07-22-artifact-data-snapshot-restore.md)
 - [ADR: Athanor-owned RAG data plane](../DECISIONS/2026-07-18-rag-postgres-capability-profiles.md)
 - [ADR: Repository connector module with GitHub as the first provider](../DECISIONS/2026-07-18-repository-connector-module-github-first.md)
-- [ADR: Direct object-store runtime and owner-local lifecycle](../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md)
+- [ADR: Direct object-store runtime and owner-local lifecycle](../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md) — canonical object keys with a portable `<instance-root>/storage` Local mapping or an external S3-compatible provider
 - [ADR: Event MessagePack wire format](../DECISIONS/2026-07-23-event-messagepack-wire-format.md)
 - [ADR: Iggy bundled single-node deployment](../DECISIONS/2026-07-23-iggy-bundled-single-node-deployment.md)
 - [ADR: Global event delivery profiles](../DECISIONS/2026-07-23-global-event-delivery-profiles.md)
 - [ADR: User-registration event PII boundary](../DECISIONS/2026-07-23-user-registration-event-pii.md)
 
-- [`rustok-installer` contract and implementation plan](../crates/rustok-installer/docs/README.md) — installer ownership, browser-safe contract surface, native seed-runtime boundary, monolith/distributed topology contract and CLI/HTTP adapter boundaries
+- [`rustok-installer` contract and implementation plan](../crates/rustok-installer/docs/README.md) — installer ownership, operator-selected portable instance root, browser-safe contract surface, native seed-runtime boundary, monolith/distributed topology contract and CLI/HTTP adapter boundaries
 
 - [Platform Diagram](./architecture/diagram.md)
 - [Backend Module Guides](./backend/README.md) - target backend module architecture, implementation and verification for `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core`
@@ -160,7 +160,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [ADR: Index PostgreSQL storage model](../DECISIONS/2026-07-24-index-storage-layout.md) — evidence-backed JSONB entity envelope, independent links, source-version rules, and migration/rollback strategy
 - [Hybrid Installer ADR](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
 - [Axum Runtime and Operations CLI Boundary](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md)
-- [ADR: Installer Topology Composition Identity](../DECISIONS/2026-07-12-installer-topology-composition-identity.md) — trusted distribution identity and versioned installer topology ownership
+- [ADR: Installer Topology Composition Identity](../DECISIONS/2026-07-12-installer-topology-composition-identity.md) — operator-selected portable instance placement, trusted distribution identity, installer topology ownership, and one role-bundle deployment request without per-role release heads
 - [ADR: Axum Runtime and Platform CLI Boundary](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md) — pure Axum server binary without maintenance CLI code, separate `rustok-cli`, module-local `cli/` adapters and generated registries for distribution-aware builds
 - [ADR: Lifecycle Hook Phases/Retry Contract](../DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md) — `validated/running/committed/failed`, explicit `pre/post` hooks and retryable post-hook failures without partial rollback
 - [ADR: Neutral Sandbox Foundation](../DECISIONS/2026-07-11-neutral-sandbox-foundation.md) — one sandbox contract for Alloy-authored Rhai, WebAssembly module artifacts and future sidecars

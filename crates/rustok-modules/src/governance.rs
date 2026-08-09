@@ -777,6 +777,10 @@ pub struct ModuleAlloyAuthoredStageCommand {
     pub artifact_digest: String,
     pub source_digest: String,
     pub source_revision: u32,
+    /// Immutable marketplace release from which this Alloy draft was imported.
+    /// The optional lineage is owned and verified by the module publication
+    /// transaction; Alloy never writes a marketplace release directly.
+    pub parent_release: Option<crate::ArtifactReleaseRef>,
     pub review_reference: String,
     pub review_digest: String,
     pub review_policy_revision: String,
@@ -877,6 +881,26 @@ pub struct ModulePublishedArtifactContract {
     pub release_id: String,
     pub artifact: crate::ModuleMarketplaceArtifactRelease,
     pub descriptor: crate::ModuleArtifactDescriptor,
+    /// Owner-persisted source lineage for this exact published release.
+    /// It is separate from marketplace metadata so imports and later forks can
+    /// retain their immutable predecessor without trusting a catalog DTO.
+    pub lineage: crate::ArtifactSourceLineage,
+    /// Exact payload representation admitted before this release became
+    /// available. Consumers must not infer a Rhai representation from the
+    /// payload kind alone.
+    pub payload_media_type: String,
+    pub published_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Immutable Rhai workspace materialized by the registry owner from a
+/// canonical active-release projection and digest-pinned artifact CAS. This
+/// is intentionally not a marketplace DTO: it carries the executable source
+/// only after the owner has validated its release, media type, bytes, and
+/// lineage identity together.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModulePublishedRhaiWorkspace {
+    pub release: crate::ArtifactRelease,
+    pub workspace: rustok_sandbox::RhaiWorkspace,
 }
 
 /// Host-authenticated promotion of a verified build-worker receipt into the
@@ -1352,6 +1376,10 @@ impl ModuleAlloyAuthoredStageCommand {
             || self.idempotency_key.is_nil()
             || !self.reviewed_by_principal.is_object()
             || !self.actor_principal.is_object()
+            || self
+                .parent_release
+                .as_ref()
+                .is_some_and(|parent| parent.validate().is_err())
         {
             return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
         }
@@ -3043,7 +3071,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, status, artifact_origin, artifact_checksum_sha256 \\
+                    "SELECT slug, version, status, artifact_origin, artifact_checksum_sha256 \
                      FROM registry_publish_requests WHERE id = {}{request_lock}",
                     mark(1),
                 ),
@@ -3053,6 +3081,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?
             .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let slug: String = request.try_get("", "slug").map_err(store_error)?;
+        let version: String = request.try_get("", "version").map_err(store_error)?;
         let status: String = request.try_get("", "status").map_err(store_error)?;
         let artifact_origin: String = request
             .try_get("", "artifact_origin")
@@ -3066,19 +3095,35 @@ impl SeaOrmModuleGovernanceService {
         {
             return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
         }
+        if let Some(parent_release) = &command.parent_release {
+            if parent_release.slug != slug
+                || parent_release.digest == command.source_digest
+                || !active_published_parent_exists(&tx, backend, parent_release).await?
+            {
+                return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
+            }
+            let parent_version = semver::Version::parse(&parent_release.version)
+                .expect("validated artifact release version must parse");
+            let child_version = semver::Version::parse(&version)
+                .map_err(|_| ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)?;
+            if child_version <= parent_version {
+                return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
+            }
+        }
 
         let staging_id = self.infrastructure.prefixed_id("rpas");
         let inserted = tx
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO registry_publish_alloy_staging \\
-                     (id, request_id, alloy_tenant_id, alloy_script_id, artifact_digest, source_digest, source_revision, \\
-                      review_reference, review_digest, review_policy_revision, \\
-                      reviewed_by_principal, sandbox_execution_id, sandbox_test_path, sandbox_executor, \\
-                      sandbox_runtime_abi, sandbox_policy_digest, sandbox_capability_grants, \\
-                      staged_by_principal, idempotency_key, staged_at) \\
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \\
+                    "INSERT INTO registry_publish_alloy_staging \
+                     (id, request_id, alloy_tenant_id, alloy_script_id, artifact_digest, source_digest, source_revision, \
+                      parent_release_slug, parent_release_version, parent_release_digest, \
+                      review_reference, review_digest, review_policy_revision, \
+                      reviewed_by_principal, sandbox_execution_id, sandbox_test_path, sandbox_executor, \
+                      sandbox_runtime_abi, sandbox_policy_digest, sandbox_capability_grants, \
+                      staged_by_principal, idempotency_key, staged_at) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
                      ON CONFLICT (request_id, idempotency_key) DO NOTHING",
                     mark(1),
                     mark(2),
@@ -3099,6 +3144,9 @@ impl SeaOrmModuleGovernanceService {
                     mark(17),
                     mark(18),
                     mark(19),
+                    mark(20),
+                    mark(21),
+                    mark(22),
                 ),
                 vec![
                     staging_id.clone().into(),
@@ -3108,6 +3156,21 @@ impl SeaOrmModuleGovernanceService {
                     command.artifact_digest.clone().into(),
                     command.source_digest.clone().into(),
                     i64::from(command.source_revision).into(),
+                    command
+                        .parent_release
+                        .as_ref()
+                        .map(|parent| parent.slug.clone())
+                        .into(),
+                    command
+                        .parent_release
+                        .as_ref()
+                        .map(|parent| parent.version.clone())
+                        .into(),
+                    command
+                        .parent_release
+                        .as_ref()
+                        .map(|parent| parent.digest.clone())
+                        .into(),
                     command.review_reference.clone().into(),
                     command.review_digest.clone().into(),
                     command.review_policy_revision.clone().into(),
@@ -3129,16 +3192,18 @@ impl SeaOrmModuleGovernanceService {
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT id, CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \\
-                         CAST(alloy_script_id AS TEXT) AS alloy_script_id, \\
-                         artifact_digest, source_digest, source_revision, review_reference, \\
-                         review_digest, review_policy_revision, \\
-                         CAST(sandbox_execution_id AS TEXT) AS sandbox_execution_id, \\
-                         sandbox_test_path, sandbox_executor, sandbox_runtime_abi, sandbox_policy_digest, \\
-                         sandbox_capability_grants, \\
-                         CAST(reviewed_by_principal AS TEXT) AS reviewed_by_principal, \\
-                         CAST(staged_by_principal AS TEXT) AS staged_by_principal \\
-                         FROM registry_publish_alloy_staging \\
+                        "SELECT id, CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
+                         CAST(alloy_script_id AS TEXT) AS alloy_script_id, \
+                         artifact_digest, source_digest, source_revision, \
+                         parent_release_slug, parent_release_version, parent_release_digest, \
+                         review_reference, \
+                         review_digest, review_policy_revision, \
+                         CAST(sandbox_execution_id AS TEXT) AS sandbox_execution_id, \
+                         sandbox_test_path, sandbox_executor, sandbox_runtime_abi, sandbox_policy_digest, \
+                         sandbox_capability_grants, \
+                         CAST(reviewed_by_principal AS TEXT) AS reviewed_by_principal, \
+                         CAST(staged_by_principal AS TEXT) AS staged_by_principal \
+                         FROM registry_publish_alloy_staging \
                          WHERE request_id = {} AND idempotency_key = {}",
                         mark(1),
                         mark(2),
@@ -3168,6 +3233,7 @@ impl SeaOrmModuleGovernanceService {
             let existing_source_revision: i64 = existing
                 .try_get("", "source_revision")
                 .map_err(store_error)?;
+            let existing_parent_release = parent_release_from_stage_row(&existing)?;
             let existing_review_reference: String = existing
                 .try_get("", "review_reference")
                 .map_err(store_error)?;
@@ -3211,6 +3277,7 @@ impl SeaOrmModuleGovernanceService {
                 || existing_artifact_digest != command.artifact_digest
                 || existing_source_digest != command.source_digest
                 || existing_source_revision != i64::from(command.source_revision)
+                || existing_parent_release != command.parent_release
                 || existing_review_reference != command.review_reference
                 || existing_review_digest != command.review_digest
                 || existing_policy_revision != command.review_policy_revision
@@ -3243,9 +3310,9 @@ impl SeaOrmModuleGovernanceService {
         tx.execute(Statement::from_sql_and_values(
             backend,
             format!(
-                "INSERT INTO registry_governance_events \\
-                 (id, slug, request_id, release_id, event_type, actor_principal, \\
-                  publisher_principal, details, created_at) \\
+                "INSERT INTO registry_governance_events \
+                 (id, slug, request_id, release_id, event_type, actor_principal, \
+                  publisher_principal, details, created_at) \
                  VALUES ({}, {}, {}, NULL, 'alloy_authored_staged', {}, NULL, {}, {now})",
                 mark(1),
                 mark(2),
@@ -3264,6 +3331,7 @@ impl SeaOrmModuleGovernanceService {
                     "alloy_script_id": command.alloy_script_id,
                     "source_digest": command.source_digest.clone(),
                     "source_revision": command.source_revision,
+                    "parent_release": command.parent_release.clone(),
                     "review_digest": command.review_digest.clone(),
                     "review_policy_revision": command.review_policy_revision.clone(),
                     "sandbox_execution_id": command.sandbox_execution_id,
@@ -6483,13 +6551,13 @@ impl SeaOrmModuleGovernanceService {
                     .query_one(Statement::from_sql_and_values(
                         backend,
                         format!(
-                            "SELECT 1 FROM registry_publish_alloy_staging AS stage \\
-                             WHERE stage.request_id = {} \\
-                               AND stage.artifact_digest = {} \\
-                               AND stage.staged_at >= ( \\
-                                   SELECT request.submitted_at FROM registry_publish_requests AS request \\
-                                   WHERE request.id = stage.request_id \\
-                               ) \\
+                            "SELECT 1 FROM registry_publish_alloy_staging AS stage \
+                             WHERE stage.request_id = {} \
+                               AND stage.artifact_digest = {} \
+                               AND stage.staged_at >= ( \
+                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                   WHERE request.id = stage.request_id \
+                               ) \
                              LIMIT 1",
                             mark(1),
                             mark(2),
@@ -6757,16 +6825,17 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         }
 
-        let (artifact_contract, artifact_descriptor) = canonical_marketplace_artifact_contract(
-            &tx,
-            backend,
-            &command.request_id,
-            &slug,
-            &version,
-            artifact_origin,
-            &checksum_sha256,
-        )
-        .await?;
+        let (artifact_contract, artifact_descriptor, artifact_lineage) =
+            canonical_marketplace_artifact_contract(
+                &tx,
+                backend,
+                &command.request_id,
+                &slug,
+                &version,
+                artifact_origin,
+                &checksum_sha256,
+            )
+            .await?;
 
         let release_id = tx
             .query_one(Statement::from_sql_and_values(
@@ -6878,6 +6947,7 @@ impl SeaOrmModuleGovernanceService {
             &command.request_id,
             &artifact_contract,
             &artifact_descriptor,
+            &artifact_lineage,
         )
         .await?;
 
@@ -7123,10 +7193,13 @@ impl SeaOrmModuleGovernanceService {
             .query_all(Statement::from_string(
                 backend,
                 "SELECT artifact.release_id, CAST(artifact.artifact AS TEXT) AS artifact, \
-                 CAST(artifact.descriptor AS TEXT) AS descriptor \
+                 CAST(artifact.descriptor AS TEXT) AS descriptor, CAST(artifact.lineage AS TEXT) AS lineage, \
+                 admission.media_type AS payload_media_type, release.published_at \
                  FROM registry_module_release_artifacts AS artifact \
                  INNER JOIN registry_module_releases AS release \
                    ON release.id = artifact.release_id \
+                 INNER JOIN registry_publish_platform_admissions AS admission \
+                   ON admission.request_id = artifact.request_id \
                  WHERE release.status = 'active' \
                  ORDER BY release.slug, release.version, artifact.release_id"
                     .to_string(),
@@ -7144,12 +7217,22 @@ impl SeaOrmModuleGovernanceService {
                         .map_err(store_error)?,
                 )
                 .map_err(store_error)?;
+                let lineage = serde_json::from_str::<crate::ArtifactSourceLineage>(
+                    &row.try_get::<String>("", "lineage").map_err(store_error)?,
+                )
+                .map_err(store_error)?;
                 artifact.validate().map_err(|_| {
                     ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract
                 })?;
                 if crate::canonical_artifact_descriptor_digest(&descriptor)
                     != artifact.descriptor_digest
                     || descriptor.artifact_digest != artifact.payload_digest
+                    || lineage.origin != crate::ArtifactOrigin::Marketplace
+                    || lineage.source_digest != artifact.source_digest
+                    || lineage
+                        .parent_release
+                        .as_ref()
+                        .is_some_and(|parent| parent.validate().is_err())
                 {
                     return Err(
                         ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract,
@@ -7161,9 +7244,77 @@ impl SeaOrmModuleGovernanceService {
                         .map_err(store_error)?,
                     artifact,
                     descriptor,
+                    lineage,
+                    payload_media_type: row
+                        .try_get::<String>("", "payload_media_type")
+                        .map_err(store_error)?,
+                    published_at: row
+                        .try_get::<chrono::DateTime<chrono::Utc>>("", "published_at")
+                        .map_err(store_error)?,
                 })
             })
             .collect()
+    }
+
+    /// Materializes one exact published Rhai workspace for continued Alloy
+    /// development. The active release projection is the sole metadata
+    /// authority and the admitted artifact CAS is the sole byte authority;
+    /// neither catalog DTOs nor mutable OCI tags can substitute for either.
+    pub async fn published_rhai_workspace(
+        &self,
+        release: &crate::ArtifactReleaseRef,
+        blobs: &(dyn crate::ArtifactBlobStore + Send + Sync),
+    ) -> Result<ModulePublishedRhaiWorkspace, ModuleGovernanceError> {
+        release
+            .validate()
+            .map_err(|_| ModuleGovernanceError::ReleaseNotFound)?;
+        let contract = self
+            .published_artifact_contracts()
+            .await?
+            .into_iter()
+            .find(|contract| {
+                contract.descriptor.release_ref() == *release
+                    && contract.artifact.payload_digest == release.digest
+            })
+            .ok_or(ModuleGovernanceError::ReleaseNotFound)?;
+        if contract.descriptor.payload_kind != crate::ArtifactPayloadKind::Rhai
+            || contract.artifact.runtime_kind != crate::ModuleMarketplaceRuntimeKind::Rhai
+            || contract.artifact.source_digest != release.digest
+            || contract.payload_media_type != rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
+        {
+            return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+        }
+
+        let bytes = blobs
+            .get_verified(&release.digest)
+            .await
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+        if bytes.len() > crate::MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES {
+            return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+        }
+        let workspace = serde_json::from_slice::<rustok_sandbox::RhaiWorkspace>(&bytes)
+            .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+        let canonical_bytes = workspace
+            .canonical_bytes()
+            .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+        if canonical_bytes != bytes {
+            return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+        }
+        let source_digest = workspace
+            .digest()
+            .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+        if source_digest != release.digest || source_digest != contract.artifact.source_digest {
+            return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+        }
+
+        Ok(ModulePublishedRhaiWorkspace {
+            release: crate::ArtifactRelease {
+                descriptor: contract.descriptor,
+                lineage: contract.lineage,
+                published_at: contract.published_at,
+            },
+            workspace,
+        })
     }
 
     async fn marketplace_release_projections(
@@ -7671,6 +7822,69 @@ async fn alloy_authored_supply_chain_evidence(
         row.try_get("", "slug").map_err(store_error)?,
         row.try_get("", "version").map_err(store_error)?,
     )))
+}
+
+fn parent_release_from_stage_row(
+    row: &sea_orm::QueryResult,
+) -> Result<Option<crate::ArtifactReleaseRef>, ModuleGovernanceError> {
+    let slug = row
+        .try_get::<Option<String>>("", "parent_release_slug")
+        .map_err(store_error)?;
+    let version = row
+        .try_get::<Option<String>>("", "parent_release_version")
+        .map_err(store_error)?;
+    let digest = row
+        .try_get::<Option<String>>("", "parent_release_digest")
+        .map_err(store_error)?;
+    match (slug, version, digest) {
+        (None, None, None) => Ok(None),
+        (Some(slug), Some(version), Some(digest)) => {
+            let parent = crate::ArtifactReleaseRef {
+                slug,
+                version,
+                digest,
+            };
+            parent.validate().map_err(|_| {
+                ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract
+            })?;
+            Ok(Some(parent))
+        }
+        _ => Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract),
+    }
+}
+
+async fn active_published_parent_exists(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    parent: &crate::ArtifactReleaseRef,
+) -> Result<bool, ModuleGovernanceError> {
+    let checksum = receipt_digest_sha256(&parent.digest)
+        .map_err(|_| ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)?;
+    let mark = |position| placeholder(backend, position);
+    tx.query_one(Statement::from_sql_and_values(
+        backend,
+        format!(
+            "SELECT 1 FROM registry_module_releases AS release \
+             INNER JOIN registry_module_release_artifacts AS artifact \
+               ON artifact.release_id = release.id \
+             WHERE release.slug = {} AND release.version = {} \
+               AND release.checksum_sha256 = {} \
+               AND release.status = 'active' \
+               AND release.artifact_origin = 'alloy_authored' \
+             LIMIT 1",
+            mark(1),
+            mark(2),
+            mark(3),
+        ),
+        vec![
+            parent.slug.clone().into(),
+            parent.version.clone().into(),
+            checksum.to_string().into(),
+        ],
+    ))
+    .await
+    .map_err(store_error)
+    .map(|row| row.is_some())
 }
 
 async fn reconcile_alloy_authored_security_stage(
@@ -9033,6 +9247,7 @@ async fn canonical_marketplace_artifact_contract(
     (
         crate::ModuleMarketplaceArtifactRelease,
         crate::ModuleArtifactDescriptor,
+        crate::ArtifactSourceLineage,
     ),
     ModuleGovernanceError,
 > {
@@ -9092,7 +9307,7 @@ async fn canonical_marketplace_artifact_contract(
             return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
         }
     };
-    let (source_reference, source_digest) = match artifact_origin {
+    let (source_reference, source_digest, parent_release) = match artifact_origin {
         ModulePublicationArtifactOrigin::PlatformBuilt => {
             let source = transaction
                 .query_one(Statement::from_sql_and_values(
@@ -9129,6 +9344,7 @@ async fn canonical_marketplace_artifact_contract(
                 source
                     .try_get::<String>("", "source_digest")
                     .map_err(store_error)?,
+                None,
             )
         }
         ModulePublicationArtifactOrigin::ExternalPrebuilt => {
@@ -9159,6 +9375,7 @@ async fn canonical_marketplace_artifact_contract(
                     .try_get::<Option<String>>("", "source_digest")
                     .map_err(store_error)?
                     .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?,
+                None,
             )
         }
         ModulePublicationArtifactOrigin::AlloyAuthored => {
@@ -9168,7 +9385,8 @@ async fn canonical_marketplace_artifact_contract(
                     format!(
                         "SELECT CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
                          CAST(alloy_script_id AS TEXT) AS alloy_script_id, \
-                         source_revision, source_digest \
+                         source_revision, source_digest, \
+                         parent_release_slug, parent_release_version, parent_release_digest \
                          FROM registry_publish_alloy_staging \
                          WHERE request_id = {} AND artifact_digest = {} \
                          ORDER BY staged_at DESC LIMIT 1",
@@ -9194,9 +9412,23 @@ async fn canonical_marketplace_artifact_contract(
                 source
                     .try_get::<String>("", "source_digest")
                     .map_err(store_error)?,
+                parent_release_from_stage_row(&source)?,
             )
         }
     };
+    if let Some(parent_release) = &parent_release {
+        let parent_version = Version::parse(&parent_release.version)
+            .expect("validated artifact release version must parse");
+        let child_version = Version::parse(version)
+            .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+        if parent_release.slug != slug
+            || parent_release.digest == source_digest
+            || child_version <= parent_version
+            || !active_published_parent_exists(transaction, backend, parent_release).await?
+        {
+            return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+        }
+    }
 
     let (author_reference, author_digest) = load_publication_evidence_contract(
         transaction,
@@ -9297,13 +9529,21 @@ async fn canonical_marketplace_artifact_contract(
         payload_digest,
         descriptor_digest,
         source_reference,
-        source_digest,
+        source_digest: source_digest.clone(),
         evidence,
     };
     artifact
         .validate()
         .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
-    Ok((artifact, descriptor))
+    Ok((
+        artifact,
+        descriptor,
+        crate::ArtifactSourceLineage {
+            origin: crate::ArtifactOrigin::Marketplace,
+            source_digest,
+            parent_release,
+        },
+    ))
 }
 
 async fn persist_published_artifact_contract(
@@ -9313,29 +9553,33 @@ async fn persist_published_artifact_contract(
     request_id: &str,
     artifact: &crate::ModuleMarketplaceArtifactRelease,
     descriptor: &crate::ModuleArtifactDescriptor,
+    lineage: &crate::ArtifactSourceLineage,
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |position| placeholder(backend, position);
     let now = database_now(backend);
     let artifact_json = serde_json::to_value(artifact).map_err(store_error)?;
     let descriptor_json = serde_json::to_value(descriptor).map_err(store_error)?;
+    let lineage_json = serde_json::to_value(lineage).map_err(store_error)?;
     transaction
         .execute(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_module_release_artifacts \
-                 (release_id, request_id, artifact, descriptor, created_at) \
-                 VALUES ({}, {}, {}, {}, {now}) \
+                 (release_id, request_id, artifact, descriptor, lineage, created_at) \
+                 VALUES ({}, {}, {}, {}, {}, {now}) \
                  ON CONFLICT (release_id) DO NOTHING",
                 mark(1),
                 mark(2),
                 mark(3),
                 mark(4),
+                mark(5),
             ),
             vec![
                 release_id.to_string().into(),
                 request_id.to_string().into(),
                 Value::Json(Some(Box::new(artifact_json))),
                 Value::Json(Some(Box::new(descriptor_json))),
+                Value::Json(Some(Box::new(lineage_json))),
             ],
         ))
         .await
@@ -9345,7 +9589,7 @@ async fn persist_published_artifact_contract(
             backend,
             format!(
                 "SELECT request_id, CAST(artifact AS TEXT) AS artifact, \
-                 CAST(descriptor AS TEXT) AS descriptor \
+                 CAST(descriptor AS TEXT) AS descriptor, CAST(lineage AS TEXT) AS lineage \
                  FROM registry_module_release_artifacts WHERE release_id = {}",
                 mark(1),
             ),
@@ -9366,12 +9610,19 @@ async fn persist_published_artifact_contract(
             .map_err(store_error)?,
     )
     .map_err(store_error)?;
+    let stored_lineage = serde_json::from_str::<crate::ArtifactSourceLineage>(
+        &stored
+            .try_get::<String>("", "lineage")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
     if stored
         .try_get::<String>("", "request_id")
         .map_err(store_error)?
         != request_id
         || stored_artifact != *artifact
         || stored_descriptor != *descriptor
+        || stored_lineage != *lineage
     {
         return Err(ModuleGovernanceError::PublicationIdempotencyConflict);
     }
@@ -10104,7 +10355,12 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
     use super::*;
-    use crate::{ArtifactPayloadKind, TrustEvidenceKind, TrustEvidenceReference};
+    use crate::{
+        ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
+        InMemoryArtifactBlobStore, ModuleArtifactDescriptor, ModuleMarketplaceArtifactOrigin,
+        ModuleMarketplaceArtifactRelease, ModuleMarketplaceEvidenceKind,
+        ModuleMarketplaceEvidenceReference, TrustEvidenceKind, TrustEvidenceReference,
+    };
 
     #[test]
     fn governance_error_categories_and_codes_are_stable() {
@@ -10835,6 +11091,7 @@ mod tests {
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             source_digest: format!("sha256:{}", "a".repeat(64)),
             source_revision: 1,
+            parent_release: None,
             review_reference: "alloy://scripts/example/reviews/approved".into(),
             review_digest: format!("sha256:{}", "b".repeat(64)),
             review_policy_revision: "alloy-review-v1".into(),
@@ -10861,6 +11118,265 @@ mod tests {
             command.validate(),
             Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)
         );
+        command.sandbox_test_path = ALLOY_PUBLICATION_SMOKE_TEST_PATH.into();
+        command.parent_release = Some(ArtifactReleaseRef {
+            slug: "alloy_module".into(),
+            version: "1.0.0".into(),
+            digest: "sha256:invalid".into(),
+        });
+        assert_eq!(
+            command.validate(),
+            Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)
+        );
+    }
+
+    #[tokio::test]
+    async fn imported_alloy_fork_stage_and_published_contract_preserve_parent_lineage() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
+                artifact_origin TEXT NOT NULL, artifact_checksum_sha256 TEXT NULL, submitted_at TEXT NULL\
+             )",
+            "CREATE TABLE registry_publish_alloy_staging (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, alloy_tenant_id TEXT NOT NULL,\
+                alloy_script_id TEXT NOT NULL, artifact_digest TEXT NOT NULL, source_digest TEXT NOT NULL,\
+                source_revision INTEGER NOT NULL, parent_release_slug TEXT NULL,\
+                parent_release_version TEXT NULL, parent_release_digest TEXT NULL,\
+                review_reference TEXT NOT NULL, review_digest TEXT NOT NULL,\
+                review_policy_revision TEXT NOT NULL, reviewed_by_principal JSON NOT NULL,\
+                sandbox_execution_id TEXT NOT NULL, sandbox_test_path TEXT NOT NULL,\
+                sandbox_executor TEXT NOT NULL, sandbox_runtime_abi TEXT NOT NULL,\
+                sandbox_policy_digest TEXT NOT NULL, sandbox_capability_grants INTEGER NOT NULL,\
+                staged_by_principal JSON NOT NULL, idempotency_key TEXT NOT NULL, staged_at TEXT NOT NULL,\
+                UNIQUE (request_id, idempotency_key)\
+             )",
+            "CREATE TABLE registry_module_releases (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, checksum_sha256 TEXT NOT NULL,\
+                status TEXT NOT NULL, artifact_origin TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_module_release_artifacts (\
+                release_id TEXT PRIMARY KEY, request_id TEXT NULL, artifact JSON NULL,\
+                descriptor JSON NULL, lineage JSON NULL, created_at TEXT NULL\
+             )",
+            "CREATE TABLE registry_publication_evidence (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, authority TEXT NOT NULL, subject_digest_sha256 TEXT NOT NULL,\
+                evidence_reference TEXT NOT NULL, evidence_digest_sha256 TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
+                event_type TEXT NOT NULL, actor_principal JSON NOT NULL, publisher_principal JSON NULL,\
+                details JSON NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_platform_admissions (\
+                request_id TEXT PRIMARY KEY, registry_id TEXT NOT NULL, repository TEXT NOT NULL,\
+                manifest_digest TEXT NOT NULL, payload_digest TEXT NOT NULL, descriptor_digest TEXT NOT NULL,\
+                descriptor JSON NOT NULL, runtime_kind TEXT NOT NULL, signature_reference TEXT NOT NULL,\
+                signature_digest TEXT NOT NULL, provenance_reference TEXT NOT NULL, provenance_digest TEXT NOT NULL,\
+                sbom_reference TEXT NOT NULL, sbom_digest TEXT NOT NULL, admission_reference TEXT NOT NULL,\
+                admission_digest TEXT NOT NULL\
+             )",
+            "INSERT INTO registry_publish_requests \
+             (id, slug, version, status, artifact_origin, artifact_checksum_sha256, submitted_at) VALUES \
+             ('request-fork', 'tax_rule', '1.1.0', 'submitted', 'alloy_authored', \
+              'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', datetime('now'))",
+            "INSERT INTO registry_module_releases \
+             (id, slug, version, checksum_sha256, status, artifact_origin) VALUES \
+             ('parent-release', 'tax_rule', '1.0.0', \
+              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'active', 'alloy_authored')",
+            "INSERT INTO registry_module_release_artifacts (release_id) VALUES ('parent-release')",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("schema or fixture");
+        }
+
+        let parent = ArtifactReleaseRef {
+            slug: "tax_rule".to_string(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+        };
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        service
+            .stage_alloy_authored(ModuleAlloyAuthoredStageCommand {
+                request_id: "request-fork".to_string(),
+                alloy_tenant_id: Uuid::new_v4(),
+                alloy_script_id: Uuid::new_v4(),
+                artifact_digest: format!("sha256:{}", "b".repeat(64)),
+                source_digest: format!("sha256:{}", "b".repeat(64)),
+                source_revision: 2,
+                parent_release: Some(parent.clone()),
+                review_reference: "alloy://scripts/fork/revisions/2/reviews/approved".to_string(),
+                review_digest: format!("sha256:{}", "c".repeat(64)),
+                review_policy_revision: "review-policy".to_string(),
+                reviewed_by_principal: serde_json::json!({ "kind": "user", "id": "reviewer" }),
+                sandbox_execution_id: Uuid::new_v4(),
+                sandbox_test_path: ALLOY_PUBLICATION_SMOKE_TEST_PATH.to_string(),
+                sandbox_executor: "rhai".to_string(),
+                sandbox_runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
+                sandbox_policy_digest: format!("sha256:{}", "d".repeat(64)),
+                sandbox_capability_grants: 0,
+                idempotency_key: Uuid::new_v4(),
+                actor_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
+            })
+            .await
+            .expect("stage imported fork");
+
+        let descriptor = ModuleArtifactDescriptor {
+            schema_version: crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            slug: "tax_rule".to_string(),
+            version: "1.1.0".to_string(),
+            payload_kind: ArtifactPayloadKind::Rhai,
+            module_kind: ArtifactModuleKind::Optional,
+            runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
+            platform_compatibility: "^0.1".to_string(),
+            required_features: Vec::new(),
+            artifact_digest: format!("sha256:{}", "b".repeat(64)),
+            entrypoint: "src/main.rhai".to_string(),
+            capabilities: Vec::new(),
+            bindings: Vec::new(),
+            dependencies: Vec::new(),
+            permissions: Vec::new(),
+            schema_documents: Vec::new(),
+            settings_schema_digest: None,
+            data_schema_digest: None,
+            ui_contributions: Vec::new(),
+            persistence_contract: None,
+        };
+        descriptor.validate().expect("descriptor");
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_publish_platform_admissions \
+                 (request_id, registry_id, repository, manifest_digest, payload_digest, descriptor_digest, \
+                  descriptor, runtime_kind, signature_reference, signature_digest, provenance_reference, \
+                  provenance_digest, sbom_reference, sbom_digest, admission_reference, admission_digest) \
+                 VALUES ('request-fork', 'local', 'modules/tax_rule', ?, ?, ?, ?, 'rhai', \
+                         'evidence://signature', ?, 'evidence://provenance', ?, 'evidence://sbom', ?, \
+                         'evidence://admission', ?)"
+                    .to_string(),
+                vec![
+                    format!("sha256:{}", "f".repeat(64)).into(),
+                    format!("sha256:{}", "b".repeat(64)).into(),
+                    crate::canonical_artifact_descriptor_digest(&descriptor).into(),
+                    Value::Json(Some(Box::new(
+                        serde_json::to_value(&descriptor).expect("descriptor JSON"),
+                    ))),
+                    format!("sha256:{}", "1".repeat(64)).into(),
+                    format!("sha256:{}", "2".repeat(64)).into(),
+                    format!("sha256:{}", "3".repeat(64)).into(),
+                    "4".repeat(64).into(),
+                ],
+            ))
+            .await
+            .expect("admission fixture");
+        for (authority, marker) in [("author_signature", '5'), ("marketplace_approval", '6')] {
+            database
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "INSERT INTO registry_publication_evidence \
+                     (id, request_id, authority, subject_digest_sha256, evidence_reference, \
+                      evidence_digest_sha256, created_at) \
+                     VALUES (?, 'request-fork', ?, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', \
+                             'evidence://publication', ?, datetime('now'))"
+                        .to_string(),
+                    vec![
+                        format!("evidence-{authority}").into(),
+                        authority.into(),
+                        marker.to_string().repeat(64).into(),
+                    ],
+                ))
+                .await
+                .expect("publication evidence fixture");
+        }
+
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_module_releases SET status = 'yanked' WHERE id = 'parent-release'"
+                    .to_string(),
+            ))
+            .await
+            .expect("yank parent fixture");
+        let revoked_parent_transaction =
+            database.begin().await.expect("revoked parent transaction");
+        assert_eq!(
+            canonical_marketplace_artifact_contract(
+                &revoked_parent_transaction,
+                DbBackend::Sqlite,
+                "request-fork",
+                "tax_rule",
+                "1.1.0",
+                ModulePublicationArtifactOrigin::AlloyAuthored,
+                &"b".repeat(64),
+            )
+            .await,
+            Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)
+        );
+        revoked_parent_transaction
+            .rollback()
+            .await
+            .expect("rollback revoked parent transaction");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_module_releases SET status = 'active' WHERE id = 'parent-release'"
+                    .to_string(),
+            ))
+            .await
+            .expect("restore parent fixture");
+
+        let transaction = database.begin().await.expect("publication transaction");
+        let (artifact, published_descriptor, lineage) = canonical_marketplace_artifact_contract(
+            &transaction,
+            DbBackend::Sqlite,
+            "request-fork",
+            "tax_rule",
+            "1.1.0",
+            ModulePublicationArtifactOrigin::AlloyAuthored,
+            &"b".repeat(64),
+        )
+        .await
+        .expect("canonical fork contract");
+        persist_published_artifact_contract(
+            &transaction,
+            DbBackend::Sqlite,
+            "child-release",
+            "request-fork",
+            &artifact,
+            &published_descriptor,
+            &lineage,
+        )
+        .await
+        .expect("persist fork contract");
+        transaction.commit().await.expect("commit fork contract");
+
+        assert_eq!(lineage.parent_release, Some(parent));
+        assert_eq!(lineage.origin, crate::ArtifactOrigin::Marketplace);
+        assert_eq!(lineage.source_digest, artifact.source_digest);
+        let stored = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT CAST(lineage AS TEXT) AS lineage FROM registry_module_release_artifacts \
+                 WHERE release_id = 'child-release'"
+                    .to_string(),
+            ))
+            .await
+            .expect("stored lineage query")
+            .expect("stored lineage row");
+        let stored_lineage = serde_json::from_str::<crate::ArtifactSourceLineage>(
+            &stored
+                .try_get::<String>("", "lineage")
+                .expect("stored lineage JSON"),
+        )
+        .expect("decode stored lineage");
+        assert_eq!(stored_lineage, lineage);
     }
 
     #[tokio::test]
@@ -11468,7 +11984,11 @@ mod tests {
                 published_at TEXT NOT NULL\
              )",
             "CREATE TABLE registry_module_release_artifacts (\
-                release_id TEXT PRIMARY KEY, artifact JSON NOT NULL, descriptor JSON NOT NULL\
+                release_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,\
+                artifact JSON NOT NULL, descriptor JSON NOT NULL, lineage JSON NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_platform_admissions (\
+                request_id TEXT PRIMARY KEY, media_type TEXT NOT NULL\
              )",
             "INSERT INTO registry_module_releases (\
                 id, slug, version, status, publisher_principal, checksum_sha256, default_locale, published_at\
@@ -11533,6 +12053,184 @@ mod tests {
         assert_eq!(projected[0].versions.len(), 1);
         assert_eq!(projected[0].versions[0].version, "1.0.0");
         assert!(projected[0].versions[0].yanked);
+    }
+
+    #[tokio::test]
+    async fn published_rhai_workspace_requires_an_exact_active_contract_and_canonical_cas_bytes() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_module_releases (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                status TEXT NOT NULL, published_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_module_release_artifacts (\
+                release_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,\
+                artifact JSON NOT NULL, descriptor JSON NOT NULL, lineage JSON NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_platform_admissions (\
+                request_id TEXT PRIMARY KEY, media_type TEXT NOT NULL\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("schema");
+        }
+
+        let workspace = rustok_sandbox::RhaiWorkspace::single_source("40 + 2");
+        let workspace_bytes = workspace.canonical_bytes().expect("workspace bytes");
+        let digest = workspace.digest().expect("workspace digest");
+        let descriptor = ModuleArtifactDescriptor {
+            schema_version: crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            slug: "published_rhai".to_string(),
+            version: "1.0.0".to_string(),
+            payload_kind: ArtifactPayloadKind::Rhai,
+            module_kind: ArtifactModuleKind::Optional,
+            runtime_abi: "rustok:module/runtime@1".to_string(),
+            platform_compatibility: "^0.1".to_string(),
+            required_features: Vec::new(),
+            artifact_digest: digest.clone(),
+            entrypoint: "main".to_string(),
+            capabilities: Vec::new(),
+            bindings: Vec::new(),
+            dependencies: Vec::new(),
+            permissions: Vec::new(),
+            schema_documents: Vec::new(),
+            settings_schema_digest: None,
+            data_schema_digest: None,
+            ui_contributions: Vec::new(),
+            persistence_contract: None,
+        };
+        descriptor.validate().expect("descriptor");
+        let evidence = [
+            ModuleMarketplaceEvidenceKind::AuthorSignature,
+            ModuleMarketplaceEvidenceKind::Sbom,
+            ModuleMarketplaceEvidenceKind::Provenance,
+            ModuleMarketplaceEvidenceKind::PlatformAdmission,
+            ModuleMarketplaceEvidenceKind::MarketplaceApproval,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, kind)| {
+            let digit = char::from(b'a' + index as u8);
+            ModuleMarketplaceEvidenceReference {
+                kind,
+                reference: format!("evidence://published-rhai/{index}"),
+                digest: format!("sha256:{}", digit.to_string().repeat(64)),
+            }
+        })
+        .collect::<Vec<_>>();
+        let artifact = ModuleMarketplaceArtifactRelease {
+            registry_id: "local".to_string(),
+            repository: "modules/published_rhai".to_string(),
+            origin: ModuleMarketplaceArtifactOrigin::AlloyAuthored,
+            runtime_kind: crate::ModuleMarketplaceRuntimeKind::Rhai,
+            oci_manifest_digest: format!("sha256:{}", "f".repeat(64)),
+            payload_digest: digest.clone(),
+            descriptor_digest: crate::canonical_artifact_descriptor_digest(&descriptor),
+            source_reference: "alloy://tenant/script/1".to_string(),
+            source_digest: digest.clone(),
+            evidence,
+        };
+        artifact.validate().expect("artifact contract");
+        let lineage = crate::ArtifactSourceLineage {
+            origin: crate::ArtifactOrigin::Marketplace,
+            source_digest: digest.clone(),
+            parent_release: Some(ArtifactReleaseRef {
+                slug: "published_rhai".to_string(),
+                version: "0.9.0".to_string(),
+                digest: format!("sha256:{}", "e".repeat(64)),
+            }),
+        };
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_module_releases \
+                 (id, slug, version, status, published_at) \
+                 VALUES ('release-1', 'published_rhai', '1.0.0', 'active', datetime('now'))"
+                    .to_string(),
+                Vec::new(),
+            ))
+            .await
+            .expect("release");
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_module_release_artifacts \
+                 (release_id, request_id, artifact, descriptor, lineage) VALUES ('release-1', 'request-1', ?, ?, ?)"
+                    .to_string(),
+                vec![
+                    Value::Json(Some(Box::new(
+                        serde_json::to_value(&artifact).expect("artifact JSON"),
+                    ))),
+                    Value::Json(Some(Box::new(
+                        serde_json::to_value(&descriptor).expect("descriptor JSON"),
+                    ))),
+                    Value::Json(Some(Box::new(
+                        serde_json::to_value(&lineage).expect("lineage JSON"),
+                    ))),
+                ],
+            ))
+            .await
+            .expect("artifact projection");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                format!(
+                    "INSERT INTO registry_publish_platform_admissions (request_id, media_type) \
+                     VALUES ('request-1', '{}')",
+                    rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
+                ),
+            ))
+            .await
+            .expect("admission projection");
+
+        let blobs = InMemoryArtifactBlobStore::default();
+        blobs
+            .put_verified(&digest, &workspace_bytes)
+            .await
+            .expect("CAS payload");
+        let release = ArtifactReleaseRef {
+            slug: "published_rhai".to_string(),
+            version: "1.0.0".to_string(),
+            digest: digest.clone(),
+        };
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let source = service
+            .published_rhai_workspace(&release, &blobs)
+            .await
+            .expect("published workspace");
+        assert_eq!(source.release.descriptor.release_ref(), release);
+        assert_eq!(source.release.lineage, lineage);
+        assert_eq!(source.workspace, workspace);
+
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_platform_admissions \
+                 SET media_type = 'application/json' WHERE request_id = 'request-1'"
+                    .to_string(),
+            ))
+            .await
+            .expect("wrong admission media type");
+        assert_eq!(
+            service.published_rhai_workspace(&release, &blobs).await,
+            Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)
+        );
+
+        let missing = ArtifactReleaseRef {
+            version: "1.0.1".to_string(),
+            ..source.release.descriptor.release_ref()
+        };
+        assert_eq!(
+            service.published_rhai_workspace(&missing, &blobs).await,
+            Err(ModuleGovernanceError::ReleaseNotFound)
+        );
     }
 
     #[tokio::test]
@@ -11885,7 +12583,7 @@ mod tests {
              )",
             "CREATE TABLE registry_module_release_artifacts (\
                 release_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,\
-                artifact JSON NOT NULL, descriptor JSON NOT NULL, created_at TEXT NOT NULL\
+                artifact JSON NOT NULL, descriptor JSON NOT NULL, lineage JSON NOT NULL, created_at TEXT NOT NULL\
              )",
             "CREATE TABLE registry_publication_operations (\
                 operation_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL,\

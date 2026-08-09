@@ -74,6 +74,16 @@ pub struct StageReleaseRequest {
     pub idempotency_key: Uuid,
 }
 
+/// Authenticated import of one immutable published Rhai release into a new
+/// tenant-scoped Alloy draft. The actor and tenant are derived by the host,
+/// never accepted in this payload.
+#[derive(Debug, Deserialize)]
+pub struct ImportPublishedReleaseRequest {
+    pub release: rustok_modules::ArtifactReleaseRef,
+    pub draft_name: String,
+    pub idempotency_key: Uuid,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct EntityInput {
     pub id: String,
@@ -261,6 +271,12 @@ impl From<TestRun> for TestRunResponse {
 #[derive(Debug, Serialize)]
 pub struct StageReleaseResponse {
     pub staging_id: String,
+    pub created: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportPublishedReleaseResponse {
+    pub script: ScriptResponse,
     pub created: bool,
 }
 

@@ -64,11 +64,14 @@ Remaining:
   workspace-level command revisions, review, and publication orchestration still
   need owner contracts;
 - published-release import now has durable exact-replay receipts and immutable
-  parent lineage. Registry publication now projects the canonical
-  artifact/evidence and source-lineage contract through the module owner.
-  Production Alloy source resolution and authenticated transports remain open
-  until the importer can materialize the exact digest-pinned Rhai workspace
-  from platform CAS or the selected registry OCI artifact;
+  parent lineage. Registry publication projects the canonical artifact/evidence
+  and source-lineage contract through the module owner. The production source
+  provider resolves only an exact active owner projection and verified,
+  digest-pinned CAS workspace; host-composed HTTP and GraphQL imports require
+  the authenticated tenant plus `scripts.manage` and `modules.manage`. The
+  authenticated remote MCP import uses that same tenant-bound provider; generic
+  stdio MCP does not advertise it because it cannot compose the durable host
+  boundary;
 - AI-assisted Rust/WIT authoring must use the isolated build worker;
 - operator draft-review surfaces need canonical transport and audit evidence.
 - persisted workspaces now use bounded canonical JSON with sources, tests,
@@ -176,10 +179,14 @@ Remaining:
   imports cannot be reinterpreted as single-source Rhai at execution time.
 - Workspace test execution now selects only a declared immutable `tests/*.rhai`
   entrypoint from the revision-pinned canonical workspace. It uses the same
-  digest and in-memory `src/*.rhai` resolver as production source, receives no
-  capability grants, rejects entity mutations, and requires a boolean result.
-  Durable test-command CAS/idempotency evidence is recorded separately from
-  sandbox work and terminal test evidence is linked to that exact revision.
+  digest and in-memory `src/*.rhai` resolver as production source, rejects
+  entity mutations, and requires a boolean result. An imported draft resolves
+  the exact installed parent artifact policy through the host on every run;
+  missing, disabled, stale, or mismatched parent state fails closed instead of
+  using the draft default. The sandbox test phase remains explicit for
+  broker-side phase constraints. Durable test-command CAS/idempotency evidence
+  is recorded separately from sandbox work and terminal test evidence is linked
+  to that exact revision.
 - [x] Link execution/test evidence to the exact revision. Production execution
   rows carry source revision/digest plus sandbox policy digest, executor kind,
   and runtime ABI; durable test rows already bind their immutable revision and
@@ -194,7 +201,11 @@ review decision references immutable evidence.
 
 ### A3 - Rhai Release Publication and Forking
 
-- Stage canonical Rhai descriptor and declared capabilities.
+- [x] Stage a canonical Rhai descriptor whose capabilities exactly match the
+  immutable executable source. Alloy recognizes only the neutral
+  `capability_call` and `http_*` helper surface, requires literal capability
+  names for generic calls, and rejects missing/unused declarations, dynamic
+  names, and helper shadowing before staging or packaging.
 - Stage approved source through `rustok-modules`; do not write marketplace
   state. The owner records a distinct `alloy_authored` origin with the source
   digest/revision, Alloy tenant/script identity, and review evidence under
@@ -209,17 +220,35 @@ review decision references immutable evidence.
   revision. A durable `(tenant_id, idempotency_key)` receipt is created in the
   same transaction; exact replay returns the original draft, while conflicting
   replay and duplicate tenant-scoped names fail closed.
-- [ ] Compose the production owner source provider and authenticated
-  GraphQL/HTTP/MCP import adapters. It must consume only the canonical
-  published release projection and digest-pinned CAS/OCI workspace; mutable
-  tags and manifest-only catalog metadata are not source authorities. The
-  owner publication projection is now complete; the remaining provider work is
-  exact workspace materialization, descriptor/lineage mapping, and authenticated
-  transport composition.
+- [x] Compose the production owner source provider and authenticated GraphQL /
+  HTTP import adapters. The provider consumes only the exact active published
+  release projection, requires the admitted Rhai workspace media type and
+  source digest, and materializes canonical bytes from verified CAS. The
+  host-composed `POST /api/alloy/releases/import` route and
+  `importPublishedRelease` mutation derive the tenant and actor from
+  authentication, require `scripts.manage` and `modules.manage`, and pass a
+  tenant-scoped registry plus idempotency key to the importer. Mutable tags and
+  manifest-only catalog metadata are not source authorities.
+- [x] Compose the tenant-bound remote MCP import adapter. The authenticated
+  `alloy_import_published_release` tool derives tenant and actor identity from
+  the durable MCP runtime binding, requires `scripts.manage` and
+  `modules.manage`, then imports through the same owner provider and
+  tenant-scoped Alloy registry as HTTP and GraphQL. Its result redacts source
+  bytes while preserving exact parent-release lineage. Generic stdio MCP does
+  not advertise an import operation without this host composition.
 - [x] Preserve parent release/source digest and require a newer semantic
   version for a fork. Storage prevents imported parent replacement/removal and
   `ArtifactRelease::fork` rejects a non-incremented version or changed slug.
-- Publish a fork as a new immutable release without changing installed parents.
+- [x] Resolve tests and preview executions of an imported draft against the
+  exact active installed parent artifact policy. Alloy holds only the immutable
+  parent release reference; the server rechecks tenant scope, admission,
+  lifecycle, descriptor runtime ABI, and policy revision through
+  `rustok-modules`. No eligible parent policy means no execution. Publication
+  smoke remains zero-grant and inherits only the resolved policy limits.
+- [x] Publish a fork as a new immutable release without changing installed
+  parents. The exact imported `ArtifactReleaseRef` reaches owner staging and
+  the final artifact contract; the owner validates its active predecessor and
+  monotonic version, while existing installations remain unchanged.
 
 **Done when:** publish, install, import, edit, test, and republish scenarios
 preserve reproducible lineage.

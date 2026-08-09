@@ -17,6 +17,7 @@ schemars = "1.2"
 tokio.workspace = true
 thiserror.workspace = true
 rustok-core.workspace = true
+rustok-modules.workspace = true
 uuid.workspace = true
 tracing.workspace = true
 chrono.workspace = true

@@ -1173,6 +1173,8 @@ mod tests {
             ..SandboxPolicy::default()
         };
         let installed_at = "2026-07-26T12:00:00+00:00";
+        let data_owner_id = Uuid::new_v4();
+        let settings_instance_id = Uuid::new_v4();
 
         database
             .execute(Statement::from_sql_and_values(
@@ -1180,12 +1182,12 @@ mod tests {
                 "INSERT INTO module_artifact_installations (
                     installation_id, scope_kind, tenant_id, registry, repository, manifest_digest,
                     slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor,
-                    dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at,
+                    data_owner_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at,
                     previous_installation_id, capability_grant_revision
                  ) VALUES (
                     ?1, 'tenant', ?2, 'registry.example', 'modules/sample_module', ?3,
                     'sample_module', '1.0.0', 'rhai', 'rustok:module/runtime@1', ?4, 'main', ?5,
-                    ?6, ?7, ?8, ?9, NULL, 1
+                    ?6, ?7, ?8, ?9, ?10, ?11, NULL, 1
                  )",
                 vec![
                     installation_id.to_string().into(),
@@ -1195,6 +1197,8 @@ mod tests {
                     SqlValue::Json(Some(Box::new(
                         serde_json::to_value(&descriptor).expect("descriptor JSON"),
                     ))),
+                    data_owner_id.to_string().into(),
+                    settings_instance_id.to_string().into(),
                     i64::try_from(dependency_lock.graph_revision)
                         .expect("graph revision")
                         .into(),

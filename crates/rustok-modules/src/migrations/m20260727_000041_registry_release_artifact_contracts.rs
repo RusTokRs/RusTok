@@ -1,9 +1,9 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
-/// Adds the immutable source reference required for platform-built lineage and
-/// stores the exact installable artifact contract beside each published
-/// registry release.
+/// Adds immutable source lineage for every publication origin, including
+/// reviewed Alloy forks, and stores the exact installable artifact contract
+/// beside each published registry release.
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -15,11 +15,42 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE registry_publish_build_staging \
                  ADD COLUMN source_reference TEXT NULL \
                  CHECK (source_reference IS NULL OR length(trim(source_reference)) BETWEEN 1 AND 512)",
+                "CREATE TABLE registry_publish_alloy_staging (\
+                    id TEXT PRIMARY KEY,\
+                    request_id TEXT NOT NULL REFERENCES registry_publish_requests(id) ON DELETE RESTRICT,\
+                    alloy_tenant_id UUID NOT NULL,\
+                    alloy_script_id UUID NOT NULL,\
+                    artifact_digest TEXT NOT NULL CHECK (length(artifact_digest) = 71),\
+                    source_digest TEXT NOT NULL CHECK (length(source_digest) = 71),\
+                    source_revision BIGINT NOT NULL CHECK (source_revision > 0),\
+                    parent_release_slug TEXT NULL CHECK (parent_release_slug IS NULL OR length(trim(parent_release_slug)) BETWEEN 1 AND 128),\
+                    parent_release_version TEXT NULL CHECK (parent_release_version IS NULL OR length(trim(parent_release_version)) BETWEEN 1 AND 128),\
+                    parent_release_digest TEXT NULL CHECK (parent_release_digest IS NULL OR length(parent_release_digest) = 71),\
+                    review_reference TEXT NOT NULL CHECK (length(trim(review_reference)) BETWEEN 1 AND 512),\
+                    review_digest TEXT NOT NULL CHECK (length(review_digest) = 71),\
+                    review_policy_revision TEXT NOT NULL CHECK (length(trim(review_policy_revision)) BETWEEN 1 AND 128),\
+                    reviewed_by_principal JSONB NOT NULL,\
+                    sandbox_execution_id UUID NOT NULL,\
+                    sandbox_test_path TEXT NOT NULL CHECK (length(trim(sandbox_test_path)) BETWEEN 1 AND 512),\
+                    sandbox_executor TEXT NOT NULL CHECK (length(trim(sandbox_executor)) BETWEEN 1 AND 64),\
+                    sandbox_runtime_abi TEXT NOT NULL CHECK (length(trim(sandbox_runtime_abi)) BETWEEN 1 AND 128),\
+                    sandbox_policy_digest TEXT NOT NULL CHECK (length(sandbox_policy_digest) = 71),\
+                    sandbox_capability_grants INTEGER NOT NULL CHECK (sandbox_capability_grants >= 0),\
+                    staged_by_principal JSONB NOT NULL,\
+                    idempotency_key UUID NOT NULL,\
+                    staged_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                    CHECK ((parent_release_slug IS NULL AND parent_release_version IS NULL AND parent_release_digest IS NULL) \
+                           OR (parent_release_slug IS NOT NULL AND parent_release_version IS NOT NULL AND parent_release_digest IS NOT NULL)),\
+                    UNIQUE (request_id, idempotency_key)\
+                )",
+                "CREATE INDEX registry_publish_alloy_staging_request_current_idx \
+                 ON registry_publish_alloy_staging (request_id, artifact_digest, staged_at DESC)",
                 "CREATE TABLE registry_module_release_artifacts (\
                     release_id TEXT PRIMARY KEY REFERENCES registry_module_releases(id) ON DELETE RESTRICT,\
                     request_id TEXT NOT NULL UNIQUE REFERENCES registry_publish_requests(id) ON DELETE RESTRICT,\
                     artifact JSONB NOT NULL,\
                     descriptor JSONB NOT NULL,\
+                    lineage JSONB NOT NULL,\
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )",
             ],
@@ -27,11 +58,42 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE registry_publish_build_staging \
                  ADD COLUMN source_reference TEXT NULL \
                  CHECK (source_reference IS NULL OR length(trim(source_reference)) BETWEEN 1 AND 512)",
+                "CREATE TABLE registry_publish_alloy_staging (\
+                    id TEXT PRIMARY KEY NOT NULL,\
+                    request_id TEXT NOT NULL REFERENCES registry_publish_requests(id) ON DELETE RESTRICT,\
+                    alloy_tenant_id TEXT NOT NULL,\
+                    alloy_script_id TEXT NOT NULL,\
+                    artifact_digest TEXT NOT NULL CHECK (length(artifact_digest) = 71),\
+                    source_digest TEXT NOT NULL CHECK (length(source_digest) = 71),\
+                    source_revision INTEGER NOT NULL CHECK (source_revision > 0),\
+                    parent_release_slug TEXT NULL CHECK (parent_release_slug IS NULL OR length(trim(parent_release_slug)) BETWEEN 1 AND 128),\
+                    parent_release_version TEXT NULL CHECK (parent_release_version IS NULL OR length(trim(parent_release_version)) BETWEEN 1 AND 128),\
+                    parent_release_digest TEXT NULL CHECK (parent_release_digest IS NULL OR length(parent_release_digest) = 71),\
+                    review_reference TEXT NOT NULL CHECK (length(trim(review_reference)) BETWEEN 1 AND 512),\
+                    review_digest TEXT NOT NULL CHECK (length(review_digest) = 71),\
+                    review_policy_revision TEXT NOT NULL CHECK (length(trim(review_policy_revision)) BETWEEN 1 AND 128),\
+                    reviewed_by_principal JSON NOT NULL,\
+                    sandbox_execution_id TEXT NOT NULL,\
+                    sandbox_test_path TEXT NOT NULL CHECK (length(trim(sandbox_test_path)) BETWEEN 1 AND 512),\
+                    sandbox_executor TEXT NOT NULL CHECK (length(trim(sandbox_executor)) BETWEEN 1 AND 64),\
+                    sandbox_runtime_abi TEXT NOT NULL CHECK (length(trim(sandbox_runtime_abi)) BETWEEN 1 AND 128),\
+                    sandbox_policy_digest TEXT NOT NULL CHECK (length(sandbox_policy_digest) = 71),\
+                    sandbox_capability_grants INTEGER NOT NULL CHECK (sandbox_capability_grants >= 0),\
+                    staged_by_principal JSON NOT NULL,\
+                    idempotency_key TEXT NOT NULL,\
+                    staged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                    CHECK ((parent_release_slug IS NULL AND parent_release_version IS NULL AND parent_release_digest IS NULL) \
+                           OR (parent_release_slug IS NOT NULL AND parent_release_version IS NOT NULL AND parent_release_digest IS NOT NULL)),\
+                    UNIQUE (request_id, idempotency_key)\
+                )",
+                "CREATE INDEX registry_publish_alloy_staging_request_current_idx \
+                 ON registry_publish_alloy_staging (request_id, artifact_digest, staged_at DESC)",
                 "CREATE TABLE registry_module_release_artifacts (\
                     release_id TEXT PRIMARY KEY NOT NULL REFERENCES registry_module_releases(id) ON DELETE RESTRICT,\
                     request_id TEXT NOT NULL UNIQUE REFERENCES registry_publish_requests(id) ON DELETE RESTRICT,\
                     artifact JSON NOT NULL,\
                     descriptor JSON NOT NULL,\
+                    lineage JSON NOT NULL,\
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )",
             ],
@@ -57,6 +119,10 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared("DROP TABLE registry_module_release_artifacts")
+            .await?;
+        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE registry_publish_alloy_staging")
             .await?;
         manager
             .get_connection()

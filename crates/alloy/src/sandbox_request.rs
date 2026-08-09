@@ -2,7 +2,9 @@
 //! the neutral sandbox runtime.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -10,14 +12,38 @@ use uuid::Uuid;
 
 use rustok_sandbox::{
     ExecutionPhase as SandboxExecutionPhase, RHAI_WORKSPACE_MEDIA_TYPE, RhaiBindingInput,
-    RhaiBindingOutput, RhaiRecordInput, RhaiScopeInput, SandboxContext,
-    SandboxExecutorKind, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
+    RhaiBindingOutput, RhaiRecordInput, RhaiScopeInput, SandboxContext, SandboxExecutorKind,
+    SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
 
 use crate::{
     EntityProxy, ExecutionContext, ExecutionPhase, Script, ScriptError, ScriptResult,
     utils::{dynamic_to_json, json_to_dynamic},
 };
+
+/// Host-owned policy lookup for a draft imported from an installed marketplace
+/// release. Alloy persists only immutable parent lineage; it does not persist,
+/// synthesize, or broaden a host capability grant.
+#[async_trait]
+pub trait AlloyImportedDraftPolicyProvider: Send + Sync {
+    async fn resolve_policy(
+        &self,
+        tenant_id: Uuid,
+        parent_release: &rustok_modules::ArtifactReleaseRef,
+    ) -> Result<SandboxPolicy, AlloyImportedDraftPolicyError>;
+}
+
+/// Host-composed policy provider retained by the Alloy draft runtime.
+#[derive(Clone)]
+pub struct AlloyImportedDraftPolicyProviderHandle(pub Arc<dyn AlloyImportedDraftPolicyProvider>);
+
+/// Redacted failure contract for resolving an imported draft's installed-parent
+/// policy. The detailed owner failure remains outside Alloy's transport output.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum AlloyImportedDraftPolicyError {
+    #[error("the imported draft's installed parent policy is unavailable")]
+    Unavailable,
+}
 
 /// Alloy-owned data carried inside the shared Rhai v1 input envelope. It keeps
 /// user-provided parameters and entity snapshots data-only; the later
@@ -94,6 +120,7 @@ pub struct AlloyDraftRequestBuilder {
 pub struct AlloyDraftRuntime {
     sandbox: rustok_sandbox::SandboxRuntime,
     requests: AlloyDraftRequestBuilder,
+    imported_draft_policy: Option<AlloyImportedDraftPolicyProviderHandle>,
 }
 
 /// Redacted immutable identity persisted with every production draft
@@ -112,7 +139,19 @@ impl AlloyDraftRuntime {
         Self {
             sandbox,
             requests: AlloyDraftRequestBuilder::new(policy),
+            imported_draft_policy: None,
         }
+    }
+
+    /// Enables exact installed-parent policy resolution for imported drafts.
+    /// A parent-bearing draft fails closed when this host-owned provider is not
+    /// present or cannot resolve its currently eligible installation policy.
+    pub fn with_imported_draft_policy_provider(
+        mut self,
+        provider: AlloyImportedDraftPolicyProviderHandle,
+    ) -> Self {
+        self.imported_draft_policy = Some(provider);
+        self
     }
 
     pub async fn execute(
@@ -120,18 +159,23 @@ impl AlloyDraftRuntime {
         script: &Script,
         context: &ExecutionContext,
     ) -> ScriptResult<(rhai::Dynamic, HashMap<String, rhai::Dynamic>)> {
+        let policy = self.policy_for(script).await?;
         let request = self
             .requests
-            .build(script, context, input_from_context(context))
+            .build_with_policy(script, context, input_from_context(context), policy)
             .map_err(|error| ScriptError::Runtime(error.to_string()))?;
         self.execute_request(request).await
     }
 
-    pub fn execution_evidence(&self, script: &Script) -> ScriptResult<AlloyExecutionEvidence> {
+    pub async fn execution_evidence(
+        &self,
+        script: &Script,
+    ) -> ScriptResult<AlloyExecutionEvidence> {
         script.workspace.validate().map_err(ScriptError::from)?;
         let source_digest = script.workspace.digest().map_err(ScriptError::from)?;
-        let policy_bytes = serde_json::to_vec(&self.requests.policy)
-            .map_err(|error| ScriptError::Runtime(error.to_string()))?;
+        let policy = self.policy_for(script).await?;
+        let policy_bytes =
+            serde_json::to_vec(&policy).map_err(|error| ScriptError::Runtime(error.to_string()))?;
         Ok(AlloyExecutionEvidence {
             source_revision: script.version,
             source_digest,
@@ -142,17 +186,25 @@ impl AlloyDraftRuntime {
     }
 
     /// Executes one immutable `tests/*.rhai` entrypoint from the script's
-    /// canonical workspace. Test requests retain the workspace digest and
-    /// revision identity but intentionally receive no capability grants.
+    /// canonical workspace. Test requests retain the workspace digest,
+    /// revision identity, and the exact installed-parent policy when the
+    /// draft was imported from a marketplace artifact.
     pub async fn execute_test(
         &self,
         script: &Script,
         test_path: &str,
         context: &ExecutionContext,
     ) -> ScriptResult<bool> {
+        let policy = self.policy_for(script).await?;
         let request = self
             .requests
-            .build_test(script, test_path, context, AlloyDraftInput::default())
+            .build_test_with_policy(
+                script,
+                test_path,
+                context,
+                AlloyDraftInput::default(),
+                policy,
+            )
             .map_err(|error| ScriptError::Runtime(error.to_string()))?;
         let (return_value, changes) = self.execute_request(request).await?;
         if !changes.is_empty() {
@@ -174,13 +226,18 @@ impl AlloyDraftRuntime {
         script: &Script,
         context: &ExecutionContext,
     ) -> ScriptResult<crate::AlloyPublicationSmokeEvidence> {
+        let parent_policy = self.policy_for(script).await?;
         let request = self
             .requests
-            .build_test(
+            .build_test_with_policy(
                 script,
                 rustok_modules::ALLOY_PUBLICATION_SMOKE_TEST_PATH,
                 context,
                 AlloyDraftInput::default(),
+                SandboxPolicy {
+                    grants: Vec::new(),
+                    limits: parent_policy.limits,
+                },
             )
             .map_err(|error| ScriptError::Runtime(error.to_string()))?;
         let policy_bytes = serde_json::to_vec(&request.policy)
@@ -205,6 +262,31 @@ impl AlloyDraftRuntime {
             ));
         }
         Ok(evidence)
+    }
+
+    async fn policy_for(&self, script: &Script) -> ScriptResult<SandboxPolicy> {
+        let Some(parent_release) = &script.parent_release else {
+            return Ok(self.requests.policy.clone());
+        };
+        if script.tenant_id.is_nil() {
+            return Err(ScriptError::Runtime(
+                "imported Alloy draft has no tenant identity".to_string(),
+            ));
+        }
+        let provider = self.imported_draft_policy.as_ref().ok_or_else(|| {
+            ScriptError::Runtime(
+                "imported Alloy draft parent policy provider is unavailable".to_string(),
+            )
+        })?;
+        provider
+            .0
+            .resolve_policy(script.tenant_id, parent_release)
+            .await
+            .map_err(|_| {
+                ScriptError::Runtime(
+                    "imported Alloy draft parent policy is unavailable".to_string(),
+                )
+            })
     }
 
     async fn execute_request(
@@ -240,23 +322,48 @@ impl AlloyDraftRequestBuilder {
         context: &ExecutionContext,
         input: AlloyDraftInput,
     ) -> Result<SandboxRequest, AlloyDraftRequestError> {
+        self.build_with_policy(script, context, input, self.policy.clone())
+    }
+
+    /// Builds a request with a host-resolved policy. Runtime callers use this
+    /// for imported drafts so capability grants cannot fall back to defaults.
+    pub fn build_with_policy(
+        &self,
+        script: &Script,
+        context: &ExecutionContext,
+        input: AlloyDraftInput,
+        policy: SandboxPolicy,
+    ) -> Result<SandboxRequest, AlloyDraftRequestError> {
         self.build_for_entrypoint(
             script,
             &script.workspace.entrypoint,
             context,
             input,
             sandbox_phase(context.phase),
-            self.policy.clone(),
+            policy,
         )
     }
 
-    /// Builds a capability-free request for one declared workspace test.
+    /// Builds a request for one declared workspace test using the supplied
+    /// host policy. The test phase remains part of the sandbox context so the
+    /// broker can enforce phase-specific capability constraints.
     pub fn build_test(
         &self,
         script: &Script,
         test_path: &str,
         context: &ExecutionContext,
         input: AlloyDraftInput,
+    ) -> Result<SandboxRequest, AlloyDraftRequestError> {
+        self.build_test_with_policy(script, test_path, context, input, self.policy.clone())
+    }
+
+    pub fn build_test_with_policy(
+        &self,
+        script: &Script,
+        test_path: &str,
+        context: &ExecutionContext,
+        input: AlloyDraftInput,
+        policy: SandboxPolicy,
     ) -> Result<SandboxRequest, AlloyDraftRequestError> {
         script
             .workspace
@@ -268,10 +375,7 @@ impl AlloyDraftRequestBuilder {
             context,
             input,
             SandboxExecutionPhase::Test,
-            SandboxPolicy {
-                grants: Vec::new(),
-                limits: self.policy.limits.clone(),
-            },
+            policy,
         )
     }
 
@@ -466,6 +570,11 @@ mod tests {
 
     struct NoCapabilities;
 
+    #[derive(Clone)]
+    struct FixedImportedDraftPolicyProvider {
+        policy: SandboxPolicy,
+    }
+
     #[async_trait]
     impl CapabilityBroker for NoCapabilities {
         async fn invoke(
@@ -474,6 +583,25 @@ mod tests {
             _grant: &CapabilityGrant,
         ) -> SandboxResult<CapabilityResponse> {
             Err(SandboxError::Internal("unexpected capability call".into()))
+        }
+    }
+
+    #[async_trait]
+    impl AlloyImportedDraftPolicyProvider for FixedImportedDraftPolicyProvider {
+        async fn resolve_policy(
+            &self,
+            _tenant_id: Uuid,
+            _parent_release: &rustok_modules::ArtifactReleaseRef,
+        ) -> Result<SandboxPolicy, AlloyImportedDraftPolicyError> {
+            Ok(self.policy.clone())
+        }
+    }
+
+    fn parent_release() -> rustok_modules::ArtifactReleaseRef {
+        rustok_modules::ArtifactReleaseRef {
+            slug: "tax_rule".to_string(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
         }
     }
 
@@ -555,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_pins_a_declared_test_entrypoint_and_removes_capabilities() {
+    fn test_builder_pins_a_declared_test_entrypoint_and_preserves_host_policy() {
         let mut script = script();
         script.workspace.files.push(crate::RhaiWorkspaceFile {
             path: "tests/smoke.rhai".into(),
@@ -584,7 +712,83 @@ mod tests {
             request.payload.digest,
             script.workspace.digest().expect("workspace digest")
         );
-        assert!(request.policy.grants.is_empty());
+        assert_eq!(request.policy.grants.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn imported_draft_uses_exact_parent_policy_for_tests_and_execution_evidence() {
+        let policy = SandboxPolicy {
+            grants: vec![CapabilityGrant {
+                name: rustok_sandbox::CapabilityName::new("platform.http")
+                    .expect("capability name"),
+                constraints: serde_json::json!({ "methods": ["GET"] }),
+            }],
+            ..Default::default()
+        };
+        let runtime = crate::create_test_alloy_draft_runtime().with_imported_draft_policy_provider(
+            AlloyImportedDraftPolicyProviderHandle(Arc::new(FixedImportedDraftPolicyProvider {
+                policy: policy.clone(),
+            })),
+        );
+        let mut script = script();
+        script.tenant_id = Uuid::new_v4();
+        script.parent_release = Some(parent_release());
+        script.workspace.files.push(crate::RhaiWorkspaceFile {
+            path: "tests/smoke.rhai".into(),
+            kind: crate::RhaiWorkspaceFileKind::Test,
+            contents: "true".into(),
+        });
+        let context =
+            ExecutionContext::new(ExecutionPhase::Manual).with_tenant(script.tenant_id.to_string());
+
+        let resolved = runtime.policy_for(&script).await.expect("parent policy");
+        let request = runtime
+            .requests
+            .build_test_with_policy(
+                &script,
+                "tests/smoke.rhai",
+                &context,
+                AlloyDraftInput::default(),
+                resolved,
+            )
+            .expect("test request");
+        let evidence = runtime
+            .execution_evidence(&script)
+            .await
+            .expect("execution evidence");
+
+        assert_eq!(request.policy, policy);
+        assert_eq!(
+            request.payload.runtime_abi,
+            rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI
+        );
+        assert_eq!(
+            evidence.policy_digest,
+            format!(
+                "sha256:{}",
+                hex::encode(Sha256::digest(
+                    serde_json::to_vec(&policy).expect("policy serialization")
+                ))
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn imported_draft_fails_closed_without_a_parent_policy_provider() {
+        let mut script = script();
+        script.tenant_id = Uuid::new_v4();
+        script.parent_release = Some(parent_release());
+
+        let error = crate::create_test_alloy_draft_runtime()
+            .policy_for(&script)
+            .await
+            .expect_err("imported draft must not use the default policy");
+
+        assert!(matches!(
+            error,
+            ScriptError::Runtime(message)
+                if message == "imported Alloy draft parent policy provider is unavailable"
+        ));
     }
 
     #[tokio::test]

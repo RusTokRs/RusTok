@@ -41,7 +41,7 @@ if (contract.sandbox_contract?.profiles?.strict?.max_operations !== 10000 || con
 if (contract.sandbox_contract?.profiles?.relaxed?.max_operations !== 500000 || contract.sandbox_contract?.profiles?.relaxed?.timeout_ms !== 5000) fail('relaxed sandbox profile drift');
 if (contract.sandbox_contract?.operator_surface !== 'rustok_sandbox::rhai::RhaiConfig::limits') fail('sandbox operator surface drift');
 if (contract.sandbox_contract?.owner !== 'rustok-sandbox') fail('sandbox owner drift');
-if (contract.sandbox_contract?.brokered_capability_adapter !== 'alloy::HttpCapabilityBridge via SandboxHost platform.http') fail('sandbox brokered capability adapter drift');
+if (contract.sandbox_contract?.brokered_capability_adapter !== 'rustok_sandbox::RhaiCapabilityBridge via SandboxHost platform.http') fail('sandbox brokered capability adapter drift');
 if (contract.sandbox_contract?.timeout_enforcement !== 'progress_callback_interrupts_execution_with_timeout') fail('sandbox timeout enforcement drift');
 sameArray(contract.sandbox_contract?.rhai_native_limit_mapping, ['ErrorTooManyOperations_to_OperationLimit', 'ErrorDataTooLarge_to_ResourceLimit'], 'rhai native limit mapping');
 if (contract.scheduler_hook_contract?.scheduler_phase !== 'Scheduled' || contract.scheduler_hook_contract?.scheduler_tenant_context !== 'script_tenant_id') fail('scheduler context drift');
@@ -72,14 +72,19 @@ if (contract.test_command_contract?.execution !== 'sandbox_outside_transaction_w
 if (contract.test_command_contract?.transports !== 'graphql_and_host_http_require_scripts_manage_and_verified_actor') fail('test command transport contract drift');
 sameArray(contract.test_command_contract?.evidence_fields, ['source_digest', 'test_path', 'actor_id', 'terminal_boolean_result'], 'test command evidence fields');
 if (contract.release_stage_contract?.persistence !== 'owner_owned_alloy_authored_staging') fail('release stage persistence contract drift');
-if (contract.release_stage_contract?.precondition !== 'expected_current_revision_and_latest_approved_review') fail('release stage precondition contract drift');
+if (contract.release_stage_contract?.precondition !== 'expected_current_revision_latest_approved_review_and_successful_fixed_publication_smoke') fail('release stage precondition contract drift');
 if (contract.release_stage_contract?.idempotency !== 'publish_request_idempotency_key_bound_to_source_revision_and_review') fail('release stage idempotency contract drift');
 if (contract.release_stage_contract?.ownership !== 'rustok_modules_is_sole_marketplace_writer') fail('release stage ownership contract drift');
 if (contract.release_stage_contract?.artifact_payload_media_type !== 'application/vnd.rustok.rhai.workspace.v1') fail('release stage artifact payload media type drift');
 if (contract.release_stage_contract?.artifact_digest_relation !== 'equals_reviewed_source_digest') fail('release stage artifact/source digest relation drift');
 if (contract.release_stage_contract?.transports !== 'graphql_and_host_http_require_scripts_and_modules_manage_and_verified_actor') fail('release stage transport authorization drift');
 if (contract.release_stage_contract?.transport_route !== '/api/alloy/scripts/{id}/releases/stage') fail('release stage host route drift');
-sameArray(contract.release_stage_contract?.evidence_fields, ['artifact_digest', 'source_digest', 'source_revision', 'alloy_tenant_id', 'alloy_script_id', 'review_reference', 'review_digest', 'review_policy_revision', 'platform_admission'], 'release stage evidence fields');
+sameArray(contract.release_stage_contract?.evidence_fields, ['artifact_digest', 'source_digest', 'source_revision', 'alloy_tenant_id', 'alloy_script_id', 'review_reference', 'review_digest', 'review_policy_revision', 'sandbox_execution_id', 'sandbox_test_path', 'sandbox_executor', 'sandbox_runtime_abi', 'sandbox_policy_digest', 'sandbox_capability_grants', 'platform_admission'], 'release stage evidence fields');
+if (contract.release_capability_contract?.source_scope !== 'every_executable_src_rhai_file') fail('release capability source scope drift');
+if (contract.release_capability_contract?.generic_helper !== 'capability_call_requires_literal_valid_capability_name') fail('release generic capability helper drift');
+if (contract.release_capability_contract?.http_helpers !== 'http_get_http_post_http_request_require_platform_http') fail('release HTTP capability helper drift');
+if (contract.release_capability_contract?.declaration_relation !== 'descriptor_set_equals_observed_source_set') fail('release capability declaration relation drift');
+sameArray(contract.release_capability_contract?.rejections, ['missing_declaration', 'unused_declaration', 'dynamic_capability_name', 'reserved_helper_shadowing'], 'release capability rejections');
 if (contract.workspace_contract?.persistence !== 'bounded_revisioned_json_workspace') fail('workspace persistence contract drift');
 if (contract.workspace_contract?.payload_media_type !== 'application/vnd.rustok.rhai.workspace.v1') fail('workspace payload media type drift');
 if (contract.workspace_contract?.sandbox_source_resolution !== 'alloy_extension_static_in_memory_resolver_from_canonical_workspace_bytes') fail('workspace source resolution contract drift');
@@ -96,7 +101,7 @@ sameArray(contract.scheduler_hook_contract?.hook_phases, ['Before', 'After', 'On
 sameArray(contract.scheduler_hook_contract?.before_outcomes, ['Continue', 'Rejected', 'Error'], 'before hook outcomes');
 
 if (evidence.generated_from !== contractPath || evidence.status !== contract.status) fail('evidence header drift');
-sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract', 'execution_command_revision_contract', 'lifecycle_command_revision_contract', 'source_revision_ledger_read_contract', 'workspace_payload_contract', 'review_revision_contract', 'test_command_revision_contract', 'release_stage_revision_contract'], 'evidence cases');
+sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract', 'execution_command_revision_contract', 'lifecycle_command_revision_contract', 'source_revision_ledger_read_contract', 'workspace_payload_contract', 'review_revision_contract', 'test_command_revision_contract', 'release_stage_revision_contract', 'release_capability_declaration_contract'], 'evidence cases');
 
 const dto = read('crates/alloy/src/api/dto.rs');
 hasAll(dto, [
@@ -239,8 +244,11 @@ hasAll(releaseRunner, [
   'ArtifactSourceDigestMismatch',
   '.list_reviews(command.script_id, command.expected_revision)',
   'is_release_approved(review)',
+  '.execute_publication_smoke(&smoke_script, &smoke_context)',
   'alloy_tenant_id: source.tenant_id',
   'alloy_script_id: source.script_id',
+  'sandbox_execution_id: smoke_evidence.execution_id',
+  'sandbox_capability_grants: smoke_evidence.capability_grants',
   'ModuleAlloyAuthoredStageCommand',
   '.stage_alloy_authored('
 ], 'Alloy revision-pinned release stager');
@@ -263,15 +271,25 @@ hasAll(governance, [
 ], 'owner Alloy publication stage');
 const alloyArtifact = read('crates/alloy/src/artifact.rs');
 hasAll(alloyArtifact, [
-  'MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE',
-  'canonical_bytes()'
+  'rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE',
+  'canonical_bytes()',
+  'pub fn observed_rhai_capabilities',
+  'pub fn validate_rhai_capabilities',
+  '"http_get" | "http_post" | "http_request"',
+  'CapabilityDeclarationMismatch',
+  'DynamicCapabilityCall',
+  'ReservedCapabilityHelper',
+  'validate_rhai_capabilities(&script.workspace, &capabilities)?',
+  'validate_rhai_capabilities(&script.workspace, &draft.descriptor.capabilities)?',
+  'release_capability_declarations_match_literal_source_tool_use',
+  'release_capability_validation_rejects_dynamic_and_shadowed_helpers'
 ], 'Alloy workspace artifact package');
 const installation = read('crates/rustok-modules/src/installation.rs');
 hasAll(installation, [
   'pub payload_media_type: String',
   'admission.media_type AS payload_media_type',
   'media_type: self.payload_media_type.clone()',
-  'MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE'
+  'rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE'
 ], 'durable artifact payload media type');
 const reviewGraphql = read('crates/alloy/src/graphql/mutation.rs');
 hasAll(reviewGraphql, [
@@ -302,7 +320,7 @@ hasAll(reviewHttp, [
 ], 'Alloy host HTTP test transport');
 hasAll(reviewHttp, [
   'fn release_actor',
-  'scripts.manage or modules.manage permission',
+  'scripts.manage and modules.manage permissions',
   'async fn stage_release',
   '/api/alloy/scripts/{id}/releases/stage',
   'AlloyReleaseStageCommand'
@@ -351,14 +369,15 @@ hasAll(alloyEngineAdapter, [
   '.map_err(ScriptError::from)'
 ], 'Alloy sandbox adapter');
 
-const httpBridge = read('crates/alloy/src/bridge/http.rs');
-hasAll(httpBridge, [
-  'pub struct HttpCapabilityBridge',
-  'impl RhaiHostExtension for HttpCapabilityBridge',
+const brokeredHttpRhai = read('crates/rustok-sandbox/src/rhai.rs');
+hasAll(brokeredHttpRhai, [
+  'pub struct RhaiCapabilityBridge',
+  'impl RhaiHostExtension for RhaiCapabilityBridge',
   'host.invoke_blocking(&call)',
-  'const HTTP_CAPABILITY: &str = "platform.http"'
-], 'Alloy brokered HTTP bridge');
-if (httpBridge.includes('reqwest::')) fail('Alloy HTTP bridge must not own a direct HTTP client');
+  'register_http_functions(engine, host, context)',
+  '"platform.http"'
+], 'neutral brokered HTTP bridge');
+if (brokeredHttpRhai.includes('reqwest::')) fail('neutral Rhai bridge must not own a direct HTTP client');
 if (read('crates/alloy/Cargo.toml').includes('reqwest')) fail('Alloy must not depend on a direct HTTP client');
 
 const handlers = read('crates/alloy/src/api/handlers.rs');
@@ -410,19 +429,19 @@ hasAll(controllers, [
 const apiHandlers = read('crates/alloy/src/api/handlers.rs');
 hasAll(apiHandlers, [
   'Json(request): Json<ScriptRevisionRequest>',
-  'state.registry.delete(id, request.expected_version)',
+  '.delete(id, request.expected_version)',
   'script.version != request.expected_version'
 ], 'direct REST delete revision validation');
 
-const workspace = read('crates/alloy/src/model/workspace.rs');
+const workspace = read('crates/rustok-sandbox/src/rhai_workspace.rs');
 hasAll(workspace, [
-  'pub const MAX_WORKSPACE_FILES: usize = 64',
-  'pub const MAX_WORKSPACE_FILE_BYTES: usize = 128 * 1024',
-  'pub const MAX_WORKSPACE_BYTES: usize = 1024 * 1024',
-  'pub const MAX_WORKSPACE_PATH_BYTES: usize = 160',
-  'pub const MAX_WORKSPACE_IMPORT_DEPTH: usize = 8',
-  'pub struct AlloyWorkspace',
-  'pub struct WorkspaceFile',
+  'pub const MAX_RHAI_WORKSPACE_FILES: usize = 64',
+  'pub const MAX_RHAI_WORKSPACE_FILE_BYTES: usize = 128 * 1024',
+  'pub const MAX_RHAI_WORKSPACE_BYTES: usize = 1024 * 1024',
+  'pub const MAX_RHAI_WORKSPACE_PATH_BYTES: usize = 160',
+  'pub const MAX_RHAI_WORKSPACE_IMPORT_DEPTH: usize = 8',
+  'pub struct RhaiWorkspace',
+  'pub struct RhaiWorkspaceFile',
   'StaticModuleResolver',
   'pub fn configure_rhai_engine',
   'pub fn configure_rhai_engine_for_entrypoint',
@@ -436,19 +455,18 @@ hasAll(workspace, [
   'fn validate_file_kind',
   'pub fn canonical_bytes',
   'canonical_workspace_digest_is_independent_of_file_order'
-], 'bounded Alloy workspace');
+], 'bounded neutral Rhai workspace');
 const sandboxRhai = read('crates/rustok-sandbox/src/rhai.rs');
 hasAll(sandboxRhai, [
-  'fn source_bytes(&self, _request: &SandboxRequest)',
-  'multiple Rhai extensions supplied request source'
-], 'Rhai owner source extension boundary');
+  'fn resolve_source(request: &SandboxRequest, engine: &mut Engine)',
+  'RHAI_WORKSPACE_MEDIA_TYPE',
+  'Rhai workspace digest does not match the request payload digest',
+  '.configure_rhai_engine_for_entrypoint(engine, &request.payload.entrypoint)',
+  '.executable_source(&request.payload.entrypoint)'
+], 'Rhai owner workspace resolution boundary');
 const alloyDraft = read('crates/alloy/src/sandbox_request.rs');
 hasAll(alloyDraft, [
-  'ALLOY_DRAFT_RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.workspace.v1"',
-  'fn source_bytes(&self, request: &SandboxRequest)',
-  'invalid Alloy workspace payload',
-  '.configure_rhai_engine_for_entrypoint(engine, &request.payload.entrypoint)',
-  '.executable_source(&request.payload.entrypoint)',
+  'RHAI_WORKSPACE_MEDIA_TYPE',
   'pub async fn execute_test',
   'pub fn build_test',
   'SandboxExecutionPhase::Test',
@@ -509,7 +527,7 @@ hasAll(mcpAlloyTools, [
   '.delete(id, request.expected_version)'
 ], 'MCP delete revision validation');
 hasAll(mcpAlloyTools, [
-  'pub workspace: AlloyWorkspace',
+  'pub workspace: RhaiWorkspace',
   'pub expected_version: u32',
   'validate_rhai_workspace()',
   'run_manual_snapshot(&script, params, entity, None)'
@@ -527,10 +545,10 @@ hasAll(orchestrator, [
 
 const executor = read('crates/alloy/src/runner/executor.rs');
 hasAll(executor, [
-  'if elapsed > self.engine.config().timeout',
-  'Script exceeded timeout',
-  'self.record_execution(&result, &ctx_with_entity).await'
-], 'executor timeout observability and audit persistence');
+  'self.runtime.execute(script, &ctx_with_entity).await',
+  'self.record_execution(&result, &ctx_with_entity).await',
+  'execution_log.record_result(result, ctx).await'
+], 'executor sandbox outcome and audit persistence');
 
 const scheduler = read('crates/alloy/src/scheduler/runner.rs');
 hasAll(scheduler, [

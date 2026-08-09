@@ -61,9 +61,18 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     };
     #[cfg(feature = "mod-alloy")]
     let host_runtime = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
+        let storage = ctx
+            .shared_get::<rustok_storage::StorageRuntime>()
+            .expect("Alloy published-release import requires initialized durable storage");
         let host_runtime = host_runtime.with_shared_value(alloy_runtime);
-        host_runtime.with_shared_value(
+        let host_runtime = host_runtime.with_shared_value(
             crate::services::registry_governance::alloy_release_governance_handle(ctx.db_clone()),
+        );
+        host_runtime.with_shared_value(
+            crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
+                ctx.db_clone(),
+                storage,
+            ),
         )
     } else {
         host_runtime
@@ -86,6 +95,8 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         alloy_runtime: alloy_runtime_from_ctx(ctx),
         #[cfg(feature = "mod-alloy")]
         alloy_release_governance: alloy_release_governance_from_ctx(ctx),
+        #[cfg(feature = "mod-alloy")]
+        alloy_published_rhai_source: alloy_published_rhai_source_from_ctx(ctx),
         #[cfg(all(
             feature = "mod-content",
             feature = "mod-blog",
@@ -134,6 +145,19 @@ fn alloy_release_governance_from_ctx(
     ctx: &ServerRuntimeContext,
 ) -> alloy::AlloyReleaseGovernanceHandle {
     crate::services::registry_governance::alloy_release_governance_handle(ctx.db_clone())
+}
+
+#[cfg(feature = "mod-alloy")]
+fn alloy_published_rhai_source_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> alloy::AlloyPublishedRhaiSourceProviderHandle {
+    let storage = ctx
+        .shared_get::<rustok_storage::StorageRuntime>()
+        .expect("Alloy published-release import requires initialized durable storage");
+    crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
+        ctx.db_clone(),
+        storage,
+    )
 }
 
 #[cfg(all(

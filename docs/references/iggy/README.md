@@ -150,8 +150,8 @@ supported by upstream Iggy, then configure the deployment-owned bundled path:
 iggy:
   mode: bundled
   bundled:
-    executable: /opt/rustok/bin/iggy-server
-    data_dir: /var/lib/rustok/iggy
+    executable: "<instance-root>/bin/iggy-server"
+    data_dir: "<instance-root>/data/iggy"
     tcp_port: 8090
     http_port: 0
     startup_timeout_ms: 30000
@@ -162,6 +162,9 @@ iggy:
     username: ${IGGY_ROOT_USERNAME}
     password: ${IGGY_ROOT_PASSWORD}
 ```
+
+Replace `<instance-root>` with the operator-selected installation directory;
+these are instance-relative placement paths, not required Linux locations.
 
 `Bundled` creates and retains the configured data directory. It only accepts one
 loopback TCP address matching `bundled.tcp_port`. Root credentials must be set

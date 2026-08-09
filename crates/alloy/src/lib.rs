@@ -27,8 +27,8 @@ pub mod utils;
 
 pub use api::{AppState, create_router};
 pub use artifact::{
-    AlloyArtifactError, fork_rhai_module_release, package_rhai_module_release,
-    stage_rhai_module_release,
+    AlloyArtifactError, fork_rhai_module_release, observed_rhai_capabilities,
+    package_rhai_module_release, stage_rhai_module_release, validate_rhai_capabilities,
 };
 pub use bridge::{Bridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
@@ -51,14 +51,17 @@ pub use model::{
     TestRunLease, TestRunStatus, register_entity_proxy,
 };
 pub use runner::{
-    AlloyPublishedRhaiSourceProvider, AlloyReleaseGovernance, AlloyReleaseGovernanceHandle,
-    AlloyReleaseImporter, ExecutionOutcome, ExecutionResult, HookOutcome, RevisionedReleaseStager,
-    RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator,
+    AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle,
+    AlloyReleaseGovernance, AlloyReleaseGovernanceHandle, AlloyReleaseImporter, ExecutionOutcome,
+    ExecutionResult, HookOutcome, RevisionedReleaseStager, RevisionedTestRunner, ScriptExecutor,
+    ScriptOrchestrator,
 };
 pub use runtime::{AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime, build_alloy_runtime};
 pub use sandbox_request::{
     AlloyDraftBindingError, AlloyDraftEntitySnapshot, AlloyDraftInput, AlloyDraftRequestBuilder,
     AlloyDraftRequestError, AlloyDraftRuntime, AlloyExecutionEvidence,
+    AlloyImportedDraftPolicyError, AlloyImportedDraftPolicyProvider,
+    AlloyImportedDraftPolicyProviderHandle,
 };
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
@@ -625,13 +628,20 @@ mod tests {
         let results = orchestrator
             .run_on_commit(
                 "invoice",
-                EntityProxy::empty("invoice"),
+                EntityProxy::new(
+                    "invoice:commit",
+                    "invoice",
+                    std::collections::HashMap::new(),
+                ),
                 Some("operator-3".to_string()),
             )
             .await;
 
         assert_eq!(results.len(), 2);
-        assert!(results.iter().all(ExecutionResult::is_success));
+        assert!(
+            results.iter().all(ExecutionResult::is_success),
+            "on-commit execution results: {results:#?}"
+        );
         let entries = execution_log.snapshot();
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().all(|(result, ctx)| {

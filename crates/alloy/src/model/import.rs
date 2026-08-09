@@ -49,6 +49,7 @@ impl AlloyPublishedRhaiSource {
             .map_err(|_| AlloyImportError::IneligibleRelease)?;
         if self.release.descriptor.release_ref() != *expected
             || self.release.descriptor.payload_kind != ArtifactPayloadKind::Rhai
+            || self.release.descriptor.runtime_abi != rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI
         {
             return Err(AlloyImportError::IneligibleRelease);
         }

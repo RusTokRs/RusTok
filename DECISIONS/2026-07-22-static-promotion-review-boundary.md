@@ -4,10 +4,12 @@ Status: Accepted, amended on 2026-08-09
 
 Date: 2026-07-22
 
-The automatic rollback mechanism is amended by
+The production publication, deployment, and automatic rollback mechanisms are
+amended by
 [Module release rollback safety](./2026-08-06-module-release-rollback-safety.md).
-All other promotion, build, verification, and trust-boundary decisions remain
-in force.
+The canonical production output is one complete immutable role bundle, not an
+independently activated artifact or release head per role. All other promotion,
+build, verification, and trust-boundary decisions remain in force.
 
 ## Context
 
@@ -44,11 +46,13 @@ writer, native loader, compatibility alias, or alternate versioned path.
 `ModuleControlPlane::static_distribution` is the only owner that can select
 approved records for native composition. Each accepted command replaces the
 complete selection, pins the platform source, toolchain and target, creates an
-immutable predecessor-linked build intent, and advances a separate CAS head.
+immutable build-lineage-linked build intent, and advances a separate CAS head.
+That lineage supports reproducibility and supersession audit; it is not the
+serving direct predecessor for recovery.
 Platform and promoted source references must exactly equal
 `cas://sha256:<hex>`. Each immutable distribution item carries the reviewed
 Cargo package and native entry type, so both values participate in the
-composition digest and are revalidated during release activation and rollback.
+composition digest and are revalidated during release admission and recovery.
 It does not change the active runtime composition; CI/distribution tooling must
 complete the queued build before any native implementation can exist in a
 release.
@@ -57,9 +61,12 @@ release.
 worker boundary. Atomic claim uses a bounded lease and an immutable attempt
 record. Heartbeat and completion require the exact claim/runner pair and an
 unexpired lease. Reclaim first closes the prior attempt as `lease_expired`.
-Successful completion requires digest-pinned artifact, SBOM, provenance,
-signature-manifest, and test evidence; terminal replay is accepted only for the
-identical completion digest. Completion remains evidence, not release activation.
+Successful completion requires a digest-pinned role-bundle receipt covering the
+complete selected role and surface set, per-role artifact identities, browser
+asset manifests where selected, and the bound SBOM, provenance,
+signature-manifest, and test evidence. Terminal replay is accepted only for the
+identical completion digest. Completion remains evidence, not release
+admission, serving selection, or activation.
 
 `rustok-static-distribution-worker` is the separately deployed implementation
 of the executor port. It requires a digest-pinned launcher, job configuration,
@@ -85,23 +92,28 @@ Rustc, publisher, target, and resource identities. It resolves the final
 workspace lock offline after composition, runs only fixed locked test and
 release-build commands, and binds the raw resolved-lock digest into test
 evidence and the publisher request. The digest-pinned publisher must be
-idempotent by publisher-request digest. Its receipt is accepted only when it
-binds that request, the immutable job/composition/generated output, the
-resolved lock, and all five evidence identities. Reclaim rebuilds only the
-job-owned derived workspace; immutable attempt inputs are verified, not
-overwritten.
+idempotent by publisher-request digest. Its request enumerates the complete
+canonical role plan and every exact job-local output path that belongs to it.
+Its receipt is accepted only when it binds that request, the immutable
+job/composition/generated output, resolved lock, complete role and surface set,
+per-role artifact digests, browser asset manifests, role-bundle root digest,
+and all required evidence identities. Reclaim rebuilds only the job-owned
+derived workspace; immutable attempt inputs are verified, not overwritten.
 
-The production publisher is a third fixed binary in the static-distribution
-worker package. It reads the executable only from the job-local fixed target
-path, publishes the native artifact plus CycloneDX SBOM, SLSA provenance, and
-raw test-evidence OCI referrers, signs the exact artifact digest with KMS-backed
-Cosign, resolves the signature manifest digest, and writes a create-only fully
-bound receipt. The receipt records the raw test-evidence payload digest
-separately from the test referrer manifest digest. Credential broker and Cosign
-process handling are shared with the untrusted module publisher through
-`rustok-build-publication`; both programs are deployment-pinned and re-hashed
-before every invocation. There is no worker-local alternate credential or
-signing path.
+The production publisher is the sole fixed role-bundle publisher in the
+static-distribution worker package. It reads each selected role artifact and
+browser asset manifest only from its declared job-local fixed path, publishes
+the complete role bundle under one OCI root digest, and attaches CycloneDX
+SBOM, SLSA provenance, raw test evidence, signatures, and the other required
+evidence as digest-bound OCI referrers. It signs the exact bundle and role
+digests with KMS-backed Cosign, resolves every signature manifest digest, and
+writes one create-only fully bound role-bundle receipt. The receipt records raw
+evidence payload digests separately from their referrer manifest digests.
+Credential broker and Cosign process handling are shared with the untrusted
+module publisher through `rustok-build-publication`; both programs are
+deployment-pinned and re-hashed before every invocation. There is no
+worker-local alternate credential, signing, per-role publisher, or independently
+activated per-role release head.
 
 Native execution identity is explicit rather than inferred from Cargo or the
 compiled registry. Each immutable distribution item persists
@@ -117,34 +129,48 @@ the binary onto nodes and reconciling desired/observed state remain separate
 deployment operations.
 
 The rollout boundary is owner-owned and topology-bound. A trusted topology
-resolver supplies a sorted node set and canonical digest; the owner creates a
-desired rollout only for the exact active verified release and policy revision.
-Node agents report identity-bound observations with per-node revisions and
-health evidence. The state machine is `preparing -> activating -> converged`,
-with fail-closed terminal failure before convergence and recoverable
-`degraded` state after drift. The owner advances desired/observed pointers under
+resolver supplies canonical placement and a sorted set of assignments binding
+`node_id`, failure domain, role, candidate role digest, and direct-predecessor
+role digest for an automatic update. First install uses candidate-only
+assignments and has no recovery target. Automatic code update requires an
+identical node/failure-domain/role assignment domain; placement/count or
+role/surface-shape changes are separate maintenance transitions. The owner
+creates a desired rollout only for one exact admitted and verified role bundle
+plus the current policy revision. Node agents report
+identity-bound per-role observations with per-node revisions and health
+evidence. The normal path is `preparing -> activating -> converged`; a failed
+candidate transition enters the one authorized `recovering` path or
+`recovery_required`, while post-convergence drift enters recoverable
+`degraded`. The owner advances desired and observed rollout state under
 database CAS, journals request/report idempotency, rejects stale reports, and
-writes outbox events. No rollout operation invokes a native loader or replaces
-the current server process; deployment agents and their transport are separate.
+writes outbox events. Required role or production-surface changes create a new
+role bundle and release; changes only to node placement, count, or wave weights
+change rollout state. No owner operation invokes a native loader or replaces a
+server process; the deployment controller, node agents, and their transport are
+separate and remain available when candidate processes fail.
 
-`ModuleControlPlane::static_distribution_release` is the only release-activation
-owner. It accepts only the current successful build and requires separate host
-authorization plus an external fail-closed verification decision for the exact
-build and requested policy revision. Signature, provenance, SBOM, test, and
-dependency-policy facts must all pass. The owner then relocks the distribution
-head and build, revalidates every promotion and published build fact, and
-atomically supersedes the previous release, advances a dedicated release CAS
-head, stores immutable admission/idempotency evidence, and writes its outbox
-event. Release activation records deployable identity; it cannot load native
+`ModuleControlPlane::static_distribution_release` is the only role-bundle
+release-admission owner. It accepts only the current successful build and
+requires separate host authorization plus an external fail-closed verification
+decision for the exact bundle and requested policy revision. Signature,
+provenance, SBOM, test, and dependency-policy facts must all pass. The owner
+then relocks the distribution head and build, revalidates every promotion and
+published role-bundle fact, stores an immutable admitted release with exact
+build lineage plus admission/idempotency evidence, and writes its outbox event.
+Admission never
+supersedes the serving release and never changes desired or observed rollout
+state. Serving selection changes only through a separately fenced production
+transition that converges the complete bundle. Admission cannot load native
 code or mutate the running composition.
 
 Automatic rollback never compiles on the incident path. The canonical static
 release binds the complete immutable role bundle, including every automated
 server/worker role, embedded Leptos artifact, generated registry, and browser
 asset. Before candidate rollout, the owner must retain and rehash the candidate
-release's recorded direct-predecessor bundle and revalidate its admission,
-security, policy, data compatibility, topology, and deployment evidence. Missing bytes
-or evidence makes the transition ineligible for automatic mode.
+operation's then-serving direct-predecessor bundle and revalidate its admission,
+security, policy, data compatibility, topology, and deployment evidence. The
+production operation, not release admission, freezes that predecessor.
+Missing bytes or evidence makes the transition ineligible for automatic mode.
 
 Rollback creates a new audited owner transition to that exact retained
 predecessor and converges it through the normal desired/observed rollout
@@ -166,8 +192,8 @@ involving the affected release.
 - Removing a promotion from a future distribution requires another complete
   build intent; approval alone never changes runtime behavior.
 - Worker completion alone cannot activate native code. Verified release
-  activation, retained-predecessor rollback, and revocation remain distinct
-  owner transitions, while deployment agents execute only the exact
-  desired/observed rollout contract.
+  admission, production transition, retained-predecessor recovery, and
+  revocation remain distinct owner transitions, while deployment agents
+  execute only the exact desired/observed rollout contract.
 - The trusted native-distribution worker and the untrusted sandbox-artifact
   build worker are separate processes with different launchers and credentials.

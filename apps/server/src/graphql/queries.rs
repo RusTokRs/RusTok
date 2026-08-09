@@ -780,16 +780,19 @@ impl RootQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let plan =
-            match ModuleLifecycleService::module_operation_recovery_plan(db, operation_id).await {
-                Ok(plan) => plan,
-                Err(ModuleOperationRecoveryError::OperationNotFound) => return Ok(None),
-                Err(err) => return Err(map_module_operation_recovery_error(err)),
-            };
-
-        if plan.tenant_id != tenant.id {
-            return Ok(None);
-        }
+        let registry = ctx.data::<ModuleRegistry>()?;
+        let plan = match ModuleLifecycleService::module_operation_recovery_plan(
+            db,
+            registry,
+            tenant.id,
+            operation_id,
+        )
+        .await
+        {
+            Ok(plan) => plan,
+            Err(ModuleOperationRecoveryError::OperationNotFound) => return Ok(None),
+            Err(err) => return Err(map_module_operation_recovery_error(err)),
+        };
 
         Ok(Some(ModuleOperationRecoveryPlan::from(&plan)))
     }
@@ -804,10 +807,12 @@ impl RootQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let registry = ctx.data::<ModuleRegistry>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
         let plans = ModuleLifecycleService::failed_module_operation_recovery_plans(
             db,
+            registry,
             tenant.id,
             module_slug.as_deref(),
         )

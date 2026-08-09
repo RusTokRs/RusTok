@@ -32,6 +32,7 @@ impl<R: ScriptRegistry> RevisionedTestRunner<R> {
                 script.id = lease.source.script_id;
                 script.tenant_id = lease.source.tenant_id;
                 script.version = lease.source.revision;
+                script.parent_release = lease.source.parent_release.clone();
                 let context = ExecutionContext::new(ExecutionPhase::Manual)
                     .with_tenant(lease.source.tenant_id.to_string())
                     .with_user(lease.run.actor_id.clone());
@@ -80,8 +81,33 @@ fn bounded_error(error: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::bounded_error;
-    use crate::model::TEST_RUN_LEASE_SECONDS;
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use rustok_sandbox::SandboxPolicy;
+    use uuid::Uuid;
+
+    use super::{RevisionedTestRunner, bounded_error};
+    use crate::{
+        AlloyImportedDraftPolicyError, AlloyImportedDraftPolicyProvider,
+        AlloyImportedDraftPolicyProviderHandle, InMemoryStorage, RhaiWorkspace, RhaiWorkspaceFile,
+        RhaiWorkspaceFileKind, Script, ScriptRegistry, ScriptTrigger, TestCommand, TestRunStatus,
+        model::TEST_RUN_LEASE_SECONDS,
+    };
+
+    #[derive(Clone)]
+    struct UnavailableImportedDraftPolicyProvider;
+
+    #[async_trait]
+    impl AlloyImportedDraftPolicyProvider for UnavailableImportedDraftPolicyProvider {
+        async fn resolve_policy(
+            &self,
+            _tenant_id: Uuid,
+            _parent_release: &rustok_modules::ArtifactReleaseRef,
+        ) -> Result<SandboxPolicy, AlloyImportedDraftPolicyError> {
+            Err(AlloyImportedDraftPolicyError::Unavailable)
+        }
+    }
 
     #[test]
     fn terminal_test_errors_are_bounded_and_control_free() {
@@ -91,5 +117,51 @@ mod tests {
             "sandbox test failed without an error message"
         );
         assert!(TEST_RUN_LEASE_SECONDS > 0);
+    }
+
+    #[tokio::test]
+    async fn revisioned_test_carries_imported_parent_lineage_to_the_policy_gate() {
+        let tenant_id = Uuid::new_v4();
+        let mut script = Script::new(
+            "imported_tax_rule",
+            RhaiWorkspace::single_source("42"),
+            ScriptTrigger::Manual,
+        );
+        script.tenant_id = tenant_id;
+        script.parent_release = Some(rustok_modules::ArtifactReleaseRef {
+            slug: "tax_rule".to_string(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+        });
+        script.workspace.files.push(RhaiWorkspaceFile {
+            path: "tests/smoke.rhai".to_string(),
+            kind: RhaiWorkspaceFileKind::Test,
+            contents: "true".to_string(),
+        });
+        let storage = Arc::new(InMemoryStorage::new());
+        let saved = storage.save(script).await.expect("save imported draft");
+        let runtime = crate::create_test_alloy_draft_runtime().with_imported_draft_policy_provider(
+            AlloyImportedDraftPolicyProviderHandle(Arc::new(
+                UnavailableImportedDraftPolicyProvider,
+            )),
+        );
+
+        let run = RevisionedTestRunner::new(runtime, storage)
+            .execute(TestCommand {
+                script_id: saved.id,
+                expected_revision: saved.version,
+                test_path: "tests/smoke.rhai".to_string(),
+                actor_id: "operator:42".to_string(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("terminal failed test evidence");
+
+        assert_eq!(run.status, TestRunStatus::Failed);
+        assert_eq!(run.passed, Some(false));
+        assert_eq!(
+            run.error.as_deref(),
+            Some("Runtime error: imported Alloy draft parent policy is unavailable")
+        );
     }
 }

@@ -47,6 +47,11 @@ spec or turning into a provider/model host.
   Update, delete, and manual-run commands carry `expected_version`;
   execution is pinned to the loaded immutable revision and deletion delegates
   to owner storage CAS.
+- The remote-only `alloy_import_published_release` tool derives tenant and actor
+  from the persisted MCP binding, requires `scripts.manage` and
+  `modules.manage`, and invokes the owner-backed published-Rhai source provider
+  through a tenant-scoped Alloy registry. It returns redacted draft identity
+  and parent lineage only; generic stdio MCP cannot advertise the tool.
 - `rustok-ai` does not own the UI review of MCP/Alloy drafts; the cross-module admin workflow separately
   mounts the MCP-module-owned package.
 

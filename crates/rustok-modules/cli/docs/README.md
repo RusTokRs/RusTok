@@ -1,5 +1,10 @@
 # Module authoring CLI
 
+This command family is the WASM Component/archive authoring path. It does not
+package Rhai: reviewed Rhai releases flow from an exact Alloy revision to one
+canonical bounded-workspace object through the generic source-CAS owner, never
+through `module package` or a `.tar` wrapper.
+
 ## Commands
 
 ```text
@@ -40,20 +45,28 @@ worker-owned.
 `module build` validates the project, creates a deterministic private archive,
 and submits it through the owner-composed `ModuleAuthoringBuildControl`. Every
 request carries explicit tenant, actor, project, trace, correlation, and
-idempotency identity. The owner rehashes and strictly scans the archive,
-publishes it atomically as `<sha256-hex>.tar` in the configured source CAS,
-selects the fixed dependency-egress, resource, validation, WIT, ABI, and target
+idempotency identity. The owner rehashes and strictly scans the archive. The
+current implementation publishes it atomically as `<sha256-hex>.tar` in the
+configured source CAS; the accepted release-safety cutover replaces that
+archive-specific writer and layout with the `rustok-modules` preparation
+owner's single `SourceObjectStore` while this command remains its
+archive-specialized client. No dual lookup survives. The owner selects the
+fixed dependency-egress, resource, validation, WIT, ABI, and target
 policy, and commits the immutable request plus transactional outbox fact. The
 command never calls a worker. The independent dispatcher consumes that fact
 and invokes the isolated worker through mTLS.
 
-The operations CLI runtime requires a database and an existing absolute source
-CAS directory in `RUSTOK_SETTINGS_JSON`:
+The current operations CLI runtime requires a database and an existing source
+CAS directory in `RUSTOK_SETTINGS_JSON`. It may be located anywhere supported
+by the host operating system. Replace `<instance-root>` below with the chosen
+installation directory; the accepted installer cutover derives this field from
+the canonical `sources` subtree instead of asking the operator to configure a
+second unrelated root:
 
 ```json
 {
   "module_build": {
-    "source_cas_root": "/srv/rustok/module-source-cas"
+    "source_cas_root": "<instance-root>/sources"
   }
 }
 ```
@@ -81,14 +94,17 @@ metadata, UUID identities, and serialized bundle without requiring a database
 or object storage.
 
 Non-dry-run publication also requires the platform storage configuration in
-`RUSTOK_SETTINGS_JSON`, for example:
+`RUSTOK_SETTINGS_JSON`. The current local driver uses one base directory;
+replace the placeholder with the selected installation directory. The accepted
+portable-layout cutover resolves the executable release and owner-data planes
+from that same root rather than requiring a Linux-specific location:
 
 ```json
 {
   "storage": {
     "driver": "local",
     "local": {
-      "base_dir": "/srv/rustok/storage",
+      "base_dir": "<instance-root>/storage",
       "base_url": "/media",
       "fsync": true
     }

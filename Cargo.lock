@@ -13767,6 +13767,7 @@ dependencies = [
  "rmcp 2.2.0",
  "rustok-api",
  "rustok-core",
+ "rustok-modules",
  "rustok-sandbox",
  "schemars 1.2.1",
  "sea-orm-migration",

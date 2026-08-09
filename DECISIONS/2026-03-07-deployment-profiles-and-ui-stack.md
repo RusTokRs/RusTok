@@ -1,10 +1,18 @@
 # Deployment Profiles and UI Stack Selection
 
 - Date: 2026-03-07
-- Status: Partially superseded by [Leptos server functions as the internal data layer](./2026-03-29-leptos-server-functions-as-internal-data-layer.md)
-  (composable deployment profiles remain in effect; transport between Leptos UI and server is revised)
+- Status: Partially superseded by
+  [Leptos server functions as the internal data layer](./2026-03-29-leptos-server-functions-as-internal-data-layer.md)
+  and [Module release rollback safety](./2026-08-06-module-release-rollback-safety.md)
 
 > Clarification after `#[server]` implementation: for Leptos UI, native server functions and GraphQL live in parallel. `#[server]` became the preferred internal path, but `/api/graphql` is not removed.
+
+> 2026-08-09 amendment: composable UI-stack selection remains descriptive,
+> but Next.js is not an installer profile, RusToK role-bundle member, lifecycle
+> executor, readiness gate, or rollback target. Next build/deploy/health/
+> rollback is optional, external, and manual. Only generic public/headless
+> backend compatibility participates in RusToK preflight. Leptos surfaces that
+> ship with Rust roles remain part of the immutable role bundle.
 
 ## Context
 
@@ -210,7 +218,7 @@ For separate storefronts:
 # Leptos storefront → separate Rust SSR binary
 cargo build -p rustok-storefront --release
 
-# Next.js storefront → npm build
+# Next.js storefront → external/manual npm build, outside RusToK lifecycle
 cd apps/next-frontend && npm run build
 ```
 
@@ -232,20 +240,24 @@ embed_storefront = false    # ← was true
 id = "default"
 stack = "next"              # ← was leptos
 
-# 2. Rebuild
-rustok rebuild
-# → Builds server (with admin, without storefront)
-# → Builds Next.js storefront
-# → Deploys both
+# 2. Build and deploy the RusToK server/Leptos role bundle through the normal
+#    digest-pinned platform release lifecycle. This does not build Next.js.
 
-# 3. Data — unchanged
+# 3. Separately and manually build/deploy the optional Next.js storefront
+cd apps/next-frontend
+npm ci
+npm run build
+# Deploy with the operator's external Node.js/Vercel/etc. workflow.
+# RusToK does not execute or observe that deployment.
+
+# 4. Data — unchanged
 # GraphQL API the same, tenant_modules the same,
 # storefront just fetches data from a different stack
 ```
 
 ### 5. DeploymentProfile in DB
 
-The enum in the builds table remains for backward compatibility, but is extended:
+The builds table uses one canonical derived backend-composition classification:
 
 ```rust
 pub enum DeploymentProfile {
@@ -300,7 +312,10 @@ The module marketplace **does not depend on the configuration**. A module works 
 variant because:
 
 - Backend part — **always the same** (RusToKModule trait).
-- UI part — **both stacks in one crate**, build pipeline picks the right one.
+- Leptos UI owned by a selected Rust module/role is compiled into the RusToK
+  role bundle. An optional Next package is an external/manual consumer of the
+  module's public GraphQL/REST contract and is versioned, built, deployed, and
+  rolled back outside the RusToK lifecycle; no platform build step selects it.
 
 If a module has no UI for a specific stack — that's OK.
 Backend functionality (GraphQL, migrations, events) still works.
@@ -311,16 +326,20 @@ The UI just doesn't show in that storefront.
 ### Positive
 
 - **Any combination** — monolith, hybrid, full headless, multi-site.
-- **Example from monolith to Next.js storefront** — just change two fields in TOML.
+- **Example from monolith to Next.js storefront** — change the descriptive
+  backend/UI intent, release the RusToK Rust/Leptos bundle, then separately
+  build and deploy the optional Next application manually.
 - **Multi-site out of the box** — `[[build.storefront]]` array.
 - **Stack mixing** — one storefront on Leptos, another on Next.js.
-- **Data does not change** — switching stacks = only a rebuild.
+- **Data does not change** — switching stacks does not migrate domain data, but
+  the external Next application still requires its own manual build/deploy.
 
 ### Negative
 
 - **More complex for newcomers** — more fields than a single `deployment_profile`.
   Mitigation: presets (templates) via CLI: `rustok init --preset monolith`.
-- **Build pipeline is more complex** — different artifacts need to be built for different storefronts.
+- **Operations are more complex** — RusToK builds only Rust/Leptos artifacts,
+  while each optional Next application has a separate external pipeline.
 - **Testing** — more combinations in CI.
 
 ### Follow-up
@@ -328,6 +347,8 @@ The UI just doesn't show in that storefront.
 1. Update `modules.toml` to the new `[build.server]` / `[[build.storefront]]` format.
 2. Update `DeploymentProfile` enum: `Monolith | ServerWithAdmin | ServerWithStorefront | HeadlessApi`.
 3. Add Cargo features: `embed-admin`, `embed-storefront`.
-4. CLI presets: `rustok init --preset monolith`, `--preset headless-next`, `--preset hybrid`.
-5. Build pipeline: generate build commands based on TOML configuration.
+4. CLI presets cover only RusToK-owned Rust/Leptos composition; no
+   `headless-next` installer preset or Next deployment executor is added.
+5. The RusToK build pipeline generates only Rust/Leptos role-bundle commands;
+   Next build/deploy remains an external manual workflow.
 6. Document typical configurations in README.

@@ -53,6 +53,14 @@ The dynamic attribute and runtime entity extension module ([`crates/flex`](../cr
 
 ## I
 
+### Instance Root
+The operator-selected host-local directory that anchors one RusToK installation
+on a standalone host or one node placement. Its canonical relative subtrees
+hold configuration, operations tools, releases, sources, local object storage,
+state, work, caches, logs, and runtime files. The path may be anywhere supported
+by the operating system and is placement/restart evidence only; it never becomes
+release, module, migration, object, or cross-node operation identity.
+
 ### Iggy (`outbox_iggy`)
 Ultra-fast, native Rust event streaming broker ([https://iggy.rs](https://iggy.rs)) integrated via `rustok-iggy`. Provides append-only event logs, consumer groups, and durable Event Replay for high-throughput distributed deployments.
 

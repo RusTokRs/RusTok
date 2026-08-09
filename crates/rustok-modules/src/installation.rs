@@ -199,6 +199,13 @@ async fn sha256_file(path: &std::path::Path) -> Result<(u64, String), ModuleInst
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstalledModuleArtifact {
     pub installation_id: Uuid,
+    /// Stable opaque identity of retained mutable artifact state. It survives
+    /// a compatible update and is never derived from a module slug or version.
+    pub data_owner_id: Uuid,
+    /// Exact mutable settings instance selected for this installation. It is
+    /// distinct from the installation so compatible release changes keep one
+    /// governed settings lineage.
+    pub settings_instance_id: Uuid,
     pub scope: ModuleInstallationScope,
     pub reference: OciArtifactReference,
     pub release: ArtifactReleaseRef,
@@ -258,6 +265,14 @@ impl ArtifactAdmissionStatus {
 
 impl InstalledModuleArtifact {
     pub fn validate_dependency_lock(&self) -> Result<(), ModuleInstallationError> {
+        if self.installation_id.is_nil()
+            || self.data_owner_id.is_nil()
+            || self.settings_instance_id.is_nil()
+        {
+            return Err(ModuleInstallationError::DependencyLock(
+                "artifact installation persistence identities must be non-nil".into(),
+            ));
+        }
         self.dependency_lock
             .validate()
             .map_err(|error| ModuleInstallationError::DependencyLock(error.to_string()))?;
@@ -558,6 +573,27 @@ pub struct ArtifactRollbackResult {
     pub target_installation_id: Uuid,
     pub source_revision: u64,
     pub target_revision: u64,
+}
+
+/// Activates one scoped admitted artifact. The owner serializes all activation
+/// changes for the same `(scope, slug)`, captures the sole current serving
+/// predecessor, and retains it for a later direct rollback.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactActivationRequest {
+    pub installation_id: Uuid,
+    pub scope: ModuleInstallationScope,
+    pub expected_revision: u64,
+    pub actor_id: Uuid,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactActivationResult {
+    pub operation_id: Uuid,
+    pub predecessor_installation_id: Option<Uuid>,
+    pub installation_revision: u64,
+    pub predecessor_revision: Option<u64>,
 }
 
 /// Removes runtime bindings for one active artifact selection while preserving
@@ -1247,6 +1283,410 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         Ok(request.expected_revision + 1)
+    }
+
+    /// Atomically selects this installation as the scoped serving release and
+    /// freezes the exact previously active installation for direct rollback.
+    pub async fn activate_artifact(
+        &self,
+        request: ArtifactActivationRequest,
+    ) -> Result<ArtifactActivationResult, ModuleInstallationError> {
+        validate_lifecycle_command(
+            request.installation_id,
+            &request.scope,
+            request.expected_revision,
+            request.actor_id,
+            &request.reason,
+            request.idempotency_key,
+        )?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        configure_rls_scope(&transaction, &request.scope).await?;
+        let backend = transaction.get_database_backend();
+        let (scope_kind, tenant_id) = match request.scope {
+            ModuleInstallationScope::Platform => ("platform", None),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(tenant_id)),
+        };
+        let scope = match backend {
+            DbBackend::Postgres => {
+                "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
+            }
+            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+        };
+        let existing = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT operation.operation_id, operation.installation_id, \
+                     operation.predecessor_installation_id, operation.expected_revision, \
+                     operation.installation_revision, operation.predecessor_revision, \
+                     operation.actor_id, operation.reason \
+                     FROM module_artifact_activation_operations operation \
+                     JOIN module_artifact_installations installation \
+                       ON installation.installation_id = operation.installation_id \
+                     WHERE operation.idempotency_key = {} AND {scope}",
+                    if backend == DbBackend::Postgres {
+                        "$1"
+                    } else {
+                        "?1"
+                    }
+                ),
+                vec![
+                    uuid_value(request.idempotency_key, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if let Some(existing) = existing {
+            let installation_id = required_uuid_from_row(&existing, "installation_id", backend)?;
+            let expected_revision: i64 = existing
+                .try_get("", "expected_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let actor_id = required_uuid_from_row(&existing, "actor_id", backend)?;
+            let reason: String = existing
+                .try_get("", "reason")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if installation_id != request.installation_id
+                || expected_revision != request.expected_revision as i64
+                || actor_id != request.actor_id
+                || reason != request.reason
+            {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "idempotency key was already used for a different activation command".into(),
+                ));
+            }
+            let installation_revision: i64 = existing
+                .try_get("", "installation_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let predecessor_revision: Option<i64> = existing
+                .try_get("", "predecessor_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            return Ok(ArtifactActivationResult {
+                operation_id: required_uuid_from_row(&existing, "operation_id", backend)?,
+                predecessor_installation_id: optional_uuid_from_row(
+                    &existing,
+                    "predecessor_installation_id",
+                    backend,
+                )?,
+                installation_revision: positive_revision(installation_revision, "activation")?,
+                predecessor_revision: predecessor_revision
+                    .map(|revision| positive_revision(revision, "activation predecessor"))
+                    .transpose()?,
+            });
+        }
+
+        let candidate = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT installation.slug, installation.registry, installation.repository, \
+                     installation.data_owner_id, installation.settings_instance_id, \
+                     CAST(installation.descriptor AS TEXT) AS descriptor, \
+                     admission.status, admission.revision \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission \
+                       ON admission.installation_id = installation.installation_id \
+                     WHERE installation.installation_id = {} AND {scope} \
+                       AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+                                       WHERE uninstall.installation_id = installation.installation_id)",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "installation is absent, uninstalled, or outside the requested scope".into(),
+                )
+            })?;
+        let slug: String = candidate
+            .try_get("", "slug")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let candidate_registry: String = candidate
+            .try_get("", "registry")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let candidate_repository: String = candidate
+            .try_get("", "repository")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let candidate_data_owner_id = required_uuid_from_row(&candidate, "data_owner_id", backend)?;
+        let candidate_settings_instance_id =
+            required_uuid_from_row(&candidate, "settings_instance_id", backend)?;
+        let candidate_descriptor: ModuleArtifactDescriptor = serde_json::from_str(
+            &candidate
+                .try_get::<String>("", "descriptor")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+        )
+        .map_err(|_| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "candidate installation descriptor is invalid".into(),
+            )
+        })?;
+        candidate_descriptor.validate().map_err(|_| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "candidate installation descriptor is invalid".into(),
+            )
+        })?;
+        acquire_artifact_activation_lock(&transaction, &request.scope, &slug).await?;
+        let status: String = candidate
+            .try_get("", "status")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let candidate_revision: i64 = candidate
+            .try_get("", "revision")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if candidate_revision != request.expected_revision as i64
+            || !matches!(status.as_str(), "admitted" | "installed" | "inactive")
+        {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "activation requires an eligible installation at the expected revision".into(),
+            ));
+        }
+        let predecessor_installation_id =
+            active_predecessor_installation(&transaction, &request.scope, &slug, backend).await?;
+        let predecessor_state = if let Some(predecessor_installation_id) =
+            predecessor_installation_id
+        {
+            let predecessor = transaction
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                            "SELECT admission.revision, installation.registry, installation.repository, \
+                             installation.data_owner_id, installation.settings_instance_id, \
+                             CAST(installation.descriptor AS TEXT) AS descriptor \
+                         FROM module_artifact_admissions admission \
+                         JOIN module_artifact_installations installation \
+                           ON installation.installation_id = admission.installation_id \
+                         WHERE admission.installation_id = {} AND admission.status = 'active'",
+                        if backend == DbBackend::Postgres {
+                            "$1"
+                        } else {
+                            "?1"
+                        }
+                    ),
+                    vec![uuid_value(predecessor_installation_id, backend)],
+                ))
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                .ok_or_else(|| {
+                    ModuleInstallationError::AdmissionRevisionConflict(
+                        "serving predecessor became unavailable during activation".into(),
+                    )
+                })?;
+            let predecessor_revision: i64 = predecessor
+                .try_get("", "revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let predecessor_descriptor: ModuleArtifactDescriptor = serde_json::from_str(
+                &predecessor
+                    .try_get::<String>("", "descriptor")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            )
+            .map_err(|_| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "serving predecessor descriptor is invalid".into(),
+                )
+            })?;
+            predecessor_descriptor.validate().map_err(|_| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "serving predecessor descriptor is invalid".into(),
+                )
+            })?;
+            let predecessor_registry: String = predecessor
+                .try_get("", "registry")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let predecessor_repository: String = predecessor
+                .try_get("", "repository")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if predecessor_registry != candidate_registry
+                || predecessor_repository != candidate_repository
+            {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                        "activation requires the predecessor repository for retained data-owner continuity".into(),
+                    ));
+            }
+            if predecessor_descriptor.settings_schema_digest
+                != candidate_descriptor.settings_schema_digest
+            {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                        "activation requires equal artifact settings schemas until a guarded settings migration is available".into(),
+                    ));
+            }
+            let data_owner_id = required_uuid_from_row(&predecessor, "data_owner_id", backend)?;
+            let settings_instance_id =
+                required_uuid_from_row(&predecessor, "settings_instance_id", backend)?;
+            let deactivated = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "UPDATE module_artifact_admissions \
+                         SET status = 'inactive', revision = revision + 1 \
+                         WHERE installation_id = {} AND revision = {} AND status = 'active'",
+                        if backend == DbBackend::Postgres {
+                            "$1"
+                        } else {
+                            "?1"
+                        },
+                        if backend == DbBackend::Postgres {
+                            "$2"
+                        } else {
+                            "?2"
+                        },
+                    ),
+                    vec![
+                        uuid_value(predecessor_installation_id, backend),
+                        predecessor_revision.into(),
+                    ],
+                ))
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if deactivated.rows_affected() != 1 {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "serving predecessor became stale during activation".into(),
+                ));
+            }
+            Some((
+                predecessor_revision.checked_add(1).ok_or_else(|| {
+                    ModuleInstallationError::AdmissionRevisionConflict(
+                        "activation predecessor revision exceeds database range".into(),
+                    )
+                })?,
+                data_owner_id,
+                settings_instance_id,
+            ))
+        } else {
+            None
+        };
+        let predecessor_revision = predecessor_state.map(|(revision, _, _)| revision);
+        let (data_owner_id, settings_instance_id) = predecessor_state
+            .map(|(_, data_owner_id, settings_instance_id)| (data_owner_id, settings_instance_id))
+            .unwrap_or((candidate_data_owner_id, candidate_settings_instance_id));
+        let installation_revision = candidate_revision.checked_add(1).ok_or_else(|| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "activation revision exceeds database range".into(),
+            )
+        })?;
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE module_artifact_installations SET previous_installation_id = {}, \
+                     data_owner_id = {}, settings_instance_id = {} \
+                     WHERE installation_id = {}",
+                    if backend == DbBackend::Postgres {
+                        "$1"
+                    } else {
+                        "?1"
+                    },
+                    if backend == DbBackend::Postgres {
+                        "$2"
+                    } else {
+                        "?2"
+                    },
+                    if backend == DbBackend::Postgres {
+                        "$3"
+                    } else {
+                        "?3"
+                    },
+                    if backend == DbBackend::Postgres {
+                        "$4"
+                    } else {
+                        "?4"
+                    },
+                ),
+                vec![
+                    optional_uuid_value(predecessor_installation_id, backend),
+                    uuid_value(data_owner_id, backend),
+                    uuid_value(settings_instance_id, backend),
+                    uuid_value(request.installation_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let activated = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE module_artifact_admissions SET status = 'active', revision = revision + 1 \
+                     WHERE installation_id = {} AND revision = {} \
+                       AND status IN ('admitted', 'installed', 'inactive')",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" },
+                    if backend == DbBackend::Postgres { "$2" } else { "?2" },
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    candidate_revision.into(),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if activated.rows_affected() != 1 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "installation became stale during activation".into(),
+            ));
+        }
+        let operation_id = self.infrastructure.new_id();
+        let values = match backend {
+            DbBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,NOW()",
+            _ => "?1,?2,?3,?4,?5,?6,?7,?8,?9,datetime('now')",
+        };
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO module_artifact_activation_operations \
+                     (operation_id, installation_id, predecessor_installation_id, expected_revision, \
+                      installation_revision, predecessor_revision, actor_id, reason, idempotency_key, committed_at) \
+                     VALUES ({values})"
+                ),
+                vec![
+                    uuid_value(operation_id, backend),
+                    uuid_value(request.installation_id, backend),
+                    optional_uuid_value(predecessor_installation_id, backend),
+                    candidate_revision.into(),
+                    installation_revision.into(),
+                    predecessor_revision.into(),
+                    uuid_value(request.actor_id, backend),
+                    request.reason.clone().into(),
+                    uuid_value(request.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        self.infrastructure
+            .write_event(
+                &transaction,
+                self.infrastructure.event_envelope(
+                    tenant_id,
+                    Some(request.actor_id),
+                    DomainEvent::ModuleArtifactActivated {
+                        installation_id: request.installation_id,
+                        predecessor_installation_id,
+                        revision: positive_revision(installation_revision, "activation")?,
+                    },
+                ),
+            )
+            .await
+            .map_err(|error| ModuleInstallationError::Outbox(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(ArtifactActivationResult {
+            operation_id,
+            predecessor_installation_id,
+            installation_revision: positive_revision(installation_revision, "activation")?,
+            predecessor_revision: predecessor_revision
+                .map(|revision| positive_revision(revision, "activation predecessor"))
+                .transpose()?,
+        })
     }
 
     /// Deactivates runtime bindings for an active selection without deleting
@@ -2060,16 +2500,14 @@ impl SeaOrmArtifactInstallationStore {
             vec![uuid_value(request.installation_id, backend)],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?
             .ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("rollback predecessor is unavailable".into()))?;
-        let target_installation_id = match backend {
-            DbBackend::Postgres => row
-                .try_get("", "previous_installation_id")
-                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
-            _ => row
-                .try_get::<String>("", "previous_installation_id")
-                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
-                .parse::<Uuid>()
-                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
-        };
+        let target_installation_id =
+            optional_uuid_from_row(&row, "previous_installation_id", backend)?.ok_or_else(
+                || {
+                    ModuleInstallationError::AdmissionRevisionConflict(
+                        "rollback predecessor is unavailable".into(),
+                    )
+                },
+            )?;
         let has_irreversible_migration = match backend {
             DbBackend::Postgres => row
                 .try_get::<bool>("", "has_irreversible_migration")
@@ -2324,7 +2762,8 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT installation.installation_id, installation.scope_kind, installation.tenant_id, \
+                    "SELECT installation.installation_id, installation.data_owner_id, \
+                     installation.settings_instance_id, installation.scope_kind, installation.tenant_id, \
                      installation.registry, installation.repository, installation.manifest_digest, \
                      installation.slug, installation.version, installation.payload_digest, \
                      admission.media_type AS payload_media_type, \
@@ -2374,6 +2813,10 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
         };
 
         let installation_id = required_uuid_from_row(&row, "installation_id", backend)
+            .map_err(|error| error.to_string())?;
+        let data_owner_id = required_uuid_from_row(&row, "data_owner_id", backend)
+            .map_err(|error| error.to_string())?;
+        let settings_instance_id = required_uuid_from_row(&row, "settings_instance_id", backend)
             .map_err(|error| error.to_string())?;
         let scope_kind: String = row
             .try_get("", "scope_kind")
@@ -2468,6 +2911,8 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
             .map_err(|_| "artifact installation capability revision is invalid".to_string())?;
         Ok(InstalledModuleArtifact {
             installation_id,
+            data_owner_id,
+            settings_instance_id,
             scope,
             reference,
             release: release.clone(),
@@ -2761,13 +3206,11 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                 created: false,
             });
         }
-        let previous_installation_id =
-            previous_installation_id(&transaction, artifact, backend).await?;
         transaction
             .execute(Statement::from_sql_and_values(
                 backend,
                 installation_insert_sql(backend),
-                installation_values(artifact, previous_installation_id, backend)?,
+                installation_values(artifact, None, backend)?,
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -2955,12 +3398,20 @@ fn command_installation_id(
     row: &sea_orm::QueryResult,
     backend: DbBackend,
 ) -> Result<Option<Uuid>, ModuleInstallationError> {
+    optional_uuid_from_row(row, "installation_id", backend)
+}
+
+fn optional_uuid_from_row(
+    row: &sea_orm::QueryResult,
+    column: &str,
+    backend: DbBackend,
+) -> Result<Option<Uuid>, ModuleInstallationError> {
     match backend {
         DbBackend::Postgres => row
-            .try_get::<Option<Uuid>>("", "installation_id")
+            .try_get::<Option<Uuid>>("", column)
             .map_err(|error| ModuleInstallationError::Store(error.to_string())),
         _ => row
-            .try_get::<Option<String>>("", "installation_id")
+            .try_get::<Option<String>>("", column)
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
             .map(|value| {
                 value
@@ -3009,10 +3460,10 @@ async fn configure_rls_scope<C: ConnectionTrait>(
 
 fn installation_insert_sql(backend: DbBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=19)
+        DbBackend::Postgres => (1..=21)
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>(),
-        _ => (1..=19)
+        _ => (1..=21)
             .map(|index| format!("?{index}"))
             .collect::<Vec<_>>(),
     };
@@ -3020,7 +3471,7 @@ fn installation_insert_sql(backend: DbBackend) -> String {
         "INSERT INTO module_artifact_installations (\
             installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
             slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
-            dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at, \
+            data_owner_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at, \
             previous_installation_id, capability_grant_revision\
          ) VALUES ({})",
         placeholders.join(", ")
@@ -3158,6 +3609,8 @@ fn installation_values(
         artifact.descriptor.artifact_digest.clone().into(),
         artifact.descriptor.entrypoint.clone().into(),
         SqlValue::Json(Some(Box::new(descriptor))),
+        uuid_value(artifact.data_owner_id, backend),
+        uuid_value(artifact.settings_instance_id, backend),
         dependency_graph_revision.into(),
         artifact.dependency_lock.graph_digest.clone().into(),
         SqlValue::Json(Some(Box::new(dependency_lock))),
@@ -3167,12 +3620,13 @@ fn installation_values(
     ])
 }
 
-async fn previous_installation_id<C: ConnectionTrait>(
+async fn active_predecessor_installation<C: ConnectionTrait>(
     connection: &C,
-    artifact: &InstalledModuleArtifact,
+    scope: &ModuleInstallationScope,
+    slug: &str,
     backend: DbBackend,
 ) -> Result<Option<Uuid>, ModuleInstallationError> {
-    let (scope_kind, tenant_id) = match &artifact.scope {
+    let (scope_kind, tenant_id) = match scope {
         ModuleInstallationScope::Platform => ("platform", None),
         ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
     };
@@ -3181,34 +3635,86 @@ async fn previous_installation_id<C: ConnectionTrait>(
         _ => ("?1", "?2", "?3", "?4"),
     };
     let sql = format!(
-        "SELECT installation_id FROM module_artifact_installations \
-         WHERE scope_kind = {} \
-           AND ((tenant_id IS NULL AND {} IS NULL) OR tenant_id = {}) \
-           AND slug = {} \
-         ORDER BY installed_at DESC, installation_id DESC LIMIT 1",
+        "SELECT installation.installation_id \
+         FROM module_artifact_installations installation \
+         JOIN module_artifact_admissions admission \
+           ON admission.installation_id = installation.installation_id \
+         WHERE installation.scope_kind = {} \
+           AND ((installation.tenant_id IS NULL AND {} IS NULL) \
+                OR installation.tenant_id = {}) \
+           AND installation.slug = {} \
+           AND admission.status = 'active' \
+           AND NOT EXISTS ( \
+               SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+               WHERE uninstall.installation_id = installation.installation_id \
+           ) \
+         LIMIT 2",
         placeholders.0, placeholders.1, placeholders.2, placeholders.3,
     );
     let values = vec![
         scope_kind.into(),
         optional_uuid_value(tenant_id, backend),
         optional_uuid_value(tenant_id, backend),
-        artifact.release.slug.clone().into(),
+        slug.into(),
     ];
-    let row = connection
-        .query_one(Statement::from_sql_and_values(backend, sql, values))
+    let rows = connection
+        .query_all(Statement::from_sql_and_values(backend, sql, values))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-    row.map(|row| match backend {
-        DbBackend::Postgres => row
-            .try_get("", "installation_id")
-            .map_err(|error| ModuleInstallationError::Store(error.to_string())),
-        _ => row
-            .try_get::<String>("", "installation_id")
-            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
-            .parse::<Uuid>()
-            .map_err(|error| ModuleInstallationError::Store(error.to_string())),
-    })
-    .transpose()
+    match rows.as_slice() {
+        [] => Ok(None),
+        [row] => match backend {
+            DbBackend::Postgres => row
+                .try_get("", "installation_id")
+                .map(Some)
+                .map_err(|error| ModuleInstallationError::Store(error.to_string())),
+            _ => row
+                .try_get::<String>("", "installation_id")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                .parse::<Uuid>()
+                .map(Some)
+                .map_err(|error| ModuleInstallationError::Store(error.to_string())),
+        },
+        _ => Err(ModuleInstallationError::AdmissionRevisionConflict(
+            "rollback predecessor is ambiguous because the scope has multiple active installations"
+                .into(),
+        )),
+    }
+}
+
+pub(crate) async fn acquire_artifact_activation_lock<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ModuleInstallationScope,
+    slug: &str,
+) -> Result<(), ModuleInstallationError> {
+    let backend = connection.get_database_backend();
+    let (scope_kind, scope_tenant_key) = match scope {
+        ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
+        ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
+    };
+    let values = match backend {
+        DbBackend::Postgres => "$1,$2,$3",
+        _ => "?1,?2,?3",
+    };
+    connection
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO module_artifact_activation_locks \
+                 (scope_kind, scope_tenant_key, slug) VALUES ({values}) \
+                 ON CONFLICT (scope_kind, scope_tenant_key, slug) \
+                 DO UPDATE SET slug = EXCLUDED.slug"
+            ),
+            vec![scope_kind.into(), scope_tenant_key.into(), slug.into()],
+        ))
+        .await
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    Ok(())
+}
+
+fn positive_revision(revision: i64, operation: &str) -> Result<u64, ModuleInstallationError> {
+    u64::try_from(revision)
+        .map_err(|_| ModuleInstallationError::Store(format!("{operation} revision is negative")))
 }
 
 fn admission_insert_sql(backend: DbBackend) -> String {
@@ -3447,6 +3953,8 @@ where
         let installed_at = self.infrastructure.now();
         let artifact = InstalledModuleArtifact {
             installation_id: self.infrastructure.new_id(),
+            data_owner_id: self.infrastructure.new_id(),
+            settings_instance_id: self.infrastructure.new_id(),
             scope: command.scope.clone(),
             reference: package.reference,
             release,
@@ -3781,6 +4289,167 @@ mod tests {
                 Uuid::nil(),
             )
             .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn rollback_predecessor_selection_uses_one_active_non_uninstalled_serving_release() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE module_artifact_installations (\
+                installation_id TEXT PRIMARY KEY, scope_kind TEXT NOT NULL, tenant_id TEXT NULL,\
+                slug TEXT NOT NULL\
+             )",
+            "CREATE TABLE module_artifact_admissions (\
+                installation_id TEXT PRIMARY KEY, status TEXT NOT NULL\
+             )",
+            "CREATE TABLE module_artifact_uninstall_operations (\
+                installation_id TEXT PRIMARY KEY\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("fixture schema");
+        }
+
+        let package = package(ArtifactPayloadKind::Rhai);
+        let artifact = InstalledModuleArtifact {
+            installation_id: Uuid::new_v4(),
+            data_owner_id: Uuid::new_v4(),
+            settings_instance_id: Uuid::new_v4(),
+            scope: ModuleInstallationScope::Platform,
+            reference: package.reference.clone(),
+            release: package.descriptor.release_ref(),
+            descriptor: package.descriptor,
+            payload_media_type: package.media_type,
+            dependency_lock: empty_dependency_lock(),
+            capability_grant_revision: 1,
+            installed_at: Utc::now(),
+        };
+        let active = Uuid::new_v4();
+        let inactive = Uuid::new_v4();
+        let uninstalled = Uuid::new_v4();
+        let conflicting = Uuid::new_v4();
+        for (installation_id, status) in [
+            (active, "active"),
+            (inactive, "inactive"),
+            (uninstalled, "active"),
+        ] {
+            database
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "INSERT INTO module_artifact_installations \
+                     (installation_id, scope_kind, tenant_id, slug) VALUES (?1, 'platform', NULL, ?2)"
+                        .to_string(),
+                    vec![
+                        installation_id.to_string().into(),
+                        artifact.release.slug.clone().into(),
+                    ],
+                ))
+                .await
+                .expect("installation fixture");
+            database
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "INSERT INTO module_artifact_admissions (installation_id, status) VALUES (?1, ?2)"
+                        .to_string(),
+                    vec![installation_id.to_string().into(), status.into()],
+                ))
+                .await
+                .expect("admission fixture");
+        }
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_uninstall_operations (installation_id) VALUES (?1)"
+                    .to_string(),
+                vec![uninstalled.to_string().into()],
+            ))
+            .await
+            .expect("uninstall fixture");
+
+        assert_eq!(
+            active_predecessor_installation(
+                &database,
+                &artifact.scope,
+                &artifact.release.slug,
+                DbBackend::Sqlite,
+            )
+            .await
+            .expect("one serving predecessor"),
+            Some(active)
+        );
+
+        for (installation_id, status) in [(conflicting, "active")] {
+            database
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "INSERT INTO module_artifact_installations \
+                     (installation_id, scope_kind, tenant_id, slug) VALUES (?1, 'platform', NULL, ?2)"
+                        .to_string(),
+                    vec![
+                        installation_id.to_string().into(),
+                        artifact.release.slug.clone().into(),
+                    ],
+                ))
+                .await
+                .expect("conflicting installation fixture");
+            database
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "INSERT INTO module_artifact_admissions (installation_id, status) VALUES (?1, ?2)"
+                        .to_string(),
+                    vec![installation_id.to_string().into(), status.into()],
+                ))
+                .await
+                .expect("conflicting admission fixture");
+        }
+        assert!(matches!(
+            active_predecessor_installation(
+                &database,
+                &artifact.scope,
+                &artifact.release.slug,
+                DbBackend::Sqlite,
+            )
+            .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(message))
+                if message.contains("multiple active installations")
+        ));
+
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1"
+                    .to_string(),
+                vec![conflicting.to_string().into()],
+            ))
+            .await
+            .expect("clear conflicting predecessor");
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1"
+                    .to_string(),
+                vec![active.to_string().into()],
+            ))
+            .await
+            .expect("deactivate predecessor");
+        assert_eq!(
+            active_predecessor_installation(
+                &database,
+                &artifact.scope,
+                &artifact.release.slug,
+                DbBackend::Sqlite,
+            )
+            .await
+            .expect("no serving predecessor"),
+            None
         );
     }
 
@@ -4375,6 +5044,8 @@ mod tests {
         ));
         let installed = InstalledModuleArtifact {
             installation_id: admission.installation_id,
+            data_owner_id: Uuid::new_v4(),
+            settings_instance_id: Uuid::new_v4(),
             scope: ModuleInstallationScope::Tenant { tenant_id },
             reference: expected_reference,
             release: expected_descriptor.release_ref(),
@@ -4812,6 +5483,83 @@ mod tests {
         ))
         .await
         .expect("predecessor admission");
+        let predecessor_activation_request = ArtifactActivationRequest {
+            installation_id: predecessor.installation_id,
+            scope: ModuleInstallationScope::Platform,
+            expected_revision: 1,
+            actor_id: Uuid::new_v4(),
+            reason: "activate initial module release".to_string(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let predecessor_activation = store
+            .activate_artifact(predecessor_activation_request.clone())
+            .await
+            .expect("activate predecessor");
+        assert_eq!(predecessor_activation.predecessor_installation_id, None);
+        assert_eq!(predecessor_activation.installation_revision, 2);
+        assert_eq!(
+            store
+                .activate_artifact(predecessor_activation_request.clone())
+                .await
+                .expect("idempotent predecessor activation"),
+            predecessor_activation
+        );
+        assert!(matches!(
+            store
+                .activate_artifact(ArtifactActivationRequest {
+                    actor_id: Uuid::new_v4(),
+                    ..predecessor_activation_request
+                })
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+
+        let mut incompatible_settings_package = predecessor_package.clone();
+        incompatible_settings_package.reference.digest = format!("sha256:{}", "c".repeat(64));
+        incompatible_settings_package.descriptor.version = "1.1.0".to_string();
+        let settings_schema = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": { "theme": { "type": "string" } },
+            "additionalProperties": false,
+        });
+        let settings_schema_digest = crate::canonical_schema_digest(&settings_schema);
+        incompatible_settings_package.descriptor.schema_documents =
+            vec![crate::ArtifactSchemaDocument {
+                digest: settings_schema_digest.clone(),
+                document: settings_schema,
+            }];
+        incompatible_settings_package
+            .descriptor
+            .settings_schema_digest = Some(settings_schema_digest);
+        let incompatible_settings = ModuleInstaller::new(
+            FixtureRegistry(incompatible_settings_package.clone()),
+            store.clone(),
+            InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
+            AllowArtifactPermissionRegistrar,
+        )
+        .admit(admission_command(
+            incompatible_settings_package.reference.clone(),
+            ModuleInstallationScope::Platform,
+        ))
+        .await
+        .expect("incompatible settings admission");
+        assert!(matches!(
+            store
+                .activate_artifact(ArtifactActivationRequest {
+                    installation_id: incompatible_settings.installation_id,
+                    scope: ModuleInstallationScope::Platform,
+                    expected_revision: 1,
+                    actor_id: Uuid::new_v4(),
+                    reason: "attempt schema-changing activation".to_string(),
+                    idempotency_key: Uuid::new_v4(),
+                })
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(reason))
+                if reason == "activation requires equal artifact settings schemas until a guarded settings migration is available"
+        ));
         let successor = ModuleInstaller::new(
             FixtureRegistry(successor_package.clone()),
             store.clone(),
@@ -4826,11 +5574,100 @@ mod tests {
         ))
         .await
         .expect("successor admission");
+        let admitted_successor_pointer = database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT previous_installation_id FROM module_artifact_installations \
+                 WHERE installation_id = ?1"
+                    .to_string(),
+                vec![successor.installation_id.to_string().into()],
+            ))
+            .await
+            .expect("admitted successor pointer query")
+            .expect("admitted successor pointer row");
+        assert_eq!(
+            admitted_successor_pointer
+                .try_get::<Option<String>>("", "previous_installation_id")
+                .expect("admitted successor predecessor pointer"),
+            None
+        );
+        let successor_activation = store
+            .activate_artifact(ArtifactActivationRequest {
+                installation_id: successor.installation_id,
+                scope: ModuleInstallationScope::Platform,
+                expected_revision: 1,
+                actor_id: Uuid::new_v4(),
+                reason: "activate upgrade candidate".to_string(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("activate successor");
+        assert_eq!(
+            successor_activation.predecessor_installation_id,
+            Some(predecessor.installation_id)
+        );
+        assert_eq!(successor_activation.installation_revision, 2);
+        assert_eq!(successor_activation.predecessor_revision, Some(3));
+        let successor_pointer = database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT previous_installation_id FROM module_artifact_installations \
+                 WHERE installation_id = ?1"
+                    .to_string(),
+                vec![successor.installation_id.to_string().into()],
+            ))
+            .await
+            .expect("successor pointer query")
+            .expect("successor pointer row");
+        assert_eq!(
+            successor_pointer
+                .try_get::<String>("", "previous_installation_id")
+                .expect("successor predecessor pointer"),
+            predecessor.installation_id.to_string()
+        );
+        let predecessor_persistence = database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT data_owner_id, settings_instance_id FROM module_artifact_installations \
+                 WHERE installation_id = ?1"
+                    .to_string(),
+                vec![predecessor.installation_id.to_string().into()],
+            ))
+            .await
+            .expect("predecessor persistence query")
+            .expect("predecessor persistence row");
+        let successor_persistence = database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT data_owner_id, settings_instance_id FROM module_artifact_installations \
+                 WHERE installation_id = ?1"
+                    .to_string(),
+                vec![successor.installation_id.to_string().into()],
+            ))
+            .await
+            .expect("successor persistence query")
+            .expect("successor persistence row");
+        assert_eq!(
+            successor_persistence
+                .try_get::<String>("", "data_owner_id")
+                .expect("successor data owner"),
+            predecessor_persistence
+                .try_get::<String>("", "data_owner_id")
+                .expect("predecessor data owner")
+        );
+        assert_eq!(
+            successor_persistence
+                .try_get::<String>("", "settings_instance_id")
+                .expect("successor settings instance"),
+            predecessor_persistence
+                .try_get::<String>("", "settings_instance_id")
+                .expect("predecessor settings instance")
+        );
 
         let request = ArtifactRollbackRequest {
             installation_id: successor.installation_id,
             scope: ModuleInstallationScope::Platform,
-            expected_revision: 1,
+            expected_revision: 2,
             actor_id: Uuid::new_v4(),
             reason: "restore predecessor after failed upgrade".to_string(),
             idempotency_key: Uuid::new_v4(),
@@ -4842,8 +5679,8 @@ mod tests {
             .await
             .expect("rollback");
         assert_eq!(result.target_installation_id, predecessor.installation_id);
-        assert_eq!(result.source_revision, 2);
-        assert_eq!(result.target_revision, 2);
+        assert_eq!(result.source_revision, 3);
+        assert_eq!(result.target_revision, 4);
         assert_eq!(
             store
                 .rollback_artifact(request.clone())

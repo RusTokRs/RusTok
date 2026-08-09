@@ -18,8 +18,14 @@ modules, but remains a capability-only layer, not a tenant business domain.
 - GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::axum_router`), including tenant-scoped execution history;
 - integration contracts `ScriptableEntity` and `HookExecutor` for host modules;
 - staging and forking Rhai module artifacts through `rustok-modules` with immutable release lineage;
+- authenticated HTTP/GraphQL import of one exact published Rhai workspace through
+  the module owner projection and verified CAS bytes; authenticated remote MCP
+  import uses the same tenant-bound provider, while generic stdio MCP does not
+  advertise an import operation;
 - durable imported-release drafts with exact-replay receipts and immutable
   parent-release identity on every source revision;
+- owner-resolved installed-parent sandbox policy for imported-draft previews
+  and workspace tests, with no default-policy fallback;
 - no transformation of the script runtime into a separate tenant business domain.
 
 ## Responsibility Zone
@@ -79,6 +85,13 @@ count; source, input, and output remain
 outside marketplace persistence. The release idempotency key is the stable
 logical sandbox execution identity for retry-safe staging.
 
+Alloy derives capability declarations directly from immutable executable
+`src/*.rhai` source before descriptor staging and package construction. The
+neutral `http_*` helpers use `platform.http`; generic `capability_call` must
+use a literal valid name. The descriptor's capability set must be exact, so
+missing or unused declarations, dynamic names, and attempts to redefine a
+reserved capability helper are rejected before module-owner admission.
+
 `RhaiCapabilityBridge` is installed in the standalone neutral Rhai worker. It
 has no network client: its `http_*` helpers create
 `platform.http` calls for `SandboxHost`. The host validates admitted HTTP
@@ -100,6 +113,21 @@ tenant/idempotency receipt atomically. The production provider is intentionally
 not composed from manifest-only marketplace metadata: it remains unavailable
 until registry publication exposes the canonical artifact/evidence projection
 and digest-pinned CAS/OCI workspace materialization.
+
+Imported-draft execution uses a second host-owned port. Alloy provides the
+immutable parent release reference and tenant identity; the server resolves the
+exact active installation and sandbox policy through `rustok-modules`. The
+owner rechecks admission, lifecycle, policy revision, descriptor/runtime ABI,
+and tenant scope on every preview or revision-pinned test. Failure to resolve
+that policy blocks execution; Alloy never substitutes its default policy. The
+fixed publication smoke remains zero-grant and inherits only the resolved
+limits.
+
+Fork publication preserves the same immutable parent reference: Alloy passes
+it only to the module owner with the reviewed source stage, and the owner
+verifies the active predecessor plus monotonic version before persisting direct
+lineage beside the final artifact contract. Existing installations are never
+modified by publication.
 
 ## Runbook for Scheduler and Hook Debugging
 

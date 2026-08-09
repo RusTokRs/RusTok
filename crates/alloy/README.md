@@ -78,6 +78,38 @@ published module release is immutable: further Alloy work forks source lineage,
 then publishes a new semantic version and digest. The installed release is never
 changed in place.
 
+Before descriptor staging or package construction, Alloy derives capability use
+from every executable `src/*.rhai` file. The neutral `http_*` helpers require
+`platform.http`; generic `capability_call` accepts only a literal valid
+capability name. The declared descriptor set must match exactly, so missing or
+unused grants, dynamic capability selection, and attempts to shadow a reserved
+helper fail before owner admission.
+
+The server imports a published Rhai release only through the module owner's
+active publication projection and verified, digest-pinned CAS workspace. The
+authenticated `POST /api/alloy/releases/import` route and GraphQL
+`importPublishedRelease` mutation require both `scripts.manage` and
+`modules.manage`, derive actor and tenant from host context, and create a new
+tenant-scoped draft with immutable parent lineage. They never consume catalog
+DTOs, mutable OCI tags, or caller-supplied tenant/actor fields. MCP does not
+expose this import through generic stdio. The server's authenticated remote MCP
+`alloy_import_published_release` tool uses the same tenant-bound owner
+composition and permissions on its JSON and SSE tool transports.
+
+An imported draft retains only its immutable parent-release reference. Preview
+and revision-pinned workspace tests resolve the exact active parent
+installation and its sandbox policy through `rustok-modules` for the draft
+tenant. This rechecks admission, lifecycle, descriptor runtime ABI, and policy
+revision on every run; missing or ineligible parent state fails closed rather
+than using Alloy's default policy. Publication smoke remains zero-grant while
+preserving the resolved limits.
+
+When an imported draft is staged for publication, its immutable parent release
+is carried through the smoke evidence into the owner-only governance command.
+`rustok-modules` verifies the active exact predecessor and the new semantic
+version, then stores direct lineage with the final artifact contract.
+Publication never rewrites an installed parent release.
+
 ## Execution history surfaces
 
 Operators can inspect the canonical execution log without bypassing Alloy

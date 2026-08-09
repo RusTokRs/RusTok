@@ -4,6 +4,7 @@ mod artifact;
 mod artifact_capability_router;
 mod artifact_cas;
 mod artifact_schema;
+mod artifact_settings;
 mod authoring;
 mod binding_idempotency;
 mod build;
@@ -242,8 +243,8 @@ pub use governance::{
     ModulePublishRequestCreateCommand, ModulePublishRequestHoldCommand,
     ModulePublishRequestPublicationCommand, ModulePublishRequestRejectCommand,
     ModulePublishRequestResumeCommand, ModulePublishValidationContract,
-    ModulePublishedArtifactContract, ModuleReleaseYankCommand, ModuleReleaseYankResult,
-    ModuleRemoteValidationClaim, ModuleRemoteValidationClaimCommand,
+    ModulePublishedArtifactContract, ModulePublishedRhaiWorkspace, ModuleReleaseYankCommand,
+    ModuleReleaseYankResult, ModuleRemoteValidationClaim, ModuleRemoteValidationClaimCommand,
     ModuleRemoteValidationHeartbeatCommand, ModuleRemoteValidationRunnerSnapshot,
     ModuleRemoteValidationStageTransition, ModuleRemoteValidationTerminalCommand,
     ModuleRemoteValidationTerminalOutcome, ModuleValidationJobClaimCommand,
@@ -259,19 +260,19 @@ pub use governance::{
 };
 pub use infrastructure::{ControlPlaneClock, ControlPlaneIdGenerator, ControlPlaneInfrastructure};
 pub use installation::{
-    ArtifactAdmissionCommand, ArtifactAdmissionLimits, ArtifactAdmissionReconciler,
-    ArtifactAdmissionRecoveryRecord, ArtifactAdmissionResult, ArtifactAdmissionReverification,
-    ArtifactAdmissionService, ArtifactAdmissionStage, ArtifactAdmissionStatus,
-    ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobRetentionRule,
-    ArtifactBlobStore, ArtifactDeactivationRequest, ArtifactDeactivationResult,
-    ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode, ArtifactPayloadSource,
-    ArtifactRegistry, ArtifactRollbackRequest, ArtifactRollbackResult,
-    ArtifactTenantDisableRequest, ArtifactTenantDisableResult, ArtifactTenantEnableRequest,
-    ArtifactTenantEnableResult, ArtifactUninstallRequest, ArtifactUninstallResult,
-    ArtifactVerificationEvidence, DurableArtifactBlobStore, InMemoryArtifactBlobStore,
-    InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError,
-    ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
-    SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
+    ArtifactActivationRequest, ArtifactActivationResult, ArtifactAdmissionCommand,
+    ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord,
+    ArtifactAdmissionResult, ArtifactAdmissionReverification, ArtifactAdmissionService,
+    ArtifactAdmissionStage, ArtifactAdmissionStatus, ArtifactAdmissionStore,
+    ArtifactBlobRetentionPolicy, ArtifactBlobRetentionRule, ArtifactBlobStore,
+    ArtifactDeactivationRequest, ArtifactDeactivationResult, ArtifactMigrationCheckpointRequest,
+    ArtifactMigrationRollbackMode, ArtifactPayloadSource, ArtifactRegistry,
+    ArtifactRollbackRequest, ArtifactRollbackResult, ArtifactTenantDisableRequest,
+    ArtifactTenantDisableResult, ArtifactTenantEnableRequest, ArtifactTenantEnableResult,
+    ArtifactUninstallRequest, ArtifactUninstallResult, ArtifactVerificationEvidence,
+    DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
+    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
+    OciArtifactReference, SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
     SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
@@ -349,8 +350,6 @@ pub use publish_validation::{
 };
 pub use recovery::{
     ModuleOperationRecoveryError, ModuleOperationRecoveryPlan, ModulePostHookRetryRequest,
-    failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    retry_failed_post_hook_operation,
 };
 pub use resolution::{
     ModuleResolutionCandidate, ModuleResolutionConflict, ModuleResolutionError,

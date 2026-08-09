@@ -6,38 +6,90 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Scripts::Table)
-                    .add_column_if_not_exists(
-                        ColumnDef::new(Scripts::ParentReleaseSlug).string_len(128),
-                    )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(Scripts::ParentReleaseVersion).string_len(64),
-                    )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(Scripts::ParentReleaseDigest).string_len(71),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(AlloyScriptRevisions::Table)
-                    .add_column_if_not_exists(
-                        ColumnDef::new(AlloyScriptRevisions::ParentReleaseSlug).string_len(128),
-                    )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(AlloyScriptRevisions::ParentReleaseVersion).string_len(64),
-                    )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(AlloyScriptRevisions::ParentReleaseDigest).string_len(71),
-                    )
-                    .to_owned(),
-            )
-            .await
+        if !manager.has_column("scripts", "parent_release_slug").await? {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Scripts::Table)
+                        .add_column(ColumnDef::new(Scripts::ParentReleaseSlug).string_len(128))
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager
+            .has_column("scripts", "parent_release_version")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Scripts::Table)
+                        .add_column(ColumnDef::new(Scripts::ParentReleaseVersion).string_len(64))
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager
+            .has_column("scripts", "parent_release_digest")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Scripts::Table)
+                        .add_column(ColumnDef::new(Scripts::ParentReleaseDigest).string_len(71))
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager
+            .has_column("alloy_script_revisions", "parent_release_slug")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AlloyScriptRevisions::Table)
+                        .add_column(
+                            ColumnDef::new(AlloyScriptRevisions::ParentReleaseSlug).string_len(128),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager
+            .has_column("alloy_script_revisions", "parent_release_version")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AlloyScriptRevisions::Table)
+                        .add_column(
+                            ColumnDef::new(AlloyScriptRevisions::ParentReleaseVersion)
+                                .string_len(64),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager
+            .has_column("alloy_script_revisions", "parent_release_digest")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AlloyScriptRevisions::Table)
+                        .add_column(
+                            ColumnDef::new(AlloyScriptRevisions::ParentReleaseDigest)
+                                .string_len(71),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

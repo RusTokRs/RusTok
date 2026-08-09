@@ -52,6 +52,15 @@ pub(crate) fn release_governance_from_graphql_ctx(
     Ok(handle.clone())
 }
 
+pub(crate) fn published_rhai_source_from_graphql_ctx(
+    ctx: &Context<'_>,
+) -> Result<crate::AlloyPublishedRhaiSourceProviderHandle> {
+    let handle = ctx
+        .data::<crate::AlloyPublishedRhaiSourceProviderHandle>()
+        .map_err(|_| async_graphql::Error::new("Alloy published Rhai source is unavailable"))?;
+    Ok(handle.clone())
+}
+
 pub(crate) fn runtime_from_graphql_ctx(
     ctx: &Context<'_>,
 ) -> Result<crate::runtime::ScopedAlloyRuntime> {

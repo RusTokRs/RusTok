@@ -528,9 +528,29 @@ pub struct StageReleaseInput {
     pub idempotency_key: Uuid,
 }
 
+#[derive(InputObject)]
+pub struct PublishedReleaseRefInput {
+    pub slug: String,
+    pub version: String,
+    pub digest: String,
+}
+
+#[derive(InputObject)]
+pub struct ImportPublishedReleaseInput {
+    pub release: PublishedReleaseRefInput,
+    pub draft_name: String,
+    pub idempotency_key: Uuid,
+}
+
 #[derive(SimpleObject)]
 pub struct GqlStageRelease {
     pub staging_id: String,
+    pub created: bool,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlImportedDraft {
+    pub script: GqlScript,
     pub created: bool,
 }
 

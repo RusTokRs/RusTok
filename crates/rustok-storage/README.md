@@ -17,6 +17,10 @@ without hiding the external library behind a RusToK CRUD facade.
 The server creates one `StorageRuntime`. Domain owners receive it through host
 composition, call `ObjectStore` directly, and own their metadata and lifecycle.
 Media uses chronological tenant keys; module artifact CAS uses digest keys.
+For the accepted portable installer target, the Local adapter base is derived
+from `<instance-root>/storage`; another caller may supply any supported host
+path, and an S3-compatible adapter uses the same logical keys without a local
+directory. The physical base path is never object identity.
 
 ## Entry points
 

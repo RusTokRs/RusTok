@@ -308,7 +308,9 @@ Tenant lifecycle toggles calculate the canonical before/after effective-policy
 revision and use `ModuleEffectivePolicyTransitionCoordinator` to advance the
 durable lifecycle cursor and publish the predecessor-bound transition event in
 the same state transaction; a stale lifecycle cursor aborts the state mutation
-rather than advancing a divergent projection.
+rather than advancing a divergent projection. A previously unseen tenant first
+initializes that cursor to the empty predecessor, so its first effective-policy
+transition is durable rather than failing as if a cursor row had been lost.
 
 `ArtifactRuntimeLifecycleExecutor` now requires a host-owned
 `ArtifactEffectivePolicyResolver` and re-resolves the canonical policy before
@@ -325,6 +327,11 @@ availability: it shows persisted tenant intent and settings, while
 longer reads `tenant_modules` directly for this surface or after a lifecycle
 mutation; inherited compensation availability is resolved by the same owner
 policy service.
+
+Recovery-plan reads now follow the same boundary: the lifecycle owner accepts
+the authenticated tenant and returns no global operation view for a foreign
+tenant. GraphQL invokes that owner facade for both a single plan and the
+bounded failed-plan collection, rather than reading then filtering owner state.
 
 The admin GraphQL adapter now fails closed when module-control-plane reads fail;
 it no longer converts its generated navigation registry into synthetic module
@@ -965,11 +972,29 @@ the immutable descriptor so it can replay the owner request. A reused key with
 a different digest fails closed.
 
 Admitted artifact permissions are represented by immutable localized
-label/description entries and sent through the shared
-`ArtifactPermissionRegistrationPort` after a durable admission commits. The
-installation ID is the idempotency identity, so a retried command repeats a
-failed registration without creating another release selection. This path can
-only register RBAC vocabulary; role and actor grants are absent by contract.
+label/description entries. The current installation path sends them through the
+shared `ArtifactPermissionRegistrationPort` after its durable installation
+commit and uses installation ID as idempotency identity. The release-safety
+cutover replaces that ambiguous admission/install coupling: release admission
+atomically stores inert definitions keyed by exact
+release/module/definition digest and creates no scope or grant; scoped install
+projects the exact definitions idempotently under
+`(scope, installation, release)`, and enablement resolves separate scope-owned
+role/actor grants against the active serving generation. Rollback, disable,
+remove, uninstall, retention, and collection preserve definition/grant/audit
+references under their exact holds. This path can only register RBAC
+vocabulary; role and actor grants are absent by contract.
+The target permission preview compares predecessor/candidate stable identities,
+exact canonical authorization fingerprints, and affected roles. A grant may
+carry only when identity and every authorization-relevant
+scope/key/resource/action/binding constraint has the same fingerprint and an
+RBAC-owner continuity receipt authorizes it; localized display text is excluded
+or governed separately. The receipt and every carry/rollback commit bind the
+current monotonic scope grant/role-membership epoch under the RBAC owner fence.
+Any fingerprint change requires explicit approval, removed grants become
+dormant, and rollback selects predecessor definitions then evaluates current
+grants without restoring a revoked grant or membership. Admission and install
+never assign access implicitly.
 The durable RBAC catalog adapter now has an explicit tenant-role assignment
 service and exact installation-scoped authorizer. The server admin transport
 requires `modules:manage` and derives tenant/actor identity from trusted
@@ -1065,8 +1090,8 @@ were intentionally not run.
   approval from the persisted requester. `ModuleControlPlane::static_distribution`
   is now the sole production composition root for complete approved-promotion
   selections. It revalidates every pinned release/build pair, pins platform
-  source, toolchain and target identities, creates an immutable predecessor-linked
-  build intent under a separate CAS head, and records exact-replay idempotency
+  source, toolchain and target identities, creates an immutable
+  build-lineage-linked build intent under a separate CAS head, and records exact-replay idempotency
   plus outbox evidence. `ModuleControlPlane::static_distribution_worker` is the
   separate worker composition root for atomic claim/reclaim, bounded leases,
   heartbeats, immutable attempts, and terminal completion evidence. Expired
@@ -1101,8 +1126,12 @@ were intentionally not run.
   schema only, then passes that schema and the requested JSON object to the
   owner before lifecycle persistence. Static normalized persistence and dynamic
   artifact settings persistence are now explicit separate entrypoints; the
-  latter resolves only its admitted descriptor selector and cannot accept a
-  host-supplied schema.
+  latter locks and resolves one active admitted installation, uses its exact
+  descriptor selector, and cannot accept a host-supplied schema. Dynamic
+  values persist only under `(tenant_id, data_owner_id, settings_instance_id)`;
+  compatible activation inherits those opaque identities from its direct
+  predecessor only with matching registry/repository continuity and immutable
+  settings schema. Static manifest settings remain in `tenant_modules`.
 - Own static `rustok-module.toml` metadata validation through the neutral
   `StaticModulePackageContract`; the host parses files and maps stable errors,
   while the owner validates package identity, SemVer dependencies/conflicts,
@@ -1151,14 +1180,20 @@ were intentionally not run.
   rollback pointers, status, and optimistic revision. The installation schema
   records both a nullable self-referencing predecessor pointer and an explicit
   capability-grant revision selected by the owner, independently of the
-  artifact declaration and capability policy. The later rollback command will
-  advance the predecessor atomically with its lifecycle transition. A separate
-  rollback-operations record supplies durable actor/reason audit and a unique
-  idempotency key; it does not duplicate mutable lifecycle state. Its immutable
-  command fingerprint also records the selected capability-grant revision and
-  migration rollback mode, together with the committed source/target revisions,
-  so an exact retry replays after the source admission changes. Historical rows
-  without that complete fingerprint fail closed rather than guessing a result.
+  artifact declaration and capability policy. Admission leaves the pointer
+  unset. The owner activation operation serializes `(scope, slug)`, freezes the
+  sole active non-uninstalled predecessor at its then-serving revision, makes
+  it inactive, writes the candidate pointer, and makes the candidate active in
+  one transaction. Its durable operation receipt makes exact retries replayable
+  and its outbox fact is `module.artifact.activated`; ambiguous serving state is
+  rejected. The later rollback command advances the predecessor atomically with
+  its lifecycle transition. A separate rollback-operations record supplies
+  durable actor/reason audit and a unique idempotency key; it does not duplicate
+  mutable lifecycle state. Its immutable command fingerprint also records the
+  selected capability-grant revision and migration rollback mode, together with
+  the committed source/target revisions, so an exact retry replays after the
+  source admission changes. Historical rows without that complete fingerprint
+  fail closed rather than guessing a result.
 - Enforce signature, signer, SBOM, provenance, compatibility, dependency, and
   capability admission before activation.
 - Use Cosign/Sigstore for digest-bound OCI signature and transparency-bundle
@@ -1221,6 +1256,49 @@ tenant-scoped `SeaOrmArtifactDataObjectGcService` deletes a queued key only
 after a supplied retention snapshot explicitly approves it; missing rules and
 legal/audit/rollback holds fail closed rather than issuing a guest-driven
 physical delete.
+That current purge does not delete artifact settings. The release-safety
+target adds a distinct dynamic artifact-settings preview/apply and protected
+recovery point binding exact scope, stable data owner,
+installation-to-settings-instance binding, settings instance/revision,
+admitted schema digest, canonical validated value, and unresolved secret
+handles. Purge commits a monotonic settings tombstone. Restore creates a new
+non-serving settings instance and may bind it only to an explicit non-retired
+inactive installation under the same owner; after uninstall/retirement it stays
+unbound until a continuity-authorized reinstall and never clears retirement.
+Settings deletion is denied when matching restore-tested evidence is missing;
+role/actor grants and external secret bytes are never implicit snapshot or
+purge targets.
+The target settings owner installs a compatibility guard before dynamic or
+native/static rollout, binding both N/N+1 schema digests and rollback-window
+identity. Every concurrent write CAS-revalidates the intersection through
+rollback closure. A one-sided value requires a separate confirmed maintenance
+command that fences writers and atomically closes rollback eligibility.
+Settings recovery points also receive independent encrypted
+retention/hold/collection state and exact KMS-key/schema/descriptor roots;
+purge/restore revalidate decryptability, target schema, secret handles, and
+holds, while status exposes the retained copy until crash-resumable terminal
+collection.
+The current artifact-settings owner already binds values to a stable opaque
+data owner and exact settings instance rather than a tenant/slug row. The
+structured-data `ArtifactDataScope` still derives its persistence identity from
+tenant, module slug, data-contract revision, and policy revision; its separate
+release-safety cutover must replace that attach authority with the same stable
+owner model and verified publisher/module lineage. Reinstall and update require
+an exact continuity receipt; a different publisher using the same slug/revision
+is denied, while a legitimate owner change uses a separate privileged,
+conflict-fenced governance-transfer receipt without copying or deleting data.
+The target canonical mutable-state key is
+`(scope_id, data_owner_id, namespace_or_settings_instance_id, revision)` for
+platform- and tenant-scoped dynamic installations. First install creates only
+declared mutable boundaries; stateless/no-settings releases persist
+`not_applicable`. Active update inherits the exact owner and instances;
+`start_empty` is limited to first install or reinstall, while changing an
+active binding is a separate fenced maintenance migration/cutover.
+Artifact-data snapshots bind exact scope, stable data owner, namespace instance
+and revision, and data-contract digest. Slug/version/installation are metadata,
+not restore authority. Post-purge restore assembles a new isolated namespace
+under the same owner and CAS-cuts over the active reference; the old tombstone
+is never cleared.
 `CapabilityBrokerRouter` composes this data adapter with the durable secret
 handle adapter and future owner-owned capability adapters using exact capability
 names, rejecting duplicate or unregistered routes instead of adding a global
@@ -1322,7 +1400,8 @@ namespace lifecycle lock while it reads the page and records a redacted durable
 audit row plus `module.artifact.data_exported` outbox fact. Export is not a
 sandbox capability and is deliberately not described as a full backup snapshot.
 
-Durable backup/restore is a separate owner boundary exposed only through
+The current durable backup/restore implementation is a separate owner boundary
+exposed only through
 `ModuleControlPlane::artifact_data_snapshot`. Snapshot creation locks an exact
 active namespace revision under tenant RLS and captures at most 1,000 structured
 records, 64 private objects, 8,192 materialized index rows, and 256 MiB of object
@@ -1339,6 +1418,14 @@ objects before atomically restoring structured values, object metadata,
 materialized indexes, the index contract, namespace revision CAS, durable
 idempotency/audit data, and the restore outbox event. A purge tombstone is never
 cleared and live data is never replaced.
+
+The accepted release-safety cutover replaces that current restore identity with
+exact `(scope_id, stable data_owner_id, namespace_instance_id,
+namespace_revision, data_contract_digest)` and adds durable per-copy intents.
+Module slug and installation are metadata, never attach authority. Post-purge
+restore builds a new isolated non-serving namespace under the same data owner
+and performs a separately authorized active-reference CAS; it never clears the
+old tombstone or reuses the purged namespace.
 
 Snapshot retention has its own optimistic revision and owner authorization.
 The idempotent retention command can only extend the deadline, while legal hold
@@ -1475,7 +1562,11 @@ and installation lifecycle preconditions before that command may delete data.
 ### M6 - Transports, Alloy, and Promotion
 
 - Provide the owner operations used by GraphQL and native adapters.
-- Accept Alloy stage/fork/publish commands without owning Alloy workspaces.
+- Accept Alloy stage/fork/publish commands without owning Alloy draft
+  workspaces. For continued development it materializes a published Rhai
+  workspace only from the exact active owner projection and verified CAS bytes,
+  after media-type, lineage, and canonical-digest validation; Alloy, catalog
+  DTOs, and mutable OCI references are not source authorities.
 - Static-promotion request, review, approval, and idempotency records are now
   owner-owned. Approved-record distribution selection is now owner-owned as a
   full immutable snapshot and queued build intent. Worker claim, lease,
@@ -1485,8 +1576,8 @@ and installation lifecycle preconditions before that command may delete data.
   digests. These fields participate in composition hashing and activation/
   rollback revalidation; promotion callers cannot supply them.
   Verified release activation now accepts only the current successful build,
-  revalidates its immutable selection, persists an admission decision and
-  predecessor-linked release CAS head, and emits outbox evidence without
+  revalidates its immutable selection, persists the interim admission decision
+  and selection-lineage release CAS head, and emits outbox evidence without
   deploying code. Direct-predecessor rollback now records an immutable request
   and queues a fresh full-composition build only when no desired build is
   pending; it reuses no old executable bytes. Revocation serializes through the
@@ -1587,6 +1678,83 @@ deployment receipts bind the rollout operation. Outside-candidate recovery
 uses atomically reserved single-operation authority whose exact replay resumes
 idempotently and whose divergent replay is denied.
 
+The controller and node agent come from one separately signed operations-tool
+release outside the application bundle. Fresh bootstrap verifies and installs
+that exact prerequisite before the owner ledger exists. After minimal owner
+schema import, every upgrade uses `operations_tool_maintenance` as an operation
+class in this same canonical operation/receipt ledger with the fleet/module-
+transition conflict fence, exact host/component desired/observed assignments,
+old/new protocol matrix, and one predecessor recovery. The host supervisor is a
+narrow executor that retains predecessor tools and reports idempotent
+observations; it owns no version selection or second authoritative
+ledger/lifecycle.
+It may keep the documented non-authoritative local restart journal for exact
+assignment replay; PostgreSQL owner state remains the sole authoritative ledger
+and convergence source.
+
+The target supply boundary is explicit: this owner's single unversioned
+`SourceObjectStore` authenticates preparation scope and owns globally
+deduplicated `source_digest` blobs, distinct RLS-scoped `source_receipt_id`
+records over owner/preparation/media-type/length/manifest, same-request
+idempotency, and all-reference retention in the generic source CAS
+(deterministic archives for
+platform/native/WASM and canonical bounded-workspace objects for reviewed Rhai
+releases), trusted build attempts use isolated job directories, complete static role
+bundles and evidence publish to OCI, dynamic WASM/Rhai payloads publish into
+the platform object-store CAS, PostgreSQL stores only owner control records,
+and deployment nodes materialize digest-addressed static bytes into disposable
+cache plus predecessor-preserving slots. A node path, symlink, tag, PID, or
+`rustok-build` release row is never production identity. Candidate and direct
+predecessor role bytes must be pre-staged and rehashed on every node that can
+lose predecessor capacity before automatic mode is admitted.
+
+For the default local/monolith installation, every physical plane is derived
+from one trusted operator-selected `<instance-root>` using the canonical
+relative layout in the cross-module plan. The path may be anywhere supported
+by the operating system and is host placement/restart evidence only.
+Distributed adapters may map subtrees to external providers; no fixed Linux
+path, drive, container mount, or directory spelling becomes release, module,
+migration, object, or operation identity.
+
+Candidate preparation and a production transition are separate durable
+operations. Preparation failure rejects the candidate without changing the
+serving release. The transition vocabulary covers initial platform install,
+platform update, operations-tool maintenance, native module add/update/remove,
+dynamic admit/install/enable/
+update/disable/remove/uninstall/reinstall, explicit predecessor recovery, and
+separate guarded dynamic artifact-data/artifact-settings purges. Dynamic remove
+retains the exact inactive installation as
+the direct predecessor; terminal uninstall is allowed only after that
+code-rollback eligibility closes. Uninstall from disabled-selected state first
+commits absent selected/desired state and tenant intent plus a new binding/work
+generation, then retires the identity; delayed enable/outbox delivery cannot
+reactivate it. Uninstall after remove-to-absent only performs retirement.
+First platform install has no invented
+predecessor; a first dynamic
+installation may recover only to an explicit absent/disabled baseline. Dynamic
+selection, binding generation, durable work generation, outbox delivery, and
+retention collection must converge together so stale work cannot reactivate a
+removed release. Next deployments are external and manual and do not gate this
+lifecycle; only generic public-client compatibility evidence can affect
+automatic backend eligibility.
+
+Dynamic release admission and scoped installation are also separate target
+states. Admission publishes one immutable verified release/CAS identity and
+creates no tenant selection or executable binding. A later install/update
+operation creates the inactive scoped installation, predecessor/lock graph,
+and non-routable binding/work intent before readiness and enablement. The
+current combined installation/admission persistence path is replaced
+atomically; it does not survive as an alternate command.
+
+Dynamic cache identity uses a stable fingerprint over the exact
+executor/engine binary, engine-config revision, isolated-worker image/target
+where applicable, runtime ABI, and placement-relevant target. Pool generation
+is a separate mandatory readiness identity: compatible prepared bytes may be
+rehashed and reused, but smoke readiness repeats for every new generation.
+Automatic mode is denied unless both candidate and predecessor have current
+receipts on every fingerprint/generation that may serve or recover the
+operation.
+
 The target adds one crash-recoverable operation, canonical conflict-set
 acquisition, one automatic attempt, trusted candidate-attributed health
 evaluation, pre-traffic recovery after predecessor displacement, an
@@ -1597,6 +1765,26 @@ operator rollback, rebuild-on-rollback path, and caller-selected artifact
 migration mode are
 removed atomically with their canonical replacement; no compatibility path is
 retained.
+
+Each preparation owns a `preparation_id` and an explicit platform-public or
+tenant-private authorization/RLS domain. Immutable CAS bytes may deduplicate
+without exposing private preparation/release metadata, evidence, or logs;
+cross-tenant reference is allowed only for a platform-authorized public catalog
+release. Each platform- or tenant-scoped transition creates a separate
+RLS-isolated `operation_id`, correlation, idempotency, and diagnostic domain and
+receives only authorized facts plus sanitized evidence references. Concurrent
+tenant installs never share authority, raw logs, or replay identity.
+
+Current production gaps include the uncomposed release-admission installer and
+update coordinator, empty unfinished-admission recovery scan, absent executor
+prefetch/readiness and admission/recovery reconcilers, singular static
+publisher and rollout identity, direct `rustok-build` active-release mutation,
+missing `operations_tool_maintenance` coordinator/fleet projection, and
+incomplete retention collection. The artifact runtime lifecycle executor
+itself is already composed by the server and is not this gap.
+The cutover removes these authorities and gaps atomically; documentation or UI
+projection cannot report the release-safety target as available before the
+corresponding runtime verification gates pass.
 
 ## Verification
 

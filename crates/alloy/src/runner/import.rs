@@ -20,6 +20,13 @@ pub trait AlloyPublishedRhaiSourceProvider: Send + Sync {
     ) -> Result<AlloyPublishedRhaiSource, AlloyImportError>;
 }
 
+/// Host-composed provider handle for immutable marketplace source import.
+/// Alloy owns draft persistence and lineage, while the host injects the module
+/// owner that resolves the exact released workspace from its canonical
+/// projection and artifact store.
+#[derive(Clone)]
+pub struct AlloyPublishedRhaiSourceProviderHandle(pub Arc<dyn AlloyPublishedRhaiSourceProvider>);
+
 pub struct AlloyReleaseImporter<R, P>
 where
     R: ScriptRegistry,
@@ -207,5 +214,16 @@ mod tests {
             .expect_err("duplicate draft name must fail");
 
         assert_eq!(error, AlloyImportError::DraftNameConflict);
+    }
+
+    #[test]
+    fn import_rejects_a_published_workspace_with_a_different_runtime_abi() {
+        let mut source = published_source();
+        source.release.descriptor.runtime_abi = "rustok:module/runtime@other".to_string();
+
+        assert_eq!(
+            source.validate_for(&source.release.descriptor.release_ref()),
+            Err(AlloyImportError::IneligibleRelease)
+        );
     }
 }

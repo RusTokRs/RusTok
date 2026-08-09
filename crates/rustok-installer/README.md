@@ -26,8 +26,12 @@ bootstrap logic.
 - With the default `seed-runtime` feature, define a consumer-owned seed
   workflow over narrow tenant, identity, role and module ports, without server
   model dependencies.
-- Define versioned topology, trusted composition binding, and neutral
-  distributed-role deployment hand-offs without build-provider dependencies.
+- Define the canonical unversioned topology, trusted exact-bundle binding, and
+  one neutral distribution deployment hand-off without build-provider
+  dependencies or per-role release heads.
+- Under the accepted target, resolve one trusted operator-selected instance
+  root on any supported operating system and derive the complete portable
+  relative layout without making its physical path part of release identity.
 
 ## Interactions
 
@@ -36,6 +40,10 @@ bootstrap logic.
 - `rustok-installer-cli`, selected by `rustok-cli`, provides `install plan`,
   `install preflight`, `install apply`, `install status`, and `seed apply`
   through the shared executor; it does not import `apps/server`.
+- The target local CLI accepts `--root <path>`, including a relative path
+  resolved from its invocation directory. The web wizard consumes only a
+  root selected or allowed by its trusted local host adapter and cannot submit
+  an unrestricted filesystem path.
 - `xtask install-dev` remains a dev convenience wrapper and will delegate to
   the platform CLI/executor rather than the production server binary.
 - The current executor adapters resolve local secret refs (`env`, `file`,
@@ -47,10 +55,25 @@ bootstrap logic.
 - Durable SeaORM session and receipt storage is owned by
   `rustok-installer-persistence`; this foundation crate deliberately keeps no
   database adapter.
-- `rustok-distribution` binds the selected composition revision/hash before
-  preflight and apply. `rustok-build` owns role build/release execution; a host
-  adapter will fulfill this crate's `InstallDeploymentPort` without moving
-  deployment-provider code into the installer.
+- `rustok-distribution` supplies a composition revision/hash compatibility
+  check. Before preflight/apply, the trusted host additionally binds the exact
+  public `preparation_id`, distribution release, OCI bundle root, and role-set
+  digest from owner admission or the signed fresh-bootstrap receipt.
+- Under the accepted target, `rustok-build` constructs/validates the role plan,
+  `rustok-static-distribution-worker` alone executes/publishes the complete
+  bundle, and `rustok-modules` owns admission and desired/observed rollout. The
+  current per-role `rustok-build` active-release adapter is an atomic-cutover
+  gap, not an alternate production contract.
+- The deployment controller and node agent are a separately signed,
+  digest-pinned host-provisioning prerequisite. Installer preflight binds their
+  exact tool release and external protocol revision, but installer apply and
+  candidate roles never install or self-update them. After bootstrap,
+  `rustok-modules` coordinates their `operations_tool_maintenance` in the same
+  canonical operation ledger and fleet fence; the host supervisor remains a
+  narrow assignment executor with the predecessor tools retained.
+- The current install plan does not yet carry the portable instance placement;
+  adapter-specific absolute roots are an implementation gap to remove during
+  the same installer-layout cutover, not an alternative target contract.
 
 ## Feature Boundary
 

@@ -639,6 +639,11 @@ pub enum DomainEvent {
         status: String,
         revision: u64,
     },
+    ModuleArtifactActivated {
+        installation_id: Uuid,
+        predecessor_installation_id: Option<Uuid>,
+        revision: u64,
+    },
     ModuleArtifactRolledBack {
         installation_id: Uuid,
         target_installation_id: Uuid,
@@ -933,6 +938,7 @@ impl DomainEvent {
             self,
             Self::ModuleArtifactAdmitted { .. }
                 | Self::ModuleArtifactReverified { .. }
+                | Self::ModuleArtifactActivated { .. }
                 | Self::ModuleArtifactRolledBack { .. }
                 | Self::ModuleArtifactUninstalled { .. }
                 | Self::ModuleArtifactMigrationCheckpointed { .. }
@@ -1061,6 +1067,7 @@ impl DomainEvent {
             Self::TenantModuleToggled { .. } => "tenant.module.toggled",
             Self::ModuleArtifactAdmitted { .. } => "module.artifact.admitted",
             Self::ModuleArtifactReverified { .. } => "module.artifact.reverified",
+            Self::ModuleArtifactActivated { .. } => "module.artifact.activated",
             Self::ModuleArtifactRolledBack { .. } => "module.artifact.rolled_back",
             Self::ModuleArtifactUninstalled { .. } => "module.artifact.uninstalled",
             Self::ModuleArtifactMigrationCheckpointed { .. } => {
@@ -1262,6 +1269,7 @@ impl DomainEvent {
             Self::TenantModuleToggled { .. } => 1,
             Self::ModuleArtifactAdmitted { .. } => 1,
             Self::ModuleArtifactReverified { .. } => 1,
+            Self::ModuleArtifactActivated { .. } => 1,
             Self::ModuleArtifactRolledBack { .. } => 1,
             Self::ModuleArtifactUninstalled { .. } => 1,
             Self::ModuleArtifactMigrationCheckpointed { .. } => 1,
@@ -2234,6 +2242,26 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("installation_id", installation_id)?;
                 validators::validate_not_empty("status", status)?;
                 validators::validate_max_length("status", status, 32)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactActivated {
+                installation_id,
+                predecessor_installation_id,
+                revision,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                if let Some(predecessor_installation_id) = predecessor_installation_id {
+                    validators::validate_not_nil_uuid(
+                        "predecessor_installation_id",
+                        predecessor_installation_id,
+                    )?;
+                }
                 if *revision == 0 {
                     return Err(EventValidationError::InvalidValue(
                         "revision",

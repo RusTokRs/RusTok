@@ -15,14 +15,16 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    AlloyReleaseGovernanceHandle, RevisionedReleaseStager, RevisionedTestRunner,
-    ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime, TestCommand,
+    AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSourceProviderHandle,
+    AlloyReleaseGovernanceHandle, AlloyReleaseImporter, RevisionedReleaseStager,
+    RevisionedTestRunner, ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime, TestCommand,
     api::{
-        CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogQuery,
-        ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, ReviewDecisionResponse,
-        ReviewScriptRequest, RunScriptRequest, RunScriptResponse, RunWorkspaceTestRequest,
-        ScriptResponse, ScriptRevisionRequest, StageReleaseRequest, StageReleaseResponse,
-        TestRunResponse, UpdateScriptRequest,
+        CreateScriptRequest, EntityInput, ExecutionLogResponse, ImportPublishedReleaseRequest,
+        ImportPublishedReleaseResponse, ListExecutionLogQuery, ListExecutionLogResponse,
+        ListScriptsQuery, ListScriptsResponse, ReviewDecisionResponse, ReviewScriptRequest,
+        RunScriptRequest, RunScriptResponse, RunWorkspaceTestRequest, ScriptResponse,
+        ScriptRevisionRequest, StageReleaseRequest, StageReleaseResponse, TestRunResponse,
+        UpdateScriptRequest,
     },
     model::{EntityProxy, ReviewCommand, Script, ScriptStatus, ScriptTrigger},
     runner::ExecutionOutcome,
@@ -36,6 +38,7 @@ pub use crate::api::AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES;
 pub struct AlloyHttpRuntime {
     runtime: SharedAlloyRuntime,
     release_governance: AlloyReleaseGovernanceHandle,
+    published_rhai_source: AlloyPublishedRhaiSourceProviderHandle,
 }
 
 impl AlloyHttpRuntime {
@@ -56,9 +59,17 @@ impl AlloyHttpRuntime {
                     "Alloy HTTP routes require AlloyReleaseGovernanceHandle in HostRuntimeContext"
                 )
             })?;
+        let published_rhai_source = runtime
+            .shared_get::<AlloyPublishedRhaiSourceProviderHandle>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Alloy HTTP routes require AlloyPublishedRhaiSourceProviderHandle in HostRuntimeContext"
+                )
+            })?;
         Ok(Self {
             runtime: shared_runtime,
             release_governance,
+            published_rhai_source,
         })
     }
 }
@@ -141,6 +152,32 @@ fn release_error(error: crate::AlloyReleaseError) -> HttpError {
             HttpError::new(StatusCode::NOT_FOUND, "alloy_release_not_found", message)
         }
         other => HttpError::bad_request("invalid_alloy_release", other.to_string()),
+    }
+}
+
+fn import_error(error: AlloyImportError) -> HttpError {
+    match error {
+        AlloyImportError::InvalidCommand
+        | AlloyImportError::IneligibleRelease
+        | AlloyImportError::InvalidSource => HttpError::bad_request(
+            "invalid_alloy_release_import",
+            "The published release cannot be imported as an Alloy Rhai workspace",
+        ),
+        AlloyImportError::SourceUnavailable(_) => HttpError::not_found(
+            "alloy_release_import_source_not_found",
+            "The canonical published Rhai workspace is unavailable",
+        ),
+        AlloyImportError::IdempotencyConflict => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_release_import_idempotency_conflict",
+            "Alloy import idempotency key was reused for a different release command",
+        ),
+        AlloyImportError::DraftNameConflict => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_release_import_draft_name_conflict",
+            "An Alloy draft with the requested tenant-scoped name already exists",
+        ),
+        AlloyImportError::Storage(_) => HttpError::internal("Alloy release import failed"),
     }
 }
 
@@ -645,6 +682,31 @@ pub async fn stage_release(
     }))
 }
 
+pub async fn import_published_release(
+    State(runtime): State<AlloyHttpRuntime>,
+    tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
+    Json(request): Json<ImportPublishedReleaseRequest>,
+) -> HttpResult<Json<ImportPublishedReleaseResponse>> {
+    let actor_id = release_actor(auth, &tenant)?;
+    let source = runtime.published_rhai_source.0.clone();
+    let runtime = runtime.scoped(tenant.id)?;
+    let result = AlloyReleaseImporter::new(runtime.storage.clone(), source)
+        .import(AlloyPublishedReleaseImportCommand {
+            tenant_id: tenant.id,
+            release: request.release,
+            draft_name: request.draft_name,
+            actor_id,
+            idempotency_key: request.idempotency_key,
+        })
+        .await
+        .map_err(import_error)?;
+    Ok(Json(ImportPublishedReleaseResponse {
+        script: result.script.into(),
+        created: result.created,
+    }))
+}
+
 fn run_response(result: crate::ExecutionResult) -> RunScriptResponse {
     let duration_ms = result.duration_ms();
     let (success, error, changes, return_value) = match result.outcome {
@@ -741,6 +803,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
             "/api/alloy/scripts/{id}/releases/stage",
             post(stage_release),
         )
+        .route("/api/alloy/releases/import", post(import_published_release))
         .route("/api/alloy/scripts/{id}/reviews", post(review_script))
         .route(
             "/api/alloy/scripts/{id}/revisions/{revision}/reviews",

@@ -278,10 +278,24 @@ pub fn compose_application_router(
     let server_fn_runtime_ctx = if let Some(alloy_runtime) =
         middleware_runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()
     {
+        let storage = middleware_runtime_ctx
+            .shared_get::<rustok_storage::StorageRuntime>()
+            .ok_or_else(|| {
+                Error::Message(
+                    "Alloy published-release import requires initialized durable storage"
+                        .to_string(),
+                )
+            })?;
         let server_fn_runtime_ctx = server_fn_runtime_ctx.with_shared_value(alloy_runtime);
-        server_fn_runtime_ctx.with_shared_value(
+        let server_fn_runtime_ctx = server_fn_runtime_ctx.with_shared_value(
             crate::services::registry_governance::alloy_release_governance_handle(
                 middleware_runtime_ctx.db_clone(),
+            ),
+        );
+        server_fn_runtime_ctx.with_shared_value(
+            crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
+                middleware_runtime_ctx.db_clone(),
+                storage,
             ),
         )
     } else {

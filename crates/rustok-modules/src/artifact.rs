@@ -822,6 +822,11 @@ impl ArtifactRelease {
                 received: descriptor.version,
             });
         }
+        if descriptor.artifact_digest == self.descriptor.artifact_digest
+            || source_digest == self.lineage.source_digest
+        {
+            return Err(ModuleArtifactError::ForkDigestNotChanged);
+        }
 
         Ok(ArtifactReleaseDraft {
             descriptor,
@@ -925,6 +930,8 @@ pub enum ModuleArtifactError {
     ForkSlugMismatch { expected: String, received: String },
     #[error("forked artifact version must be newer than `{parent}`, received `{received}`")]
     ForkVersionNotIncremented { parent: String, received: String },
+    #[error("forked artifact source and payload digests must both change")]
+    ForkDigestNotChanged,
 }
 
 fn valid_digest(value: &str) -> bool {
@@ -1583,7 +1590,7 @@ mod tests {
     }
 
     #[test]
-    fn fork_must_keep_slug_and_increment_version() {
+    fn fork_must_keep_slug_increment_version_and_change_digests() {
         let original = ArtifactReleaseDraft {
             descriptor: descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a'),
             lineage: ArtifactSourceLineage {
@@ -1608,6 +1615,20 @@ mod tests {
                 digest('3')
             ),
             Err(ModuleArtifactError::ForkVersionNotIncremented { .. })
+        ));
+        assert!(matches!(
+            original.fork(
+                descriptor(ArtifactPayloadKind::Rhai, "1.1.0", 'a'),
+                digest('2')
+            ),
+            Err(ModuleArtifactError::ForkDigestNotChanged)
+        ));
+        assert!(matches!(
+            original.fork(
+                descriptor(ArtifactPayloadKind::Rhai, "1.1.0", 'b'),
+                digest('1')
+            ),
+            Err(ModuleArtifactError::ForkDigestNotChanged)
         ));
     }
 }

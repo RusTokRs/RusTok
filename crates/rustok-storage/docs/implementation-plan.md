@@ -22,6 +22,9 @@ This crate has no UI or cross-module business port.
 - `StorageRuntime.signer`: optional native GET/PUT presigner.
 - `StorageRuntime.kind`: diagnostics only; never persisted as domain state.
 - `StorageConfig`: Local by default; S3 support is a Cargo feature.
+- Local base directories are caller placement. The portable installer target
+  supplies `<instance-root>/storage`; `rustok-storage` persists no host path in
+  object keys or domain state.
 - Local mode cleans empty directories and exposes explicit `fsync` policy.
 - `put_options` emits no attributes for Local and `Content-Type` for S3.
 - Credentials come from host configuration and never enter keys, rows, traces,

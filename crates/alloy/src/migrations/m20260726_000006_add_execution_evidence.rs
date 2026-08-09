@@ -6,28 +6,69 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ScriptExecutions::Table)
-                    .add_column_if_not_exists(
-                        ColumnDef::new(ScriptExecutions::SourceRevision).integer(),
-                    )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(ScriptExecutions::SourceDigest).string_len(71),
-                    )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(ScriptExecutions::PolicyDigest).string_len(71),
-                    )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(ScriptExecutions::Executor).string_len(32),
-                    )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(ScriptExecutions::RuntimeAbi).string_len(128),
-                    )
-                    .to_owned(),
-            )
-            .await
+        if !manager
+            .has_column("script_executions", "source_revision")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ScriptExecutions::Table)
+                        .add_column(ColumnDef::new(ScriptExecutions::SourceRevision).integer())
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager
+            .has_column("script_executions", "source_digest")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ScriptExecutions::Table)
+                        .add_column(ColumnDef::new(ScriptExecutions::SourceDigest).string_len(71))
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager
+            .has_column("script_executions", "policy_digest")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ScriptExecutions::Table)
+                        .add_column(ColumnDef::new(ScriptExecutions::PolicyDigest).string_len(71))
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager.has_column("script_executions", "executor").await? {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ScriptExecutions::Table)
+                        .add_column(ColumnDef::new(ScriptExecutions::Executor).string_len(32))
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if !manager
+            .has_column("script_executions", "runtime_abi")
+            .await?
+        {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ScriptExecutions::Table)
+                        .add_column(ColumnDef::new(ScriptExecutions::RuntimeAbi).string_len(128))
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

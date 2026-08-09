@@ -20,6 +20,12 @@ verified payload-layer digest. Alloy drafts carry source lineage and create
 immutable module releases/packages. The server supplies infrastructure adapters
 and mounts owner transports.
 
+For an Alloy marketplace fork, the owner can materialize one exact active Rhai
+workspace only after validating its publication projection, admitted workspace
+media type, source digest, and canonical verified CAS bytes. This neutral
+owner contract does not depend on Alloy or expose catalog DTOs or mutable OCI
+references as executable source.
+
 Host command and HTTP adapters dispatch admitted artifact bindings through
 `ArtifactCommandBindingRequest` and `ArtifactHttpBindingRequest`. These
 envelopes keep the immutable release, admitted binding set, installation target,
@@ -63,6 +69,15 @@ Node readiness is a separate host-owned snapshot. It carries Core readiness,
 artifact graph, CAS, executor ABI, and node/policy revisions. The node must
 observe the base policy revision before the final policy revision is materialized;
 stale observations fail closed rather than becoming a cache or runtime hint.
+
+The release-safety target gives prepared-cache entries a stable fingerprint of
+the exact executor binary, WASM/Rhai engine build, engine configuration
+revision, isolated-worker image/target where applicable, and runtime ABI. A
+node/pool generation is a separate mandatory readiness identity: a compatible
+prepared entry may be rehashed and reused, but smoke evidence must be repeated
+for the new generation. Automatic transition requires both candidate and
+predecessor to pass on every fingerprint/generation that may serve or recover
+the operation.
 
 Revision-aware outbox consumers must use `ModulePolicyRevisionGate`: policy
 revisions are opaque identities, so a transition is applied only when its
@@ -171,10 +186,18 @@ schema. The same bounded compiled-validator implementation is shared by the
 artifact settings and installation-scoped structured-data owner paths.
 `ModuleLifecycleDbWriter` keeps static
 host-manifest normalization and artifact settings writes as separate
-entrypoints: the artifact path resolves only the immutable settings-schema
-digest retained by the active definition and rejects a caller-supplied schema
-or pre-normalized bypass. `ModuleControlPlane::artifact_lifecycle` is the facade
-composition entrypoint; the lower-level tenant settings store is crate-private.
+entrypoints. The artifact path acquires the active platform/tenant activation
+fences, resolves one exact admitted installation, and validates only against
+that installation's immutable descriptor-bundled schema. It persists the value
+under the tenant, stable data owner, and exact settings instance rather than a
+slug row; caller-supplied schemas and pre-normalized bypasses are rejected.
+Admission creates opaque owner/instance identities. A compatible activation
+inherits them only from its direct predecessor with the same admitted registry
+repository and settings-schema digest; a schema-changing activation fails
+closed until the separate guarded settings-migration operation exists.
+`ModuleControlPlane::artifact_lifecycle` is the facade composition entrypoint;
+the lower-level settings store is crate-private. Native/static manifest settings
+remain the explicitly separate `tenant_modules` contract.
 Artifact persistence is limited to a revision plus a bundled schema digest for
 brokered namespaced values; descriptor decoding rejects unknown fields, so an
 artifact cannot attach SQL, DDL, native migrations, a bucket path, or a host
@@ -205,16 +228,18 @@ separate CAS head, revalidates every release/build pair, pins platform source,
 toolchain and target identities, carries the Cargo package and native entry type
 into every distribution item, persists the explicit `static_native` executor
 mode, binds all of those facts into its composition digest, and records an
-immutable predecessor-linked
-build intent plus outbox evidence. Selection also requires its own fail-closed
+immutable build-lineage-linked build intent plus outbox evidence. That lineage
+is reproducibility history, not the production direct predecessor. Selection
+also requires its own fail-closed
 host authorization decision. These services have no compiler,
 active-composition mutation, native loader, compatibility alias, or alternate
-versioned path. `ModuleControlPlane::static_distribution_worker` separately
+versioned path. The current interim
+`ModuleControlPlane::static_distribution_worker` implementation separately
 owns bounded claim leases, heartbeats, expired-lease attempt closure, and exact
 terminal replay. Successful completion requires artifact, SBOM, provenance,
 signature-manifest, and test evidence, but still cannot activate a release.
-`ModuleControlPlane::static_distribution_release` is the only release-activation
-owner. It accepts only the current successfully completed build, calls a
+The current interim `ModuleControlPlane::static_distribution_release` ledger
+accepts only the current successfully completed build, calls a
 mandatory external verifier before opening the mutation transaction, then
 relocks and revalidates the exact build, every selected promotion, and its
 published build evidence. Signature, provenance, SBOM, test, and dependency
@@ -251,38 +276,91 @@ events.
 The accepted
 [module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
 supersedes that rebuild-on-rollback mechanism for production incident recovery.
-The target owner retains and revalidates the complete direct-predecessor role
-bundle before rollout, then redeploys those exact immutable server, worker,
-embedded Leptos, generated-registry, and browser-asset bytes through the normal
-desired/observed reconciler. Rebuild remains reproducibility evidence or a
-separately admitted maintenance update through the same owner lifecycle; it is
-never a rollback fallback. The current rebuild request is therefore an
-explicit cutover gap, not the completed automatic recovery path.
+The target worker publishes one complete role bundle and one receipt containing
+its per-role artifact and evidence identities. Release admission stores that
+immutable bundle and build lineage but does not supersede the serving release
+or advance desired/observed rollout state. The production operation freezes
+the direct predecessor from then-observed serving state; later unused
+admissions cannot alter it. The target owner retains, pre-stages, and
+revalidates that complete direct-predecessor bundle before rollout, then
+redeploys those exact immutable server, worker, selected Leptos,
+generated-registry, and browser-asset bytes through the normal desired/observed
+reconciler. Rebuild remains reproducibility evidence or a separately admitted
+maintenance update through the same owner lifecycle; it is never a rollback
+fallback. The current single-artifact publisher, active-head mutation, and
+rebuild request are therefore explicit atomic-cutover gaps, not alternate
+production paths.
 
-`ModuleControlPlane::static_distribution_rollout` owns the next deployment
-boundary. A topology resolver returns one sorted, bounded node set with a
-canonical digest; the request owner pins that snapshot, the active verified
-release, policy revision, artifact digest, and `static_native` executor mode in
-a durable desired rollout. Node agents report only exact identity matches
-through the owner port. Each node uses an observation revision and transitions
-through `prepared`, `healthy`, and `active`; a healthy fleet moves the rollout
-to `activating`, and only an active fleet becomes `converged`. A failed node
-before convergence makes the rollout terminal; drift after convergence makes
-it `degraded`, clears observed readiness, and permits an explicit
-prepare/health recovery before activation again. Duplicate reports replay
-their immutable receipt, while stale or out-of-order revisions fail closed.
-Desired and observed rollout pointers, node observations, and operation
-journals are transactional and emit outbox events. The deployment process,
-node transport, and binary replacement remain outside the control-plane crate.
-Activation, rollback, and revocation reserve one shared lifecycle idempotency
-key namespace, so a UUID cannot be reused across command kinds.
+For dynamic target admission, one governed publisher/module semantic version
+binds one immutable artifact release ID and digest set. Equal replay is
+idempotent; the same version with different bytes is rejected. Static identity
+instead belongs to the complete distribution: one distribution lineage/version
+binds one `distribution_release_id` and bundle-root digest. The same unchanged
+native module artifact/version may appear in multiple later co-release bundles.
+Operator projections show dynamic semver/release ID/digests or static
+distribution version/release ID/root plus the complete per-module
+version/digest diff for current, candidate, and direct predecessor.
+
+The current `ModuleControlPlane::static_distribution_rollout` slice persists a
+singular artifact against a sorted node set. The target replaces that shape
+atomically with one role-bundle rollout whose canonical assignments bind
+`node_id`, failure domain, role, candidate role digest, and predecessor role
+digest. Required role or production-surface changes create a new bundle;
+placement, node-count, and wave-weight changes affect only rollout state. Node
+agents report exact per-role identity matches through the owner port. Each
+observation is revisioned and transitions through `prepared`, `healthy`, and
+`active`; a healthy wave permits activation, and only an active complete fleet
+becomes `converged`. A failed candidate starts the one permitted recovery or
+ends in `recovery_required`; post-convergence drift becomes `degraded` and
+fails readiness. Duplicate reports replay their immutable receipt, while stale
+or out-of-order revisions fail closed. Desired and observed rollout state,
+node-role observations, and operation journals are transactional and emit
+outbox events. The outside-candidate deployment controller, node transport,
+slot replacement, and worker-generation fencing remain outside the
+control-plane crate and available when candidate processes fail. Update,
+rollback, disable, revocation, finalization, and collection share one
+conflict-fenced operation namespace.
+
+`degraded` is a later health/incident projection on a terminal rollout result,
+not another lifecycle-operation state. It can trigger only a newly authorized
+containment or direct-predecessor operation. `quarantined` and `revoked` are
+separate global security projections for the same reason.
+
+The controller and node agent come from one separately signed, digest-pinned
+operations-tool release installed by the host provisioner/service supervisor,
+not from the application role bundle. Owner preflight binds their exact
+package/component/target digests and external protocol revision. Tool upgrades
+use the `operations_tool_maintenance` class in this same canonical operation
+ledger and fleet conflict fence, retain their exact predecessor, and prove
+owner/controller/agent protocol compatibility. The host supervisor applies
+only exact desired assignments as a narrow executor; this crate records and
+revalidates lifecycle facts but does not install or self-update the tools.
 
 Artifact permission descriptors carry immutable localized labels and
-descriptions. Admission sends them through the shared
-`ArtifactPermissionRegistrationPort` only after the installation is committed;
-the installation ID makes the owner operation idempotent and a retry repeats
-registration for an already admitted release. The port adds RBAC vocabulary
-only and cannot assign a permission to a role or actor.
+descriptions. The current installation command sends them through the shared
+`ArtifactPermissionRegistrationPort` after its installation commits; the
+installation ID is its idempotency identity. That shape is an atomic-cutover
+gap after release admission is separated from scoped installation. In
+the accepted target, admission commits only inert definitions keyed by exact
+release/module/definition digest and never invents a scope or grant. Scoped
+install projects those definitions idempotently under
+`(scope, installation, release)`, while enablement resolves separately owned
+role/actor grants against the active serving generation. Rollback reselects the
+predecessor definitions; disable/remove/uninstall and retention preserve
+referenced grant/audit history. The port adds RBAC vocabulary only and cannot
+assign a permission to a role or actor.
+
+The target permission preview also compares predecessor/candidate stable keys,
+exact canonical authorization fingerprints, and affected roles. A grant may
+carry only when stable identity and every authorization-relevant
+scope/key/resource/action/binding constraint produces the same fingerprint and
+an RBAC-owner continuity receipt authorizes it. Localized display text is
+excluded or governed separately. The receipt and every carry/rollback commit
+bind the current monotonic scope grant/role-membership epoch under the RBAC
+owner fence. Any fingerprint change requires explicit approval; removed grants
+become dormant. Rollback selects predecessor definitions and evaluates current
+grants; it never restores a revoked grant or membership. Admission and install
+never grant access implicitly.
 
 Durable artifact binding idempotency is tenant-scoped at both query and database
 policy layers. `module_artifact_binding_operations` uses PostgreSQL RLS, and
@@ -320,10 +398,58 @@ tenant-RLS replay receipt, and queues the now-unreachable private key for the
 same retention-aware GC used by replacement and namespace purge. It never
 returns or deletes the physical storage key inline.
 
+The current namespace purge covers structured records and private-object
+metadata/keys only; it is not artifact-settings-purge evidence. The
+release-safety target keeps dynamic artifact-data and artifact settings as
+separate preview/apply boundaries. Dynamic artifact-settings purge requires
+its own protected, restore-tested recovery point bound to exact scope, stable
+data owner, installation-to-settings-instance binding, settings
+instance/revision, admitted schema digest, canonical validated value, and
+unresolved secret handles. Purge commits a monotonic settings tombstone.
+Restore creates a new non-serving settings instance and binds it only to an
+explicit non-retired inactive installation under the same owner; after
+uninstall/retirement it remains unbound until a continuity-authorized reinstall
+and never resurrects the old installation. It never snapshots or deletes
+role/actor grants or external secret bytes, and it cannot borrow an
+artifact-data snapshot as authorization.
+
+The target also installs an owner compatibility guard before a dynamic or
+native/static settings-bearing rollout. It binds both N/N+1 schema digests and
+the rollback window; every concurrent settings write CAS-revalidates the
+intersection until rollback closes. Accepting a one-sided value requires a
+separate confirmed maintenance command that fences writers and atomically
+closes rollback eligibility. The settings recovery point has independent
+encrypted retention/hold/collection state and roots its exact KMS key version,
+schema/descriptor, and lineage; purge/restore revalidate decryptability,
+target-schema compatibility, and secret handles. Status shows the retained
+copy until crash-resumable terminal collection.
+
+The current artifact-data scope is derived from tenant, module slug, contract
+revision, and policy revision. That is an explicit cutover gap for retained
+data after uninstall. The accepted target introduces a stable opaque data-owner
+identity bound to scope and verified publisher/module lineage; reinstall may
+attach only with its exact continuity receipt. A different publisher reusing
+the slug/revision is denied. Legitimate ownership change is a separate
+privileged, conflict-fenced governance transfer with old/new evidence and audit,
+not implicit namespace reuse.
+
+The target mutable-state key is
+`(scope_id, data_owner_id, namespace_or_settings_instance_id, revision)` for
+both platform- and tenant-scoped dynamic installations. First install creates
+only mutable boundaries declared by the release; stateless or no-settings
+modules persist `not_applicable`, not empty synthetic owners. Active update
+inherits the exact owner/instances. `start_empty` is limited to first install or
+reinstall; changing the owner/instance of an active installation is a separate
+fenced maintenance migration and cutover.
+
 Durable artifact-data backup is owner-only and separate from bounded export
-pages. `ModuleControlPlane::artifact_data_snapshot` creates a resumable,
-idempotent namespace snapshot under tenant RLS and an exact namespace revision
-lock. Structured values, logical object metadata, materialized indexes, and the
+pages. The target snapshot identity is exact `scope_id`, stable
+`data_owner_id`, namespace-instance identity/revision, and data-contract
+digest; module slug is metadata and never attach/restore authority.
+`ModuleControlPlane::artifact_data_snapshot` creates a resumable, idempotent
+namespace snapshot under the owner authorization/RLS domain and an exact
+namespace revision lock. Structured values, logical object metadata,
+materialized indexes, and the
 index contract form the canonical manifest; object bytes are copied to private
 snapshot-owned keys and re-hashed before the snapshot becomes `ready`. Restore
 re-verifies that manifest and every object, then uses one transaction for the
@@ -336,6 +462,13 @@ authorization plus an explicit policy-snapshot rule with no audit or rollback ho
 resumable `collecting` decision. Missing policy retains data; final collection
 preserves independent audit facts and emits an outbox event rather than using
 implicit age-only GC.
+
+Because the current empty-target restore rejects a purged namespace, pre-purge
+snapshot evidence is not yet a usable post-purge recovery path. The accepted
+target restores into a new isolated empty namespace instance under the same
+stable data-owner identity, verifies it fully, and performs a separately
+authorized active-reference CAS cutover. The old namespace remains tombstoned;
+crash replay cannot clear it, attach by slug, or expose two active instances.
 
 Final registry publication revalidates localized rows loaded from the database.
 Every locale must already be canonical, names and descriptions must satisfy the
@@ -460,9 +593,18 @@ when that blob is unavailable.
 must wire `StorageArtifactBlobStore` to a durable object-storage driver, never
 a node-local cache.
 
-After verification the current storage upload API still accepts a bounded
-buffer. The next admission slice replaces that final boundary with a streaming
-sink and multipart/object-store upload; no unbounded fallback is permitted.
+Admission remains inert: it does not select a serving installation or invent a
+rollback predecessor. `activate_artifact` is the scoped owner transition. It
+serializes one `(scope, slug)`, records only the active non-uninstalled
+predecessor, makes that predecessor inactive, writes the candidate's durable
+predecessor pointer and replayable operation receipt, then makes the candidate
+active and emits `module.artifact.activated` in the same transaction.
+
+File-backed admission uses `ArtifactPayloadSource::TemporaryFile` and
+`DurableArtifactBlobStore::stage_file`; the storage adapter hashes the staging
+file while it publishes to the durable CAS. Local storage uses an atomic
+temporary copy/rename and S3 opens the file as `ByteStream`, so the owner never
+materializes a downloaded OCI payload as an unbounded in-memory buffer.
 
 ## Verification
 

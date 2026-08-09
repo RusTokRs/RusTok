@@ -158,13 +158,9 @@ impl SeaOrmModulePolicyRevisionConsumer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let revision = load_cursor_revision(
-            &transaction,
-            transaction.get_database_backend(),
-            tenant_id,
-            consumer_key,
-        )
-        .await?;
+        let backend = transaction.get_database_backend();
+        ensure_cursor_row(&transaction, backend, tenant_id, consumer_key).await?;
+        let revision = load_cursor_revision(&transaction, backend, tenant_id, consumer_key).await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(revision)
     }

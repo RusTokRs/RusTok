@@ -1,15 +1,21 @@
 use async_trait::async_trait;
 use rustok_core::{ModuleContext, ModuleKind, ModuleRegistry, RusToKModule};
-use rustok_modules::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
+use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_modules::{
+    ModuleControlPlane, ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus,
+};
+use rustok_outbox::SysEventsMigration;
 use rustok_server::models::_entities::{module_operations, tenant_modules};
+use rustok_server::modules::ModulesManifest;
 use rustok_server::services::module_lifecycle::{
     ModuleLifecycleService, ModuleOperationRecoveryError, ToggleModuleError,
 };
+use rustok_server::services::platform_composition::PlatformCompositionService;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
-    QueryFilter, Statement,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, Statement,
 };
-use sea_orm_migration::MigrationTrait;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -239,9 +245,21 @@ impl RusToKModule for CoreTestModule {
 }
 
 async fn setup_db() -> DatabaseConnection {
-    let db = Database::connect("sqlite::memory:")
+    let url = format!(
+        "sqlite:file:module_lifecycle_{}?mode=memory&cache=shared",
+        uuid::Uuid::new_v4()
+    );
+    let mut options = ConnectOptions::new(url);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    let db = Database::connect(options).await.expect("db connect");
+
+    SysEventsMigration
+        .up(&SchemaManager::new(&db))
         .await
-        .expect("db connect");
+        .expect("create sys_events");
 
     db.execute(Statement::from_string(
         DbBackend::Sqlite,
@@ -260,6 +278,47 @@ async fn setup_db() -> DatabaseConnection {
     ))
     .await
     .expect("create tenants");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        r#"
+        CREATE TABLE platform_state (
+            id TEXT PRIMARY KEY,
+            revision INTEGER NOT NULL,
+            manifest_json TEXT NOT NULL,
+            manifest_hash TEXT NOT NULL,
+            active_release_id TEXT NULL,
+            updated_by TEXT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        "#,
+    ))
+    .await
+    .expect("create platform_state");
+
+    let manifest = PlatformCompositionService::manifest_snapshot_json(&ModulesManifest::default())
+        .expect("serialize isolated test composition");
+    ModuleControlPlane::new(db.clone())
+        .composition()
+        .ensure_active_snapshot(&manifest, "test-bootstrap")
+        .await
+        .expect("seed isolated test composition");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        r#"
+        CREATE TABLE module_policy_revision_cursors (
+            tenant_id TEXT NOT NULL,
+            consumer_key TEXT NOT NULL CHECK (length(trim(consumer_key)) BETWEEN 1 AND 128),
+            current_revision TEXT NULL CHECK (current_revision IS NULL OR length(current_revision) = 71),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, consumer_key)
+        );
+        "#,
+    ))
+    .await
+    .expect("create module_policy_revision_cursors");
 
     db.execute(Statement::from_string(
         DbBackend::Sqlite,
@@ -303,14 +362,30 @@ async fn setup_db() -> DatabaseConnection {
     .await
     .expect("create module_operations");
 
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        r#"
+        CREATE TABLE module_operation_override_states (
+            operation_id TEXT PRIMARY KEY,
+            previous_override_enabled BOOLEAN NULL,
+            requested_override_enabled BOOLEAN NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (operation_id) REFERENCES module_operations(id) ON DELETE CASCADE
+        );
+        "#,
+    ))
+    .await
+    .expect("create module_operation_override_states");
+
     db
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: uuid::Uuid) {
+    let slug = format!("tenant-{}", tenant_id.simple());
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, settings, is_active, created_at, updated_at) VALUES (?, ?, ?, '{}', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-        [tenant_id.into(), "Tenant".into(), "tenant".into()],
+        vec![tenant_id.into(), "Tenant".into(), slug.into()],
     ))
     .await
     .expect("seed tenant");
@@ -371,12 +446,11 @@ async fn pre_enable_failure_keeps_state_uncommitted() {
         .filter(tenant_modules::Column::ModuleSlug.eq("forum"))
         .one(&db)
         .await
-        .expect("load state")
-        .expect("state row exists");
+        .expect("load state");
 
     assert!(
-        !state.enabled,
-        "pre-enable hook failure must keep state uncommitted (enabled=false)",
+        state.is_none(),
+        "pre-enable hook failure must not persist an explicit tenant override",
     );
 
     let operation = module_operations::Entity::find()
@@ -422,8 +496,19 @@ async fn concurrent_toggle_requests_keep_consistent_state() {
     let second = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "blog", false);
 
     let (r1, r2) = tokio::join!(first, second);
-    assert!(r1.is_ok());
-    assert!(r2.is_ok());
+    assert!(
+        r1.is_ok() ^ r2.is_ok(),
+        "concurrent distinct transitions must commit exactly one policy successor: first={r1:?}, second={r2:?}",
+    );
+    let rejected = r1
+        .as_ref()
+        .err()
+        .or(r2.as_ref().err())
+        .expect("one concurrent transition must be rejected");
+    assert!(
+        matches!(rejected, ToggleModuleError::Policy(message) if message.contains("durable cursor: Stale")),
+        "the competing transition must fail closed at the durable predecessor gate: {rejected:?}",
+    );
 
     let state = tenant_modules::Entity::find()
         .filter(tenant_modules::Column::TenantId.eq(tenant_id))
@@ -473,6 +558,30 @@ async fn successful_toggle_writes_committed_module_operation() {
         .expect("committed operation must have correlation id");
     let parsed = uuid::Uuid::parse_str(correlation_id).expect("correlation id must be uuid");
     assert_eq!(parsed.get_version_num(), 4);
+
+    let policy_event = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT payload FROM sys_events WHERE event_type = ?1".to_string(),
+            vec!["module.effective_policy_revision_changed".into()],
+        ))
+        .await
+        .expect("load effective-policy event")
+        .expect("effective-policy transition event exists");
+    let payload: serde_json::Value = policy_event
+        .try_get("", "payload")
+        .expect("effective-policy event payload decodes");
+    let envelope: EventEnvelope =
+        serde_json::from_value(payload).expect("effective-policy event envelope decodes");
+    assert_eq!(envelope.tenant_id, tenant_id);
+    assert!(matches!(
+        envelope.event,
+        DomainEvent::ModuleEffectivePolicyRevisionChanged {
+            ref consumer_key,
+            previous_revision: None,
+            ref next_revision,
+        } if consumer_key == "module.lifecycle" && next_revision.starts_with("sha256:")
+    ));
 }
 
 #[tokio::test]
@@ -633,7 +742,7 @@ async fn core_module_disable_failure_does_not_create_journal_row() {
 }
 
 #[tokio::test]
-async fn noop_disable_for_already_disabled_module_does_not_create_journal_row() {
+async fn repeated_explicit_disable_does_not_create_an_extra_journal_row() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
@@ -643,8 +752,14 @@ async fn noop_disable_for_already_disabled_module_does_not_create_journal_row() 
     let module =
         ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "inventory", false)
             .await
-            .expect("no-op disable should succeed");
+            .expect("explicit disable should succeed");
     assert!(!module.enabled);
+
+    let repeated =
+        ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "inventory", false)
+            .await
+            .expect("repeated explicit disable should succeed");
+    assert!(!repeated.enabled);
 
     let operations = module_operations::Entity::find()
         .filter(module_operations::Column::TenantId.eq(tenant_id))
@@ -653,9 +768,14 @@ async fn noop_disable_for_already_disabled_module_does_not_create_journal_row() 
         .await
         .expect("query operations");
 
-    assert!(
-        operations.is_empty(),
-        "no-op state transitions must not create module_operations rows",
+    assert_eq!(
+        operations.len(),
+        1,
+        "the first explicit disable records tenant intent; only its repetition is a no-op",
+    );
+    assert_eq!(
+        operations[0].status,
+        ModuleOperationStatus::Committed.as_str()
     );
 }
 
@@ -779,8 +899,8 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
         ModuleOperationStatus::Failed.as_str()
     );
     assert!(
-        !failed_operation.previous_effective_enabled,
-        "post-enable failure must be recorded with previous_effective_enabled=false",
+        failed_operation.previous_effective_enabled,
+        "pre-disable failure must retain the previously effective enabled state",
     );
     assert_eq!(
         failed_operation.requested_by.as_deref(),
@@ -837,8 +957,8 @@ async fn hook_failure_without_actor_records_failed_operation_with_null_actor() {
         ModuleOperationStatus::Failed.as_str()
     );
     assert!(
-        failed_operation.previous_effective_enabled,
-        "post-disable failure must be recorded with previous_effective_enabled=true",
+        !failed_operation.previous_effective_enabled,
+        "pre-enable failure must retain the previously effective disabled state",
     );
     assert!(
         failed_operation.requested_by.is_none(),
@@ -1110,9 +1230,14 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         .expect("query failed operation")
         .expect("failed operation exists");
 
-    let plan = ModuleLifecycleService::module_operation_recovery_plan(&db, failed_operation.id)
-        .await
-        .expect("load recovery plan");
+    let plan = ModuleLifecycleService::module_operation_recovery_plan(
+        &db,
+        &registry,
+        tenant_id,
+        failed_operation.id,
+    )
+    .await
+    .expect("load recovery plan");
     assert_eq!(plan.issue, ModuleOperationIssue::PostHookFailed);
     assert!(plan.retryable);
     assert_eq!(
@@ -1123,6 +1248,18 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
 
     let foreign_tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, foreign_tenant_id).await;
+    let foreign_plan = ModuleLifecycleService::module_operation_recovery_plan(
+        &db,
+        &registry,
+        foreign_tenant_id,
+        failed_operation.id,
+    )
+    .await
+    .expect_err("recovery plans must not cross the authenticated tenant boundary");
+    assert!(matches!(
+        foreign_plan,
+        ModuleOperationRecoveryError::OperationNotFound
+    ));
     let foreign_retry = ModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
@@ -1153,10 +1290,12 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     assert_eq!(retry_operation.status, ModuleOperationStatus::Committed);
     assert_eq!(retry_operation.requested_by.as_deref(), Some("admin:retry"));
     assert!(retry_operation.requested_enabled);
-    assert!(retry_operation.previous_effective_enabled);
+    assert!(
+        !retry_operation.previous_effective_enabled,
+        "the retry must preserve the original operation's historical availability",
+    );
     assert!(retry_operation.error_message.is_none());
-    assert_ne!(retry_operation.operation_id, Some(failed_operation.id));
-    assert!(retry_operation.operation_id.is_some());
+    assert_ne!(retry_operation.operation_id, failed_operation.id);
     assert_eq!(
         retry_operation.correlation_id,
         Some(failed_operation.id.to_string())
@@ -1212,9 +1351,14 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
         .expect("query failed operation")
         .expect("failed operation exists");
 
-    let plan = ModuleLifecycleService::module_operation_recovery_plan(&db, failed_operation.id)
-        .await
-        .expect("load recovery plan");
+    let plan = ModuleLifecycleService::module_operation_recovery_plan(
+        &db,
+        &registry,
+        tenant_id,
+        failed_operation.id,
+    )
+    .await
+    .expect("load recovery plan");
     assert_eq!(plan.issue, ModuleOperationIssue::PreHookFailed);
     assert!(!plan.retryable);
     assert_eq!(

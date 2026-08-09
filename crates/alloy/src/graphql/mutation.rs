@@ -5,6 +5,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::{
+    AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyReleaseImporter,
     AlloyReleaseStageCommand, RevisionedReleaseStager, RevisionedTestRunner, ScriptRegistry,
     TestCommand,
     model::{ReviewCommand, Script, ScriptStatus},
@@ -13,9 +14,10 @@ use crate::{
 };
 
 use super::{
-    CreateScriptInput, GqlExecutionResult, GqlReviewDecision, GqlScript, GqlStageRelease,
-    GqlTestRun, ReviewScriptInput, RunScriptInput, RunWorkspaceTestInput, ScriptTriggerInput,
-    StageReleaseInput, UpdateScriptInput, release_governance_from_graphql_ctx, require_admin,
+    CreateScriptInput, GqlExecutionResult, GqlImportedDraft, GqlReviewDecision, GqlScript,
+    GqlStageRelease, GqlTestRun, ImportPublishedReleaseInput, ReviewScriptInput, RunScriptInput,
+    RunWorkspaceTestInput, ScriptTriggerInput, StageReleaseInput, UpdateScriptInput,
+    published_rhai_source_from_graphql_ctx, release_governance_from_graphql_ctx, require_admin,
     require_release_admin, runtime_from_graphql_ctx,
 };
 
@@ -36,6 +38,26 @@ fn ensure_expected_revision(script: &Script, expected_version: u32) -> Result<()
         )));
     }
     Ok(())
+}
+
+fn import_error(error: AlloyImportError) -> async_graphql::Error {
+    match error {
+        AlloyImportError::SourceUnavailable(_) => {
+            async_graphql::Error::new("The canonical published Rhai workspace is unavailable")
+        }
+        AlloyImportError::InvalidCommand
+        | AlloyImportError::IneligibleRelease
+        | AlloyImportError::InvalidSource => async_graphql::Error::new(
+            "The published release cannot be imported as an Alloy Rhai workspace",
+        ),
+        AlloyImportError::IdempotencyConflict => async_graphql::Error::new(
+            "Alloy import idempotency key was reused for a different release command",
+        ),
+        AlloyImportError::DraftNameConflict => async_graphql::Error::new(
+            "An Alloy draft with the requested tenant-scoped name already exists",
+        ),
+        AlloyImportError::Storage(_) => async_graphql::Error::new("Alloy release import failed"),
+    }
 }
 
 #[derive(Default)]
@@ -328,6 +350,34 @@ impl AlloyMutation {
         .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(GqlStageRelease {
             staging_id: result.staging_id,
+            created: result.created,
+        })
+    }
+
+    async fn import_published_release(
+        &self,
+        ctx: &Context<'_>,
+        input: ImportPublishedReleaseInput,
+    ) -> Result<GqlImportedDraft> {
+        let auth = require_release_admin(ctx).await?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let source = published_rhai_source_from_graphql_ctx(ctx)?;
+        let result = AlloyReleaseImporter::new(runtime.storage.clone(), source.0)
+            .import(AlloyPublishedReleaseImportCommand {
+                tenant_id: runtime.tenant_id,
+                release: rustok_modules::ArtifactReleaseRef {
+                    slug: input.release.slug,
+                    version: input.release.version,
+                    digest: input.release.digest,
+                },
+                draft_name: input.draft_name,
+                actor_id: auth.user_id.to_string(),
+                idempotency_key: input.idempotency_key,
+            })
+            .await
+            .map_err(import_error)?;
+        Ok(GqlImportedDraft {
+            script: result.script.into(),
             created: result.created,
         })
     }

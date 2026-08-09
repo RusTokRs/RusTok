@@ -434,8 +434,11 @@ For production, run multiple Prometheus instances with:
 
 1. Check RusToK server logs for metrics initialization:
    ```bash
-   grep -i "metrics" /var/log/rustok/server.log
+   grep -i "metrics" "<instance-root>/logs/server.log"
    ```
+
+   Replace `<instance-root>` with the directory selected during installation,
+   or query the configured logging backend.
 
 2. Verify `/metrics` endpoint is accessible:
    ```bash

@@ -2,8 +2,8 @@
 
 ## Purpose
 
-`rustok-modules-cli` owns local authoring command adapters for standalone
-module components.
+`rustok-modules-cli` owns the archive/WASM Component local authoring command
+adapters for standalone module components.
 
 ## Responsibilities
 
@@ -29,6 +29,9 @@ module components.
   validates and content-addresses the current metadata bundle, creates the
   immutable governance request, binds the completed OCI build receipt, and
   queues registry validation without granting approval or admission.
+- Do not package Rhai workspaces. Reviewed Rhai releases follow the Alloy
+  revision -> canonical bounded-workspace source object -> generic source-CAS
+  owner path and are never wrapped as `.tar`.
 
 ## Interactions
 
@@ -39,6 +42,12 @@ The provider consumes the pure `rustok-module-template` renderer, canonical
 The remote build and publication commands compose or reuse owner services but
 contain no SQL, worker transport, OCI client, signing client, publication
 credentials, production sandbox worker, AI, or Alloy dependency.
+
+The current remote build control republishes an archive through the
+archive-specific `CasArchivePublisher`. Under the accepted release-safety
+cutover it becomes an archive-specialized client of the preparation owner's
+single `SourceObjectStore`; the direct `<digest>.tar` CAS layout is removed
+with every caller and is not retained as a fallback.
 
 ## Entry Points
 

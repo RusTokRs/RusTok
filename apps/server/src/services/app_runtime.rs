@@ -321,8 +321,15 @@ async fn init_alloy_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
                 executors,
                 Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
             );
-            let draft_runtime =
-                alloy::AlloyDraftRuntime::new(sandbox, rustok_sandbox::SandboxPolicy::default());
+            let draft_runtime = alloy::AlloyDraftRuntime::new(
+                sandbox,
+                rustok_sandbox::SandboxPolicy::default(),
+            )
+            .with_imported_draft_policy_provider(
+                crate::services::registry_governance::alloy_imported_draft_policy_provider_handle(
+                    ctx.db_clone(),
+                ),
+            );
             ctx.shared_insert(alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(
                 ctx.db_clone(),
                 draft_runtime,

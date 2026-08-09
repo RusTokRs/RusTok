@@ -577,6 +577,8 @@ mod tests {
     fn installed(package: &ModuleArtifactPackage) -> InstalledModuleArtifact {
         InstalledModuleArtifact {
             installation_id: Uuid::new_v4(),
+            data_owner_id: Uuid::new_v4(),
+            settings_instance_id: Uuid::new_v4(),
             scope: ModuleInstallationScope::Platform,
             reference: package.reference.clone(),
             release: ArtifactReleaseRef {

@@ -119,7 +119,7 @@ pub enum ModuleOperationRecoveryError {
     Persistence(String),
 }
 
-pub async fn module_operation_recovery_plan(
+pub(crate) async fn module_operation_recovery_plan(
     db: &DatabaseConnection,
     operation_id: uuid::Uuid,
 ) -> Result<ModuleOperationRecoveryPlan, ModuleOperationRecoveryError> {
@@ -136,7 +136,7 @@ pub async fn module_operation_recovery_plan(
     ))
 }
 
-pub async fn failed_module_operation_recovery_plans(
+pub(crate) async fn failed_module_operation_recovery_plans(
     db: &DatabaseConnection,
     tenant_id: uuid::Uuid,
     module_slug: Option<&str>,
@@ -173,7 +173,7 @@ fn retry_operation_request(
     }
 }
 
-pub async fn retry_failed_post_hook_operation(
+pub(crate) async fn retry_failed_post_hook_operation(
     db: &DatabaseConnection,
     dispatcher: &ModuleExecutionDispatcher<'_>,
     request: ModulePostHookRetryRequest,

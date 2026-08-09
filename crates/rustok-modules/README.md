@@ -33,28 +33,35 @@ around the owner contracts.
   platform-built release, CAS source, dependency, Cargo package, and native
   entry-type evidence; runtime code cannot compile or activate native artifacts
   through this service.
-- Queue immutable predecessor-linked static distribution build intents only
+- Queue immutable build-lineage-linked static distribution build intents only
   from complete approved-promotion selections with pinned platform source,
   toolchain and target identities; every item explicitly persists
   `static_native` executor mode and selection never mutates active runtime
   state.
 - Lease distribution build intents to separately authorized workers with
   immutable attempts, heartbeat ownership, expired-lease reclaim, and
-  digest-pinned terminal artifact/SBOM/provenance/signature/test evidence.
-- Activate only the current successfully completed static distribution build
-  through a separately authorized, externally verified, predecessor-linked
-  release ledger; release activation does not deploy native code.
+  digest-pinned terminal publication evidence. The current singular-artifact
+  receipt is an atomic-cutover gap; the accepted target has the
+  static-distribution worker alone publish one complete OCI role bundle and
+  canonical receipt.
+- The current interim static release ledger advances an active/predecessor head
+  before deployment convergence. The accepted target replaces that authority
+  with inert verified role-bundle admission; the production operation alone
+  freezes the then-serving direct predecessor and advances desired/observed
+  rollout.
 - Bind every compiled promoted module definition to its exact promotion,
   registry release, distribution release, and native artifact identity before
   lifecycle dispatch; platform-native definitions remain distinct.
-- Own topology-bound native rollouts through durable desired/observed state:
-  per-node observation revisions, prepare/health/activate transitions,
-  convergence, degradation recovery, exact replay and transactional outbox
-  events. Deployment agents report evidence; this crate never starts a native
-  process or mutates the running server.
-- Revoke static releases through release-head CAS and queue direct-predecessor
-  rollback only as a new fully verified distribution build; old native bytes
-  are never reactivated.
+- Own topology-bound native rollout state. The current node-set/singular-digest
+  aggregate is replaced atomically by exact role/failure-domain candidate and
+  predecessor assignments, per-role observation revisions, convergence,
+  degradation/recovery, exact replay, and transactional outbox facts.
+  Deployment agents report evidence; this crate never starts a native process
+  or mutates the running server.
+- The current rebuild-on-rollback command is an interim gap. The accepted
+  production path retains, pre-stages, revalidates, and redeploys the exact
+  then-serving direct-predecessor role bundle through the normal rollout;
+  incident recovery never builds or republishes bytes.
 - Own artifact-release quarantine and terminal emergency revocation separately
   from registry yanking; security state blocks new execution while preserving
   tenant enablement intent and records exact revisioned outbox evidence.
@@ -125,6 +132,9 @@ around the owner contracts.
 - Resolves and verifies installed artifacts before executing them through
   `rustok-sandbox` for Rhai, WebAssembly and future sidecar execution.
 - Alloy creates and evolves source-backed release drafts through these contracts.
+- For continued development, it materializes only an exact active published Rhai
+  workspace from its owner projection and verified CAS bytes; it does not own
+  Alloy drafts, catalog DTOs, or mutable OCI references.
 - `apps/server` bootstraps this Core module without owning marketplace policy.
 
 See the [local documentation](./docs/README.md).

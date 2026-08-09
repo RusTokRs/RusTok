@@ -123,6 +123,10 @@ where
         smoke_script.id = source.script_id;
         smoke_script.tenant_id = source.tenant_id;
         smoke_script.version = source.revision;
+        // A publication smoke for an imported fork uses the same exact
+        // installed-parent policy gate as every other execution. The sandbox
+        // still strips grants below, retaining only that policy's limits.
+        smoke_script.parent_release = source.parent_release.clone();
         let mut smoke_context = ExecutionContext::new(ExecutionPhase::Manual)
             .with_tenant(source.tenant_id.to_string())
             .with_user(command.actor_id.clone());
@@ -143,6 +147,7 @@ where
                 artifact_digest: command.artifact_digest,
                 source_digest: source.source_digest,
                 source_revision: source.revision,
+                parent_release: source.parent_release.clone(),
                 review_reference: review_reference(review),
                 review_digest: review_evidence_digest(review)?,
                 review_policy_revision: review.policy_revision.clone(),
@@ -177,4 +182,135 @@ where
 
 fn script_error_to_release(error: crate::ScriptError) -> AlloyReleaseError {
     AlloyReleaseError::Governance(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use rustok_modules::{ArtifactReleaseRef, ModuleAlloyAuthoredStageResult};
+    use rustok_sandbox::SandboxPolicy;
+    use uuid::Uuid;
+
+    use super::{AlloyReleaseGovernance, RevisionedReleaseStager};
+    use crate::{
+        AlloyImportedDraftPolicyError, AlloyImportedDraftPolicyProvider,
+        AlloyImportedDraftPolicyProviderHandle, AlloyReleaseStageCommand, InMemoryStorage,
+        ReviewCommand, ReviewStatus, RhaiWorkspace, RhaiWorkspaceFile, RhaiWorkspaceFileKind,
+        Script, ScriptRegistry, ScriptTrigger,
+    };
+
+    #[derive(Default)]
+    struct CapturingGovernance {
+        command: Mutex<Option<rustok_modules::ModuleAlloyAuthoredStageCommand>>,
+    }
+
+    #[async_trait]
+    impl AlloyReleaseGovernance for CapturingGovernance {
+        async fn stage_alloy_authored(
+            &self,
+            command: rustok_modules::ModuleAlloyAuthoredStageCommand,
+        ) -> Result<ModuleAlloyAuthoredStageResult, rustok_modules::ModuleGovernanceError> {
+            *self.command.lock().expect("governance command lock") = Some(command);
+            Ok(ModuleAlloyAuthoredStageResult {
+                staging_id: "rpas_test".to_string(),
+                created: true,
+            })
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturingParentPolicy {
+        parents: Mutex<Vec<ArtifactReleaseRef>>,
+    }
+
+    #[async_trait]
+    impl AlloyImportedDraftPolicyProvider for CapturingParentPolicy {
+        async fn resolve_policy(
+            &self,
+            _tenant_id: Uuid,
+            parent_release: &ArtifactReleaseRef,
+        ) -> Result<SandboxPolicy, AlloyImportedDraftPolicyError> {
+            self.parents
+                .lock()
+                .expect("parent policy lock")
+                .push(parent_release.clone());
+            Ok(SandboxPolicy::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn imported_fork_stage_carries_parent_lineage_through_the_owner_gate() {
+        let parent_release = ArtifactReleaseRef {
+            slug: "tax_rule".to_string(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+        };
+        let tenant_id = Uuid::new_v4();
+        let mut script = Script::new(
+            "imported_tax_rule",
+            RhaiWorkspace::single_source("42"),
+            ScriptTrigger::Manual,
+        );
+        script.tenant_id = tenant_id;
+        script.parent_release = Some(parent_release.clone());
+        script.workspace.files.push(RhaiWorkspaceFile {
+            path: rustok_modules::ALLOY_PUBLICATION_SMOKE_TEST_PATH.to_string(),
+            kind: RhaiWorkspaceFileKind::Test,
+            contents: "true".to_string(),
+        });
+
+        let storage = Arc::new(InMemoryStorage::new());
+        let script = storage.save(script).await.expect("save imported draft");
+        storage
+            .review(ReviewCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                status: ReviewStatus::Approved,
+                policy_revision: "review-policy".to_string(),
+                actor_id: "reviewer".to_string(),
+                reason: None,
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("approve imported draft");
+
+        let policy = Arc::new(CapturingParentPolicy::default());
+        let governance = Arc::new(CapturingGovernance::default());
+        let runtime = crate::create_test_alloy_draft_runtime().with_imported_draft_policy_provider(
+            AlloyImportedDraftPolicyProviderHandle(policy.clone()),
+        );
+        let stager = RevisionedReleaseStager::new(runtime, storage, governance.clone());
+        let source_digest = script.workspace.digest().expect("source digest");
+
+        let staged = stager
+            .stage(AlloyReleaseStageCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                publish_request_id: "request-imported-fork".to_string(),
+                artifact_digest: source_digest,
+                actor_id: "publisher".to_string(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("stage imported fork");
+
+        assert!(staged.created);
+        let command = governance
+            .command
+            .lock()
+            .expect("governance command lock")
+            .clone()
+            .expect("owner stage command");
+        assert_eq!(command.parent_release, Some(parent_release.clone()));
+        assert_eq!(
+            policy
+                .parents
+                .lock()
+                .expect("parent policy lock")
+                .as_slice(),
+            &[parent_release]
+        );
+    }
 }
