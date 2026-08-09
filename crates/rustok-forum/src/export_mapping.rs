@@ -11,8 +11,9 @@ use crate::dto::{CategoryResponse, ReplyResponse, TopicResponse};
 pub const FORUM_EXPORT_SCHEMA_V1: &str = "rustok.forum.export.v1";
 pub const MAX_FORUM_EXPORT_OWNER_VIEWS_PER_FRAGMENT: usize = 512;
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ForumExportOwnerViewBatch {
+    pub tenant_id: Uuid,
     #[serde(default)]
     pub categories: Vec<CategoryResponse>,
     #[serde(default)]
@@ -76,6 +77,7 @@ pub struct ForumExportReplyRecord {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ForumExportFragment {
     pub schema: String,
+    pub tenant_id: Uuid,
     pub categories: Vec<ForumExportCategoryRecord>,
     pub topics: Vec<ForumExportTopicRecord>,
     pub replies: Vec<ForumExportReplyRecord>,
@@ -83,6 +85,8 @@ pub struct ForumExportFragment {
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum ForumExportMappingError {
+    #[error("Forum export fragment requires a non-nil tenant id")]
+    NilTenantId,
     #[error("Forum export fragment exceeds {max} owner views: {actual}")]
     FragmentTooLarge { max: usize, actual: usize },
     #[error("Forum export {kind} {id} has no effective locale")]
@@ -103,6 +107,7 @@ impl ForumOwnerExportMapper {
         &self,
         batch: &ForumExportOwnerViewBatch,
     ) -> Result<ForumExportFragment, ForumExportMappingError> {
+        ensure_tenant_scope(batch.tenant_id)?;
         ensure_fragment_bound(batch)?;
 
         let mut category_locales = BTreeSet::new();
@@ -191,10 +196,19 @@ impl ForumOwnerExportMapper {
 
         Ok(ForumExportFragment {
             schema: FORUM_EXPORT_SCHEMA_V1.to_owned(),
+            tenant_id: batch.tenant_id,
             categories,
             topics,
             replies,
         })
+    }
+}
+
+fn ensure_tenant_scope(tenant_id: Uuid) -> Result<(), ForumExportMappingError> {
+    if tenant_id.is_nil() {
+        Err(ForumExportMappingError::NilTenantId)
+    } else {
+        Ok(())
     }
 }
 
@@ -319,11 +333,13 @@ mod tests {
 
     #[test]
     fn maps_effective_locale_and_canonical_documents_without_viewer_state() {
+        let tenant_id = Uuid::new_v4();
         let category_id = Uuid::new_v4();
         let topic_id = Uuid::new_v4();
         let reply_id = Uuid::new_v4();
         let author_id = Uuid::new_v4();
         let batch = ForumExportOwnerViewBatch {
+            tenant_id,
             categories: vec![category(category_id, "de", "en")],
             topics: vec![topic(topic_id, author_id)],
             replies: vec![reply(reply_id, topic_id, author_id)],
@@ -331,6 +347,7 @@ mod tests {
 
         let mapped = ForumOwnerExportMapper.map_fragment(&batch).unwrap();
         assert_eq!(mapped.schema, FORUM_EXPORT_SCHEMA_V1);
+        assert_eq!(mapped.tenant_id, tenant_id);
         assert_eq!(mapped.categories[0].locale, "en");
         assert_eq!(mapped.topics[0].locale, "en");
         assert_eq!(mapped.topics[0].author.as_ref().unwrap().user_id, author_id);
@@ -362,11 +379,13 @@ mod tests {
     fn rejects_duplicate_effective_locale_even_when_requested_locale_differs() {
         let category_id = Uuid::new_v4();
         let batch = ForumExportOwnerViewBatch {
+            tenant_id: Uuid::new_v4(),
             categories: vec![
                 category(category_id, "de", "en"),
                 category(category_id, "fr", "en"),
             ],
-            ..Default::default()
+            topics: Vec::new(),
+            replies: Vec::new(),
         };
 
         assert_eq!(
@@ -376,6 +395,20 @@ mod tests {
                 id: category_id,
                 locale: "en".to_owned(),
             })
+        );
+    }
+
+    #[test]
+    fn rejects_nil_tenant_scope() {
+        let batch = ForumExportOwnerViewBatch {
+            tenant_id: Uuid::nil(),
+            categories: Vec::new(),
+            topics: Vec::new(),
+            replies: Vec::new(),
+        };
+        assert_eq!(
+            ForumOwnerExportMapper.map_fragment(&batch),
+            Err(ForumExportMappingError::NilTenantId)
         );
     }
 }
