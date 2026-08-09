@@ -1,15 +1,15 @@
 # rustok-blog canonical implementation cursor
 
-Status: `canonical_source_cursor_actualized_through_slice_104`.
+Status: `canonical_source_cursor_actualized_through_slice_105`.
 
 This document is the canonical **current** source cursor for `rustok-blog`.
 `crates/rustok-blog/docs/implementation-plan.md` remains the long historical baseline and embedded implementation log, but its inline `Current state`, completed-slice list, and `Next results` stop before the later continuation series and must not be used as the live cursor without this file.
 
-The continuation series is authoritative for source work after the historical baseline. Slice 101 establishes this current-cursor boundary. Slice 104 is the latest production/source behavior slice.
+The continuation series is authoritative for source work after the historical baseline. Slice 101 establishes this current-cursor boundary. Slice 105 is the latest production/source behavior slice.
 
 ## Re-audit basis
 
-The source continuation through slice 104 retains the following planning corrections and independent Blog source results:
+The source continuation through slice 105 retains the following planning corrections and independent Blog source results:
 
 - the remote Comments transport is no longer an unimplemented source item;
 - the cached public Comments snapshot is no longer merely planned;
@@ -17,7 +17,8 @@ The source continuation through slice 104 retains the following planning correct
 - Blog category Translation PostgreSQL migration/concurrent-CAS/change-cursor evidence source is already retained and waits for maintainer execution;
 - Blog tag list pagination is owner-bounded and overflow-safe;
 - Blog tag reads and Search projection use `blog_post_tags + rustok-taxonomy` rather than `blog_posts.metadata.tags` as the canonical source;
-- Blog tag update/delete now retain Taxonomy mutation and Blog-scope Search reindex in one owner transaction.
+- Blog tag update/delete retain Taxonomy mutation and Blog-scope Search reindex in one owner transaction;
+- Blog post detail/authenticated-list/public-list reads now populate the existing localized `category_name` DTO field from Blog-owned category translations instead of returning a permanent `None` placeholder.
 
 None of these source states promote runtime evidence.
 
@@ -106,7 +107,7 @@ Slice 104 closes the mutation consistency gap exposed by slice 103:
 
 `tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending`
 
-`rustok-taxonomy` now exposes narrow module-term update/delete functions that accept a supplied `DatabaseTransaction`, tenant/term identity, term kind, module slug, and caller security context. The Taxonomy owner rechecks module scope and term kind and preserves Taxonomy update/read/delete permissions, localized slug uniqueness, translation revision CAS, term revision CAS, and translation-change evidence.
+`rustok-taxonomy` exposes narrow module-term update/delete functions that accept a supplied `DatabaseTransaction`, tenant/term identity, term kind, module slug, and caller security context. The Taxonomy owner rechecks module scope and term kind and preserves Taxonomy update/read/delete permissions, localized slug uniqueness, translation revision CAS, term revision CAS, and translation-change evidence.
 
 `TagService::update_tag` and `TagService::delete_tag` keep their existing Blog `tags:*` checks, then execute the Taxonomy mutation and:
 
@@ -124,6 +125,27 @@ The retained source harness covers successful rename + durable reindex, forced o
 
 The Blog tag source line is source-complete through slice 104. Do not add another tag mutation scaffolding slice without new evidence.
 
+### Blog post category-name projection
+
+The fresh broad audit after slice 104 found that the existing `PostResponse.category_name` and `PostSummary.category_name` fields were permanent `None` placeholders in Blog owner reads even when `blog_posts.category_id` referenced an existing localized Blog category.
+
+Slice 105 closes that read parity gap:
+
+`post_category_name_projection = source_ready_maintainer_execution_pending`
+
+Canonical identity and localized label sources are:
+
+- `blog_posts.category_id` for the category identity;
+- `blog_category_translations.name` for the localized name.
+
+Detail, authenticated list, and public visible list now project the existing field. List paths collect and deduplicate the current page's category IDs and use one tenant-scoped translation query for the page rather than calling category reads per post.
+
+The shared locale resolver preserves requested locale -> caller-supplied tenant fallback -> platform fallback -> first available semantics. A post without a category, or a category with no translations, retains `category_name = None`.
+
+This is a read projection only. It does not change Category create/update/delete or Translation write semantics, does not promote the slice 98 Category Translation PostgreSQL readiness result, does not alter Search SQL, and does not change GraphQL/HTTP/native DTO schemas.
+
+The Blog post category-name projection line is source-complete through slice 105. Do not add another category-name scaffolding slice without new evidence.
+
 ## Remaining execution-owned results
 
 The concrete retained execution results remain maintainer-owned:
@@ -134,8 +156,9 @@ The concrete retained execution results remain maintainer-owned:
 4. Execute slice 102 tag pagination source/unit evidence before promoting runtime validation.
 5. Execute slice 103 Blog read/Search canonical tag projection evidence and audit deployed data for metadata-only legacy rows before runtime promotion.
 6. Execute slice 104 tag mutation/outbox rollback/delete-cascade harness and then Search projection evidence for rename/delete behavior.
-7. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit evidence already retained by the historical plan.
-8. Execute the Blog article richtext cutover/backfill/browser evidence already retained by the historical plan.
+7. Execute slice 105 post category-name detail/authenticated-list/public-list source harness before promoting runtime validation.
+8. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit evidence already retained by the historical plan.
+9. Execute the Blog article richtext cutover/backfill/browser evidence already retained by the historical plan.
 
 A future autonomous source slice must start from a fresh broad repository audit and identify a genuinely new independent source gap outside the execution-gated tracks above. It must not manufacture work by reopening a source-complete or not-applicable cursor.
 
@@ -152,10 +175,10 @@ The continuation slice files and machine evidence remain the source of detailed 
 
 ## Validation boundary
 
-No tests, Cargo commands, Node verifiers, SQLite/PostgreSQL/Redis/TCP scenarios, browser targets, formatting, Clippy, builds, workflows, CI, HTTP execution, Search execution, outbox relay execution, runtime validation, or production validation were executed by the implementation agent while producing slices 101–104.
+No tests, Cargo commands, Node verifiers, SQLite/PostgreSQL/Redis/TCP scenarios, browser targets, formatting, Clippy, builds, workflows, CI, HTTP execution, Search execution, outbox relay execution, runtime validation, or production validation were executed by the implementation agent while producing slices 101–105.
 
 ## Next cursor
 
-No independent production source gap is claimed after slice 104.
+No independent production source gap is claimed after slice 105.
 
 Continue only after a fresh broad Blog source audit finds another gap outside the execution-gated tracks above, or after maintainers provide execution results that unlock one of their explicit follow-ups.
