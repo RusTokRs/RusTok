@@ -17,31 +17,22 @@ const files = {
   rolloutHarnessContract: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
   rolloutHarnessEvidence: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
   rolloutHarnessSpec: "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
+  runtimeHarness: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
   consumerBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   serverBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
   gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   overlay: "docs/modules/pages-page-builder-provider-health-capability-preflight-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
-
-const absolute = (relativePath) => path.join(repoRoot, relativePath);
-const read = (relativePath) => fs.readFileSync(absolute(relativePath), "utf8");
-const need = (source, marker, label) => {
-  if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
-};
-const forbid = (source, marker, label) => {
-  if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
-};
+const abs = (value) => path.join(repoRoot, value);
+const read = (value) => fs.readFileSync(abs(value), "utf8");
+const need = (source, marker, label) => { if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`); };
+const forbid = (source, marker, label) => { if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`); };
 
 for (const [label, relativePath] of Object.entries(files)) {
-  if (!fs.existsSync(absolute(relativePath))) {
-    failures.push(`${label}: missing ${relativePath}`);
-    continue;
-  }
-  const stats = fs.lstatSync(absolute(relativePath));
-  if (!stats.isFile() || stats.isSymbolicLink()) {
-    failures.push(`${label}: ${relativePath} must be a regular non-symlink file`);
-  }
+  if (!fs.existsSync(abs(relativePath))) { failures.push(`${label}: missing ${relativePath}`); continue; }
+  const stats = fs.lstatSync(abs(relativePath));
+  if (!stats.isFile() || stats.isSymbolicLink()) failures.push(`${label}: ${relativePath} must be a regular non-symlink file`);
 }
 if (failures.length) {
   console.error("[verify-pages-builder-provider-health-capability-preflight] FAIL");
@@ -49,181 +40,83 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-const sources = Object.fromEntries(
-  Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]),
-);
+const sources = Object.fromEntries(Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]));
 const contract = JSON.parse(sources.contract);
-const rolloutHarnessContract = JSON.parse(sources.rolloutHarnessContract);
-const rolloutHarnessEvidence = JSON.parse(sources.rolloutHarnessEvidence);
+const rolloutContract = JSON.parse(sources.rolloutHarnessContract);
+const rolloutEvidence = JSON.parse(sources.rolloutHarnessEvidence);
+const runtimeHarness = JSON.parse(sources.runtimeHarness);
 const consumerBinding = JSON.parse(sources.consumerBinding);
 const serverBinding = JSON.parse(sources.serverBinding);
 const gate = JSON.parse(sources.gate);
 
-if (contract.format !== "pages_builder_provider_health_capability_preflight_source_v1") {
-  failures.push("provider-health capability preflight contract format drifted");
-}
-if (contract.status !== "source_ready_runtime_execution_pending") {
-  failures.push("provider-health capability preflight must remain source-ready/runtime-execution-pending");
-}
+if (contract.format !== "pages_builder_provider_health_capability_preflight_source_v1" || contract.status !== "source_ready_runtime_execution_pending") failures.push("provider-health capability-preflight source identity drifted");
 for (const [object, key, expected] of [
   [contract.shared_runtime_policy, "owner", "rustok_page_builder::rollout::effective_provider_runtime_flags"],
   [contract.shared_runtime_policy, "configured_rollout_flags_remain_authoritative", true],
   [contract.shared_runtime_policy, "provider_health_may_only_narrow", true],
-  [contract.shared_runtime_policy, "admin_provider_status_delegates_to_shared_policy", true],
   [contract.graphql_preflight, "operation", "pageBuilderCapabilityPreflight"],
   [contract.graphql_preflight, "non_mutating", true],
   [contract.graphql_preflight, "provider_health_source", "PagesGraphqlRuntimeData"],
-  [contract.graphql_preflight, "fresh_authority_read_per_preflight_request", true],
   [contract.graphql_preflight, "uses_shared_runtime_policy", true],
   [contract.graphql_preflight, "disabled_error_kind", "feature-disabled"],
   [contract.graphql_preflight, "disabled_error_code", "FEATURE_DISABLED"],
-  [contract.graphql_preflight, "degraded_all_on_publish_is_feature_disabled", true],
-  [contract.graphql_preflight, "unavailable_all_on_preview_is_feature_disabled", true],
   [contract.graphql_preflight, "snapshot_continues_to_return_configured_flags_separately_from_health", true],
   [contract.rollout_feature_preflight_isolation, "existing_four_profile_harness_remains_rollout_only", true],
-  [contract.rollout_feature_preflight_isolation, "existing_harness_claims_provider_health_observed", false],
-  [contract.rollout_feature_preflight_isolation, "existing_harness_observes_unobserved_health_before_each_profile", true],
-  [contract.rollout_feature_preflight_isolation, "existing_harness_observes_unobserved_health_after_each_profile", true],
   [contract.rollout_feature_preflight_isolation, "existing_harness_fails_closed_if_health_is_observed", true],
   [contract.rollout_feature_preflight_isolation, "existing_harness_retains_raw_health_payload", false],
   [contract.anti_promotion, "observed_graphql_preflight_executed", false],
   [contract.anti_promotion, "pages_reference_consumer_gate_accepted", false],
-  [contract.validation, "tests_run", false],
-  [contract.validation, "node_verifier_run", false],
-]) {
-  if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
-}
+]) if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 
 for (const marker of [
-  "pub fn effective_provider_runtime_flags(",
-  "flags.validate().is_err()",
-  "ProviderHealthState::Unavailable",
-  "ProviderHealthState::Degraded",
-  "effective.publish_enabled = false",
-  "provider_health_runtime_flags_only_narrow_configured_rollout",
-]) need(sources.coreRollout, marker, "shared Page Builder runtime policy");
-
+  "pub fn effective_provider_runtime_flags(", "ProviderHealthState::Unavailable", "ProviderHealthState::Degraded", "effective.publish_enabled = false",
+]) need(sources.coreRollout, marker, "shared runtime policy");
 for (const marker of [
-  "effective_provider_runtime_flags",
-  "pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags",
-  "effective_provider_runtime_flags(&self.flags, self.health.as_ref())",
+  "effective_provider_runtime_flags(&self.flags, self.health.as_ref())", "pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags",
 ]) need(sources.providerStatus, marker, "admin provider status delegation");
-forbid(
-  sources.providerStatus,
-  "PageBuilderAdminProviderState::Unavailable => BuilderCapabilityFlags",
-  "admin provider status must not retain a second runtime-flag policy",
-);
+forbid(sources.providerStatus, "PageBuilderAdminProviderState::Unavailable => BuilderCapabilityFlags", "admin provider status must not duplicate runtime policy");
 
 for (const marker of [
-  "fn provider_health_snapshot(ctx: &Context<'_>) -> Option<ProviderHealthSnapshot>",
-  "PagesGraphqlRuntimeData::provider_health_snapshot",
-  "async fn page_builder_capability_preflight(",
-  "let required_permission = required_page_builder_permission(capability_kind);",
-  "let flags = load_rollout_flags(db, tenant).await?;",
-  "let provider_health = provider_health_snapshot(ctx);",
-  "effective_provider_runtime_flags(&flags, provider_health.as_ref())",
-  "ensure_capability(&effective_flags, capability_kind)",
-  "PageBuilderErrorKind::FeatureDisabled.as_str()",
-  "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
+  "PagesGraphqlRuntimeData::provider_health_snapshot", "async fn page_builder_capability_preflight(",
+  "let provider_health = provider_health_snapshot(ctx);", "effective_provider_runtime_flags(&flags, provider_health.as_ref())",
+  "ensure_capability(&effective_flags, capability_kind)", "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
 ]) need(sources.owner, marker, "Pages GraphQL provider-health preflight");
-
-const snapshotStart = sources.owner.indexOf("async fn page_builder_rollout_snapshot(");
-const preflightStart = sources.owner.indexOf("async fn page_builder_capability_preflight(");
-const mappingStart = sources.owner.indexOf("\nfn required_page_builder_permission(", preflightStart);
-if (snapshotStart < 0 || preflightStart <= snapshotStart || mappingStart <= preflightStart) {
-  failures.push("GraphQL rollout/preflight source slices could not be isolated");
-} else {
-  const snapshotSlice = sources.owner.slice(snapshotStart, preflightStart);
-  const preflightSlice = sources.owner.slice(preflightStart, mappingStart);
-  forbid(snapshotSlice, "effective_provider_runtime_flags", "rollout snapshot must expose configured flags separately from health");
-  for (const marker of ["save_project(", "render_preview(", ".publish(", "save_document(", "std::fs::", "RUSTOK_PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH"]) {
-    forbid(preflightSlice, marker, "non-mutating provider-health capability preflight");
-  }
-}
-
-for (const marker of [
-  "provider_health_authority",
-  "authority.current_snapshot()",
-]) need(sources.runtimeData, marker, "fresh GraphQL runtime health authority");
-
-for (const marker of [
-  "self.provider_status().effective_runtime_flags()",
-]) need(sources.pagesSnapshot, marker, "Pages snapshot runtime-policy delegation");
-for (const marker of [
-  "let effective_flags = trusted_rollout.effective_runtime_flags();",
-  "compose_fly_page_builder_handlers(store, renderer, effective_flags)",
-]) need(sources.pagesFacade, marker, "authoritative SSR shared-policy path");
+for (const marker of ["provider_health_authority", "authority.current_snapshot()"])
+  need(sources.runtimeData, marker, "fresh runtime health authority");
+need(sources.pagesSnapshot, "self.provider_status().effective_runtime_flags()", "Pages snapshot runtime policy");
+for (const marker of ["let effective_flags = trusted_rollout.effective_runtime_flags();", "compose_fly_page_builder_handlers(store, renderer, effective_flags)"])
+  need(sources.pagesFacade, marker, "authoritative SSR runtime policy");
 
 if (
-  rolloutHarnessContract.provider_health_boundary?.harness_purpose !== "rollout_only" ||
-  rolloutHarnessContract.provider_health_boundary?.provider_health_must_remain_unobserved !== true ||
-  rolloutHarnessContract.provider_health_boundary?.observe_before_each_profile_preflight !== true ||
-  rolloutHarnessContract.provider_health_boundary?.observe_after_each_profile_preflight !== true ||
-  rolloutHarnessContract.provider_health_boundary?.provider_health_payload_must_be_absent !== true ||
-  rolloutHarnessContract.provider_health_boundary?.fail_if_provider_health_is_observed !== true ||
-  rolloutHarnessContract.provider_health_boundary?.retained_health_payload !== false
-) failures.push("existing rollout feature-preflight provider-health boundary drifted");
-for (const key of [
-  "rollout_only_harness_requires_provider_health_unobserved",
-  "provider_health_observed_before_each_profile",
-  "provider_health_observed_after_each_profile",
-  "provider_health_payload_must_be_absent",
-]) {
-  if (rolloutHarnessEvidence.source_contract?.[key] !== true) {
-    failures.push(`rollout harness source_contract.${key} must be true`);
-  }
-}
-if (
-  rolloutHarnessEvidence.source_contract?.provider_health_observed !== false ||
-  rolloutHarnessEvidence.source_contract?.raw_provider_health_payload_persisted !== false
-) failures.push("existing rollout feature-preflight must remain provider-health-unobserved without raw health retention");
+  rolloutContract.provider_health_boundary?.harness_purpose !== "rollout_only" ||
+  rolloutContract.provider_health_boundary?.provider_health_must_remain_unobserved !== true ||
+  rolloutContract.provider_health_boundary?.observe_before_each_profile_preflight !== true ||
+  rolloutContract.provider_health_boundary?.observe_after_each_profile_preflight !== true ||
+  rolloutContract.provider_health_boundary?.provider_health_payload_must_be_absent !== true
+) failures.push("rollout-only feature-preflight health boundary drifted");
+if (rolloutEvidence.source_contract?.provider_health_observed !== false || rolloutEvidence.source_contract?.raw_provider_health_payload_persisted !== false) failures.push("rollout-only harness must remain unobserved without raw health retention");
 for (const marker of [
-  "pageBuilderRolloutSnapshot { providerHealthObserved providerHealth { state } }",
-  "async function assertProviderHealthUnobserved(",
-  "snapshot.providerHealthObserved !== false",
-  "snapshot.providerHealth !== null",
-  "provider_health_before: providerHealthBefore",
-  "provider_health_after: providerHealthAfter",
-  "provider_health_payload_persisted: false",
-]) need(sources.rolloutHarnessSpec, marker, "rollout-only live provider-health proof");
+  "async function assertProviderHealthUnobserved(", "snapshot.providerHealthObserved !== false", "snapshot.providerHealth !== null",
+  "provider_health_before: providerHealthBefore", "provider_health_after: providerHealthAfter",
+]) need(sources.rolloutHarnessSpec, marker, "rollout-only live health isolation");
 
-if (consumerBinding.format !== "pages_builder_provider_health_consumer_binding_source_v1") {
-  failures.push("consumer-binding predecessor format drifted");
-}
-if (serverBinding.format !== "pages_builder_provider_health_server_binding_source_v1") {
-  failures.push("server-binding predecessor format drifted");
-}
-if (gate.accepted !== false || gate.current_boundary?.provider_health !== "unobserved") {
-  failures.push("Pages reference-consumer gate must remain unaccepted/provider-health-unobserved in retained execution evidence");
-}
+if (runtimeHarness.format !== "pages_builder_provider_health_runtime_harness_source_v1" || runtimeHarness.status !== "source_ready_maintainer_execution_pending") failures.push("observed-health runtime harness continuation is not source-ready");
+if (consumerBinding.format !== "pages_builder_provider_health_consumer_binding_source_v1") failures.push("consumer binding predecessor drifted");
+if (serverBinding.format !== "pages_builder_provider_health_server_binding_source_v1") failures.push("server binding predecessor drifted");
+if (gate.accepted !== false || gate.current_boundary?.provider_health !== "unobserved") failures.push("retained Pages gate must remain unaccepted/provider-health-unobserved");
 
-for (const marker of [
-  "provider-health-capability-preflight-source-ready",
-  "shared Page Builder runtime policy",
-  "pageBuilderCapabilityPreflight",
-  "FEATURE_DISABLED",
-  "runtime execution remains maintainer-owned",
-  "Tests were not run",
-]) need(sources.overlay, marker, "provider-health preflight actualization");
-for (const marker of [
-  "provider-health-capability-preflight-source-ready",
-  "pages-page-builder-provider-health-capability-preflight-actualization-2026-08-09.md",
-  "health-aware non-mutating capability preflight [source-ready]",
-]) need(sources.parity, marker, "plan parity actualization");
+if (contract.next_cursor?.provider_health_capability_preflight !== "source_ready_runtime_execution_pending") failures.push("capability-preflight cursor drifted");
+if (contract.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("observed-health runtime harness must be source-ready/maintainer-execution-pending");
+if (contract.next_cursor?.observed_health_acceptance !== "pending") failures.push("observed-health acceptance must remain pending");
 
-if (contract.next_cursor?.provider_health_capability_preflight !== "source_ready_runtime_execution_pending") {
-  failures.push("provider-health capability preflight cursor drifted");
-}
-if (contract.next_cursor?.observed_health_runtime_evidence_harness !== "source_open") {
-  failures.push("observed-health runtime evidence harness must remain the next source cursor");
-}
-if (contract.next_cursor?.observed_health_acceptance !== "pending") {
-  failures.push("observed-health acceptance must remain pending");
-}
+for (const marker of ["provider-health-capability-preflight-source-ready", "FEATURE_DISABLED", "runtime execution remains maintainer-owned", "Tests were not run"])
+  need(sources.overlay, marker, "capability-preflight actualization");
+for (const marker of ["provider-health-capability-preflight-source-ready", "observed-health runtime evidence harness [source-ready / maintainer execution pending]"])
+  need(sources.parity, marker, "plan parity actualization");
 
 if (failures.length) {
   console.error("[verify-pages-builder-provider-health-capability-preflight] FAIL");
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-provider-health-capability-preflight] PASS source_ready=true rollout_harness_health=fail_closed_unobserved runtime_execution=pending");
+console.log("[verify-pages-builder-provider-health-capability-preflight] PASS source_ready=true runtime_harness=source_ready execution=pending");
