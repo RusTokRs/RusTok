@@ -7,9 +7,9 @@ use async_graphql::{Context, ServerResult, Value};
 use rustok_api::{AuthContext, PortActor, RequestContext};
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_fulfillment::{
-    FulfillmentReadPort, ShippingOptionAdminReadPort, ShippingOptionReadPort,
-    in_process_fulfillment_read_port, in_process_shipping_option_admin_read_port,
-    in_process_shipping_option_read_port,
+    FulfillmentReadPort, ShippingOptionAdminCommandRuntime, ShippingOptionAdminReadPort,
+    ShippingOptionReadPort, in_process_fulfillment_read_port,
+    in_process_shipping_option_admin_read_port, in_process_shipping_option_read_port,
 };
 use rustok_order::{
     OrderAdminCommandRuntime, OrderPostOrderCommandRuntime, OrderReadPort,
@@ -336,8 +336,9 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
 ///
 /// Hosts supply composed capabilities through `HostRuntimeContext`. The built-in manual provider
 /// registries remain deterministic fallbacks. Mounted Payment/Fulfillment reads and commands,
-/// shipping-option, Product catalog, and order reads/commands consume host-selected runtime data.
-/// Directly embedded compatibility schemas retain explicit in-process owner-runtime fallbacks.
+/// shipping-option reads/commands, Product catalog, and order reads/commands consume host-selected
+/// runtime data. Directly embedded compatibility schemas retain explicit in-process owner-runtime
+/// fallbacks.
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
@@ -348,6 +349,7 @@ pub struct CommerceGraphqlRuntimeData {
     payment_command_runtime: CommercePaymentCommandRuntime,
     fulfillment_command_runtime: CommerceFulfillmentCommandRuntime,
     shipping_option_read_runtime: CommerceShippingOptionReadRuntime,
+    shipping_option_admin_command_runtime: ShippingOptionAdminCommandRuntime,
     fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: CommerceOrderReadRuntime,
     order_admin_command_runtime: OrderAdminCommandRuntime,
@@ -384,6 +386,10 @@ impl CommerceGraphqlRuntimeData {
 
     pub fn shipping_option_read_runtime(&self) -> CommerceShippingOptionReadRuntime {
         self.shipping_option_read_runtime.clone()
+    }
+
+    pub fn shipping_option_admin_command_runtime(&self) -> ShippingOptionAdminCommandRuntime {
+        self.shipping_option_admin_command_runtime.clone()
     }
 
     pub fn fulfillment_lifecycle_read_runtime(&self) -> CommerceFulfillmentLifecycleReadRuntime {
@@ -462,6 +468,12 @@ pub fn attach_schema_data(
                 "commerce GraphQL requires CommerceShippingOptionReadRuntime in host composition"
                     .to_string()
             })?,
+        shipping_option_admin_command_runtime: inputs
+            .shared_get::<ShippingOptionAdminCommandRuntime>()
+            .ok_or_else(|| {
+                "commerce GraphQL requires ShippingOptionAdminCommandRuntime in host composition"
+                    .to_string()
+            })?,
         fulfillment_lifecycle_read_runtime: inputs
             .shared_get::<CommerceFulfillmentLifecycleReadRuntime>()
             .unwrap_or_else(|| {
@@ -486,8 +498,7 @@ pub fn attach_schema_data(
         product_catalog_read_runtime: inputs
             .shared_get::<ProductCatalogReadRuntime>()
             .ok_or_else(|| {
-                "commerce GraphQL requires ProductCatalogReadRuntime in host composition"
-                    .to_string()
+                "commerce GraphQL requires ProductCatalogReadRuntime in host composition".to_string()
             })?,
         product_catalog_command_runtime: inputs
             .shared_get::<ProductCatalogCommandRuntime>()
@@ -531,6 +542,15 @@ pub(crate) fn fulfillment_command_runtime_from_context(
                 .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
             CommerceFulfillmentCommandRuntime::in_process(db, provider_registry)
         })
+}
+
+pub(crate) fn shipping_option_admin_command_runtime_from_context(
+    ctx: &Context<'_>,
+    db: DatabaseConnection,
+) -> ShippingOptionAdminCommandRuntime {
+    ctx.data_opt::<CommerceGraphqlRuntimeData>()
+        .map(CommerceGraphqlRuntimeData::shipping_option_admin_command_runtime)
+        .unwrap_or_else(|| ShippingOptionAdminCommandRuntime::in_process(db))
 }
 
 pub(crate) fn order_admin_command_runtime_from_context(

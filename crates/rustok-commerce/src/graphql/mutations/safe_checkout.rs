@@ -1,6 +1,6 @@
 mod checkout_boundary {
     use ::async_graphql::{Error, ErrorExtensions};
-    use ::rustok_fulfillment::error::FulfillmentError;
+    use ::rustok_api::{PortContext, PortError, PortErrorKind};
 
     use crate::CommerceError;
 
@@ -84,35 +84,37 @@ mod checkout_boundary {
         }
     }
 
-    fn fulfillment_error_envelope(
-        error: &FulfillmentError,
+    fn shipping_option_port_error_envelope(
+        error: &PortError,
     ) -> (&'static str, &'static str, bool, &'static str) {
-        match error {
-            FulfillmentError::Validation(_) => (
+        match &error.kind {
+            PortErrorKind::Validation => (
                 "Shipping option request is invalid",
                 "SHIPPING_OPTION_REQUEST_INVALID",
                 false,
                 "validation",
             ),
-            FulfillmentError::ShippingOptionNotFound(_) => (
+            PortErrorKind::NotFound if error.code == "fulfillment.shipping_option_not_found" => (
                 "Shipping option was not found",
                 "SHIPPING_OPTION_NOT_FOUND",
                 false,
                 "not_found",
             ),
-            FulfillmentError::InvalidTransition { .. } => (
+            PortErrorKind::Conflict => (
                 "Shipping option operation conflicts with the current state",
                 "SHIPPING_OPTION_STATE_CONFLICT",
                 false,
                 "conflict",
             ),
-            FulfillmentError::Database(_) => (
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
                 "Shipping option service is temporarily unavailable",
                 "SHIPPING_OPTION_TEMPORARILY_UNAVAILABLE",
                 true,
-                "database",
+                "temporarily_unavailable",
             ),
-            FulfillmentError::FulfillmentNotFound(_) => (
+            PortErrorKind::NotFound
+            | PortErrorKind::Forbidden
+            | PortErrorKind::InvariantViolation => (
                 "Shipping option operation could not be completed safely",
                 "SHIPPING_OPTION_OPERATION_FAILED",
                 false,
@@ -142,24 +144,35 @@ mod checkout_boundary {
         }
     }
 
-    impl From<FulfillmentError> for BoundaryError {
-        fn from(error: FulfillmentError) -> Self {
-            let (message, code, retryable, error_kind) = fulfillment_error_envelope(&error);
-            let diagnostic_error = CheckoutServiceDiagnosticError;
-            tracing::error!(
-                error = ?diagnostic_error,
-                owner = "rustok_fulfillment",
-                error_kind,
-                public_code = code,
-                retryable,
-                boundary = CHECKOUT_ERROR_BOUNDARY,
-                "commerce GraphQL checkout shipping option operation failed"
-            );
-            Self::Public {
-                message,
-                code,
-                retryable,
-            }
+    pub(crate) fn shipping_option_port_error(
+        context: &PortContext,
+        owner_operation: &'static str,
+        error: PortError,
+    ) -> BoundaryError {
+        let (message, code, retryable, error_kind) = shipping_option_port_error_envelope(&error);
+        let diagnostic_error = CheckoutServiceDiagnosticError;
+        tracing::error!(
+            error = ?diagnostic_error,
+            owner = "rustok_fulfillment.shipping_option_admin_command",
+            owner_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_present = !context.tenant_id.is_empty(),
+            actor_id_present = !context.actor.id.is_empty(),
+            channel_present = context.channel.is_some(),
+            locale_length = context.locale.chars().count(),
+            deadline_ms = ?context.deadline_ms,
+            owner_error_kind = ?error.kind,
+            owner_code_length = error.code.chars().count(),
+            error_kind,
+            public_code = code,
+            retryable,
+            boundary = CHECKOUT_ERROR_BOUNDARY,
+            "commerce GraphQL checkout shipping option owner command failed"
+        );
+        BoundaryError::Public {
+            message,
+            code,
+            retryable,
         }
     }
 
