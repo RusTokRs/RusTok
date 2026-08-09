@@ -3,17 +3,18 @@ use rustok_api::{
     AuthContext, Permission, RichTextDocument, RichTextView, TenantContext, graphql::GraphQLError,
     has_any_effective_permission,
 };
-use rustok_core::{SecurityContext, error::ErrorKind};
+use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::graphql::GqlProfileSummary;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    BlogError, BlogPostStatus, CommentListItem as DomainCommentListItem,
+    BlogPostStatus, CommentListItem as DomainCommentListItem,
     CreatePostInput as DomainCreatePostInput, ListCommentsFilter,
     ModerateCommentStatus as DomainModerateCommentStatus, PostResponse, PostSummary,
-    UpdatePostInput as DomainUpdatePostInput,
+    PublicCommentsAvailability, UpdatePostInput as DomainUpdatePostInput,
+    list_public_comments_with_snapshot,
 };
 
 use super::runtime_data::BlogGraphqlRuntimeData;
@@ -78,6 +79,16 @@ pub enum GqlBlogCommentsAvailability {
     Timeout,
 }
 
+impl From<PublicCommentsAvailability> for GqlBlogCommentsAvailability {
+    fn from(availability: PublicCommentsAvailability) -> Self {
+        match availability {
+            PublicCommentsAvailability::Available => Self::Available,
+            PublicCommentsAvailability::Unavailable => Self::Unavailable,
+            PublicCommentsAvailability::Timeout => Self::Timeout,
+        }
+    }
+}
+
 #[derive(SimpleObject)]
 #[graphql(complex)]
 pub struct GqlPost {
@@ -118,6 +129,7 @@ pub struct GqlPublicCommentListItem {
 #[derive(SimpleObject)]
 pub struct GqlPublicCommentList {
     pub availability: GqlBlogCommentsAvailability,
+    pub cached_snapshot: bool,
     pub items: Vec<GqlPublicCommentListItem>,
     pub total: u64,
 }
@@ -157,34 +169,24 @@ impl GqlPost {
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
         let fallback_locale = post_comment_fallback_locale(request_tenant, self);
         let service = runtime.comment_service(db.clone(), event_bus.clone());
-
-        let (items, total, availability) = match service
-            .list_for_post_with_locale_fallback(
-                self.tenant_id,
-                SecurityContext::public_read(),
-                self.id,
-                ListCommentsFilter {
-                    locale: Some(requested_locale),
-                    page: page.unwrap_or(1).max(1),
-                    per_page: per_page.unwrap_or(20).clamp(1, 100),
-                },
-                Some(fallback_locale),
-            )
-            .await
-        {
-            Ok((items, total)) => (items, total, GqlBlogCommentsAvailability::Available),
-            Err(error) => {
-                let Some(availability) = graphql_comments_read_availability(&error) else {
-                    return Err(async_graphql::Error::new(error.to_string()));
-                };
-                (Vec::new(), 0, availability)
-            }
-        };
+        let read = list_public_comments_with_snapshot(
+            &service,
+            runtime.public_comments_snapshot_store(),
+            self.tenant_id,
+            self.id,
+            requested_locale.as_str(),
+            Some(fallback_locale),
+            page.unwrap_or(1),
+            per_page.unwrap_or(20),
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         Ok(GqlPublicCommentList {
-            availability,
-            items: items.into_iter().map(Into::into).collect(),
-            total,
+            availability: read.availability.into(),
+            cached_snapshot: read.cached_snapshot,
+            items: read.items.into_iter().map(Into::into).collect(),
+            total: read.total,
         })
     }
 
@@ -225,17 +227,6 @@ impl GqlPost {
             items: items.into_iter().map(Into::into).collect(),
             total,
         })
-    }
-}
-
-fn graphql_comments_read_availability(error: &BlogError) -> Option<GqlBlogCommentsAvailability> {
-    let BlogError::Rich(error) = error else {
-        return None;
-    };
-    match error.kind {
-        ErrorKind::ExternalService => Some(GqlBlogCommentsAvailability::Unavailable),
-        ErrorKind::Timeout => Some(GqlBlogCommentsAvailability::Timeout),
-        _ => None,
     }
 }
 
