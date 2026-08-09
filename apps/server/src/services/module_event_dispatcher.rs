@@ -13,6 +13,10 @@ use crate::error::{Error, Result};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
+#[cfg(feature = "mod-blog")]
+#[path = "blog_public_comments_snapshot.rs"]
+mod blog_public_comments_snapshot;
+
 pub fn spawn_module_event_dispatcher(
     ctx: &ServerRuntimeContext,
     registry: &ModuleRegistry,
@@ -235,6 +239,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     #[cfg(feature = "mod-blog")]
     {
+        blog_public_comments_snapshot::register(&mut extensions, &runtime_ctx);
         let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
             rustok_outbox::OutboxTransport::new(db.clone()),
         ));
