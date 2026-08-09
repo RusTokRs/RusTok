@@ -9,6 +9,7 @@ use crate::model::{
     CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMutationResult,
     PagePublicationResult,
 };
+use rustok_page_builder::health::ProviderHealthSnapshot;
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use serde_json::Value;
@@ -33,7 +34,7 @@ pub async fn fetch_page(
 pub async fn fetch_page_builder_rollout_snapshot(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<(String, BuilderCapabilityFlags), TransportError> {
+) -> Result<(String, BuilderCapabilityFlags, Option<ProviderHealthSnapshot>), TransportError> {
     builder_rollout_adapter::fetch(token, tenant_slug).await
 }
 
