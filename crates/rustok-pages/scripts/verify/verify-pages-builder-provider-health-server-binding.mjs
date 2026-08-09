@@ -18,6 +18,7 @@ const files = {
   builder: "crates/rustok-pages/admin/src/builder.rs",
   adminMain: "apps/admin/src/main.rs",
   acceptance: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+  acceptanceRunner: "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs",
   transport: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
   overlay: "docs/modules/pages-page-builder-provider-health-server-binding-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
@@ -88,15 +89,21 @@ for (const [object, key, expected] of [
   [contract.accepted_packet, "strict_unknown_fields_rejected", true],
   [contract.accepted_packet, "decision", "accept_for_pages_binding"],
   [contract.accepted_packet, "rollback_action", "restore_unobserved_provider_health"],
+  [contract.accepted_packet, "maximum_target_operation_freshness_age_seconds_required", true],
+  [contract.accepted_packet, "health_valid_until_required", true],
   [contract.live_identity_binding, "source_commit_must_equal_live_environment", true],
   [contract.live_identity_binding, "deployment_id_must_equal_live_environment", true],
   [contract.live_identity_binding, "deployment_image_digest_must_equal_live_environment", true],
   [contract.evidence_revalidation, "minimum_preview_samples", 20],
   [contract.evidence_revalidation, "minimum_publish_samples", 20],
+  [contract.evidence_revalidation, "maximum_target_operation_freshness_age_must_not_exceed_freshness", true],
+  [contract.evidence_revalidation, "health_valid_until_recomputed_from_remaining_freshness", true],
+  [contract.evidence_revalidation, "accepted_decision_must_not_exceed_health_valid_until_plus_skew", true],
   [contract.evidence_revalidation, "canonical_provider_health_snapshot_recomputed", true],
   [contract.evidence_revalidation, "canonical_slo_evaluation_recomputed", true],
   [contract.freshness_lease, "checked_on_every_rollout_snapshot_read", true],
   [contract.freshness_lease, "future_clock_skew_tolerance_seconds", 5],
+  [contract.freshness_lease, "maximum_observed_until", "evaluation.health_valid_until + clock_skew_tolerance"],
   [contract.freshness_lease, "expired_action", "unobserved"],
   [contract.hot_replacement, "packet_reloaded_on_every_rollout_snapshot_read", true],
   [contract.hot_replacement, "accepted_to_rejected_transition_requires_restart", false],
@@ -111,6 +118,12 @@ for (const [object, key, expected] of [
   [contract.non_claims, "pages_reference_consumer_gate_accepted", false],
   [contract.non_claims, "forum_wave_accepted", false],
   [contract.non_claims, "tests_run", false],
+  [acceptance.evaluation_input, "maximum_target_operation_freshness_age_recomputed", true],
+  [acceptance.evaluation_input, "health_valid_until_derived_from_remaining_freshness", true],
+  [acceptance.owner_decision, "accept_requires_unexpired_health_valid_until", true],
+  [acceptance.owner_decision, "acceptance_clock_skew_tolerance_seconds", 5],
+  [acceptance.output, "maximum_target_operation_freshness_age_seconds_retained", true],
+  [acceptance.output, "health_valid_until_retained", true],
 ]) {
   if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 }
@@ -128,16 +141,29 @@ for (const marker of [
   "from_retained_packet_path",
   "read_retained_packet(path)",
   "fs::symlink_metadata",
+  "ErrorKind::NotFound",
   "MAX_ACCEPTANCE_PACKET_BYTES",
   "#[serde(deny_unknown_fields)]",
+  "max_target_operation_freshness_age_seconds",
+  "health_valid_until",
+  "expected_valid_until",
   "ProviderHealthSnapshot::evaluate(packet.evaluation.snapshot.observed)",
   "ProviderSloEvaluation::evaluate(",
   "snapshot_at(Utc::now())",
-  "Duration::seconds(self.freshness_seconds as i64)",
+  "now > self.health_valid_until + skew",
   "IncompleteEnvironment",
   "IdentityMismatch",
   "HealthPolicyMismatch",
 ]) need(sources.binding ?? "", marker, "provider health authority");
+
+for (const marker of [
+  "maximumFreshnessAge",
+  "remainingFreshnessSeconds",
+  "healthValidUntilMs",
+  "health_valid_until: admitted.healthValidUntil",
+  "max_target_operation_freshness_age_seconds: admitted.maximumFreshnessAge",
+  "accepted decision is outside the retained health freshness deadline",
+]) need(sources.acceptanceRunner ?? "", marker, "owner acceptance remaining freshness");
 
 for (const marker of [
   "page_builder_provider_health_authority_from_environment()",
@@ -152,6 +178,7 @@ need(
   "Pages manifest GraphQL runtime data",
 );
 need(sources.graphqlMod ?? "", "pub use runtime_data::attach_schema_data", "Pages GraphQL runtime factory export");
+need(sources.graphqlMod ?? "", "pub use runtime_data::PagesGraphqlRuntimeData", "Pages GraphQL runtime data export");
 for (const marker of [
   "PagesGraphqlRuntimeData",
   "inputs.shared_get::<SharedPagesProviderHealthAuthority>()",
@@ -186,6 +213,7 @@ for (const marker of [
   "server-provider-health-binding-source-ready",
   "hot-accept-reject-source-ready",
   "freshness-lease-source-ready",
+  "health_valid_until",
   "restore_unobserved_provider_health",
   "runtime_data_factory",
   "Pages remains `unobserved`",
