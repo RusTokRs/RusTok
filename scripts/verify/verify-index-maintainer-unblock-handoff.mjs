@@ -125,17 +125,18 @@ const handoffEvent = sectionBetween(
   '## Priority 3 — M7 Product Storefront evidence gates',
   handoffPath,
 );
-for (const [source, label] of [
-  [eventDependency, `${eventPath} Product Index dependency`],
-  [handoffEvent, `${handoffPath} M5 priority`],
-]) {
-  requireOrdered(source, [
-    'generate_patch',
-    'event-contract-digests.json',
-    'verify',
-    'ProductIndexRefreshEvent',
-  ], label);
-}
+requireOrdered(eventDependency, [
+  'generate_patch',
+  'commit the canonical generated artifact',
+  'verify',
+  'ProductIndexRefreshEvent',
+], `${eventPath} Product Index dependency`);
+requireOrdered(handoffEvent, [
+  'generate_patch',
+  'event-contract-digests.json',
+  'verify',
+  'ProductIndexRefreshEvent',
+], `${handoffPath} M5 priority`);
 if (!handoffEvent.includes('stale committed event-contract digest artifact')) {
   fail('M5 handoff must continue to describe the committed event-contract digest as stale');
 }
