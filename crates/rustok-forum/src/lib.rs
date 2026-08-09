@@ -22,6 +22,7 @@ pub mod import_inspection;
 pub mod import_mapping;
 pub mod import_relation_preparation;
 pub mod import_resolution;
+pub mod import_tombstone_preparation;
 pub mod import_write_preparation;
 pub mod locale;
 pub mod mentions {
@@ -70,6 +71,7 @@ pub use import_inspection::*;
 pub use import_mapping::*;
 pub use import_relation_preparation::*;
 pub use import_resolution::*;
+pub use import_tombstone_preparation::*;
 pub use import_write_preparation::*;
 pub use mentions::*;
 pub use moderation_subject::{
