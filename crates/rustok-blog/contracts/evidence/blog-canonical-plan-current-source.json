@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "blog",
   "surface": "canonical_implementation_cursor",
   "status": "source_verified_no_compile",
@@ -9,8 +9,8 @@
   "canonical_current_cursor": "crates/rustok-blog/docs/implementation-plan-current.md",
   "actualization_slice": "crates/rustok-blog/docs/implementation-plan-slice-101.md",
   "historical_baseline_last_embedded_slice": 67,
-  "latest_behavior_slice": 100,
-  "current_recorded_slice": 101,
+  "latest_behavior_slice": 102,
+  "current_recorded_slice": 102,
   "source_tracks": {
     "remote_comments_transport": {
       "status": "source_implemented_maintainer_execution_pending",
@@ -40,13 +40,27 @@
       "slice": "crates/rustok-blog/docs/implementation-plan-slice-100.md",
       "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
       "must_not_reopen_as_source_gap": true
+    },
+    "tag_list_pagination": {
+      "status": "source_ready_maintainer_execution_pending",
+      "slice": "crates/rustok-blog/docs/implementation-plan-slice-102.md",
+      "evidence": "crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json",
+      "maximum_page_size": 100,
+      "offset_overflow_safe": true,
+      "database_side_pagination_claimed": false,
+      "must_not_reopen_as_source_gap": true
+    },
+    "tag_mutation_projection_consistency": {
+      "status": "re_audit_required",
+      "must_define_canonical_search_visible_tag_source": true,
+      "must_define_atomic_reindex_ownership_before_mutation_change": true
     }
   },
   "planning_result": {
     "independent_production_source_gap_identified": false,
     "future_autonomous_source_work_requires_fresh_audit": true,
     "historical_stale_phrases_are_live_instructions": false,
-    "production_behavior_changed": false,
+    "production_behavior_changed_since_slice_101": true,
     "ffa_or_fba_promoted": false
   },
   "execution": [],
@@ -54,6 +68,7 @@
     "no_rust_test_result",
     "no_javascript_verifier_result",
     "no_compile_result",
+    "no_database_side_tag_pagination_result",
     "no_postgresql_result",
     "no_redis_result",
     "no_tcp_runtime_result",
