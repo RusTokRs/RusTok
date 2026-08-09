@@ -16,6 +16,11 @@
     "deployment_image_digest_must_be_canonical_repo_digest": true,
     "expected_target_count_must_equal_verified_backend_target_count": true,
     "target_mapping_complete_must_be_true": true,
+    "query_window_revalidated_against_evaluator_bounds": true,
+    "freshness_window_revalidated_against_evaluator_bounds": true,
+    "identity_age_revalidated_against_query_window_and_evaluator_maximum": true,
+    "evaluation_timestamps_must_be_canonical_iso": true,
+    "target_freshness_age_must_not_exceed_retained_freshness_window": true,
     "minimum_preview_samples": 20,
     "minimum_publish_samples": 20,
     "histogram_completion_population_must_match": true,
@@ -95,7 +100,8 @@
     "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
     "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs",
     "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs",
-    "docs/modules/pages-page-builder-provider-health-owner-acceptance-actualization-2026-08-09.md"
+    "docs/modules/pages-page-builder-provider-health-owner-acceptance-actualization-2026-08-09.md",
+    "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md"
   ],
   "next_cursor": {
     "owner_acceptance_packet": "source_ready_maintainer_execution_pending",
