@@ -15,7 +15,8 @@
     "degraded_disables_publish": true,
     "unavailable_disables_builder": true,
     "invalid_rollout_disables_builder": true,
-    "runtime_flags_method": "effective_runtime_flags"
+    "runtime_flags_method": "effective_runtime_flags",
+    "runtime_flags_shared_policy": "rustok_page_builder::rollout::effective_provider_runtime_flags"
   },
   "workspace_binding": {
     "fetches_server_owned_rollout_snapshot": true,
@@ -40,12 +41,22 @@
     "unavailable_health_forces_read_only_intent_capabilities": true,
     "missing_health_preserves_rollout_only_behavior": true
   },
+  "non_mutating_capability_preflight": {
+    "operation": "pageBuilderCapabilityPreflight",
+    "uses_server_owned_rollout": true,
+    "uses_fresh_provider_health_authority": true,
+    "uses_shared_runtime_flags_policy": true,
+    "uses_canonical_feature_disabled_guard": true,
+    "permission_denial_remains_separate": true,
+    "raw_acceptance_packet_read_in_query": false
+  },
   "anti_promotion": {
     "runtime_identity_capture_executed": false,
     "runtime_deployment_evaluator_executed": false,
     "owner_acceptance_executed": false,
     "accepted_packet_installed": false,
     "observed_graphql_request_executed": false,
+    "observed_capability_preflight_executed": false,
     "health_driven_workspace_behavior_executed": false,
     "health_driven_ssr_behavior_executed": false,
     "health_driven_browser_intent_behavior_executed": false,
@@ -64,7 +75,9 @@
     "workflow_or_ci_run": false
   },
   "production_sources": [
+    "crates/rustok-page-builder/src/rollout.rs",
     "crates/rustok-page-builder/admin/src/provider_status.rs",
+    "crates/rustok-pages/src/graphql/builder_rollout.rs",
     "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
     "crates/rustok-pages/admin/src/builder.rs",
     "crates/rustok-pages/admin/src/composition.rs",
@@ -73,6 +86,8 @@
   "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs",
   "next_cursor": {
     "provider_health_consumer_binding": "source_ready_runtime_activation_pending",
+    "provider_health_capability_preflight": "source_ready_runtime_execution_pending",
+    "observed_health_runtime_evidence_harness": "source_open",
     "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
     "observed_provider_health_runtime_behavior": "maintainer_execution_pending",
     "observed_health_acceptance": "pending"
