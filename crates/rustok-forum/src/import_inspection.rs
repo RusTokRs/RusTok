@@ -76,17 +76,17 @@ impl NodebbForumImportInspector {
         let mut unresolved_dependencies = Vec::new();
 
         for (record, candidate) in batch.categories.iter().zip(&candidates.categories) {
-            if let (Some(parent_id), Some(parent_source)) = (
-                record.parent_cid.filter(|value| *value > 0),
-                candidate.parent_source.as_ref(),
-            ) && !category_ids.contains(&parent_id)
-            {
-                unresolved_dependencies.push(ForumImportDependencyIssue {
-                    owner: candidate.source.clone(),
-                    relation: ForumImportDependencyRelation::CategoryParent,
-                    target: parent_source.clone(),
-                    disposition: ForumImportDependencyDisposition::MissingBatchRecord,
-                });
+            if let Some(parent_id) = record.parent_cid.filter(|value| *value > 0) {
+                if !category_ids.contains(&parent_id) {
+                    if let Some(parent_source) = candidate.parent_source.as_ref() {
+                        unresolved_dependencies.push(ForumImportDependencyIssue {
+                            owner: candidate.source.clone(),
+                            relation: ForumImportDependencyRelation::CategoryParent,
+                            target: parent_source.clone(),
+                            disposition: ForumImportDependencyDisposition::MissingBatchRecord,
+                        });
+                    }
+                }
             }
         }
 
@@ -100,26 +100,25 @@ impl NodebbForumImportInspector {
                 });
             }
 
-            if let (Some(main_pid), Some(main_post_source)) = (
-                record.main_pid.filter(|value| *value > 0),
-                candidate.body_post_source.as_ref(),
-            ) {
-                match post_topics.get(&main_pid) {
-                    None => unresolved_dependencies.push(ForumImportDependencyIssue {
-                        owner: candidate.source.clone(),
-                        relation: ForumImportDependencyRelation::TopicMainPost,
-                        target: main_post_source.clone(),
-                        disposition: ForumImportDependencyDisposition::MissingBatchRecord,
-                    }),
-                    Some(post_topic_id) if *post_topic_id != record.tid => {
-                        unresolved_dependencies.push(ForumImportDependencyIssue {
+            if let Some(main_pid) = record.main_pid.filter(|value| *value > 0) {
+                if let Some(main_post_source) = candidate.body_post_source.as_ref() {
+                    match post_topics.get(&main_pid) {
+                        None => unresolved_dependencies.push(ForumImportDependencyIssue {
                             owner: candidate.source.clone(),
                             relation: ForumImportDependencyRelation::TopicMainPost,
                             target: main_post_source.clone(),
-                            disposition: ForumImportDependencyDisposition::MismatchedBatchRecord,
-                        });
+                            disposition: ForumImportDependencyDisposition::MissingBatchRecord,
+                        }),
+                        Some(post_topic_id) if *post_topic_id != record.tid => {
+                            unresolved_dependencies.push(ForumImportDependencyIssue {
+                                owner: candidate.source.clone(),
+                                relation: ForumImportDependencyRelation::TopicMainPost,
+                                target: main_post_source.clone(),
+                                disposition: ForumImportDependencyDisposition::MismatchedBatchRecord,
+                            });
+                        }
+                        Some(_) => {}
                     }
-                    Some(_) => {}
                 }
             }
 
@@ -225,7 +224,7 @@ mod tests {
 
         let inspected = NodebbForumImportInspector.inspect_batch(&batch).unwrap();
         let issues = &inspected.unresolved_dependencies;
-        assert_eq!(issues.len(), 6);
+        assert_eq!(issues.len(), 7);
         assert_eq!(issues[0].relation, ForumImportDependencyRelation::CategoryParent);
         assert_eq!(issues[0].disposition, ForumImportDependencyDisposition::MissingBatchRecord);
         assert_eq!(issues[1].relation, ForumImportDependencyRelation::TopicCategory);
@@ -236,6 +235,8 @@ mod tests {
         assert_eq!(issues[4].relation, ForumImportDependencyRelation::TopicMainPost);
         assert_eq!(issues[4].disposition, ForumImportDependencyDisposition::MismatchedBatchRecord);
         assert_eq!(issues[5].relation, ForumImportDependencyRelation::PostTopic);
+        assert_eq!(issues[6].relation, ForumImportDependencyRelation::AuthorUser);
+        assert_eq!(issues[6].target.key, "user:8");
     }
 
     #[test]
