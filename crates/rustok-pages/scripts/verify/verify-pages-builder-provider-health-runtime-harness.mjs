@@ -22,17 +22,13 @@ const files = {
   overlay: "docs/modules/pages-page-builder-provider-health-runtime-evidence-harness-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
-
 const abs = (value) => path.join(repoRoot, value);
 const read = (value) => fs.readFileSync(abs(value), "utf8");
 const need = (source, marker, label) => { if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`); };
 const forbid = (source, marker, label) => { if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`); };
 
 for (const [label, relativePath] of Object.entries(files)) {
-  if (!fs.existsSync(abs(relativePath))) {
-    failures.push(`${label}: missing ${relativePath}`);
-    continue;
-  }
+  if (!fs.existsSync(abs(relativePath))) { failures.push(`${label}: missing ${relativePath}`); continue; }
   const stats = fs.lstatSync(abs(relativePath));
   if (!stats.isFile() || stats.isSymbolicLink()) failures.push(`${label}: ${relativePath} must be a regular non-symlink file`);
 }
@@ -54,6 +50,7 @@ const preflight = JSON.parse(sources.preflight);
 
 if (contract.schema_version !== 1 || contract.module !== "pages" || contract.packet !== "pages-builder-provider-health-runtime-evidence" || contract.status !== "source_ready_maintainer_execution_pending") failures.push("runtime execution contract identity drifted");
 if (contract.output?.format !== "pages_builder_provider_health_runtime_evidence_v1" || contract.output?.status !== "observed_runtime_evidence_owner_review_pending") failures.push("runtime evidence output contract drifted");
+if (contract.fixtures?.page_id_format !== "uuid") failures.push("runtime evidence page id must remain UUID-bound");
 if (source.format !== "pages_builder_provider_health_runtime_harness_source_v1" || source.status !== "source_ready_maintainer_execution_pending") failures.push("runtime harness source packet identity drifted");
 if (!Array.isArray(source.execution) || source.execution.length !== 0) failures.push("runtime harness source execution must remain empty");
 for (const value of Object.values(source.validation ?? {})) if (value !== false) failures.push("runtime harness validation fields must remain false");
@@ -71,11 +68,15 @@ for (const [object, key, expected] of [
   [contract.admission, "accepted_health_snapshot_must_match_evaluation_snapshot", true],
   [contract.admission, "configured_rollout_must_be_all_on", true],
   [contract.admission, "graphql_snapshot_must_observe_health", true],
+  [contract.admission, "browser_intent_mismatch_sentinel_is_non_uuid", true],
+  [contract.admission, "browser_intent_probe_cannot_target_fixture_page", true],
   [contract.observations, "graphql_non_mutating_capability_preflight", true],
   [contract.observations, "authoritative_ssr_preview_when_ui_allows", true],
   [contract.observations, "standalone_browser_intent_denial_when_health_narrows", true],
   [contract.observations, "publish_mutation_executed", false],
   [contract.observations, "rollout_settings_mutated", false],
+  [source.source_contract, "runtime_page_id_fixture_must_be_uuid", true],
+  [source.source_contract, "browser_intent_mismatch_sentinel_is_non_uuid", true],
   [source.source_contract, "browser_intent_probe_uses_mismatched_page_id_as_non_mutating_fallback", true],
   [source.source_contract, "publish_mutation_is_never_executed", true],
   [source.source_contract, "automatic_owner_acceptance", false],
@@ -88,6 +89,11 @@ for (const marker of [
 ]) need(sources.config, marker, "Playwright config");
 
 for (const marker of [
+  "type PredecessorSpec = {",
+  "decision?: string",
+  "rollback_action?: string",
+  "runtime evidence page id must be a UUID",
+  "runtime evidence page id collides with non-mutating mismatch sentinel",
   "validateEvidenceChain(",
   "identityDeployment.source_commit",
   "acceptanceEvaluation.evaluation_sha256 !== evaluation.record.sha256",
@@ -133,6 +139,7 @@ for (const relativePath of contract.required_source_files ?? []) {
 if (!(contract.required_source_files ?? []).includes("apps/next-admin/tests/pages-builder-provider-health-runtime/runtime.spec.ts")) failures.push("runtime spec is absent from required source hashes");
 
 if (preflight.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("capability-preflight cursor must point to source-ready runtime harness");
+if (consumerBinding.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("consumer-binding cursor must point to source-ready runtime harness");
 if (source.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("runtime harness cursor drifted");
 if (source.next_cursor?.observed_health_owner_acceptance !== "pending") failures.push("observed-health owner acceptance must remain pending");
 
