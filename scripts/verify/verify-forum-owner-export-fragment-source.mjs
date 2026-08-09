@@ -25,7 +25,7 @@ const packet = read(packetPath);
 for (const marker of [
   'pub const FORUM_EXPORT_SCHEMA_V1: &str = "rustok.forum.export.v1";',
   "pub const MAX_FORUM_EXPORT_OWNER_VIEWS_PER_FRAGMENT: usize = 512;",
-  "pub struct ForumExportOwnerViewBatch",
+  "#[derive(Clone, Debug)]\npub struct ForumExportOwnerViewBatch",
   "pub tenant_id: Uuid,",
   "pub struct ForumExportUserRef",
   "pub struct ForumExportCategoryRecord",
@@ -47,6 +47,20 @@ for (const marker of [
   "BTreeSet<(Uuid, String)>",
 ]) {
   requireText(mapping, marker, `${mappingPath}: missing ${marker}`);
+}
+
+const inputStart = mapping.indexOf("#[derive(Clone, Debug)]\npub struct ForumExportOwnerViewBatch");
+const nextRecordStart = mapping.indexOf("#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]", inputStart + 1);
+if (inputStart < 0 || nextRecordStart <= inputStart) {
+  throw new Error(`${mappingPath}: owner-view input source boundary is invalid`);
+}
+const ownerViewInput = mapping.slice(inputStart, nextRecordStart);
+for (const forbidden of ["Serialize", "Deserialize", "#[serde("]) {
+  requireAbsent(
+    ownerViewInput,
+    forbidden,
+    `${mappingPath}: owner-view input must remain a non-wire in-process type: ${forbidden}`,
+  );
 }
 
 for (const marker of ["pub mod export_mapping;", "pub use export_mapping::*;"]) {
@@ -106,6 +120,9 @@ for (const marker of [
   "locale-enumeration-open",
   "ReplyReadModel` contains only `content_preview`",
   "already-authorized full owner responses",
+  "not a wire contract",
+  "does not implement `Serialize` or `Deserialize`",
+  "serializable contract begins at `ForumExportFragment`",
   "explicit non-nil `tenant_id`",
   "does not replace owner authorization",
   "uses `effective_locale`, never `requested_locale`",
@@ -113,6 +130,10 @@ for (const marker of [
   "`ReplyResponse` currently does not",
   "canonical `RichTextDocument`",
   "does not declare that a source RusTok user UUID can be reused",
+  "TranslationInterchangeService",
+  "not a neutral module data migration runner",
+  "no generic `ImportRunner`, `ImportAdapter`, `ImportJob`, `ExportRunner` or `rustok-import` framework",
+  "Taxonomy/Channel owner boundaries",
   "no test, Cargo command",
 ]) {
   requireText(packet, marker, `${packetPath}: missing ${marker}`);
