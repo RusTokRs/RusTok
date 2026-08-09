@@ -41,6 +41,7 @@ pub use builder::PagesBuilderSaveSnapshot;
 pub use builder_rollout_settings::{
     PagesBuilderRolloutSnapshot, PagesBuilderRolloutSnapshotError,
     fetch_pages_builder_rollout_snapshot, pages_editor_capabilities_for_rollout,
+    pages_editor_capabilities_for_snapshot,
 };
 pub use contribution_browser_intent::{
     PagesBrowserIntentAccessError, dispatch_pages_browser_intent,

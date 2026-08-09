@@ -7,13 +7,41 @@ use rustok_page_builder::{
     dto::{
         BuilderCapabilityKind, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, PageBuilderErrorKind,
     },
+    health::ProviderHealthSnapshot,
     rollout::{BuilderCapabilityFlags, BuilderRolloutError, ensure_capability},
 };
 use sea_orm::DatabaseConnection;
 
 const MODULE_SLUG: &str = "pages";
 
-#[derive(Clone, Debug, PartialEq, Eq, SimpleObject)]
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct GqlPageBuilderProviderHealthSnapshot {
+    pub state: String,
+    pub degradation_reasons: Vec<String>,
+    pub preview_p95_ms: u64,
+    pub publish_p95_ms: u64,
+    pub sanitize_failure_rate: f64,
+    pub runtime_error_rate: f64,
+}
+
+impl From<&ProviderHealthSnapshot> for GqlPageBuilderProviderHealthSnapshot {
+    fn from(snapshot: &ProviderHealthSnapshot) -> Self {
+        Self {
+            state: snapshot.state.as_str().to_string(),
+            degradation_reasons: snapshot
+                .degradation_reasons
+                .iter()
+                .map(|reason| reason.as_str().to_string())
+                .collect(),
+            preview_p95_ms: snapshot.observed.preview_p95_ms,
+            publish_p95_ms: snapshot.observed.publish_p95_ms,
+            sanitize_failure_rate: snapshot.observed.sanitize_failure_rate,
+            runtime_error_rate: snapshot.observed.runtime_error_rate,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
 pub struct GqlPageBuilderRolloutSnapshot {
     pub tenant_slug: String,
     pub builder_enabled: bool,
@@ -21,6 +49,7 @@ pub struct GqlPageBuilderRolloutSnapshot {
     pub properties_enabled: bool,
     pub publish_enabled: bool,
     pub provider_health_observed: bool,
+    pub provider_health: Option<GqlPageBuilderProviderHealthSnapshot>,
 }
 
 impl GqlPageBuilderRolloutSnapshot {
@@ -32,7 +61,20 @@ impl GqlPageBuilderRolloutSnapshot {
             properties_enabled: flags.properties_enabled,
             publish_enabled: flags.publish_enabled,
             provider_health_observed: false,
+            provider_health: None,
         }
+    }
+
+    /// Build the transport shape for a deployment-bound provider-health snapshot.
+    ///
+    /// The live Pages query intentionally does not call this until retained deployment evaluator
+    /// evidence has been owner-accepted and bound by server-owned authority. Keeping the mapping
+    /// here makes the future transport explicit without converting source readiness into an
+    /// observed-health claim.
+    pub fn with_provider_health(mut self, health: &ProviderHealthSnapshot) -> Self {
+        self.provider_health = Some(GqlPageBuilderProviderHealthSnapshot::from(health));
+        self.provider_health_observed = self.provider_health.is_some();
+        self
     }
 }
 
@@ -100,6 +142,8 @@ impl PageBuilderRolloutQuery {
         ensure_pages_read_authority(auth, tenant)?;
         let flags = load_rollout_flags(db, tenant).await?;
 
+        // Provider health remains deliberately unobserved. A later server-owned binding may call
+        // `with_provider_health` only after retained deployment evaluation and owner acceptance.
         Ok(GqlPageBuilderRolloutSnapshot::new(tenant, flags))
     }
 
@@ -205,6 +249,7 @@ fn ensure_pages_read_authority(auth: &AuthContext, tenant: &TenantContext) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_page_builder::health::{ProviderHealthState, ProviderSloObservations};
     use uuid::Uuid;
 
     fn tenant(id: Uuid) -> TenantContext {
@@ -286,5 +331,28 @@ mod tests {
         assert!(allowed.allowed);
         assert!(allowed.error_kind.is_none());
         assert!(allowed.error_code.is_none());
+    }
+
+    #[test]
+    fn observed_transport_mapping_is_derived_from_canonical_health_snapshot() {
+        let tenant = tenant(Uuid::new_v4());
+        let health = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1_600,
+            publish_p95_ms: 2_000,
+            sanitize_failure_rate: 0.0,
+            runtime_error_rate: 0.0,
+        });
+        assert_eq!(health.state, ProviderHealthState::Degraded);
+
+        let payload = GqlPageBuilderRolloutSnapshot::new(
+            &tenant,
+            BuilderCapabilityFlags::default(),
+        )
+        .with_provider_health(&health);
+        assert!(payload.provider_health_observed);
+        let transported = payload.provider_health.expect("health payload");
+        assert_eq!(transported.state, "degraded");
+        assert_eq!(transported.preview_p95_ms, 1_600);
+        assert_eq!(transported.degradation_reasons, vec!["provider_unhealthy"]);
     }
 }
