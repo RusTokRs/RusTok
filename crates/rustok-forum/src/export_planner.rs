@@ -304,3 +304,7 @@ const fn kind_label(kind: ForumExportReadTargetKind) -> &'static str {
 #[path = "export_inventory.rs"]
 mod inventory;
 pub use inventory::*;
+
+#[path = "export_page.rs"]
+mod page;
+pub use page::*;
