@@ -26,6 +26,7 @@ mod public_error;
 mod runtime;
 mod seo_targets;
 pub mod services;
+mod storefront_http_read_port;
 mod storefront_tag_read_port;
 
 pub use catalog_command_port::ProductCatalogCommandPort;
@@ -71,6 +72,9 @@ pub use services::{
     product_attribute_integer_term, product_attribute_localized_presence_term,
     product_attribute_localized_text_expr, product_attribute_localized_text_term,
     product_attribute_option_term, product_attribute_text_term,
+};
+pub use storefront_http_read_port::{
+    LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort,
 };
 pub use storefront_tag_read_port::{
     ProductStorefrontTagHydration, ProductStorefrontTagHydrationItem,

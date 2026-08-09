@@ -31,12 +31,14 @@ function forbid(source, marker, description) {
 
 const runtimePath = "crates/rustok-product/src/runtime.rs";
 const libPath = "crates/rustok-product/src/lib.rs";
+const httpPortPath = "crates/rustok-product/src/storefront_http_read_port.rs";
 const tagPortPath = "crates/rustok-product/src/storefront_tag_read_port.rs";
 const hostPath = "apps/server/src/services/commerce_provider_runtime.rs";
 const registryPath = "crates/rustok-product/contracts/product-fba-registry.json";
 const planPath = "crates/rustok-product/docs/implementation-plan.md";
 const runtime = read(runtimePath);
 const lib = read(libPath);
+const httpPort = read(httpPortPath);
 const tagPort = read(tagPortPath);
 const host = read(hostPath);
 const registry = read(registryPath);
@@ -47,22 +49,37 @@ requireAll(runtime, [
   "EmbeddedNative",
   "External",
   "pub struct ProductCatalogReadRuntime",
+  "storefront_http_read_port: Option<Arc<dyn ProductStorefrontHttpReadPort>>",
   "storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>",
   "pub fn in_process",
+  ".with_storefront_http_read_port(catalog.clone())",
   ".with_storefront_tag_read_port(catalog)",
   "pub fn external",
   "pub fn read_port",
+  "pub fn with_storefront_http_read_port",
+  "pub fn storefront_http_read_port",
   "pub fn storefront_tag_read_port",
   "pub const fn profile",
 ], "Product owner runtime");
 requireAll(lib, [
   "mod runtime;",
+  "mod storefront_http_read_port;",
   "mod storefront_tag_read_port;",
   "ProductCatalogReadProfile",
   "ProductCatalogReadRuntime",
+  "ProductStorefrontHttpReadPort",
+  "LegacyStorefrontHttpProductsRequest",
   "ProductStorefrontTagReadPort",
   "ProductStorefrontTagHydrationRequest",
 ], "Product public exports");
+requireAll(httpPort, [
+  "pub trait ProductStorefrontHttpReadPort",
+  "impl ProductStorefrontHttpReadPort for CatalogService",
+  "MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100",
+  "context.require_policy(PortCallPolicy::read())?",
+  "rustok_inventory::is_metadata_visible_for_public_channel(",
+  ".load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))",
+], "Product optional Storefront HTTP capability");
 requireAll(tagPort, [
   "pub trait ProductStorefrontTagReadPort",
   "impl ProductStorefrontTagReadPort for CatalogService",
@@ -110,7 +127,13 @@ requireAll(plan, [
 ], "Product implementation plan");
 
 const externalStart = runtime.indexOf("pub fn external(read_port: Arc<dyn ProductCatalogReadPort>)");
+const withHttpStart = runtime.indexOf("pub fn with_storefront_http_read_port(");
 const withTagStart = runtime.indexOf("pub fn with_storefront_tag_read_port(");
+if (externalStart < 0 || withHttpStart <= externalStart) {
+  failures.push("Product owner runtime: external/HTTP capability boundaries are missing");
+} else if (runtime.slice(externalStart, withHttpStart).includes("with_storefront_http_read_port")) {
+  failures.push("Product owner runtime: external profile must not silently install embedded HTTP list capability");
+}
 if (externalStart < 0 || withTagStart <= externalStart) {
   failures.push("Product owner runtime: external/tag capability boundaries are missing");
 } else if (runtime.slice(externalStart, withTagStart).includes("with_storefront_tag_read_port")) {

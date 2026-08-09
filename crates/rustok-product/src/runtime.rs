@@ -5,7 +5,8 @@ use sea_orm::DatabaseConnection;
 
 use crate::{
     CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort, ProductCatalogSchemaReadPort,
-    ProductCatalogSchemaService, ProductCatalogSchemaWritePort, ProductStorefrontTagReadPort,
+    ProductCatalogSchemaService, ProductCatalogSchemaWritePort, ProductStorefrontHttpReadPort,
+    ProductStorefrontTagReadPort,
 };
 
 /// Host-selected execution profile for the Product catalog read boundary.
@@ -33,6 +34,7 @@ impl ProductCatalogReadProfile {
 pub struct ProductCatalogReadRuntime {
     read_port: Arc<dyn ProductCatalogReadPort>,
     schema_read_port: Option<Arc<dyn ProductCatalogSchemaReadPort>>,
+    storefront_http_read_port: Option<Arc<dyn ProductStorefrontHttpReadPort>>,
     storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>,
     profile: ProductCatalogReadProfile,
 }
@@ -45,6 +47,7 @@ impl ProductCatalogReadRuntime {
         Self {
             read_port,
             schema_read_port: None,
+            storefront_http_read_port: None,
             storefront_tag_read_port: None,
             profile,
         }
@@ -54,6 +57,7 @@ impl ProductCatalogReadRuntime {
         let catalog = Arc::new(CatalogService::new(db.clone(), event_bus.clone()));
         Self::new(catalog.clone(), ProductCatalogReadProfile::EmbeddedNative)
             .with_schema_read_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
+            .with_storefront_http_read_port(catalog.clone())
             .with_storefront_tag_read_port(catalog)
     }
 
@@ -66,6 +70,14 @@ impl ProductCatalogReadRuntime {
         schema_read_port: Arc<dyn ProductCatalogSchemaReadPort>,
     ) -> Self {
         self.schema_read_port = Some(schema_read_port);
+        self
+    }
+
+    pub fn with_storefront_http_read_port(
+        mut self,
+        storefront_http_read_port: Arc<dyn ProductStorefrontHttpReadPort>,
+    ) -> Self {
+        self.storefront_http_read_port = Some(storefront_http_read_port);
         self
     }
 
@@ -83,6 +95,10 @@ impl ProductCatalogReadRuntime {
 
     pub fn schema_read_port(&self) -> Option<Arc<dyn ProductCatalogSchemaReadPort>> {
         self.schema_read_port.clone()
+    }
+
+    pub fn storefront_http_read_port(&self) -> Option<Arc<dyn ProductStorefrontHttpReadPort>> {
+        self.storefront_http_read_port.clone()
     }
 
     pub fn storefront_tag_read_port(&self) -> Option<Arc<dyn ProductStorefrontTagReadPort>> {
