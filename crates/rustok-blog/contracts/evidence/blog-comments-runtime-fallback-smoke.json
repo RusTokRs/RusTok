@@ -42,7 +42,8 @@
     ],
     "propagated_error_policy": "all_other_blog_errors",
     "cached_thread_snapshot": "source_verified_no_compile",
-    "comment_form_fallback": "not_applicable_no_storefront_write_surface",
+    "comment_form_fallback": "planned",
+    "comment_form_fallback_interpretation": "legacy_registry_compatibility_only_see_storefront_write_surface",
     "degraded_payload": {
       "cache_hit": {
         "cached_snapshot": true,
