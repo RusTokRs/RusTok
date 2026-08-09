@@ -14,7 +14,7 @@ The platform already has the correct cache owner:
 - server runtime initialization retains one process-wide `CacheService`;
 - `ModuleRuntimeExtensions` transfers typed host capabilities into both GraphQL and server-function `HostRuntimeContext` composition.
 
-A second Comments table, queue, relay, Redis client, or storefront-only cache owner is therefore unnecessary.
+A second Comments table, queue, relay, Redis client, or storefront-only cache owner is therefore unnecessary. The machine ownership invariant for this slice is `comments_owner_only`: the snapshot is a disposable public read projection and never becomes an alternate Comments authority.
 
 ## Slice 99 — one Blog snapshot policy for both storefront transports
 
