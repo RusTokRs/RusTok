@@ -40,7 +40,7 @@ pub async fn update_module_term_in_tx(
     module_slug: &str,
     input: ModuleTermUpdateInput,
 ) -> TaxonomyResult<ModuleTermMutationResult> {
-    // The pre-existing public update path requires Update and then Read when it
+    // The existing public update path requires Update and then Read when it
     // materializes the response. Preserve that successful-call permission set.
     enforce_scope(security, Resource::Taxonomy, Action::Update)?;
     enforce_scope(security, Resource::Taxonomy, Action::Read)?;
@@ -57,99 +57,105 @@ pub async fn update_module_term_in_tx(
         .one(txn)
         .await?;
 
-    let (translation_id, name, slug, target_revision, created_at) =
-        match existing_translation {
-            Some(existing) => {
-                let name = input.name.clone().unwrap_or_else(|| existing.name.clone());
-                validate_term_name(&name)?;
-                let slug = match input.slug.as_deref() {
-                    Some(slug) => normalize_non_empty_slug(slug)?,
-                    None if input.name.is_some() => normalize_non_empty_slug(&name)?,
-                    None => existing.slug.clone(),
-                };
-                ensure_translation_slug_available_in_tx(
-                    txn,
-                    tenant_id,
-                    kind,
-                    &module_scope,
-                    &locale,
-                    &slug,
-                    Some(term_id),
+    let (name, slug, target_revision, created_at) = match existing_translation {
+        Some(existing) => {
+            let name = input.name.clone().unwrap_or_else(|| existing.name.clone());
+            validate_term_name(&name)?;
+            let slug = match input.slug.as_deref() {
+                Some(slug) => normalize_non_empty_slug(slug)?,
+                None if input.name.is_some() => normalize_non_empty_slug(&name)?,
+                None => existing.slug.clone(),
+            };
+            ensure_translation_slug_available_in_tx(
+                txn,
+                tenant_id,
+                kind,
+                &module_scope,
+                &locale,
+                &slug,
+                Some(term_id),
+            )
+            .await?;
+
+            let revision = next_translation_revision(term_id, &locale, existing.revision)?;
+            let updated = taxonomy_term_translation::Entity::update_many()
+                .col_expr(
+                    taxonomy_term_translation::Column::Name,
+                    Expr::value(name.clone()),
                 )
+                .col_expr(
+                    taxonomy_term_translation::Column::Slug,
+                    Expr::value(slug.clone()),
+                )
+                .col_expr(
+                    taxonomy_term_translation::Column::Revision,
+                    Expr::value(revision),
+                )
+                .col_expr(
+                    taxonomy_term_translation::Column::UpdatedAt,
+                    Expr::value(now.fixed_offset()),
+                )
+                .filter(taxonomy_term_translation::Column::Id.eq(existing.id))
+                .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
+                .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_translation::Column::Revision.eq(existing.revision))
+                .exec(txn)
                 .await?;
-
-                let revision = next_translation_revision(term_id, &locale, existing.revision)?;
-                let updated = taxonomy_term_translation::Entity::update_many()
-                    .col_expr(taxonomy_term_translation::Column::Name, Expr::value(name.clone()))
-                    .col_expr(taxonomy_term_translation::Column::Slug, Expr::value(slug.clone()))
-                    .col_expr(
-                        taxonomy_term_translation::Column::Revision,
-                        Expr::value(revision),
-                    )
-                    .col_expr(
-                        taxonomy_term_translation::Column::UpdatedAt,
-                        Expr::value(now.fixed_offset()),
-                    )
-                    .filter(taxonomy_term_translation::Column::Id.eq(existing.id))
-                    .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
-                    .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-                    .filter(taxonomy_term_translation::Column::Revision.eq(existing.revision))
-                    .exec(txn)
-                    .await?;
-                if updated.rows_affected != 1 {
-                    return Err(TaxonomyError::conflict(
-                        "taxonomy term translation changed before the module update could commit",
-                    ));
-                }
-
-                (
-                    existing.id,
-                    name,
-                    slug,
-                    revision,
-                    DateTime::<Utc>::from(existing.created_at),
-                )
+            if updated.rows_affected != 1 {
+                return Err(TaxonomyError::conflict(
+                    "taxonomy term translation changed before the module update could commit",
+                ));
             }
-            None => {
-                let name = input.name.clone().ok_or_else(|| {
-                    TaxonomyError::validation("Name is required when adding a new locale")
-                })?;
-                validate_term_name(&name)?;
-                let slug = normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&name))?;
-                ensure_translation_slug_available_in_tx(
-                    txn,
-                    tenant_id,
-                    kind,
-                    &module_scope,
-                    &locale,
-                    &slug,
-                    Some(term_id),
-                )
-                .await?;
 
-                let translation_id = Uuid::new_v4();
-                taxonomy_term_translation::ActiveModel {
-                    id: Set(translation_id),
-                    term_id: Set(term_id),
-                    tenant_id: Set(tenant_id),
-                    locale: Set(locale.clone()),
-                    name: Set(name.clone()),
-                    slug: Set(slug.clone()),
-                    description: Set(None),
-                    revision: Set(1),
-                    created_at: Set(now.fixed_offset()),
-                    updated_at: Set(now.fixed_offset()),
-                }
-                .insert(txn)
-                .await?;
+            (
+                name,
+                slug,
+                revision,
+                existing.created_at.with_timezone(&Utc),
+            )
+        }
+        None => {
+            let name = input.name.clone().ok_or_else(|| {
+                TaxonomyError::validation("Name is required when adding a new locale")
+            })?;
+            validate_term_name(&name)?;
+            let slug = normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&name))?;
+            ensure_translation_slug_available_in_tx(
+                txn,
+                tenant_id,
+                kind,
+                &module_scope,
+                &locale,
+                &slug,
+                Some(term_id),
+            )
+            .await?;
 
-                (translation_id, name, slug, 1, now)
+            taxonomy_term_translation::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                term_id: Set(term_id),
+                tenant_id: Set(tenant_id),
+                locale: Set(locale.clone()),
+                name: Set(name.clone()),
+                slug: Set(slug.clone()),
+                description: Set(None),
+                revision: Set(1),
+                created_at: Set(now.fixed_offset()),
+                updated_at: Set(now.fixed_offset()),
             }
-        };
+            .insert(txn)
+            .await?;
+
+            (name, slug, 1, now)
+        }
+    };
 
     let resource_revision = next_term_revision(&term)?;
     let updated = taxonomy_term::Entity::update_many()
-        .col_expr(taxonomy_term::Column::Revision, Expr::value(resource_revision))
+        .col_expr(
+            taxonomy_term::Column::Revision,
+            Expr::value(resource_revision),
+        )
         .col_expr(
             taxonomy_term::Column::UpdatedAt,
             Expr::value(now.fixed_offset()),
@@ -182,7 +188,6 @@ pub async fn update_module_term_in_tx(
     )
     .await?;
 
-    let _ = translation_id;
     Ok(ModuleTermMutationResult {
         id: term_id,
         tenant_id,
