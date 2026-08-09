@@ -22,7 +22,7 @@ mod module_cli_args;
 mod module_commands;
 mod module_contracts;
 #[path = "../../crates/rustok-build/src/module_manifest_contribution.rs"]
-mod module_manifest_contribution;
+pub mod module_manifest_contribution;
 mod module_mutation_commands;
 mod module_operation_previews;
 mod module_permission_contracts;

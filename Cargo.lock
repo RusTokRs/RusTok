@@ -14345,6 +14345,7 @@ dependencies = [
  "fly",
  "rustok-api",
  "rustok-core",
+ "rustok-telemetry",
  "sea-orm-migration",
  "serde",
  "serde_json",

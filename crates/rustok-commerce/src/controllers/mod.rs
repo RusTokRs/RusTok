@@ -45,6 +45,82 @@ pub struct CommerceHttpRuntime {
 }
 
 impl CommerceHttpRuntime {
+    pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        let payment_provider_registry =
+            PaymentProviderRegistry::with_manual_provider();
+        let fulfillment_provider_registry =
+            FulfillmentProviderRegistry::with_manual_provider();
+        let shipping_option_read_runtime =
+            crate::graphql_runtime::CommerceShippingOptionReadRuntime::in_process(db.clone());
+        let shipping_option_admin_command_runtime =
+            rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(db.clone());
+        let fulfillment_lifecycle_read_runtime =
+            crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime::in_process(db.clone());
+        let fulfillment_admin_command_runtime =
+            rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process(
+                db.clone(),
+                fulfillment_provider_registry.clone(),
+            );
+        let fulfillment_admin_create_command_runtime =
+            rustok_fulfillment::FulfillmentAdminCreateCommandRuntime::in_process(
+                db.clone(),
+                fulfillment_provider_registry.clone(),
+            );
+        let order_read_runtime =
+            crate::graphql_runtime::CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone());
+        let order_admin_command_runtime =
+            rustok_order::OrderAdminCommandRuntime::in_process(db.clone(), event_bus.clone());
+        let payment_order_read_runtime =
+            rustok_payment::PaymentOrderReadRuntime::in_process(db.clone());
+        let payment_cart_read_runtime =
+            rustok_payment::PaymentCartReadRuntime::in_process(db.clone());
+        let payment_collection_runtime =
+            rustok_payment::PaymentCollectionRuntime::in_process(db.clone());
+        let payment_admin_read_runtime =
+            rustok_payment::PaymentAdminReadRuntime::in_process(db.clone());
+        let payment_admin_collection_command_runtime =
+            rustok_payment::PaymentAdminCollectionCommandRuntime::in_process(
+                db.clone(),
+                payment_provider_registry.clone(),
+            );
+        let payment_admin_refund_command_runtime =
+            rustok_payment::PaymentAdminRefundCommandRuntime::in_process(
+                db.clone(),
+                payment_provider_registry.clone(),
+            );
+        let product_catalog_read_runtime =
+            rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
+        let product_catalog_command_runtime =
+            rustok_product::ProductCatalogCommandRuntime::in_process(db.clone(), event_bus.clone());
+        #[cfg(feature = "marketplace-financial")]
+        let marketplace_financial_runtime =
+            crate::MarketplaceFinancialRuntime::in_process(db.clone());
+
+        Self {
+            db,
+            event_bus,
+            payment_provider_registry,
+            fulfillment_provider_registry,
+            shipping_option_read_runtime,
+            shipping_option_admin_command_runtime,
+            fulfillment_lifecycle_read_runtime,
+            fulfillment_admin_command_runtime,
+            fulfillment_admin_create_command_runtime,
+            order_read_runtime,
+            order_admin_command_runtime,
+            payment_order_read_runtime,
+            payment_cart_read_runtime,
+            payment_collection_runtime,
+            payment_admin_read_runtime,
+            payment_admin_collection_command_runtime,
+            payment_admin_refund_command_runtime,
+            product_catalog_read_runtime,
+            product_catalog_command_runtime,
+            #[cfg(feature = "marketplace-financial")]
+            marketplace_financial_runtime,
+        }
+    }
+
     fn db_clone(&self) -> DatabaseConnection {
         self.db.clone()
     }

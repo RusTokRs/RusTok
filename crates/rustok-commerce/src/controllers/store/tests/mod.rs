@@ -235,33 +235,7 @@ pub(crate) fn test_app_context(
     db: sea_orm::DatabaseConnection,
 ) -> crate::controllers::CommerceHttpRuntime {
     let event_bus = mock_transactional_event_bus();
-    #[cfg(feature = "marketplace-financial")]
-    let marketplace_financial_runtime = crate::MarketplaceFinancialRuntime::in_process(db.clone());
-    let shipping_option_read_runtime =
-        crate::graphql_runtime::CommerceShippingOptionReadRuntime::in_process(db.clone());
-    let fulfillment_lifecycle_read_runtime =
-        crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime::in_process(db.clone());
-    let order_read_runtime =
-        crate::graphql_runtime::CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone());
-    let product_catalog_read_runtime =
-        rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
-    let product_catalog_command_runtime =
-        rustok_product::ProductCatalogCommandRuntime::in_process(db.clone(), event_bus.clone());
-    crate::controllers::CommerceHttpRuntime {
-        db,
-        event_bus,
-        payment_provider_registry:
-            rustok_payment::providers::PaymentProviderRegistry::with_manual_provider(),
-        fulfillment_provider_registry:
-            rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider(),
-        shipping_option_read_runtime,
-        fulfillment_lifecycle_read_runtime,
-        order_read_runtime,
-        product_catalog_read_runtime,
-        product_catalog_command_runtime,
-        #[cfg(feature = "marketplace-financial")]
-        marketplace_financial_runtime,
-    }
+    crate::controllers::CommerceHttpRuntime::in_process(db, event_bus)
 }
 
 pub(crate) async fn seed_store_tenant_context(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {

@@ -12,7 +12,7 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use rustok_translation_targets::{
-    FieldKey, OpaqueCursor, ReadTranslationResourceRequest, TranslationFieldPatch,
+    FieldKey, ReadTranslationResourceRequest, TranslationFieldPatch,
     TranslationPatchRequest, TranslationResourceLifecycle, TranslationResourceSnapshot,
     TranslationTargetChangesRequest, TranslationTargetProgressRequest, TranslationTargetProvider,
 };
@@ -20,7 +20,7 @@ use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
     QueryFilter,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use tokio::sync::Barrier;
 use uuid::Uuid;
 
