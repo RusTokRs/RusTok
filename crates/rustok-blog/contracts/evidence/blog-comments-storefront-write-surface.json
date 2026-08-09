@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "storefront_comments_write_surface",
+  "owner": "rustok-blog-storefront",
+  "status": "source_verified_absent",
+  "actualization": "comment_form_fallback_not_applicable_no_storefront_write_surface",
+  "legacy_degraded_mode": "hide_comment_form",
+  "legacy_registry_semantics": "compatibility_vocabulary_not_active_storefront_surface",
+  "runner": "scripts/verify/verify-blog-comments-storefront-write-surface.mjs",
+  "self_test": "scripts/verify/verify-blog-comments-storefront-write-surface.test.mjs",
+  "source_inventory": {
+    "readme": "crates/rustok-blog/storefront/README.md",
+    "ui": "crates/rustok-blog/storefront/src/ui/leptos.rs",
+    "graphql_transport": "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+    "native_transport": "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+    "transport_facade": "crates/rustok-blog/storefront/src/transport/mod.rs",
+    "model": "crates/rustok-blog/storefront/src/model.rs"
+  },
+  "source_contract": {
+    "storefront_responsibility_is_dual_path_read": true,
+    "approved_public_comments_are_read_only_projection": true,
+    "graphql_transport_contains_storefront_query_only": true,
+    "native_transport_contains_storefront_data_read_only": true,
+    "leptos_ui_renders_comments_without_submit_surface": true,
+    "create_comment_surface_present": false,
+    "comment_form_present": false,
+    "textarea_present": false,
+    "submit_handler_present": false,
+    "production_behavior_changed": false,
+    "runtime_execution_observed": false,
+    "browser_execution_observed": false
+  },
+  "planning_effect": {
+    "comment_form_fallback": "not_applicable_no_storefront_write_surface",
+    "cached_thread_snapshot": "source_ready_maintainer_execution_pending",
+    "fallback_smoke_status": "planned_runtime_execution_only",
+    "new_storefront_write_surface_authorized": false
+  },
+  "execution": []
+}
