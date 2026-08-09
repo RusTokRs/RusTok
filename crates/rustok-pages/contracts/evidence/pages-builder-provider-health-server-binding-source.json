@@ -1,0 +1,120 @@
+{
+  "format": "pages_builder_provider_health_server_binding_source_v1",
+  "status": "source_ready_maintainer_activation_pending",
+  "provider": "page_builder",
+  "predecessors": [
+    "pages_builder_provider_health_transport_source_v1",
+    "pages_builder_provider_health_owner_acceptance_source_v1"
+  ],
+  "configuration": {
+    "acceptance_path_env": "RUSTOK_PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH",
+    "deployment_id_env": "RUSTOK_PAGES_PROVIDER_HEALTH_DEPLOYMENT_ID",
+    "deployment_image_digest_env": "RUSTOK_PAGES_PROVIDER_HEALTH_DEPLOYMENT_IMAGE_DIGEST",
+    "source_commit_env": "RUSTOK_SOURCE_COMMIT",
+    "acceptance_path_must_be_absolute": true,
+    "all_pages_binding_values_required_when_configured": true,
+    "all_pages_binding_values_absent_means_unobserved": true,
+    "invalid_or_partial_configuration_action": "unobserved_with_bounded_warning",
+    "invalid_configuration_fails_application_startup": false
+  },
+  "accepted_packet": {
+    "format": "pages_builder_provider_health_owner_acceptance_v1",
+    "required_status": "owner_accepted_server_binding_pending",
+    "decision": "accept_for_pages_binding",
+    "rollback_action": "restore_unobserved_provider_health",
+    "maximum_bytes": 2097152,
+    "regular_non_symlink_file_required_per_read": true,
+    "strict_unknown_fields_rejected": true,
+    "operator_asserted_owner_id_revalidated": true,
+    "cryptographic_signature_claim_must_be_false": true,
+    "free_text_reason_retained_must_be_false": true,
+    "source_hashes_verified_against_checkout_must_be_true": true,
+    "raw_evaluation_path_persisted_must_be_false": true,
+    "prior_promotion_claims_must_all_be_false": true
+  },
+  "live_identity_binding": {
+    "source_commit_must_equal_live_environment": true,
+    "deployment_id_must_equal_live_environment": true,
+    "deployment_image_digest_must_equal_live_environment": true,
+    "binding_required_live_source_commit_must_equal_live_environment": true,
+    "binding_required_image_digest_must_equal_live_environment": true,
+    "canonical_source_commit_required": true,
+    "bounded_deployment_id_required": true,
+    "canonical_repo_digest_required": true
+  },
+  "evidence_revalidation": {
+    "expected_target_count_range": [1, 64],
+    "expected_target_count_must_equal_verified_backend_target_count": true,
+    "query_window_seconds_range": [300, 86400],
+    "freshness_seconds_minimum": 60,
+    "freshness_must_not_exceed_query_window": true,
+    "identity_age_must_cover_query_window": true,
+    "identity_age_maximum_seconds": 86400,
+    "minimum_preview_samples": 20,
+    "minimum_publish_samples": 20,
+    "canonical_provider_health_snapshot_recomputed": true,
+    "canonical_slo_evaluation_recomputed": true,
+    "evaluation_timestamp_must_be_canonical_utc_millis": true,
+    "decision_timestamp_must_be_canonical_utc_millis": true,
+    "decision_must_not_predate_evaluation": true
+  },
+  "freshness_lease": {
+    "checked_on_every_rollout_snapshot_read": true,
+    "clock_source": "server_utc_clock",
+    "future_clock_skew_tolerance_seconds": 5,
+    "maximum_observed_until": "evaluation.evaluated_at + deployment.freshness_seconds",
+    "expired_action": "unobserved",
+    "missing_packet_action": "unobserved",
+    "rejected_packet_action": "unobserved",
+    "invalid_packet_action": "unobserved",
+    "identity_mismatch_action": "unobserved"
+  },
+  "hot_replacement": {
+    "packet_reloaded_on_every_rollout_snapshot_read": true,
+    "accepted_to_rejected_transition_requires_restart": false,
+    "rejected_to_accepted_transition_requires_restart": false,
+    "packet_removal_requires_restart": false,
+    "atomic_packet_replacement_supported": true
+  },
+  "composition": {
+    "module_registration": "PagesModule::register_runtime_extensions",
+    "shared_authority_type": "SharedPagesProviderHealthAuthority",
+    "graphql_manifest_runtime_data_factory": "graphql::attach_schema_data",
+    "graphql_runtime_data_type": "PagesGraphqlRuntimeData",
+    "rollout_query": "pageBuilderRolloutSnapshot",
+    "default_without_fresh_authority": "providerHealthObserved=false/providerHealth=null",
+    "fresh_accepted_authority": "providerHealthObserved=true/providerHealth=canonical snapshot"
+  },
+  "current_consumer_boundary": {
+    "admin_transport_accepts_typed_health": true,
+    "workspace_uses_health_for_capabilities": false,
+    "authoritative_ssr_uses_health_for_capabilities": false,
+    "standalone_browser_intent_uses_health_for_capabilities": false
+  },
+  "non_claims": {
+    "runtime_identity_capture_executed": false,
+    "runtime_deployment_evaluator_executed": false,
+    "owner_acceptance_executed": false,
+    "server_binding_activated_with_live_packet": false,
+    "graphql_observed_health_request_executed": false,
+    "pages_ui_provider_health_bound": false,
+    "pages_ssr_provider_health_bound": false,
+    "standalone_browser_intent_provider_health_bound": false,
+    "pages_reference_consumer_gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false,
+    "tests_run": false,
+    "node_verifier_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "workflow_or_ci_run": false
+  },
+  "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs",
+  "next_cursor": {
+    "server_provider_health_binding": "source_ready_maintainer_activation_pending",
+    "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
+    "ui_ssr_browser_intent_health_binding": "source_open_runtime_activation_blocked",
+    "observed_health_acceptance": "pending"
+  }
+}
