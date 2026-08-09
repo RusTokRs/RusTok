@@ -35,7 +35,7 @@ pub use artifact_repair::{
 pub use builder_rollout::{
     GqlPageBuilderCapability, GqlPageBuilderCapabilityPreflight, GqlPageBuilderRolloutSnapshot,
 };
-pub use runtime_data::attach_schema_data;
+pub use runtime_data::{PagesGraphqlRuntimeData, attach_schema_data};
 pub use scenario_baseline::{
     GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioReleaseStatus,
     SaveGqlPageBuilderScenarioBaselineInput,
