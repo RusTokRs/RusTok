@@ -28,9 +28,16 @@ const LOCALE_RESOURCE_UNREAD_TOPIC: &str = "unread_topic";
 const LOCALE_OUTCOME_EXACT: &str = "exact";
 const LOCALE_OUTCOME_FALLBACK: &str = "fallback";
 const LOCALE_OUTCOME_MISSING: &str = "missing";
+const UNREAD_TOPIC_STATE_IMPLICIT: &str = "implicit";
+const UNREAD_TOPIC_STATE_REPLY: &str = "reply";
+const UNREAD_TOPIC_STATE_REVISION: &str = "revision";
+const UNREAD_TOPIC_STATE_REPLY_AND_REVISION: &str = "reply_and_revision";
+const UNREAD_TOPIC_STATE_READ: &str = "read";
 
 static FORUM_GRAPHQL_LOCALE_RESOLUTION_TOTAL: OnceLock<IntCounterVec> = OnceLock::new();
 static FORUM_GRAPHQL_LOCALE_RESOLUTION_REGISTERED: AtomicBool = AtomicBool::new(false);
+static FORUM_GRAPHQL_UNREAD_TOPIC_STATE_TOTAL: OnceLock<IntCounterVec> = OnceLock::new();
+static FORUM_GRAPHQL_UNREAD_TOPIC_STATE_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Enum)]
 pub enum GqlForumTopicStatus {
@@ -168,6 +175,7 @@ impl ForumReadStateQuery {
             )
             .await?;
         observe_unread_topic_locale_resolution(&page.items);
+        observe_unread_topic_activity(&page.items);
 
         Ok(GqlForumTopicUnreadPage {
             items: page.items.into_iter().map(map_unread_item).collect(),
@@ -427,6 +435,63 @@ fn observe_unread_topic_locale_resolution(items: &[TopicUnreadReadModel]) {
     }
 }
 
+fn unread_topic_activity_state(
+    read_state_explicit: bool,
+    unread_count: i64,
+    has_unread_topic_revision: bool,
+) -> &'static str {
+    if !read_state_explicit {
+        UNREAD_TOPIC_STATE_IMPLICIT
+    } else if unread_count > 0 && has_unread_topic_revision {
+        UNREAD_TOPIC_STATE_REPLY_AND_REVISION
+    } else if unread_count > 0 {
+        UNREAD_TOPIC_STATE_REPLY
+    } else if has_unread_topic_revision {
+        UNREAD_TOPIC_STATE_REVISION
+    } else {
+        UNREAD_TOPIC_STATE_READ
+    }
+}
+
+fn forum_graphql_unread_topic_state_counter() -> Option<&'static IntCounterVec> {
+    let counter = FORUM_GRAPHQL_UNREAD_TOPIC_STATE_TOTAL.get_or_init(|| {
+        IntCounterVec::new(
+            Opts::new(
+                "rustok_forum_graphql_unread_topic_state_total",
+                "Forum GraphQL unread-topic item observations by fixed current unread activity state",
+            ),
+            &["state"],
+        )
+        .expect("Forum GraphQL unread-topic state metric descriptor must be valid")
+    });
+
+    if FORUM_GRAPHQL_UNREAD_TOPIC_STATE_REGISTERED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+        && rustok_telemetry::register_runtime_collector(Box::new(counter.clone())).is_err()
+    {
+        FORUM_GRAPHQL_UNREAD_TOPIC_STATE_REGISTERED.store(false, Ordering::Release);
+        return None;
+    }
+
+    Some(counter)
+}
+
+fn observe_unread_topic_activity(items: &[TopicUnreadReadModel]) {
+    let Some(counter) = forum_graphql_unread_topic_state_counter() else {
+        return;
+    };
+
+    for item in items {
+        let state = unread_topic_activity_state(
+            item.read_state_explicit,
+            item.unread_count,
+            item.has_unread_topic_revision,
+        );
+        counter.with_label_values(&[state]).inc();
+    }
+}
+
 fn map_topic(topic: TopicReadModel) -> GqlForumTopicReadModel {
     GqlForumTopicReadModel {
         id: topic.id,
@@ -489,7 +554,9 @@ fn map_batch_result(result: MarkForumTopicsReadBatchResult) -> GqlForumTopicsRea
 mod tests {
     use super::{
         LOCALE_OUTCOME_EXACT, LOCALE_OUTCOME_FALLBACK, LOCALE_OUTCOME_MISSING,
-        locale_resolution_outcome,
+        UNREAD_TOPIC_STATE_IMPLICIT, UNREAD_TOPIC_STATE_READ, UNREAD_TOPIC_STATE_REPLY,
+        UNREAD_TOPIC_STATE_REPLY_AND_REVISION, UNREAD_TOPIC_STATE_REVISION,
+        locale_resolution_outcome, unread_topic_activity_state,
     };
 
     #[test]
@@ -502,6 +569,30 @@ mod tests {
         assert_eq!(
             locale_resolution_outcome("tenant-secret", "tenant-secret", 0),
             LOCALE_OUTCOME_MISSING
+        );
+    }
+
+    #[test]
+    fn unread_topic_activity_states_are_fixed() {
+        assert_eq!(
+            unread_topic_activity_state(false, 0, false),
+            UNREAD_TOPIC_STATE_IMPLICIT
+        );
+        assert_eq!(
+            unread_topic_activity_state(true, 2, true),
+            UNREAD_TOPIC_STATE_REPLY_AND_REVISION
+        );
+        assert_eq!(
+            unread_topic_activity_state(true, 2, false),
+            UNREAD_TOPIC_STATE_REPLY
+        );
+        assert_eq!(
+            unread_topic_activity_state(true, 0, true),
+            UNREAD_TOPIC_STATE_REVISION
+        );
+        assert_eq!(
+            unread_topic_activity_state(true, 0, false),
+            UNREAD_TOPIC_STATE_READ
         );
     }
 }
