@@ -137,6 +137,10 @@ async fn store_snapshot_best_effort(
         items: items.to_vec(),
         total,
     };
+    if !snapshot_matches(&envelope, identity) {
+        tracing::warn!("Blog public comments live response failed snapshot visibility checks");
+        return;
+    }
     let bytes = match serde_json::to_vec(&envelope) {
         Ok(bytes) if bytes.len() <= MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES => bytes,
         Ok(bytes) => {
