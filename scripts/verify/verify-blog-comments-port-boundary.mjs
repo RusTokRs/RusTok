@@ -144,7 +144,7 @@ if (evidence) {
 }
 
 if (fallbackEvidence) {
-  if (fallbackEvidence.schema_version !== 3) failures.push(`${fallbackEvidencePath}: schema_version drift`);
+  if (fallbackEvidence.schema_version !== 2) failures.push(`${fallbackEvidencePath}: schema_version drift`);
   if (
     fallbackEvidence.module !== 'blog' ||
     fallbackEvidence.role !== 'consumer' ||
