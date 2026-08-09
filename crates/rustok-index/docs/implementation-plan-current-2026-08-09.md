@@ -5,9 +5,9 @@ Status: `m5_product_refresh_family_source_ready_digest_regeneration_pending`.
 This overlay supersedes `implementation-plan-current-2026-08-08.md` as the live execution cursor. The older file
 remains detailed architecture/source history.
 
-Rechecked against `main@96c8886738c3df22e176c808fd04d27d8eedb552`. The only mainline change after the
-canonical event-digest admission merge is Page Builder/Telemetry work and does not overlap Product, Events or
-Index refresh wire paths.
+Rechecked against `main@a0d8054e02296fa43a81d9dd53d4b616c231d0d7`. Mainline changes after the previous
+Product refresh-family recheck are Page Builder, Commerce, Order and Forum work only; they do not modify Product,
+Events or Index refresh wire paths and therefore do not reopen any M6/M7 source boundary.
 
 ## M5 — Product Index typed refresh family
 
