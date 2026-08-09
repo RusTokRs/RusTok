@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "canonical_implementation_cursor",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "historical_baseline": "crates/rustok-blog/docs/implementation-plan.md",
+  "canonical_current_cursor": "crates/rustok-blog/docs/implementation-plan-current.md",
+  "actualization_slice": "crates/rustok-blog/docs/implementation-plan-slice-101.md",
+  "historical_baseline_last_embedded_slice": 67,
+  "latest_behavior_slice": 100,
+  "current_recorded_slice": 101,
+  "source_tracks": {
+    "remote_comments_transport": {
+      "status": "source_implemented_maintainer_execution_pending",
+      "transport_evidence": "crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json",
+      "latest_audit_relay_slice": "crates/rustok-blog/docs/implementation-plan-slice-97.md",
+      "must_not_reopen_as_source_gap": true
+    },
+    "comments_source_retention": {
+      "status": "blocked_until_slices_95_97_execution",
+      "blocking_slice": "crates/rustok-blog/docs/implementation-plan-slice-97.md",
+      "must_not_advance_before_execution": true
+    },
+    "category_translation_postgres": {
+      "status": "source_ready_maintainer_execution_pending",
+      "slice": "crates/rustok-blog/docs/implementation-plan-slice-98.md",
+      "evidence": "crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json",
+      "must_not_reopen_as_source_gap": true
+    },
+    "cached_public_comments_snapshot": {
+      "status": "source_ready_maintainer_execution_pending",
+      "slice": "crates/rustok-blog/docs/implementation-plan-slice-99.md",
+      "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json",
+      "must_not_reopen_as_source_gap": true
+    },
+    "storefront_comment_form_fallback": {
+      "status": "not_applicable_no_storefront_write_surface",
+      "slice": "crates/rustok-blog/docs/implementation-plan-slice-100.md",
+      "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
+      "must_not_reopen_as_source_gap": true
+    }
+  },
+  "planning_result": {
+    "independent_production_source_gap_identified": false,
+    "future_autonomous_source_work_requires_fresh_audit": true,
+    "historical_stale_phrases_are_live_instructions": false,
+    "production_behavior_changed": false,
+    "ffa_or_fba_promoted": false
+  },
+  "execution": [],
+  "explicit_non_claims": [
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_compile_result",
+    "no_postgresql_result",
+    "no_redis_result",
+    "no_tcp_runtime_result",
+    "no_browser_result",
+    "no_http_result",
+    "no_workflow_result",
+    "no_ci_result",
+    "no_production_result"
+  ]
+}
