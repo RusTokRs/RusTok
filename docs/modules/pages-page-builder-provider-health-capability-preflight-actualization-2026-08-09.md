@@ -1,24 +1,20 @@
 # Pages / Page Builder provider-health capability preflight actualization — 2026-08-09
 
-Status: `provider-health-capability-preflight-source-ready / shared-runtime-policy-source-ready / non-mutating-health-preflight-source-ready / rollout-only-preflight-health-boundary-source-ready / runtime-execution-pending / observed-health-acceptance-pending`.
+Status: `provider-health-capability-preflight-source-ready / shared-runtime-policy-source-ready / non-mutating-health-preflight-source-ready / rollout-only-preflight-health-boundary-source-ready / runtime-evidence-harness-source-ready / runtime-execution-pending / observed-health-acceptance-pending`.
 
 ## Why this continuation exists
 
-PR #3417 closed provider-health source binding for the Pages workspace, authoritative Preview/Publish SSR and standalone browser-intent path. One source inconsistency remained: the non-mutating GraphQL `pageBuilderCapabilityPreflight` still evaluated only configured rollout flags.
-
-That could make evidence disagree with the real server guard after a fresh accepted provider-health packet was installed. With all rollout flags enabled and observed `Degraded` health, authoritative SSR correctly disables Publish, while the old preflight could still report Publish as allowed.
-
-This slice removes that drift without executing any runtime evidence.
+PR #3417 closed provider-health source binding for the Pages workspace, authoritative Preview/Publish SSR and standalone browser-intent path. The remaining preflight inconsistency was removed by making `pageBuilderCapabilityPreflight` evaluate the same fresh provider-health authority and shared runtime policy as authoritative SSR.
 
 ## Shared Page Builder runtime policy
 
-The health/rollout narrowing rule now lives in Page Builder core as:
+The health/rollout narrowing rule is owned by:
 
 ```text
 rustok_page_builder::rollout::effective_provider_runtime_flags
 ```
 
-The function takes configured `BuilderCapabilityFlags` plus optional `ProviderHealthSnapshot` and can only narrow configured capabilities:
+It can only narrow configured rollout:
 
 ```text
 invalid rollout or builder disabled -> BuilderOff
@@ -29,93 +25,57 @@ observed Ready                      -> configured rollout unchanged
 Unobserved                          -> configured rollout unchanged
 ```
 
-This preserves the policy already used by the Page Builder admin provider status, including partial rollout states such as Properties disabled while Preview remains available. Health cannot re-enable a rollout-disabled capability.
-
-`PageBuilderAdminProviderStatus::effective_runtime_flags()` remains the stable admin-facing seam but now delegates directly to this shared core policy. Pages authoritative SSR continues to call the snapshot/admin seam, so existing consumer code does not gain a second policy implementation.
+`PageBuilderAdminProviderStatus::effective_runtime_flags()` delegates to this shared policy, and Pages authoritative SSR consumes the same provider-status path.
 
 ## Health-aware non-mutating preflight
 
-`pageBuilderCapabilityPreflight` now evaluates in this order:
+`pageBuilderCapabilityPreflight` evaluates routed tenant/module admission, canonical Page Builder permissions, server-owned configured rollout, fresh optional `PagesGraphqlRuntimeData` health, shared runtime narrowing and canonical `ensure_capability` in that order.
 
-1. Pages module and routed tenant admission;
-2. canonical Page Builder permission mapping;
-3. server-owned configured rollout read;
-4. fresh optional provider health from `PagesGraphqlRuntimeData`;
-5. shared `effective_provider_runtime_flags` narrowing;
-6. canonical `ensure_capability` result.
-
-The preflight remains non-mutating. It does not render Preview, save Publish data, read the retained acceptance packet directly or inspect provider-health environment configuration.
-
-Disabled capabilities still return the existing Page Builder contract:
+The operation remains non-mutating and returns the canonical provider/rollout denial:
 
 ```text
 errorKind = feature-disabled
 errorCode = FEATURE_DISABLED
 ```
 
-Permission denial remains a separate `FORBIDDEN` boundary and is checked before a capability result is returned.
+Permission denial remains separate as `FORBIDDEN`.
 
-## Expected observed behavior
+With configured all-on rollout:
 
-With all configured rollout flags enabled:
+- `Ready`: Preview / Properties / Publish allowed;
+- `Degraded`: Preview / Properties allowed, Publish `FEATURE_DISABLED`;
+- `Unavailable`: Preview / Properties / Publish `FEATURE_DISABLED`.
 
-- `Ready`: Preview, Properties and Publish remain allowed;
-- `Degraded`: Preview and Properties remain allowed, Publish is `FEATURE_DISABLED`;
-- `Unavailable`: Preview, Properties and Publish are `FEATURE_DISABLED`.
-
-With rollout restrictions already present, health may only keep or further narrow those restrictions.
-
-The rollout snapshot continues to expose the configured flags and provider health separately. It does **not** replace its configured flag fields with health-limited effective flags. This keeps the transport auditable and lets clients independently validate the same provider status.
+The rollout snapshot continues to expose configured flags separately from optional health rather than rewriting them to effective flags.
 
 ## Existing rollout feature-preflight harness
 
-The existing four-profile rollout feature-preflight harness remains a rollout-only acceptance input and continues to claim provider health as `unobserved`.
+The four-profile rollout harness remains rollout-only. It observes `pageBuilderRolloutSnapshot` before and after each profile and fails closed unless `providerHealthObserved=false` with no health payload. It retains only status/body hashes and explicit unobserved booleans, not the provider-health payload.
 
-Because the production GraphQL preflight is now health-aware, that claim is no longer accepted as a static assumption. The harness now reads `pageBuilderRolloutSnapshot` immediately before and after each profile capability preflight and fails closed unless `providerHealthObserved=false` and the health payload is absent on both observations. The retained profile record contains only HTTP status, bounded response-body size/hash and explicit unobserved/payload-absent booleans; the provider-health payload itself is not retained.
+## Runtime evidence continuation
 
-This prevents observed `Ready` health from being silently indistinguishable from rollout-only all-on behavior in a packet that claims provider health was unobserved. Observed-health execution still belongs to a separate provider-health evidence harness. The existing rollout matrix/preflight packets must not be reinterpreted as observed SLO evidence.
-
-## Runtime evidence boundary
-
-This source slice does not install or execute a provider-health acceptance packet. It does not call GraphQL, HTTP, browser, Prometheus or the deployment evaluator.
-
-The next source-only cursor is a bounded observed-health runtime evidence harness that can bind:
+The previously open observed-health runtime harness is now source-ready:
 
 ```text
-exact deployment identity
-+ retained deployment evaluator
-+ accepted owner packet
-+ observed GraphQL health/preflight
-+ workspace provider controls
-+ authoritative SSR outcome
-+ standalone browser-intent outcome
+docs/modules/pages-page-builder-provider-health-runtime-evidence-harness-actualization-2026-08-09.md
 ```
 
-into one owner-review-pending packet without accepting the result automatically.
+It can bind exact deployment identity + retained evaluator + accepted owner packet to observed GraphQL health/preflight, workspace provider controls, safe authoritative SSR Preview and standalone browser-intent outcomes into one `observed_runtime_evidence_owner_review_pending` packet.
+
+The harness requires configured all-on rollout and does not mutate rollout settings or execute Publish. Browser-intent denial uses a deliberately mismatched envelope page id so an unexpected health expiry/revoke falls through to PageMismatch before document mutation.
 
 Runtime execution remains maintainer-owned.
 
 ## Non-promotion
 
-This slice does not claim:
-
-- deployment identity capture execution;
-- deployment evaluator execution;
-- owner acceptance execution;
-- accepted packet installation;
-- observed GraphQL/preflight behavior;
-- observed workspace/SSR/browser-intent behavior;
-- Pages reference-consumer gate acceptance;
-- Forum Wave acceptance;
-- FFA/FBA promotion.
-
-Pages remains `unobserved` in retained execution evidence until the exact live chain is executed and retained.
+No identity/evaluator/owner-acceptance execution, accepted packet installation, observed runtime behavior, Pages reference-consumer gate acceptance, Forum Wave acceptance or FFA/FBA promotion is claimed by this source work. Pages remains `unobserved` in retained execution evidence until the maintainer executes and retains the exact chain.
 
 ## Source evidence
 
 ```text
 crates/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
+crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json
 ```
 
 ## Validation boundary
@@ -126,8 +86,6 @@ Suggested maintainer source checks, intentionally not run:
 
 ```bash
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
 node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```
