@@ -5,9 +5,9 @@ use rustok_content::available_locales_from;
 use crate::dto::UpdateReplyCommandInput;
 
 impl ReplyService {
-    pub const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;
+    pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;
 
-    pub async fn available_locales_for_replies(
+    pub(crate) async fn available_locales_for_replies(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
