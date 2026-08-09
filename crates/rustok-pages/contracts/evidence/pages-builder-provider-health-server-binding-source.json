@@ -30,6 +30,8 @@
     "free_text_reason_retained_must_be_false": true,
     "source_hashes_verified_against_checkout_must_be_true": true,
     "raw_evaluation_path_persisted_must_be_false": true,
+    "maximum_target_operation_freshness_age_seconds_required": true,
+    "health_valid_until_required": true,
     "prior_promotion_claims_must_all_be_false": true
   },
   "live_identity_binding": {
@@ -48,6 +50,8 @@
     "query_window_seconds_range": [300, 86400],
     "freshness_seconds_minimum": 60,
     "freshness_must_not_exceed_query_window": true,
+    "maximum_target_operation_freshness_age_must_not_exceed_freshness": true,
+    "health_valid_until_recomputed_from_remaining_freshness": true,
     "identity_age_must_cover_query_window": true,
     "identity_age_maximum_seconds": 86400,
     "minimum_preview_samples": 20,
@@ -56,13 +60,15 @@
     "canonical_slo_evaluation_recomputed": true,
     "evaluation_timestamp_must_be_canonical_utc_millis": true,
     "decision_timestamp_must_be_canonical_utc_millis": true,
-    "decision_must_not_predate_evaluation": true
+    "decision_must_not_predate_evaluation": true,
+    "accepted_decision_must_not_exceed_health_valid_until_plus_skew": true
   },
   "freshness_lease": {
     "checked_on_every_rollout_snapshot_read": true,
     "clock_source": "server_utc_clock",
     "future_clock_skew_tolerance_seconds": 5,
-    "maximum_observed_until": "evaluation.evaluated_at + deployment.freshness_seconds",
+    "maximum_observed_until": "evaluation.health_valid_until + clock_skew_tolerance",
+    "health_valid_until_source": "evaluation.evaluated_at + deployment.freshness_seconds - evaluation.max_target_operation_freshness_age_seconds",
     "expired_action": "unobserved",
     "missing_packet_action": "unobserved",
     "rejected_packet_action": "unobserved",
