@@ -1,4 +1,7 @@
 pub mod changes;
+#[path = "fulfillments.rs"]
+mod fulfillments_legacy;
+#[path = "fulfillments_owner_commands.rs"]
 pub mod fulfillments;
 #[path = "orders_owner_ports.rs"]
 pub mod orders;
