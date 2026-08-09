@@ -7,6 +7,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod module_term_mutation;
 pub mod services;
 mod translation_evidence;
 pub mod translation_target;
@@ -18,6 +19,10 @@ pub use dto::{
     UpdateTaxonomyTermInput,
 };
 pub use error::{TaxonomyError, TaxonomyResult};
+pub use module_term_mutation::{
+    ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
+    update_module_term_in_tx,
+};
 pub use services::TaxonomyService;
 pub use translation_target::TaxonomyTranslationTargetProvider;
 
