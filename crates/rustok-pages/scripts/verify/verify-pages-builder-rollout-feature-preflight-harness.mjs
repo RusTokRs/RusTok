@@ -135,7 +135,9 @@ for (const marker of [
   "pub struct GqlPageBuilderCapabilityPreflight",
   "async fn page_builder_capability_preflight(",
   "let required_permission = required_page_builder_permission(capability_kind);",
-  "ensure_capability(&flags, capability_kind)",
+  "let provider_health = provider_health_snapshot(ctx);",
+  "effective_provider_runtime_flags(&flags, provider_health.as_ref())",
+  "ensure_capability(&effective_flags, capability_kind)",
   "PageBuilderErrorKind::FeatureDisabled.as_str()",
   "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
   "fn required_page_builder_permission(capability: BuilderCapabilityKind) -> Permission",
@@ -151,7 +153,7 @@ if (preflightStart < 0 || permissionMappingStart <= preflightStart) {
   failures.push("non-mutating preflight source slice could not be isolated");
 } else {
   const preflight = owner.slice(preflightStart, permissionMappingStart);
-  for (const marker of ["save_project(", "render_preview(", ".publish(", "save_document("]) {
+  for (const marker of ["save_project(", "render_preview(", ".publish(", "save_document(", "std::fs::"]) {
     forbid(preflight, marker, "non-mutating feature preflight");
   }
 }
@@ -169,7 +171,9 @@ for (const marker of [
 for (const marker of [
   "pub fn ensure_capability(",
   "Err(BuilderRolloutError::CapabilityDisabled(capability.as_str()))",
-]) need(rollout, marker, "shared rollout guard");
+  "pub fn effective_provider_runtime_flags(",
+  "provider_health_runtime_flags_only_narrow_configured_rollout",
+]) need(rollout, marker, "shared rollout/provider guard");
 for (const marker of [
   "Self::CapabilityDisabled(_) => PageBuilderErrorKind::FeatureDisabled",
   "Self::CapabilityDisabled(_) => Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)",
