@@ -244,20 +244,32 @@ fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl Int
     let query_writer = use_route_query_writer();
     let title = t(locale.as_deref(), "blog.comments.title", "Comments");
 
-    if comments.availability != BlogCommentsAvailability::Available {
-        let message = match comments.availability {
-            BlogCommentsAvailability::Unavailable => t(
-                locale.as_deref(),
-                "blog.comments.unavailable",
-                "Comments are temporarily unavailable. The article is still available.",
-            ),
-            BlogCommentsAvailability::Timeout => t(
-                locale.as_deref(),
-                "blog.comments.timeout",
-                "Comments took too long to load. The article is still available.",
-            ),
-            BlogCommentsAvailability::Available => unreachable!(),
-        };
+    let degraded_message = match comments.availability {
+        BlogCommentsAvailability::Available => None,
+        BlogCommentsAvailability::Unavailable if comments.cached_snapshot => Some(t(
+            locale.as_deref(),
+            "blog.comments.unavailableCached",
+            "Comments are temporarily unavailable. Showing a recent cached snapshot.",
+        )),
+        BlogCommentsAvailability::Unavailable => Some(t(
+            locale.as_deref(),
+            "blog.comments.unavailable",
+            "Comments are temporarily unavailable. The article is still available.",
+        )),
+        BlogCommentsAvailability::Timeout if comments.cached_snapshot => Some(t(
+            locale.as_deref(),
+            "blog.comments.timeoutCached",
+            "Comments took too long to load. Showing a recent cached snapshot.",
+        )),
+        BlogCommentsAvailability::Timeout => Some(t(
+            locale.as_deref(),
+            "blog.comments.timeout",
+            "Comments took too long to load. The article is still available.",
+        )),
+    };
+
+    if comments.availability != BlogCommentsAvailability::Available && !comments.cached_snapshot {
+        let message = degraded_message.expect("degraded comments without a snapshot need a message");
         return view! {
             <section class="mt-8 border-t border-border pt-6">
                 <h4 class="text-lg font-semibold text-foreground">{title}</h4>
@@ -275,12 +287,18 @@ fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl Int
     );
 
     if comments.total == 0 {
+        let degraded_message = degraded_message.clone();
         return view! {
             <section class="mt-8 border-t border-border pt-6">
                 <div class="flex items-center justify-between gap-3">
                     <h4 class="text-lg font-semibold text-foreground">{title}</h4>
                     <span class="text-xs text-muted-foreground">{total_label}</span>
                 </div>
+                {degraded_message.map(|message| view! {
+                    <p class="mt-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                        {message}
+                    </p>
+                })}
                 <p class="mt-3 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
                     {t(
                         locale.as_deref(),
@@ -315,6 +333,11 @@ fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl Int
                     </span>
                 </div>
             </div>
+            {degraded_message.map(|message| view! {
+                <p class="mt-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                    {message}
+                </p>
+            })}
             {if core::has_items(comments.items.as_slice()) {
                 view! {
                     <div class="mt-4 space-y-3">
