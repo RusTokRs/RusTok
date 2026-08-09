@@ -42,6 +42,10 @@
   "rollout_feature_preflight_isolation": {
     "existing_four_profile_harness_remains_rollout_only": true,
     "existing_harness_claims_provider_health_observed": false,
+    "existing_harness_observes_unobserved_health_before_each_profile": true,
+    "existing_harness_observes_unobserved_health_after_each_profile": true,
+    "existing_harness_fails_closed_if_health_is_observed": true,
+    "existing_harness_retains_raw_health_payload": false,
     "observed_health_runtime_evidence_requires_separate_harness": true
   },
   "anti_promotion": {
