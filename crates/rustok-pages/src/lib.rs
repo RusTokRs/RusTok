@@ -50,6 +50,7 @@ pub mod graphql;
 pub mod http;
 pub mod migrations;
 pub mod openapi;
+pub mod provider_health_binding;
 mod seo_targets;
 pub mod services;
 mod translation_evidence;
@@ -76,6 +77,12 @@ pub use entities::{
 };
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
+pub use provider_health_binding::{
+    PAGE_BUILDER_PROVIDER_HEALTH_SOURCE_COMMIT_ENV, PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH_ENV,
+    PAGES_PROVIDER_HEALTH_DEPLOYMENT_ID_ENV, PAGES_PROVIDER_HEALTH_DEPLOYMENT_IMAGE_DIGEST_ENV,
+    PagesProviderHealthAuthority, PagesProviderHealthBindingError, PagesProviderHealthLiveIdentity,
+    SharedPagesProviderHealthAuthority, page_builder_provider_health_authority_from_environment,
+};
 pub use services::{
     AuditPageArtifactsInput, DEFAULT_PAGE_ARTIFACT_AUDIT_RECORDS,
     DEFAULT_PAGE_INLINE_EDIT_CLOCK_SKEW_MS, DEFAULT_PAGE_INLINE_EDIT_GRANT_TTL_MS,
@@ -200,6 +207,33 @@ impl RusToKModule for PagesModule {
                 tracing::debug!(
                     env = PAGES_INLINE_EDIT_HMAC_KEY_ENV,
                     "Pages inline edit signing runtime is not configured"
+                );
+            }
+        }
+
+        match page_builder_provider_health_authority_from_environment() {
+            Ok(Some(authority)) => {
+                tracing::info!(
+                    source_commit = %authority.source_commit(),
+                    deployment_id = %authority.deployment_id(),
+                    provider_health_state = authority
+                        .current_snapshot()
+                        .map(|snapshot| snapshot.state.as_str())
+                        .unwrap_or("unobserved"),
+                    "Pages Page Builder provider-health authority registered"
+                );
+                extensions.insert(authority);
+            }
+            Ok(None) => {
+                tracing::debug!(
+                    env = PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH_ENV,
+                    "Pages Page Builder provider-health authority is not configured"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error_code = error.code(),
+                    "Pages Page Builder provider-health authority rejected; provider health remains unobserved"
                 );
             }
         }
