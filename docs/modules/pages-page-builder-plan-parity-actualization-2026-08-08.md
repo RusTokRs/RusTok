@@ -1,10 +1,10 @@
 # Pages / Page Builder plan parity actualization — 2026-08-08
 
-Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / provider-health-server-binding-source-ready / provider-health-consumer-binding-source-ready / provider-health-capability-preflight-source-ready / provider-health-runtime-evidence-harness-source-ready / execution-acceptance-pending`.
+Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / provider-health-server-binding-source-ready / provider-health-consumer-binding-source-ready / provider-health-capability-preflight-source-ready / provider-health-runtime-evidence-harness-source-ready / provider-health-observed-acceptance-source-ready / execution-acceptance-pending`.
 
 ## Current authority
 
-This parity packet now has twelve source actualizations:
+This parity packet now has thirteen source actualizations:
 
 - the earlier Forum composition reconciliation through PR #3320;
 - `docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md`, current rollout authority after PRs #3333, #3337, #3345 and #3353;
@@ -17,7 +17,8 @@ This parity packet now has twelve source actualizations:
 - `docs/modules/pages-page-builder-provider-health-server-binding-actualization-2026-08-09.md`;
 - `docs/modules/pages-page-builder-provider-health-consumer-binding-actualization-2026-08-09.md`;
 - `docs/modules/pages-page-builder-provider-health-capability-preflight-actualization-2026-08-09.md`;
-- `docs/modules/pages-page-builder-provider-health-runtime-evidence-harness-actualization-2026-08-09.md`, which closes the remaining provider-health source-only evidence-harness gap without claiming execution or acceptance.
+- `docs/modules/pages-page-builder-provider-health-runtime-evidence-harness-actualization-2026-08-09.md`;
+- `docs/modules/pages-page-builder-provider-health-observed-acceptance-actualization-2026-08-10.md`, which closes the observed-health owner-decision source gap without claiming runtime execution, current health or Pages gate acceptance.
 
 Older shared/local/central plans remain programme history. This packet and the newest relevant dated overlay are the current source truth where wording differs.
 
@@ -34,20 +35,23 @@ The synchronized Pages / Page Builder boundary is now:
 - bounded process-local Preview/Publish observations are not deployment authority;
 - deployment metrics/freshness, exact source/deployment identity, complete expected-target inventory and the reset-aware deployment evaluator are source-ready;
 - the evaluator applies the canonical 1500ms Preview p95, 3000ms Publish p95, 1% sanitize-failure and 1% runtime-error provider policy with target/source/freshness/sample admission;
-- owner acceptance revalidates the evaluator and retains the exact remaining-freshness `health_valid_until`; it cannot restart freshness;
+- binding owner acceptance revalidates the evaluator and retains the exact remaining-freshness `health_valid_until`; it cannot restart freshness;
 - Pages server binding is opt-in/fail-closed over the accepted packet, `RUSTOK_SOURCE_COMMIT`, deployment id and immutable RepoDigest, rereading the packet on each rollout-status request;
 - typed transport keeps configured rollout flags separate from optional validated provider health;
 - `rustok_page_builder::rollout::effective_provider_runtime_flags` is the single provider/rollout runtime narrowing owner;
 - Ready/Unobserved preserve configured rollout, Degraded disables Publish, and Unavailable fails the builder closed without re-enabling an already-disabled rollout capability;
 - workspace, authoritative SSR and standalone browser-intent use the validated provider-status path;
 - health-aware non-mutating `pageBuilderCapabilityPreflight` uses the same runtime narrowing before canonical `ensure_capability` and keeps permission denial separate;
-- the existing rollout feature-preflight remains rollout-only and now fails closed unless provider health is unobserved before and after each profile;
-- the observed-health runtime evidence harness [source-ready / maintainer execution pending] requires exact identity -> evaluator -> accepted owner packet, all-on configured rollout and a still-live `health_valid_until`;
+- the existing rollout feature-preflight remains rollout-only and fails closed unless provider health is unobserved before and after each profile;
+- the observed-health runtime evidence harness [source-ready / maintainer execution pending] requires exact identity -> evaluator -> accepted binding-owner packet, all-on configured rollout and a still-live `health_valid_until` during observation;
 - that harness compares GraphQL observed health to the accepted snapshot, checks non-mutating capability preflight, workspace provider/capability controls, safe authoritative SSR Preview and health-limited standalone browser-intent behavior;
 - browser-intent probes use an intentionally mismatched envelope page id so capability denial is observed first, while unexpected lease expiry/revoke falls through to PageMismatch before document mutation;
 - no Publish mutation or rollout-settings mutation is part of the provider-health runtime harness;
-- successful execution would produce `pages_builder_provider_health_runtime_evidence_v1` with status `observed_runtime_evidence_owner_review_pending`, not an acceptance decision;
-- Pages remains `unobserved` in retained execution evidence because this implementation agent did not execute identity capture, evaluator, owner acceptance, packet installation or the runtime harness;
+- successful runtime execution produces `pages_builder_provider_health_runtime_evidence_v1 / observed_runtime_evidence_owner_review_pending`, not an acceptance decision;
+- observed-health owner acceptance [source-ready / maintainer execution pending] revalidates that runtime packet, exact predecessor packet hashes, source hashes and canonical consumer outcomes before allowing an explicit `accept_observed_runtime_evidence` or `reject` decision;
+- observed-health acceptance is retrospective: it may review evidence after the historical health lease expires, but it does not extend `health_valid_until`, assert current provider health, change live binding, accept the Pages gate, or satisfy the reference-gate owner sign-off/rollback decision by itself;
+- accepted observed-health output is `pages_builder_provider_health_observed_acceptance_v1 / owner_accepted_observed_runtime_evidence_gate_review_pending` and is only eligible input for later gate review;
+- Pages remains `unobserved` in retained execution evidence because this implementation agent did not execute identity capture, evaluator, binding owner acceptance, packet installation, runtime harness or observed-health owner acceptance;
 - `pages_reference_consumer_gate` remains `accepted = false` with execution pending;
 - Forum observed Wave remains blocked by the Pages gate;
 - FFA/FBA promotion remains unclaimed.
@@ -77,16 +81,18 @@ bounded process-local Preview/Publish observation [source-ready]
 -> exact source/deployment identity + expected-target inventory contract [source-ready]
 -> deployment health backend evaluator [source-ready]
 -> typed observed-health transport [source-ready]
--> owner acceptance packet + exact health_valid_until [source-ready]
+-> binding owner acceptance packet + exact health_valid_until [source-ready]
 -> server provider-health binding + hot revoke + remaining-freshness lease [source-ready]
 -> UI / SSR / browser-intent provider-health binding [source-ready]
 -> health-aware non-mutating capability preflight [source-ready]
 -> observed-health runtime evidence harness [source-ready / maintainer execution pending]
--> live exact-target identity capture + retained evaluator + accepted owner packet + observed consumer behavior [maintainer execution pending]
--> observed-health owner acceptance decision [pending]
+-> observed-health owner acceptance [source-ready / maintainer execution pending]
+-> live exact-target identity capture + retained evaluator + accepted binding-owner packet + observed consumer behavior + observed-evidence owner decision [maintainer execution pending]
+-> accepted observed-health evidence available for Pages gate review [blocked on maintainer execution and decision]
+-> Pages reference-consumer gate acceptance [pending]
 ```
 
-Source inspection alone must not mark execution or acceptance complete.
+Source inspection alone must not mark execution, current health, observed-health acceptance or Pages gate acceptance complete.
 
 ## Anti-drift guards
 
@@ -106,19 +112,21 @@ crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-b
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
 crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
 crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
 ```
 
-The runtime-harness guard locks the exact evidence chain, all-on isolation, no-mutation probes, privacy boundary, non-promotion state and owner-review-pending output.
+The observed-acceptance guard locks retrospective lease semantics, exact predecessor/source hashes, canonical runtime outcomes, privacy, non-promotion and the explicit separation between accepted evidence and Pages gate acceptance.
 
 ## Execution boundary
 
-No tests, Node verifiers, Cargo commands, formatting, builds, Prometheus scrapes, backend queries, deployment identity captures, evaluator executions, owner acceptance executions, accepted packet installations, observed GraphQL/HTTP requests, Playwright/browser runs, workflows, CI, migrations or runtime evidence were executed by this slice.
+No tests, Node verifiers, Cargo commands, formatting, builds, Prometheus scrapes, backend queries, deployment identity captures, evaluator executions, binding owner acceptance executions, accepted packet installations, observed GraphQL/HTTP requests, Playwright/browser runs, observed-health owner acceptance, workflows, CI, migrations or runtime evidence were executed by this slice.
 
 Suggested maintainer source commands, intentionally not run:
 
 ```bash
 node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
