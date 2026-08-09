@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     env, fs,
+    io::ErrorKind,
     path::PathBuf,
     sync::Arc,
 };
@@ -108,8 +109,8 @@ struct ValidatedAcceptance {
 
 impl ValidatedAcceptance {
     fn snapshot_at(&self, now: DateTime<Utc>) -> Option<ProviderHealthSnapshot> {
-        let skew = Duration::seconds(MAX_CLOCK_SKEW_SECONDS);
-        if now + skew < self.evaluated_at || now + skew < self.decided_at {
+        let latest_allowed = now + Duration::seconds(MAX_CLOCK_SKEW_SECONDS);
+        if latest_allowed < self.evaluated_at || latest_allowed < self.decided_at {
             return None;
         }
         if now.signed_duration_since(self.evaluated_at)
@@ -152,14 +153,15 @@ impl PagesProviderHealthAuthority {
         if !path.is_absolute() {
             return Err(PagesProviderHealthBindingError::AcceptancePathNotAbsolute);
         }
-        if let Ok(metadata) = fs::symlink_metadata(&path) {
-            if !metadata.file_type().is_file()
-                || metadata.file_type().is_symlink()
-                || metadata.len() == 0
-                || metadata.len() > MAX_ACCEPTANCE_PACKET_BYTES
+        match fs::symlink_metadata(&path) {
+            Ok(metadata)
+                if !metadata.file_type().is_file() || metadata.file_type().is_symlink() =>
             {
                 return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
             }
+            Ok(_) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(_) => return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile),
         }
         Ok(Self {
             live_identity,
