@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "tag_canonical_read_search_projection",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "ownership": {
+    "dictionary_owner": "rustok-taxonomy",
+    "attachment_owner": "rustok-blog",
+    "attachment_table": "blog_post_tags",
+    "compatibility_mirror": "blog_posts.metadata.tags",
+    "metadata_tags_is_canonical_read_source": false,
+    "metadata_tags_is_search_projection_source": false
+  },
+  "source_contract": {
+    "blog_read_service": "crates/rustok-blog/src/services/tag.rs",
+    "search_projector": "crates/rustok-search/src/blog_projector.rs",
+    "search_postgres_harness": "crates/rustok-search/tests/blog_projection_postgres_test.rs",
+    "search_projection_evidence": "crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json",
+    "requested_post_ids_receive_explicit_empty_tag_entries": true,
+    "empty_relation_set_falls_back_to_metadata": false,
+    "search_requires_blog_post_tags": true,
+    "search_requires_taxonomy_terms": true,
+    "search_requires_taxonomy_term_translations": true,
+    "search_locale_resolution": [
+      "document_locale",
+      "platform_fallback_locale",
+      "canonical_key"
+    ],
+    "taxonomy_joins_are_tenant_constrained": true,
+    "tag_aggregation_is_distinct_and_deterministic": true,
+    "stale_metadata_tags_are_ignored_by_search_harness": true,
+    "tag_mutation_semantics_changed": false,
+    "tag_mutation_atomic_reindex_implemented": false,
+    "production_behavior_changed": true,
+    "database_schema_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "rollout_requirements": [
+    "execute Blog tag read evidence against real owner tables",
+    "execute Search Blog projection PostgreSQL harness",
+    "audit deployed Blog rows for metadata tags without blog_post_tags relations",
+    "backfill metadata-only legacy rows through an owner migration before rollout if such rows exist",
+    "retain evidence that stale metadata tags do not reappear after relation removal"
+  ],
+  "next_source_gap": {
+    "status": "tag_mutation_atomic_reindex_next",
+    "required": [
+      "Taxonomy-owned update/delete term in supplied transaction",
+      "Blog update/delete tag mutation and Blog-scope ReindexRequested in one transaction",
+      "remove manual pre-delete blog_post_tags cleanup and rely on the declared FK cascade"
+    ]
+  },
+  "execution": [],
+  "explicit_non_claims": [
+    "no_rust_test_result",
+    "no_javascript_verifier_result",
+    "no_compile_result",
+    "no_postgresql_result",
+    "no_legacy_data_audit_result",
+    "no_legacy_backfill_result",
+    "no_tag_mutation_atomic_reindex_result",
+    "no_runtime_result",
+    "no_production_result"
+  ]
+}
