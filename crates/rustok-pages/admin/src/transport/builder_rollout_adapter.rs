@@ -39,8 +39,8 @@ struct PageBuilderRolloutPayload {
 struct PageBuilderProviderHealthPayload {
     state: String,
     degradation_reasons: Vec<String>,
-    preview_p95_ms: i64,
-    publish_p95_ms: i64,
+    preview_p95_ms: u64,
+    publish_p95_ms: u64,
     sanitize_failure_rate: f64,
     runtime_error_rate: f64,
 }
@@ -85,10 +85,6 @@ fn parse_provider_health(
             "providerHealthObserved is true but providerHealth payload is missing",
         )),
         (true, Some(payload)) => {
-            let preview_p95_ms = u64::try_from(payload.preview_p95_ms)
-                .map_err(|_| health_transport_error("previewP95Ms must be non-negative"))?;
-            let publish_p95_ms = u64::try_from(payload.publish_p95_ms)
-                .map_err(|_| health_transport_error("publishP95Ms must be non-negative"))?;
             for (name, value) in [
                 ("sanitizeFailureRate", payload.sanitize_failure_rate),
                 ("runtimeErrorRate", payload.runtime_error_rate),
@@ -101,8 +97,8 @@ fn parse_provider_health(
             }
 
             let snapshot = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
-                preview_p95_ms,
-                publish_p95_ms,
+                preview_p95_ms: payload.preview_p95_ms,
+                publish_p95_ms: payload.publish_p95_ms,
                 sanitize_failure_rate: payload.sanitize_failure_rate,
                 runtime_error_rate: payload.runtime_error_rate,
             });
