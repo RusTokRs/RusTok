@@ -1,0 +1,83 @@
+{
+  "format": "pages_builder_provider_health_capability_preflight_source_v1",
+  "status": "source_ready_runtime_execution_pending",
+  "provider": "page_builder",
+  "predecessors": [
+    "pages_builder_provider_health_server_binding_source_v1",
+    "pages_builder_provider_health_consumer_binding_source_v1"
+  ],
+  "shared_runtime_policy": {
+    "owner": "rustok_page_builder::rollout::effective_provider_runtime_flags",
+    "configured_rollout_flags_remain_authoritative": true,
+    "provider_health_may_only_narrow": true,
+    "invalid_or_builder_disabled_rollout_fails_closed_to_builder_off": true,
+    "unobserved_preserves_configured_rollout": true,
+    "ready_preserves_configured_rollout": true,
+    "degraded_disables_publish_without_reenabling_other_capabilities": true,
+    "unavailable_disables_builder": true,
+    "admin_provider_status_delegates_to_shared_policy": true,
+    "authoritative_ssr_consumes_shared_policy_through_pages_snapshot": true
+  },
+  "graphql_preflight": {
+    "operation": "pageBuilderCapabilityPreflight",
+    "non_mutating": true,
+    "permission_mapping_checked_before_capability_result": true,
+    "configured_rollout_loaded_server_side": true,
+    "provider_health_source": "PagesGraphqlRuntimeData",
+    "fresh_authority_read_per_preflight_request": true,
+    "uses_shared_runtime_policy": true,
+    "uses_canonical_ensure_capability_guard": true,
+    "disabled_error_kind": "feature-disabled",
+    "disabled_error_code": "FEATURE_DISABLED",
+    "unobserved_behavior_matches_rollout_only_preflight": true,
+    "ready_behavior_matches_rollout_only_preflight": true,
+    "degraded_all_on_publish_is_feature_disabled": true,
+    "degraded_all_on_preview_remains_allowed": true,
+    "unavailable_all_on_preview_is_feature_disabled": true,
+    "unavailable_all_on_publish_is_feature_disabled": true,
+    "health_cannot_reenable_rollout_disabled_capability": true,
+    "snapshot_continues_to_return_configured_flags_separately_from_health": true,
+    "raw_acceptance_packet_or_environment_read_in_query": false
+  },
+  "rollout_feature_preflight_isolation": {
+    "existing_four_profile_harness_remains_rollout_only": true,
+    "existing_harness_claims_provider_health_observed": false,
+    "observed_health_runtime_evidence_requires_separate_harness": true
+  },
+  "anti_promotion": {
+    "runtime_identity_capture_executed": false,
+    "runtime_deployment_evaluator_executed": false,
+    "owner_acceptance_executed": false,
+    "accepted_packet_installed": false,
+    "observed_graphql_preflight_executed": false,
+    "observed_workspace_behavior_executed": false,
+    "observed_ssr_behavior_executed": false,
+    "observed_browser_intent_behavior_executed": false,
+    "pages_reference_consumer_gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "validation": {
+    "tests_run": false,
+    "node_verifier_run": false,
+    "cargo_run": false,
+    "formatting_run": false,
+    "graphql_or_http_run": false,
+    "browser_run": false,
+    "workflow_or_ci_run": false
+  },
+  "production_sources": [
+    "crates/rustok-page-builder/src/rollout.rs",
+    "crates/rustok-page-builder/admin/src/provider_status.rs",
+    "crates/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/rustok-pages/admin/src/builder.rs"
+  ],
+  "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs",
+  "next_cursor": {
+    "provider_health_capability_preflight": "source_ready_runtime_execution_pending",
+    "observed_health_runtime_evidence_harness": "source_open",
+    "retained_identity_evaluator_owner_acceptance": "maintainer_execution_pending",
+    "observed_health_acceptance": "pending"
+  }
+}
