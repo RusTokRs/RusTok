@@ -9,8 +9,8 @@
   "canonical_current_cursor": "crates/rustok-blog/docs/implementation-plan-current.md",
   "actualization_slice": "crates/rustok-blog/docs/implementation-plan-slice-101.md",
   "historical_baseline_last_embedded_slice": 67,
-  "latest_behavior_slice": 104,
-  "current_recorded_slice": 104,
+  "latest_behavior_slice": 105,
+  "current_recorded_slice": 105,
   "source_tracks": {
     "remote_comments_transport": {
       "status": "source_implemented_maintainer_execution_pending",
@@ -70,6 +70,19 @@
       "manual_predelete_relation_cleanup_removed": true,
       "declared_fk_cascade_used": true,
       "must_not_reopen_as_source_gap": true
+    },
+    "post_category_name_projection": {
+      "status": "source_ready_maintainer_execution_pending",
+      "slice": "crates/rustok-blog/docs/implementation-plan-slice-105.md",
+      "evidence": "crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json",
+      "category_identity_source": "blog_posts.category_id",
+      "category_name_source": "blog_category_translations.name",
+      "detail_projection_present": true,
+      "authenticated_list_projection_present": true,
+      "public_list_projection_present": true,
+      "list_batch_projection": true,
+      "category_translation_readiness_promoted": false,
+      "must_not_reopen_as_source_gap": true
     }
   },
   "planning_result": {
@@ -88,9 +101,11 @@
     "no_database_side_tag_pagination_result",
     "no_postgresql_result",
     "no_sqlite_tag_mutation_result",
+    "no_sqlite_post_category_name_result",
     "no_legacy_data_audit_result",
     "no_legacy_backfill_result",
     "no_tag_mutation_atomic_reindex_runtime_result",
+    "no_category_translation_readiness_result",
     "no_redis_result",
     "no_tcp_runtime_result",
     "no_browser_result",
