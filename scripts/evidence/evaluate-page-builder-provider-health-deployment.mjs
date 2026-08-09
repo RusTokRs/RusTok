@@ -32,6 +32,7 @@ const THRESHOLDS = {
   runtime_error_rate_max: 0.01,
 };
 const MINIMUM_SAMPLES_PER_OPERATION = 20;
+const COUNT_EPSILON = 1e-6;
 
 function fail(message) {
   throw new Error(`Page Builder provider-health deployment evaluation failed: ${message}`);
@@ -43,6 +44,14 @@ function sha256(value) {
 
 function parseArguments(argv) {
   const options = {};
+  const accepted = new Set([
+    "--identity",
+    "--backend-map",
+    "--prometheus-url",
+    "--window-seconds",
+    "--freshness-seconds",
+    "--output",
+  ]);
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--help" || argument === "-h") {
@@ -53,26 +62,15 @@ function parseArguments(argv) {
       );
       process.exit(0);
     }
-    if (
-      [
-        "--identity",
-        "--backend-map",
-        "--prometheus-url",
-        "--window-seconds",
-        "--freshness-seconds",
-        "--output",
-      ].includes(argument)
-    ) {
-      const value = argv[index + 1];
-      if (!value) fail(`${argument} requires a value`);
-      const key = argument
+    if (!accepted.has(argument)) fail(`unknown argument ${argument}`);
+    const value = argv[index + 1];
+    if (!value) fail(`${argument} requires a value`);
+    options[
+      argument
         .slice(2)
-        .replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-      options[key] = value;
-      index += 1;
-      continue;
-    }
-    fail(`unknown argument ${argument}`);
+        .replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+    ] = value;
+    index += 1;
   }
   return options;
 }
@@ -96,10 +94,10 @@ function regularJsonFile(inputPath, label) {
     ? path.resolve(inputPath)
     : path.resolve(process.cwd(), inputPath);
   if (!existsSync(absolute)) fail(`${label} is missing`);
-  const link = lstatSync(absolute);
-  if (link.isSymbolicLink() || !link.isFile()) fail(`${label} must be a regular non-symlink file`);
-  const stats = statSync(absolute);
-  if (stats.size <= 0 || stats.size > MAX_INPUT_BYTES) fail(`${label} is outside the bounded size`);
+  const metadata = lstatSync(absolute);
+  if (metadata.isSymbolicLink() || !metadata.isFile()) fail(`${label} must be a regular non-symlink file`);
+  const size = statSync(absolute).size;
+  if (size <= 0 || size > MAX_INPUT_BYTES) fail(`${label} is outside the bounded size`);
   try {
     return JSON.parse(readFileSync(absolute, "utf8"));
   } catch (error) {
@@ -147,7 +145,7 @@ function requireIdentity(document, head) {
   if (deployment.inventory_complete !== true) fail("identity inventory is not complete");
   if (
     !Number.isInteger(deployment.expected_target_count) ||
-    deployment.expected_target_count <= 0 ||
+    deployment.expected_target_count < 1 ||
     deployment.expected_target_count > 64 ||
     deployment.expected_target_count !== deployment.verified_target_count
   ) fail("identity expected/verified target counts are invalid");
@@ -195,18 +193,15 @@ function requireBackendMap(document, identity) {
     fail("backend map targets must exactly cover the identity target count");
   }
   const mappedIds = new Set();
-  const values = new Set();
+  const targetValues = new Set();
   const targets = document.targets.map((target, index) => {
     const targetId = boundedIdentifier(target?.target_id, `backend targets[${index}].target_id`);
     if (!identity.targetIds.has(targetId)) fail(`backend map contains unknown target ${targetId}`);
     if (mappedIds.has(targetId)) fail(`backend map duplicates target ${targetId}`);
-    const targetValue = exactLabelValue(
-      target?.target_label_value,
-      `backend targets[${index}].target_label_value`,
-    );
-    if (values.has(targetValue)) fail(`backend map duplicates target label value ${targetValue}`);
+    const targetValue = exactLabelValue(target?.target_label_value, `backend targets[${index}].target_label_value`);
+    if (targetValues.has(targetValue)) fail(`backend map duplicates target label value ${targetValue}`);
     mappedIds.add(targetId);
-    values.add(targetValue);
+    targetValues.add(targetValue);
     return { target_id: targetId, target_label_value: targetValue };
   });
   if (mappedIds.size !== identity.targetIds.size) fail("backend map target set is incomplete");
@@ -243,7 +238,7 @@ function credentialHeaders(contract) {
     "cache-control": "no-cache",
     pragma: "no-cache",
   };
-  const names = [];
+  const environmentNames = [];
   const env = contract.backend_query.credential_environment;
   const common = process.env[env.common_headers_json];
   if (common) {
@@ -262,26 +257,34 @@ function credentialHeaders(contract) {
       if (typeof value !== "string" || value.length > 4096 || /[\r\n\u0000]/u.test(value)) fail(`common header ${name} is outside the bounded input`);
       headers[normalized] = value;
     }
-    names.push(env.common_headers_json);
+    environmentNames.push(env.common_headers_json);
   }
   for (const [field, header, limit] of [
     ["authorization", "authorization", 8192],
-    ["cookie", "cookie", 16384],
+    ["cookie", "cookie", 16_384],
   ]) {
     const envName = env[field];
     const value = process.env[envName];
     if (!value) continue;
     if (value.length > limit || /[\r\n\u0000]/u.test(value)) fail(`${envName} is outside the bounded input`);
     headers[header] = value;
-    names.push(envName);
+    environmentNames.push(envName);
   }
-  return { headers, environment_names: [...new Set(names)].sort() };
+  return { headers, environment_names: [...new Set(environmentNames)].sort() };
 }
 
-function selector(commonMatchers, targetLabel, targetValue, extra = {}) {
-  const all = { ...commonMatchers, [targetLabel]: targetValue, ...extra };
+function quoted(value) {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+function selector(commonMatchers, targetLabel, targetValue, extraEquals = {}) {
+  const all = { ...commonMatchers, [targetLabel]: targetValue, ...extraEquals };
   const entries = Object.entries(all).sort(([left], [right]) => left.localeCompare(right));
-  return `{${entries.map(([name, value]) => `${name}="${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`).join(",")}}`;
+  return `{${entries.map(([name, value]) => `${name}="${quoted(value)}"`).join(",")}}`;
+}
+
+function selectorExcludingSource(baseSelector, sourceCommit) {
+  return `${baseSelector.slice(0, -1)},source_commit!="${sourceCommit}"}`;
 }
 
 async function queryPrometheus(baseUrl, query, credentials, contract) {
@@ -322,26 +325,32 @@ function numericSample(result, label) {
   return value;
 }
 
-function currentSeriesFingerprint(metric) {
+function fingerprint(metric) {
   return sha256(JSON.stringify(Object.entries(metric ?? {}).sort(([a], [b]) => a.localeCompare(b))));
 }
 
 function parseFreshness(results, targetId) {
-  const byOperation = new Map();
+  const values = new Map();
   for (const result of results) {
     const operation = result?.metric?.operation;
     if (!OPERATIONS.includes(operation)) fail(`${targetId} freshness returned unknown operation ${operation}`);
-    if (byOperation.has(operation)) fail(`${targetId} freshness returned duplicate ${operation} series`);
-    byOperation.set(operation, numericSample(result, `${targetId} ${operation} freshness`));
+    if (values.has(operation)) fail(`${targetId} freshness returned duplicate ${operation} series`);
+    values.set(operation, numericSample(result, `${targetId} ${operation} freshness`));
   }
   for (const operation of OPERATIONS) {
-    if (!byOperation.has(operation)) fail(`${targetId} is missing ${operation} freshness`);
+    if (!values.has(operation)) fail(`${targetId} is missing ${operation} freshness`);
   }
-  return byOperation;
+  return values;
+}
+
+function zeroCompletions() {
+  return Object.fromEntries(
+    OPERATIONS.map((operation) => [operation, Object.fromEntries(OUTCOMES.map((outcome) => [outcome, 0]))]),
+  );
 }
 
 function parseCompletions(results, targetId) {
-  const totals = Object.fromEntries(OPERATIONS.map((operation) => [operation, Object.fromEntries(OUTCOMES.map((outcome) => [outcome, 0]))]));
+  const totals = zeroCompletions();
   for (const result of results) {
     const operation = result?.metric?.operation;
     const outcome = result?.metric?.outcome;
@@ -367,16 +376,32 @@ function parseBuckets(results, targetId) {
   return buckets;
 }
 
-function addCompletionTotals(destination, source) {
+function operationTotal(completions, operation) {
+  return OUTCOMES.reduce((total, outcome) => total + completions[operation][outcome], 0);
+}
+
+function addCompletions(destination, source) {
   for (const operation of OPERATIONS) {
     for (const outcome of OUTCOMES) destination[operation][outcome] += source[operation][outcome];
   }
 }
 
-function addBucketTotals(destination, source) {
+function addBuckets(destination, source) {
   for (const operation of OPERATIONS) {
     for (const [le, value] of source[operation]) {
       destination[operation].set(le, (destination[operation].get(le) ?? 0) + value);
+    }
+  }
+}
+
+function requireHistogramPopulationConsistency(completions, buckets) {
+  for (const operation of OPERATIONS) {
+    if (!buckets[operation].has("+Inf")) fail(`${operation} histogram is missing +Inf bucket`);
+    const completionCount = operationTotal(completions, operation);
+    const histogramCount = buckets[operation].get("+Inf");
+    const tolerance = Math.max(COUNT_EPSILON, completionCount * COUNT_EPSILON);
+    if (Math.abs(completionCount - histogramCount) > tolerance) {
+      fail(`${operation} histogram +Inf population does not match terminal completion population`);
     }
   }
 }
@@ -389,15 +414,15 @@ function histogramQuantile95(bucketMap, operation) {
     .sort(([left], [right]) => left - right);
   if (finite.length === 0) fail(`${operation} histogram has no finite buckets`);
   const total = bucketMap.get("+Inf");
-  if (!(total >= MINIMUM_SAMPLES_PER_OPERATION)) {
+  if (total < MINIMUM_SAMPLES_PER_OPERATION) {
     fail(`${operation} histogram has fewer than ${MINIMUM_SAMPLES_PER_OPERATION} samples`);
   }
   let previousCumulative = 0;
   for (const [, cumulative] of finite) {
-    if (cumulative + 1e-9 < previousCumulative) fail(`${operation} histogram buckets are not cumulative`);
+    if (cumulative + COUNT_EPSILON < previousCumulative) fail(`${operation} histogram buckets are not cumulative`);
     previousCumulative = cumulative;
   }
-  if (total + 1e-9 < previousCumulative) fail(`${operation} +Inf bucket is below finite cumulative count`);
+  if (total + COUNT_EPSILON < previousCumulative) fail(`${operation} +Inf bucket is below finite cumulative count`);
 
   const rank = total * 0.95;
   let lowerBound = 0;
@@ -405,7 +430,7 @@ function histogramQuantile95(bucketMap, operation) {
   for (const [upperBound, cumulative] of finite) {
     if (cumulative >= rank) {
       const bucketCount = cumulative - lowerCumulative;
-      if (bucketCount <= 1e-12) return Math.ceil(upperBound * 1000);
+      if (bucketCount <= COUNT_EPSILON) return Math.ceil(upperBound * 1000);
       const fraction = Math.max(0, Math.min(1, (rank - lowerCumulative) / bucketCount));
       return Math.ceil((lowerBound + (upperBound - lowerBound) * fraction) * 1000);
     }
@@ -413,10 +438,6 @@ function histogramQuantile95(bucketMap, operation) {
     lowerCumulative = cumulative;
   }
   return Math.ceil(finite[finite.length - 1][0] * 1000);
-}
-
-function operationTotal(completions, operation) {
-  return OUTCOMES.reduce((total, outcome) => total + completions[operation][outcome], 0);
 }
 
 function status(pass) {
@@ -463,19 +484,24 @@ function regularSourceHash(relativePath) {
   const relative = path.relative(repoRoot, absolute);
   if (relative.startsWith("..") || path.isAbsolute(relative)) fail(`source file ${relativePath} escapes repository root`);
   if (!existsSync(absolute)) fail(`source file ${relativePath} is missing`);
-  const link = lstatSync(absolute);
-  if (link.isSymbolicLink() || !link.isFile()) fail(`source file ${relativePath} must be a regular non-symlink file`);
-  const stats = statSync(absolute);
-  if (stats.size <= 0 || stats.size > MAX_SOURCE_BYTES) fail(`source file ${relativePath} is outside the bounded size`);
+  const metadata = lstatSync(absolute);
+  if (metadata.isSymbolicLink() || !metadata.isFile()) fail(`source file ${relativePath} must be a regular non-symlink file`);
+  const size = statSync(absolute).size;
+  if (size <= 0 || size > MAX_SOURCE_BYTES) fail(`source file ${relativePath} is outside the bounded source size`);
   return sha256(readFileSync(absolute));
 }
 
 function sourceHashes(contract) {
-  return Object.fromEntries(contract.required_source_files.map((relativePath) => [relativePath, regularSourceHash(relativePath)]));
+  return Object.fromEntries(
+    contract.required_source_files.map((relativePath) => [relativePath, regularSourceHash(relativePath)]),
+  );
 }
 
 function outputPath(contract, requested) {
   const candidate = requested ?? contract.output.default_path;
+  if (typeof candidate !== "string" || candidate.length === 0 || candidate.length > 16_384) {
+    fail("evaluation output path is invalid");
+  }
   const absolute = path.isAbsolute(candidate) ? path.resolve(candidate) : path.resolve(repoRoot, candidate);
   const targetRoot = path.resolve(repoRoot, "target");
   const relative = path.relative(targetRoot, absolute);
@@ -497,30 +523,26 @@ async function evaluateTarget(target, context) {
     context.backendMap.targetLabel,
     target.target_label_value,
   );
+  const sourceSelector = selector(
+    context.backendMap.commonMatchers,
+    context.backendMap.targetLabel,
+    target.target_label_value,
+    { source_commit: context.identity.deployment.source_commit },
+  );
+
   const currentBuild = await queryPrometheus(
     context.prometheusUrl,
-    `rustok_page_builder_provider_build_info${selector(
-      context.backendMap.commonMatchers,
-      context.backendMap.targetLabel,
-      target.target_label_value,
-      { source_commit: context.identity.deployment.source_commit },
-    )}`,
+    `rustok_page_builder_provider_build_info${sourceSelector}`,
     context.credentials,
     context.contract,
   );
   if (currentBuild.length !== 1 || numericSample(currentBuild[0], `${target.target_id} current build-info`) !== 1) {
     fail(`${target.target_id} must expose exactly one current admitted build-info series equal to 1`);
   }
-  const fingerprint = currentSeriesFingerprint(currentBuild[0].metric);
 
   const admittedWindow = await queryPrometheus(
     context.prometheusUrl,
-    `count_over_time(rustok_page_builder_provider_build_info${selector(
-      context.backendMap.commonMatchers,
-      context.backendMap.targetLabel,
-      target.target_label_value,
-      { source_commit: context.identity.deployment.source_commit },
-    )}[${context.windowSeconds}s])`,
+    `count_over_time(rustok_page_builder_provider_build_info${sourceSelector}[${context.windowSeconds}s])`,
     context.credentials,
     context.contract,
   );
@@ -530,7 +552,10 @@ async function evaluateTarget(target, context) {
 
   const unexpectedWindow = await queryPrometheus(
     context.prometheusUrl,
-    `count_over_time(rustok_page_builder_provider_build_info${baseSelector.replace(/}$/u, `,source_commit!="${context.identity.deployment.source_commit}"}`)}[${context.windowSeconds}s])`,
+    `count_over_time(rustok_page_builder_provider_build_info${selectorExcludingSource(
+      baseSelector,
+      context.identity.deployment.source_commit,
+    )}[${context.windowSeconds}s])`,
     context.credentials,
     context.contract,
   );
@@ -574,12 +599,13 @@ async function evaluateTarget(target, context) {
     ),
     target.target_id,
   );
+  requireHistogramPopulationConsistency(completions, buckets);
 
   return {
     target_id: target.target_id,
     selector_sha256: sha256(baseSelector),
     raw_selector_persisted: false,
-    backend_series_fingerprint_sha256: fingerprint,
+    backend_series_fingerprint_sha256: fingerprint(currentBuild[0].metric),
     current_source_commit_verified: true,
     unexpected_source_in_window: false,
     preview_freshness_age_seconds: freshnessAges.preview,
@@ -597,7 +623,7 @@ async function mapWithConcurrency(items, limit, mapper) {
       const index = next;
       next += 1;
       if (index >= items.length) return;
-      results[index] = await mapper(items[index], index);
+      results[index] = await mapper(items[index]);
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
@@ -607,11 +633,15 @@ async function mapWithConcurrency(items, limit, mapper) {
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   for (const required of ["identity", "backendMap", "prometheusUrl", "windowSeconds", "freshnessSeconds"]) {
-    if (!options[required]) fail(`--${required.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+    if (!options[required]) {
+      fail(`--${required.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+    }
   }
 
   const contract = JSON.parse(readFileSync(contractPath, "utf8"));
-  if (contract.status !== "source_ready_execution_pending") fail("evaluator source contract must remain execution-pending before runtime evaluation");
+  if (contract.status !== "source_ready_execution_pending") {
+    fail("evaluator source contract must remain execution-pending before runtime evaluation");
+  }
   const head = currentCommit();
   const identity = requireIdentity(regularJsonFile(options.identity, "identity packet"), head);
   const backendMap = requireBackendMap(regularJsonFile(options.backendMap, "backend target map"), identity);
@@ -627,24 +657,26 @@ async function main() {
   const backendNow = numericSample(timeResult[0], "Prometheus time()");
   const identityAge = backendNow - identity.capturedAtSeconds;
   if (identityAge < windowSeconds) fail("identity capture must predate the entire query window");
-  if (identityAge > contract.backend_query.identity_capture_maximum_age_seconds) fail("identity capture is older than the admitted maximum age");
+  if (identityAge > contract.backend_query.identity_capture_maximum_age_seconds) {
+    fail("identity capture is older than the admitted maximum age");
+  }
 
-  const context = {
-    contract,
-    identity,
-    backendMap,
-    prometheusUrl,
-    credentials,
-    windowSeconds,
-    freshnessSeconds,
-    backendNow,
-  };
   const targetResults = await mapWithConcurrency(
     backendMap.targets,
     contract.backend_query.maximum_parallel_queries,
-    (target) => evaluateTarget(target, context),
+    (target) => evaluateTarget(target, {
+      contract,
+      identity,
+      backendMap,
+      prometheusUrl,
+      credentials,
+      windowSeconds,
+      freshnessSeconds,
+      backendNow,
+    }),
   );
   if (targetResults.length !== identity.targetIds.size) fail("partial target evaluation is forbidden");
+
   const fingerprints = new Set();
   for (const result of targetResults) {
     if (fingerprints.has(result.backend_series_fingerprint_sha256)) {
@@ -653,17 +685,20 @@ async function main() {
     fingerprints.add(result.backend_series_fingerprint_sha256);
   }
 
-  const completions = Object.fromEntries(OPERATIONS.map((operation) => [operation, Object.fromEntries(OUTCOMES.map((outcome) => [outcome, 0]))]));
+  const completions = zeroCompletions();
   const buckets = { preview: new Map(), publish: new Map() };
   for (const target of targetResults) {
-    addCompletionTotals(completions, target.completions);
-    addBucketTotals(buckets, target.buckets);
+    addCompletions(completions, target.completions);
+    addBuckets(buckets, target.buckets);
   }
+  requireHistogramPopulationConsistency(completions, buckets);
+
   const previewSamples = operationTotal(completions, "preview");
   const publishSamples = operationTotal(completions, "publish");
   if (previewSamples < MINIMUM_SAMPLES_PER_OPERATION || publishSamples < MINIMUM_SAMPLES_PER_OPERATION) {
     fail(`deployment sample floor requires at least ${MINIMUM_SAMPLES_PER_OPERATION} preview and publish completions`);
   }
+
   const sanitizeFailures = completions.publish.sanitize_failed;
   const runtimeFailures = completions.preview.runtime_failed + completions.publish.runtime_failed;
   const observed = {
@@ -707,6 +742,8 @@ async function main() {
     samples: {
       preview: previewSamples,
       publish: publishSamples,
+      preview_histogram: buckets.preview.get("+Inf"),
+      publish_histogram: buckets.publish.get("+Inf"),
       minimum_per_operation: MINIMUM_SAMPLES_PER_OPERATION,
     },
     ...evaluated,
