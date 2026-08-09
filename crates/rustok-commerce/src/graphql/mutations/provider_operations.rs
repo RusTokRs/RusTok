@@ -4,6 +4,10 @@ use rustok_api::{
     graphql::require_module_enabled,
 };
 use rustok_fulfillment::error::FulfillmentError;
+use rustok_fulfillment::{
+    CancelAdminFulfillmentRequest, DeliverAdminFulfillmentRequest, ReopenAdminFulfillmentRequest,
+    ReshipAdminFulfillmentRequest, ShipAdminFulfillmentRequest,
+};
 use rustok_payment::{
     AuthorizeAdminPaymentCollectionRequest, CancelAdminPaymentCollectionRequest,
     CancelAdminRefundRequest, CaptureAdminPaymentCollectionRequest, CompleteAdminRefundRequest,
@@ -12,7 +16,8 @@ use rustok_payment::{
 use uuid::Uuid;
 
 use crate::graphql_runtime::{
-    fulfillment_orchestration_from_context, payment_command_runtime_from_context,
+    fulfillment_command_runtime_from_context, fulfillment_orchestration_from_context,
+    manual_fulfillment_owner_orchestration_from_context, payment_command_runtime_from_context,
 };
 use crate::FulfillmentOrchestrationError;
 
@@ -157,6 +162,75 @@ fn fulfillment_orchestration_error_envelope(
     }
 }
 
+fn fulfillment_command_error_envelope(
+    error: &PortError,
+) -> (&'static str, &'static str, bool, &'static str) {
+    match error.code.as_str() {
+        "order.order_not_found" => (
+            "Order resource was not found",
+            "ORDER_RESOURCE_NOT_FOUND",
+            false,
+            "order_not_found",
+        ),
+        "fulfillment.reconciliation_required" => (
+            "Fulfillment operation requires reconciliation",
+            "FULFILLMENT_RECONCILIATION_REQUIRED",
+            false,
+            "reconciliation_required",
+        ),
+        "fulfillment.database_unavailable" | "order.database_unavailable" => (
+            "Fulfillment service is temporarily unavailable",
+            "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
+            true,
+            "temporarily_unavailable",
+        ),
+        "fulfillment.invalid_transition" => (
+            "Fulfillment operation conflicts with the current state",
+            "FULFILLMENT_STATE_CONFLICT",
+            false,
+            "state_conflict",
+        ),
+        _ => match &error.kind {
+            PortErrorKind::Validation => (
+                "Fulfillment request is invalid",
+                "FULFILLMENT_REQUEST_INVALID",
+                false,
+                "validation",
+            ),
+            PortErrorKind::NotFound => (
+                "Fulfillment resource was not found",
+                "FULFILLMENT_RESOURCE_NOT_FOUND",
+                false,
+                "not_found",
+            ),
+            PortErrorKind::Conflict => (
+                "Fulfillment operation conflicts with the current state",
+                "FULFILLMENT_STATE_CONFLICT",
+                false,
+                "state_conflict",
+            ),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                "Fulfillment service is temporarily unavailable",
+                "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
+                true,
+                "temporarily_unavailable",
+            ),
+            PortErrorKind::InvariantViolation => (
+                "Fulfillment operation requires reconciliation",
+                "FULFILLMENT_RECONCILIATION_REQUIRED",
+                false,
+                "reconciliation_required",
+            ),
+            PortErrorKind::Forbidden => (
+                "Fulfillment request is invalid",
+                "FULFILLMENT_REQUEST_INVALID",
+                false,
+                "forbidden",
+            ),
+        },
+    }
+}
+
 fn payment_provider_graphql_error(
     tenant_id: Uuid,
     resource_id: Uuid,
@@ -182,20 +256,48 @@ fn payment_provider_graphql_error(
     public_provider_graphql_error(message, code, retryable)
 }
 
-fn fulfillment_provider_graphql_error(
+fn fulfillment_owner_graphql_error(
+    tenant_id: Uuid,
+    resource_id: Uuid,
+    operation: &'static str,
+    context: &PortContext,
+    error: PortError,
+) -> async_graphql::Error {
+    let (message, code, retryable, error_kind) = fulfillment_command_error_envelope(&error);
+    tracing::error!(
+        owner = "rustok_fulfillment",
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        resource_id_non_nil = !resource_id.is_nil(),
+        operation,
+        correlation_id = %context.correlation_id,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        error_kind,
+        public_code = code,
+        retryable,
+        boundary = "commerce_graphql_fulfillment_command",
+        "commerce GraphQL fulfillment owner command failed"
+    );
+    public_provider_graphql_error(message, code, retryable)
+}
+
+fn legacy_fulfillment_provider_graphql_error(
     tenant_id: Uuid,
     resource_id: Uuid,
     operation: &'static str,
     error: FulfillmentOrchestrationError,
 ) -> async_graphql::Error {
-    tracing::error!(
-        error = ?error,
-        tenant_id = %tenant_id,
-        resource_id = %resource_id,
-        operation,
-        "commerce GraphQL fulfillment provider operation failed"
-    );
     let (message, code, retryable) = fulfillment_orchestration_error_envelope(&error);
+    tracing::error!(
+        owner = "rustok_commerce.fulfillment_orchestration_compat",
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        resource_id_non_nil = !resource_id.is_nil(),
+        operation,
+        public_code = code,
+        retryable,
+        boundary = "commerce_graphql_fulfillment_compat",
+        "commerce GraphQL embedded compatibility fulfillment operation failed"
+    );
     public_provider_graphql_error(message, code, retryable)
 }
 
@@ -276,6 +378,104 @@ fn payment_refund_transition_context(
     Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
         Some(channel) => context.with_channel(channel),
         None => context,
+    })
+}
+
+fn fulfillment_command_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    fulfillment_id: Uuid,
+    operation: &'static str,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-graphql-fulfillment-command:{operation}:{fulfillment_id}"),
+    )
+    .with_idempotency_key(format!(
+        "graphql-fulfillment:{fulfillment_id}:{operation}"
+    ))
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
+}
+
+fn fulfillment_create_read_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    order_id: Uuid,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-graphql-fulfillment-create-read:{order_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
+}
+
+fn fulfillment_create_command_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    input: &crate::dto::CreateFulfillmentInput,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let payload = serde_json::to_vec(input).map_err(|_| {
+        public_provider_graphql_error(
+            "Fulfillment request is invalid",
+            "FULFILLMENT_REQUEST_INVALID",
+            false,
+        )
+    })?;
+    let first = fnv1a64(&payload, 0xcbf29ce484222325);
+    let second = fnv1a64(&payload, 0x84222325cbf29ce4);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!(
+            "commerce-graphql-fulfillment-create-command:{}",
+            input.order_id
+        ),
+    )
+    .with_idempotency_key(format!(
+        "graphql-fulfillment:create:{}:{first:016x}{second:016x}",
+        input.order_id
+    ))
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
+}
+
+fn fnv1a64(bytes: &[u8], offset_basis: u64) -> u64 {
+    bytes.iter().fold(offset_basis, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
     })
 }
 
@@ -556,35 +756,59 @@ impl CommerceProviderMutation {
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let order_id = input.order_id;
-        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
-            .create_manual_fulfillment(
-                tenant_id,
-                crate::dto::CreateFulfillmentInput {
-                    order_id,
-                    shipping_option_id: input.shipping_option_id,
-                    customer_id: input.customer_id,
-                    carrier: input.carrier,
-                    tracking_number: input.tracking_number,
-                    items: Some(
-                        input
-                            .items
-                            .into_iter()
-                            .map(|item| {
-                                Ok(crate::dto::CreateFulfillmentItemInput {
-                                    order_line_item_id: item.order_line_item_id,
-                                    quantity: item.quantity,
-                                    metadata: parse_optional_metadata(item.metadata.as_deref())?,
-                                })
-                            })
-                            .collect::<Result<Vec<_>>>()?,
-                    ),
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
-                },
-            )
-            .await
-            .map_err(|error| {
-                fulfillment_provider_graphql_error(tenant_id, order_id, "create_fulfillment", error)
-            })?;
+        let create_input = crate::dto::CreateFulfillmentInput {
+            order_id,
+            shipping_option_id: input.shipping_option_id,
+            customer_id: input.customer_id,
+            carrier: input.carrier,
+            tracking_number: input.tracking_number,
+            items: Some(
+                input
+                    .items
+                    .into_iter()
+                    .map(|item| {
+                        Ok(crate::dto::CreateFulfillmentItemInput {
+                            order_line_item_id: item.order_line_item_id,
+                            quantity: item.quantity,
+                            metadata: parse_optional_metadata(item.metadata.as_deref())?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+            ),
+            metadata: parse_optional_metadata(input.metadata.as_deref())?,
+        };
+
+        let fulfillment = if let Some(service) =
+            manual_fulfillment_owner_orchestration_from_context(ctx)
+        {
+            let read_context = fulfillment_create_read_context(ctx, tenant_id, order_id)?;
+            let write_context =
+                fulfillment_create_command_context(ctx, tenant_id, &create_input)?;
+            service
+                .create_manual_fulfillment(read_context, write_context.clone(), create_input)
+                .await
+                .map_err(|error| {
+                    fulfillment_owner_graphql_error(
+                        tenant_id,
+                        order_id,
+                        "create_fulfillment",
+                        &write_context,
+                        error,
+                    )
+                })?
+        } else {
+            fulfillment_orchestration_from_context(ctx, db.clone())
+                .create_manual_fulfillment(tenant_id, create_input)
+                .await
+                .map_err(|error| {
+                    legacy_fulfillment_provider_graphql_error(
+                        tenant_id,
+                        order_id,
+                        "create_fulfillment",
+                        error,
+                    )
+                })?
+        };
         Ok(fulfillment.into())
     }
 
@@ -602,28 +826,39 @@ impl CommerceProviderMutation {
             "Permission denied: fulfillments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
+        let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
+        let context = fulfillment_command_context(ctx, tenant_id, id, "ship")?;
+        let fulfillment = runtime
+            .lifecycle_command_port()
             .ship_fulfillment(
-                tenant_id,
-                id,
-                crate::dto::ShipFulfillmentInput {
-                    carrier: input.carrier,
-                    tracking_number: input.tracking_number,
-                    items: input.items.map(|items| {
-                        items
-                            .into_iter()
-                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
-                                fulfillment_item_id: item.fulfillment_item_id,
-                                quantity: item.quantity,
-                            })
-                            .collect()
-                    }),
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                context.clone(),
+                ShipAdminFulfillmentRequest {
+                    fulfillment_id: id,
+                    input: crate::dto::ShipFulfillmentInput {
+                        carrier: input.carrier,
+                        tracking_number: input.tracking_number,
+                        items: input.items.map(|items| {
+                            items
+                                .into_iter()
+                                .map(|item| crate::dto::FulfillmentItemQuantityInput {
+                                    fulfillment_item_id: item.fulfillment_item_id,
+                                    quantity: item.quantity,
+                                })
+                                .collect()
+                        }),
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                fulfillment_provider_graphql_error(tenant_id, id, "ship_fulfillment", error)
+                fulfillment_owner_graphql_error(
+                    tenant_id,
+                    id,
+                    "ship_fulfillment",
+                    &context,
+                    error,
+                )
             })?;
         Ok(fulfillment.into())
     }
@@ -642,27 +877,38 @@ impl CommerceProviderMutation {
             "Permission denied: fulfillments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
+        let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
+        let context = fulfillment_command_context(ctx, tenant_id, id, "deliver")?;
+        let fulfillment = runtime
+            .lifecycle_command_port()
             .deliver_fulfillment(
-                tenant_id,
-                id,
-                crate::dto::DeliverFulfillmentInput {
-                    delivered_note: input.delivered_note,
-                    items: input.items.map(|items| {
-                        items
-                            .into_iter()
-                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
-                                fulfillment_item_id: item.fulfillment_item_id,
-                                quantity: item.quantity,
-                            })
-                            .collect()
-                    }),
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                context.clone(),
+                DeliverAdminFulfillmentRequest {
+                    fulfillment_id: id,
+                    input: crate::dto::DeliverFulfillmentInput {
+                        delivered_note: input.delivered_note,
+                        items: input.items.map(|items| {
+                            items
+                                .into_iter()
+                                .map(|item| crate::dto::FulfillmentItemQuantityInput {
+                                    fulfillment_item_id: item.fulfillment_item_id,
+                                    quantity: item.quantity,
+                                })
+                                .collect()
+                        }),
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                fulfillment_provider_graphql_error(tenant_id, id, "deliver_fulfillment", error)
+                fulfillment_owner_graphql_error(
+                    tenant_id,
+                    id,
+                    "deliver_fulfillment",
+                    &context,
+                    error,
+                )
             })?;
         Ok(fulfillment.into())
     }
@@ -681,26 +927,37 @@ impl CommerceProviderMutation {
             "Permission denied: fulfillments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
+        let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
+        let context = fulfillment_command_context(ctx, tenant_id, id, "reopen")?;
+        let fulfillment = runtime
+            .lifecycle_command_port()
             .reopen_fulfillment(
-                tenant_id,
-                id,
-                crate::dto::ReopenFulfillmentInput {
-                    items: input.items.map(|items| {
-                        items
-                            .into_iter()
-                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
-                                fulfillment_item_id: item.fulfillment_item_id,
-                                quantity: item.quantity,
-                            })
-                            .collect()
-                    }),
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                context.clone(),
+                ReopenAdminFulfillmentRequest {
+                    fulfillment_id: id,
+                    input: crate::dto::ReopenFulfillmentInput {
+                        items: input.items.map(|items| {
+                            items
+                                .into_iter()
+                                .map(|item| crate::dto::FulfillmentItemQuantityInput {
+                                    fulfillment_item_id: item.fulfillment_item_id,
+                                    quantity: item.quantity,
+                                })
+                                .collect()
+                        }),
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                fulfillment_provider_graphql_error(tenant_id, id, "reopen_fulfillment", error)
+                fulfillment_owner_graphql_error(
+                    tenant_id,
+                    id,
+                    "reopen_fulfillment",
+                    &context,
+                    error,
+                )
             })?;
         Ok(fulfillment.into())
     }
@@ -719,28 +976,39 @@ impl CommerceProviderMutation {
             "Permission denied: fulfillments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
+        let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
+        let context = fulfillment_command_context(ctx, tenant_id, id, "reship")?;
+        let fulfillment = runtime
+            .lifecycle_command_port()
             .reship_fulfillment(
-                tenant_id,
-                id,
-                crate::dto::ReshipFulfillmentInput {
-                    carrier: input.carrier,
-                    tracking_number: input.tracking_number,
-                    items: input.items.map(|items| {
-                        items
-                            .into_iter()
-                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
-                                fulfillment_item_id: item.fulfillment_item_id,
-                                quantity: item.quantity,
-                            })
-                            .collect()
-                    }),
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                context.clone(),
+                ReshipAdminFulfillmentRequest {
+                    fulfillment_id: id,
+                    input: crate::dto::ReshipFulfillmentInput {
+                        carrier: input.carrier,
+                        tracking_number: input.tracking_number,
+                        items: input.items.map(|items| {
+                            items
+                                .into_iter()
+                                .map(|item| crate::dto::FulfillmentItemQuantityInput {
+                                    fulfillment_item_id: item.fulfillment_item_id,
+                                    quantity: item.quantity,
+                                })
+                                .collect()
+                        }),
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                fulfillment_provider_graphql_error(tenant_id, id, "reship_fulfillment", error)
+                fulfillment_owner_graphql_error(
+                    tenant_id,
+                    id,
+                    "reship_fulfillment",
+                    &context,
+                    error,
+                )
             })?;
         Ok(fulfillment.into())
     }
@@ -759,18 +1027,29 @@ impl CommerceProviderMutation {
             "Permission denied: fulfillments:update required",
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
+        let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
+        let context = fulfillment_command_context(ctx, tenant_id, id, "cancel")?;
+        let fulfillment = runtime
+            .lifecycle_command_port()
             .cancel_fulfillment(
-                tenant_id,
-                id,
-                crate::dto::CancelFulfillmentInput {
-                    reason: input.reason,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                context.clone(),
+                CancelAdminFulfillmentRequest {
+                    fulfillment_id: id,
+                    input: crate::dto::CancelFulfillmentInput {
+                        reason: input.reason,
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
                 },
             )
             .await
             .map_err(|error| {
-                fulfillment_provider_graphql_error(tenant_id, id, "cancel_fulfillment", error)
+                fulfillment_owner_graphql_error(
+                    tenant_id,
+                    id,
+                    "cancel_fulfillment",
+                    &context,
+                    error,
+                )
             })?;
         Ok(fulfillment.into())
     }
