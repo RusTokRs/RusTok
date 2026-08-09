@@ -8,7 +8,10 @@ use rustok_page_builder::{
         BuilderCapabilityKind, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, PageBuilderErrorKind,
     },
     health::ProviderHealthSnapshot,
-    rollout::{BuilderCapabilityFlags, BuilderRolloutError, ensure_capability},
+    rollout::{
+        BuilderCapabilityFlags, BuilderRolloutError, effective_provider_runtime_flags,
+        ensure_capability,
+    },
 };
 use sea_orm::DatabaseConnection;
 
@@ -125,6 +128,11 @@ impl GqlPageBuilderCapabilityPreflight {
     }
 }
 
+fn provider_health_snapshot(ctx: &Context<'_>) -> Option<ProviderHealthSnapshot> {
+    ctx.data_opt::<PagesGraphqlRuntimeData>()
+        .and_then(PagesGraphqlRuntimeData::provider_health_snapshot)
+}
+
 #[derive(Default)]
 pub struct PageBuilderRolloutQuery;
 
@@ -141,22 +149,21 @@ impl PageBuilderRolloutQuery {
         ensure_pages_read_authority(auth, tenant)?;
         let flags = load_rollout_flags(db, tenant).await?;
         let snapshot = GqlPageBuilderRolloutSnapshot::new(tenant, flags);
-        let provider_health = ctx
-            .data_opt::<PagesGraphqlRuntimeData>()
-            .and_then(PagesGraphqlRuntimeData::provider_health_snapshot);
 
-        Ok(match provider_health {
+        Ok(match provider_health_snapshot(ctx) {
             Some(health) => snapshot.with_provider_health(&health),
             None => snapshot,
         })
     }
 
-    /// Non-mutating rollout/RBAC preflight for canonical Page Builder capability evidence.
+    /// Non-mutating rollout/RBAC/provider-health preflight for canonical Page Builder capability
+    /// evidence.
     ///
-    /// The permission check mirrors the Page Builder authorizer mapping and is source-locked
-    /// against `PageBuilderCapabilityPermissions` by the feature-preflight verifier. The shared
-    /// rollout guard then yields the canonical `feature-disabled / FEATURE_DISABLED` contract
-    /// without invoking preview rendering or publish persistence.
+    /// Permission checks mirror the Page Builder authorizer mapping. Configured rollout flags are
+    /// loaded server-side, then the same shared Page Builder provider-runtime policy used by Pages
+    /// authoritative SSR narrows them with a fresh owner-accepted provider-health snapshot when one
+    /// exists. `ensure_capability` therefore yields the canonical
+    /// `feature-disabled / FEATURE_DISABLED` result without rendering preview or persisting publish.
     async fn page_builder_capability_preflight(
         &self,
         ctx: &Context<'_>,
@@ -178,7 +185,9 @@ impl PageBuilderRolloutQuery {
         }
 
         let flags = load_rollout_flags(db, tenant).await?;
-        match ensure_capability(&flags, capability_kind) {
+        let provider_health = provider_health_snapshot(ctx);
+        let effective_flags = effective_provider_runtime_flags(&flags, provider_health.as_ref());
+        match ensure_capability(&effective_flags, capability_kind) {
             Ok(()) => Ok(GqlPageBuilderCapabilityPreflight::allow(capability)),
             Err(BuilderRolloutError::CapabilityDisabled(_)) => Ok(
                 GqlPageBuilderCapabilityPreflight::feature_disabled(capability),
@@ -254,6 +263,7 @@ fn ensure_pages_read_authority(auth: &AuthContext, tenant: &TenantContext) -> Re
 mod tests {
     use super::*;
     use rustok_page_builder::health::{ProviderHealthState, ProviderSloObservations};
+    use rustok_page_builder::rollout::BuilderToggleProfile;
     use uuid::Uuid;
 
     fn tenant(id: Uuid) -> TenantContext {
@@ -292,7 +302,7 @@ mod tests {
         assert!(
             ensure_pages_read_authority(
                 &auth(Uuid::new_v4(), vec![Permission::PAGES_READ]),
-                &tenant,
+                &tenant
             )
             .is_err()
         );
@@ -335,6 +345,45 @@ mod tests {
         assert!(allowed.allowed);
         assert!(allowed.error_kind.is_none());
         assert!(allowed.error_code.is_none());
+    }
+
+    #[test]
+    fn provider_health_preflight_flags_match_authoritative_runtime_policy() {
+        let degraded = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1_600,
+            publish_p95_ms: 2_000,
+            sanitize_failure_rate: 0.0,
+            runtime_error_rate: 0.0,
+        });
+        let degraded_flags = effective_provider_runtime_flags(
+            &BuilderCapabilityFlags::default(),
+            Some(&degraded),
+        );
+        assert_eq!(degraded_flags, BuilderToggleProfile::PublishOff.flags());
+        assert!(ensure_capability(&degraded_flags, BuilderCapabilityKind::Preview).is_ok());
+        assert_eq!(
+            ensure_capability(&degraded_flags, BuilderCapabilityKind::Publish),
+            Err(BuilderRolloutError::CapabilityDisabled("publish"))
+        );
+
+        let unavailable = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1_000,
+            publish_p95_ms: 2_000,
+            sanitize_failure_rate: 0.0,
+            runtime_error_rate: 0.03,
+        });
+        assert_eq!(unavailable.state, ProviderHealthState::Unavailable);
+        let unavailable_flags = effective_provider_runtime_flags(
+            &BuilderCapabilityFlags::default(),
+            Some(&unavailable),
+        );
+        assert_eq!(unavailable_flags, BuilderToggleProfile::BuilderOff.flags());
+        assert!(
+            ensure_capability(&unavailable_flags, BuilderCapabilityKind::Preview).is_err()
+        );
+        assert!(
+            ensure_capability(&unavailable_flags, BuilderCapabilityKind::Publish).is_err()
+        );
     }
 
     #[test]
