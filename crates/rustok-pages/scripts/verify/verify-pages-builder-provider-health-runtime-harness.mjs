@@ -14,6 +14,7 @@ const files = {
   identity: "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
   evaluator: "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
   acceptance: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+  observedAcceptance: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
   serverBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
   consumerBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   preflight: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json",
@@ -44,6 +45,7 @@ const source = JSON.parse(sources.source);
 const identity = JSON.parse(sources.identity);
 const evaluator = JSON.parse(sources.evaluator);
 const acceptance = JSON.parse(sources.acceptance);
+const observedAcceptance = JSON.parse(sources.observedAcceptance);
 const serverBinding = JSON.parse(sources.serverBinding);
 const consumerBinding = JSON.parse(sources.consumerBinding);
 const preflight = JSON.parse(sources.preflight);
@@ -58,6 +60,7 @@ for (const value of Object.values(source.validation ?? {})) if (value !== false)
 if (identity.format !== "page_builder_provider_health_deployment_identity_source_v1") failures.push("identity predecessor source drifted");
 if (evaluator.format !== "page_builder_provider_health_deployment_evaluator_source_v1") failures.push("evaluator predecessor source drifted");
 if (acceptance.format !== "pages_builder_provider_health_owner_acceptance_source_v1") failures.push("owner acceptance predecessor source drifted");
+if (observedAcceptance.format !== "pages_builder_provider_health_observed_acceptance_source_v1" || observedAcceptance.status !== "source_ready_maintainer_execution_pending") failures.push("observed-health owner acceptance continuation drifted");
 if (serverBinding.format !== "pages_builder_provider_health_server_binding_source_v1") failures.push("server binding predecessor source drifted");
 if (consumerBinding.format !== "pages_builder_provider_health_consumer_binding_source_v1") failures.push("consumer binding predecessor source drifted");
 if (preflight.format !== "pages_builder_provider_health_capability_preflight_source_v1") failures.push("capability-preflight predecessor source drifted");
@@ -81,6 +84,10 @@ for (const [object, key, expected] of [
   [source.source_contract, "publish_mutation_is_never_executed", true],
   [source.source_contract, "automatic_owner_acceptance", false],
   [source.source_contract, "automatic_pages_gate_acceptance", false],
+  [source.observed_owner_acceptance, "source_ready", true],
+  [source.observed_owner_acceptance, "execution_pending", true],
+  [source.observed_owner_acceptance, "health_lease_extended", false],
+  [source.observed_owner_acceptance, "automatic_pages_gate_acceptance", false],
 ]) if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 
 for (const marker of [
@@ -141,7 +148,8 @@ if (!(contract.required_source_files ?? []).includes("apps/next-admin/tests/page
 if (preflight.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("capability-preflight cursor must point to source-ready runtime harness");
 if (consumerBinding.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("consumer-binding cursor must point to source-ready runtime harness");
 if (source.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("runtime harness cursor drifted");
-if (source.next_cursor?.observed_health_owner_acceptance !== "pending") failures.push("observed-health owner acceptance must remain pending");
+if (source.next_cursor?.observed_health_owner_acceptance !== "source_ready_maintainer_execution_pending") failures.push("observed-health owner acceptance must be source-ready/execution-pending");
+if (observedAcceptance.next_cursor?.observed_health_owner_acceptance !== "source_ready_maintainer_execution_pending") failures.push("observed-health owner acceptance source cursor drifted");
 
 for (const marker of [
   "provider-health-runtime-evidence-harness-source-ready",
@@ -152,8 +160,10 @@ for (const marker of [
 ]) need(sources.overlay, marker, "runtime harness actualization");
 for (const marker of [
   "provider-health-runtime-evidence-harness-source-ready",
+  "provider-health-observed-acceptance-source-ready",
   "pages-page-builder-provider-health-runtime-evidence-harness-actualization-2026-08-09.md",
   "observed-health runtime evidence harness [source-ready / maintainer execution pending]",
+  "observed-health owner acceptance [source-ready / maintainer execution pending]",
 ]) need(sources.parity, marker, "plan parity actualization");
 
 if (failures.length) {
@@ -161,4 +171,4 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-provider-health-runtime-harness] PASS source_ready=true execution=pending owner_acceptance=pending");
+console.log("[verify-pages-builder-provider-health-runtime-harness] PASS source_ready=true execution=pending owner_acceptance=source_ready_execution_pending");
