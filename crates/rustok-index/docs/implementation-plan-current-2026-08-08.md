@@ -1,9 +1,16 @@
 # Current `rustok-index` implementation plan — 2026-08-08
 
-Status overlay rechecked at `main@d0557dbeb34c86184b4eeae83f93145ebd53c558` and continued on
-`agent/index-replay-targeted-graphql-transport-20260809`.
+Status overlay rechecked at `main@97c01e2df66156f449b796f1349252da67a94bc3` and continued on
+`agent/index-plan-post-targeted-recheck-20260809`.
 
 `implementation-plan.md` remains historical architecture context. This file is the current execution cursor.
+
+Post-Targeted recheck: #3360 merged `runIndexReplayTargeted` at
+`e7b6a135692047398b95966491dbcbb06347da31`. Main then advanced to
+`97c01e2df66156f449b796f1349252da67a94bc3` through Forum notification reconciliation, Blog Translation
+PostgreSQL evidence, and Commerce Payment owner-port work only. The compare from the Targeted merge to current
+`main` contains no `rustok-index` path and no Index replay transport path, so it opens no new Index source-code
+boundary and does not relax any execution/admission gate below.
 
 ## Current primary owner gate
 
