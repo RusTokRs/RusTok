@@ -14,6 +14,7 @@
     "source_commit_must_equal_checkout_head": true,
     "source_hashes_must_match_runtime_execution_contract_and_checkout": true,
     "identity_evaluation_binding_acceptance_hashes_must_match_supplied_packets": true,
+    "supplied_predecessor_source_hashes_must_match_contracts_and_checkout": true,
     "deployment_id_and_repo_digest_must_match_all_supplied_packets": true,
     "accepted_health_snapshot_and_slo_must_match_binding_acceptance": true,
     "health_valid_until_must_match_binding_acceptance": true,
@@ -24,6 +25,7 @@
     "configured_rollout_all_on_required": true,
     "graphql_provider_health_observed_required": true,
     "graphql_provider_state_must_match_accepted_snapshot": true,
+    "graphql_http_status_and_body_hashes_revalidated": true,
     "canonical_feature_disabled_contract_required_when_narrowed": true,
     "workspace_controls_must_match_accepted_state": true,
     "authoritative_ssr_preview_behavior_must_match_accepted_state": true,
@@ -36,17 +38,20 @@
   "supplied_predecessor_packets": {
     "deployment_identity": {
       "format": "page_builder_provider_health_deployment_identity_v1",
-      "status": "deployment_identity_verified_health_evaluation_pending"
+      "status": "deployment_identity_verified_health_evaluation_pending",
+      "source_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
     },
     "deployment_evaluation": {
       "format": "page_builder_provider_health_deployment_evaluation_v1",
-      "status": "deployment_health_evaluated_pages_binding_pending"
+      "status": "deployment_health_evaluated_pages_binding_pending",
+      "source_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
     },
     "binding_owner_acceptance": {
       "format": "pages_builder_provider_health_owner_acceptance_v1",
       "status": "owner_accepted_server_binding_pending",
       "decision": "accept_for_pages_binding",
-      "rollback_action": "restore_unobserved_provider_health"
+      "rollback_action": "restore_unobserved_provider_health",
+      "source_contract": "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
     }
   },
   "owner_decision": {
@@ -111,6 +116,8 @@
     "workflow_or_ci_run": false
   },
   "required_source_files": [
+    "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+    "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
     "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
     "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
     "apps/next-admin/tests/pages-builder-provider-health-runtime/runtime.spec.ts",
