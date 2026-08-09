@@ -39,6 +39,14 @@ The mapper does not call those services itself. Enumeration, pagination, RBAC co
 
 `ForumOwnerExportMapper::map_fragment` preserves caller order and rejects a fragment above 512 total category/topic/reply owner views.
 
+## Tenant scope
+
+Every input owner-view batch now requires an explicit non-nil `tenant_id`, and the same tenant identifier is written to the export fragment envelope.
+
+The mapper cannot independently prove the tenant of an already-materialized response because the response DTOs intentionally do not repeat tenant identity. The future export reader/runner must therefore obtain all responses through owner calls bound to the exact same trusted tenant context and pass that tenant into the mapper.
+
+A nil tenant is rejected before any record mapping. This prevents a tenant-ambiguous export envelope, but it does not replace owner authorization or permit mixing responses from separate tenant reads.
+
 ## Localization semantics
 
 One full owner response represents one resolved locale view, not an entire multilingual resource.
@@ -103,7 +111,7 @@ Still open after FORUM-34D:
 - neutral shared import/export runner contract and host composition;
 - durable cursor/checkpoint/receipt/replay/audit semantics;
 - bounded exact locale enumeration, especially for replies;
-- an operator-authorized bounded export reader/composer over the owner services;
+- an operator-authorized bounded export reader/composer over the owner services with one trusted tenant scope;
 - external-user resolution through the proper owner boundary;
 - cross-batch import dependency resolution;
 - candidate-to-existing Forum owner command adapter;
