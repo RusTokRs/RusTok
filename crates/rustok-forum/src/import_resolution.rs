@@ -11,7 +11,7 @@ use crate::import_inspection::{
 use crate::import_mapping::{
     ForumImportCategoryCandidate, ForumImportEntityKind, ForumImportExternalRef,
     ForumImportPostCandidate, ForumImportPostRole, ForumImportTopicCandidate,
-    MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH, FORUM_IMPORT_SOURCE_NODEBB,
+    FORUM_IMPORT_SOURCE_NODEBB, MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
 };
 
 pub const MAX_FORUM_IMPORT_RESOLUTION_BINDINGS_PER_BATCH: usize =
@@ -101,6 +101,8 @@ pub enum ForumImportResolutionError {
     TooManyCandidates { max: usize, actual: usize },
     #[error("Forum import resolution exceeds {max} identity bindings: {actual}")]
     TooManyBindings { max: usize, actual: usize },
+    #[error("Forum import resolution repeats source candidate {source:?}")]
+    DuplicateCandidateSource { source: ForumImportExternalRef },
     #[error("Forum import resolution contains duplicate binding for {source:?}")]
     DuplicateBinding { source: ForumImportExternalRef },
     #[error("Forum import resolution binding for {source:?} has nil target id")]
@@ -153,6 +155,16 @@ pub enum ForumImportResolutionError {
         target: ForumImportExternalRef,
         disposition: ForumImportDependencyDisposition,
     },
+    #[error(
+        "Forum import application batch requires in-batch {relation:?}: owner={owner:?} target={target:?}"
+    )]
+    CrossBatchDependency {
+        owner: ForumImportExternalRef,
+        relation: ForumImportDependencyRelation,
+        target: ForumImportExternalRef,
+    },
+    #[error("Forum import category parent cycle reaches {source:?}")]
+    CategoryCycle { source: ForumImportExternalRef },
     #[error("Forum import post role is unresolved for {source:?}")]
     UnresolvedPostRole { source: ForumImportExternalRef },
     #[error("Forum import topic {source:?} has no explicit main-post body source")]
@@ -187,7 +199,7 @@ impl ForumImportApplicationResolver {
         &self,
         request: &ForumImportApplicationResolutionRequest,
     ) -> Result<ForumResolvedImportApplicationBatch, ForumImportResolutionError> {
-        validate_request(request)?;
+        let locale = validate_request(request)?;
         reject_non_author_dependency_issues(&request.inspection.unresolved_dependencies)?;
         validate_candidate_sources(&request.inspection)?;
 
@@ -199,7 +211,7 @@ impl ForumImportApplicationResolver {
 
         Ok(ForumResolvedImportApplicationBatch {
             tenant_id: request.tenant_id,
-            locale: normalize_locale_code(&request.locale).expect("validated locale"),
+            locale,
             categories,
             topics,
             replies,
@@ -280,14 +292,12 @@ impl BindingIndex {
     }
 
     fn reject_unused(&self) -> Result<(), ForumImportResolutionError> {
-        if let Some((_, binding)) = self
-            .by_source
-            .iter()
-            .find(|(key, _)| !self.used.contains(*key))
-        {
-            return Err(ForumImportResolutionError::UnexpectedBinding {
-                source: binding.source.clone(),
-            });
+        for (key, binding) in &self.by_source {
+            if !self.used.contains(key) {
+                return Err(ForumImportResolutionError::UnexpectedBinding {
+                    source: binding.source.clone(),
+                });
+            }
         }
         Ok(())
     }
@@ -295,15 +305,15 @@ impl BindingIndex {
 
 fn validate_request(
     request: &ForumImportApplicationResolutionRequest,
-) -> Result<(), ForumImportResolutionError> {
+) -> Result<String, ForumImportResolutionError> {
     if request.tenant_id.is_nil() {
         return Err(ForumImportResolutionError::NilTenantId);
     }
-    if normalize_locale_code(&request.locale).is_none() {
-        return Err(ForumImportResolutionError::InvalidLocale {
+    let locale = normalize_locale_code(&request.locale).ok_or_else(|| {
+        ForumImportResolutionError::InvalidLocale {
             locale: request.locale.clone(),
-        });
-    }
+        }
+    })?;
 
     let candidate_count = request
         .inspection
@@ -324,7 +334,7 @@ fn validate_request(
             actual: request.bindings.len(),
         });
     }
-    Ok(())
+    Ok(locale)
 }
 
 fn reject_non_author_dependency_issues(
@@ -349,14 +359,25 @@ fn reject_non_author_dependency_issues(
 fn validate_candidate_sources(
     inspection: &NodebbForumImportInspection,
 ) -> Result<(), ForumImportResolutionError> {
+    let mut all_sources = BTreeSet::new();
+    let mut category_sources = BTreeSet::new();
+    let mut topic_sources = BTreeSet::new();
+    let mut post_sources = BTreeSet::new();
+    let mut category_by_key = BTreeMap::new();
+
     for category in &inspection.candidates.categories {
         validate_external_ref(&category.source, ForumImportEntityKind::Category)?;
+        insert_candidate_source(&mut all_sources, &category.source)?;
+        category_sources.insert(ref_key(&category.source));
+        category_by_key.insert(ref_key(&category.source), category);
         if let Some(parent) = category.parent_source.as_ref() {
             validate_external_ref(parent, ForumImportEntityKind::Category)?;
         }
     }
     for topic in &inspection.candidates.topics {
         validate_external_ref(&topic.source, ForumImportEntityKind::Topic)?;
+        insert_candidate_source(&mut all_sources, &topic.source)?;
+        topic_sources.insert(ref_key(&topic.source));
         validate_external_ref(&topic.category_source, ForumImportEntityKind::Category)?;
         if let Some(author) = topic.author_source.as_ref() {
             validate_external_ref(author, ForumImportEntityKind::User)?;
@@ -367,6 +388,8 @@ fn validate_candidate_sources(
     }
     for post in &inspection.candidates.posts {
         validate_external_ref(&post.source, ForumImportEntityKind::Post)?;
+        insert_candidate_source(&mut all_sources, &post.source)?;
+        post_sources.insert(ref_key(&post.source));
         validate_external_ref(&post.topic_source, ForumImportEntityKind::Topic)?;
         if let Some(author) = post.author_source.as_ref() {
             validate_external_ref(author, ForumImportEntityKind::User)?;
@@ -375,6 +398,90 @@ fn validate_candidate_sources(
             return Err(ForumImportResolutionError::UnresolvedPostRole {
                 source: post.source.clone(),
             });
+        }
+    }
+
+    for category in &inspection.candidates.categories {
+        if let Some(parent) = category.parent_source.as_ref() {
+            if !category_sources.contains(&ref_key(parent)) {
+                return Err(ForumImportResolutionError::CrossBatchDependency {
+                    owner: category.source.clone(),
+                    relation: ForumImportDependencyRelation::CategoryParent,
+                    target: parent.clone(),
+                });
+            }
+        }
+    }
+    validate_category_acyclic(&inspection.candidates.categories, &category_by_key)?;
+
+    for topic in &inspection.candidates.topics {
+        if !category_sources.contains(&ref_key(&topic.category_source)) {
+            return Err(ForumImportResolutionError::CrossBatchDependency {
+                owner: topic.source.clone(),
+                relation: ForumImportDependencyRelation::TopicCategory,
+                target: topic.category_source.clone(),
+            });
+        }
+        let body_source = topic.body_post_source.as_ref().ok_or_else(|| {
+            ForumImportResolutionError::MissingTopicBodySource {
+                source: topic.source.clone(),
+            }
+        })?;
+        if !post_sources.contains(&ref_key(body_source)) {
+            return Err(ForumImportResolutionError::CrossBatchDependency {
+                owner: topic.source.clone(),
+                relation: ForumImportDependencyRelation::TopicMainPost,
+                target: body_source.clone(),
+            });
+        }
+    }
+
+    for post in &inspection.candidates.posts {
+        if !topic_sources.contains(&ref_key(&post.topic_source)) {
+            return Err(ForumImportResolutionError::CrossBatchDependency {
+                owner: post.source.clone(),
+                relation: ForumImportDependencyRelation::PostTopic,
+                target: post.topic_source.clone(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn insert_candidate_source(
+    seen: &mut BTreeSet<RefKey>,
+    source: &ForumImportExternalRef,
+) -> Result<(), ForumImportResolutionError> {
+    if !seen.insert(ref_key(source)) {
+        return Err(ForumImportResolutionError::DuplicateCandidateSource {
+            source: source.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_category_acyclic(
+    categories: &[ForumImportCategoryCandidate],
+    category_by_key: &BTreeMap<RefKey, &ForumImportCategoryCandidate>,
+) -> Result<(), ForumImportResolutionError> {
+    for category in categories {
+        let mut seen = BTreeSet::new();
+        let mut current = category;
+        loop {
+            let current_key = ref_key(&current.source);
+            if !seen.insert(current_key) {
+                return Err(ForumImportResolutionError::CategoryCycle {
+                    source: current.source.clone(),
+                });
+            }
+            let Some(parent_source) = current.parent_source.as_ref() else {
+                break;
+            };
+            let Some(parent) = category_by_key.get(&ref_key(parent_source)).copied() else {
+                break;
+            };
+            current = parent;
         }
     }
     Ok(())
@@ -492,9 +599,7 @@ fn resolve_replies(
     for candidate in &inspection.candidates.posts {
         match candidate.role {
             ForumImportPostRole::TopicBody => continue,
-            ForumImportPostRole::Reply => {
-                replies.push(resolve_reply(candidate, bindings)?);
-            }
+            ForumImportPostRole::Reply => replies.push(resolve_reply(candidate, bindings)?),
             ForumImportPostRole::Unresolved => {
                 return Err(ForumImportResolutionError::UnresolvedPostRole {
                     source: candidate.source.clone(),
