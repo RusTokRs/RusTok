@@ -1,4 +1,10 @@
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
+
 use async_graphql::{Context, Enum, FieldError, InputObject, Object, Result, SimpleObject};
+use prometheus::{IntCounterVec, Opts};
 use rustok_api::{
     AuthContext, Permission, RequestContext, TenantContext,
     graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
@@ -18,6 +24,13 @@ use crate::{
 use super::ForumGraphqlRuntimeData;
 
 const MODULE_SLUG: &str = "forum";
+const LOCALE_RESOURCE_UNREAD_TOPIC: &str = "unread_topic";
+const LOCALE_OUTCOME_EXACT: &str = "exact";
+const LOCALE_OUTCOME_FALLBACK: &str = "fallback";
+const LOCALE_OUTCOME_MISSING: &str = "missing";
+
+static FORUM_GRAPHQL_LOCALE_RESOLUTION_TOTAL: OnceLock<IntCounterVec> = OnceLock::new();
+static FORUM_GRAPHQL_LOCALE_RESOLUTION_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Enum)]
 pub enum GqlForumTopicStatus {
@@ -154,6 +167,7 @@ impl ForumReadStateQuery {
                 },
             )
             .await?;
+        observe_unread_topic_locale_resolution(&page.items);
 
         Ok(GqlForumTopicUnreadPage {
             items: page.items.into_iter().map(map_unread_item).collect(),
@@ -358,6 +372,61 @@ fn batch_input(
     })
 }
 
+fn locale_resolution_outcome(
+    requested_locale: &str,
+    effective_locale: &str,
+    available_locale_count: usize,
+) -> &'static str {
+    if available_locale_count == 0 {
+        LOCALE_OUTCOME_MISSING
+    } else if requested_locale == effective_locale {
+        LOCALE_OUTCOME_EXACT
+    } else {
+        LOCALE_OUTCOME_FALLBACK
+    }
+}
+
+fn forum_graphql_locale_resolution_counter() -> Option<&'static IntCounterVec> {
+    let counter = FORUM_GRAPHQL_LOCALE_RESOLUTION_TOTAL.get_or_init(|| {
+        IntCounterVec::new(
+            Opts::new(
+                "rustok_forum_graphql_locale_resolution_total",
+                "Forum GraphQL localized items by fixed resource kind and locale resolution outcome",
+            ),
+            &["resource", "outcome"],
+        )
+        .expect("Forum GraphQL locale resolution metric descriptor must be valid")
+    });
+
+    if FORUM_GRAPHQL_LOCALE_RESOLUTION_REGISTERED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+        && rustok_telemetry::register_runtime_collector(Box::new(counter.clone())).is_err()
+    {
+        FORUM_GRAPHQL_LOCALE_RESOLUTION_REGISTERED.store(false, Ordering::Release);
+        return None;
+    }
+
+    Some(counter)
+}
+
+fn observe_unread_topic_locale_resolution(items: &[TopicUnreadReadModel]) {
+    let Some(counter) = forum_graphql_locale_resolution_counter() else {
+        return;
+    };
+
+    for item in items {
+        let outcome = locale_resolution_outcome(
+            &item.topic.requested_locale,
+            &item.topic.effective_locale,
+            item.topic.available_locales.len(),
+        );
+        counter
+            .with_label_values(&[LOCALE_RESOURCE_UNREAD_TOPIC, outcome])
+            .inc();
+    }
+}
+
 fn map_topic(topic: TopicReadModel) -> GqlForumTopicReadModel {
     GqlForumTopicReadModel {
         id: topic.id,
@@ -413,5 +482,26 @@ fn map_batch_result(result: MarkForumTopicsReadBatchResult) -> GqlForumTopicsRea
         next_cursor: result.next_cursor,
         has_more: result.has_more,
         snapshot_at: result.snapshot_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        LOCALE_OUTCOME_EXACT, LOCALE_OUTCOME_FALLBACK, LOCALE_OUTCOME_MISSING,
+        locale_resolution_outcome,
+    };
+
+    #[test]
+    fn locale_resolution_outcomes_are_fixed_and_do_not_expose_locale_values() {
+        assert_eq!(locale_resolution_outcome("ru", "ru", 1), LOCALE_OUTCOME_EXACT);
+        assert_eq!(
+            locale_resolution_outcome("tenant-secret", "different-secret", 2),
+            LOCALE_OUTCOME_FALLBACK
+        );
+        assert_eq!(
+            locale_resolution_outcome("tenant-secret", "tenant-secret", 0),
+            LOCALE_OUTCOME_MISSING
+        );
     }
 }
