@@ -10,7 +10,8 @@ use rustok_api::{
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_fulfillment::ListShippingOptionProjectionsRequest;
 use rustok_product::{
-    CatalogService, CommerceError as ProductError,
+    CatalogService, CommerceError as ProductError, StorefrontProductProjectionRequest,
+    StorefrontProductProjectionSubject,
     entities::{product, product_translation},
 };
 use rustok_region::{RegionListRequest, RegionReadPort};
@@ -26,10 +27,7 @@ use crate::controllers::{CommerceHttpRuntime, products::ProductListItem};
 use crate::{
     CommerceError,
     dto::{ProductResponse, RegionResponse, ShippingOptionResponse},
-    storefront_channel::{
-        apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
-        public_channel_slug_from_request,
-    },
+    storefront_channel::{is_metadata_visible_for_public_channel, public_channel_slug_from_request},
     storefront_shipping::{
         is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
         shipping_profile_slug_from_product_metadata,
@@ -98,6 +96,76 @@ fn map_storefront_product_database_error(
         tenant_id,
         product_id,
     )
+}
+
+fn storefront_product_port_context(
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    public_channel_slug: Option<&str>,
+    product_id: Uuid,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.storefront-product"),
+        request_context.locale.as_str(),
+        format!("commerce-storefront-product:read:{product_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match public_channel_slug {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn map_storefront_product_port_error(
+    error: PortError,
+    context: &PortContext,
+    operation: &'static str,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_product_invalid",
+            "Product request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_product_unavailable",
+            "Product service is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::Conflict | PortErrorKind::Forbidden | PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_product_failed",
+            "Product operation could not be completed safely",
+            "owner_failure",
+        ),
+    };
+    tracing::error!(
+        owner = "rustok_product",
+        owner_operation = operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        product_id_non_nil = !product_id.is_nil(),
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_storefront_product_http",
+        "storefront product owner read failed with bounded diagnostics"
+    );
+    HttpError::new(status, code, message)
 }
 
 fn map_storefront_auxiliary_port_error(
@@ -468,43 +536,37 @@ pub async fn show_product(
 ) -> HttpResult<Json<ProductResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let public_channel_slug = public_channel_slug_from_request(&request_context);
-    let mut product = service
-        .get_product_with_locale_fallback(
-            tenant.id,
-            id,
-            request_context.locale.as_str(),
-            Some(tenant.default_locale.as_str()),
+    let port_context = storefront_product_port_context(
+        tenant.id,
+        &request_context,
+        public_channel_slug.as_deref(),
+        id,
+    );
+    let product = runtime
+        .product_catalog_read_port()
+        .read_storefront_product_projection(
+            port_context.clone(),
+            StorefrontProductProjectionRequest {
+                subject: StorefrontProductProjectionSubject::ProductId { product_id: id },
+                locale: Some(request_context.locale.clone()),
+                fallback_locale: Some(tenant.default_locale.clone()),
+                public_channel_slug,
+            },
         )
         .await
         .map_err(|error| {
-            map_storefront_product_error(error, "show_product", tenant.id, Some(id))
+            map_storefront_product_port_error(
+                error,
+                &port_context,
+                "read_storefront_product_projection",
+                tenant.id,
+                id,
+            )
+        })?
+        .ok_or_else(|| {
+            HttpError::not_found("commerce_store_not_found", "Commerce resource not found")
         })?;
-
-    if product.status != product::ProductStatus::Active
-        || product.published_at.is_none()
-        || !is_metadata_visible_for_public_channel(
-            &product.metadata,
-            public_channel_slug.as_deref(),
-        )
-    {
-        return Err(HttpError::not_found(
-            "commerce_store_not_found",
-            "Commerce resource not found",
-        ));
-    }
-
-    apply_public_channel_inventory_to_product(
-        runtime.db(),
-        tenant.id,
-        &mut product,
-        public_channel_slug.as_deref(),
-    )
-    .await
-    .map_err(|error| {
-        map_storefront_product_database_error(error, "show_product_inventory", tenant.id, Some(id))
-    })?;
 
     Ok(Json(product))
 }
