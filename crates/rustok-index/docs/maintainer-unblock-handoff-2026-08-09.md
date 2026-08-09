@@ -1,14 +1,18 @@
 # `rustok-index` maintainer unblock handoff — 2026-08-09
 
-Status: `source_gates_complete_maintainer_execution_required`.
+Status: `m5_baseline_verified_product_family_digest_pending_m6_m7_execution_required`.
 
-This is the operational continuation of the current Index implementation cursor after Targeted GraphQL source completion. It does not create a new source-code feature. Its purpose is to make the remaining owner gates executable in a fixed order without weakening them.
+This is the operational continuation of the Index cursor after Targeted GraphQL source completion and the
+canonical M5 digest-baseline admission. It keeps execution-owned gates explicit without manufacturing new source
+work.
 
-Rechecked against `main@2525e13078a4fb61190f84864f3d3ceb7b0c3726`. Mainline changes after the post-Targeted cursor update are Blog/Commerce/Forum only and do not modify `rustok-index` or Index replay transport paths.
+Rechecked against `main@96c8886738c3df22e176c808fd04d27d8eedb552`. The mainline change after the digest
+admission merge is Page Builder/Telemetry-only and does not alter Product, Events or Index refresh wire paths.
 
 ## Priority 1 — M6 concrete repair PostgreSQL admission
 
-The current primary Index owner gate remains concrete repair PostgreSQL execution/admission. The canonical contract is:
+The primary execution-owned Index gate remains concrete repair PostgreSQL execution/admission. The canonical
+contract is:
 
 ```text
 crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
@@ -35,35 +39,50 @@ crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout
 crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log
 ```
 
-Review the redacted logs and packet before committing them. Do not hand-edit the packet or logs. Source work should resume only if this execution exposes a concrete defect, or after the retained evidence is admitted and the current plan is rechecked.
+The latest maintainer attempt stopped before PostgreSQL execution because no opt-in database URL was configured.
+No packet or log was created. This does not open a source repair slice; rerun with the real local PostgreSQL URL.
+
+Review the redacted logs and packet before committing them. Do not hand-edit the packet or logs. Source work
+should resume only if execution exposes a concrete defect, or after retained evidence is admitted and the current
+plan is rechecked.
 
 Canonical detail: `m6-repair-retained-evidence-admission.md`.
 
-## Priority 2 — M5 canonical event-contract digest admission
+## Priority 2 — M5 Product Index typed event family
 
-The Product Index typed event family remains blocked by the stale committed event-contract digest artifact. The canonical workflow is **Event contract digest admission** and must be run explicitly on the reviewed commit.
+The stale canonical digest baseline no longer blocks source work.
 
-Admission sequence:
+The generated baseline was admitted through PR #3390 at
+`7983092f96e14c002c57451709de936e40c01356`. On that exact admitted commit the maintainer then reported:
 
-1. run the workflow in `generate_patch` mode on reviewed `main` or a dedicated admission branch;
-2. inspect the committed/generated JSON pair and exact patch;
-3. commit the canonical generated `crates/rustok-events/contracts/event-contract-digests.json` in a separate reviewed PR;
-4. run the workflow in `verify` mode on that admitted commit and retain a matching packet;
-5. only then add `ProductIndexRefreshEvent` and regenerate the digest artifact again in that same reviewed wire-contract PR.
+1. `verify-event-contract-digest-admission.mjs` passed;
+2. the canonical `event_contract_digests -- --write` generator passed;
+3. the digest diff was empty.
 
-The canonical generator used by the workflow is:
+No GitHub Actions verification packet is claimed; the exact-SHA local canonical execution is the supplied
+maintainer result.
 
-```bash
-cargo run --locked -p rustok-events --example event_contract_digests -- --write
-```
+`ProductIndexRefreshEvent` is therefore the active M5 source boundary. The reviewed family must remain narrow:
 
-Do not replace this with hand-authored hashes, copied schema JSON, or a parallel compatibility event family.
+- `product.index.locale_refresh_requested` -> `product_id`, `locale`, `source_version`;
+- `product.index.variant_refresh_requested` -> `product_id`, `variant_id`, `source_version`;
+- `id = correlation_id = refresh_id` remains Product ledger/writer ownership;
+- `causation_id = root_event_id` remains Product ledger/writer ownership.
 
-Canonical detail: `../../rustok-events/docs/event-contract-digest-admission.md`.
+The current family branch must run the canonical generator again and commit the newly generated
+`crates/rustok-events/contracts/event-contract-digests.json` in the **same wire-contract PR before merge**.
+Do not hand-author those new hashes.
+
+Only after that family/digest PR is admitted may M5 advance to Product/ProductVariant typed route registration and
+commit-before-ack delivery into the existing generic Index source-refresh worker.
+
+Canonical detail: `../../rustok-events/docs/event-contract-digest-admission.md` and
+`../../rustok-product/docs/index-refresh-event-family.md`.
 
 ## Priority 3 — M7 Product Storefront evidence gates
 
-Mounted Storefront must remain owner-native until retained evidence is executed/admitted. The source-complete gates remain, in order:
+Mounted Storefront must remain owner-native until retained evidence is executed/admitted. The source-complete
+gates remain, in order:
 
 1. deterministic budgeted timeout evidence;
 2. Product key-4 promotion/restart PostgreSQL packet;
@@ -85,19 +104,24 @@ Canonical detail: `m7-product-storefront-parity-gate.md` and `m7-product-current
 
 ## Still blocked — partition replay
 
-Do not add a `partition_key` dimension merely to advance the checklist. Partition replay remains blocked until a real source contract can filter the requested partition before pagination. No current Index source provides that contract.
+Do not add a `partition_key` dimension merely to advance the checklist. Partition replay remains blocked until a
+real source contract can filter the requested partition before pagination. No current Index source provides that
+contract.
 
 ## Resume rule
 
-After any maintainer-run packet is executed:
-
-- if it fails, resume source work only against the concrete failure and preserve the existing ownership boundaries;
-- if it passes and is admitted, recheck current `main`, update the current implementation cursor, and advance only the newly unblocked milestone;
+- M5: finish the current family with its canonical generated digest before starting delivery/route work;
+- M6: if PostgreSQL evidence fails, resume source work only against the concrete failure; if it passes and is
+  admitted, recheck current `main` before advancing;
+- M7: do not move Storefront traffic from source inspection alone;
 - do not add legacy/version-family compatibility for repository-owned pre-release contracts;
-- do not infer admission from source inspection alone.
+- do not infer runtime admission from source inspection alone.
 
 ## Source guard
 
-`scripts/verify/verify-index-maintainer-unblock-handoff.mjs` locks this handoff to the canonical M6 execution command/output blocks, the pending M5 digest sequence, the fail-closed M7 Storefront boundary, the current Index cursor, and this README-visible handoff surface. It must be updated together with the canonical gate documents when an owner execution/admission result legitimately changes one of those states.
+`scripts/verify/verify-index-maintainer-unblock-handoff.mjs` must remain synchronized with this handoff, the M6
+canonical execution/output blocks, the admitted M5 baseline/current Product-family digest gate, the fail-closed M7
+Storefront boundary and the current 2026-08-09 Index cursor.
 
-This handoff itself executes no Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or `git diff --check`.
+The implementation agent claims no Rust test, Node verifier, Cargo check, formatting, PostgreSQL scenario,
+workflow, CI or `git diff --check` execution on the Product-family review branch.

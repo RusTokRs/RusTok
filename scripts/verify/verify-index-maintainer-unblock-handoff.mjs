@@ -40,31 +40,22 @@ function fencedBlockAfter(source, marker, language, label) {
   return source.slice(bodyStart + 1, bodyEnd).trim();
 }
 
-function requireOrdered(source, markers, label) {
-  let cursor = 0;
-  for (const marker of markers) {
-    const index = source.indexOf(marker, cursor);
-    if (index < 0) fail(`${label} is missing ordered marker ${marker}`);
-    cursor = index + marker.length;
-  }
-}
-
 const handoffPath = 'crates/rustok-index/docs/maintainer-unblock-handoff-2026-08-09.md';
 const repairPath = 'crates/rustok-index/docs/m6-repair-retained-evidence-admission.md';
 const eventPath = 'crates/rustok-events/docs/event-contract-digest-admission.md';
+const familyPath = 'crates/rustok-product/docs/index-refresh-event-family.md';
 const storefrontPath = 'crates/rustok-index/docs/m7-product-storefront-parity-gate.md';
-const currentPlanPath = 'crates/rustok-index/docs/implementation-plan-current-2026-08-08.md';
+const currentPlanPath = 'crates/rustok-index/docs/implementation-plan-current-2026-08-09.md';
 const readmePath = 'crates/rustok-index/docs/README.md';
 const aggregatePath = 'scripts/verify/verify-index-query-contract.mjs';
 
 const handoff = requireMarkers(handoffPath, [
-  'Status: `source_gates_complete_maintainer_execution_required`.',
+  'Status: `m5_baseline_verified_product_family_digest_pending_m6_m7_execution_required`.',
   '## Priority 1 — M6 concrete repair PostgreSQL admission',
-  '## Priority 2 — M5 canonical event-contract digest admission',
+  '## Priority 2 — M5 Product Index typed event family',
   '## Priority 3 — M7 Product Storefront evidence gates',
   '## Still blocked — partition replay',
   '## Resume rule',
-  'do not infer admission from source inspection alone',
   'do not add legacy/version-family compatibility for repository-owned pre-release contracts',
   'scripts/verify/verify-index-maintainer-unblock-handoff.mjs',
 ]);
@@ -111,34 +102,45 @@ if (handoffOutputs !== repairOutputs) {
 }
 
 const event = requireMarkers(eventPath, [
-  'Status: `source_complete_maintainer_execution_pending`.',
-  'The Product Index refresh event family remains blocked until all of the following are complete:',
-  '`generate_patch`',
-  '`verify`',
-  'ProductIndexRefreshEvent',
+  'Status: `baseline_admitted_verified_product_index_family_digest_pending`.',
+  'PR #3390',
+  '7983092f96e14c002c57451709de936e40c01356',
+  'the digest diff was empty',
+  'add `ProductIndexRefreshEvent`',
+  'same reviewed',
+  'wire-contract PR',
   'cargo run --locked -p rustok-events --example event_contract_digests -- --write',
 ]);
-const eventDependency = sectionBetween(event, '## Product Index dependency', '## Deliberate limits', eventPath);
+const family = requireMarkers(familyPath, [
+  'Status: `source_ready_digest_regeneration_pending`.',
+  'product.index.locale_refresh_requested',
+  'product.index.variant_refresh_requested',
+  'id = correlation_id = refresh_id',
+  'causation_id = root_event_id',
+]);
 const handoffEvent = sectionBetween(
   handoff,
-  '## Priority 2 — M5 canonical event-contract digest admission',
+  '## Priority 2 — M5 Product Index typed event family',
   '## Priority 3 — M7 Product Storefront evidence gates',
   handoffPath,
 );
-requireOrdered(eventDependency, [
-  'generate_patch',
-  'commit the canonical generated artifact',
-  'verify',
+for (const marker of [
+  'PR #3390',
+  'the digest diff was empty',
   'ProductIndexRefreshEvent',
-], `${eventPath} Product Index dependency`);
-requireOrdered(handoffEvent, [
-  'generate_patch',
-  'event-contract-digests.json',
-  'verify',
-  'ProductIndexRefreshEvent',
-], `${handoffPath} M5 priority`);
-if (!handoffEvent.includes('stale committed event-contract digest artifact')) {
-  fail('M5 handoff must continue to describe the committed event-contract digest as stale');
+  'product.index.locale_refresh_requested',
+  'product.index.variant_refresh_requested',
+  'id = correlation_id = refresh_id',
+  'causation_id = root_event_id',
+  'same wire-contract PR before merge',
+]) {
+  if (!handoffEvent.includes(marker)) fail(`${handoffPath} M5 priority is missing ${marker}`);
+}
+if (!event.includes('No GitHub Actions verification packet is claimed or fabricated.')) {
+  fail(`${eventPath} must distinguish maintainer local verification from a retained workflow packet`);
+}
+if (!family.includes('No new loop, scheduler, retry owner, broker consumer, acknowledgement path or Index mutation route is introduced.')) {
+  fail(`${familyPath} must retain the source-only family boundary`);
 }
 
 const storefront = requireMarkers(storefrontPath, [
@@ -172,14 +174,17 @@ if (!storefront.includes('deeper valid pages remain typed owner-native')) {
 }
 
 const plan = requireMarkers(currentPlanPath, [
-  'There is no remaining independent source-only M6 replay expansion justified by the current contract.',
-  'M5 typed Product event work remains gated by canonical event-contract digest admission.',
-  'M7 serving cutover remains gated by retained evidence execution/admission.',
-  'Partition replay remains blocked: no real partition-capable source contract can yet filter a partition before',
-  'pagination, so do not merely populate `partition_key`.',
+  'Status: `m5_product_refresh_family_source_ready_digest_regeneration_pending`.',
+  'The stale event-contract baseline gate is complete.',
+  'product.index.locale_refresh_requested',
+  'product.index.variant_refresh_requested',
+  'Before this source PR may merge',
+  'M6 source remains complete and execution/admission-gated.',
+  'M7 remains evidence/admission-gated.',
+  'Partition replay remains blocked until a real source contract filters the requested partition before pagination.',
 ]);
-if (!plan.includes('Further source changes should follow a concrete defect discovered by executed evidence.')) {
-  fail(`${currentPlanPath} must keep source continuation tied to executed evidence defects`);
+if (!plan.includes('Do not add another M6 source slice unless that execution exposes a concrete source failure.')) {
+  fail(`${currentPlanPath} must keep M6 source continuation tied to executed evidence defects`);
 }
 
 requireMarkers(readmePath, [
@@ -190,7 +195,6 @@ requireMarkers(aggregatePath, [
 ]);
 
 for (const forbidden of [
-  'Status: `admitted`',
   'Status: `production_ready`',
   'ProductIndexRefreshEvent is admitted',
   'Storefront traffic is switched',
@@ -199,4 +203,4 @@ for (const forbidden of [
   if (handoff.includes(forbidden)) fail(`${handoffPath} must not claim ${forbidden}`);
 }
 
-console.log('[verify-index-maintainer-unblock-handoff] handoff remains synchronized with pending M5/M6/M7 gates and fail-closed resume rules');
+console.log('[verify-index-maintainer-unblock-handoff] M5 baseline verified; Product family digest pending; M6/M7 execution gates retained');
