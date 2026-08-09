@@ -1,14 +1,17 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext, PortActor, PortContext, RequestContext, graphql::require_module_enabled,
+    AuthContext, PortActor, PortContext, RequestContext, PortError, PortErrorKind,
+    graphql::require_module_enabled,
 };
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_fulfillment::{
     CreateAdminShippingOptionRequest, DeactivateAdminShippingOptionRequest,
     ReactivateAdminShippingOptionRequest, UpdateAdminShippingOptionRequest,
 };
-use rustok_payment::{PaymentError, PaymentService};
+use rustok_payment::{
+    PaymentCollectionCreateOrReuseRequest, ReusablePaymentCollectionByCartRequest,
+};
 use uuid::Uuid;
 
 use crate::ShippingProfileService;
@@ -41,6 +44,60 @@ fn shipping_option_command_context(
         Some(channel) => context.with_channel(channel),
         None => context,
     })
+}
+
+fn storefront_payment_collection_actor(auth: Option<&AuthContext>) -> PortActor {
+    auth.map(|auth| PortActor::user(auth.user_id.to_string()))
+        .unwrap_or_else(|| {
+            PortActor::service("rustok-commerce.graphql-storefront-payment-collection")
+        })
+}
+
+fn storefront_payment_collection_locale(request: &RequestContext) -> &str {
+    if request.locale.trim().is_empty() {
+        "und"
+    } else {
+        request.locale.as_str()
+    }
+}
+
+fn storefront_payment_collection_read_context(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    request: &RequestContext,
+    auth: Option<&AuthContext>,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        storefront_payment_collection_actor(auth),
+        storefront_payment_collection_locale(request),
+        format!("commerce-graphql-storefront-payment-collection-read:{cart_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn storefront_payment_collection_command_context(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    request: &RequestContext,
+    auth: Option<&AuthContext>,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        storefront_payment_collection_actor(auth),
+        storefront_payment_collection_locale(request),
+        format!("commerce-graphql-storefront-payment-collection:{cart_id}"),
+    )
+    .with_idempotency_key(format!("graphql-storefront-payment-collection:{cart_id}"))
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
 }
 
 #[derive(Default)]
@@ -92,7 +149,7 @@ impl CommerceCheckoutMutation {
             cart,
         )
         .await?;
-        let context = crate::StoreContextService::new(
+        let store_context = crate::StoreContextService::new(
             db.clone(),
             std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
         )
@@ -124,46 +181,66 @@ impl CommerceCheckoutMutation {
                 })
         })?;
 
-        let service = PaymentService::new(db.clone());
-        if let Some(existing) = service
-            .find_reusable_collection_by_cart(tenant_id, cart.id)
-            .await
-            .map_err(|error| {
-                payment_collection_graphql_error(
-                    tenant_id,
-                    cart.id,
-                    "find_reusable_collection_by_cart",
-                    error,
-                )
-            })?
-        {
+        let read_context = storefront_payment_collection_read_context(
+            tenant_id,
+            cart.id,
+            request_context,
+            ctx.data_opt::<AuthContext>(),
+        );
+        if let Some(existing) = crate::graphql_runtime::payment_read_runtime_for_current_graphql_scope(
+            db.clone(),
+        )
+        .cart_read_port()
+        .find_reusable_collection_by_cart(
+            read_context.clone(),
+            ReusablePaymentCollectionByCartRequest { cart_id: cart.id },
+        )
+        .await
+        .map_err(|error| {
+            payment_collection_owner_graphql_error(
+                &read_context,
+                cart.id,
+                "find_reusable_collection_by_cart",
+                error,
+            )
+        })? {
             return Ok(existing.into());
         }
 
-        let collection = service
-            .create_collection(
-                tenant_id,
-                crate::dto::CreatePaymentCollectionInput {
-                    cart_id: Some(cart.id),
-                    order_id: None,
-                    customer_id: cart.customer_id,
-                    currency_code: cart.currency_code.clone(),
-                    amount: cart.total_amount,
-                    metadata: merge_graphql_metadata(
-                        parse_optional_metadata(input.metadata.as_deref())?,
-                        cart_context_metadata(&cart, &context),
-                    ),
-                },
+        let command_context = storefront_payment_collection_command_context(
+            tenant_id,
+            cart.id,
+            request_context,
+            ctx.data_opt::<AuthContext>(),
+        );
+        let collection = crate::graphql_runtime::payment_command_runtime_from_context(
+            ctx,
+            db.clone(),
+        )
+        .collection_create_or_reuse_port()
+        .create_or_reuse_collection(
+            command_context.clone(),
+            PaymentCollectionCreateOrReuseRequest {
+                cart_id: Some(cart.id),
+                order_id: None,
+                customer_id: cart.customer_id,
+                currency_code: cart.currency_code.clone(),
+                amount: cart.total_amount,
+                metadata: merge_graphql_metadata(
+                    parse_optional_metadata(input.metadata.as_deref())?,
+                    cart_context_metadata(&cart, &store_context),
+                ),
+            },
+        )
+        .await
+        .map_err(|error| {
+            payment_collection_owner_graphql_error(
+                &command_context,
+                cart.id,
+                "create_or_reuse_collection",
+                error,
             )
-            .await
-            .map_err(|error| {
-                payment_collection_graphql_error(
-                    tenant_id,
-                    cart.id,
-                    "create_collection",
-                    error,
-                )
-            })?;
+        })?;
 
         Ok(collection.into())
     }
@@ -572,66 +649,116 @@ fn storefront_checkout_graphql_error(
     })
 }
 
-fn payment_collection_graphql_error(
-    tenant_id: Uuid,
-    cart_id: Uuid,
-    operation: &'static str,
-    error: PaymentError,
-) -> async_graphql::Error {
-    tracing::error!(
-        error = ?error,
-        tenant_id = %tenant_id,
-        cart_id = %cart_id,
-        operation,
-        "storefront payment collection GraphQL operation failed"
-    );
-    let (code, message, retryable, reconciliation_required) = match error {
-        PaymentError::Validation(_) => (
+fn payment_collection_port_graphql_policy(
+    error: &PortError,
+) -> (&'static str, &'static str, bool, bool, &'static str) {
+    match &error.kind {
+        PortErrorKind::Validation => (
             "payment_request_invalid",
             "Payment collection request is invalid",
             false,
             false,
+            "validation",
         ),
-        PaymentError::PaymentCollectionNotFound(_)
-        | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => (
+        PortErrorKind::NotFound => (
             "payment_resource_not_found",
             "Payment resource was not found",
             false,
             false,
+            "not_found",
         ),
-        PaymentError::InvalidTransition { .. } => (
-            "payment_state_conflict",
-            "Payment lifecycle conflicts with the requested operation",
-            false,
-            false,
-        ),
-        PaymentError::ProviderUnavailable { .. } | PaymentError::ProviderConfiguration { .. } => (
-            "payment_temporarily_unavailable",
-            "Payment service is temporarily unavailable",
-            true,
-            false,
-        ),
-        PaymentError::ProviderRejected { .. } => (
+        PortErrorKind::Conflict if error.code == "payment.provider_rejected" => (
             "payment_provider_rejected",
             "Payment provider rejected the requested operation",
             false,
             false,
+            "provider_rejected",
         ),
-        PaymentError::ProviderInvalidResponse { .. }
-        | PaymentError::ProviderOutcomeUnknown { .. } => (
+        PortErrorKind::Conflict if error.code == "payment.provider_outcome_unknown" => (
             "payment_reconciliation_required",
             "Payment operation requires reconciliation",
             false,
             true,
+            "provider_outcome_unknown",
         ),
-        PaymentError::Database(_) => (
-            "payment_storage_unavailable",
+        PortErrorKind::Conflict => (
+            "payment_state_conflict",
+            "Payment lifecycle conflicts with the requested operation",
+            false,
+            false,
+            "state_conflict",
+        ),
+        PortErrorKind::Unavailable
+            if error.code == "payment.database_unavailable"
+                || error.code == "payment.cart_read_unavailable" =>
+        {
+            (
+                "payment_storage_unavailable",
+                "Payment service is temporarily unavailable",
+                true,
+                false,
+                "database",
+            )
+        }
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            "payment_temporarily_unavailable",
             "Payment service is temporarily unavailable",
             true,
             false,
+            "temporarily_unavailable",
         ),
-    };
+        PortErrorKind::InvariantViolation if error.code == "payment.provider_invalid_response" => (
+            "payment_reconciliation_required",
+            "Payment operation requires reconciliation",
+            false,
+            true,
+            "provider_invalid_response",
+        ),
+        PortErrorKind::InvariantViolation if error.code == "payment.provider_not_configured" => (
+            "payment_temporarily_unavailable",
+            "Payment service is temporarily unavailable",
+            true,
+            false,
+            "provider_configuration",
+        ),
+        PortErrorKind::Forbidden | PortErrorKind::InvariantViolation => (
+            "payment_operation_failed",
+            "Payment operation could not be completed safely",
+            false,
+            false,
+            "owner_operation_failed",
+        ),
+    }
+}
+
+fn payment_collection_owner_graphql_error(
+    context: &PortContext,
+    cart_id: Uuid,
+    operation: &'static str,
+    error: PortError,
+) -> async_graphql::Error {
+    let (code, message, retryable, reconciliation_required, error_kind) =
+        payment_collection_port_graphql_policy(&error);
+    tracing::error!(
+        owner = "rustok_payment.payment_collection_port",
+        operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_present = !context.tenant_id.is_empty(),
+        actor_kind = ?context.actor.kind,
+        actor_id_present = !context.actor.id.is_empty(),
+        cart_id_non_nil = !cart_id.is_nil(),
+        channel_present = context.channel.is_some(),
+        locale_length = context.locale.chars().count(),
+        deadline_ms = ?context.deadline_ms,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        error_kind,
+        public_code = code,
+        retryable,
+        reconciliation_required,
+        boundary = "commerce_graphql_storefront_payment_collection",
+        "commerce GraphQL storefront payment collection owner call failed"
+    );
     async_graphql::Error::new(message).extend_with(|_, extensions| {
         extensions.set("code", code);
         extensions.set("retryable", retryable);

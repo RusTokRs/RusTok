@@ -14,6 +14,7 @@ pub mod checkout_compensation;
 mod checkout_compensation_context;
 #[allow(dead_code)]
 pub mod checkout_execution;
+mod collection_runtime;
 #[cfg(feature = "server")]
 pub mod controllers;
 pub mod dto;
@@ -59,6 +60,7 @@ pub use checkout_compensation::{
     InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,
 };
 pub use checkout_execution::*;
+pub use collection_runtime::PaymentCollectionRuntime;
 pub use dto::*;
 pub use entities::*;
 pub use order_read::{

@@ -32,6 +32,18 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(registry)
     };
 
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_payment::PaymentCollectionRuntime>()
+            .or_else(|| server.shared_get::<rustok_payment::PaymentCollectionRuntime>())
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentCollectionRuntime::in_process(server.db_clone())
+            });
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
     #[cfg(feature = "mod-fulfillment")]
     let host = {
         let registry = server
