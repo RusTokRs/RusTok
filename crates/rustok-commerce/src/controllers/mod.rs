@@ -27,6 +27,8 @@ pub struct CommerceHttpRuntime {
     fulfillment_lifecycle_read_runtime:
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime,
     fulfillment_admin_command_runtime: rustok_fulfillment::FulfillmentAdminCommandRuntime,
+    fulfillment_admin_create_command_runtime:
+        rustok_fulfillment::FulfillmentAdminCreateCommandRuntime,
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
     order_admin_command_runtime: rustok_order::OrderAdminCommandRuntime,
     payment_order_read_runtime: rustok_payment::PaymentOrderReadRuntime,
@@ -83,6 +85,12 @@ impl CommerceHttpRuntime {
         &self,
     ) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentAdminCommandPort> {
         self.fulfillment_admin_command_runtime.command_port()
+    }
+
+    fn fulfillment_admin_create_command_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentAdminCreateCommandPort> {
+        self.fulfillment_admin_create_command_runtime.command_port()
     }
 
     fn order_read_port(&self) -> std::sync::Arc<dyn rustok_order::OrderReadPort> {
@@ -175,6 +183,14 @@ impl CommerceHttpRuntime {
                     fulfillment_provider_registry.clone(),
                 )
             });
+        let fulfillment_admin_create_command_runtime = runtime
+            .shared_get::<rustok_fulfillment::FulfillmentAdminCreateCommandRuntime>()
+            .unwrap_or_else(|| {
+                rustok_fulfillment::FulfillmentAdminCreateCommandRuntime::in_process(
+                    runtime.db_clone(),
+                    fulfillment_provider_registry.clone(),
+                )
+            });
         let order_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceOrderReadRuntime>()
             .ok_or_else(|| {
@@ -245,6 +261,7 @@ impl CommerceHttpRuntime {
             shipping_option_read_runtime,
             fulfillment_lifecycle_read_runtime,
             fulfillment_admin_command_runtime,
+            fulfillment_admin_create_command_runtime,
             order_read_runtime,
             order_admin_command_runtime,
             payment_order_read_runtime,
