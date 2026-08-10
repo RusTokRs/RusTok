@@ -1,10 +1,10 @@
 # Pages / Page Builder plan parity actualization — 2026-08-08
 
-Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / provider-health-server-binding-source-ready / provider-health-consumer-binding-source-ready / provider-health-capability-preflight-source-ready / provider-health-runtime-evidence-harness-source-ready / provider-health-observed-acceptance-source-ready / reference-consumer-gate-acceptance-source-ready / forum-wave-admission-source-ready / execution-acceptance-pending`.
+Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / provider-health-server-binding-source-ready / provider-health-consumer-binding-source-ready / provider-health-capability-preflight-source-ready / provider-health-runtime-evidence-harness-source-ready / provider-health-observed-acceptance-source-ready / reference-consumer-gate-acceptance-source-ready / forum-wave-admission-source-ready / base-plan-reconciliation-source-ready / execution-acceptance-pending`.
 
 ## Current authority
 
-This parity packet now has fifteen source actualizations:
+This parity packet now has sixteen source actualizations:
 
 - the earlier Forum composition reconciliation through PR #3320;
 - `docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md`, current rollout authority after PRs #3333, #3337, #3345 and #3353;
@@ -20,14 +20,16 @@ This parity packet now has fifteen source actualizations:
 - `docs/modules/pages-page-builder-provider-health-runtime-evidence-harness-actualization-2026-08-09.md`;
 - `docs/modules/pages-page-builder-provider-health-observed-acceptance-actualization-2026-08-10.md`;
 - `docs/modules/pages-page-builder-reference-consumer-gate-acceptance-actualization-2026-08-10.md`;
-- `docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md`, which closes the string-only Forum Wave blocker gap by requiring accepted Pages gate evidence plus exact-source Forum browser/runtime/server-function evidence before an observed control-plane Wave may start.
+- `docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md`, which closes the string-only Forum Wave blocker gap by requiring accepted Pages gate evidence plus exact-source Forum browser/runtime/server-function evidence before an observed control-plane Wave may start;
+- `docs/modules/pages-page-builder-base-plan-reconciliation-actualization-2026-08-10.md`, which synchronizes the shared/local/central base plans to the merged provider-health, gate-acceptance and Forum-admission source cursor without claiming live execution.
 
-Older shared/local/central plans remain programme history. This packet and the newest relevant dated overlay are the current source truth where wording differs.
+The shared continuation plan, Page Builder local plan and central Fly/Page Builder programme plan are now reconciled to this packet. Dated overlays remain the detailed authority for the source slices they describe, while historical sections inside the base plans remain history rather than current cursor claims.
 
 ## Current source truth
 
 The synchronized Pages / Page Builder boundary is now:
 
+- shared/local/central base plans expose the same provider-health, Pages gate and Forum Wave admission source cursor as this dated parity packet;
 - Pages source architecture remains complete while execution evidence is open;
 - Forum remains the second production Page Builder consumer with its canonical contribution metadata, Fly adapter/component registry, owner preview and owner-backed property editing source-ready;
 - Pages uses server-owned rollout state persisted per tenant; no browser-owned rollout authority was introduced;
@@ -114,7 +116,7 @@ Source inspection alone must not mark execution, current health, observed-health
 
 ## Anti-drift guards
 
-`crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs` continues to lock the synchronized rollout cursor across shared/local/central plans, rollout actualization, Pages reference-consumer gate, Forum contribution manifest and Forum Wave source packet. It rejects an accepted Pages gate without execution evidence, fabricated provider health, Forum Wave promotion while Pages is pending, and any claim that `FLY_CAPABILITY_DENIED` substitutes for provider `FEATURE_DISABLED`.
+`crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs` now locks the synchronized provider-health/gate/admission cursor across the reconciled shared/local/central plans, this dated parity packet, rollout actualization, Pages reference-consumer gate/acceptance source and Forum Wave admission source. It rejects stale current-state claims that the repository has no provider-health observation architecture, an accepted Pages gate without execution evidence, fabricated current provider health, Forum Wave promotion while admission/execution is pending, and any claim that `FLY_CAPABILITY_DENIED` substitutes for provider `FEATURE_DISABLED`.
 
 Provider-health / gate / Forum admission source is independently guarded by:
 
