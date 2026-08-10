@@ -2,6 +2,9 @@ pub mod carts;
 pub mod checkout;
 pub(crate) mod line_item_resolution;
 pub mod orders;
+#[path = "products.rs"]
+pub mod products_legacy;
+#[path = "products_owner_list.rs"]
 pub mod products;
 
 pub use carts::*;

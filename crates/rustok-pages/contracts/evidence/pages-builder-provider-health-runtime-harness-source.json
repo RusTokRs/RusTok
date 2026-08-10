@@ -31,6 +31,16 @@
     "automatic_forum_wave_acceptance": false,
     "automatic_ffa_fba_promotion": false
   },
+  "observed_owner_acceptance": {
+    "source_contract": "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+    "runner": "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
+    "output_format": "pages_builder_provider_health_observed_acceptance_v1",
+    "accepted_status": "owner_accepted_observed_runtime_evidence_gate_review_pending",
+    "source_ready": true,
+    "execution_pending": true,
+    "health_lease_extended": false,
+    "automatic_pages_gate_acceptance": false
+  },
   "execution": [],
   "validation": {
     "tests_run": false,
@@ -50,7 +60,8 @@
   },
   "next_cursor": {
     "observed_health_runtime_evidence_harness": "source_ready_maintainer_execution_pending",
+    "observed_health_owner_acceptance": "source_ready_maintainer_execution_pending",
     "live_identity_evaluator_owner_acceptance_and_observed_consumers": "maintainer_execution_pending",
-    "observed_health_owner_acceptance": "pending"
+    "accepted_observed_health_gate_input": "blocked_on_maintainer_execution_and_decision"
   }
 }
