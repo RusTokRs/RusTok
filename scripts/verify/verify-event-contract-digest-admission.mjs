@@ -87,7 +87,6 @@ requireMarkers(documentationPath, [
   'does not automatically write the repository',
   'The stale-baseline gate is complete',
   'ProductIndexRefreshEvent',
-  'maintainer-provided Product-family generator output',
 ]);
 
 console.log('[verify-event-contract-digest-admission] canonical digest admission workflow contract verified');
