@@ -1,6 +1,6 @@
 # Pages / Page Builder reference-consumer gate acceptance actualization — 2026-08-10
 
-Status: `reference-consumer-gate-acceptance-source-ready / dual-evidence-lineage-source-ready / owner-signoff-source-ready / rollback-disposition-source-ready / maintainer-execution-pending / forum-wave-blocked`.
+Status: `reference-consumer-gate-acceptance-source-ready / dual-evidence-lineage-source-ready / owner-signoff-source-ready / rollback-disposition-source-ready / forum-wave-admission-source-ready / maintainer-execution-pending / forum-wave-blocked`.
 
 Base rechecked: `main@2dcffcd7c20c9deee58e6912d7b18ea761e149c5`.
 
@@ -16,7 +16,7 @@ Gate acceptance must require both branches. It must not replace the rollout-only
 
 ## Acceptance source
 
-`crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json` defines the new source-only owner-decision boundary.
+`crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json` defines the source-only owner-decision boundary.
 
 `scripts/evidence/accept-pages-reference-consumer-gate.mjs` requires:
 
@@ -72,7 +72,7 @@ or:
 status = owner_rejected_pages_reference_consumer_gate
 ```
 
-The accepted packet is machine evidence that downstream consumers may use to satisfy the Pages blocker. It does not automatically accept Forum Wave and does not promote FFA/FBA.
+The accepted packet is machine evidence for downstream admission. It does not automatically accept Forum Wave and does not promote FFA/FBA.
 
 The committed source gate remains:
 
@@ -95,21 +95,30 @@ Ready, Degraded or Unavailable historical evidence may be valid if the retained 
 Source gate remains fail closed:
 
 - `pages_reference_consumer_gate_source.accepted = false`;
-- Forum observed Wave remains blocked;
 - rollback action is not executed by the decision runner;
 - FFA/FBA promotion remains unclaimed;
 - canonical source is not mutated automatically.
 
-Only maintainer-produced accepted gate evidence can move the downstream execution cursor.
+The next downstream source boundary is now explicit:
+
+```text
+accepted Pages gate packet
+-> forum_page_builder_wave_admission_v1
+-> observed Forum control-plane Wave
+```
+
+`crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json` requires the accepted gate packet together with exact-source Forum browser, runtime-authorization and server-function evidence. Forum Wave admission is source-ready but maintainer execution remains pending, so the observed Wave is still blocked on admitted exact-source inputs.
+
+Only maintainer-produced accepted gate evidence can enter that admission runner, and admission itself still does not accept Forum Wave.
 
 ## Validation boundary
 
-Added source verifier:
+Source verifier:
 
 ```text
 crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
 ```
 
-It locks the dual packet lineage, exact source/RepoDigest binding, exact candidate command records, fail-closed source gate, historical-health semantics, explicit owner/rollback decisions and non-promotion boundaries.
+It locks the dual packet lineage, exact source/RepoDigest binding, exact candidate command records, fail-closed source gate, historical-health semantics, explicit owner/rollback decisions, the downstream Forum admission cursor and non-promotion boundaries.
 
-Tests were not run. No Node verifier, Cargo command, formatter, build, GraphQL/HTTP request, browser/Playwright run, Prometheus/evaluator execution, provider-health owner decision, reference candidate execution, Pages gate decision, workflow or CI run was performed by this slice.
+Tests were not run. No Node verifier, Cargo command, formatter, build, GraphQL/HTTP request, browser/Playwright run, Prometheus/evaluator execution, provider-health owner decision, reference candidate execution, Pages gate decision, Forum Wave admission, observed Forum Wave, workflow or CI run was performed by this slice.
