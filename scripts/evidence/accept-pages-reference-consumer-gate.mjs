@@ -19,6 +19,7 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json");
 const candidateContractPath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json");
 const observedAcceptanceSourcePath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json");
+const sourceGatePath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json");
 const MAX_INPUT_BYTES = 32 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const OWNER_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/u;
@@ -106,7 +107,9 @@ function jsonInput(candidate, label) {
 function jsonSource(location, label) {
   const record = regularFile(location, label, MAX_SOURCE_BYTES);
   try {
-    return JSON.parse(record.bytes.toString("utf8"));
+    const document = JSON.parse(record.bytes.toString("utf8"));
+    objectValue(document, label);
+    return document;
   } catch (error) {
     fail(`${label} is invalid JSON: ${error.message}`);
   }
@@ -154,16 +157,42 @@ function requireAllFalse(value, label) {
   const record = objectValue(value, label);
   for (const [key, actual] of Object.entries(record)) if (actual !== false) fail(`${label}.${key} must remain false`);
 }
-function requireCommandResults(value, label) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 64) fail(`${label} must be a bounded non-empty array`);
-  for (const record of value) {
-    objectValue(record, `${label} entry`);
-    if (record.status !== 0) fail(`${label} contains a non-zero command status`);
-    for (const streamName of ["stdout", "stderr"]) {
-      const stream = objectValue(record[streamName], `${label}.${streamName}`);
-      if (!Number.isSafeInteger(stream.bytes) || stream.bytes < 0 || stream.bytes > MAX_INPUT_BYTES) fail(`${label}.${streamName}.bytes is invalid`);
-      requireSha256(stream.sha256, `${label}.${streamName}.sha256`);
+function requirePacketRecord(value, label) {
+  const record = objectValue(value, label);
+  if (!Number.isSafeInteger(record.bytes) || record.bytes <= 0 || record.bytes > MAX_INPUT_BYTES) fail(`${label}.bytes is outside the admitted range`);
+  requireSha256(record.sha256, `${label}.sha256`);
+}
+function requireCommandResults(value, expectedCommands, label) {
+  if (!Array.isArray(value) || !Array.isArray(expectedCommands) || value.length !== expectedCommands.length || value.length === 0 || value.length > 64) {
+    fail(`${label} must match the exact bounded execution-contract command set`);
+  }
+  for (let index = 0; index < expectedCommands.length; index += 1) {
+    const record = objectValue(value[index], `${label}[${index}]`);
+    const expected = objectValue(expectedCommands[index], `${label} expected[${index}]`);
+    if (record.id !== expected.id || record.program !== expected.program || canonicalJson(record.args) !== canonicalJson(expected.args)) {
+      fail(`${label}[${index}] id/program/argv differs from execution contract`);
     }
+    if (record.status !== 0) fail(`${label}[${index}] contains a non-zero command status`);
+    for (const streamName of ["stdout", "stderr"]) {
+      const stream = objectValue(record[streamName], `${label}[${index}].${streamName}`);
+      if (!Number.isSafeInteger(stream.bytes) || stream.bytes < 0 || stream.bytes > MAX_INPUT_BYTES) fail(`${label}[${index}].${streamName}.bytes is invalid`);
+      requireSha256(stream.sha256, `${label}[${index}].${streamName}.sha256`);
+    }
+  }
+}
+function validateSourceGate(sourceGate) {
+  if (
+    sourceGate.artifact !== "pages_reference_consumer_gate_source" ||
+    sourceGate.mode !== "source_ready" ||
+    sourceGate.accepted !== false ||
+    sourceGate.current_boundary?.execution_gate !== "pending" ||
+    sourceGate.current_boundary?.provider_health !== "unobserved" ||
+    sourceGate.current_boundary?.forum_wave_blocker !== "pages_reference_consumer_gate"
+  ) {
+    fail("committed Pages reference-consumer source gate must remain fail-closed before owner decision");
+  }
+  if (!sourceGate.forbidden_claims?.includes("observed provider health")) {
+    fail("source gate must continue forbidding fabricated observed provider health");
   }
 }
 function validateCandidate(input, contract, candidateContract, head) {
@@ -172,8 +201,12 @@ function validateCandidate(input, contract, candidateContract, head) {
   if (document.source_commit !== head) fail("reference candidate source_commit does not equal checkout HEAD");
   const deploymentDigest = requireRepoDigest(document.deployment_image_digest, "reference candidate deployment image digest");
   verifyRetainedSourceHashes(document, candidateContract, "source_sha256", "reference candidate");
-  requireCommandResults(document.source_guards, "reference candidate source guards");
-  requireCommandResults(document.focused_tests, "reference candidate focused tests");
+  const inputs = objectValue(document.inputs, "reference candidate inputs");
+  const expectedInputNames = ["artifact_http", "browser", "rollout_matrix", "rollout_feature_preflight"];
+  if (canonicalJson(Object.keys(inputs).sort()) !== canonicalJson([...expectedInputNames].sort())) fail("reference candidate input hash set drifted");
+  for (const inputName of expectedInputNames) requirePacketRecord(inputs[inputName], `reference candidate input ${inputName}`);
+  requireCommandResults(document.source_guards, candidateContract.source_guards, "reference candidate source guards");
+  requireCommandResults(document.focused_tests, candidateContract.focused_tests, "reference candidate focused tests");
 
   const candidate = objectValue(document.candidate, "reference candidate result");
   for (const key of [
@@ -200,6 +233,8 @@ function validateObservedHealthAcceptance(input, contract, observedSource, head,
   }
   if (document.source_commit !== head || document.source_commit !== candidate.sourceCommit) fail("observed-health acceptance source_commit differs from candidate or checkout");
   const deployment = objectValue(document.deployment, "observed-health acceptance deployment");
+  const deploymentId = deployment.deployment_id;
+  if (typeof deploymentId !== "string" || deploymentId.length === 0 || deploymentId.length > 256) fail("observed-health deployment id is invalid");
   const digest = requireRepoDigest(deployment.deployment_image_digest, "observed-health deployment image digest");
   if (digest !== candidate.deploymentDigest) fail("observed-health acceptance deployment digest differs from reference candidate");
   verifyRetainedSourceHashes(document, observedSource, "source_files", "observed-health acceptance");
@@ -225,7 +260,7 @@ function validateObservedHealthAcceptance(input, contract, observedSource, head,
   for (const key of ["pages_reference_consumer_gate_accepted", "forum_wave_accepted", "ffa_promoted", "fba_promoted"]) {
     if (document[key] !== false) fail(`observed-health acceptance ${key} must remain false`);
   }
-  return { snapshot: observed.snapshot, sloEvaluation: observed.slo_evaluation, deploymentId: deployment.deployment_id };
+  return { snapshot: observed.snapshot, sloEvaluation: observed.slo_evaluation, deploymentId };
 }
 function outputPath(contract, requested) {
   const candidate = requested ?? contract.output.default_path;
@@ -257,9 +292,17 @@ function main() {
   const contract = jsonSource(contractPath, "gate acceptance source contract");
   const candidateContract = jsonSource(candidateContractPath, "reference candidate execution contract");
   const observedSource = jsonSource(observedAcceptanceSourcePath, "observed-health acceptance source contract");
+  const sourceGate = jsonSource(sourceGatePath, "Pages reference-consumer source gate");
   if (contract.status !== "source_ready_maintainer_execution_pending") fail("gate acceptance source contract must remain execution-pending before owner decision");
   if (candidateContract.status !== "source_ready_maintainer_execution_pending") fail("reference candidate execution contract drifted");
   if (observedSource.status !== "source_ready_maintainer_execution_pending") fail("observed-health acceptance source contract drifted");
+  if (
+    !contract.owner_decision?.decisions?.includes(ACCEPT_DECISION) ||
+    !contract.owner_decision?.decisions?.includes(REJECT_DECISION) ||
+    contract.owner_decision?.accepted_gate_requires_rollback_decision !== RETAIN_DECISION ||
+    contract.owner_decision?.rejected_gate_requires_rollback_decision !== ROLLBACK_DECISION
+  ) fail("gate owner-decision source policy drifted");
+  validateSourceGate(sourceGate);
 
   const head = currentCommit();
   const candidateInput = jsonInput(options.candidate, "reference candidate evidence");
