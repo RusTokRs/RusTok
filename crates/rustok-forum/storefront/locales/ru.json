@@ -27,5 +27,8 @@
   "forum.thread.repliesTitle": "Ответы",
   "forum.thread.repliesTotal": "{count} всего",
   "forum.thread.noReplies": "Ответов пока нет.",
+  "forum.member.topics": "тем",
+  "forum.member.replies": "ответов",
+  "forum.member.solutions": "решений",
   "forum.richContent.summary": "Контент хранится в формате `{format}`. Длина сырого содержимого: {count} символов."
 }

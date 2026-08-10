@@ -3,6 +3,7 @@ use leptos::task::spawn_local;
 use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
+use super::member_card::{ForumAuthorBadge, member_card_context};
 use crate::core::{
     ForumStorefrontCategoryRailLabels, forum_storefront_category_card_view_model,
     forum_storefront_count_label, forum_storefront_status_badge_class,
@@ -143,9 +144,10 @@ fn ForumShowcase(
         selected_topic_id,
         selected_topic,
         replies,
-        member_cards: _,
+        member_cards,
         read_state_available,
     } = data;
+    provide_context(member_card_context(member_cards));
 
     view! {
         <div class="grid gap-6 xl:grid-cols-[16rem_minmax(0,1fr)_24rem]">
@@ -317,6 +319,7 @@ fn ForumTopicFeed(
 
             <div class="space-y-3">
                 {items.into_iter().map(|item| {
+                    let author_id = item.author_id.clone();
                     let card = forum_storefront_topic_card_view_model(
                         module_route_base.as_str(),
                         &item,
@@ -362,6 +365,7 @@ fn ForumTopicFeed(
                                         <h4 class="text-lg font-semibold text-foreground">{card.title}</h4>
                                         <p class="mt-1 text-sm text-muted-foreground">{card.slug_label}</p>
                                     </div>
+                                    <ForumAuthorBadge author_id />
                                 </div>
                                 <div class="text-right">
                                     <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -406,6 +410,7 @@ fn ForumThreadPanel(
     };
 
     let topic_id = topic.id.clone();
+    let author_id = topic.author_id.clone();
     let status_class = topic_status_class(topic.status.as_str());
     let body_html = topic.body.html.clone();
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
@@ -456,6 +461,7 @@ fn ForumThreadPanel(
                     <h3 class="text-2xl font-semibold text-card-foreground">{topic.title}</h3>
                     <p class="mt-2 text-sm text-muted-foreground">{crate::core::forum_storefront_slug_label(slug_template.as_str(), topic.slug.as_str())}</p>
                 </div>
+                <ForumAuthorBadge author_id />
                 <div
                     class="richtext text-sm leading-7 text-muted-foreground"
                     inner_html=body_html
@@ -518,6 +524,7 @@ fn ForumThreadPanel(
 
 #[component]
 fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
+    let author_id = reply.author_id.clone();
     let status_class = topic_status_class(reply.status.as_str());
     let content_html = reply.content.html.clone();
 
@@ -528,6 +535,9 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
                 <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                     {reply.effective_locale}
                 </span>
+            </div>
+            <div class="mt-3">
+                <ForumAuthorBadge author_id />
             </div>
             <div
                 class="richtext mt-3 text-sm leading-6 text-muted-foreground"

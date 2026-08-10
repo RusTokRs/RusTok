@@ -27,5 +27,8 @@
   "forum.thread.repliesTitle": "Replies",
   "forum.thread.repliesTotal": "{count} total",
   "forum.thread.noReplies": "No replies yet.",
+  "forum.member.topics": "topics",
+  "forum.member.replies": "replies",
+  "forum.member.solutions": "solutions",
   "forum.richContent.summary": "Stored in `{format}` format. Raw content length: {count} characters."
 }
