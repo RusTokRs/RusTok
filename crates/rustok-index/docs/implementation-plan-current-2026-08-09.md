@@ -1,13 +1,13 @@
 # Current `rustok-index` implementation plan — 2026-08-09
 
-Status: `m5_product_refresh_family_and_digest_admitted_maintainer_reverify_pending`.
+Status: `m5_product_refresh_family_digest_clean_ci_execution_blocked`.
 
 This overlay supersedes `implementation-plan-current-2026-08-08.md` as the live execution cursor. The older file
 remains detailed architecture/source history.
 
-Rechecked against `main@de4fd6cc358e9112c372565a064fbc862656252e`. `ProductIndexRefreshEvent` is already merged
-through PR #3401. Subsequent mainline work does not reopen the Product refresh-family source shape, M6 repair source
-boundary, M7 Storefront evidence gate or partition-replay rule.
+Rechecked against `main@3b1ba79619a9c37f7bc90fb773843c7287d2d4ff`. Mainline changes after the maintainer exact-SHA
+run are Commerce, Forum, Page Builder, Payment and narrow Product storefront-read work; they do not change the
+Product Index refresh event family, canonical digest generator, Index source-refresh worker or M6/M7 source gates.
 
 ## M5 — Product Index typed refresh family
 
@@ -34,39 +34,53 @@ causation_id = root_event_id
 `CanonicalProductIndexRefreshEventFactory` binds immutable Product locale/ProductVariant ledger rows to the sealed
 family. No alternate JSON/event-name route or compatibility family is admitted.
 
-### Maintainer follow-up after #3401
+### Maintainer exact-SHA closeout evidence
 
-The maintainer pulled `main` and reported:
+On `main@535c6d4a3aca4412c27c69453e08c6942c281ac9`, the maintainer reported:
 
-- `verify-event-contract-digest-admission.mjs` failed only because it still required the obsolete
-  `source_complete_maintainer_execution_pending` documentation marker;
-- the canonical `event_contract_digests -- --write` generator completed successfully and produced the submitted
-  Product-family digest update;
+- `cargo run --locked -p rustok-events --example event_contract_digests -- --write` completed successfully;
+- `git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json` returned exit code 0;
 - `verify-index-product-refresh-event-family.mjs` passed with
-  `typed_family=true canonical_factory=true digest_regenerated=true`.
+  `typed_family=true canonical_factory=true digest_regenerated=true`;
+- `verify-event-contract-digest-admission.mjs` failed only on one case-sensitive prose marker.
 
-This follow-up admits exactly that maintainer-generated digest artifact and repairs the stale verifier/documentation
-contract. The supplied execution transcript did not include `git rev-parse HEAD`, so the final exact-SHA admission
-closeout remains a post-merge maintainer rerun rather than an implementation-agent claim.
+PR #3434 removed that brittle prose marker without weakening the actual workflow/admission checks. The generated
+Product-family digest is clean at the recorded exact SHA.
 
-### M5 closeout gate
+### Focused Index contract CI gate
 
-On the new merged `main`, run:
+This slice adds `.github/workflows/index-contract-ci.yml` as a read-only path-scoped PR/push gate for changes under
+`rustok-events`, `rustok-product`, `rustok-index`, their focused verifier scripts, workspace manifests and the two
+related workflows.
 
-```bash
-git rev-parse HEAD
-node scripts/verify/verify-event-contract-digest-admission.mjs
-cargo run --locked -p rustok-events --example event_contract_digests -- --write
-git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json
-node scripts/verify/verify-index-product-refresh-event-family.mjs
+The gate requires:
+
+```text
+verify-index-contract-ci.mjs
+verify-event-contract-digest-admission.mjs
+verify-index-product-refresh-event-family.mjs
+canonical event_contract_digests regeneration with an empty git diff
+cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
+cargo test --locked -p rustok-events --test canonical_contracts
 ```
 
-If the admission verifier passes, the canonical digest diff is empty and the Product-family verifier passes, the
-next independent M5 source boundary opens: Product/ProductVariant typed delivery into the existing generic
-`IndexSourceRefreshEventWorker`, including exact event-route registration, canonical target-key decoding and
-commit-before-ack consumption.
+The workflow has `contents: read`, disables persisted checkout credentials and contains no repository mutation path.
+Its stable aggregate job is `Index Contract Gate` so future branch protection can require one focused status rather
+than the entire workspace CI matrix.
 
-Do not start that source boundary before this exact-SHA closeout is reported.
+### Current CI execution blocker
+
+The first pull-request execution of this gate was accepted by GitHub Actions, but every runnable job completed as
+`failure` before its first step (`steps=[]` and no job log). A targeted rerun produced the same pre-step failure.
+The repository's pre-existing `CI` workflow shows the same pre-step failure shape on this PR and on the immediately
+preceding unrelated PR, so this is an Actions/runner-level repository execution blocker rather than an Index source,
+Node verifier, Cargo command or workflow-YAML failure.
+
+The CI workflow source may be admitted so the gate is installed, but M5 does not claim CI admission yet. The first
+real execution where `Source contracts`, `Canonical event digest drift`, `Events Product Index cargo checks` and
+`Index Contract Gate` all pass closes the family/digest gate. Only then does the next independent M5 source boundary
+open: Product/ProductVariant typed delivery into the existing generic `IndexSourceRefreshEventWorker`, including
+exact event-route registration, canonical target-key decoding and commit-before-ack consumption.
 
 ## M6 — concrete repair PostgreSQL evidence
 
@@ -97,6 +111,7 @@ is approved.
 
 ## Validation boundary
 
-The implementation agent performed static GitHub source/diff review only for this follow-up and did not rerun Rust
-tests, Node verifiers, Cargo checks, formatting, PostgreSQL execution, workflows or CI. Generator and Product-family
-verifier results above are maintainer-provided local execution results.
+Static diff review confirms the CI slice is limited to the focused workflow, its source guard and this execution
+cursor. GitHub Actions accepted the workflow definition but did not start any job steps because of the repository-wide
+Actions/runner blocker described above. No passing CI, PostgreSQL M6/M7 evidence or additional local test execution is
+claimed.
