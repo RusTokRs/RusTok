@@ -233,7 +233,7 @@ async fn storefront_forum_native(
                 .map_err(server_error)?;
             let first_topic_id = page.items.first().map(|item| item.topic.id);
             (
-                page.items.into_iter().map(map_unread_topic).collect(),
+                page.items.into_iter().map(map_unread_topic).collect::<Vec<_>>(),
                 page.total,
                 first_topic_id,
                 true,
@@ -250,7 +250,7 @@ async fn storefront_forum_native(
                 .map_err(server_error)?;
             let first_topic_id = page.items.first().map(|topic| topic.id);
             (
-                page.items.into_iter().map(map_topic_list_item).collect(),
+                page.items.into_iter().map(map_topic_list_item).collect::<Vec<_>>(),
                 page.total,
                 first_topic_id,
                 false,

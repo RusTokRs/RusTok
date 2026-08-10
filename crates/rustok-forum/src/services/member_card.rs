@@ -2,7 +2,7 @@ mod member_card {
     use std::collections::{HashMap, HashSet};
 
     use rustok_profiles::{
-        ProfileAccessAudience, ProfilePresentationService, ProfileSummary, ProfilesReader,
+        ProfileAccessAudience, ProfilePresentationService, ProfileSummary,
     };
     use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
     use serde::{Deserialize, Serialize};

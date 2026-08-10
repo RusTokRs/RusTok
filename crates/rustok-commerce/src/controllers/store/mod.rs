@@ -42,7 +42,6 @@ use crate::{
     StoreContextError, StoreContextService,
     dto::{
         AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
-        UpdateCartContextInput,
     },
     storefront_channel::{
         is_module_enabled_for_request_channel, normalize_public_channel_slug,
