@@ -33,9 +33,9 @@ pub type OrderChangeOrchestrationResult<T> = Result<T, OrderChangeOrchestrationE
 /// Routes order-change application through the correct post-order workflow.
 ///
 /// Transport layers must not inspect `change_type` and duplicate exchange/claim
-/// branching. Mounted REST can inject host-selected owner ports through
-/// `from_order_ports`; directly embedded and GraphQL compatibility callers retain
-/// the legacy method until their runtime-composition cutover is handled separately.
+/// branching. Mounted REST and GraphQL inject host-selected owner ports through
+/// `from_order_ports`; directly embedded compatibility callers retain the legacy
+/// entrypoint until their separate compatibility cleanup is complete.
 pub struct OrderChangeOrchestrationService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -75,7 +75,7 @@ impl OrderChangeOrchestrationService {
         self
     }
 
-    /// Legacy compatibility entry point retained for GraphQL/runtime callers in this slice.
+    /// Legacy compatibility entry point retained for directly embedded callers.
     pub async fn apply_order_change(
         &self,
         tenant_id: Uuid,
@@ -119,7 +119,7 @@ impl OrderChangeOrchestrationService {
         }
     }
 
-    /// Host-composed REST entry point for order-owned read/default-apply operations.
+    /// Host-composed mounted transport entry point for order-owned read/default-apply operations.
     pub async fn apply_order_change_with_owner_ports(
         &self,
         tenant_id: Uuid,

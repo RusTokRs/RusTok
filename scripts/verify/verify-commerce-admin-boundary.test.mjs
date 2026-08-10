@@ -35,13 +35,19 @@ function fixture(options = {}) {
     orchestration.cancel_fulfillment();
   `);
   put(root, "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs", `
+    let read_context = order_change_read_context(ctx, tenant_id, id);
+    let command_context = order_post_order_command_context(ctx, tenant_id, id, "apply_order_change");
     let service = order_change_orchestration_from_context();
-    service.apply_order_change(tenant_id, id, difference_refund, metadata);
+    service.apply_order_change_with_owner_ports();
     let service = return_completion_orchestration_from_context();
     service.complete_return(tenant_id, auth.user_id, id, command);
   `);
   put(root, "crates/rustok-commerce/src/graphql_runtime.rs", `
-    pub(crate) fn order_change_orchestration_from_context() {}
+    pub(crate) fn order_change_orchestration_from_context() {
+      OrderChangeOrchestrationService::from_order_ports();
+      runtime.order_read_runtime().order_read_port();
+      runtime.order_post_order_command_runtime().command_port();
+    }
     pub(crate) fn return_completion_orchestration_from_context() {}
   `);
   put(root, "crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs", `

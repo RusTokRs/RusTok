@@ -56,7 +56,7 @@ const ownerMethod = between(
   orchestration,
   'pub async fn apply_order_change_with_owner_ports(',
   '\n    }\n}',
-  'REST owner-port orchestration method',
+  'mounted owner-port orchestration method',
 );
 
 for (const [value, label] of [
@@ -111,7 +111,7 @@ for (const [value, label] of [
   ['.apply_claim_order_change(', 'claim orchestration retained'],
 ]) requireText(ownerMethod, value, label);
 for (const value of ['OrderService::new(', '.get_order_change(']) {
-  forbidText(ownerMethod, value, 'REST owner-port orchestration concrete Order dependency');
+  forbidText(ownerMethod, value, 'mounted owner-port orchestration concrete Order dependency');
 }
 
 for (const [value, label] of [
@@ -135,16 +135,23 @@ for (const value of ['error = ?error', 'error.message', 'internal_message', 'err
   forbidText(portMapper, value, 'REST owner-port raw diagnostics');
 }
 
-// GraphQL is deliberately not claimed by this REST slice.
+// The later GraphQL slice may supersede the historical deferred scope, but must
+// reuse the same owner-port orchestration entrypoint rather than reintroduce a
+// concrete Order dependency.
 requireText(
   graphql,
-  '.apply_order_change(tenant_id, id, difference_refund, metadata)',
-  'separate GraphQL compatibility call remains',
+  '.apply_order_change_with_owner_ports(',
+  'GraphQL reuses the mounted owner-port orchestration entrypoint',
 );
 requireText(
   graphqlRuntime,
-  'OrderChangeOrchestrationService::new(db, event_bus)',
-  'separate GraphQL in-process composition remains explicit',
+  'OrderChangeOrchestrationService::from_order_ports(',
+  'GraphQL runtime composes the same host-selected Order owner ports',
+);
+forbidText(
+  graphql,
+  '.apply_order_change(tenant_id, id, difference_refund, metadata)',
+  'GraphQL must not regress to the concrete compatibility entrypoint',
 );
 
 requireText(
@@ -158,7 +165,7 @@ for (const [value, label] of [
   ['Status: `source_complete_unvalidated`', 'record status'],
   ['OrderPostOrderCommandPort::apply_change', 'record owner command'],
   ['write-admission metadata only', 'record replay limitation'],
-  ['mounted GraphQL `applyOrderChange`', 'record deferred GraphQL scope'],
+  ['mounted GraphQL `applyOrderChange`', 'historical deferred GraphQL scope'],
   ['no tests, Cargo commands, Node verifiers, formatter', 'record validation status'],
 ]) requireText(record, value, label);
 
