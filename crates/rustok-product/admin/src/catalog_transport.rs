@@ -10,7 +10,7 @@ mod graphql_error_safety;
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{
     CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
-    ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
+    ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail,
     ProductEffectiveForm, ProductList, ProductPricingDetail, ShippingProfileList,
 };
 use rustok_graphql::GraphqlHttpError;

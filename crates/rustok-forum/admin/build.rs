@@ -94,11 +94,6 @@ fn main() {
     );
     push_str_const(
         &mut generated,
-        "FORUM_OWNER_PROVIDER_VERSION",
-        &normalized.owner_version,
-    );
-    push_str_const(
-        &mut generated,
         "FORUM_WIDGET_CONTRIBUTION_ID",
         &catalog_role.id,
     );

@@ -10,7 +10,6 @@ use rustok_fulfillment::{
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-pub use super::fulfillments_legacy::*;
 use super::{super::CommerceHttpRuntime, super::common::ensure_permissions};
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, DeliverFulfillmentInput, FulfillmentResponse,

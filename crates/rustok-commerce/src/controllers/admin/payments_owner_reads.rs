@@ -16,7 +16,6 @@ use rustok_payment::{
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-pub use super::payments_legacy::*;
 use super::{
     super::CommerceHttpRuntime,
     super::common::{PaginatedResponse, ensure_permissions},

@@ -1,12 +1,8 @@
 pub mod changes;
-#[path = "fulfillments.rs"]
-mod fulfillments_legacy;
 #[path = "fulfillments_owner_commands.rs"]
 pub mod fulfillments;
 #[path = "orders_owner_ports.rs"]
 pub mod orders;
-#[path = "payments.rs"]
-mod payments_legacy;
 #[path = "payments_owner_reads.rs"]
 pub mod payments;
 pub mod post_order_commands;
@@ -307,12 +303,7 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
         .route(
             "/fulfillments",
-            axum::routing::get(fulfillments::list_fulfillments)
-                .post(fulfillments::create_fulfillment),
-        )
-        .route(
-            "/fulfillments/{id}",
-            axum::routing::get(fulfillments::show_fulfillment),
+            axum::routing::post(fulfillments::create_fulfillment),
         )
         .route(
             "/fulfillments/{id}/ship",
