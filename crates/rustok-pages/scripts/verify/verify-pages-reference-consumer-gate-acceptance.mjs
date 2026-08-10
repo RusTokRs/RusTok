@@ -38,14 +38,17 @@ const parity = read(files.parity);
 if (contract.format !== "pages_reference_consumer_gate_acceptance_source_v1" || contract.status !== "source_ready_maintainer_execution_pending") failures.push("acceptance source identity drifted");
 if (candidateContract.output?.format !== "pages_reference_consumer_gate_candidate_v1" || candidateContract.output?.status !== "component_execution_passed_owner_review_pending") failures.push("candidate predecessor drifted");
 if (observedSource.format !== "pages_builder_provider_health_observed_acceptance_source_v1") failures.push("observed-health predecessor drifted");
-if (gate.accepted !== false || gate.current_boundary?.execution_gate !== "pending" || gate.current_boundary?.provider_health !== "unobserved") failures.push("source gate must remain accepted=false, execution pending, rollout health unobserved");
+if (gate.accepted !== false || gate.current_boundary?.execution_gate !== "pending" || gate.current_boundary?.provider_health !== "unobserved" || gate.current_boundary?.forum_wave_blocker !== "pages_reference_consumer_gate") failures.push("source gate must remain fail-closed before owner decision");
 
 for (const [object, key, expected] of [
   [contract.candidate_input, "retained_source_hashes_must_match_contract_and_checkout", true],
+  [contract.candidate_input, "retained_input_hash_records_must_be_bounded", true],
+  [contract.candidate_input, "command_records_must_match_execution_contract_exactly", true],
   [contract.candidate_input, "provider_health_must_equal_unobserved", true],
   [contract.observed_health_input, "required_decision", "accept_observed_runtime_evidence"],
   [contract.observed_health_input, "source_commit_must_equal_checkout_head_and_candidate", true],
   [contract.observed_health_input, "deployment_image_digest_must_equal_candidate", true],
+  [contract.observed_health_input, "deployment_id_must_be_bounded", true],
   [contract.observed_health_input, "eligible_for_pages_gate_review_must_be_true", true],
   [contract.observed_health_input, "current_provider_health_must_not_be_asserted", true],
   [contract.observed_health_input, "historical_health_lease_must_not_be_extended", true],
@@ -53,6 +56,7 @@ for (const [object, key, expected] of [
   [contract.owner_decision, "rejected_gate_requires_rollback_decision", "rollback_reference_consumer_candidate"],
   [contract.owner_decision, "decision_packet_does_not_execute_rollback", true],
   [contract.output, "accepted_status", "owner_accepted_pages_reference_consumer_gate"],
+  [contract.source_gate_boundary, "source_gate_must_be_fail_closed_before_decision", true],
   [contract.source_gate_boundary, "pages_reference_consumer_gate_source_remains_accepted_false_until_maintainer_execution", true],
   [contract.non_claims, "owner_gate_decision_executed", false],
   [contract.non_claims, "pages_reference_consumer_gate_accepted_in_source", false],
@@ -64,10 +68,21 @@ for (const marker of [
   'const RETAIN_DECISION = "retain_reference_consumer_candidate"',
   'const ROLLBACK_DECISION = "rollback_reference_consumer_candidate"',
   'spawnSync("git", ["rev-parse", "HEAD"]',
+  'const sourceGate = jsonSource(sourceGatePath, "Pages reference-consumer source gate")',
+  'sourceGate.accepted !== false',
+  'sourceGate.current_boundary?.execution_gate !== "pending"',
+  'sourceGate.current_boundary?.provider_health !== "unobserved"',
   'verifyRetainedSourceHashes(document, candidateContract, "source_sha256", "reference candidate")',
   'verifyRetainedSourceHashes(document, observedSource, "source_files", "observed-health acceptance")',
+  'record.id !== expected.id',
+  'record.program !== expected.program',
+  'canonicalJson(record.args) !== canonicalJson(expected.args)',
+  'requireCommandResults(document.source_guards, candidateContract.source_guards, "reference candidate source guards")',
+  'requireCommandResults(document.focused_tests, candidateContract.focused_tests, "reference candidate focused tests")',
+  'reference candidate input hash set drifted',
   'candidate.provider_health !== "unobserved"',
   'decision.value !== OBSERVED_ACCEPT_DECISION',
+  'observed-health deployment id is invalid',
   'digest !== candidate.deploymentDigest',
   'gate.eligible_for_pages_gate_review !== true',
   'observed.current_provider_health_asserted !== false',
@@ -83,6 +98,8 @@ for (const marker of ["fetch(", "@playwright/test", "cargo test", "gate.accepted
 for (const marker of [
   "reference-consumer-gate-acceptance-source-ready",
   "same exact source commit and immutable RepoDigest",
+  "exact command ids/programs/argv",
+  "source gate remains fail closed",
   "retain_reference_consumer_candidate",
   "rollback_reference_consumer_candidate",
   "does not assert current provider health",
