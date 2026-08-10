@@ -11,7 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const controller = read('crates/rustok-commerce/src/controllers/store/orders.rs');
-const paymentErrors = read('crates/rustok-payment/src/error.rs');
+const paymentOwner = read('crates/rustok-payment/src/order_read.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -30,17 +30,11 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const policy = between(
-  controller,
-  'fn storefront_order_payment_error_policy(',
-  'fn map_storefront_payment_error(',
-  'storefront order payment policy',
-);
 const mapper = between(
   controller,
-  'fn map_storefront_payment_error(',
+  'fn map_storefront_payment_port_error(',
   'async fn current_storefront_customer_id(',
-  'storefront order payment mapper',
+  'storefront Payment refund mapper',
 );
 const ownership = between(
   controller,
@@ -56,214 +50,96 @@ const refundRoute = between(
 );
 
 for (const [value, label] of [
-  [
-    'const STOREFRONT_ORDER_PAYMENT_OWNER: &str = "rustok_payment.storefront_order_refunds";',
-    'payment owner constant',
-  ],
-  [
-    'const STOREFRONT_ORDER_PAYMENT_BOUNDARY: &str = "commerce_storefront_order_http";',
-    'payment boundary constant',
-  ],
-  ['type StorefrontOrderPaymentHttpPolicy = (', 'payment policy type'],
-  [
-    'struct StorefrontOrderPaymentErrorContext<\'a> {',
-    'typed payment context',
-  ],
-  ['tenant_id: Uuid,', 'tenant context field'],
-  ['actor_id: Uuid,', 'actor context field'],
-  ['customer_id: Uuid,', 'customer context field'],
-  ['order_id: Uuid,', 'order context field'],
-  ['payment_collection_id: Option<Uuid>,', 'collection context field'],
-  ['refund_id: Option<Uuid>,', 'refund context field'],
-  ['channel_id: Option<Uuid>,', 'channel ID context field'],
-  ['channel_slug: Option<&\'a str>,', 'channel slug context field'],
-  ['locale: &\'a str,', 'locale context field'],
-  ['operation: &\'static str,', 'operation context field'],
-  ['payment_collection_id: None,', 'empty collection identity'],
-  ['refund_id: None,', 'empty refund identity'],
-  ['channel_id: request_context.channel_id,', 'channel ID adoption'],
-  [
-    'channel_slug: request_context.channel_slug.as_deref(),',
-    'channel slug adoption',
-  ],
-  ['locale: request_context.locale.as_str(),', 'locale adoption'],
+  ['const STOREFRONT_ORDER_PAYMENT_OWNER: &str = "rustok_payment.storefront_order_refunds";', 'Payment owner constant'],
+  ['const STOREFRONT_ORDER_PAYMENT_BOUNDARY: &str = "commerce_storefront_order_http";', 'Payment boundary constant'],
+  ['fn map_storefront_payment_port_error(', 'typed Payment port mapper'],
 ]) requireText(controller, value, label);
 
 for (const [value, label] of [
-  ['PaymentError::Validation(_)', 'validation variant'],
+  ['"payment.order_refund_provider_unavailable"', 'provider unavailable owner code'],
+  ['"payment.order_refund_provider_invalid_response"', 'provider invalid response owner code'],
+  ['"payment.order_refund_reconciliation_required"', 'reconciliation owner code'],
+  ['"payment.order_refund_provider_not_configured"', 'provider configuration owner code'],
   ['StatusCode::BAD_REQUEST', 'validation status'],
-  ['"commerce_store_payment_invalid"', 'validation code'],
-  ['"Payment request is invalid"', 'validation message'],
-  ['"validation"', 'validation kind'],
-  [
-    'PaymentError::PaymentCollectionNotFound(payment_collection_id)',
-    'collection not-found variant',
-  ],
-  [
-    'context.payment_collection_id = Some(*payment_collection_id);',
-    'collection identity adoption',
-  ],
-  [
-    'PaymentError::PaymentNotFound(payment_collection_id)',
-    'payment not-found variant',
-  ],
-  ['"payment_not_found"', 'payment not-found kind'],
-  ['PaymentError::RefundNotFound(refund_id)', 'refund not-found variant'],
-  ['context.refund_id = Some(*refund_id);', 'refund identity adoption'],
+  ['"commerce_store_payment_invalid"', 'validation public code'],
   ['StatusCode::NOT_FOUND', 'not-found status'],
-  ['"commerce_store_payment_not_found"', 'not-found code'],
-  ['"Payment resource was not found"', 'not-found message'],
-  ['PaymentError::InvalidTransition { .. }', 'transition variant'],
-  ['"state_conflict"', 'transition kind'],
-  ['PaymentError::ProviderRejected { .. }', 'provider rejected variant'],
-  ['"provider_rejected"', 'provider rejected kind'],
+  ['"commerce_store_payment_not_found"', 'not-found public code'],
   ['StatusCode::CONFLICT', 'conflict status'],
-  ['"commerce_store_payment_state_conflict"', 'state conflict code'],
-  [
-    '"Payment operation conflicts with the current state"',
-    'state conflict message',
-  ],
-  ['PaymentError::ProviderUnavailable { .. }', 'provider unavailable variant'],
+  ['"commerce_store_payment_state_conflict"', 'state-conflict public code'],
   ['StatusCode::SERVICE_UNAVAILABLE', 'unavailable status'],
-  [
-    '"commerce_store_payment_provider_unavailable"',
-    'provider unavailable code',
-  ],
-  [
-    '"Payment provider is temporarily unavailable"',
-    'provider unavailable message',
-  ],
-  [
-    'PaymentError::ProviderInvalidResponse { .. }',
-    'invalid provider response variant',
-  ],
+  ['"commerce_store_payment_provider_unavailable"', 'provider unavailable public code'],
   ['StatusCode::BAD_GATEWAY', 'bad gateway status'],
-  [
-    '"commerce_store_payment_provider_invalid_response"',
-    'invalid provider response code',
-  ],
-  [
-    '"Payment provider returned an invalid response"',
-    'invalid provider response message',
-  ],
-  [
-    'PaymentError::ProviderOutcomeUnknown { .. }',
-    'unknown provider outcome variant',
-  ],
-  [
-    '"commerce_store_payment_reconciliation_required"',
-    'reconciliation code',
-  ],
-  ['"Payment state requires reconciliation"', 'reconciliation message'],
-  [
-    'PaymentError::ProviderConfiguration { .. }',
-    'provider configuration variant',
-  ],
-  [
-    '"commerce_store_payment_provider_not_configured"',
-    'provider configuration code',
-  ],
-  [
-    '"Payment provider is not configured for this tenant"',
-    'provider configuration message',
-  ],
-  ['PaymentError::Database(_)', 'database variant'],
-  ['"commerce_store_payment_unavailable"', 'database code'],
-  ['"Payment service is temporarily unavailable"', 'database message'],
-  ['"database"', 'database kind'],
-]) requireText(policy, value, label);
-
-for (const [value, label] of [
-  ['error = ?error', 'typed payment cause log'],
-  ['owner = STOREFRONT_ORDER_PAYMENT_OWNER', 'owner log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['actor_id = %context.actor_id', 'actor log'],
-  ['customer_id = %context.customer_id', 'customer log'],
-  ['order_id = %context.order_id', 'order log'],
-  [
-    'payment_collection_id = ?context.payment_collection_id',
-    'collection identity log',
-  ],
-  ['refund_id = ?context.refund_id', 'refund identity log'],
-  ['channel_id = ?context.channel_id', 'channel ID log'],
-  ['channel = ?context.channel_slug', 'channel slug log'],
-  ['locale = %context.locale', 'locale log'],
-  ['operation = %context.operation', 'operation log'],
-  ['error_kind,', 'error kind log'],
-  ['public_code = code', 'public code log'],
-  ['status = %status', 'status log'],
-  ['boundary = STOREFRONT_ORDER_PAYMENT_BOUNDARY', 'boundary log'],
+  ['"commerce_store_payment_provider_invalid_response"', 'provider invalid-response public code'],
+  ['"commerce_store_payment_reconciliation_required"', 'reconciliation public code'],
+  ['"commerce_store_payment_provider_not_configured"', 'provider configuration public code'],
+  ['"commerce_store_payment_unavailable"', 'storage unavailable public code'],
+  ['owner = STOREFRONT_ORDER_PAYMENT_OWNER', 'owner diagnostic'],
+  ['owner_operation = "list_refunds_by_order"', 'owner operation diagnostic'],
+  ['consumer_operation = "list_order_refunds"', 'consumer operation diagnostic'],
+  ['correlation_id = %context.correlation_id', 'correlation diagnostic'],
+  ['actor_id_non_nil = !actor_id.is_nil()', 'actor identity diagnostic'],
+  ['customer_id_non_nil = !customer_id.is_nil()', 'customer identity diagnostic'],
+  ['order_id_non_nil = !order_id.is_nil()', 'order identity diagnostic'],
+  ['owner_error_kind = ?error.kind', 'owner kind diagnostic'],
+  ['owner_code_length = error.code.chars().count()', 'bounded code diagnostic'],
+  ['retryable = error.retryable', 'retryability diagnostic'],
   ['HttpError::new(status, code, message)', 'stable public envelope'],
 ]) requireText(mapper, value, label);
+
+for (const value of ['error = ?error', 'error.message', 'error.to_string()', 'internal_message']) {
+  forbidText(mapper, value, 'raw Payment owner diagnostic');
+}
 
 for (const [value, label] of [
   [') -> HttpResult<Uuid> {', 'ownership helper return type'],
   ['Ok(customer_id)', 'verified customer return'],
-  ['.get_order(tenant_id, order_id)', 'order ownership read'],
+  ['read_storefront_order_projection(', 'owner Order ownership read'],
   ['order.customer_id != Some(customer_id)', 'ownership comparison'],
   ['"commerce_store_customer_required"', 'customer-required envelope'],
   ['"commerce_store_order_access_denied"', 'access-denied envelope'],
 ]) requireText(ownership, value, label);
 
 for (const [value, label] of [
-  [
-    'super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;',
-    'channel guard',
-  ],
-  ['let customer_id =', 'verified customer binding'],
-  [
-    'ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_refunds_access")',
-    'ownership helper call',
-  ],
-  ['PaymentService::new(runtime.db_clone())', 'payment service construction'],
-  ['.list_refunds(', 'refund list call'],
+  ['super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;', 'channel guard'],
+  ['let customer_id = ensure_customer_owns_order(', 'verified customer binding'],
+  ['"list_order_refunds_access"', 'ownership operation'],
+  ['let payment_context = storefront_order_read_port_context(', 'Payment context construction'],
+  ['tenant.id,', 'tenant forwarding'],
+  ['&auth,', 'actor forwarding'],
+  ['&request_context,', 'request context forwarding'],
+  ['.payment_order_read_port()', 'host-selected Payment port'],
+  ['.list_refunds_by_order(', 'refund owner operation'],
+  ['ListRefundsByOrderRequest {', 'typed refund request'],
+  ['order_id: id,', 'order forwarding'],
   ['page: params.pagination.page,', 'page forwarding'],
   ['per_page: params.pagination.per_page,', 'per-page forwarding'],
-  ['payment_collection_id: None,', 'collection filter contract'],
-  ['order_id: Some(id),', 'order filter contract'],
-  ['status: params.status,', 'status filter forwarding'],
-  ['StorefrontOrderPaymentErrorContext::new(', 'typed mapper context'],
-  ['tenant.id,', 'tenant context forwarding'],
-  ['auth.user_id,', 'actor context forwarding'],
-  ['customer_id,', 'customer context forwarding'],
-  ['id,', 'order context forwarding'],
-  ['&request_context,', 'request context forwarding'],
-  ['"list_order_refunds"', 'route operation'],
-  [
-    'PaginationMeta::new(params.pagination.page, params.pagination.limit(), total)',
-    'pagination response contract',
-  ],
+  ['status: params.status,', 'status forwarding'],
+  ['PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total)', 'pagination response contract'],
 ]) requireText(refundRoute, value, label);
 
-for (const value of [
-  'Validation(String),',
-  'PaymentCollectionNotFound(Uuid),',
-  'PaymentNotFound(Uuid),',
-  'RefundNotFound(Uuid),',
-  'InvalidTransition { from: String, to: String },',
-  'ProviderUnavailable {',
-  'ProviderRejected {',
-  'ProviderInvalidResponse {',
-  'ProviderOutcomeUnknown {',
-  'ProviderConfiguration { provider_id: String },',
-  'Database(#[from] DbErr),',
-]) requireText(paymentErrors, value, 'payment source enum');
-
-const mapperUses = controller.match(/map_storefront_payment_error\(/g) ?? [];
-if (mapperUses.length !== 2) {
-  failures.push(
-    `expected payment mapper definition plus one route use, found ${mapperUses.length}`,
-  );
-}
+for (const [value, label] of [
+  ['pub trait PaymentOrderReadPort: Send + Sync', 'Payment owner trait'],
+  ['async fn list_refunds_by_order(', 'Payment refund capability'],
+  ['context.require_policy(PortCallPolicy::read())?', 'read admission'],
+  ['pub struct ListRefundsByOrderRequest', 'typed request'],
+  ['pub struct PaymentOrderRefundPage', 'typed page'],
+  ['.list_refunds(', 'owner-local service call'],
+  ['payment_collection_id: None,', 'collection filter contract'],
+  ['order_id: Some(request.order_id),', 'order filter contract'],
+  ['status: request.status,', 'status filter contract'],
+]) requireText(paymentOwner, value, label);
 
 for (const value of [
-  'map_storefront_payment_error(error, "list_order_refunds", tenant.id, id)',
+  'PaymentService::new(runtime.db_clone())',
+  'StorefrontOrderPaymentErrorContext',
+  'fn storefront_order_payment_error_policy(',
+  'PaymentError::',
+  'map_storefront_payment_error(',
   'error.to_string()',
   'err.to_string()',
-  'error.message',
   'HttpError::bad_request(error',
   'HttpError::internal(error',
-]) forbidText(controller, value, 'stale or unsafe refund mapping');
+]) forbidText(controller, value, 'stale or unsafe storefront refund boundary');
 
 if (failures.length > 0) {
   console.error('Commerce storefront order-refund error-context verification failed:');
@@ -272,5 +148,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Storefront order refund failures retain typed route context and stable public contracts',
+  '✔ Storefront order refunds preserve ownership context through the host-selected Payment owner port',
 );
