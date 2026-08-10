@@ -22,7 +22,9 @@ use crate::graphql_runtime::{
     order_post_order_command_runtime_from_context, post_order_orchestration_from_context,
     return_completion_orchestration_from_context,
 };
-use crate::{PaymentOrchestrationError, PostOrderOrchestrationError};
+use crate::{
+    OrderChangeOrchestrationError, PaymentOrchestrationError, PostOrderOrchestrationError,
+};
 
 use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
 use super::helpers::*;
@@ -211,6 +213,33 @@ fn post_order_owner_graphql_error(
     public_fulfillment_graphql_error(message, code, retryable)
 }
 
+fn order_change_owner_graphql_error(
+    tenant_id: Uuid,
+    resource_id: Uuid,
+    consumer_operation: &'static str,
+    owner_operation: &'static str,
+    context: &PortContext,
+    error: PortError,
+) -> async_graphql::Error {
+    let (message, code, retryable, error_kind) = order_port_error_envelope(&error);
+    tracing::error!(
+        owner = "rustok_order.order_change",
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        resource_id_non_nil = !resource_id.is_nil(),
+        consumer_operation,
+        owner_operation,
+        correlation_id = %context.correlation_id,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        error_kind,
+        public_code = code,
+        retryable,
+        boundary = "commerce_graphql_order_change_owner",
+        "commerce GraphQL order-change owner port failed with bounded diagnostics"
+    );
+    public_fulfillment_graphql_error(message, code, retryable)
+}
+
 fn post_order_graphql_error(
     tenant_id: Uuid,
     resource_id: Uuid,
@@ -238,6 +267,60 @@ fn post_order_graphql_error(
         ),
     };
     public_fulfillment_graphql_error(message, code, retryable)
+}
+
+fn order_change_graphql_error(
+    tenant_id: Uuid,
+    resource_id: Uuid,
+    read_context: &PortContext,
+    command_context: &PortContext,
+    error: OrderChangeOrchestrationError,
+) -> async_graphql::Error {
+    match error {
+        OrderChangeOrchestrationError::OrderRead(source) => order_change_owner_graphql_error(
+            tenant_id,
+            resource_id,
+            "apply_order_change",
+            "read_order_change_projection",
+            read_context,
+            source,
+        ),
+        OrderChangeOrchestrationError::OrderCommand(source) => order_change_owner_graphql_error(
+            tenant_id,
+            resource_id,
+            "apply_order_change",
+            "apply_change",
+            command_context,
+            source,
+        ),
+        OrderChangeOrchestrationError::PostOrder(source) => {
+            post_order_graphql_error(tenant_id, resource_id, "apply_order_change", source)
+        }
+    }
+}
+
+fn order_change_read_context(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    change_id: Uuid,
+) -> Result<PortContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .unwrap_or("und");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        locale,
+        format!("commerce-graphql-order-change-read:{change_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    })
 }
 
 fn order_command_context(
@@ -579,11 +662,27 @@ impl CommerceFulfillmentMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let read_context = order_change_read_context(ctx, tenant_id, id)?;
+        let command_context =
+            order_post_order_command_context(ctx, tenant_id, id, "apply_order_change")?;
         let result = order_change_orchestration_from_context(ctx, db.clone(), event_bus.clone())
-            .apply_order_change(tenant_id, id, difference_refund, metadata)
+            .apply_order_change_with_owner_ports(
+                tenant_id,
+                id,
+                read_context.clone(),
+                command_context.clone(),
+                difference_refund,
+                metadata,
+            )
             .await
             .map_err(|error| {
-                post_order_graphql_error(tenant_id, id, "apply_order_change", error)
+                order_change_graphql_error(
+                    tenant_id,
+                    id,
+                    &read_context,
+                    &command_context,
+                    error,
+                )
             })?;
 
         Ok(result.order_change.into())
