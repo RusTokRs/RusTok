@@ -25,12 +25,15 @@ Gate acceptance must require both branches. It must not replace the rollout-only
 - the same exact source commit and immutable RepoDigest across both packets and checkout `HEAD`;
 - candidate `source_sha256` matching the candidate execution contract and current checkout;
 - observed-health acceptance `source_files` matching its source contract and current checkout;
-- all candidate source guards/focused tests retained with zero exit status;
+- the exact command ids/programs/argv declared by the candidate execution contract, with every retained source-guard and focused-test status equal to zero;
+- the exact four bounded candidate input hash records (`artifact_http`, `browser`, `rollout_matrix`, `rollout_feature_preflight`);
 - all rollout matrix and canonical feature-preflight booleans retained as passed;
 - candidate `provider_health = unobserved` and owner/gate decisions still pending;
 - observed-health decision `accept_observed_runtime_evidence`;
+- a bounded observed-health deployment id and the same immutable RepoDigest as the candidate;
 - observed-health packet `eligible_for_pages_gate_review = true` while predecessor Pages gate/sign-off/rollback flags remain false;
-- no current provider-health assertion, no health lease extension and unchanged live provider binding.
+- no current provider-health assertion, no health lease extension and unchanged live provider binding;
+- the committed source gate remains fail closed (`accepted=false`, execution pending, rollout evidence health `unobserved`, Forum Wave still blocked) before any decision packet is written.
 
 The runner performs no HTTP, GraphQL, browser, Prometheus, evaluator, Cargo or test execution. It only revalidates bounded retained evidence and checkout files.
 
@@ -89,7 +92,7 @@ Ready, Degraded or Unavailable historical evidence may be valid if the retained 
 
 ## Forum / promotion boundary
 
-Source state remains fail closed:
+Source gate remains fail closed:
 
 - `pages_reference_consumer_gate_source.accepted = false`;
 - Forum observed Wave remains blocked;
@@ -107,6 +110,6 @@ Added source verifier:
 crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
 ```
 
-It locks the dual packet lineage, exact source/RepoDigest binding, historical-health semantics, explicit owner/rollback decisions and non-promotion boundaries.
+It locks the dual packet lineage, exact source/RepoDigest binding, exact candidate command records, fail-closed source gate, historical-health semantics, explicit owner/rollback decisions and non-promotion boundaries.
 
 Tests were not run. No Node verifier, Cargo command, formatter, build, GraphQL/HTTP request, browser/Playwright run, Prometheus/evaluator execution, provider-health owner decision, reference candidate execution, Pages gate decision, workflow or CI run was performed by this slice.
