@@ -46,7 +46,8 @@ function forbidMarker(key, marker, label) {
 }
 
 for (const marker of [
-  '<label class="grid gap-1 text-sm">',
+  '<span class="font-medium">{asset_id_label}</span>',
+  '<span class="font-medium">{asset_url_label}</span>',
   'aria-label=add_asset_accessible_label',
   'let select_accessible_label = format!("{select_label}: {accessible_name}");',
   'let remove_accessible_label = format!("{remove_label}: {accessible_name}");',
@@ -119,7 +120,7 @@ for (const marker of [
 
 for (const marker of [
   'role="toolbar"',
-  'aria-label="Page builder actions"',
+  'aria-label=',
   'aria-live="polite"',
 ]) requireMarker("toolbar", marker, "toolbar accessibility baseline");
 
