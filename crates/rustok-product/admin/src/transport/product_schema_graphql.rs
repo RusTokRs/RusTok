@@ -7,10 +7,7 @@ use std::fmt::Debug;
 use std::sync::{Mutex, OnceLock};
 
 use crate::model::{
-    BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
-    CategoryAttributeGroupDraft, ProductAttributeDraft, ProductAttributeOptionDraft,
-    ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft, ProductAttributeValueItem,
-    ProductAttributeValuePatchDraft, SetCategorySchemaModeDraft,
+    ProductAttributeValueItem, ProductAttributeValuePatchDraft,
 };
 use crate::schema_retry_identity::{
     ProductAdminSchemaOperation, ProductAdminSchemaRetryIdentity,
@@ -20,39 +17,8 @@ pub type ApiError = GraphqlHttpError;
 
 type RetryIdentity = ProductAdminSchemaRetryIdentity<String>;
 
-const CREATE_PRODUCT_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminCreateAttribute($idempotencyKey: String!, $locale: String!, $input: CreateProductAttributeInput!) { createProductAttribute(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
-const CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION: &str = "mutation ProductAdminCreateAttributeOption($idempotencyKey: String!, $locale: String!, $input: CreateProductAttributeOptionInput!) { createProductAttributeOption(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
-const CREATE_CATALOG_CATEGORY_MUTATION: &str = "mutation ProductAdminCreateCatalogCategory($idempotencyKey: String!, $locale: String!, $input: CreateCatalogCategoryInput!) { createCatalogCategory(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
-const CREATE_ATTRIBUTE_SCHEMA_MUTATION: &str = "mutation ProductAdminCreateAttributeSchema($idempotencyKey: String!, $locale: String!, $input: CreateProductAttributeSchemaInput!) { createProductAttributeSchema(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
-const CREATE_SCHEMA_GROUP_MUTATION: &str = "mutation ProductAdminCreateSchemaGroup($idempotencyKey: String!, $locale: String!, $input: CreateProductAttributeSchemaGroupInput!) { createProductAttributeSchemaGroup(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
-const CREATE_CATEGORY_GROUP_MUTATION: &str = "mutation ProductAdminCreateCategoryGroup($idempotencyKey: String!, $locale: String!, $input: CreateCategoryAttributeGroupInput!) { createCatalogCategoryAttributeGroup(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
-const SET_CATEGORY_SCHEMA_MODE_MUTATION: &str = "mutation ProductAdminSetCategorySchemaMode($idempotencyKey: String!, $input: SetCategorySchemaModeInput!) { setCatalogCategorySchemaMode(idempotencyKey: $idempotencyKey, input: $input) }";
-const BIND_SCHEMA_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminBindSchemaAttribute($idempotencyKey: String!, $input: BindSchemaAttributeInput!) { bindProductAttributeSchemaAttribute(idempotencyKey: $idempotencyKey, input: $input) }";
-const BIND_CATEGORY_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminBindCategoryAttribute($idempotencyKey: String!, $input: BindCategoryAttributeInput!) { bindCatalogCategoryAttribute(idempotencyKey: $idempotencyKey, input: $input) }";
 const SAVE_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminSaveAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) { saveProductAttributeValues(idempotencyKey: $idempotencyKey, productId: $productId, locale: $locale, patches: $patches) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
 const CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminClearDetachedAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!, $attributeIds: [UUID!]!) { clearDetachedProductAttributeValues(idempotencyKey: $idempotencyKey, productId: $productId, locale: $locale, attributeIds: $attributeIds) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
-
-#[derive(Debug, Deserialize)]
-struct BoolMutationResponse {
-    #[serde(rename = "createProductAttribute")]
-    create_product_attribute: Option<bool>,
-    #[serde(rename = "createProductAttributeOption")]
-    create_product_attribute_option: Option<bool>,
-    #[serde(rename = "createCatalogCategory")]
-    create_catalog_category: Option<bool>,
-    #[serde(rename = "createProductAttributeSchema")]
-    create_product_attribute_schema: Option<bool>,
-    #[serde(rename = "createProductAttributeSchemaGroup")]
-    create_product_attribute_schema_group: Option<bool>,
-    #[serde(rename = "createCatalogCategoryAttributeGroup")]
-    create_catalog_category_attribute_group: Option<bool>,
-    #[serde(rename = "setCatalogCategorySchemaMode")]
-    set_catalog_category_schema_mode: Option<bool>,
-    #[serde(rename = "bindProductAttributeSchemaAttribute")]
-    bind_product_attribute_schema_attribute: Option<bool>,
-    #[serde(rename = "bindCatalogCategoryAttribute")]
-    bind_catalog_category_attribute: Option<bool>,
-}
 
 #[derive(Debug, Deserialize)]
 struct SaveAttributeValuesResponse {
@@ -64,21 +30,6 @@ struct SaveAttributeValuesResponse {
 struct ClearDetachedAttributeValuesResponse {
     #[serde(rename = "clearDetachedProductAttributeValues")]
     clear_detached_product_attribute_values: Vec<ProductAttributeValueItem>,
-}
-
-#[derive(Debug, Serialize)]
-struct LocaleMutationVariables<T> {
-    #[serde(rename = "idempotencyKey")]
-    idempotency_key: String,
-    locale: String,
-    input: T,
-}
-
-#[derive(Debug, Serialize)]
-struct InputVariables<T> {
-    #[serde(rename = "idempotencyKey")]
-    idempotency_key: String,
-    input: T,
 }
 
 #[derive(Debug, Serialize)]
@@ -198,266 +149,6 @@ fn mark_succeeded(slot: &str) {
     registry.remove(slot);
 }
 
-pub(crate) async fn create_product_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::CreateAttribute;
-    let slot = retry_slot(operation, &tenant_id, &user_id, draft.code.as_str());
-    let intent = write_intent(operation, &tenant_id, &user_id, &(locale.as_str(), &draft));
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        CREATE_PRODUCT_ATTRIBUTE_MUTATION,
-        Some(LocaleMutationVariables {
-            idempotency_key,
-            locale,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.create_product_attribute.unwrap_or(false))
-}
-
-pub(crate) async fn create_product_attribute_option(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeOptionDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::CreateAttributeOption;
-    let target = format!("{}:{}", draft.attribute_id, draft.code);
-    let slot = retry_slot(operation, &tenant_id, &user_id, &target);
-    let intent = write_intent(operation, &tenant_id, &user_id, &(locale.as_str(), &draft));
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION,
-        Some(LocaleMutationVariables {
-            idempotency_key,
-            locale,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.create_product_attribute_option.unwrap_or(false))
-}
-
-pub(crate) async fn create_catalog_category(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: CatalogCategoryDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::CreateCategory;
-    let slot = retry_slot(operation, &tenant_id, &user_id, draft.code.as_str());
-    let intent = write_intent(operation, &tenant_id, &user_id, &(locale.as_str(), &draft));
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        CREATE_CATALOG_CATEGORY_MUTATION,
-        Some(LocaleMutationVariables {
-            idempotency_key,
-            locale,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.create_catalog_category.unwrap_or(false))
-}
-
-pub(crate) async fn create_attribute_schema(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeSchemaDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::CreateSchema;
-    let slot = retry_slot(operation, &tenant_id, &user_id, draft.code.as_str());
-    let intent = write_intent(operation, &tenant_id, &user_id, &(locale.as_str(), &draft));
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        CREATE_ATTRIBUTE_SCHEMA_MUTATION,
-        Some(LocaleMutationVariables {
-            idempotency_key,
-            locale,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.create_product_attribute_schema.unwrap_or(false))
-}
-
-pub(crate) async fn create_product_attribute_schema_group(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeSchemaGroupDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::CreateSchemaGroup;
-    let target = format!("{}:{}", draft.schema_id, draft.code);
-    let slot = retry_slot(operation, &tenant_id, &user_id, &target);
-    let intent = write_intent(operation, &tenant_id, &user_id, &(locale.as_str(), &draft));
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        CREATE_SCHEMA_GROUP_MUTATION,
-        Some(LocaleMutationVariables {
-            idempotency_key,
-            locale,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.create_product_attribute_schema_group.unwrap_or(false))
-}
-
-pub(crate) async fn create_category_attribute_group(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: CategoryAttributeGroupDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::CreateCategoryGroup;
-    let target = format!("{}:{}", draft.category_id, draft.code);
-    let slot = retry_slot(operation, &tenant_id, &user_id, &target);
-    let intent = write_intent(operation, &tenant_id, &user_id, &(locale.as_str(), &draft));
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        CREATE_CATEGORY_GROUP_MUTATION,
-        Some(LocaleMutationVariables {
-            idempotency_key,
-            locale,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.create_catalog_category_attribute_group.unwrap_or(false))
-}
-
-pub(crate) async fn set_category_schema_mode(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: SetCategorySchemaModeDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::SetCategorySchemaMode;
-    let slot = retry_slot(operation, &tenant_id, &user_id, draft.category_id.as_str());
-    let intent = write_intent(operation, &tenant_id, &user_id, &draft);
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        SET_CATEGORY_SCHEMA_MODE_MUTATION,
-        Some(InputVariables {
-            idempotency_key,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.set_catalog_category_schema_mode.unwrap_or(false))
-}
-
-pub(crate) async fn bind_schema_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: BindSchemaAttributeDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::BindSchemaAttribute;
-    let target = format!("{}:{}", draft.schema_id, draft.attribute_id);
-    let slot = retry_slot(operation, &tenant_id, &user_id, &target);
-    let intent = write_intent(operation, &tenant_id, &user_id, &draft);
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        BIND_SCHEMA_ATTRIBUTE_MUTATION,
-        Some(InputVariables {
-            idempotency_key,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.bind_product_attribute_schema_attribute.unwrap_or(false))
-}
-
-pub(crate) async fn bind_category_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: BindCategoryAttributeDraft,
-) -> Result<bool, ApiError> {
-    let operation = ProductAdminSchemaOperation::BindCategoryAttribute;
-    let target = format!("{}:{}", draft.category_id, draft.attribute_id);
-    let slot = retry_slot(operation, &tenant_id, &user_id, &target);
-    let intent = write_intent(operation, &tenant_id, &user_id, &draft);
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result: Result<BoolMutationResponse, ApiError> = request(
-        BIND_CATEGORY_ATTRIBUTE_MUTATION,
-        Some(InputVariables {
-            idempotency_key,
-            input: draft,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await;
-    if result.is_ok() {
-        mark_succeeded(&slot);
-    }
-    result.map(|response| response.bind_catalog_category_attribute.unwrap_or(false))
-}
-
 pub(crate) async fn save_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -538,45 +229,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bool_mutation_response_deserializes_all_fields() {
-        let json = serde_json::json!({
-            "createProductAttribute": true,
-            "createProductAttributeOption": true,
-            "createCatalogCategory": true,
-            "createProductAttributeSchema": true,
-            "createProductAttributeSchemaGroup": true,
-            "createCatalogCategoryAttributeGroup": true,
-            "setCatalogCategorySchemaMode": true,
-            "bindProductAttributeSchemaAttribute": true,
-            "bindCatalogCategoryAttribute": true
-        });
-        let res: BoolMutationResponse = serde_json::from_value(json).expect("valid bool response");
-        assert_eq!(res.create_product_attribute, Some(true));
-        assert_eq!(res.create_product_attribute_option, Some(true));
-        assert_eq!(res.create_catalog_category, Some(true));
-        assert_eq!(res.create_product_attribute_schema, Some(true));
-        assert_eq!(res.create_product_attribute_schema_group, Some(true));
-        assert_eq!(res.create_catalog_category_attribute_group, Some(true));
-        assert_eq!(res.set_catalog_category_schema_mode, Some(true));
-        assert_eq!(res.bind_product_attribute_schema_attribute, Some(true));
-        assert_eq!(res.bind_catalog_category_attribute, Some(true));
-    }
-
-    #[test]
-    fn variables_serialize_correctly() {
-        let locale_vars = LocaleMutationVariables {
-            idempotency_key: "key-1".to_string(),
-            locale: "en".to_string(),
-            input: "test",
-        };
-        let json = serde_json::to_value(&locale_vars).expect("serialize locale vars");
-        assert_eq!(json["idempotencyKey"], "key-1");
-
-        let input_vars = InputVariables {
-            idempotency_key: "key-2".to_string(),
-            input: 42,
-        };
-        let json2 = serde_json::to_value(&input_vars).expect("serialize input vars");
-        assert_eq!(json2["idempotencyKey"], "key-2");
+    fn mutation_query_strings_contain_expected_operations() {
+        assert!(SAVE_ATTRIBUTE_VALUES_MUTATION.contains("saveProductAttributeValues"));
+        assert!(CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION.contains("clearDetachedProductAttributeValues"));
     }
 }

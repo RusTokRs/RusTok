@@ -1,7 +1,7 @@
 use rustok_product::{
     MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, ProductSalesChannelIndexRelationError,
     ProductSalesChannelIndexRelationFreshnessError, ProductSalesChannelIndexRelationFreshnessStore,
-    ProductSalesChannelIndexRelationStore, ProductSalesChannelIndexRelationWriteOutcome,
+    ProductSalesChannelIndexRelationStore,
 };
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseConnection, DbBackend, IsolationLevel, QueryResult,
@@ -17,80 +17,6 @@ use super::channel_visibility::{
 
 pub(crate) const MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE: usize = 64;
 pub(crate) const MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProductSalesChannelRelationResolveReceipt {
-    tenant_id: Uuid,
-    product_id: Uuid,
-    relation_epoch: u64,
-    channel_ids: Vec<Uuid>,
-    unrestricted: bool,
-    changed: bool,
-    channel_identity_generation: u64,
-}
-
-impl ProductSalesChannelRelationResolveReceipt {
-    pub(crate) fn tenant_id(&self) -> Uuid {
-        self.tenant_id
-    }
-
-    pub(crate) fn product_id(&self) -> Uuid {
-        self.product_id
-    }
-
-    pub(crate) fn relation_epoch(&self) -> u64 {
-        self.relation_epoch
-    }
-
-    pub(crate) fn channel_ids(&self) -> &[Uuid] {
-        &self.channel_ids
-    }
-
-    pub(crate) fn unrestricted(&self) -> bool {
-        self.unrestricted
-    }
-
-    pub(crate) fn changed(&self) -> bool {
-        self.changed
-    }
-
-    pub(crate) fn channel_identity_generation(&self) -> u64 {
-        self.channel_identity_generation
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProductSalesChannelRelationResolvePage {
-    receipts: Vec<ProductSalesChannelRelationResolveReceipt>,
-    gone_products: usize,
-    next_product_id: Option<Uuid>,
-}
-
-impl ProductSalesChannelRelationResolvePage {
-    pub(crate) fn new(
-        receipts: Vec<ProductSalesChannelRelationResolveReceipt>,
-        gone_products: usize,
-        next_product_id: Option<Uuid>,
-    ) -> Self {
-        Self {
-            receipts,
-            gone_products,
-            next_product_id,
-        }
-    }
-
-    pub(crate) fn receipts(&self) -> &[ProductSalesChannelRelationResolveReceipt] {
-        &self.receipts
-    }
-
-    pub(crate) fn gone_products(&self) -> usize {
-        self.gone_products
-    }
-
-    pub(crate) fn next_product_id(&self) -> Option<Uuid> {
-        self.next_product_id
-    }
-}
 
 #[derive(Debug, Error)]
 pub(crate) enum ProductSalesChannelRelationResolverError {
@@ -149,7 +75,7 @@ impl ProductSalesChannelRelationResolver {
         &self,
         tenant_id: Uuid,
         product_id: Uuid,
-    ) -> Result<ProductSalesChannelRelationResolveReceipt, ProductSalesChannelRelationResolverError>
+    ) -> Result<(), ProductSalesChannelRelationResolverError>
     {
         validate_scope(tenant_id, product_id)?;
         self.ensure_postgres()?;
@@ -180,7 +106,7 @@ impl ProductSalesChannelRelationResolver {
                     .await
                 {
                     Ok(_) => {
-                        return Ok(resolve_receipt(tenant_id, product_id, verified, outcome));
+                        return Ok(());
                     }
                     Err(ProductSalesChannelIndexRelationFreshnessError::WatermarkRegressed) => {
                         continue;
@@ -205,7 +131,7 @@ impl ProductSalesChannelRelationResolver {
         tenant_id: Uuid,
         after_product_id: Option<Uuid>,
         limit: usize,
-    ) -> Result<ProductSalesChannelRelationResolvePage, ProductSalesChannelRelationResolverError>
+    ) -> Result<Option<Uuid>, ProductSalesChannelRelationResolverError>
     {
         if tenant_id.is_nil() {
             return Err(ProductSalesChannelRelationResolverError::InvalidTenant);
@@ -231,23 +157,14 @@ impl ProductSalesChannelRelationResolver {
                 .expect("lookahead implies at least one processed Product")
         });
 
-        let mut receipts = Vec::with_capacity(product_ids.len());
-        let mut gone_products = 0usize;
         for product_id in product_ids {
             match self.reconcile_product(tenant_id, product_id).await {
-                Ok(receipt) => receipts.push(receipt),
-                Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {
-                    gone_products += 1;
-                }
+                Ok(_) | Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {}
                 Err(error) => return Err(error),
             }
         }
 
-        Ok(ProductSalesChannelRelationResolvePage {
-            receipts,
-            gone_products,
-            next_product_id,
-        })
+        Ok(next_product_id)
     }
 
     async fn observe(
@@ -513,28 +430,6 @@ fn map_relation_error(
     }
 }
 
-fn resolve_receipt(
-    tenant_id: Uuid,
-    product_id: Uuid,
-    verified: ProductChannelObservation,
-    outcome: ProductSalesChannelIndexRelationWriteOutcome,
-) -> ProductSalesChannelRelationResolveReceipt {
-    let changed = !matches!(
-        &outcome,
-        ProductSalesChannelIndexRelationWriteOutcome::Unchanged(_)
-    );
-    let relation_epoch = outcome.record().relation_epoch();
-    ProductSalesChannelRelationResolveReceipt {
-        tenant_id,
-        product_id,
-        relation_epoch,
-        channel_ids: verified.channel_ids,
-        unrestricted: verified.unrestricted,
-        changed,
-        channel_identity_generation: verified.channel_identity_generation,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::channel_visibility::MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS;
@@ -569,31 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn receipt_and_page_accessors_and_errors_work() {
-        let tenant_id = Uuid::new_v4();
-        let product_id = Uuid::new_v4();
-        let receipt = ProductSalesChannelRelationResolveReceipt {
-            tenant_id,
-            product_id,
-            relation_epoch: 1,
-            channel_ids: vec![Uuid::nil()],
-            unrestricted: true,
-            changed: false,
-            channel_identity_generation: 2,
-        };
-        assert_eq!(receipt.tenant_id(), tenant_id);
-        assert_eq!(receipt.product_id(), product_id);
-        assert_eq!(receipt.relation_epoch(), 1);
-        assert_eq!(receipt.channel_ids(), &[Uuid::nil()]);
-        assert!(receipt.unrestricted());
-        assert!(!receipt.changed());
-        assert_eq!(receipt.channel_identity_generation(), 2);
-
-        let page = ProductSalesChannelRelationResolvePage::new(vec![receipt], 0, Some(product_id));
-        assert_eq!(page.receipts().len(), 1);
-        assert_eq!(page.gone_products(), 0);
-        assert_eq!(page.next_product_id(), Some(product_id));
-
+    fn error_messages_are_distinct() {
         assert_eq!(
             ProductSalesChannelRelationResolverError::InvalidCursor.to_string(),
             "Product-SalesChannel resolver page cursor is invalid"

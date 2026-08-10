@@ -89,21 +89,6 @@ impl GraphqlReadContext {
         context
     }
 
-    pub(super) fn for_product_attributes(
-        token: Option<&str>,
-        tenant_slug: Option<&str>,
-        tenant_id: &str,
-        locale: &str,
-    ) -> Self {
-        Self::for_category_tenant_locale(
-            "fetch_product_attributes",
-            token,
-            tenant_slug,
-            tenant_id,
-            locale,
-        )
-    }
-
     pub(super) fn for_catalog_categories(
         token: Option<&str>,
         tenant_slug: Option<&str>,
@@ -112,21 +97,6 @@ impl GraphqlReadContext {
     ) -> Self {
         Self::for_category_tenant_locale(
             "fetch_catalog_categories",
-            token,
-            tenant_slug,
-            tenant_id,
-            locale,
-        )
-    }
-
-    pub(super) fn for_attribute_schemas(
-        token: Option<&str>,
-        tenant_slug: Option<&str>,
-        tenant_id: &str,
-        locale: &str,
-    ) -> Self {
-        Self::for_category_tenant_locale(
-            "fetch_attribute_schemas",
             token,
             tenant_slug,
             tenant_id,

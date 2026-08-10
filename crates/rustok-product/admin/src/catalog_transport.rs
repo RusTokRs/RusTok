@@ -9,7 +9,7 @@ mod graphql_error_safety;
 
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{
-    CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
+    CatalogCategoryList, ProductAdminBootstrap,
     ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail,
     ProductEffectiveForm, ProductList, ProductPricingDetail, ShippingProfileList,
 };
@@ -209,22 +209,6 @@ pub(crate) async fn fetch_shipping_profiles(
         .map_err(|error| context.map_error(error))
 }
 
-pub(crate) async fn fetch_product_attributes(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    locale: String,
-) -> Result<ProductAttributeList, GraphqlHttpError> {
-    let context = graphql_error_safety::GraphqlReadContext::for_product_attributes(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        locale.as_str(),
-    );
-    legacy::fetch_product_attributes(token, tenant_slug, tenant_id, locale)
-        .await
-        .map_err(|failure| context.map_error(failure))
-}
 
 pub(crate) async fn fetch_catalog_categories(
     token: Option<String>,
@@ -243,22 +227,6 @@ pub(crate) async fn fetch_catalog_categories(
         .map_err(|failure| context.map_error(failure))
 }
 
-pub(crate) async fn fetch_attribute_schemas(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    locale: String,
-) -> Result<ProductAttributeSchemaList, GraphqlHttpError> {
-    let context = graphql_error_safety::GraphqlReadContext::for_attribute_schemas(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        locale.as_str(),
-    );
-    legacy::fetch_attribute_schemas(token, tenant_slug, tenant_id, locale)
-        .await
-        .map_err(|failure| context.map_error(failure))
-}
 
 pub(crate) async fn fetch_effective_product_form(
     token: Option<String>,

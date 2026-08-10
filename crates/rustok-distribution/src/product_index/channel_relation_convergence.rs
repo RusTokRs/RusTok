@@ -15,7 +15,7 @@ use rustok_product::{
 use rustok_runtime::{
     HostRuntimeContext, ModuleWorkRegistration, ModuleWorkRegistrations, ModuleWorkScheduler,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -155,62 +155,13 @@ impl ProductSalesChannelRelationConvergenceAdapter {
         tenant_id: Uuid,
         after_product_id: Option<Uuid>,
     ) -> Result<Option<Uuid>, ProductSalesChannelRelationResolverError> {
-        let fetch_limit = i64::try_from(MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE + 1)
-            .expect("convergence page lookahead is bounded below i64::MAX");
-        let (sql, values): (&str, Vec<Value>) = match after_product_id {
-            Some(after_product_id) => (
-                "SELECT id FROM products WHERE tenant_id = $1 AND id > $2 ORDER BY id ASC LIMIT $3",
-                vec![tenant_id.into(), after_product_id.into(), fetch_limit.into()],
-            ),
-            None => (
-                "SELECT id FROM products WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2",
-                vec![tenant_id.into(), fetch_limit.into()],
-            ),
-        };
-        let rows = self
-            .db
-            .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+        self.resolver
+            .reconcile_tenant_page(
+                tenant_id,
+                after_product_id,
+                MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE,
+            )
             .await
-            .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
-        let has_more = rows.len() > MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE;
-        let mut product_ids = Vec::with_capacity(
-            rows.len()
-                .min(MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE),
-        );
-        for row in rows
-            .into_iter()
-            .take(MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE)
-        {
-            let product_id = row
-                .try_get::<Uuid>("", "id")
-                .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
-            if product_id.is_nil()
-                || product_ids
-                    .last()
-                    .is_some_and(|previous| product_id <= *previous)
-            {
-                return Err(ProductSalesChannelRelationResolverError::Unavailable);
-            }
-            product_ids.push(product_id);
-        }
-        let next_product_id = has_more.then(|| {
-            *product_ids
-                .last()
-                .expect("convergence lookahead implies one processed Product")
-        });
-
-        for product_id in product_ids {
-            match self.resolver.reconcile_product(tenant_id, product_id).await {
-                Ok(_) | Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {}
-                Err(error) if owner_rejected(&error) => {
-                    // A malformed Product stays fail-closed at source admission, but it must not
-                    // head-of-line block valid Products later in the same tenant. Correcting its
-                    // visibility appends an exact Product-owned convergence request.
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        Ok(next_product_id)
     }
 
     fn work_item(

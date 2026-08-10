@@ -2,15 +2,6 @@ use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ProductAdminSchemaOperation {
-    CreateAttribute,
-    CreateAttributeOption,
-    CreateCategory,
-    CreateSchema,
-    CreateSchemaGroup,
-    CreateCategoryGroup,
-    SetCategorySchemaMode,
-    BindSchemaAttribute,
-    BindCategoryAttribute,
     SaveAttributeValues,
     ClearDetachedAttributeValues,
 }
@@ -18,15 +9,6 @@ pub(crate) enum ProductAdminSchemaOperation {
 impl ProductAdminSchemaOperation {
     pub(crate) const fn key_segment(self) -> &'static str {
         match self {
-            Self::CreateAttribute => "create-attribute",
-            Self::CreateAttributeOption => "create-attribute-option",
-            Self::CreateCategory => "create-category",
-            Self::CreateSchema => "create-schema",
-            Self::CreateSchemaGroup => "create-schema-group",
-            Self::CreateCategoryGroup => "create-category-group",
-            Self::SetCategorySchemaMode => "set-category-schema-mode",
-            Self::BindSchemaAttribute => "bind-schema-attribute",
-            Self::BindCategoryAttribute => "bind-category-attribute",
             Self::SaveAttributeValues => "save-attribute-values",
             Self::ClearDetachedAttributeValues => "clear-detached-attribute-values",
         }
@@ -104,13 +86,13 @@ mod tests {
     #[test]
     fn explicit_retry_reuses_schema_write_caller_key() {
         let mut identity = ProductAdminSchemaRetryIdentity::default();
-        let intent = "tenant/user/category:123/mode:inherit".to_string();
+        let intent = "product:123/save-values".to_string();
         let first = identity.idempotency_key_for(
-            ProductAdminSchemaOperation::SetCategorySchemaMode,
+            ProductAdminSchemaOperation::SaveAttributeValues,
             &intent,
         );
         let retry = identity.idempotency_key_for(
-            ProductAdminSchemaOperation::SetCategorySchemaMode,
+            ProductAdminSchemaOperation::SaveAttributeValues,
             &intent,
         );
         assert_eq!(first, retry);
@@ -121,12 +103,12 @@ mod tests {
     fn changed_schema_write_intent_rotates_key() {
         let mut identity = ProductAdminSchemaRetryIdentity::default();
         let first = identity.idempotency_key_for(
-            ProductAdminSchemaOperation::CreateAttribute,
-            &"code=color".to_string(),
+            ProductAdminSchemaOperation::SaveAttributeValues,
+            &"product:aaa".to_string(),
         );
         let changed = identity.idempotency_key_for(
-            ProductAdminSchemaOperation::CreateAttribute,
-            &"code=size".to_string(),
+            ProductAdminSchemaOperation::SaveAttributeValues,
+            &"product:bbb".to_string(),
         );
         assert_ne!(first, changed);
     }
@@ -161,15 +143,6 @@ mod tests {
     #[test]
     fn schema_operations_have_valid_key_segments() {
         let operations = [
-            ProductAdminSchemaOperation::CreateAttribute,
-            ProductAdminSchemaOperation::CreateAttributeOption,
-            ProductAdminSchemaOperation::CreateCategory,
-            ProductAdminSchemaOperation::CreateSchema,
-            ProductAdminSchemaOperation::CreateSchemaGroup,
-            ProductAdminSchemaOperation::CreateCategoryGroup,
-            ProductAdminSchemaOperation::SetCategorySchemaMode,
-            ProductAdminSchemaOperation::BindSchemaAttribute,
-            ProductAdminSchemaOperation::BindCategoryAttribute,
             ProductAdminSchemaOperation::SaveAttributeValues,
             ProductAdminSchemaOperation::ClearDetachedAttributeValues,
         ];
