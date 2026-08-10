@@ -234,3 +234,5 @@ impl UserStatsService {
         Ok(())
     }
 }
+
+include!("member_card.rs");
