@@ -93,10 +93,16 @@ The canonical panel is mounted in the Fly properties column for draft workspaces
 Pages-owned standalone published surface without mounting an editable Fly canvas. The bespoke
 `PageMetadataEditor` and its direct workspace persistence path are removed.
 
-Pages now exposes the same `pages_builder_capability_flags()` through `PagesBuilderFacade::provider_status`
-and through `compose_fly_page_builder_handlers`. The current Pages composition has no live SLO
-snapshot source, so observed provider health remains explicitly `unobserved`; role and contribution
-assembly policy remains independently evaluated and provider status only narrows that result.
+Pages exposes the same `pages_builder_capability_flags()` through `PagesBuilderFacade::provider_status`
+and through `compose_fly_page_builder_handlers`. The provider-health observation/evaluation/binding
+source is now complete: Page Builder records bounded Preview/Publish observations and deployment-
+aggregatable metrics/freshness, the exact-target evaluator applies the canonical provider SLO policy,
+owner acceptance preserves the remaining `health_valid_until`, and Pages has a fail-closed server
+binding plus typed transport into workspace, authoritative SSR, standalone browser-intent and
+non-mutating capability preflight. A missing, invalid, expired or uninstalled accepted packet remains
+`unobserved`; source inspection never fabricates current deployment health. Configured rollout flags
+and observed provider health remain separate inputs, and `effective_provider_runtime_flags` can only
+narrow the already-authorized result.
 
 The metadata owner port also exposes a private source-test transport seam. Production still delegates
 to the same Pages fetch and patch transports. Focused regressions require the current metadata version
@@ -186,12 +192,18 @@ module metadata, Fly component/block registration, `ContributionAdapter`, owner 
 property editing. Provider-neutral Page Builder host ports compose Forum only when tenant/module/RBAC
 admission succeeds; Forum persistence, visibility, widget schemas, validation and authorization remain
 Forum-owned. Exact-source browser, runtime authorization/visibility and deployed server-function
-attestation harnesses are retained source, but execution and observed tenant Wave evidence remain open.
+attestation harnesses are retained source. Forum Wave admission is also source-ready and requires those
+future execution packets plus `pages_reference_consumer_gate_acceptance_v1` on the same exact source
+commit, with deployment-bound packets correlated to the same immutable RepoDigest. The admission step
+still does not execute or accept the observed control-plane Wave.
 
-The explicit `pages_reference_consumer_gate` source contract now closes the former implicit blocker gap.
-It remains fail-closed with `accepted = false`, `execution_gate = pending`, provider health `unobserved`
-and no FFA/FBA promotion. The next Page Builder/Pages/Forum work is acceptance evidence, not connecting
-another production consumer architecture slice.
+The explicit `pages_reference_consumer_gate` source contract remains fail-closed with `accepted = false`,
+`execution_gate = pending` and rollout-candidate provider health `unobserved`. That `unobserved` value
+belongs to the rollout-only candidate branch; observed health is a separate exact-source input.
+`pages-reference-consumer-gate-acceptance-source.json` is source-ready and requires the rollout candidate
+plus `pages_builder_provider_health_observed_acceptance_v1`, explicit owner decision and explicit
+rollback disposition. The next Page Builder/Pages/Forum work is maintainer execution of those evidence
+and decision packets, not another production-consumer or provider-health architecture slice.
 
 ## Machine-readable contracts
 
@@ -207,10 +219,20 @@ another production consumer architecture slice.
   receipt schemas, replay semantics, public transport cutover, explicit ephemeral scenario selection,
   isolated non-builder lifecycle and cache invalidation/read state.
 - `contracts/evidence/page-builder-admin-provider-status-source.json` records the admin provider-status
-  and degraded-control source boundary without claiming observed health or execution.
+  and degraded-control source boundary without claiming current observed health or execution.
+- `contracts/evidence/page-builder-provider-health-runtime-observation-source.json` plus the deployment
+  metrics, identity and evaluator source contracts record the bounded observation-to-deployment-health
+  architecture without making process-local samples deployment authority.
+- `crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json`,
+  consumer-binding source, runtime harness source and observed-health acceptance source record the
+  fail-closed Pages binding and historical observed-health evidence/owner-decision boundary.
 - `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` records the exact
-  Pages reference-consumer blocker used by Forum Wave evidence; source is ready while acceptance remains
-  maintainer-owned.
+  rollout-only Pages reference-consumer blocker; committed source remains `accepted = false`.
+- `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json` records
+  the explicit dual-input gate owner/rollback decision source over the rollout candidate and accepted
+  observed-health evidence.
+- `crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json` records the
+  exact-source/deployment correlation required before an observed Forum control-plane Wave may start.
 - `scripts/verify/verify-page-builder-admin-provider-status.mjs` source-locks the provider status seam,
   fail-closed capability narrowing, server-preview control and Pages server/UI rollout-flag identity.
 - `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks reviewed runtime,
@@ -221,6 +243,10 @@ another production consumer architecture slice.
 - `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs` source-locks the Pages
   gate identity, profile requirements, owner-read availability, Forum source state and no-live-claim
   boundary.
+- `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs` source-locks
+  exact candidate + observed-health lineage, owner/rollback decisions and non-promotion boundaries.
+- `scripts/verify/verify-forum-page-builder-wave-admission.mjs` source-locks accepted-gate consumption,
+  Forum evidence lineage and continued observed-Wave pending state.
 - `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs` source-locks exact
   contribution-schema binding, Pages ownership, optimistic metadata revision, registered draft and
   published surfaces, legacy-form absence and the absence of production Fly document writes.
@@ -239,14 +265,16 @@ another production consumer architecture slice.
 - **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection,
   typed rollback control, generation-aware Pages storefront/artifact readers, registered draft and
   published Pages metadata properties, typed admin provider-status/degraded-control seams, and the
-  Forum second-consumer host composition are source-connected. Executed metadata conflict/isolation,
-  observed provider-health, inline edit, anonymous bundle and Forum browser evidence remain open.
+  Forum second-consumer host composition are source-connected. Provider-health observation/evaluator/
+  binding/consumer source, observed-health runtime harness/owner acceptance, Pages gate acceptance and
+  Forum Wave admission are source-ready; their maintainer execution and accepted observed evidence,
+  inline edit, anonymous bundle and Forum browser evidence remain open.
 - **FBA:** `boundary_ready` for preview, consumer-property contracts and policy-bound
   sanitization/materialization, and `service_and_public_transport_integrated` for Pages reviewed
   publication, immutable rollback/repair continuity and Forum owner-preserving contribution runtime
   source. The default-runtime lifecycle is removed and source-level cache invalidation/read boundaries
-  are connected; executed Pages gate/sanitizer/rollback/repair/cache proof, Forum runtime evidence,
-  observed provider health and rollout evidence remain open.
+  are connected; executed Pages gate/sanitizer/rollback/repair/cache proof, accepted observed-health
+  evidence, Forum runtime evidence/admission execution, observed Wave and rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability,
   properties and publish contracts.
 - **Evidence:**
@@ -255,9 +283,6 @@ another production consumer architecture slice.
   - `admin/src/editor/capability_controls.rs`;
   - `admin/src/editor/server_preview.rs`;
   - `admin/src/editor/modular_canvas.rs`;
-  - `contracts/evidence/page-builder-admin-provider-status-source.json`;
-  - `scripts/verify/verify-page-builder-admin-provider-status.mjs`;
-  - `admin/src/consumer_properties.rs`;
   - `admin/src/editor/consumer_properties.rs`;
   - `contracts/page-builder-consumer-properties.json`;
   - `src/publish_runtime.rs`;
@@ -275,9 +300,16 @@ another production consumer architecture slice.
   - `crates/rustok-pages/admin/src/metadata_properties.rs`;
   - `crates/rustok-pages/admin/src/standalone_metadata.rs`;
   - `crates/rustok-pages/admin/src/lib.rs`;
+  - `crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json`;
+  - `crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json`;
+  - `crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json`;
   - `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json`;
+  - `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json`;
+  - `crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json`;
   - `crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json`;
   - `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`;
+  - `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs`;
+  - `scripts/verify/verify-forum-page-builder-wave-admission.mjs`;
   - `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
   - `crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
   - `crates/rustok-pages/src/dto/page.rs`;
@@ -313,21 +345,35 @@ another production consumer architecture slice.
    artifact/event side effects.
 4. Retain accepted publish, rollback and repair cache packets correlating receipt, `NodePublished`,
    handler receipt, generation rotation and storefront/artifact cache miss/refill.
-5. Supply and retain observed provider-health evidence from a real composition/runtime source, then
-   exercise degraded publish-off, preview-off and unavailable/read-only behavior. The admin seam is
-   source-ready; live SLO observation is not fabricated by Pages.
-6. Execute and accept `pages_reference_consumer_gate` against an exact reviewed source/deployment;
-   the gate source is ready but remains `accepted = false` until all required Pages profiles and
-   execution evidence are retained with owner sign-off and rollback decision.
-7. After the Pages gate is accepted, execute the retained Forum browser/runtime/deployment-attestation
-   packets and replace synthetic Forum Wave evidence with an observed tenant packet.
+5. Execute the exact provider-health maintainer chain for one deployment: capture exact target identity,
+   evaluate deployment metrics/freshness, take the binding-owner decision, install the accepted binding
+   packet while its lease is live, run the observed-health consumer harness and take the retrospective
+   observed-evidence owner decision. Do not infer current Ready/Degraded/Unavailable state from source.
+6. Execute the rollout-only reference candidate, combine it with owner-accepted observed-health evidence,
+   and take the explicit Pages gate owner + rollback decision. Committed source remains
+   `pages_reference_consumer_gate.accepted = false` until that maintainer-owned packet exists.
+7. Execute Forum browser/runtime/server-function evidence on the same exact source/deployment boundary,
+   run `forum_page_builder_wave_admission_v1`, then perform the separate observed control-plane Wave with
+   audit trail, fallback profiles, metrics/traces, rollback decision, approvals and waivers before owner
+   review.
 8. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
    `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
 9. Promote FFA/FBA only after observed Pages/Forum evidence and provider-health requirements are met.
 
 ## Verification
 
+- `node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs`;
+- `node scripts/verify/verify-forum-page-builder-wave-admission.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
@@ -355,12 +401,15 @@ These are execution cursors only. They were not run by this source-authoring sli
 
 - Fly owns the project domain, runtime materialization and validation/rendering semantics.
 - Page Builder owns capability delivery, framework-neutral consumer-property and admin-provider-status
-  contracts and adapters, preview/review/sanitization/materialization contracts, authorization,
-  transport envelopes, feature profiles and server composition order.
-- Consumer modules own property values, optimistic revisions, persistence, publication lifecycle,
-  exact artifact manifests, rollback/repair, receipts, cache scope/key policy, concrete tenant-scoped
-  ports and the live provider-health source when one exists for that composition.
+  contracts and adapters, preview/review/sanitization/materialization contracts, canonical health policy,
+  process-local observation/metrics source, deployment evaluator contract, authorization, transport
+  envelopes, feature profiles and server composition order.
+- Pages owns property values, optimistic revisions, persistence, publication lifecycle, exact artifact
+  manifests, rollback/repair, receipts, cache scope/key policy and the fail-closed binding of a
+  maintainer-accepted deployment-health packet into its consumer surfaces. Missing/expired binding remains
+  `unobserved`; Pages does not invent deployment health from process-local samples.
 - Forum remains owner of Forum widget configuration/schema/validation, owner data reads, visibility and
-  authorization even when Page Builder hosts its contribution surfaces.
+  authorization even when Page Builder hosts its contribution surfaces. Forum Wave admission only
+  correlates accepted Pages/Forum evidence and does not own the observed Wave result.
 - Cache/server infrastructure owns shared connection, byte storage and generation primitives only.
 - Host frameworks render or bind module surfaces and do not define provider-local contracts.
