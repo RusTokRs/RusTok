@@ -9,8 +9,8 @@ use rustok_api::{
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_order::{
-    ListOrderChangeProjectionsRequest, ListOrderReturnProjectionsRequest, OrderService,
-    ReadOrderProjectionRequest, error::OrderError,
+    CreateOrderReturnRequest, ListOrderChangeProjectionsRequest, ListOrderReturnProjectionsRequest,
+    ReadOrderProjectionRequest,
 };
 use rustok_payment::{PaymentService, error::PaymentError};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
@@ -35,6 +35,7 @@ const STOREFRONT_ORDER_OWNER: &str = "rustok_order.storefront_orders";
 const STOREFRONT_ORDER_DETAIL_OPERATION: &str = "read_order_projection";
 const STOREFRONT_ORDER_RETURN_LIST_OPERATION: &str = "list_order_return_projections";
 const STOREFRONT_ORDER_CHANGE_LIST_OPERATION: &str = "list_order_change_projections";
+const STOREFRONT_ORDER_RETURN_COMMAND_OPERATION: &str = "create_return";
 const STOREFRONT_ORDER_PAYMENT_OWNER: &str = "rustok_payment.storefront_order_refunds";
 const STOREFRONT_ORDER_PAYMENT_BOUNDARY: &str = "commerce_storefront_order_http";
 
@@ -162,6 +163,26 @@ fn storefront_order_read_port_context(
     }
 }
 
+fn storefront_order_return_command_context(
+    tenant_id: Uuid,
+    auth: &rustok_api::AuthContext,
+    request_context: &RequestContext,
+    order_id: Uuid,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-storefront-order:create-return:{order_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
+    .with_idempotency_key(Uuid::new_v4().to_string());
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
 fn map_storefront_order_port_error(
     error: PortError,
     context: &PortContext,
@@ -235,56 +256,68 @@ fn map_storefront_order_port_error(
     HttpError::new(status, code, message)
 }
 
-fn map_storefront_order_error(
-    error: OrderError,
-    operation: &'static str,
-    tenant_id: Uuid,
+fn map_storefront_order_command_port_error(
+    error: PortError,
+    context: &PortContext,
+    actor_id: Uuid,
+    customer_id: Uuid,
     order_id: Uuid,
 ) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
-        OrderError::Validation(_) => (
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
             StatusCode::BAD_REQUEST,
             "commerce_store_order_invalid",
             "Order request is invalid",
             "validation",
         ),
-        OrderError::OrderNotFound(_)
-        | OrderError::OrderReturnNotFound(_)
-        | OrderError::OrderChangeNotFound(_) => (
+        PortErrorKind::NotFound => (
             StatusCode::NOT_FOUND,
             "commerce_store_order_not_found",
             "Order resource was not found",
             "not_found",
         ),
-        OrderError::InvalidTransition { .. } => (
+        PortErrorKind::Conflict => (
             StatusCode::CONFLICT,
             "commerce_store_order_state_conflict",
             "Order operation conflicts with the current state",
             "state_conflict",
         ),
-        OrderError::Database(_) => (
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_store_order_access_denied",
+            "Order does not belong to the current customer",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_store_order_unavailable",
             "Order service is temporarily unavailable",
-            "database",
+            "unavailable",
         ),
-        OrderError::Core(_) => (
+        PortErrorKind::InvariantViolation => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_store_order_failed",
             "Order operation could not be completed safely",
-            "core",
+            "invariant_violation",
         ),
     };
     tracing::error!(
-        error = ?error,
-        operation,
-        tenant_id = %tenant_id,
-        order_id = %order_id,
+        owner = "rustok_order",
+        owner_operation = STOREFRONT_ORDER_RETURN_COMMAND_OPERATION,
+        consumer_operation = "create_order_return",
+        correlation_id = %context.correlation_id,
+        tenant_id_non_nil = !context.tenant_id.is_empty(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        customer_id_non_nil = !customer_id.is_nil(),
+        order_id_non_nil = !order_id.is_nil(),
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        retryable = error.retryable,
         error_kind,
         public_code = code,
         status = %status,
-        boundary = "commerce_storefront_order_http",
-        "storefront order operation failed"
+        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        "storefront Order return command failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -608,7 +641,7 @@ pub async fn create_order_return(
 ) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(
+    let customer_id = ensure_customer_owns_order(
         &runtime,
         tenant.id,
         tenant.default_locale.as_str(),
@@ -619,10 +652,27 @@ pub async fn create_order_return(
     )
     .await?;
 
-    let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .create_return(tenant.id, id, input)
+    let command_context =
+        storefront_order_return_command_context(tenant.id, &auth, &request_context, id);
+    let created = runtime
+        .order_post_order_command_port()
+        .create_return(
+            command_context.clone(),
+            CreateOrderReturnRequest {
+                order_id: id,
+                input,
+            },
+        )
         .await
-        .map_err(|error| map_storefront_order_error(error, "create_order_return", tenant.id, id))?;
+        .map_err(|error| {
+            map_storefront_order_command_port_error(
+                error,
+                &command_context,
+                auth.user_id,
+                customer_id,
+                id,
+            )
+        })?;
 
     Ok((StatusCode::CREATED, Json(created)))
 }
