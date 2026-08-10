@@ -20,6 +20,7 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
         "page_builder.field.assetUrl",
         "Asset URL",
     );
+    let add_asset_accessible_label = format!("{add_label}: {assets_label}");
     let asset_id = RwSignal::new(String::new());
     let asset_url = RwSignal::new(String::new());
     let add_runtime = runtime.clone();
@@ -28,21 +29,26 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
     view! {
         <section class="space-y-2 border-t border-border pt-3">
             <h2 class="font-semibold">{assets_label}</h2>
-            <input
-                placeholder=asset_id_label
-                class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
-                prop:value=move || asset_id.get()
-                on:input=move |event| asset_id.set(event_target_value(&event))
-            />
-            <input
-                placeholder=asset_url_label
-                class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
-                prop:value=move || asset_url.get()
-                on:input=move |event| asset_url.set(event_target_value(&event))
-            />
+            <label class="grid gap-1 text-sm">
+                <span class="font-medium">{asset_id_label}</span>
+                <input
+                    class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                    prop:value=move || asset_id.get()
+                    on:input=move |event| asset_id.set(event_target_value(&event))
+                />
+            </label>
+            <label class="grid gap-1 text-sm">
+                <span class="font-medium">{asset_url_label}</span>
+                <input
+                    class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                    prop:value=move || asset_url.get()
+                    on:input=move |event| asset_url.set(event_target_value(&event))
+                />
+            </label>
             <button
                 type="button"
                 class="rounded border border-border px-2 py-1 text-xs"
+                aria-label=add_asset_accessible_label
                 on:click=move |_| {
                     let source = asset_url.get_untracked().trim().to_string();
                     if source.is_empty() {
@@ -72,8 +78,11 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                         let remove_runtime = list_runtime.clone();
                         let use_id = asset.id.clone();
                         let remove_id = asset.id.clone();
+                        let accessible_name = asset.name.clone().unwrap_or_else(|| asset.id.clone());
                         let select_label = select_label.clone();
                         let remove_label = remove_label.clone();
+                        let select_accessible_label = format!("{select_label}: {accessible_name}");
+                        let remove_accessible_label = format!("{remove_label}: {accessible_name}");
                         view! {
                             <div class="rounded border border-border p-2 text-xs">
                                 <div class="font-medium">{asset.name.clone().unwrap_or_else(|| asset.id.clone())}</div>
@@ -82,6 +91,7 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                                     <button
                                         type="button"
                                         class="rounded border border-border px-2 py-1"
+                                        aria-label=select_accessible_label
                                         disabled=move || !use_disabled_runtime.capability_enabled(
                                             EditorCapability::Properties,
                                         )
@@ -95,6 +105,7 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                                     <button
                                         type="button"
                                         class="rounded border border-destructive/40 px-2 py-1 text-destructive"
+                                        aria-label=remove_accessible_label
                                         on:click=move |_| remove_runtime.dispatch(UiIntent::execute(
                                             EditorCommand::Asset {
                                                 command: AssetCommand::Remove {
