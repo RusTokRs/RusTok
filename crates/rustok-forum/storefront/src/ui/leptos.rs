@@ -143,6 +143,7 @@ fn ForumShowcase(
         selected_topic_id,
         selected_topic,
         replies,
+        member_cards: _,
         read_state_available,
     } = data;
 
