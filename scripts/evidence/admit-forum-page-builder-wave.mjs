@@ -605,6 +605,8 @@ function main() {
       observability_traces_observed: false,
       rollback_decision_observed: false,
       approvals_observed: false,
+      current_provider_health_asserted: false,
+      cryptographic_deployment_binding_claimed: false,
       observed_control_plane_wave_executed: false,
       forum_wave_accepted: false,
       ffa_promoted: false,
