@@ -113,6 +113,7 @@ pub fn PaletteLayersPanel(
                                         let drag_id = block.id.clone();
                                         let html_drag_id = block.id.clone();
                                         let browser_block_id = block.id.clone();
+                                        let block_accessible_name = block.label.clone();
                                         let contribution_ids = access
                                             .contribution_ids(&block.id)
                                             .map(ToString::to_string)
@@ -135,6 +136,8 @@ pub fn PaletteLayersPanel(
                                         let html_drag_access = Arc::clone(&access);
                                         let add_label = add_label.clone();
                                         let drag_label = drag_label.clone();
+                                        let insert_accessible_label = format!("{add_label}: {block_accessible_name}");
+                                        let drag_accessible_label = format!("{drag_label}: {block_accessible_name}");
                                         view! {
                                             <article
                                                 class="rounded-lg border border-border bg-background p-2"
@@ -162,6 +165,7 @@ pub fn PaletteLayersPanel(
                                                     <button
                                                         type="button"
                                                         class="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+                                                        aria-label=insert_accessible_label
                                                         data-fly-action="insert-block"
                                                         disabled=!can_insert
                                                         on:click=move |_| {
@@ -177,6 +181,7 @@ pub fn PaletteLayersPanel(
                                                     <button
                                                         type="button"
                                                         class="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+                                                        aria-label=drag_accessible_label
                                                         data-fly-action="begin-block-drag"
                                                         disabled=!can_drag
                                                         on:click=move |_| {
@@ -224,6 +229,7 @@ pub fn PaletteLayersPanel(
                                     data-fly-component-id=browser_component_id
                                     data-fly-action="select-component"
                                     class=class
+                                    aria-pressed=active.to_string()
                                     on:click=move |_| select_runtime.dispatch(
                                         UiIntent::Select(Some(component_id.clone()))
                                     )

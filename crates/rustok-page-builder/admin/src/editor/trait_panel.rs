@@ -76,16 +76,22 @@ fn TraitEditorRow(
     let value = RwSignal::new(initial);
     let schema = snapshot.schema;
     let input_schema = schema.clone();
+    let input_label = schema.label.clone();
     let apply_schema = schema.clone();
     let clear_schema = schema.clone();
     let apply_runtime = runtime.clone();
     let clear_runtime = runtime.clone();
     let apply_component_id = component_id.clone();
     let clear_component_id = component_id.clone();
+    let apply_accessible_label = format!("{apply_label}: {}", schema.label);
+    let clear_accessible_label = format!("{clear_label}: {}", schema.label);
 
     view! {
-        <div class="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
-            <label class="block text-sm font-medium">{schema.label.clone()}</label>
+        <div
+            class="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0"
+            data-fly-trait-id=schema.id.clone()
+        >
+            <div class="text-sm font-medium">{schema.label.clone()}</div>
             {match schema.value_type {
                 TraitValueKind::Boolean => {
                     let checked = snapshot.value.as_ref().and_then(Value::as_bool).unwrap_or(false);
@@ -96,6 +102,7 @@ fn TraitEditorRow(
                         <label class="flex items-center gap-2 text-sm">
                             <input
                                 type="checkbox"
+                                aria-label=input_label.clone()
                                 prop:checked=checked
                                 on:change=move |event| apply_trait_value(
                                     &runtime,
@@ -116,6 +123,7 @@ fn TraitEditorRow(
                     let options = schema.options.clone();
                     view! {
                         <select
+                            aria-label=input_label.clone()
                             class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                             prop:value=move || value.get()
                             on:change=move |event| {
@@ -134,6 +142,7 @@ fn TraitEditorRow(
                 }
                 TraitValueKind::Multiline => view! {
                     <textarea
+                        aria-label=input_label.clone()
                         class="min-h-20 w-full rounded border border-input bg-background px-2 py-1 text-sm"
                         placeholder=schema.placeholder.clone().unwrap_or_default()
                         prop:value=move || value.get()
@@ -144,6 +153,7 @@ fn TraitEditorRow(
                 TraitValueKind::Number => view! {
                     <input
                         type="number"
+                        aria-label=input_label.clone()
                         class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                         placeholder=schema.placeholder.clone().unwrap_or_default()
                         prop:value=move || value.get()
@@ -154,6 +164,7 @@ fn TraitEditorRow(
                 TraitValueKind::Text | TraitValueKind::Url => view! {
                     <input
                         type=if matches!(schema.value_type, TraitValueKind::Url) { "url" } else { "text" }
+                        aria-label=input_label.clone()
                         class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                         placeholder=schema.placeholder.clone().unwrap_or_default()
                         prop:value=move || value.get()
@@ -166,6 +177,7 @@ fn TraitEditorRow(
                 <button
                     type="button"
                     class="rounded border border-border px-2 py-1 text-xs"
+                    aria-label=apply_accessible_label
                     on:click=move |_| apply_trait_value(
                         &apply_runtime,
                         &apply_component_id,
@@ -176,6 +188,7 @@ fn TraitEditorRow(
                 <button
                     type="button"
                     class="rounded border border-border px-2 py-1 text-xs"
+                    aria-label=clear_accessible_label
                     on:click=move |_| {
                         value.set(String::new());
                         clear_runtime.dispatch(UiIntent::execute(EditorCommand::Patch {

@@ -63,6 +63,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         "page_builder.field.noIndex",
         "Prevent search indexing",
     );
+    let new_page_name_accessible_label = format!("{add_label}: {name_label}");
 
     let new_page_name = RwSignal::new(String::new());
     let page_name = RwSignal::new(String::new());
@@ -151,6 +152,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 } else {
                                     "block w-full rounded px-2 py-2 text-left text-sm hover:bg-muted"
                                 }
+                                aria-pressed=active.to_string()
                                 on:click=move |_| runtime.dispatch(UiIntent::ActivatePage {
                                     page_id: page_id.clone(),
                                     page_index,
@@ -168,6 +170,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <div class="flex gap-2 border-t border-border pt-3">
                     <input
                         class="min-w-0 flex-1 rounded border border-input bg-background px-2 py-1 text-sm"
+                        aria-label=new_page_name_accessible_label
                         placeholder=name_label.clone()
                         prop:value=move || new_page_name.get()
                         on:input=move |event| new_page_name.set(event_target_value(&event))
@@ -202,18 +205,22 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     capability=EditorCapability::Properties
                 >
                     <div class="grid gap-2 border-t border-border pt-3">
-                        <label class="text-sm font-medium">{name_label.clone()}</label>
-                        <input
-                            class="rounded border border-input bg-background px-2 py-1 text-sm"
-                            prop:value=move || page_name.get()
-                            on:input=move |event| page_name.set(event_target_value(&event))
-                        />
-                        <label class="text-sm font-medium">{id_label}</label>
-                        <input
-                            class="rounded border border-input bg-background px-2 py-1 text-sm"
-                            prop:value=move || page_id.get()
-                            on:input=move |event| page_id.set(event_target_value(&event))
-                        />
+                        <label class="grid gap-1 text-sm">
+                            <span class="font-medium">{name_label.clone()}</span>
+                            <input
+                                class="rounded border border-input bg-background px-2 py-1 text-sm"
+                                prop:value=move || page_name.get()
+                                on:input=move |event| page_name.set(event_target_value(&event))
+                            />
+                        </label>
+                        <label class="grid gap-1 text-sm">
+                            <span class="font-medium">{id_label}</span>
+                            <input
+                                class="rounded border border-input bg-background px-2 py-1 text-sm"
+                                prop:value=move || page_id.get()
+                                on:input=move |event| page_id.set(event_target_value(&event))
+                            />
+                        </label>
                         <button
                             type="button"
                             class="w-fit rounded border border-border px-2 py-1 text-xs"
