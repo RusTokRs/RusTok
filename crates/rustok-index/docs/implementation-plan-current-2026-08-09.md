@@ -1,6 +1,6 @@
 # Current `rustok-index` implementation plan — 2026-08-09
 
-Status: `m5_product_refresh_family_digest_clean_ci_gate_installation_pending`.
+Status: `m5_product_refresh_family_digest_clean_ci_execution_blocked`.
 
 This overlay supersedes `implementation-plan-current-2026-08-08.md` as the live execution cursor. The older file
 remains detailed architecture/source history.
@@ -45,8 +45,7 @@ On `main@535c6d4a3aca4412c27c69453e08c6942c281ac9`, the maintainer reported:
 - `verify-event-contract-digest-admission.mjs` failed only on one case-sensitive prose marker.
 
 PR #3434 removed that brittle prose marker without weakening the actual workflow/admission checks. The generated
-Product-family digest is therefore clean at the recorded exact SHA; the remaining source-process gap is to make the
-same checks automatically repeatable on every relevant PR instead of requiring a maintainer local command bundle.
+Product-family digest is clean at the recorded exact SHA.
 
 ### Focused Index contract CI gate
 
@@ -69,10 +68,19 @@ The workflow has `contents: read`, disables persisted checkout credentials and c
 Its stable aggregate job is `Index Contract Gate` so future branch protection can require one focused status rather
 than the entire workspace CI matrix.
 
-The first passing pull-request execution of this workflow closes the M5 family/digest admission gate. After that,
-the next independent M5 source boundary is Product/ProductVariant typed delivery into the existing generic
-`IndexSourceRefreshEventWorker`, including exact event-route registration, canonical target-key decoding and
-commit-before-ack consumption.
+### Current CI execution blocker
+
+The first pull-request execution of this gate was accepted by GitHub Actions, but every runnable job completed as
+`failure` before its first step (`steps=[]` and no job log). A targeted rerun produced the same pre-step failure.
+The repository's pre-existing `CI` workflow shows the same pre-step failure shape on this PR and on the immediately
+preceding unrelated PR, so this is an Actions/runner-level repository execution blocker rather than an Index source,
+Node verifier, Cargo command or workflow-YAML failure.
+
+The CI workflow source may be admitted so the gate is installed, but M5 does not claim CI admission yet. The first
+real execution where `Source contracts`, `Canonical event digest drift`, `Events Product Index cargo checks` and
+`Index Contract Gate` all pass closes the family/digest gate. Only then does the next independent M5 source boundary
+open: Product/ProductVariant typed delivery into the existing generic `IndexSourceRefreshEventWorker`, including
+exact event-route registration, canonical target-key decoding and commit-before-ack consumption.
 
 ## M6 — concrete repair PostgreSQL evidence
 
@@ -103,6 +111,7 @@ is approved.
 
 ## Validation boundary
 
-The implementation agent performs static GitHub source/diff review for this CI slice. The new workflow itself is the
-execution boundary: its pull-request run must prove the source verifiers, canonical digest drift check and focused
-Cargo checks before merge. No PostgreSQL M6/M7 evidence is claimed by this CI gate.
+Static diff review confirms the CI slice is limited to the focused workflow, its source guard and this execution
+cursor. GitHub Actions accepted the workflow definition but did not start any job steps because of the repository-wide
+Actions/runner blocker described above. No passing CI, PostgreSQL M6/M7 evidence or additional local test execution is
+claimed.
