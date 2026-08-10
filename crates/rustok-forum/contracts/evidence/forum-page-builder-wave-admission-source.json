@@ -58,6 +58,8 @@
     "same_exact_source_commit_required_across_all_packets": true,
     "same_immutable_repo_digest_required_across_pages_gate_browser_and_serverfn": true,
     "runtime_authorization_is_source_bound_but_not_separately_deployment_bound": true,
+    "browser_and_serverfn_deployment_identity_remains_maintainer_asserted_or_reviewed_where_contract_declares_it": true,
+    "deployment_digest_equality_does_not_upgrade_origin_binding_to_cryptographic_proof": true,
     "accepted_pages_gate_is_a_precondition_not_a_forum_wave_acceptance": true
   },
   "runner": {
@@ -82,9 +84,11 @@
     "deployment_image_digest_retained": true,
     "raw_input_paths_retained": false,
     "raw_http_or_browser_bodies_retained": false,
-    "raw_command_output_retained": false
+    "raw_command_output_retained": false,
+    "cryptographic_deployment_binding_claimed": false
   },
   "observed_wave_boundary": {
+    "admission_packet_must_be_bound_by_live_wave_evidence": true,
     "control_plane_audit_trail_still_required": true,
     "fallback_profiles_still_required": true,
     "observability_metrics_still_required": true,
@@ -94,6 +98,7 @@
     "waivers_still_required": true,
     "canonical_forum_wave_packet_not_mutated": true,
     "observed_control_plane_wave_not_executed": true,
+    "current_provider_health_not_asserted_by_admission": true,
     "forum_wave_not_accepted": true,
     "ffa_fba_not_promoted": true
   },
@@ -105,6 +110,7 @@
     "wave_admission_runner_executed": false,
     "observed_control_plane_wave_executed": false,
     "current_provider_health_asserted": false,
+    "cryptographic_origin_to_repo_digest_binding_asserted": false,
     "forum_wave_accepted": false,
     "ffa_promoted": false,
     "fba_promoted": false,
@@ -130,6 +136,9 @@
     "scripts/verify/verify-forum-page-builder-wave-admission.mjs",
     "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
     "scripts/verify/verify-forum-wave-plan-sync.mjs",
+    "scripts/verify/verify-forum-wave-plan-sync.test.mjs",
+    "scripts/verify/verify-forum-wave-evidence-freshness.mjs",
+    "scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
     "docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md",
     "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md"
   ],
