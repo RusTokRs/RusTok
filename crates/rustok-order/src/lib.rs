@@ -71,9 +71,10 @@ pub use order_read::{
     ReadOrderProjectionRequest, ReadOrderReturnProjectionRequest, in_process_order_read_port,
 };
 pub use post_order_command::{
-    CancelOrderChangeRequest, CancelOrderReturnRequest, CreateOrderChangeRequest,
-    CreateOrderReturnRequest, InProcessOrderPostOrderCommandPort, OrderPostOrderCommandPort,
-    OrderPostOrderCommandRuntime, in_process_order_post_order_command_port,
+    ApplyOrderChangeRequest, CancelOrderChangeRequest, CancelOrderReturnRequest,
+    CreateOrderChangeRequest, CreateOrderReturnRequest, InProcessOrderPostOrderCommandPort,
+    OrderPostOrderCommandPort, OrderPostOrderCommandRuntime,
+    in_process_order_post_order_command_port,
 };
 pub use ports::*;
 pub use status::*;
