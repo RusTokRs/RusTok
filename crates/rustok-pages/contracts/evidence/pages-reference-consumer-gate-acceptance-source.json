@@ -9,6 +9,8 @@
     "source_commit_must_equal_checkout_head": true,
     "deployment_image_digest_must_be_immutable_repo_digest": true,
     "retained_source_hashes_must_match_contract_and_checkout": true,
+    "retained_input_hash_records_must_be_bounded": true,
+    "command_records_must_match_execution_contract_exactly": true,
     "all_source_guards_must_have_passed": true,
     "all_focused_tests_must_have_passed": true,
     "rollout_profiles_and_feature_preflight_must_have_passed": true,
@@ -29,6 +31,7 @@
     "required_decision": "accept_observed_runtime_evidence",
     "source_commit_must_equal_checkout_head_and_candidate": true,
     "deployment_image_digest_must_equal_candidate": true,
+    "deployment_id_must_be_bounded": true,
     "retained_source_hashes_must_match_contract_and_checkout": true,
     "eligible_for_pages_gate_review_must_be_true": true,
     "pages_gate_must_still_be_false_in_predecessor": true,
@@ -81,6 +84,7 @@
     "automatic_ffa_fba_promotion": false
   },
   "source_gate_boundary": {
+    "source_gate_must_be_fail_closed_before_decision": true,
     "pages_reference_consumer_gate_source_remains_accepted_false_until_maintainer_execution": true,
     "accepted_output_is_machine_evidence_for_downstream_gate_consumers": true,
     "accepted_output_does_not_mutate_source_gate": true,
