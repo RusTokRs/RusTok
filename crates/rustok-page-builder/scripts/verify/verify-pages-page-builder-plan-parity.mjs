@@ -15,8 +15,10 @@ const centralPlanPath = "docs/modules/page-builder-implementation-plan.md";
 const parityActualizationPath = "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md";
 const rolloutActualizationPath = "docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md";
 const gatePath = "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json";
+const gateAcceptancePath = "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
 const forumManifestPath = "crates/rustok-forum/rustok-module.toml";
 const forumWavePath = "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
+const forumWaveAdmissionPath = "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json";
 const failures = [];
 
 function read(relativePath) {
@@ -63,8 +65,10 @@ const centralPlan = read(centralPlanPath);
 const parityActualization = read(parityActualizationPath);
 const rolloutActualization = read(rolloutActualizationPath);
 const gate = parseJson(read(gatePath), gatePath);
+const gateAcceptance = parseJson(read(gateAcceptancePath), gateAcceptancePath);
 const forumManifest = read(forumManifestPath);
 const forumWave = parseJson(read(forumWavePath), forumWavePath);
+const forumWaveAdmission = parseJson(read(forumWaveAdmissionPath), forumWaveAdmissionPath);
 
 const sharedCurrent = section(
   sharedPlan,
@@ -128,13 +132,17 @@ for (const marker of [
 
 for (const marker of [
   "pages-reference-consumer-rollout-source-ready",
+  "forum-wave-admission-source-ready",
   "docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md",
+  "docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md",
   "server-owned rollout state",
   "FLY_CAPABILITY_DENIED",
   "FEATURE_DISABLED",
   "artifact/HTTP",
   "rollout runtime matrix",
   "owner sign-off + explicit rollback decision",
+  "Forum Wave admission [source-ready / maintainer execution pending]",
+  "Forum observed control-plane Wave [blocked on admitted exact-source inputs]",
   "No additional Pages/Page Builder rollout architecture slice",
 ]) requireText(parityActualization, marker, parityActualizationPath);
 
@@ -214,6 +222,15 @@ if (
   gate.rollout_feature_preflight_harness?.feature_disabled_code !== "FEATURE_DISABLED"
 ) failures.push(`${gatePath}: provider feature-disabled contract drifted`);
 
+if (
+  gateAcceptance.format !== "pages_reference_consumer_gate_acceptance_source_v1" ||
+  gateAcceptance.status !== "source_ready_maintainer_execution_pending" ||
+  gateAcceptance.output?.format !== "pages_reference_consumer_gate_acceptance_v1" ||
+  gateAcceptance.output?.accepted_status !== "owner_accepted_pages_reference_consumer_gate" ||
+  gateAcceptance.next_cursor?.forum_wave_admission !== "source_ready_maintainer_execution_pending" ||
+  gateAcceptance.next_cursor?.forum_observed_wave !== "blocked_on_admitted_exact_source_inputs"
+) failures.push(`${gateAcceptancePath}: Pages gate acceptance / Forum admission cursor drifted`);
+
 for (const marker of [
   'id = "rustok.forum.widget-catalog"',
   'id = "rustok.forum.widget-preview"',
@@ -227,9 +244,27 @@ for (const marker of [
 if (forumWave.mode !== "source_ready" || forumWave.execution_status !== "not_run_by_implementation_agent") {
   failures.push(`${forumWavePath}: Forum Wave must remain source_ready and unexecuted`);
 }
-if (forumWave.observed_run?.blocked_by !== "pages_reference_consumer_gate") {
-  failures.push(`${forumWavePath}: observed Forum Wave must remain blocked by Pages gate`);
-}
+if (
+  forumWave.observed_run?.blocked_by !== "pages_reference_consumer_gate" ||
+  forumWave.observed_run?.accepted_gate_evidence?.format !== "pages_reference_consumer_gate_acceptance_v1" ||
+  forumWave.observed_run?.accepted_gate_evidence?.status !== "owner_accepted_pages_reference_consumer_gate" ||
+  forumWave.observed_run?.wave_admission?.format !== "forum_page_builder_wave_admission_v1" ||
+  forumWave.observed_run?.wave_admission?.status !== "forum_wave_inputs_admitted_observed_control_plane_pending" ||
+  !(forumWave.observed_run?.required_evidence ?? []).includes("admission")
+) failures.push(`${forumWavePath}: Forum Wave accepted-gate/admission cursor drifted`);
+
+if (
+  forumWaveAdmission.format !== "forum_page_builder_wave_admission_source_v1" ||
+  forumWaveAdmission.status !== "source_ready_maintainer_execution_pending" ||
+  forumWaveAdmission.pages_gate_input?.format !== "pages_reference_consumer_gate_acceptance_v1" ||
+  forumWaveAdmission.pages_gate_input?.required_status !== "owner_accepted_pages_reference_consumer_gate" ||
+  forumWaveAdmission.output?.format !== "forum_page_builder_wave_admission_v1" ||
+  forumWaveAdmission.output?.status !== "forum_wave_inputs_admitted_observed_control_plane_pending" ||
+  forumWaveAdmission.lineage?.same_exact_source_commit_required_across_all_packets !== true ||
+  forumWaveAdmission.lineage?.same_immutable_repo_digest_required_across_pages_gate_browser_and_serverfn !== true ||
+  forumWaveAdmission.lineage?.deployment_digest_equality_does_not_upgrade_origin_binding_to_cryptographic_proof !== true ||
+  forumWaveAdmission.observed_wave_boundary?.forum_wave_not_accepted !== true
+) failures.push(`${forumWaveAdmissionPath}: Forum Wave admission source drifted`);
 
 if (failures.length > 0) {
   console.error("Pages / Page Builder plan parity verification failed:");

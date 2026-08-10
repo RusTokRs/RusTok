@@ -11,12 +11,15 @@ const freshnessScriptPath = path.resolve("scripts/verify/verify-forum-wave-evide
 const readinessScriptPath = path.resolve(
   "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
 );
+const waveAdmissionVerifier = "node scripts/verify/verify-forum-page-builder-wave-admission.mjs";
 const requiredGates = [
   "npm run verify:page-builder:consumer:forum",
+  waveAdmissionVerifier,
   "npm run verify:forum:wave-evidence-freshness",
   "npm run test:verify:forum:wave-evidence-freshness",
 ];
 const requiredObservedSections = [
+  "admission",
   "control_plane.audit_trail",
   "fallback.profiles",
   "observability.metrics",
@@ -25,6 +28,9 @@ const requiredObservedSections = [
   "approvals",
   "waivers",
 ];
+const sourceCommit = "0123456789abcdef0123456789abcdef01234567";
+const deploymentImageDigest = `example.invalid/rustok-server@sha256:${"a".repeat(64)}`;
+const admissionPacketSha256 = "b".repeat(64);
 
 function expectedProfile(name, values) {
   return {
@@ -82,6 +88,18 @@ function sourceReadyEvidence(overrides = {}) {
       required: true,
       status: "not_run",
       blocked_by: "pages_reference_consumer_gate",
+      accepted_gate_evidence: {
+        required: true,
+        format: "pages_reference_consumer_gate_acceptance_v1",
+        status: "owner_accepted_pages_reference_consumer_gate",
+      },
+      wave_admission: {
+        required: true,
+        source_status: "source_ready_maintainer_execution_pending",
+        format: "forum_page_builder_wave_admission_v1",
+        status: "forum_wave_inputs_admitted_observed_control_plane_pending",
+        execution_status: "maintainer_execution_pending",
+      },
       required_correlation_path: "builder_write -> forum_publish -> storefront_read",
       required_profiles: ["all_on", "publish_off", "preview_off", "builder_off"],
       required_evidence: [...requiredObservedSections],
@@ -137,7 +155,19 @@ function liveEvidence(overrides = {}) {
     mode: "live",
     provenance: "observed_control_plane",
     execution_status: "maintainer_verified",
+    source_commit: sourceCommit,
+    deployment_image_digest: deploymentImageDigest,
     created_at: "2026-06-01T00:00:00Z",
+    admission: {
+      format: "forum_page_builder_wave_admission_v1",
+      status: "forum_wave_inputs_admitted_observed_control_plane_pending",
+      source_commit: sourceCommit,
+      deployment_image_digest: deploymentImageDigest,
+      packet_sha256: admissionPacketSha256,
+      pages_reference_consumer_gate_accepted: true,
+      exact_source_commit_bound: true,
+      exact_deployment_digest_bound: true,
+    },
     control_plane: { audit_trail: "control_plane_builder_wave_audit" },
     fallback: {
       profiles: [
@@ -200,6 +230,12 @@ function liveEvidence(overrides = {}) {
   return {
     ...base,
     ...overrides,
+    admission: overrides.admission === null
+      ? null
+      : {
+          ...base.admission,
+          ...(overrides.admission ?? {}),
+        },
     refresh_policy: {
       ...base.refresh_policy,
       ...(overrides.refresh_policy ?? {}),
@@ -336,11 +372,21 @@ function withReadiness(packet, assertion) {
   }
 }
 
-test("forum Wave verifier accepts source-ready evidence without runtime claims", () => {
+test("forum Wave verifier accepts source-ready evidence with admitted-input cursor but no runtime claims", () => {
   withEvidence(sourceReadyEvidence(), (result) => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /mode=source_ready/);
   });
+});
+
+test("forum Wave verifier rejects missing source-ready accepted Pages gate evidence", () => {
+  withEvidence(
+    sourceReadyEvidence({ observed_run: { accepted_gate_evidence: { required: false } } }),
+    (result) => {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /explicit accepted Pages gate evidence/);
+    },
+  );
 });
 
 test("forum Wave verifier rejects live-only sections in source-ready evidence", () => {
@@ -357,10 +403,17 @@ test("forum Wave verifier rejects false source-ready execution claims", () => {
   });
 });
 
-test("forum Wave verifier accepts fresh observed live evidence", () => {
+test("forum Wave verifier accepts fresh observed live evidence bound to admitted exact-source inputs", () => {
   withEvidence(liveEvidence(), (result) => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /mode=live/);
+  });
+});
+
+test("forum Wave verifier rejects live evidence without admitted lineage", () => {
+  withEvidence(liveEvidence({ admission: null }), (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /admission must bind the exact admitted Pages\/Forum source and deployment lineage/);
   });
 });
 
@@ -380,7 +433,7 @@ test("forum Wave verifier rejects stale observed evidence", () => {
 
 test("forum Wave verifier rejects missing observed evidence sections", () => {
   withEvidence(
-    liveEvidence({ refresh_policy: { required_sections: ["control_plane.audit_trail"] } }),
+    liveEvidence({ refresh_policy: { required_sections: ["admission", "control_plane.audit_trail"] } }),
     (result) => {
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /required_sections missing fallback\.profiles/);
