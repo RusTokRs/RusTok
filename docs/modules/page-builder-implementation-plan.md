@@ -16,62 +16,67 @@ status: active
 
 ## Current-source actualization
 
-This central plan is reconciled to current `main` as of 2026-08-08. The detailed
-source overlays under `docs/modules/page-builder-*-actualization-2026-08-07.md`
-and the 2026-08-08 Pages/Page Builder/Forum parity packets remain authoritative
-where they are more specific. Older open checkboxes for Pages metadata
-contributions, immutable rollback, artifact audit/repair, reviewed static resource
-limits, authenticated real-DOM authoring, anonymous authoring exclusion,
-generated contribution-registry foundations, shared contribution metadata
-tooling and the Forum Fly adapter/owner-preview/property-editor source were stale
-and are corrected below.
+This central plan is reconciled to current `main` through PR #3435 on 2026-08-10. The detailed
+source overlays under `docs/modules/page-builder-*-actualization-2026-08-07.md`, the 2026-08-08
+Pages/Page Builder parity packets and the 2026-08-09/10 provider-health, gate-acceptance, Forum
+Wave-admission and base-plan-reconciliation overlays remain authoritative where they are more
+specific. Older open checkboxes for Pages metadata contributions, immutable rollback, artifact
+audit/repair, reviewed static resource limits, authenticated real-DOM authoring, anonymous authoring
+exclusion, generated contribution-registry foundations, shared contribution metadata tooling, the
+Forum Fly adapter/owner-preview/property-editor source and the missing provider-health architecture
+cursor were stale and are corrected below.
 
 Current source markers for this slice:
 
 ```text
 Provider status/degraded controls: source-ready
+Provider health observation/evaluator/binding/consumer chain: source-ready
+Observed-health runtime harness/owner acceptance: source-ready
+Pages reference-consumer gate acceptance: source-ready
 Pages module-metadata contribution generation: source-ready
 Shared module contribution tooling: source-ready
 Forum second-consumer contribution discovery: source-ready
 Forum Fly adapter/component registry: source-ready
 Forum owner preview transport/Pages host composition: source-ready
 Forum owner-backed property editing: source-ready
+Forum Wave admission: source-ready
 ```
 
-Observed provider-health evidence remains an execution/composition cursor; an
-absent live health snapshot is represented as `unobserved`, not healthy.
+Observed provider-health **execution** remains a maintainer-owned cursor, but the observation,
+deployment aggregation/evaluation, owner acceptance, fail-closed Pages binding and consumer
+narrowing source architecture now exists. A missing, invalid, expired or uninstalled accepted health
+packet is represented as `unobserved`, not healthy. The rollout-only reference candidate also keeps
+`provider_health = unobserved` intentionally because observed health is a separate exact-source gate
+input. Source inspection does not assert the current deployment state.
 
-The Pages reference consumer keeps its complete Fly contribution declaration in
-canonical `rustok-module.toml`. `rustok-pages-admin/build.rs` delegates generic
-parsing, provider/version injection and capability validation to the reusable
-`rustok-build/src/module_manifest_contribution.rs` tooling source, while retaining
-only Pages-specific role/constant assertions. `xtask module validate` consumes the
-same normalizer for publish readiness. Admin/WASM runtime still does not parse TOML
-and no handwritten Pages `ContributionDescriptor` tree remains.
+The Pages reference consumer keeps its complete Fly contribution declaration in canonical
+`rustok-module.toml`. `rustok-pages-admin/build.rs` delegates generic parsing, provider/version
+injection and capability validation to the reusable
+`rustok-build/src/module_manifest_contribution.rs` tooling source, while retaining only Pages-specific
+role/constant assertions. `xtask module validate` consumes the same normalizer for publish readiness.
+Admin/WASM runtime still does not parse TOML and no handwritten Pages `ContributionDescriptor` tree
+remains.
 
-Forum is the second production consumer on the shared contribution boundary.
-Canonical `rustok-module.toml` declares two complementary owner-provider admin
-contributions for the existing `forum.topic_list`, `forum.topic_detail` and
-`forum.reply_stream` widget contracts. `rustok.forum.widget-catalog` owns blocks
-and owner-schema-reference property contracts under `tree + properties`;
-`rustok.forum.widget-preview` owns only renderer admission under `preview`.
-Forum admin build generation consumes the shared normalizer, registers real Fly
-component/block identities and exposes a `ContributionAdapter` without importing
-Forum persistence or owner services.
+Forum is the second production consumer on the shared contribution boundary. Canonical
+`rustok-module.toml` declares two complementary owner-provider admin contributions for the existing
+`forum.topic_list`, `forum.topic_detail` and `forum.reply_stream` widget contracts.
+`rustok.forum.widget-catalog` owns blocks and owner-schema-reference property contracts under
+`tree + properties`; `rustok.forum.widget-preview` owns only renderer admission under `preview`.
+Forum admin build generation consumes the shared normalizer, registers real Fly component/block
+identities and exposes a `ContributionAdapter` without importing Forum persistence or owner services.
 
-Forum owner preview and owner-backed property editing are source-ready.
-`ForumWidgetPreviewService` normalizes props through the existing Forum contract,
-applies Forum visibility/RBAC and executes bounded owner reads, including true
-pre-pagination `activity/newest/top` sort semantics. The property path keeps only
-schema references in contribution metadata, loads current schema bodies from
+Forum owner preview and owner-backed property editing are source-ready. `ForumWidgetPreviewService`
+normalizes props through the existing Forum contract, applies Forum visibility/RBAC and executes
+bounded owner reads, including true pre-pagination `activity/newest/top` sort semantics. The property
+path keeps only schema references in contribution metadata, loads current schema bodies from
 `ForumWidgetContractService::catalog`, validates candidate configuration through
-`ForumWidgetContractService::validate_props`, and patches only valid object-shaped
-owner `normalized_props` through the ordinary Fly command/history path. The owner
-transports are composed by provider-neutral Page Builder host ports on the real
-Pages admin route only when Forum is tenant-enabled and its manifest permission is
-effectively granted. The Page Builder package itself has no Forum dependency.
-Runtime/browser/Wave evidence remains open. Live SLO health remains a separate
-open cursor.
+`ForumWidgetContractService::validate_props`, and patches only valid object-shaped owner
+`normalized_props` through the ordinary Fly command/history path. The owner transports are composed
+by provider-neutral Page Builder host ports on the real Pages admin route only when Forum is
+tenant-enabled and its manifest permission is effectively granted. The Page Builder package itself
+has no Forum dependency. Browser/runtime/server-function evidence source remains unexecuted; the
+Forum Wave admission source now correlates those future packets with an accepted Pages gate before a
+separate observed control-plane Wave may start.
 
 ## Current-only policy
 
@@ -172,8 +177,22 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Admin provider status/degraded controls are source-ready. Rollout flags and
   optional observed health can only narrow host tenant/RBAC capabilities; missing
   health is `unobserved` and no fallback editor is mounted.
+- [x] Bounded process-local Preview/Publish observation, deployment-aggregatable
+  metrics/freshness, exact source/deployment identity and expected-target inventory
+  source are ready. Process-local samples are not deployment authority.
+- [x] Reset-aware exact-target deployment evaluator source applies the canonical
+  Preview/Publish latency, sanitize-failure and runtime-error policy with freshness
+  and minimum-sample admission.
+- [x] Binding-owner acceptance, remaining-freshness `health_valid_until`, fail-closed
+  Pages server binding, typed provider-health transport and shared effective runtime
+  narrowing are source-ready.
+- [x] Workspace, authoritative SSR, standalone browser-intent and non-mutating
+  capability preflight consume the same validated provider-health narrowing path.
+- [x] Observed-health runtime evidence harness and retrospective owner acceptance
+  source are ready without asserting current health or extending the historical lease.
 - [ ] Accepted parser/real-project/runtime policy evidence is incomplete.
-- [ ] Observed provider-health and tenant Wave 0/Wave 1 evidence is incomplete.
+- [ ] Provider-health live exact-target execution/owner decisions and tenant Wave
+  evidence remain incomplete.
 
 ### Pages reference consumer
 
@@ -232,10 +251,16 @@ persistence. Rich text remains an external dedicated capability.
   launch, deterministic release composition and anonymous authoring exclusion are
   source-ready.
 - [x] Pages facade exposes the same provider rollout flags used by its canonical
-  server handler composition. Live SLO health is deliberately `unobserved` until a
-  real source exists.
+  server handler composition and has a fail-closed provider-health binding sourced
+  only from a maintainer-accepted exact deployment packet. Missing/invalid/expired
+  binding remains `unobserved`; current health is never inferred from source.
+- [x] Pages reference-consumer gate acceptance source is ready over the rollout-only
+  candidate plus owner-accepted observed-health evidence, exact source/RepoDigest,
+  explicit owner decision and explicit rollback disposition. Committed gate source
+  remains `accepted = false` until maintainer execution.
 - [ ] Accepted evidence must correlate outbox delivery, repair/rollback receipts,
-  generation rotation, cache miss/refill, browser authoring and provider status.
+  generation rotation, cache miss/refill, browser authoring, provider-health
+  execution and the Pages gate decision.
 
 ### Forum second contribution consumer
 
@@ -262,7 +287,15 @@ persistence. Rich text remains an external dedicated capability.
   loads the current schema through Forum owner catalog transport, validates through
   Forum owner normalization and patches only normalized Fly `props` through the
   ordinary command/history path.
-- [ ] Retain Forum Page Builder runtime/browser and observed Wave evidence.
+- [x] Forum browser, runtime-authorization and deployed server-function evidence
+  harness source is retained without claiming execution.
+- [x] Forum Wave admission source is ready and requires accepted Pages gate evidence
+  plus those Forum packets on one exact checkout source; deployment-bound packets
+  must correlate to the same immutable RepoDigest without upgrading maintainer-
+  reviewed identity into cryptographic proof.
+- [ ] Execute the Forum evidence packets, Wave admission and separate observed
+  control-plane Wave; retain audit, fallback, metrics/traces, rollback, approvals,
+  waivers and owner review.
 
 ## Target architecture
 
@@ -301,6 +334,7 @@ persistence. Rich text remains an external dedicated capability.
     -> published state + transactional outbox
     -> module-owned route/page/artifact generation rotation
     -> generation-aware storefront/artifact cache reads
+    -> accepted deployment-health binding can only narrow configured rollout
 
   contribution owner (Forum)
     -> topic/reply lifecycle, revisions and visibility remain Forum-owned
@@ -309,6 +343,7 @@ persistence. Rich text remains an external dedicated capability.
     -> Fly identity/configuration only; no copied owner data
     -> owner preview service/HTTP/native transport reauthorize and read Forum state
     -> owner schema/validation transport returns schema + normalized configuration only
+    -> Wave admission consumes accepted Pages gate + exact-source Forum evidence
 
   application composition root
     -> tenant-enabled contribution extensions
@@ -318,6 +353,7 @@ persistence. Rich text remains an external dedicated capability.
 
   rustok-page-builder
     -> capability policy / health / rollout
+    -> process-local observation + deployment evaluator contracts
     -> provider adapter seams
     -> admin provider status/degraded controls
     -> preview/review/sanitization/materialization identity
@@ -402,7 +438,10 @@ Rules:
   the owner's valid normalized configuration into Fly `props`;
 - consumer list/create/lifecycle UI remains consumer-owned;
 - provider status may only narrow host tenant/RBAC capabilities;
-- missing provider-health observation remains `unobserved` rather than healthy;
+- missing, invalid or expired provider-health binding remains `unobserved` rather
+  than healthy;
+- rollout-only candidate evidence remains `unobserved` by design while observed
+  health is retained in its separate exact-source owner-acceptance branch;
 - no fallback editor is mounted when the provider is unavailable: the surface
   remains typed and read-only.
 
@@ -434,8 +473,9 @@ Rules:
 - Cache backend failures fail open to the authoritative owner source read.
 - Handler receipts preserve source event and correlation identity; provider errors
   remain retryable. A retry may safely advance a generation more than once.
-- Provider rollout flags and observed health are separate evidence. Lack of an
-  observed SLO snapshot is never converted to a healthy claim.
+- Provider rollout flags and observed health are separate evidence. Process-local
+  samples are not deployment authority; accepted deployment health must pass exact
+  target/source/freshness/sample admission and may expire back to `unobserved`.
 - Consumer contribution metadata is canonical module metadata; runtime source must
   not retain a parallel handwritten descriptor tree.
 - Shared contribution parsing/normalization is platform build tooling and publish
@@ -546,9 +586,12 @@ of the verification programme.
   assembly, Fly registry installation, effective-permission admission, explicit
   owner-preview and owner-property ports/panels without domain imports in Page
   Builder.
+- [x] Provider-health consumer narrowing source: validated accepted health reaches
+  workspace, authoritative SSR, standalone browser-intent and capability preflight
+  through the shared effective runtime flag policy.
 - [ ] Complete remaining generic typed asset/control surfaces and accessibility
   evidence.
-- [ ] Retain observed provider-health/degraded browser evidence.
+- [ ] Retain executed observed provider-health/degraded browser evidence.
 
 ### Phase 8 — storefront
 
@@ -585,31 +628,42 @@ of the verification programme.
 
 - [ ] Internal tenant Wave 0 with observed evidence.
 - [ ] Pages Wave 1 after accepted publication/cache/rollback/repair/browser gates.
+- [x] Provider-health observation/evaluator/binding/consumer source chain.
+- [x] Observed-health runtime harness and owner-acceptance source.
+- [x] Pages reference-consumer gate acceptance source with explicit owner/rollback decision.
 - [x] Forum canonical contribution metadata through shared tooling.
 - [x] Forum Fly adapter/component registry and runtime contribution assembly source.
 - [x] Forum owner-preview host composition source.
 - [x] Forum owner-property host composition source.
-- [ ] Forum retained runtime/browser and observed Wave evidence.
+- [x] Forum browser/runtime/server-function evidence harness source.
+- [x] Forum Wave admission source over accepted Pages gate + exact Forum evidence.
+- [ ] Execute exact provider-health, Pages gate and Forum evidence/admission packets.
+- [ ] Retain observed Forum control-plane Wave evidence and owner review.
 - [ ] Media/Pages reusable sections.
 - [ ] Blog, Product, Pricing, Taxonomy and SEO contributions.
 - [ ] Additional modules only after renderer/property/cache ownership is proven.
 
 ## Immediate implementation order
 
-1. Retain Forum-enabled/disabled Pages browser evidence for block insertion, owner
-   schema loading, invalid diagnostics, owner-normalized `props`, undo/redo and
-   all-on/preview-off/properties-off behavior.
-2. Retain Forum runtime authorization evidence for property/preview transports,
-   hidden-category/moderator-preview behavior and effective `manage -> read`
-   admission.
-3. Connect a real provider-health observation source to the admin status seam and
-   retain observed provider-health evidence for degraded/unavailable behavior.
-4. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
+1. Execute the exact provider-health deployment chain: identity/target inventory,
+   deployment metrics/evaluator, binding-owner acceptance and live remaining-lease
+   Pages binding, followed by the observed-health runtime harness and retrospective
+   owner decision. Source inspection must not substitute for current health.
+2. Execute the rollout-only Pages reference candidate and combine it with the
+   owner-accepted observed-health packet for the explicit Pages gate owner and
+   rollback decision. Committed source remains `accepted = false` until then.
+3. Execute Forum browser, runtime-authorization and deployed server-function
+   evidence on the same exact source/deployment boundary and run the source-ready
+   Forum Wave admission correlation.
+4. Perform the separate observed Forum control-plane Wave with audit trail,
+   fallback profiles, metrics/traces, rollback decision, approvals and waivers,
+   then retain owner review.
+5. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
    cache rotation/miss-refill, metadata isolation and authenticated/anonymous
    authoring boundaries.
-5. Complete remaining generic Page Builder asset/accessibility controls and their
+6. Complete remaining generic Page Builder asset/accessibility controls and their
    executable browser evidence.
-6. Promote no new consumer or FFA/FBA wave until its ownership and retained
+7. Promote no new consumer or FFA/FBA wave until its ownership and retained
    execution evidence satisfy the same canonical composition boundary.
 
 ## Verification programme
@@ -632,8 +686,21 @@ node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
 node scripts/verify/verify-fly-ui-contributions.mjs
 node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
+node scripts/verify/verify-forum-page-builder-wave-admission.mjs
+node scripts/verify/verify-forum-wave-plan-sync.mjs
+node scripts/verify/verify-forum-wave-evidence-freshness.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-scenario-baseline.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs
@@ -657,9 +724,10 @@ cleanup, DnD/keyboard/accessibility, metadata/body revision conflicts,
 authoritative sanitization/resource budgets, deterministic artifact and receipt
 integrity, preview/static materialization parity, idempotent replay, repair/
 rollback continuity, event-driven cache generation rotation and public miss/
-refill, anonymous authoring exclusion, provider degradation, generated module
-metadata authority, shared publish validation, Forum owner-preview/property host
-continuity and observed tenant rollout.
+refill, anonymous authoring exclusion, exact-target provider health/degradation,
+generated module metadata authority, shared publish validation, Forum owner-
+preview/property host continuity, accepted Pages gate lineage, Forum admission and
+observed tenant rollout.
 
 ## Update rules
 
