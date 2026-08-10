@@ -68,6 +68,7 @@ mod refund_reconciliation;
 mod return_completion_operation;
 mod return_completion_orchestration;
 mod return_completion_recovery;
+mod return_decision_owner_orchestration;
 mod shipping_profile;
 mod staged_checkout;
 #[path = "../storefront_staged_checkout_runtime.rs"]
@@ -253,6 +254,10 @@ pub use return_completion_orchestration::{
 pub use return_completion_recovery::{
     ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse,
     ReturnCompletionOrchestrationService,
+};
+pub use return_decision_owner_orchestration::{
+    ReturnDecisionOwnerOrchestrationError, ReturnDecisionOwnerOrchestrationResult,
+    ReturnDecisionOwnerOrchestrationService,
 };
 pub use shipping_profile::ShippingProfileService;
 pub use staged_checkout::{StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService};

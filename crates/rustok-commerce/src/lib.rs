@@ -78,10 +78,11 @@ pub use services::{
     ReturnClaimDecisionInput, ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
     ReturnCompletionOperationJournal, ReturnCompletionOperationResult,
     ReturnCompletionOperationStage, ReturnCompletionOperationStatus,
-    ReturnCompletionOrchestrationService, ReturnDecisionInput, ReturnDecisionResponse,
-    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
-    StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService, StoreContextError,
-    StoreContextResult, StoreContextService,
+    ReturnCompletionOrchestrationService, ReturnDecisionInput,
+    ReturnDecisionOwnerOrchestrationError, ReturnDecisionOwnerOrchestrationResult,
+    ReturnDecisionOwnerOrchestrationService, ReturnDecisionResponse, ReturnExchangeDecisionInput,
+    ReturnRefundDecisionInput, ShippingProfileService, StagedCheckoutError, StagedCheckoutResult,
+    StagedCheckoutService, StoreContextError, StoreContextResult, StoreContextService,
 };
 #[cfg(feature = "marketplace-financial")]
 pub use services::{

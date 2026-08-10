@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    ApplyOrderChangeInput, CancelOrderChangeInput, CancelOrderReturnInput, CreateOrderChangeInput,
-    CreateOrderReturnInput, OrderChangeResponse, OrderError, OrderReturnResponse, OrderService,
+    ApplyOrderChangeInput, CancelOrderChangeInput, CancelOrderReturnInput, CompleteOrderReturnInput,
+    CreateOrderChangeInput, CreateOrderReturnInput, OrderChangeResponse, OrderError,
+    OrderReturnResponse, OrderService,
 };
 
 const ORDER_POST_ORDER_COMMAND_OWNER: &str = "rustok_order";
@@ -47,6 +48,18 @@ pub trait OrderPostOrderCommandPort: Send + Sync {
         request: CreateOrderReturnRequest,
     ) -> Result<OrderReturnResponse, PortError>;
 
+    async fn complete_return(
+        &self,
+        context: PortContext,
+        _request: CompleteOrderReturnRequest,
+    ) -> Result<OrderReturnResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        Err(PortError::unavailable(
+            "order.post_order_complete_return_unavailable",
+            "order return completion capability is unavailable",
+        ))
+    }
+
     async fn cancel_return(
         &self,
         context: PortContext,
@@ -76,6 +89,12 @@ pub struct CancelOrderChangeRequest {
 pub struct CreateOrderReturnRequest {
     pub order_id: Uuid,
     pub input: CreateOrderReturnInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompleteOrderReturnRequest {
+    pub return_id: Uuid,
+    pub input: CompleteOrderReturnInput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -174,6 +193,19 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
             .create_return(tenant_id, request.order_id, request.input)
             .await
             .map_err(|error| map_order_error(&context, OPERATION, request.order_id, error))
+    }
+
+    async fn complete_return(
+        &self,
+        context: PortContext,
+        request: CompleteOrderReturnRequest,
+    ) -> Result<OrderReturnResponse, PortError> {
+        const OPERATION: &str = "complete_return";
+        let (tenant_id, _) = require_post_order_command_context(&context, OPERATION)?;
+        self.inner
+            .complete_return(tenant_id, request.return_id, request.input)
+            .await
+            .map_err(|error| map_order_error(&context, OPERATION, request.return_id, error))
     }
 
     async fn cancel_return(
