@@ -157,6 +157,7 @@
       "builder_off"
     ],
     "required_evidence": [
+      "admission",
       "control_plane.audit_trail",
       "fallback.profiles",
       "observability.metrics",
