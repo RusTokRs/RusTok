@@ -35,6 +35,10 @@ pub(crate) fn PropertiesSection(runtime: AdminEditorRuntime) -> impl IntoView {
         "page_builder.field.attributeValue",
         "Attribute value or JSON",
     );
+    let tag_apply_accessible_label = format!("{apply_label}: {tag_label}");
+    let content_apply_accessible_label = format!("{apply_label}: {content_label}");
+    let content_clear_accessible_label = format!("{clear_label}: {content_label}");
+    let attribute_apply_accessible_label = format!("{apply_label}: {attribute_name_label}");
 
     let tag_name = RwSignal::new(String::new());
     let content_value = RwSignal::new(String::new());
@@ -104,47 +108,53 @@ pub(crate) fn PropertiesSection(runtime: AdminEditorRuntime) -> impl IntoView {
                 })}</dd>
             </dl>
 
-            <label class="block text-sm font-medium">{tag_label}</label>
-            <div class="flex gap-2">
-                <input
-                    class="min-w-0 flex-1 rounded border border-input bg-background px-2 py-1 text-sm"
-                    prop:value=move || tag_name.get()
-                    on:input=move |event| tag_name.set(event_target_value(&event))
-                />
-                <button
-                    type="button"
-                    class="rounded border border-border px-2 py-1 text-xs"
-                    on:click=move |_| {
-                        let value = tag_name.get_untracked();
-                        let patch = if value.trim().is_empty() {
-                            ComponentPatch {
-                                remove_fields: vec!["tagName".to_string()],
-                                ..ComponentPatch::default()
-                            }
-                        } else {
-                            ComponentPatch {
-                                fields: Map::from_iter([(
-                                    "tagName".to_string(),
-                                    Value::String(value),
-                                )]),
-                                ..ComponentPatch::default()
-                            }
-                        };
-                        tag_runtime.dispatch_result(selected_patch(&tag_runtime, patch));
-                    }
-                >{apply_label.clone()}</button>
-            </div>
+            <label class="grid gap-1 text-sm">
+                <span class="font-medium">{tag_label}</span>
+                <div class="flex gap-2">
+                    <input
+                        class="min-w-0 flex-1 rounded border border-input bg-background px-2 py-1 text-sm"
+                        prop:value=move || tag_name.get()
+                        on:input=move |event| tag_name.set(event_target_value(&event))
+                    />
+                    <button
+                        type="button"
+                        class="rounded border border-border px-2 py-1 text-xs"
+                        aria-label=tag_apply_accessible_label
+                        on:click=move |_| {
+                            let value = tag_name.get_untracked();
+                            let patch = if value.trim().is_empty() {
+                                ComponentPatch {
+                                    remove_fields: vec!["tagName".to_string()],
+                                    ..ComponentPatch::default()
+                                }
+                            } else {
+                                ComponentPatch {
+                                    fields: Map::from_iter([(
+                                        "tagName".to_string(),
+                                        Value::String(value),
+                                    )]),
+                                    ..ComponentPatch::default()
+                                }
+                            };
+                            tag_runtime.dispatch_result(selected_patch(&tag_runtime, patch));
+                        }
+                    >{apply_label.clone()}</button>
+                </div>
+            </label>
 
-            <label class="block text-sm font-medium">{content_label}</label>
-            <textarea
-                class="min-h-24 w-full rounded border border-input bg-background px-2 py-1 text-sm"
-                prop:value=move || content_value.get()
-                on:input=move |event| content_value.set(event_target_value(&event))
-            ></textarea>
+            <label class="grid gap-1 text-sm">
+                <span class="font-medium">{content_label}</span>
+                <textarea
+                    class="min-h-24 w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                    prop:value=move || content_value.get()
+                    on:input=move |event| content_value.set(event_target_value(&event))
+                ></textarea>
+            </label>
             <div class="flex gap-2">
                 <button
                     type="button"
                     class="rounded border border-border px-2 py-1 text-xs"
+                    aria-label=content_apply_accessible_label
                     on:click=move |_| content_runtime.dispatch_result(selected_patch(
                         &content_runtime,
                         ComponentPatch {
@@ -159,6 +169,7 @@ pub(crate) fn PropertiesSection(runtime: AdminEditorRuntime) -> impl IntoView {
                 <button
                     type="button"
                     class="rounded border border-border px-2 py-1 text-xs"
+                    aria-label=content_clear_accessible_label
                     on:click=move |_| clear_content_runtime.dispatch_result(selected_patch(
                         &clear_content_runtime,
                         ComponentPatch {
@@ -187,6 +198,7 @@ pub(crate) fn PropertiesSection(runtime: AdminEditorRuntime) -> impl IntoView {
             <button
                 type="button"
                 class="rounded border border-border px-2 py-1 text-xs"
+                aria-label=attribute_apply_accessible_label
                 on:click=move |_| {
                     let name = attribute_name.get_untracked().trim().to_string();
                     if name.is_empty() {
@@ -214,12 +226,14 @@ pub(crate) fn PropertiesSection(runtime: AdminEditorRuntime) -> impl IntoView {
                         let runtime = attributes_runtime.clone();
                         let remove_name = name.clone();
                         let clear_label = clear_label.clone();
+                        let clear_accessible_label = format!("{clear_label}: {name}");
                         view! {
                             <div class="flex items-start gap-2 rounded bg-muted/50 px-2 py-1 text-xs">
                                 <code class="min-w-0 flex-1 break-all">{format!("{name}={value}")}</code>
                                 <button
                                     type="button"
                                     class="text-destructive"
+                                    aria-label=clear_accessible_label
                                     on:click=move |_| runtime.dispatch_result(selected_patch(
                                         &runtime,
                                         ComponentPatch {
