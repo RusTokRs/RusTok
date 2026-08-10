@@ -91,6 +91,14 @@
     "forum_wave_remains_blocked_in_source": true,
     "ffa_fba_remain_unclaimed_in_source": true
   },
+  "downstream_forum_wave": {
+    "admission_source": "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+    "admission_output_format": "forum_page_builder_wave_admission_v1",
+    "admission_output_status": "forum_wave_inputs_admitted_observed_control_plane_pending",
+    "accepted_gate_packet_is_required_input": true,
+    "accepted_gate_packet_does_not_accept_forum_wave": true,
+    "observed_control_plane_wave_requires_separate_admission": true
+  },
   "non_claims": {
     "candidate_execution_run_by_this_slice": false,
     "observed_health_execution_run_by_this_slice": false,
@@ -125,6 +133,7 @@
     "reference_consumer_gate_acceptance": "source_ready_maintainer_execution_pending",
     "candidate_and_observed_health_owner_accepted_packets": "maintainer_execution_pending",
     "accepted_pages_gate_packet": "blocked_on_maintainer_execution_and_decision",
-    "forum_observed_wave": "blocked_on_accepted_pages_gate_packet"
+    "forum_wave_admission": "source_ready_maintainer_execution_pending",
+    "forum_observed_wave": "blocked_on_admitted_exact_source_inputs"
   }
 }
