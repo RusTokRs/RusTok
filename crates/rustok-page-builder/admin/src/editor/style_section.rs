@@ -52,26 +52,30 @@ pub(crate) fn StyleSection(runtime: AdminEditorRuntime) -> impl IntoView {
     view! {
         <section class="space-y-2 border-t border-border pt-3">
             <h2 class="font-semibold">{styles_label}</h2>
-            <label class="block text-sm font-medium">{property_label}</label>
-            <select
-                class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
-                prop:value=move || style_property.get()
-                on:change=move |event| {
-                    let property = event_target_value(&event);
-                    style_property.set(property.clone());
-                    style_value.set(selected_style_value(&change_runtime, &property));
-                }
-            >
-                {descriptors.into_iter().map(|descriptor| view! {
-                    <option value=descriptor.property>{format!("{:?} · {}", descriptor.group, descriptor.label)}</option>
-                }).collect_view()}
-            </select>
-            <label class="block text-sm font-medium">{value_label}</label>
-            <input
-                class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
-                prop:value=move || style_value.get()
-                on:input=move |event| style_value.set(event_target_value(&event))
-            />
+            <label class="grid gap-1 text-sm">
+                <span class="font-medium">{property_label}</span>
+                <select
+                    class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                    prop:value=move || style_property.get()
+                    on:change=move |event| {
+                        let property = event_target_value(&event);
+                        style_property.set(property.clone());
+                        style_value.set(selected_style_value(&change_runtime, &property));
+                    }
+                >
+                    {descriptors.into_iter().map(|descriptor| view! {
+                        <option value=descriptor.property>{format!("{:?} · {}", descriptor.group, descriptor.label)}</option>
+                    }).collect_view()}
+                </select>
+            </label>
+            <label class="grid gap-1 text-sm">
+                <span class="font-medium">{value_label}</span>
+                <input
+                    class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                    prop:value=move || style_value.get()
+                    on:input=move |event| style_value.set(event_target_value(&event))
+                />
+            </label>
             <div class="flex gap-2">
                 <button
                     type="button"
