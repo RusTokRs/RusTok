@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    CancelOrderChangeInput, CancelOrderReturnInput, CreateOrderChangeInput,
+    ApplyOrderChangeInput, CancelOrderChangeInput, CancelOrderReturnInput, CreateOrderChangeInput,
     CreateOrderReturnInput, OrderChangeResponse, OrderError, OrderReturnResponse, OrderService,
 };
 
@@ -22,6 +22,18 @@ pub trait OrderPostOrderCommandPort: Send + Sync {
         context: PortContext,
         request: CreateOrderChangeRequest,
     ) -> Result<OrderChangeResponse, PortError>;
+
+    async fn apply_change(
+        &self,
+        context: PortContext,
+        _request: ApplyOrderChangeRequest,
+    ) -> Result<OrderChangeResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        Err(PortError::unavailable(
+            "order.post_order_apply_change_unavailable",
+            "order change apply capability is unavailable",
+        ))
+    }
 
     async fn cancel_change(
         &self,
@@ -46,6 +58,12 @@ pub trait OrderPostOrderCommandPort: Send + Sync {
 pub struct CreateOrderChangeRequest {
     pub order_id: Uuid,
     pub input: CreateOrderChangeInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyOrderChangeRequest {
+    pub change_id: Uuid,
+    pub input: ApplyOrderChangeInput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +135,19 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
             .create_order_change(tenant_id, actor_id, request.order_id, request.input)
             .await
             .map_err(|error| map_order_error(&context, OPERATION, request.order_id, error))
+    }
+
+    async fn apply_change(
+        &self,
+        context: PortContext,
+        request: ApplyOrderChangeRequest,
+    ) -> Result<OrderChangeResponse, PortError> {
+        const OPERATION: &str = "apply_change";
+        let (tenant_id, _) = require_post_order_command_context(&context, OPERATION)?;
+        self.inner
+            .apply_order_change(tenant_id, request.change_id, request.input)
+            .await
+            .map_err(|error| map_order_error(&context, OPERATION, request.change_id, error))
     }
 
     async fn cancel_change(

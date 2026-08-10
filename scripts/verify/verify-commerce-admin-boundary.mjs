@@ -174,13 +174,23 @@ assertContains(
 
 assertContains(
   adminChanges,
-  "OrderChangeOrchestrationService::new(",
-  `${files.adminChanges}: REST order-change apply must use commerce orchestration`,
+  "OrderChangeOrchestrationService::from_order_ports(",
+  `${files.adminChanges}: mounted REST order-change apply must compose owner ports`,
 );
 assertContains(
   adminChanges,
-  ".apply_order_change(tenant.id, id, input.difference_refund, input.metadata)",
-  `${files.adminChanges}: REST order-change apply must pass the complete command`,
+  "runtime.order_read_port()",
+  `${files.adminChanges}: REST order-change apply must use host-selected Order reads`,
+);
+assertContains(
+  adminChanges,
+  "runtime.order_post_order_command_port()",
+  `${files.adminChanges}: REST order-change apply must use host-selected Order commands`,
+);
+assertContains(
+  adminChanges,
+  ".apply_order_change_with_owner_ports(",
+  `${files.adminChanges}: REST order-change apply must use the owner-port orchestration entrypoint`,
 );
 assertNotContains(
   adminChanges,
@@ -196,7 +206,7 @@ assertContains(
 assertContains(
   graphqlFulfillment,
   ".apply_order_change(tenant_id, id, difference_refund, metadata)",
-  `${files.graphqlFulfillment}: GraphQL order-change apply must pass the complete command`,
+  `${files.graphqlFulfillment}: GraphQL compatibility path must stay explicit for its separate cutover`,
 );
 for (const marker of [
   "match order_change.change_type.as_str()",
@@ -212,18 +222,32 @@ for (const marker of [
 assertContains(
   graphqlRuntime,
   "pub(crate) fn order_change_orchestration_from_context(",
-  `${files.graphqlRuntime}: GraphQL runtime must compose order-change orchestration`,
+  `${files.graphqlRuntime}: GraphQL runtime must retain its separate order-change composition point`,
 );
 
 assertContains(
   orderChangeOrchestration,
-  "match order_change.change_type.as_str()",
-  `${files.orderChangeOrchestration}: orchestration must own order-change type dispatch`,
+  "pub async fn apply_order_change_with_owner_ports(",
+  `${files.orderChangeOrchestration}: REST owner-port orchestration entrypoint is missing`,
+);
+assertContains(
+  orderChangeOrchestration,
+  ".read_order_change_projection(",
+  `${files.orderChangeOrchestration}: REST orchestration must read the change through OrderReadPort`,
+);
+assertContains(
+  orderChangeOrchestration,
+  ".apply_change(",
+  `${files.orderChangeOrchestration}: default REST apply must use OrderPostOrderCommandPort`,
+);
+assertContains(
+  orderChangeOrchestration,
+  "pub async fn apply_order_change(",
+  `${files.orderChangeOrchestration}: GraphQL compatibility entrypoint must remain explicit`,
 );
 for (const operation of [
   ".apply_exchange_order_change(",
   ".apply_claim_order_change(",
-  ".apply_order_change(",
 ]) {
   assertContains(
     orderChangeOrchestration,

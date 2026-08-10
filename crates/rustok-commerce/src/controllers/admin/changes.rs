@@ -3,8 +3,10 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use rustok_api::Permission;
-use rustok_api::{AuthContext, TenantContext};
+use rustok_api::{
+    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
+    TenantContext,
+};
 use rustok_order::OrderService;
 use rustok_order::error::OrderError;
 use rustok_payment::error::PaymentError;
@@ -20,8 +22,8 @@ use super::{
 };
 use crate::services::OrderChangeOrchestrationService;
 use crate::{
-    ApplyOrderChangeResult, ExchangeDifferenceRefundInput, PaymentOrchestrationError,
-    PostOrderOrchestrationError,
+    ApplyOrderChangeResult, ExchangeDifferenceRefundInput, OrderChangeOrchestrationError,
+    PaymentOrchestrationError, PostOrderOrchestrationError,
     dto::{
         CancelOrderChangeInput, CreateOrderChangeInput, ListOrderChangesInput, OrderChangeResponse,
     },
@@ -88,6 +90,47 @@ impl AdminOrderChangeOrchestrationErrorContext {
     }
 }
 
+fn admin_order_change_read_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    change_id: Uuid,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-order-change:read:{change_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn admin_order_change_apply_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    change_id: Uuid,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-order-change:apply:{change_id}"),
+    )
+    // This legacy route has no caller idempotency header. The fresh identity only
+    // satisfies owner write admission and does not claim durable replay semantics.
+    .with_idempotency_key(Uuid::new_v4().to_string())
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
 fn admin_order_change_order_error_policy(error: &OrderError) -> AdminOrderChangeHttpPolicy {
     match error {
         OrderError::Validation(_) => (
@@ -121,6 +164,47 @@ fn admin_order_change_order_error_policy(error: &OrderError) -> AdminOrderChange
             "commerce_admin_order_failed",
             "Order operation could not be completed safely",
             "core",
+        ),
+    }
+}
+
+fn admin_order_change_port_error_policy(error: &PortError) -> AdminOrderChangeHttpPolicy {
+    match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "temporarily_unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
+            "invariant_violation",
         ),
     }
 }
@@ -250,6 +334,34 @@ fn map_admin_order_change_error(
     HttpError::new(status, code, message)
 }
 
+fn map_admin_order_change_port_error(
+    context: &PortContext,
+    actor_id: Uuid,
+    order_change_id: Uuid,
+    owner_operation: &'static str,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = admin_order_change_port_error_policy(&error);
+    tracing::error!(
+        owner = "rustok_order",
+        owner_operation,
+        consumer_operation = "apply_order_change",
+        correlation_id = %context.correlation_id,
+        tenant_id_non_empty = !context.tenant_id.is_empty(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        order_change_id_non_nil = !order_change_id.is_nil(),
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_ORDER_CHANGE_BOUNDARY,
+        "commerce admin order-change owner port failed with bounded diagnostics"
+    );
+    HttpError::new(status, code, message)
+}
+
 fn map_admin_order_change_orchestration_error(
     mut context: AdminOrderChangeOrchestrationErrorContext,
     error: PostOrderOrchestrationError,
@@ -308,6 +420,33 @@ fn map_admin_order_change_orchestration_error(
         "commerce admin order change orchestration failed"
     );
     HttpError::new(status, code, message)
+}
+
+fn map_admin_order_change_apply_error(
+    context: AdminOrderChangeOrchestrationErrorContext,
+    read_context: &PortContext,
+    command_context: &PortContext,
+    error: OrderChangeOrchestrationError,
+) -> HttpError {
+    match error {
+        OrderChangeOrchestrationError::OrderRead(source) => map_admin_order_change_port_error(
+            read_context,
+            context.actor_id,
+            context.order_change_id.unwrap_or_default(),
+            "read_order_change_projection",
+            source,
+        ),
+        OrderChangeOrchestrationError::OrderCommand(source) => map_admin_order_change_port_error(
+            command_context,
+            context.actor_id,
+            context.order_change_id.unwrap_or_default(),
+            "apply_change",
+            source,
+        ),
+        OrderChangeOrchestrationError::PostOrder(source) => {
+            map_admin_order_change_orchestration_error(context, source)
+        }
+    }
 }
 
 /// Create admin order change preview
@@ -461,6 +600,7 @@ pub async fn apply_order_change(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<AdminApplyOrderChangeInput>,
 ) -> HttpResult<Json<ApplyOrderChangeResult>> {
@@ -471,21 +611,37 @@ pub async fn apply_order_change(
     )?;
 
     let actor_id = auth.user_id;
-    let result = OrderChangeOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
-        .with_payment_provider_registry(runtime.payment_provider_registry())
-        .apply_order_change(tenant.id, id, input.difference_refund, input.metadata)
-        .await
-        .map_err(|error| {
-            map_admin_order_change_orchestration_error(
-                AdminOrderChangeOrchestrationErrorContext::new(
-                    tenant.id,
-                    actor_id,
-                    id,
-                    "apply_order_change",
-                ),
-                error,
-            )
-        })?;
+    let read_context = admin_order_change_read_context(&tenant, &auth, &request_context, id);
+    let command_context = admin_order_change_apply_context(&tenant, &auth, &request_context, id);
+    let result = OrderChangeOrchestrationService::from_order_ports(
+        runtime.db_clone(),
+        runtime.event_bus(),
+        runtime.order_read_port(),
+        runtime.order_post_order_command_port(),
+    )
+    .with_payment_provider_registry(runtime.payment_provider_registry())
+    .apply_order_change_with_owner_ports(
+        tenant.id,
+        id,
+        read_context.clone(),
+        command_context.clone(),
+        input.difference_refund,
+        input.metadata,
+    )
+    .await
+    .map_err(|error| {
+        map_admin_order_change_apply_error(
+            AdminOrderChangeOrchestrationErrorContext::new(
+                tenant.id,
+                actor_id,
+                id,
+                "apply_order_change",
+            ),
+            &read_context,
+            &command_context,
+            error,
+        )
+    })?;
 
     Ok(Json(result))
 }

@@ -50,14 +50,19 @@ function fixture(options = {}) {
   `);
   put(root, "apps/server/tests/commerce_fulfillment_transport_guard.rs", "graphql_fulfillment_mutations_use_commerce_orchestration");
   put(root, "crates/rustok-commerce/src/controllers/admin/changes.rs", `
-    OrderChangeOrchestrationService::new();
-    service.apply_order_change(tenant.id, id, input.difference_refund, input.metadata);
+    OrderChangeOrchestrationService::from_order_ports();
+    runtime.order_read_port();
+    runtime.order_post_order_command_port();
+    service.apply_order_change_with_owner_ports();
   `);
   put(root, "crates/rustok-commerce/src/services/order_change_orchestration.rs", `
+    pub async fn apply_order_change_with_owner_ports() {}
+    owner.read_order_change_projection();
+    owner.apply_change();
+    pub async fn apply_order_change() {}
     match order_change.change_type.as_str() {}
     service.apply_exchange_order_change();
     service.apply_claim_order_change();
-    service.apply_order_change();
   `);
   put(root, "apps/server/tests/commerce_order_change_transport_guard.rs", "order_change_application_uses_commerce_orchestration");
   put(root, "crates/rustok-commerce/src/controllers/admin/returns.rs", `

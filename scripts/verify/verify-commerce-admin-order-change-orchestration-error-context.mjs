@@ -11,8 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const changes = read('crates/rustok-commerce/src/controllers/admin/changes.rs');
-const orderErrors = read('crates/rustok-order/src/error.rs');
-const paymentErrors = read('crates/rustok-payment/src/error.rs');
+const orchestration = read('crates/rustok-commerce/src/services/order_change_orchestration.rs');
 const postOrder = read('crates/rustok-commerce/src/services/post_order.rs');
 const paymentOrchestration = read(
   'crates/rustok-commerce/src/services/payment_orchestration.rs',
@@ -35,29 +34,29 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const orderPolicy = between(
+const portPolicy = between(
   changes,
-  'fn admin_order_change_order_error_policy(',
+  'fn admin_order_change_port_error_policy(',
   'fn admin_order_change_payment_error_policy(',
-  'order policy',
+  'order-change port policy',
 );
-const paymentPolicy = between(
+const portMapper = between(
   changes,
-  'fn admin_order_change_payment_error_policy(',
-  'fn admin_order_change_reserved_refund_error_policy(',
-  'payment policy',
+  'fn map_admin_order_change_port_error(',
+  'fn map_admin_order_change_orchestration_error(',
+  'order-change owner-port mapper',
 );
-const reservedRefundPolicy = between(
-  changes,
-  'fn admin_order_change_reserved_refund_error_policy(',
-  'fn adopt_order_change_order_error_identity(',
-  'reserved refund policy',
-);
-const mapper = between(
+const legacyMapper = between(
   changes,
   'fn map_admin_order_change_orchestration_error(',
+  'fn map_admin_order_change_apply_error(',
+  'legacy cross-domain mapper',
+);
+const applyMapper = between(
+  changes,
+  'fn map_admin_order_change_apply_error(',
   '/// Create admin order change preview',
-  'order-change orchestration mapper',
+  'apply boundary mapper',
 );
 const applyRoute = between(
   changes,
@@ -65,175 +64,108 @@ const applyRoute = between(
   '/// Cancel admin order change',
   'apply order change route',
 );
+const ownerMethod = between(
+  orchestration,
+  'pub async fn apply_order_change_with_owner_ports(',
+  '\n    }\n}',
+  'owner-port orchestration method',
+);
 
 for (const [value, label] of [
-  ['use rustok_payment::error::PaymentError;', 'typed payment import'],
-  ['PaymentOrchestrationError,', 'typed payment orchestration import'],
-  ['PostOrderOrchestrationError,', 'typed post-order import'],
-  [
-    'const ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER: &str =',
-    'orchestration owner constant',
-  ],
-  [
-    'const ADMIN_ORDER_CHANGE_BOUNDARY: &str = "commerce_admin_order_change_http";',
-    'HTTP boundary constant',
-  ],
-  ['type AdminOrderChangeHttpPolicy = (', 'static HTTP policy type'],
-  ['struct AdminOrderChangeOrchestrationErrorContext {', 'orchestration context'],
-  ['tenant_id: Uuid,', 'tenant field'],
-  ['actor_id: Uuid,', 'actor field'],
-  ['order_id: Option<Uuid>,', 'order identity field'],
-  ['order_change_id: Option<Uuid>,', 'change identity field'],
-  ['payment_collection_id: Option<Uuid>,', 'collection identity field'],
-  ['payment_id: Option<Uuid>,', 'payment identity field'],
-  ['refund_id: Option<Uuid>,', 'refund identity field'],
-  ["operation: &'static str,", 'operation field'],
-]) requireText(changes, value, label);
+  ['PortErrorKind::Validation', 'validation mapping'],
+  ['PortErrorKind::NotFound', 'not-found mapping'],
+  ['PortErrorKind::Conflict', 'conflict mapping'],
+  ['PortErrorKind::Forbidden', 'forbidden mapping'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'unavailable mapping'],
+  ['PortErrorKind::InvariantViolation', 'invariant mapping'],
+  ['"commerce_admin_order_invalid"', 'validation public code'],
+  ['"commerce_admin_not_found"', 'not-found public code'],
+  ['"commerce_admin_order_state_conflict"', 'conflict public code'],
+  ['"commerce_admin_order_storage_unavailable"', 'unavailable public code'],
+  ['"commerce_admin_order_failed"', 'fail-closed public code'],
+]) requireText(portPolicy, value, label);
 
 for (const [value, label] of [
-  ['OrderError::Validation(_)', 'order validation variant'],
-  ['OrderError::OrderNotFound(_)', 'order not-found variant'],
-  ['OrderError::OrderReturnNotFound(_)', 'return not-found variant'],
-  ['OrderError::OrderChangeNotFound(_)', 'change not-found variant'],
-  ['OrderError::InvalidTransition { .. }', 'order transition variant'],
-  ['OrderError::Database(_)', 'order database variant'],
-  ['OrderError::Core(_)', 'order core variant'],
-  ['"commerce_admin_order_invalid"', 'order validation code'],
-  ['"commerce_admin_order_state_conflict"', 'order conflict code'],
-  ['"commerce_admin_order_storage_unavailable"', 'order storage code'],
-  ['"commerce_admin_order_failed"', 'order fail-closed code'],
-  ['"Order request is invalid"', 'static order validation message'],
-  ['"Order operation could not be completed safely"', 'static order fail-closed message'],
-]) requireText(orderPolicy, value, label);
-
-for (const [value, label] of [
-  ['PaymentError::PaymentCollectionNotFound(_)', 'collection not-found variant'],
-  ['PaymentError::PaymentNotFound(_)', 'payment not-found variant'],
-  ['PaymentError::RefundNotFound(_)', 'refund not-found variant'],
-  ['PaymentError::Validation(_)', 'payment validation variant'],
-  ['PaymentError::InvalidTransition { .. }', 'payment transition variant'],
-  ['PaymentError::ProviderRejected { .. }', 'provider rejection variant'],
-  ['PaymentError::ProviderUnavailable { .. }', 'provider unavailable variant'],
-  ['PaymentError::ProviderInvalidResponse { .. }', 'provider invalid-response variant'],
-  ['PaymentError::ProviderOutcomeUnknown { .. }', 'provider unknown-outcome variant'],
-  ['PaymentError::ProviderConfiguration { .. }', 'provider configuration variant'],
-  ['PaymentError::Database(_)', 'payment database variant'],
-  ['StatusCode::BAD_GATEWAY', 'bad-gateway status'],
-  ['"commerce_admin_payment_invalid"', 'payment validation code'],
-  ['"commerce_admin_payment_state_conflict"', 'payment conflict code'],
-  ['"commerce_admin_payment_provider_unavailable"', 'provider unavailable code'],
-  ['"commerce_admin_payment_provider_invalid_response"', 'provider response code'],
-  ['"commerce_admin_payment_reconciliation_required"', 'payment reconciliation code'],
-  ['"commerce_admin_payment_provider_not_configured"', 'provider configuration code'],
-  ['"commerce_admin_payment_storage_unavailable"', 'payment storage code'],
-]) requireText(paymentPolicy, value, label);
-
-for (const [value, label] of [
-  ['PaymentError::ProviderOutcomeUnknown { .. }', 'reserved unknown-outcome variant'],
-  ['PaymentError::ProviderInvalidResponse { .. }', 'reserved invalid-response variant'],
-  ['PaymentError::ProviderUnavailable { .. }', 'reserved unavailable variant'],
-  ['"commerce_admin_refund_reconciliation_required"', 'refund reconciliation code'],
-  ['"Refund remains reserved while the provider outcome is reconciled"', 'refund reconciliation message'],
-  ['"commerce_admin_refund_provider_unavailable"', 'refund retry code'],
-  [
-    '"Refund remains reserved and the provider operation may be retried safely"',
-    'refund retry message',
-  ],
-  ['error => admin_order_change_payment_error_policy(error)', 'reserved fallback policy'],
-]) requireText(reservedRefundPolicy, value, label);
-
-for (const [value, label] of [
-  ['error: PostOrderOrchestrationError,', 'owned top-level cause'],
-  ['PostOrderOrchestrationError::Order(source)', 'nested order branch'],
-  ['PostOrderOrchestrationError::Payment(source)', 'nested payment branch'],
-  ['PostOrderOrchestrationError::PaymentOrchestration(source)', 'payment orchestration branch'],
-  ['PostOrderOrchestrationError::Validation(_)', 'orchestration validation branch'],
-  ['PaymentOrchestrationError::Provider(source)', 'provider branch'],
-  ['PaymentOrchestrationError::Payment(source)', 'payment owner branch'],
-  ['PaymentOrchestrationError::ProviderAfterRefundReservation {', 'reserved refund branch'],
-  ['context.refund_id = Some(*refund_id);', 'reserved refund identity adoption'],
-  ['adopt_order_change_order_error_identity(&mut context, source)', 'order identity adoption'],
-  ['adopt_order_change_payment_error_identity(&mut context, source)', 'payment identity adoption'],
-  ['"commerce_admin_post_order_invalid"', 'post-order validation code'],
-  ['"Post-order request is invalid"', 'post-order validation message'],
-  ['error = ?error', 'typed top-level cause log'],
-  ['owner = ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER', 'orchestration owner log'],
-  ['source_owner,', 'source owner log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['actor_id = %context.actor_id', 'actor log'],
-  ['order_id = ?context.order_id', 'order identity log'],
-  ['order_change_id = ?context.order_change_id', 'change identity log'],
-  ['payment_collection_id = ?context.payment_collection_id', 'collection identity log'],
-  ['payment_id = ?context.payment_id', 'payment identity log'],
-  ['refund_id = ?context.refund_id', 'refund identity log'],
-  ['operation = %context.operation', 'operation log'],
-  ['error_kind,', 'error-kind log'],
-  ['public_code = code', 'public-code log'],
-  ['status = %status', 'status log'],
-  ['boundary = ADMIN_ORDER_CHANGE_BOUNDARY', 'boundary log'],
-  ['HttpError::new(status, code, message)', 'single static envelope constructor'],
-]) requireText(mapper, value, label);
-
-for (const [value, label] of [
-  ['[Permission::ORDERS_UPDATE]', 'update permission'],
-  ['let actor_id = auth.user_id;', 'actor capture'],
-  ['.with_payment_provider_registry(runtime.payment_provider_registry())', 'provider registry contract'],
-  ['.apply_order_change(tenant.id, id, input.difference_refund, input.metadata)', 'service contract'],
-  ['.map_err(|error| {', 'typed mapping closure'],
-  ['map_admin_order_change_orchestration_error(', 'local mapper handoff'],
-  ['AdminOrderChangeOrchestrationErrorContext::new(', 'context construction'],
-  ['tenant.id,\n                    actor_id,\n                    id,\n                    "apply_order_change",', 'truthful route context'],
-]) requireText(applyRoute, value, label);
-
-const mapperUses =
-  changes.match(
-    /map_admin_order_change_orchestration_error\(\s+AdminOrderChangeOrchestrationErrorContext::new\(/g,
-  ) ?? [];
-if (mapperUses.length !== 1) {
-  failures.push(`expected one context-aware order-change orchestration callsite, found ${mapperUses.length}`);
+  ['owner = "rustok_order"', 'owner diagnostic'],
+  ['owner_operation,', 'owner operation diagnostic'],
+  ['consumer_operation = "apply_order_change"', 'consumer operation diagnostic'],
+  ['correlation_id = %context.correlation_id', 'correlation diagnostic'],
+  ['tenant_id_non_empty = !context.tenant_id.is_empty()', 'tenant shape diagnostic'],
+  ['actor_id_non_nil = !actor_id.is_nil()', 'actor shape diagnostic'],
+  ['order_change_id_non_nil = !order_change_id.is_nil()', 'change shape diagnostic'],
+  ['owner_error_kind = ?error.kind', 'owner kind diagnostic'],
+  ['owner_code_length = error.code.chars().count()', 'bounded owner code diagnostic'],
+  ['retryable = error.retryable', 'retryability diagnostic'],
+  ['HttpError::new(status, code, message)', 'stable public envelope'],
+]) requireText(portMapper, value, label);
+for (const value of ['error = ?error', 'error.message', 'error.to_string()', 'internal_message']) {
+  forbidText(portMapper, value, 'raw owner-port diagnostic');
 }
 
-for (const [ownerSource, value, label] of [
-  [orderErrors, 'Validation(String)', 'owner order validation variant'],
-  [orderErrors, 'OrderNotFound(Uuid)', 'owner order not-found variant'],
-  [orderErrors, 'OrderReturnNotFound(Uuid)', 'owner return not-found variant'],
-  [orderErrors, 'OrderChangeNotFound(Uuid)', 'owner change not-found variant'],
-  [orderErrors, 'InvalidTransition { from: String, to: String }', 'owner order transition variant'],
-  [orderErrors, 'Database(#[from] DbErr)', 'owner order database variant'],
-  [orderErrors, 'Core(#[from] rustok_core::Error)', 'owner order core variant'],
-  [paymentErrors, 'PaymentCollectionNotFound(Uuid)', 'owner collection variant'],
-  [paymentErrors, 'PaymentNotFound(Uuid)', 'owner payment variant'],
-  [paymentErrors, 'RefundNotFound(Uuid)', 'owner refund variant'],
-  [paymentErrors, 'ProviderUnavailable {', 'owner provider unavailable variant'],
-  [paymentErrors, 'ProviderRejected {', 'owner provider rejection variant'],
-  [paymentErrors, 'ProviderInvalidResponse {', 'owner provider response variant'],
-  [paymentErrors, 'ProviderOutcomeUnknown {', 'owner provider outcome variant'],
-  [paymentErrors, 'ProviderConfiguration { provider_id: String }', 'owner provider configuration variant'],
-  [postOrder, 'Order(#[from] rustok_order::error::OrderError)', 'post-order order variant'],
-  [postOrder, 'Payment(#[from] rustok_payment::error::PaymentError)', 'post-order payment variant'],
-  [postOrder, 'PaymentOrchestration(#[from] PaymentOrchestrationError)', 'post-order orchestration variant'],
-  [postOrder, 'Validation(String)', 'post-order validation variant'],
-  [paymentOrchestration, 'Provider(#[source] PaymentError)', 'payment orchestration provider variant'],
-  [paymentOrchestration, 'ProviderAfterRefundReservation {', 'payment orchestration reserved variant'],
-  [paymentOrchestration, 'Payment(#[from] PaymentError)', 'payment orchestration owner variant'],
-]) requireText(ownerSource, value, label);
+for (const [value, label] of [
+  ['OrderChangeOrchestrationError::OrderRead(source)', 'read-owner error branch'],
+  ['OrderChangeOrchestrationError::OrderCommand(source)', 'command-owner error branch'],
+  ['OrderChangeOrchestrationError::PostOrder(source)', 'cross-domain fallback branch'],
+  ['"read_order_change_projection"', 'read owner operation'],
+  ['"apply_change"', 'command owner operation'],
+  ['map_admin_order_change_orchestration_error(context, source)', 'legacy cross-domain handoff'],
+]) requireText(applyMapper, value, label);
+
+for (const [value, label] of [
+  ['PostOrderOrchestrationError::Order(source)', 'legacy order branch'],
+  ['PostOrderOrchestrationError::Payment(source)', 'legacy payment branch'],
+  ['PostOrderOrchestrationError::PaymentOrchestration(source)', 'legacy payment orchestration branch'],
+  ['PostOrderOrchestrationError::Validation(_)', 'legacy validation branch'],
+  ['PaymentOrchestrationError::ProviderAfterRefundReservation {', 'reserved-refund branch'],
+  ['"commerce_admin_refund_reconciliation_required"', 'reserved reconciliation envelope'],
+  ['"commerce_admin_refund_provider_unavailable"', 'reserved unavailable envelope'],
+]) requireText(legacyMapper, value, label);
+
+for (const [value, label] of [
+  ['request_context: RequestContext,', 'request context extractor'],
+  ['admin_order_change_read_context(&tenant, &auth, &request_context, id)', 'read context construction'],
+  ['admin_order_change_apply_context(&tenant, &auth, &request_context, id)', 'write context construction'],
+  ['OrderChangeOrchestrationService::from_order_ports(', 'owner-port orchestration construction'],
+  ['runtime.order_read_port()', 'host-selected read port'],
+  ['runtime.order_post_order_command_port()', 'host-selected command port'],
+  ['.apply_order_change_with_owner_ports(', 'owner-port orchestration call'],
+  ['read_context.clone()', 'read context forwarding'],
+  ['command_context.clone()', 'command context forwarding'],
+  ['map_admin_order_change_apply_error(', 'typed apply mapper'],
+]) requireText(applyRoute, value, label);
+
+for (const [value, label] of [
+  ['pub enum OrderChangeOrchestrationError', 'typed orchestration error'],
+  ['OrderRead(PortError)', 'read owner variant'],
+  ['OrderCommand(PortError)', 'command owner variant'],
+  ['PostOrder(#[from] PostOrderOrchestrationError)', 'cross-domain variant'],
+  ['.read_order_change_projection(', 'Order read port call'],
+  ['ReadOrderChangeProjectionRequest { change_id }', 'typed read request'],
+  ['.apply_change(', 'Order command port call'],
+  ['ApplyOrderChangeRequest {', 'typed apply request'],
+  ['.map_err(OrderChangeOrchestrationError::OrderRead)', 'read error preservation'],
+  ['.map_err(OrderChangeOrchestrationError::OrderCommand)', 'command error preservation'],
+]) requireText(orchestration, value, label);
 
 for (const value of [
-  '.map_err(super::map_post_order_orchestration_error)?;',
-  'format!("Post-order request is invalid:',
-  'format!("Payment request is invalid:',
-  'error.to_string()',
-  'err.to_string()',
-  'other.to_string()',
-  'HttpError::bad_request("commerce_operation_failed"',
-]) forbidText(changes, value, 'unsafe admin order-change orchestration public conversion');
+  'OrderService::new(',
+  '.get_order_change(',
+  '.apply_order_change(tenant_id, change_id,',
+]) forbidText(ownerMethod, value, 'owner-port REST orchestration must not construct concrete Order service');
+
+for (const [ownerSource, value, label] of [
+  [postOrder, 'Order(#[from] rustok_order::error::OrderError)', 'legacy post-order Order variant'],
+  [postOrder, 'Payment(#[from] rustok_payment::error::PaymentError)', 'legacy post-order Payment variant'],
+  [postOrder, 'PaymentOrchestration(#[from] PaymentOrchestrationError)', 'legacy payment orchestration variant'],
+  [paymentOrchestration, 'ProviderAfterRefundReservation {', 'payment reserved-refund variant'],
+]) requireText(ownerSource, value, label);
 
 if (failures.length > 0) {
-  console.error('Commerce admin order-change orchestration error-context verification failed:');
+  console.error('Commerce admin order-change owner-port orchestration error verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Commerce admin order-change orchestration retains typed causes and static public envelopes',
+  '✔ mounted REST order-change apply preserves typed owner-port errors and legacy cross-domain envelopes',
 );

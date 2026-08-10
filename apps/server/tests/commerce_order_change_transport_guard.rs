@@ -8,14 +8,17 @@ fn order_change_application_uses_commerce_orchestration() {
         include_str!("../../../crates/rustok-commerce/src/services/order_change_orchestration.rs");
 
     assert!(
-        rest.contains("OrderChangeOrchestrationService::new("),
-        "REST order-change application must use the commerce orchestration boundary"
+        rest.contains("OrderChangeOrchestrationService::from_order_ports("),
+        "mounted REST order-change application must compose host-selected owner ports"
     );
     assert!(
-        rest.contains(
-            ".apply_order_change(tenant.id, id, input.difference_refund, input.metadata)"
-        ),
-        "REST order-change application must pass the complete command to orchestration"
+        rest.contains("runtime.order_read_port()")
+            && rest.contains("runtime.order_post_order_command_port()"),
+        "mounted REST order-change application must use the HTTP runtime owner ports"
+    );
+    assert!(
+        rest.contains(".apply_order_change_with_owner_ports("),
+        "mounted REST order-change application must use the owner-port orchestration entrypoint"
     );
     assert!(
         !rest.contains("match order_change.change_type.as_str()"),
@@ -28,7 +31,7 @@ fn order_change_application_uses_commerce_orchestration() {
     );
     assert!(
         graphql.contains(".apply_order_change(tenant_id, id, difference_refund, metadata)"),
-        "GraphQL order-change application must pass the complete command to orchestration"
+        "GraphQL compatibility path must remain explicit until its owner-port cutover"
     );
     assert!(
         !graphql.contains("match order_change.change_type.as_str()"),
@@ -44,18 +47,23 @@ fn order_change_application_uses_commerce_orchestration() {
     );
     assert!(
         graphql_runtime.contains("pub(crate) fn order_change_orchestration_from_context("),
-        "GraphQL runtime must compose the order-change orchestration service"
+        "GraphQL runtime must keep the separate order-change orchestration composition point"
     );
 
     assert!(
-        orchestration.contains("match order_change.change_type.as_str()"),
-        "commerce orchestration must own order-change type dispatch"
+        orchestration.contains("pub async fn apply_order_change_with_owner_ports("),
+        "commerce orchestration must publish the mounted REST owner-port entrypoint"
     );
-    for operation in [
-        ".apply_exchange_order_change(",
-        ".apply_claim_order_change(",
-        ".apply_order_change(",
-    ] {
+    assert!(
+        orchestration.contains(".read_order_change_projection(")
+            && orchestration.contains(".apply_change("),
+        "REST owner-port entrypoint must read and default-apply through Order ports"
+    );
+    assert!(
+        orchestration.contains("pub async fn apply_order_change("),
+        "GraphQL compatibility entrypoint must remain explicit for a separate cutover"
+    );
+    for operation in [".apply_exchange_order_change(", ".apply_claim_order_change("] {
         assert!(
             orchestration.contains(operation),
             "order-change orchestration must retain {operation}"

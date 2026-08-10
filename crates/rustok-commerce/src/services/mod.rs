@@ -219,7 +219,9 @@ pub use marketplace_reversal_operator::{
     MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
     MarketplaceReversalOperatorService,
 };
-pub use order_change_orchestration::OrderChangeOrchestrationService;
+pub use order_change_orchestration::{
+    OrderChangeOrchestrationError, OrderChangeOrchestrationResult, OrderChangeOrchestrationService,
+};
 pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
 pub use paid_order_create_label_sweep::{
     PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
