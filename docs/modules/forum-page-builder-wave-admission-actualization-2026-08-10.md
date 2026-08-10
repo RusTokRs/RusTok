@@ -41,6 +41,8 @@ All four must carry the same exact checkout source commit.
 
 The Pages gate, Forum browser packet and Forum server-function attestation must also carry the same immutable RepoDigest. The runtime-authorization packet is source-bound but does not independently claim deployment identity, so the admission runner does not fabricate a deployment binding for it.
 
+The browser and server-function predecessor contracts already describe their deployment identities as maintainer-supplied/reviewed facts at the relevant boundary. Equality of their RepoDigest values with the accepted Pages gate is correlation, not a new cryptographic origin-to-digest proof.
+
 ## Pages gate admission
 
 The Pages input must retain:
@@ -112,13 +114,14 @@ The output retains only bounded input packet byte lengths/SHA-256 values, curren
 
 It records that the accepted Pages gate and Forum browser/runtime/server-function evidence are correlated for the same exact source/deployment boundary.
 
-It does **not** materialize the final Wave packet.
+It does **not** assert current provider health, upgrade the deployment identity to a cryptographic binding, or materialize the final Wave packet.
 
 ## Observed Wave boundary
 
 The existing Forum Wave still requires:
 
 ```text
+admission
 control_plane.audit_trail
 fallback.profiles
 observability.metrics
@@ -127,6 +130,8 @@ rollback.decision
 approvals
 waivers
 ```
+
+The live `admission` section must bind the exact `forum_page_builder_wave_admission_v1` packet SHA-256, source commit and immutable RepoDigest. The remaining live sections must then come from the observed control-plane Wave itself.
 
 Those live sections remain absent from source-ready evidence.
 
@@ -143,7 +148,7 @@ observed_run.status = not_run
 
 It now additionally declares the required accepted Pages gate packet and the required Wave admission packet.
 
-## Guard
+## Guards
 
 New source verifier:
 
@@ -151,9 +156,13 @@ New source verifier:
 scripts/verify/verify-forum-page-builder-wave-admission.mjs
 ```
 
-It locks the four-packet lineage, same exact checkout source commit, same immutable RepoDigest where deployment identity exists, exact browser/runtime/server-function source contracts, non-retention boundaries and the continued `observed_run = not_run` state.
+It locks the four-packet lineage, same exact checkout source commit, same immutable RepoDigest where deployment identity exists, exact browser/runtime/server-function source contracts, non-retention/non-cryptographic boundaries and the continued `observed_run = not_run` state.
 
-`verify-forum-wave-plan-sync.mjs` is also actualized so the Forum programme ledger cannot regress to a string-only Pages blocker.
+`verify-forum-wave-plan-sync.mjs` is actualized so the Forum programme ledger cannot regress to a string-only Pages blocker.
+
+`verify-forum-wave-evidence-freshness.mjs` is actualized so any future live Wave must bind the admitted packet hash/source/digest before its control-plane, metric, trace, rollback and approval sections can be accepted as fresh Wave evidence.
+
+The corresponding verifier test sources are synchronized to the new packet shape, but are intentionally not executed by this slice.
 
 ## Validation boundary
 
