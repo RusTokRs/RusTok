@@ -18,14 +18,20 @@ const requireText = (text, marker, message) => {
 for (const marker of [
   'pub trait OrderPostOrderCommandPort',
   'async fn create_change(',
+  'async fn apply_change(',
   'async fn cancel_change(',
   'async fn create_return(',
+  'async fn complete_return(',
   'async fn cancel_return(',
+  'pub struct CompleteOrderReturnRequest',
   'pub struct OrderPostOrderCommandRuntime',
   'context.require_policy(PortCallPolicy::write())',
+  '"order.post_order_complete_return_unavailable"',
   '.create_order_change(tenant_id, actor_id, request.order_id, request.input)',
+  '.apply_order_change(tenant_id, request.change_id, request.input)',
   '.cancel_order_change(tenant_id, request.change_id, request.input)',
   '.create_return(tenant_id, request.order_id, request.input)',
+  '.complete_return(tenant_id, request.return_id, request.input)',
   '.cancel_return(tenant_id, request.return_id, request.input)',
   'PortErrorKind::Unavailable',
   'PortErrorKind::InvariantViolation',
@@ -35,6 +41,7 @@ for (const marker of [
 
 for (const marker of [
   'mod post_order_command;',
+  'CompleteOrderReturnRequest',
   'OrderPostOrderCommandPort',
   'OrderPostOrderCommandRuntime',
   'in_process_order_post_order_command_port',

@@ -11,6 +11,9 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const returns = read('crates/rustok-commerce/src/controllers/admin/returns.rs');
+const ownerDecision = read(
+  'crates/rustok-commerce/src/services/return_decision_owner_orchestration.rs',
+);
 const orderErrors = read('crates/rustok-order/src/error.rs');
 const paymentErrors = read('crates/rustok-payment/src/error.rs');
 const paymentOrchestration = read(
@@ -38,8 +41,14 @@ const between = (content, start, end, label) => {
 const orderPolicy = between(
   returns,
   'fn admin_order_error_policy(',
-  'fn admin_payment_error_policy(',
+  'fn admin_order_port_error_policy(',
   'admin order policy',
+);
+const orderPortPolicy = between(
+  returns,
+  'fn admin_order_port_error_policy(',
+  'fn admin_payment_error_policy(',
+  'admin Order port policy',
 );
 const paymentPolicy = between(
   returns,
@@ -52,6 +61,12 @@ const reservedRefundPolicy = between(
   'fn admin_reserved_refund_error_policy(',
   'fn map_admin_order_return_error(',
   'reserved refund policy',
+);
+const ownerPortMapper = between(
+  returns,
+  'fn map_admin_return_decision_order_port_error(',
+  'fn map_admin_order_return_orchestration_error(',
+  'return-decision Order owner-port mapper',
 );
 const orchestrationMapper = between(
   returns,
@@ -76,6 +91,7 @@ for (const [value, label] of [
   ['use rustok_payment::error::PaymentError;', 'typed payment error import'],
   ['PaymentOrchestrationError,', 'typed payment orchestration import'],
   ['PostOrderOrchestrationError,', 'typed post-order import'],
+  ['ReturnDecisionOwnerOrchestrationError,', 'typed return-decision owner error import'],
   [
     'const ADMIN_ORDER_RETURN_ORCHESTRATION_OWNER: &str =',
     'orchestration owner constant',
@@ -111,6 +127,19 @@ for (const [value, label] of [
   ['"commerce_admin_order_storage_unavailable"', 'order storage code'],
   ['"commerce_admin_order_failed"', 'order fail-closed code'],
 ]) requireText(orderPolicy, value, label);
+
+for (const [value, label] of [
+  ['PortErrorKind::Validation', 'port validation kind'],
+  ['PortErrorKind::NotFound', 'port not-found kind'],
+  ['PortErrorKind::Conflict', 'port conflict kind'],
+  ['PortErrorKind::Forbidden', 'port forbidden kind'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'port unavailable kind'],
+  ['PortErrorKind::InvariantViolation', 'port invariant kind'],
+  ['"commerce_admin_order_invalid"', 'port validation code'],
+  ['"commerce_admin_order_state_conflict"', 'port conflict code'],
+  ['"commerce_admin_order_storage_unavailable"', 'port storage code'],
+  ['"commerce_admin_order_failed"', 'port fail-closed code'],
+]) requireText(orderPortPolicy, value, label);
 
 for (const [value, label] of [
   ['PaymentError::PaymentCollectionNotFound(_)', 'collection not-found variant'],
@@ -182,35 +211,65 @@ for (const [value, label] of [
   ['HttpError::new(status, code, message)', 'single static envelope constructor'],
 ]) requireText(orchestrationMapper, value, label);
 
-for (const [block, operation, identity, label] of [
-  [
-    decisionRoute,
-    '"create_return_decision"',
-    'auth.user_id,\n                    Some(id),\n                    None,',
-    'decision context',
-  ],
-  [
-    completeRoute,
-    '"complete_return"',
-    'auth.user_id,\n                    None,\n                    Some(id),',
-    'completion context',
-  ],
-]) {
-  requireText(block, '.map_err(|error| {', `${label} typed mapping closure`);
-  requireText(block, 'map_admin_order_return_orchestration_error(', `${label} mapper handoff`);
-  requireText(block, 'AdminOrderReturnOrchestrationErrorContext::new(', `${label} context construction`);
-  requireText(block, operation, `${label} operation`);
-  requireText(block, identity, `${label} truthful route identity`);
+for (const [value, label] of [
+  ['owner = "rustok_order.post_order_command"', 'Order owner label'],
+  ['consumer_operation = "create_return_decision"', 'consumer operation'],
+  ['correlation_id = %context.correlation_id', 'correlation identity'],
+  ['owner_error_kind = ?error.kind', 'bounded owner kind'],
+  ['owner_code_length = error.code.chars().count()', 'bounded owner code'],
+  ['retryable = error.retryable', 'owner retryability'],
+  ['public_code = code', 'public code'],
+  ['status = %status', 'public status'],
+]) requireText(ownerPortMapper, value, label);
+for (const value of ['error = ?error', 'error.message', 'error.to_string()', 'internal_message']) {
+  forbidText(ownerPortMapper, value, 'return-decision Order owner raw diagnostics');
 }
 
 for (const [value, label] of [
-  ['.create_return_decision(tenant.id, auth.user_id, id, input)', 'decision service contract'],
-  ['.complete_return(tenant.id, auth.user_id, id, command)', 'completion service contract'],
+  ['request_context: RequestContext,', 'request context extractor'],
+  ['admin_return_decision_order_context(&tenant, &auth, &request_context, id)', 'owner base context'],
+  ['ReturnDecisionOwnerOrchestrationService::new(', 'owner-backed orchestration'],
+  ['runtime.order_post_order_command_port()', 'host-selected Order command port'],
+  ['.create_return_decision(context.clone(), tenant.id, id, input)', 'owner-backed decision contract'],
+  ['.map_err(|error| match error {', 'typed decision error dispatch'],
+  ['ReturnDecisionOwnerOrchestrationError::OrderCommand(error)', 'Order owner error branch'],
+  ['map_admin_return_decision_order_port_error(', 'Order owner mapper handoff'],
+  ['ReturnDecisionOwnerOrchestrationError::PostOrder(error)', 'Payment/validation orchestration branch'],
+  ['map_admin_order_return_orchestration_error(', 'post-order mapper handoff'],
+  ['"create_return_decision"', 'decision operation'],
   ['[Permission::ORDERS_UPDATE]', 'order update permission'],
   ['[Permission::PAYMENTS_UPDATE]', 'payment update permission'],
   ['super::decision_requires_payments_update(', 'decision payment permission gate'],
+]) requireText(decisionRoute, value, label);
+for (const value of [
+  'PostOrderOrchestrationService::new(',
+  'OrderService::new(',
+  '.create_return(tenant.id, id,',
+]) forbidText(decisionRoute, value, 'mounted decision route concrete Order dependency');
+
+for (const [value, label] of [
+  ['.map_err(|error| {', 'completion typed mapping closure'],
+  ['map_admin_order_return_orchestration_error(', 'completion mapper handoff'],
+  ['AdminOrderReturnOrchestrationErrorContext::new(', 'completion context construction'],
+  ['"complete_return"', 'completion operation'],
+  ['auth.user_id,\n                    None,\n                    Some(id),', 'completion truthful route identity'],
+  ['.complete_return(tenant.id, auth.user_id, id, command)', 'completion service contract'],
   ['if input.refund.is_some() {', 'completion payment permission gate'],
-]) requireText(returns, value, label);
+]) requireText(completeRoute, value, label);
+
+for (const [value, label] of [
+  ['OrderPostOrderCommandPort', 'owner command port dependency'],
+  ['.create_return(', 'owner return creation'],
+  ['CreateOrderReturnRequest {', 'typed return request'],
+  ['.create_change(', 'owner change creation'],
+  ['CreateOrderChangeRequest {', 'typed change request'],
+  ['.complete_return(', 'owner return completion'],
+  ['CompleteOrderReturnRequest {', 'typed completion request'],
+  ['PaymentService::new(self.db.clone())', 'deferred Payment compatibility path'],
+]) requireText(ownerDecision, value, label);
+for (const value of ['OrderService::new(', '.create_order_change(', '.complete_return(tenant_id,']) {
+  forbidText(ownerDecision, value, 'owner-backed decision orchestration concrete Order dependency');
+}
 
 const orchestrationMapperUses =
   returns.match(

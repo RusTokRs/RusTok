@@ -3,8 +3,10 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use rustok_api::Permission;
-use rustok_api::{AuthContext, TenantContext};
+use rustok_api::{
+    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
+    TenantContext,
+};
 use rustok_order::OrderService;
 use rustok_order::error::OrderError;
 use rustok_payment::error::PaymentError;
@@ -21,8 +23,9 @@ use super::{
 use crate::{
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
     CompleteReturnResolutionInput, CreateReturnDecisionInput, PaymentOrchestrationError,
-    PostOrderOrchestrationError, PostOrderOrchestrationService,
-    ReturnCompletionOrchestrationService, ReturnDecisionResponse,
+    PostOrderOrchestrationError, ReturnCompletionOrchestrationService,
+    ReturnDecisionOwnerOrchestrationError, ReturnDecisionOwnerOrchestrationService,
+    ReturnDecisionResponse,
     dto::{
         CancelOrderReturnInput, CreateOrderReturnInput, ListOrderReturnsInput, OrderReturnResponse,
     },
@@ -86,6 +89,29 @@ impl AdminOrderReturnOrchestrationErrorContext {
     }
 }
 
+fn admin_return_decision_order_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    order_id: Uuid,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-return-decision:{order_id}"),
+    )
+    // This legacy route has no caller idempotency header. The generated root is
+    // write-admission metadata only; the orchestration derives a distinct identity
+    // for each Order owner operation without claiming durable request replay.
+    .with_idempotency_key(Uuid::new_v4().to_string())
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
 fn admin_order_error_policy(error: &OrderError) -> AdminOrderReturnHttpPolicy {
     match error {
         OrderError::Validation(_) => (
@@ -119,6 +145,47 @@ fn admin_order_error_policy(error: &OrderError) -> AdminOrderReturnHttpPolicy {
             "commerce_admin_order_failed",
             "Order operation could not be completed safely",
             "core",
+        ),
+    }
+}
+
+fn admin_order_port_error_policy(error: &PortError) -> AdminOrderReturnHttpPolicy {
+    match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "temporarily_unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
+            "invariant_violation",
         ),
     }
 }
@@ -214,6 +281,33 @@ fn map_admin_order_return_error(
         status = %status,
         boundary = ADMIN_ORDER_RETURN_BOUNDARY,
         "commerce admin order return owner operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_admin_return_decision_order_port_error(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_id: Uuid,
+    context: &PortContext,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = admin_order_port_error_policy(&error);
+    tracing::error!(
+        owner = "rustok_order.post_order_command",
+        consumer_operation = "create_return_decision",
+        correlation_id = %context.correlation_id,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        order_id_non_nil = !order_id.is_nil(),
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_ORDER_RETURN_BOUNDARY,
+        "commerce admin return-decision Order owner command failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -334,6 +428,7 @@ pub async fn create_order_return_decision(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateReturnDecisionInput>,
 ) -> HttpResult<(StatusCode, Json<ReturnDecisionResponse>)> {
@@ -352,22 +447,38 @@ pub async fn create_order_return_decision(
             "Permission denied: payments:update required",
         )?;
     }
-    let service = PostOrderOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
-        .with_payment_provider_registry(runtime.payment_provider_registry());
+
+    let context = admin_return_decision_order_context(&tenant, &auth, &request_context, id);
+    let service = ReturnDecisionOwnerOrchestrationService::new(
+        runtime.db_clone(),
+        runtime.order_post_order_command_port(),
+    )
+    .with_payment_provider_registry(runtime.payment_provider_registry());
     let decision = service
-        .create_return_decision(tenant.id, auth.user_id, id, input)
+        .create_return_decision(context.clone(), tenant.id, id, input)
         .await
-        .map_err(|error| {
-            map_admin_order_return_orchestration_error(
-                AdminOrderReturnOrchestrationErrorContext::new(
+        .map_err(|error| match error {
+            ReturnDecisionOwnerOrchestrationError::OrderCommand(error) => {
+                map_admin_return_decision_order_port_error(
                     tenant.id,
                     auth.user_id,
-                    Some(id),
-                    None,
-                    "create_return_decision",
-                ),
-                error,
-            )
+                    id,
+                    &context,
+                    error,
+                )
+            }
+            ReturnDecisionOwnerOrchestrationError::PostOrder(error) => {
+                map_admin_order_return_orchestration_error(
+                    AdminOrderReturnOrchestrationErrorContext::new(
+                        tenant.id,
+                        auth.user_id,
+                        Some(id),
+                        None,
+                        "create_return_decision",
+                    ),
+                    error,
+                )
+            }
         })?;
     Ok((StatusCode::CREATED, Json(decision)))
 }

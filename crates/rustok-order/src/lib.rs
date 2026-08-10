@@ -72,8 +72,8 @@ pub use order_read::{
 };
 pub use post_order_command::{
     ApplyOrderChangeRequest, CancelOrderChangeRequest, CancelOrderReturnRequest,
-    CreateOrderChangeRequest, CreateOrderReturnRequest, InProcessOrderPostOrderCommandPort,
-    OrderPostOrderCommandPort, OrderPostOrderCommandRuntime,
+    CompleteOrderReturnRequest, CreateOrderChangeRequest, CreateOrderReturnRequest,
+    InProcessOrderPostOrderCommandPort, OrderPostOrderCommandPort, OrderPostOrderCommandRuntime,
     in_process_order_post_order_command_port,
 };
 pub use ports::*;
