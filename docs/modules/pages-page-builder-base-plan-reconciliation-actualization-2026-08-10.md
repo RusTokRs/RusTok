@@ -38,6 +38,12 @@ The synchronized base-plan source truth is now:
 - the observed Forum control-plane Wave, live metrics/traces, rollback decision, approvals, waivers and Wave owner review remain maintainer-owned execution work;
 - current provider health is not asserted by source inspection. Missing, invalid, expired or uninstalled accepted health evidence remains `unobserved` at the Pages binding boundary.
 
+Fail-closed source marker retained for anti-drift guards:
+
+```text
+pages_reference_consumer_gate.accepted = false
+```
+
 ## Historical wording versus current source
 
 The reconciliation does not erase history. Older dated actualizations may still describe the cursor that existed when they were authored.
