@@ -1,0 +1,120 @@
+name: Index Contract CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-events/**"
+      - "crates/rustok-product/**"
+      - "crates/rustok-index/**"
+      - "scripts/verify/verify-event-contract-digest-admission.mjs"
+      - "scripts/verify/verify-index-product-refresh-event-family.mjs"
+      - "scripts/verify/verify-index-contract-ci.mjs"
+      - ".github/workflows/event-contract-digest-admission.yml"
+      - ".github/workflows/index-contract-ci.yml"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-events/**"
+      - "crates/rustok-product/**"
+      - "crates/rustok-index/**"
+      - "scripts/verify/verify-event-contract-digest-admission.mjs"
+      - "scripts/verify/verify-index-product-refresh-event-family.mjs"
+      - "scripts/verify/verify-index-contract-ci.mjs"
+      - ".github/workflows/event-contract-digest-admission.yml"
+      - ".github/workflows/index-contract-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+
+jobs:
+  source-contracts:
+    name: Source contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify Index CI source contract
+        run: node scripts/verify/verify-index-contract-ci.mjs
+      - name: Verify event digest admission contract
+        run: node scripts/verify/verify-event-contract-digest-admission.mjs
+      - name: Verify Product Index refresh family
+        run: node scripts/verify/verify-index-product-refresh-event-family.mjs
+
+  canonical-digest:
+    name: Canonical event digest drift
+    needs: source-contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-contract-ci
+      - name: Regenerate canonical event digests
+        run: cargo run --locked -p rustok-events --example event_contract_digests -- --write
+      - name: Require committed canonical event digests
+        run: git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json
+
+  focused-cargo:
+    name: Events Product Index cargo checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-contract-ci
+      - name: Check Events Product and Index targets
+        run: cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
+      - name: Verify canonical event contract test
+        run: cargo test --locked -p rustok-events --test canonical_contracts
+
+  gate:
+    name: Index Contract Gate
+    if: always()
+    needs:
+      - source-contracts
+      - canonical-digest
+      - focused-cargo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all focused checks
+        shell: bash
+        run: |
+          if [[ "${{ needs.source-contracts.result }}" != "success" ]] || \
+             [[ "${{ needs.canonical-digest.result }}" != "success" ]] || \
+             [[ "${{ needs.focused-cargo.result }}" != "success" ]]; then
+            echo "::error::Index contract CI did not complete successfully."
+            exit 1
+          fi
