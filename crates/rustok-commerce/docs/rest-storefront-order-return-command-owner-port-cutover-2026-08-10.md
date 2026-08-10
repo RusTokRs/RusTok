@@ -56,14 +56,17 @@ The new command boundary maps only bounded `PortError` kind/code-length/retryabi
 request identity-presence facts. It does not log or return raw owner/backend messages from
 the command call.
 
-Existing storefront Order read/customer diagnostics and the Payment refund-list boundary are
-outside this slice and remain unchanged.
+Existing storefront Order read/customer diagnostics are outside this slice and remain unchanged.
 
-## Remaining topology
+## Subsequent topology update
 
-The canonical broad ecommerce topology P0 remains open. In this same mounted controller,
-`GET /store/orders/{id}/refunds` still constructs `PaymentService` directly and is intentionally
-left for a separate Payment owner-read cutover.
+The Payment refund-list gap that was intentionally left after this command slice was subsequently
+moved behind `PaymentOrderReadPort::list_refunds_by_order` in the bounded storefront refund-read
+cutover dated 2026-08-10. This record no longer asserts direct mounted `PaymentService`
+construction for `GET /store/orders/{id}/refunds`.
+
+The canonical broad ecommerce topology P0 remains open for other remaining topology and
+validation work.
 
 ## Validation status
 
