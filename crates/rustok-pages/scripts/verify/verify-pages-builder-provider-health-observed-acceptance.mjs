@@ -138,11 +138,11 @@ for (const marker of [
 ]) need(sources.parity, marker, "plan parity actualization");
 
 if (contract.next_cursor?.observed_health_owner_acceptance !== "source_ready_maintainer_execution_pending") failures.push("observed-health acceptance source cursor drifted");
-if (contract.next_cursor?.pages_reference_consumer_gate_acceptance !== "pending") failures.push("Pages reference-consumer gate acceptance must remain pending");
+if (contract.next_cursor?.pages_reference_consumer_gate_acceptance !== "source_ready_maintainer_execution_pending") failures.push("Pages reference-consumer gate acceptance must be source-ready and maintainer-execution-pending");
 
 if (failures.length) {
   console.error("[verify-pages-builder-provider-health-observed-acceptance] FAIL");
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-builder-provider-health-observed-acceptance] PASS source_ready=true execution=pending gate_acceptance=pending");
+console.log("[verify-pages-builder-provider-health-observed-acceptance] PASS source_ready=true execution=pending gate_acceptance=source_ready");
