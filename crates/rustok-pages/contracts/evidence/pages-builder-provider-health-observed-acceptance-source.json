@@ -133,6 +133,6 @@
     "observed_health_owner_acceptance": "source_ready_maintainer_execution_pending",
     "live_identity_evaluator_binding_acceptance_runtime_evidence": "maintainer_execution_pending",
     "accepted_observed_health_gate_input": "blocked_on_maintainer_execution_and_decision",
-    "pages_reference_consumer_gate_acceptance": "pending"
+    "pages_reference_consumer_gate_acceptance": "source_ready_maintainer_execution_pending"
   }
 }
