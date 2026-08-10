@@ -11,8 +11,8 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const controller = read('crates/rustok-commerce/src/controllers/store/orders.rs');
-const paymentErrors = read('crates/rustok-payment/src/error.rs');
 const orderCommand = read('crates/rustok-order/src/post_order_command.rs');
+const paymentOrderRead = read('crates/rustok-payment/src/order_read.rs');
 const webErrors = read('crates/rustok-web/src/lib.rs');
 const failures = [];
 
@@ -33,14 +33,14 @@ const between = (content, start, end, label) => {
 };
 
 for (const [value, label] of [
-  ['PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext', 'typed Order/customer port context imports'],
+  ['PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext', 'typed Order/Payment context imports'],
   ['CreateOrderReturnRequest', 'typed Order return command request'],
-  ['use rustok_payment::{PaymentService, error::PaymentError};', 'typed Payment error import'],
+  ['use rustok_payment::ListRefundsByOrderRequest;', 'typed Payment refund request'],
   ['port_error_to_http_error', 'safe shared port HTTP mapper'],
   ['fn map_storefront_customer_port_error(', 'customer port mapper'],
   ['fn map_storefront_order_port_error(', 'Order read port mapper'],
   ['fn map_storefront_order_command_port_error(', 'Order command port mapper'],
-  ['fn map_storefront_payment_error(', 'Payment mapper'],
+  ['fn map_storefront_payment_port_error(', 'Payment owner port mapper'],
   ['async fn current_storefront_customer_id(', 'safe customer lookup'],
   ['async fn ensure_customer_owns_order(', 'safe ownership helper'],
   ['boundary = "commerce_storefront_order_http"', 'structured storefront boundary'],
@@ -61,19 +61,17 @@ for (const [value, label] of [
   ['"commerce_store_order_failed"', 'Order fail-closed public code'],
 ]) requireText(controller, value, label);
 
+const paymentMapper = between(
+  controller,
+  'fn map_storefront_payment_port_error(',
+  'async fn current_storefront_customer_id(',
+  'Payment refund port mapper',
+);
 for (const [value, label] of [
-  ['PaymentError::Validation(_)', 'payment validation mapping'],
-  ['PaymentError::PaymentCollectionNotFound(payment_collection_id)', 'collection not-found mapping'],
-  ['PaymentError::PaymentNotFound(payment_collection_id)', 'payment not-found mapping'],
-  ['PaymentError::RefundNotFound(refund_id)', 'refund not-found mapping'],
-  ['PaymentError::InvalidTransition { .. }', 'payment transition mapping'],
-  ['PaymentError::ProviderUnavailable { .. }', 'provider unavailable mapping'],
-  ['PaymentError::ProviderRejected { .. }', 'provider rejected mapping'],
-  ['PaymentError::ProviderInvalidResponse { .. }', 'provider invalid response mapping'],
-  ['PaymentError::ProviderOutcomeUnknown { .. }', 'provider unknown outcome mapping'],
-  ['PaymentError::ProviderConfiguration { .. }', 'provider configuration mapping'],
-  ['PaymentError::Database(_)', 'payment database mapping'],
-  ['StatusCode::BAD_GATEWAY', 'bad gateway status'],
+  ['"payment.order_refund_provider_unavailable"', 'provider unavailable owner identity'],
+  ['"payment.order_refund_provider_invalid_response"', 'provider invalid-response owner identity'],
+  ['"payment.order_refund_reconciliation_required"', 'reconciliation owner identity'],
+  ['"payment.order_refund_provider_not_configured"', 'provider configuration owner identity'],
   ['"commerce_store_payment_invalid"', 'payment invalid code'],
   ['"commerce_store_payment_not_found"', 'payment not-found code'],
   ['"commerce_store_payment_state_conflict"', 'payment state code'],
@@ -82,21 +80,20 @@ for (const [value, label] of [
   ['"commerce_store_payment_reconciliation_required"', 'payment reconciliation code'],
   ['"commerce_store_payment_provider_not_configured"', 'payment configuration code'],
   ['"commerce_store_payment_unavailable"', 'payment unavailable code'],
-]) requireText(controller, value, label);
+  ['owner_error_kind = ?error.kind', 'bounded Payment owner kind'],
+  ['owner_code_length = error.code.chars().count()', 'bounded Payment owner code'],
+  ['retryable = error.retryable', 'bounded Payment retryability'],
+]) requireText(paymentMapper, value, label);
+for (const value of ['error = ?error', 'error.message', 'internal_message', 'error.to_string()']) {
+  forbidText(paymentMapper, value, 'Payment owner mapper raw diagnostic');
+}
 
 for (const [ownerSource, value, label] of [
-  [paymentErrors, 'Validation(String)', 'owner payment validation variant'],
-  [paymentErrors, 'PaymentCollectionNotFound(Uuid)', 'owner collection variant'],
-  [paymentErrors, 'PaymentNotFound(Uuid)', 'owner payment variant'],
-  [paymentErrors, 'RefundNotFound(Uuid)', 'owner refund variant'],
-  [paymentErrors, 'ProviderUnavailable {', 'owner provider unavailable variant'],
-  [paymentErrors, 'ProviderRejected {', 'owner provider rejected variant'],
-  [paymentErrors, 'ProviderInvalidResponse {', 'owner invalid response variant'],
-  [paymentErrors, 'ProviderOutcomeUnknown {', 'owner unknown outcome variant'],
-  [paymentErrors, 'ProviderConfiguration { provider_id: String }', 'owner provider configuration variant'],
-  [paymentErrors, 'Database(#[from] DbErr)', 'owner payment database variant'],
   [orderCommand, 'async fn create_return(', 'owner Order return command'],
   [orderCommand, 'context.require_policy(PortCallPolicy::write())', 'owner Order write admission'],
+  [paymentOrderRead, 'async fn list_refunds_by_order(', 'owner Payment refund read'],
+  [paymentOrderRead, 'context.require_policy(PortCallPolicy::read())?', 'owner Payment read admission'],
+  [paymentOrderRead, '"payment.order_refund_read_unavailable"', 'external Payment fail-closed default'],
 ]) requireText(ownerSource, value, label);
 
 for (const [value, label] of [
@@ -109,11 +106,12 @@ for (const [value, label] of [
   ['.read_order_projection(', 'localized Order owner read'],
   ['.order_post_order_command_port()', 'host-selected Order return command'],
   ['CreateOrderReturnRequest {', 'typed return request'],
-  ['let payment_service = PaymentService::new(runtime.db_clone());', 'remaining Payment refund-list service'],
+  ['.payment_order_read_port()', 'host-selected Payment order read'],
+  ['.list_refunds_by_order(', 'typed Payment refund read'],
+  ['ListRefundsByOrderRequest {', 'typed Payment refund request construction'],
   ['page: params.pagination.page', 'page forwarding'],
   ['per_page: params.pagination.per_page', 'per-page forwarding'],
-  ['PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total)', 'Order pagination metadata'],
-  ['PaginationMeta::new(params.pagination.page, params.pagination.limit(), total)', 'Payment pagination metadata'],
+  ['PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total)', 'owner pagination metadata'],
 ]) requireText(controller, value, label);
 
 for (const operation of [
@@ -132,27 +130,29 @@ for (const operation of [
 for (const value of [
   'OrderService::new(',
   'error::OrderError',
-  'map_storefront_order_error(',
-  '.create_return(tenant.id, id, input)',
+  'PaymentService::new(',
+  'error::PaymentError',
+  'StorefrontOrderPaymentErrorContext',
+  'fn storefront_order_payment_error_policy(',
   'err.to_string()',
   'error.to_string()',
   'HttpError::bad_request("commerce_operation_failed"',
   'super::current_customer_id_for_db',
   'super::ensure_customer_owns_order_for_db',
-]) forbidText(controller, value, 'stale or unsafe storefront Order path');
+]) forbidText(controller, value, 'stale or unsafe storefront owner path');
 
 const commandMapper = between(
   controller,
   'fn map_storefront_order_command_port_error(',
-  'fn storefront_order_payment_error_policy(',
+  'fn map_storefront_payment_port_error(',
   'Order return command mapper',
 );
 for (const [value, label] of [
-  ['owner_error_kind = ?error.kind', 'bounded owner kind'],
-  ['owner_code_length = error.code.chars().count()', 'bounded owner code'],
-  ['retryable = error.retryable', 'bounded retryability'],
-  ['public_code = code', 'public code'],
-  ['status = %status', 'public status'],
+  ['owner_error_kind = ?error.kind', 'bounded Order owner kind'],
+  ['owner_code_length = error.code.chars().count()', 'bounded Order owner code'],
+  ['retryable = error.retryable', 'bounded Order retryability'],
+  ['public_code = code', 'Order public code'],
+  ['status = %status', 'Order public status'],
 ]) requireText(commandMapper, value, label);
 for (const value of ['error = ?error', 'error.message', 'internal_message', 'error.to_string()']) {
   forbidText(commandMapper, value, 'Order command mapper raw diagnostic');
@@ -173,5 +173,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce storefront Order owner reads/return command and Payment refund HTTP errors use stable public envelopes',
+  '✔ Commerce storefront Order and Payment owner boundaries use stable public envelopes',
 );

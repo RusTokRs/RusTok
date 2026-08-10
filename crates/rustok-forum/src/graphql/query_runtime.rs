@@ -9,7 +9,7 @@ use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
-    ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
+    ProfilePresentationService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
     graphql::GqlProfileSummary,
 };
 use rustok_telemetry::metrics;
@@ -971,7 +971,7 @@ where
             .collect());
     }
 
-    let profiles = ProfileService::new(db.clone())
+    let profiles = ProfilePresentationService::new(db.clone())
         .find_profile_summaries(
             tenant_id,
             &user_ids,

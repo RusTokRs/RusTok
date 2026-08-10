@@ -69,7 +69,7 @@ if (accessIndex < 0 || commandIndex < 0 || accessIndex > commandIndex) {
 const commandMapper = between(
   controller,
   'fn map_storefront_order_command_port_error(',
-  'fn storefront_order_payment_error_policy(',
+  'fn map_storefront_payment_port_error(',
   'storefront Order command mapper',
 );
 for (const [value, label] of [
@@ -112,11 +112,12 @@ for (const [value, label] of [
   ['.create_return(tenant_id, request.order_id, request.input)', 'owner-local execution'],
 ]) requireText(owner, value, label);
 
-requireText(
-  controller,
+for (const value of [
   'let payment_service = PaymentService::new(runtime.db_clone());',
-  'separate mounted Payment refund-list gap remains explicit',
-);
+  'StorefrontOrderPaymentErrorContext',
+  'fn storefront_order_payment_error_policy(',
+]) forbidText(controller, value, 'stale direct Payment refund boundary');
+
 requireText(
   plan,
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
@@ -128,8 +129,9 @@ for (const [value, label] of [
   ['Status: `source_complete_unvalidated`', 'record status'],
   ['OrderPostOrderCommandPort::create_return', 'record owner operation'],
   ['write-admission metadata only', 'record replay limitation'],
-  ['`GET /store/orders/{id}/refunds` still constructs `PaymentService` directly', 'record remaining Payment gap'],
-  ['no tests, Cargo commands, Node verifiers, formatter', 'record no validation execution'],
+  ['subsequently', 'record subsequent Payment cutover'],
+  ['PaymentOrderReadPort::list_refunds_by_order', 'record Payment owner capability'],
+  ['no tests, Cargo commands, Node verifiers, formatter', 'record validation status'],
 ]) requireText(record, value, label);
 
 if (failures.length > 0) {

@@ -1,10 +1,10 @@
 # Pages / Page Builder plan parity actualization — 2026-08-08
 
-Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / provider-health-server-binding-source-ready / provider-health-consumer-binding-source-ready / provider-health-capability-preflight-source-ready / provider-health-runtime-evidence-harness-source-ready / provider-health-observed-acceptance-source-ready / reference-consumer-gate-acceptance-source-ready / execution-acceptance-pending`.
+Status: `canonical-plan-parity-source-ready / forum-runtime-composition-source-ready / pages-reference-consumer-rollout-source-ready / provider-runtime-observation-source-ready / deployment-metrics-source-ready / freshness-signal-source-ready / deployment-identity-contract-source-ready / expected-target-inventory-contract-source-ready / deployment-health-evaluator-source-ready / provider-health-transport-source-ready / provider-health-owner-acceptance-source-ready / provider-health-server-binding-source-ready / provider-health-consumer-binding-source-ready / provider-health-capability-preflight-source-ready / provider-health-runtime-evidence-harness-source-ready / provider-health-observed-acceptance-source-ready / reference-consumer-gate-acceptance-source-ready / forum-wave-admission-source-ready / execution-acceptance-pending`.
 
 ## Current authority
 
-This parity packet now has fourteen source actualizations:
+This parity packet now has fifteen source actualizations:
 
 - the earlier Forum composition reconciliation through PR #3320;
 - `docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md`, current rollout authority after PRs #3333, #3337, #3345 and #3353;
@@ -19,7 +19,8 @@ This parity packet now has fourteen source actualizations:
 - `docs/modules/pages-page-builder-provider-health-capability-preflight-actualization-2026-08-09.md`;
 - `docs/modules/pages-page-builder-provider-health-runtime-evidence-harness-actualization-2026-08-09.md`;
 - `docs/modules/pages-page-builder-provider-health-observed-acceptance-actualization-2026-08-10.md`;
-- `docs/modules/pages-page-builder-reference-consumer-gate-acceptance-actualization-2026-08-10.md`, which closes the remaining Pages gate owner-decision source gap without claiming candidate execution, observed-health execution, current provider health, gate acceptance or downstream promotion.
+- `docs/modules/pages-page-builder-reference-consumer-gate-acceptance-actualization-2026-08-10.md`;
+- `docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md`, which closes the string-only Forum Wave blocker gap by requiring accepted Pages gate evidence plus exact-source Forum browser/runtime/server-function evidence before an observed control-plane Wave may start.
 
 Older shared/local/central plans remain programme history. This packet and the newest relevant dated overlay are the current source truth where wording differs.
 
@@ -53,11 +54,16 @@ The synchronized Pages / Page Builder boundary is now:
 - observed-health acceptance is retrospective: it may review evidence after the historical health lease expires, but it does not extend `health_valid_until`, assert current provider health, change live binding, accept the Pages gate, or satisfy the reference-gate owner sign-off/rollback decision by itself;
 - accepted observed-health output is `pages_builder_provider_health_observed_acceptance_v1 / owner_accepted_observed_runtime_evidence_gate_review_pending` and is only eligible input for later gate review;
 - the rollout-only reference candidate continues to retain `provider_health = unobserved`; observed health is intentionally a separate exact-source input rather than being fabricated into the four-profile rollout evidence;
-- Pages reference-consumer gate acceptance [source-ready / maintainer execution pending] now requires both `pages_reference_consumer_gate_candidate_v1 / component_execution_passed_owner_review_pending` and owner-accepted observed-health evidence on the same exact checkout source commit and immutable RepoDigest;
+- Pages reference-consumer gate acceptance [source-ready / maintainer execution pending] requires both `pages_reference_consumer_gate_candidate_v1 / component_execution_passed_owner_review_pending` and owner-accepted observed-health evidence on the same exact checkout source commit and immutable RepoDigest;
 - the gate owner decision is explicit `accept_pages_reference_consumer_gate` or `reject`, and the rollback disposition is explicit `retain_reference_consumer_candidate` or `rollback_reference_consumer_candidate`;
 - the gate decision packet records rollback disposition only; it never performs rollback, extends provider-health freshness, asserts current provider health, mutates canonical source or automatically accepts Forum Wave/FFA/FBA;
 - source `pages_reference_consumer_gate` remains `accepted = false` with execution pending until maintainer execution produces an accepted gate packet;
-- Forum observed Wave remains blocked by the Pages gate;
+- Forum Wave admission [source-ready / maintainer execution pending] requires `pages_reference_consumer_gate_acceptance_v1 / owner_accepted_pages_reference_consumer_gate`, `forum_page_builder_browser_execution_v1`, `forum_page_builder_runtime_authorization_execution_v1` and `forum_page_builder_server_fn_deployment_attestation_v1` on the same exact checkout source commit;
+- the accepted Pages gate, Forum browser packet and Forum server-function attestation must also carry the same immutable RepoDigest; the runtime-authorization packet is source-bound but does not fabricate a separate deployment binding;
+- equality of those RepoDigest values correlates the maintainer-supplied/reviewed deployment identities already declared by the predecessor contracts and does not upgrade origin-to-digest binding into a cryptographic proof;
+- successful admission produces only `forum_page_builder_wave_admission_v1 / forum_wave_inputs_admitted_observed_control_plane_pending`; it does not execute the observed control-plane Wave or accept Forum Wave;
+- live Forum Wave evidence must bind the admission packet SHA/source commit/RepoDigest and still materialize control-plane audit trail, fallback profiles, observability metrics/traces, rollback decision, approvals and waivers;
+- canonical Forum Wave source remains synthetic, `mode = source_ready`, `execution_status = not_run_by_implementation_agent`, and `observed_run.status = not_run`;
 - FFA/FBA promotion remains unclaimed.
 
 ## Current next cursor
@@ -74,10 +80,12 @@ artifact/HTTP
 -> reference-consumer candidate
 -> owner sign-off + explicit rollback decision
 -> Pages gate acceptance
--> Forum browser/runtime/deployment evidence and observed Wave
+-> Forum browser/runtime/deployment evidence
+-> Forum Wave admission
+-> observed control-plane Wave
 ```
 
-The provider-health / gate cursor is now:
+The provider-health / gate / Forum cursor is now:
 
 ```text
 bounded process-local Preview/Publish observation [source-ready]
@@ -95,16 +103,20 @@ bounded process-local Preview/Publish observation [source-ready]
 -> Pages reference-consumer gate acceptance [source-ready / maintainer execution pending]
 -> exact candidate + accepted observed-health packet + owner gate/rollback decision [maintainer execution pending]
 -> accepted Pages gate packet [blocked on maintainer execution and decision]
--> Forum observed Wave [blocked on accepted Pages gate packet]
+-> Forum browser/runtime/server-function evidence [source-ready / maintainer execution pending]
+-> Forum Wave admission [source-ready / maintainer execution pending]
+-> exact accepted gate + Forum evidence correlation [maintainer execution pending]
+-> Forum observed control-plane Wave [blocked on admitted exact-source inputs]
+-> Forum Wave owner review [pending after observed control-plane Wave]
 ```
 
-Source inspection alone must not mark execution, current health, observed-health acceptance, Pages gate acceptance or downstream promotion complete.
+Source inspection alone must not mark execution, current health, observed-health acceptance, Pages gate acceptance, Forum Wave admission execution, observed Wave or downstream promotion complete.
 
 ## Anti-drift guards
 
 `crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs` continues to lock the synchronized rollout cursor across shared/local/central plans, rollout actualization, Pages reference-consumer gate, Forum contribution manifest and Forum Wave source packet. It rejects an accepted Pages gate without execution evidence, fabricated provider health, Forum Wave promotion while Pages is pending, and any claim that `FLY_CAPABILITY_DENIED` substitutes for provider `FEATURE_DISABLED`.
 
-Provider-health / gate source is independently guarded by:
+Provider-health / gate / Forum admission source is independently guarded by:
 
 ```text
 crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
@@ -122,22 +134,25 @@ crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed
 crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs
 crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
 crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
+scripts/verify/verify-forum-page-builder-wave-admission.mjs
+scripts/verify/verify-forum-wave-plan-sync.mjs
+scripts/verify/verify-forum-wave-evidence-freshness.mjs
 ```
 
-The gate-acceptance guard locks the exact dual evidence lineage, same source commit/RepoDigest, historical-health semantics, explicit owner/rollback decisions and non-promotion boundary.
+The gate-acceptance guard locks the exact dual evidence lineage, same source commit/RepoDigest, historical-health semantics, explicit owner/rollback decisions and non-promotion boundary. The Forum admission/freshness guards lock accepted-gate consumption, exact Forum evidence correlation, non-cryptographic deployment-identity semantics and the requirement that the observed Wave remain a separate live evidence step.
 
 ## Execution boundary
 
-No tests, Node verifiers, Cargo commands, formatting, builds, Prometheus scrapes, backend queries, deployment identity captures, evaluator executions, binding owner acceptance executions, accepted packet installations, observed GraphQL/HTTP requests, Playwright/browser runs, provider-health runtime evidence, observed-health owner acceptance, reference-candidate execution, Pages gate decision, workflows, CI or migrations were executed by this slice.
+No tests, Node verifiers, Cargo commands, formatting, builds, Prometheus scrapes, backend queries, deployment identity captures, evaluator executions, binding owner acceptance executions, accepted packet installations, observed GraphQL/HTTP requests, Playwright/browser runs, provider-health runtime evidence, observed-health owner acceptance, reference-candidate execution, Pages gate decision, Forum browser/runtime/server-function execution, Wave admission execution, observed control-plane Wave, workflows, CI or migrations were executed by this slice.
 
 Suggested maintainer source commands, intentionally not run:
 
 ```bash
 node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+node scripts/verify/verify-forum-page-builder-wave-admission.mjs
+node scripts/verify/verify-forum-wave-plan-sync.mjs
+node scripts/verify/verify-forum-wave-evidence-freshness.mjs
 ```
 
 All execution and acceptance evidence remains maintainer-owned.

@@ -22,11 +22,13 @@ const evidencePath = process.env.RUSTOK_FORUM_WAVE_EVIDENCE_PATH
 
 const requiredGates = [
   "npm run verify:page-builder:consumer:forum",
+  "node scripts/verify/verify-forum-page-builder-wave-admission.mjs",
   "npm run verify:forum:wave-evidence-freshness",
   "npm run test:verify:forum:wave-evidence-freshness",
 ];
 const requiredProfiles = ["all_on", "publish_off", "preview_off", "builder_off"];
 const requiredObservedSections = [
+  "admission",
   "control_plane.audit_trail",
   "fallback.profiles",
   "observability.metrics",
@@ -35,6 +37,9 @@ const requiredObservedSections = [
   "approvals",
   "waivers",
 ];
+const commitPattern = /^[0-9a-f]{40}$/u;
+const sha256Pattern = /^[0-9a-f]{64}$/u;
+const repoDigestPattern = /^[^@\s]+@sha256:[0-9a-f]{64}$/u;
 
 function fail(message) {
   console.error("[verify-forum-wave-evidence-freshness] FAIL");
@@ -143,6 +148,22 @@ function validateSourceReady(evidence) {
   if (observedRun.blocked_by !== "pages_reference_consumer_gate") {
     fail("source-ready observed run must remain blocked by pages_reference_consumer_gate");
   }
+  if (
+    observedRun.accepted_gate_evidence?.required !== true ||
+    observedRun.accepted_gate_evidence?.format !== "pages_reference_consumer_gate_acceptance_v1" ||
+    observedRun.accepted_gate_evidence?.status !== "owner_accepted_pages_reference_consumer_gate"
+  ) {
+    fail("source-ready observed run must require explicit accepted Pages gate evidence");
+  }
+  if (
+    observedRun.wave_admission?.required !== true ||
+    observedRun.wave_admission?.source_status !== "source_ready_maintainer_execution_pending" ||
+    observedRun.wave_admission?.format !== "forum_page_builder_wave_admission_v1" ||
+    observedRun.wave_admission?.status !== "forum_wave_inputs_admitted_observed_control_plane_pending" ||
+    observedRun.wave_admission?.execution_status !== "maintainer_execution_pending"
+  ) {
+    fail("source-ready observed run Wave admission cursor drifted");
+  }
   if (observedRun.required_correlation_path !== "builder_write -> forum_publish -> storefront_read") {
     fail("source-ready observed run correlation path drifted");
   }
@@ -164,6 +185,9 @@ function validateSourceReady(evidence) {
 
   for (const liveOnlyKey of [
     "created_at",
+    "source_commit",
+    "deployment_image_digest",
+    "admission",
     "control_plane",
     "fallback",
     "observability",
@@ -197,6 +221,30 @@ function validateLive(evidence) {
   }
   if (evidence.execution_status !== "maintainer_verified") {
     fail("live evidence execution_status must be maintainer_verified");
+  }
+  if (typeof evidence.source_commit !== "string" || !commitPattern.test(evidence.source_commit)) {
+    fail("live evidence source_commit must be a full lowercase Git SHA");
+  }
+  if (
+    typeof evidence.deployment_image_digest !== "string" ||
+    !repoDigestPattern.test(evidence.deployment_image_digest)
+  ) {
+    fail("live evidence deployment_image_digest must be an immutable RepoDigest");
+  }
+
+  const admission = evidence.admission ?? {};
+  if (
+    admission.format !== "forum_page_builder_wave_admission_v1" ||
+    admission.status !== "forum_wave_inputs_admitted_observed_control_plane_pending" ||
+    admission.source_commit !== evidence.source_commit ||
+    admission.deployment_image_digest !== evidence.deployment_image_digest ||
+    typeof admission.packet_sha256 !== "string" ||
+    !sha256Pattern.test(admission.packet_sha256) ||
+    admission.pages_reference_consumer_gate_accepted !== true ||
+    admission.exact_source_commit_bound !== true ||
+    admission.exact_deployment_digest_bound !== true
+  ) {
+    fail("live evidence admission must bind the exact admitted Pages/Forum source and deployment lineage");
   }
 
   const refreshPolicy = evidence.refresh_policy ?? {};
@@ -291,7 +339,7 @@ function validateLive(evidence) {
 
   console.log("[verify-forum-wave-evidence-freshness] PASS");
   console.log(
-    `module=forum; wave=1; mode=live; created_at=${evidence.created_at}; next_due_at=${refreshPolicy.next_due_at}; max_age_days=${refreshPolicy.max_age_days}`,
+    `module=forum; wave=1; mode=live; source_commit=${evidence.source_commit}; created_at=${evidence.created_at}; next_due_at=${refreshPolicy.next_due_at}; max_age_days=${refreshPolicy.max_age_days}`,
   );
 }
 

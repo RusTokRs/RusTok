@@ -37,6 +37,9 @@
       "crates/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json",
       "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
       "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+      "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
+      "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+      "scripts/verify/verify-forum-page-builder-wave-admission.mjs",
       "scripts/verify/verify-forum-wave-plan-sync.mjs"
     ],
     "fallback_profiles": [
@@ -134,6 +137,18 @@
     "required": true,
     "status": "not_run",
     "blocked_by": "pages_reference_consumer_gate",
+    "accepted_gate_evidence": {
+      "required": true,
+      "format": "pages_reference_consumer_gate_acceptance_v1",
+      "status": "owner_accepted_pages_reference_consumer_gate"
+    },
+    "wave_admission": {
+      "required": true,
+      "source_status": "source_ready_maintainer_execution_pending",
+      "format": "forum_page_builder_wave_admission_v1",
+      "status": "forum_wave_inputs_admitted_observed_control_plane_pending",
+      "execution_status": "maintainer_execution_pending"
+    },
     "required_correlation_path": "builder_write -> forum_publish -> storefront_read",
     "required_profiles": [
       "all_on",
@@ -142,6 +157,7 @@
       "builder_off"
     ],
     "required_evidence": [
+      "admission",
       "control_plane.audit_trail",
       "fallback.profiles",
       "observability.metrics",
@@ -160,6 +176,7 @@
     "no_compile_gates": [
       "npm run verify:page-builder:consumer:forum",
       "node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs",
+      "node scripts/verify/verify-forum-page-builder-wave-admission.mjs",
       "npm run verify:forum:wave-evidence-freshness",
       "npm run test:verify:forum:wave-evidence-freshness",
       "node scripts/verify/verify-forum-wave-plan-sync.mjs",
@@ -175,7 +192,7 @@
     "rollback keep decision"
   ],
   "deferred": [
-    "observed tenant control-plane run after the pages reference-consumer gate",
+    "observed tenant control-plane run after an accepted pages reference-consumer gate and admitted exact-source Forum browser/runtime/server-function evidence",
     "measured preview and publish latency",
     "measured sanitize and runtime error rates",
     "correlated builder-write, forum-publication and storefront-read traces",

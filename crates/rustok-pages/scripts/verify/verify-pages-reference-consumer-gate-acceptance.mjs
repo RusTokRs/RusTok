@@ -12,6 +12,7 @@ const files = {
   gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   candidateContract: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
   observedSource: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+  forumAdmission: "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
   overlay: "docs/modules/pages-page-builder-reference-consumer-gate-acceptance-actualization-2026-08-10.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
@@ -31,6 +32,7 @@ const contract = JSON.parse(read(files.contract));
 const gate = JSON.parse(read(files.gate));
 const candidateContract = JSON.parse(read(files.candidateContract));
 const observedSource = JSON.parse(read(files.observedSource));
+const forumAdmission = JSON.parse(read(files.forumAdmission));
 const runner = read(files.runner);
 const overlay = read(files.overlay);
 const parity = read(files.parity);
@@ -39,6 +41,14 @@ if (contract.format !== "pages_reference_consumer_gate_acceptance_source_v1" || 
 if (candidateContract.output?.format !== "pages_reference_consumer_gate_candidate_v1" || candidateContract.output?.status !== "component_execution_passed_owner_review_pending") failures.push("candidate predecessor drifted");
 if (observedSource.format !== "pages_builder_provider_health_observed_acceptance_source_v1") failures.push("observed-health predecessor drifted");
 if (gate.accepted !== false || gate.current_boundary?.execution_gate !== "pending" || gate.current_boundary?.provider_health !== "unobserved" || gate.current_boundary?.forum_wave_blocker !== "pages_reference_consumer_gate") failures.push("source gate must remain fail-closed before owner decision");
+if (
+  forumAdmission.format !== "forum_page_builder_wave_admission_source_v1" ||
+  forumAdmission.status !== "source_ready_maintainer_execution_pending" ||
+  forumAdmission.pages_gate_input?.format !== "pages_reference_consumer_gate_acceptance_v1" ||
+  forumAdmission.pages_gate_input?.required_status !== "owner_accepted_pages_reference_consumer_gate" ||
+  forumAdmission.output?.format !== "forum_page_builder_wave_admission_v1" ||
+  forumAdmission.output?.status !== "forum_wave_inputs_admitted_observed_control_plane_pending"
+) failures.push("Forum Wave admission successor drifted");
 
 for (const [object, key, expected] of [
   [contract.candidate_input, "retained_source_hashes_must_match_contract_and_checkout", true],
@@ -58,10 +68,19 @@ for (const [object, key, expected] of [
   [contract.output, "accepted_status", "owner_accepted_pages_reference_consumer_gate"],
   [contract.source_gate_boundary, "source_gate_must_be_fail_closed_before_decision", true],
   [contract.source_gate_boundary, "pages_reference_consumer_gate_source_remains_accepted_false_until_maintainer_execution", true],
+  [contract.downstream_forum_wave, "accepted_gate_packet_is_required_input", true],
+  [contract.downstream_forum_wave, "accepted_gate_packet_does_not_accept_forum_wave", true],
+  [contract.downstream_forum_wave, "observed_control_plane_wave_requires_separate_admission", true],
   [contract.non_claims, "owner_gate_decision_executed", false],
   [contract.non_claims, "pages_reference_consumer_gate_accepted_in_source", false],
   [contract.non_claims, "tests_run", false],
 ]) if (object?.[key] !== expected) failures.push(`${key} drifted`);
+
+if (
+  contract.downstream_forum_wave?.admission_source !== files.forumAdmission ||
+  contract.downstream_forum_wave?.admission_output_format !== "forum_page_builder_wave_admission_v1" ||
+  contract.downstream_forum_wave?.admission_output_status !== "forum_wave_inputs_admitted_observed_control_plane_pending"
+) failures.push("Pages gate downstream Forum admission pointer drifted");
 
 for (const marker of [
   'const ACCEPT_DECISION = "accept_pages_reference_consumer_gate"',
@@ -109,14 +128,16 @@ for (const marker of [
   "reference-consumer-gate-acceptance-source-ready",
   "pages-page-builder-reference-consumer-gate-acceptance-actualization-2026-08-10.md",
   "Pages reference-consumer gate acceptance [source-ready / maintainer execution pending]",
+  "Forum Wave admission [source-ready / maintainer execution pending]",
 ]) need(parity, marker, "parity actualization");
 
 if (contract.next_cursor?.reference_consumer_gate_acceptance !== "source_ready_maintainer_execution_pending") failures.push("acceptance cursor drifted");
-if (contract.next_cursor?.forum_observed_wave !== "blocked_on_accepted_pages_gate_packet") failures.push("Forum Wave cursor drifted");
+if (contract.next_cursor?.forum_wave_admission !== "source_ready_maintainer_execution_pending") failures.push("Forum Wave admission cursor drifted");
+if (contract.next_cursor?.forum_observed_wave !== "blocked_on_admitted_exact_source_inputs") failures.push("Forum observed Wave cursor drifted");
 
 if (failures.length) {
   console.error("[verify-pages-reference-consumer-gate-acceptance] FAIL");
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-console.log("[verify-pages-reference-consumer-gate-acceptance] PASS source_ready=true execution=pending source_gate_accepted=false");
+console.log("[verify-pages-reference-consumer-gate-acceptance] PASS source_ready=true execution=pending forum_wave_admission=source_ready");
