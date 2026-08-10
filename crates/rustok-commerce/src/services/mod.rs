@@ -162,8 +162,9 @@ pub use checkout_stage_pipeline::{
 };
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub use fulfillment_create_label_recovery::FulfillmentCreateLabelRecoveryService;
-pub(crate) use fulfillment_orchestration::FulfillmentOrchestrationError;
-pub(crate) use fulfillment_orchestration_facade::FulfillmentOrchestrationService;
+pub use fulfillment_orchestration::FulfillmentOrchestrationError;
+pub use fulfillment_orchestration_facade::FulfillmentOrchestrationService;
+pub use journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 pub use fulfillment_reconciliation::FulfillmentReconciliationService;
 pub use journaled_checkout::{
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,

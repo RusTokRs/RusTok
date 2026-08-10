@@ -109,7 +109,10 @@ pub use services::{
     MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
     MarketplaceReversalOperatorService,
 };
-pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
+pub use services::{
+    FulfillmentOrchestrationError, FulfillmentOrchestrationService,
+    JournaledFulfillmentOrchestrationService,
+};
 pub(crate) use storefront_checkout_pricing::StorefrontCheckoutPricingResolver;
 
 pub struct CommerceModule;

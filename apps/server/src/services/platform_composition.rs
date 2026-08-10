@@ -86,12 +86,12 @@ pub struct PlatformCompositionModuleMutation {
 
 pub struct PlatformCompositionBuildService;
 
-struct PlatformCompositionBuildCommand {
-    expected_revision: Option<i64>,
-    manifest: ModulesManifest,
-    manifest_diff: ManifestDiff,
-    requested_by: String,
-    reason: String,
+pub struct PlatformCompositionBuildCommand {
+    pub expected_revision: Option<i64>,
+    pub manifest: ModulesManifest,
+    pub manifest_diff: ManifestDiff,
+    pub requested_by: String,
+    pub reason: String,
 }
 
 struct ServerCompositionBuildEnqueuer {
@@ -272,7 +272,7 @@ impl PlatformCompositionBuildService {
         Self::update_manifest_and_request_build(db, event_publisher, registry, command).await
     }
 
-    async fn update_manifest_and_request_build(
+    pub async fn update_manifest_and_request_build(
         db: &DatabaseConnection,
         event_publisher: std::sync::Arc<dyn BuildEventPublisher>,
         registry: &rustok_core::ModuleRegistry,

@@ -8,7 +8,7 @@ mod channel_index;
 mod generated_promotions;
 mod generation;
 #[cfg(feature = "mod-product")]
-mod product_index;
+pub mod product_index;
 
 use rustok_auth::AuthModule;
 use rustok_cache::CacheModule;

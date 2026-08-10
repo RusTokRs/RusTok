@@ -4,7 +4,7 @@ use rustok_auth::AuthConfig;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexModule;
 use rustok_server::common::settings::RustokSettings;
-use rustok_server::error::{Error, Result};
+use rustok_server::error::Result;
 use rustok_server::services::module_event_dispatcher::build_shared_runtime_extensions_with_host_providers;
 use rustok_server::services::server_runtime_context::ServerRuntimeContext;
 use sea_orm::Database;

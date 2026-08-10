@@ -15,6 +15,9 @@ mod product_schema_graphql;
 mod schema_retry_identity;
 mod ui;
 
+pub use legacy_transport::*;
 pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
+pub use product_schema_graphql::*;
+pub use schema_retry_identity::*;
 pub use transport::*;
 pub use ui::catalog_admin::ProductAdmin;

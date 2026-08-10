@@ -4,7 +4,8 @@ use rustok_core::ModuleRegistry;
 use rustok_modules::ModuleCompositionError;
 use rustok_server::modules::{ManifestDiff, ManifestModuleSpec, ModulesManifest};
 use rustok_server::services::platform_composition::{
-    PlatformCompositionBuildError, PlatformCompositionBuildService, PlatformCompositionService,
+    PlatformCompositionBuildCommand, PlatformCompositionBuildError,
+    PlatformCompositionBuildService, PlatformCompositionService,
 };
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, Statement};
 use std::sync::Arc;
@@ -81,11 +82,13 @@ async fn enqueue_default_manifest(
         db,
         publisher,
         &registry,
-        Some(seeded.revision),
-        manifest,
-        ManifestDiff::default(),
-        "test-admin".to_string(),
-        "success case".to_string(),
+        PlatformCompositionBuildCommand {
+            expected_revision: Some(seeded.revision),
+            manifest,
+            manifest_diff: ManifestDiff::default(),
+            requested_by: "test-admin".to_string(),
+            reason: "success case".to_string(),
+        },
     )
     .await
     .expect("build request should succeed")
@@ -150,11 +153,13 @@ async fn stale_revision_does_not_enqueue_build() {
         &db,
         publisher,
         &registry,
-        Some(seeded.revision - 1),
-        manifest,
-        ManifestDiff::default(),
-        "test-admin".to_string(),
-        "stale revision case".to_string(),
+        PlatformCompositionBuildCommand {
+            expected_revision: Some(seeded.revision - 1),
+            manifest,
+            manifest_diff: ManifestDiff::default(),
+            requested_by: "test-admin".to_string(),
+            reason: "stale revision case".to_string(),
+        },
     )
     .await
     {
@@ -198,11 +203,13 @@ async fn build_insert_error_rolls_back_platform_revision() {
         &db,
         publisher,
         &registry,
-        Some(seeded.revision),
-        manifest,
-        ManifestDiff::default(),
-        "test-admin".to_string(),
-        "missing builds table".to_string(),
+        PlatformCompositionBuildCommand {
+            expected_revision: Some(seeded.revision),
+            manifest,
+            manifest_diff: ManifestDiff::default(),
+            requested_by: "test-admin".to_string(),
+            reason: "missing builds table".to_string(),
+        },
     )
     .await
     {
@@ -244,11 +251,13 @@ async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
         &db,
         publisher,
         &registry,
-        Some(seeded.revision),
-        invalid_manifest,
-        ManifestDiff::default(),
-        "test-admin".to_string(),
-        "invalid manifest should fail validation".to_string(),
+        PlatformCompositionBuildCommand {
+            expected_revision: Some(seeded.revision),
+            manifest: invalid_manifest,
+            manifest_diff: ManifestDiff::default(),
+            requested_by: "test-admin".to_string(),
+            reason: "invalid manifest should fail validation".to_string(),
+        },
     )
     .await
     {

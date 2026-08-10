@@ -267,6 +267,7 @@ fn push_str_const(output: &mut String, name: &str, value: &str) {
 }
 
 fn push_str_slice_const(output: &mut String, name: &str, values: &[String]) {
+    output.push_str("#[allow(dead_code)]\n");
     output.push_str(&format!("pub const {name}: &[&str] = &["));
     for value in values {
         output.push_str(&format!("{value:?},"));

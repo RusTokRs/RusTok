@@ -1,15 +1,10 @@
 use rustok_api::RequestContext;
 use rustok_channel::{ChannelService, error::ChannelError};
 use rustok_inventory::{
-    PublicChannelInventoryVariantProjectionInput,
     is_metadata_visible_for_public_channel as inventory_metadata_visible_for_public_channel,
-    load_inventory_projection_by_variant_for_public_channel,
     normalize_public_channel_slug as inventory_normalize_public_channel_slug,
 };
 use sea_orm::DatabaseConnection;
-use uuid::Uuid;
-
-use crate::dto::ProductResponse;
 
 pub(crate) async fn is_module_enabled_for_request_channel(
     db: &DatabaseConnection,
@@ -40,38 +35,6 @@ pub(crate) fn public_channel_slug_from_request(request_context: &RequestContext)
     normalize_public_channel_slug(request_context.channel_slug.as_deref())
 }
 
-pub(crate) async fn apply_public_channel_inventory_to_product(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    product: &mut ProductResponse,
-    public_channel_slug: Option<&str>,
-) -> Result<(), sea_orm::DbErr> {
-    let variants = product
-        .variants
-        .iter()
-        .map(|variant| PublicChannelInventoryVariantProjectionInput {
-            variant_id: variant.id,
-            inventory_policy: variant.inventory_policy.as_str(),
-        })
-        .collect::<Vec<_>>();
-    let projections = load_inventory_projection_by_variant_for_public_channel(
-        db,
-        tenant_id,
-        &variants,
-        public_channel_slug,
-    )
-    .await?;
-
-    for variant in &mut product.variants {
-        let Some(projection) = projections.get(&variant.id) else {
-            continue;
-        };
-        variant.inventory_quantity = projection.available_quantity;
-        variant.in_stock = projection.in_stock;
-    }
-
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {

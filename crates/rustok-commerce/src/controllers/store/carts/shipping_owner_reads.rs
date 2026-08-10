@@ -18,9 +18,16 @@ use crate::{
     },
 };
 
-use super::super::{
-    SelectedShippingOptionValidation, StoreCartContextPatch, StoreCartResponse,
-};
+use super::super::{StoreCartContextPatch, StoreCartResponse};
+
+pub(super) struct SelectedShippingOptionValidation<'a> {
+    pub(super) selected_shipping_option_id: Option<Uuid>,
+    pub(super) shipping_selections: Option<&'a [crate::dto::CartShippingSelectionInput]>,
+    pub(super) currency_code: &'a str,
+    pub(super) public_channel_slug: Option<&'a str>,
+    pub(super) requested_locale: Option<&'a str>,
+    pub(super) tenant_default_locale: Option<&'a str>,
+}
 
 const STOREFRONT_CART_SHIPPING_OWNER: &str = "rustok_fulfillment";
 const STOREFRONT_CART_SHIPPING_BOUNDARY: &str = "commerce_storefront_cart_shipping_http";

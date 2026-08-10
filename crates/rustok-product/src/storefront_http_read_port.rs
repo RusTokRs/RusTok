@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, locale_tags_match};
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::entities::{product, product_translation};
