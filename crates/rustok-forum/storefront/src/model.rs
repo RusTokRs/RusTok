@@ -19,6 +19,8 @@ pub struct StorefrontForumData {
     pub selected_topic: Option<ForumTopicDetail>,
     pub replies: ForumReplyConnection,
     #[serde(default)]
+    pub member_cards: Vec<ForumMemberCard>,
+    #[serde(default)]
     pub read_state_available: bool,
 }
 
@@ -38,6 +40,39 @@ pub struct ForumTopicConnection {
 pub struct ForumReplyConnection {
     pub items: Vec<ForumReplyDetail>,
     pub total: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ForumMemberCard {
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    pub profile: ForumMemberProfileSummary,
+    #[serde(rename = "forumStats")]
+    pub forum_stats: ForumMemberStats,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ForumMemberProfileSummary {
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    pub handle: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    pub tags: Vec<String>,
+    #[serde(rename = "avatarMediaId")]
+    pub avatar_media_id: Option<String>,
+    #[serde(rename = "preferredLocale")]
+    pub preferred_locale: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ForumMemberStats {
+    #[serde(rename = "topicCount")]
+    pub topic_count: i32,
+    #[serde(rename = "replyCount")]
+    pub reply_count: i32,
+    #[serde(rename = "solutionCount")]
+    pub solution_count: i32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -64,6 +99,8 @@ pub struct ForumTopicListItem {
     pub effective_locale: String,
     #[serde(rename = "categoryId")]
     pub category_id: String,
+    #[serde(default, rename = "authorId")]
+    pub author_id: Option<String>,
     pub title: String,
     pub slug: String,
     pub status: String,
@@ -98,6 +135,8 @@ pub struct ForumTopicDetail {
     pub available_locales: Vec<String>,
     #[serde(rename = "categoryId")]
     pub category_id: String,
+    #[serde(default, rename = "authorId")]
+    pub author_id: Option<String>,
     pub title: String,
     pub slug: String,
     pub body: RichTextView,
@@ -124,6 +163,8 @@ pub struct ForumReplyDetail {
     pub effective_locale: String,
     #[serde(rename = "topicId")]
     pub topic_id: String,
+    #[serde(default, rename = "authorId")]
+    pub author_id: Option<String>,
     pub content: RichTextView,
     #[serde(rename = "contentPlainText")]
     pub content_plain_text: String,
@@ -247,6 +288,7 @@ mod tests {
             "createdAt": "2026-07-24T00:00:00Z"
         }))
         .expect("topic");
+        assert_eq!(topic.author_id, None);
         assert_eq!(topic.is_unread, None);
         assert_eq!(topic.unread_count, None);
     }

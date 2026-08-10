@@ -1,10 +1,13 @@
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashSet,
+    fmt::{Display, Formatter},
+};
 
 use crate::model::{
-    ForumCategoryConnection, ForumReplyConnection, ForumTopicConnection, ForumTopicDetail,
-    StorefrontForumData,
+    ForumCategoryConnection, ForumMemberCard, ForumReplyConnection, ForumTopicConnection,
+    ForumTopicDetail, StorefrontForumData,
 };
 
 use super::StorefrontForumBulkReadResult;
@@ -27,10 +30,11 @@ impl Display for ApiError {
 impl std::error::Error for ApiError {}
 
 const STOREFRONT_FORUM_CATEGORIES_QUERY: &str = "query StorefrontForumCategories($tenantId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontCategories(tenantId: $tenantId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale name slug description icon color topicCount replyCount } } }";
-const STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY: &str = "query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale categoryId title slug status isPinned isLocked replyCount createdAt } } }";
-const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $limit: Int) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, limit: $limit) { total items { id effectiveLocale categoryId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
-const STOREFRONT_FORUM_TOPIC_QUERY: &str = "query StorefrontForumTopic($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontAudienceTopic(tenantId: $tenantId, id: $id, locale: $locale) { id effectiveLocale availableLocales categoryId title slug body { document html } bodyPlainText status tags isPinned isLocked replyCount createdAt updatedAt } }";
-const STOREFRONT_FORUM_REPLIES_QUERY: &str = "query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale topicId content { document html } contentPlainText status parentReplyId createdAt updatedAt } } }";
+const STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY: &str = "query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt } } }";
+const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $limit: Int) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, limit: $limit) { total items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
+const STOREFRONT_FORUM_TOPIC_QUERY: &str = "query StorefrontForumTopic($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontAudienceTopic(tenantId: $tenantId, id: $id, locale: $locale) { id effectiveLocale availableLocales categoryId authorId title slug body { document html } bodyPlainText status tags isPinned isLocked replyCount createdAt updatedAt } }";
+const STOREFRONT_FORUM_REPLIES_QUERY: &str = "query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale topicId authorId content { document html } contentPlainText status parentReplyId createdAt updatedAt } } }";
+const STOREFRONT_FORUM_MEMBER_CARDS_QUERY: &str = "query StorefrontForumMemberCards($userIds: [UUID!]!, $locale: String) { forumMemberCards(userIds: $userIds, locale: $locale) { userId profile { userId handle displayName tags avatarMediaId preferredLocale } forumStats { topicCount replyCount solutionCount } } }";
 const MARK_STOREFRONT_FORUM_TOPIC_READ_MUTATION: &str = "mutation MarkStorefrontForumTopicRead($tenantId: UUID, $topicId: UUID!, $locale: String) { markForumStorefrontTopicRead(tenantId: $tenantId, topicId: $topicId, locale: $locale) { topicId } }";
 const MARK_STOREFRONT_FORUM_CATEGORY_READ_MUTATION: &str = "mutation MarkStorefrontForumCategoryRead($tenantId: UUID, $categoryId: UUID!, $input: MarkForumTopicsReadBatchGraphqlInput, $locale: String) { markForumStorefrontCategoryRead(tenantId: $tenantId, categoryId: $categoryId, input: $input, locale: $locale) { processed nextCursor hasMore snapshotAt } }";
 const MARK_ALL_STOREFRONT_FORUM_TOPICS_READ_MUTATION: &str = "mutation MarkAllStorefrontForumTopicsRead($tenantId: UUID, $input: MarkForumTopicsReadBatchGraphqlInput, $locale: String) { markAllForumStorefrontTopicsRead(tenantId: $tenantId, input: $input, locale: $locale) { processed nextCursor hasMore snapshotAt } }";
@@ -63,6 +67,12 @@ struct StorefrontForumTopicResponse {
 struct StorefrontForumRepliesResponse {
     #[serde(rename = "forumStorefrontReplies")]
     forum_storefront_replies: ForumReplyConnection,
+}
+
+#[derive(Debug, Deserialize)]
+struct StorefrontForumMemberCardsResponse {
+    #[serde(rename = "forumMemberCards")]
+    forum_member_cards: Vec<ForumMemberCard>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -139,6 +149,13 @@ struct RepliesVariables {
     topic_id: String,
     locale: Option<String>,
     pagination: PaginationInput,
+}
+
+#[derive(Debug, Serialize)]
+struct MemberCardsVariables {
+    #[serde(rename = "userIds")]
+    user_ids: Vec<String>,
+    locale: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -347,7 +364,7 @@ pub async fn fetch_storefront_forum_graphql(
                 RepliesVariables {
                     tenant_id: None,
                     topic_id,
-                    locale,
+                    locale: locale.clone(),
                     pagination: PaginationInput {
                         offset: 0,
                         limit: 20,
@@ -363,6 +380,14 @@ pub async fn fetch_storefront_forum_graphql(
         empty_replies()
     };
 
+    let member_cards = load_storefront_member_cards(
+        &topics,
+        selected_topic.as_ref(),
+        &replies,
+        locale,
+    )
+    .await?;
+
     Ok(StorefrontForumData {
         categories: categories_response.forum_storefront_categories,
         topics,
@@ -370,8 +395,54 @@ pub async fn fetch_storefront_forum_graphql(
         selected_topic_id: resolved_topic_id,
         selected_topic,
         replies,
+        member_cards,
         read_state_available,
     })
+}
+
+async fn load_storefront_member_cards(
+    topics: &ForumTopicConnection,
+    selected_topic: Option<&ForumTopicDetail>,
+    replies: &ForumReplyConnection,
+    locale: Option<String>,
+) -> Result<Vec<ForumMemberCard>, ApiError> {
+    let user_ids = storefront_author_ids(topics, selected_topic, replies);
+    if user_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    match request_raw::<_, StorefrontForumMemberCardsResponse>(
+        STOREFRONT_FORUM_MEMBER_CARDS_QUERY,
+        MemberCardsVariables { user_ids, locale },
+    )
+    .await
+    {
+        Ok(response) => Ok(response.forum_member_cards),
+        Err(error) if personalization_unavailable(&error) => Ok(Vec::new()),
+        Err(error) => Err(ApiError::Graphql(error.to_string())),
+    }
+}
+
+fn storefront_author_ids(
+    topics: &ForumTopicConnection,
+    selected_topic: Option<&ForumTopicDetail>,
+    replies: &ForumReplyConnection,
+) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut user_ids = Vec::new();
+
+    for author_id in topics
+        .items
+        .iter()
+        .filter_map(|topic| topic.author_id.as_ref())
+        .chain(selected_topic.and_then(|topic| topic.author_id.as_ref()))
+        .chain(replies.items.iter().filter_map(|reply| reply.author_id.as_ref()))
+    {
+        if seen.insert(author_id.clone()) {
+            user_ids.push(author_id.clone());
+        }
+    }
+    user_ids
 }
 
 pub async fn mark_storefront_topic_read_graphql(

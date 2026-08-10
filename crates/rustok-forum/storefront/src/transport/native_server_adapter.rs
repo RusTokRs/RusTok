@@ -5,8 +5,9 @@ use crate::model::StorefrontForumData;
 
 #[cfg(feature = "ssr")]
 use crate::model::{
-    ForumCategoryConnection, ForumCategoryListItem, ForumReplyConnection, ForumReplyDetail,
-    ForumTopicConnection, ForumTopicDetail, ForumTopicListItem,
+    ForumCategoryConnection, ForumCategoryListItem, ForumMemberCard, ForumMemberProfileSummary,
+    ForumMemberStats, ForumReplyConnection, ForumReplyDetail, ForumTopicConnection,
+    ForumTopicDetail, ForumTopicListItem,
 };
 
 pub async fn fetch_storefront_forum_server(
@@ -41,6 +42,7 @@ async fn storefront_forum_native(
             has_any_effective_permission,
         };
         use rustok_core::SecurityContext;
+        use rustok_forum::services::user_stats::ForumMemberCardService;
         use rustok_forum::{
             ForumCategoryAudienceReadService, ForumCategoryReadOperation,
             ForumCategoryReadTransport, ForumReplyAudienceReadService, ForumReplyReadOperation,
@@ -336,6 +338,32 @@ async fn storefront_forum_native(
         } else {
             empty_replies()
         };
+        let selected_topic = selected_topic.map(map_topic_detail);
+        let may_read_member_cards = auth.as_ref().is_some_and(|auth| {
+            has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_READ])
+        });
+        let member_card_user_ids = if may_read_member_cards {
+            storefront_author_ids(&topic_items, selected_topic.as_ref(), &replies)?
+        } else {
+            Vec::new()
+        };
+        let member_cards = if member_card_user_ids.is_empty() {
+            Vec::new()
+        } else {
+            ForumMemberCardService::new(db.clone())
+                .read_for_audience(
+                    tenant.id,
+                    storefront_member_card_audience(auth.as_ref()),
+                    &member_card_user_ids,
+                    Some(effective_locale.as_str()),
+                    Some(tenant.default_locale.as_str()),
+                )
+                .await
+                .map_err(server_error)?
+                .into_iter()
+                .map(map_member_card)
+                .collect()
+        };
 
         Ok(StorefrontForumData {
             categories: ForumCategoryConnection {
@@ -348,8 +376,9 @@ async fn storefront_forum_native(
             },
             selected_category_id: resolved_category_id.map(|id| id.to_string()),
             selected_topic_id: resolved_topic_id.map(|id| id.to_string()),
-            selected_topic: selected_topic.map(map_topic_detail),
+            selected_topic,
             replies,
+            member_cards,
             read_state_available,
         })
     }
@@ -582,6 +611,68 @@ async fn load_audience_visible_topic(
 }
 
 #[cfg(feature = "ssr")]
+fn storefront_member_card_audience(
+    auth: Option<&rustok_api::AuthContext>,
+) -> rustok_forum::services::user_stats::ForumMemberCardAudience {
+    use rustok_forum::services::user_stats::ForumMemberCardAudience;
+
+    match auth {
+        None => ForumMemberCardAudience::Anonymous,
+        Some(auth) if auth.is_service_principal() => {
+            ForumMemberCardAudience::TrustedService { actor_id: None }
+        }
+        Some(auth) => ForumMemberCardAudience::Authenticated {
+            actor_id: auth.user_id,
+        },
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn storefront_author_ids(
+    topics: &[ForumTopicListItem],
+    selected_topic: Option<&ForumTopicDetail>,
+    replies: &ForumReplyConnection,
+) -> Result<Vec<uuid::Uuid>, ServerFnError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut user_ids = Vec::new();
+    for author_id in topics
+        .iter()
+        .filter_map(|topic| topic.author_id.as_deref())
+        .chain(selected_topic.and_then(|topic| topic.author_id.as_deref()))
+        .chain(replies.items.iter().filter_map(|reply| reply.author_id.as_deref()))
+    {
+        let user_id = uuid::Uuid::parse_str(author_id)
+            .map_err(|_| ServerFnError::new("Forum storefront author ID is invalid"))?;
+        if seen.insert(user_id) {
+            user_ids.push(user_id);
+        }
+    }
+    Ok(user_ids)
+}
+
+#[cfg(feature = "ssr")]
+fn map_member_card(
+    value: rustok_forum::services::user_stats::ForumMemberCard,
+) -> ForumMemberCard {
+    ForumMemberCard {
+        user_id: value.user_id.to_string(),
+        profile: ForumMemberProfileSummary {
+            user_id: value.profile.user_id.to_string(),
+            handle: value.profile.handle,
+            display_name: value.profile.display_name,
+            tags: value.profile.tags,
+            avatar_media_id: value.profile.avatar_media_id.map(|id| id.to_string()),
+            preferred_locale: value.profile.preferred_locale,
+        },
+        forum_stats: ForumMemberStats {
+            topic_count: value.forum_stats.topic_count,
+            reply_count: value.forum_stats.reply_count,
+            solution_count: value.forum_stats.solution_count,
+        },
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_category(value: rustok_forum::CategoryListItem) -> ForumCategoryListItem {
     ForumCategoryListItem {
         id: value.id.to_string(),
@@ -602,6 +693,7 @@ fn map_topic_list_item(value: rustok_forum::TopicListItem) -> ForumTopicListItem
         id: value.id.to_string(),
         effective_locale: value.effective_locale,
         category_id: value.category_id.to_string(),
+        author_id: value.author_id.map(|id| id.to_string()),
         title: value.title,
         slug: value.slug,
         status: value.status,
@@ -624,6 +716,7 @@ fn map_unread_topic(value: rustok_forum::ForumStorefrontUnreadTopic) -> ForumTop
         id: value.topic.id.to_string(),
         effective_locale: value.topic.effective_locale,
         category_id: value.topic.category_id.to_string(),
+        author_id: value.topic.author_id.map(|id| id.to_string()),
         title: value.topic.title,
         slug: value.topic.slug,
         status: value.topic.status,
@@ -647,6 +740,7 @@ fn map_topic_detail(value: rustok_forum::TopicResponse) -> ForumTopicDetail {
         effective_locale: value.effective_locale,
         available_locales: value.available_locales,
         category_id: value.category_id.to_string(),
+        author_id: value.author_id.map(|id| id.to_string()),
         title: value.title,
         slug: value.slug,
         body: value.body,
@@ -667,6 +761,7 @@ fn map_reply(value: rustok_forum::ReplyResponse) -> ForumReplyDetail {
         id: value.id.to_string(),
         effective_locale: value.effective_locale,
         topic_id: value.topic_id.to_string(),
+        author_id: value.author_id.map(|id| id.to_string()),
         content: value.content,
         content_plain_text: value.content_plain_text,
         status: value.status,
