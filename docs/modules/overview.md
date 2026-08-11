@@ -74,6 +74,7 @@ It is important to distinguish:
 | `product` | `rustok-product` | `taxonomy` |
 | `profiles` | `rustok-profiles` | `media`, `social_graph`, `taxonomy` |
 | `social_graph` | `rustok-social-graph` | `outbox` |
+| `reactions` | `rustok-reactions` | `outbox` |
 | `groups` | `rustok-groups` | — |
 | `region` | `rustok-region` | — |
 | `pricing` | `rustok-pricing` | `product` |
