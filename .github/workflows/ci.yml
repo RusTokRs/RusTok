@@ -81,13 +81,29 @@ jobs:
         run: python scripts/ci/check-dependabot-directories.py
 
   check-msrv:
-    name: Cargo Check (MSRV 1.96)
+    name: Cargo Check (MSRV)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.96.0
+      - name: Resolve workspace MSRV
+        id: msrv
+        shell: bash
+        run: |
+          version="$(python3 - <<'PY'
+          import tomllib
+
+          with open("Cargo.toml", "rb") as manifest:
+              print(tomllib.load(manifest)["workspace"]["package"]["rust-version"])
+          PY
+          )"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Workspace MSRV: $version"
+      - name: Install MSRV toolchain
+        run: rustup toolchain install "${{ steps.msrv.outputs.version }}" --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --all-targets --all-features
+      - name: Check workspace on MSRV
+        run: cargo +${{ steps.msrv.outputs.version }} check --workspace --all-targets --all-features
         env:
           PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
