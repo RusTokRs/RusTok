@@ -1,8 +1,6 @@
 use std::time::Duration;
 
-use async_graphql::{
-    Context, Enum, ErrorExtensions, FieldError, InputObject, Json, Object, Result, SimpleObject,
-};
+use async_graphql::{Context, Enum, FieldError, InputObject, Json, Object, Result, SimpleObject};
 use chrono::{DateTime, FixedOffset};
 use rustok_api::graphql::{GraphQLError, require_module_enabled};
 use rustok_api::request::RequestContext;
@@ -552,8 +550,8 @@ impl From<MarketplaceSellerMemberStatus> for MarketplaceSellerMemberStatusGql {
     }
 }
 
-fn service(ctx: &Context<'_>) -> Result<&MarketplaceSellerRuntime> {
-    ctx.data::<MarketplaceSellerRuntime>().map_err(|_| {
+fn service(ctx: &Context<'_>) -> Result<MarketplaceSellerRuntime> {
+    ctx.data::<MarketplaceSellerRuntime>().cloned().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Marketplace seller runtime is not registered")
     })
 }
@@ -632,18 +630,18 @@ fn map_port_error(error: PortError) -> FieldError {
             )
         }
         PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
-            "Marketplace seller command requires operator review",
+            "Marketplace seller operation requires operator review",
         ),
     }
 }
 
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
-        let value = value.trim();
-        (!value.is_empty()).then(|| value.to_string())
+        let normalized = value.trim().to_string();
+        (!normalized.is_empty()).then_some(normalized)
     })
 }
 
 fn empty_object() -> Value {
-    serde_json::json!({})
+    Value::Object(Default::default())
 }
