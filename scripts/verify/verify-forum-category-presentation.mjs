@@ -137,8 +137,8 @@ requireText(plan, "Delivered in `FORUM-13A`", `${planPath}: FORUM-13A delivery i
 requireText(plan, "Delivered in `FORUM-13B`", `${planPath}: FORUM-13B delivery is not recorded`);
 requireText(
   plan,
-  "quarantine/deletion",
-  `${planPath}: Media lifecycle ownership is not recorded`,
+  "Media keeps lifecycle ownership.",
+  `${planPath}: Media lifecycle ownership is not recorded in FORUM-13`,
 );
 for (const marker of [
   "CategoryCoverMediaCandidate",
