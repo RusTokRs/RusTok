@@ -74,10 +74,14 @@ impl From<crate::MarketplaceSellerEventResponse> for MarketplaceSellerEventGql {
     }
 }
 
-fn service(ctx: &Context<'_>) -> Result<&MarketplaceSellerRuntime> {
-    ctx.data::<MarketplaceSellerRuntime>().map_err(|_| {
-        <FieldError as GraphQLError>::internal_error("Marketplace seller runtime is not registered")
-    })
+fn service(ctx: &Context<'_>) -> Result<MarketplaceSellerRuntime> {
+    ctx.data::<MarketplaceSellerRuntime>()
+        .cloned()
+        .map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Marketplace seller runtime is not registered",
+            )
+        })
 }
 
 async fn require_permissions<'a>(
