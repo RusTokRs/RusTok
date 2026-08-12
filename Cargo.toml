@@ -180,7 +180,7 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 fast_image_resize = { version = "6.0.0", features = ["image"] }
 mozjpeg-rs = "0.9.2"
 oxipng = { version = "10.1.1", default-features = false }
-zenwebp = "0.4.4"
+webp = "0.3.1"
 aws-config = "1.8"
 aws-sdk-secretsmanager = { version = "1.109", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
 azure_identity = "1.0"
