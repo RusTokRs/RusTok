@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "module": "page-builder",
+  "packet": "generic_editor_accessibility_browser_packet_verifier",
+  "format": "page_builder_generic_accessibility_browser_packet_verifier_source_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "input": {
+    "execution_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
+    "required_format": "page_builder_generic_accessibility_browser_execution_v1",
+    "required_status": "browser_keyboard_accessibility_tree_passed_screen_reader_pending",
+    "source_commit_must_equal_checkout_head": true,
+    "expected_deployment_digest_must_be_supplied_separately": true,
+    "packet_deployment_digest_must_equal_expected": true,
+    "retained_source_hashes_must_match_contract_and_checkout": true,
+    "all_required_profiles_must_pass": true,
+    "critical_failures_must_be_zero": true,
+    "privacy_non_claim_flags_must_remain_fail_closed": true
+  },
+  "profiles": {
+    "full": {
+      "minimum_page_count": 2,
+      "required_boolean_facts": [
+        "tabFocusBetweenAdjacentPages",
+        "keyboardActivationUpdatedPressedState",
+        "addPageSequentialFocusOrder",
+        "ariaTreePressedStateObserved",
+        "ariaTreeAddPageNameObserved",
+        "pageMetadataAccessibleNamesResolved"
+      ]
+    },
+    "read_only": {
+      "minimum_page_count": 2,
+      "required_boolean_facts": [
+        "editFieldsetBrowserDisabled",
+        "editFieldsetAriaDisabled",
+        "propertiesFieldsetBrowserDisabled",
+        "propertiesFieldsetAriaDisabled",
+        "mutationControlsBrowserDisabled",
+        "pageNavigationKeyboardAvailable"
+      ]
+    }
+  },
+  "required_input_flags": {
+    "retained_secrets": false,
+    "raw_dom_retained": false,
+    "aria_snapshot_text_retained": false,
+    "screen_reader_execution_pending": true,
+    "wcag_conformance_not_claimed": true
+  },
+  "output": {
+    "format": "page_builder_generic_accessibility_browser_packet_verification_v1",
+    "status": "browser_packet_verified_owner_review_ready_screen_reader_pending",
+    "default_path": "target/page-builder-accessibility-browser-packet-verification.json"
+  },
+  "deployment_identity": {
+    "expected_digest_is_maintainer_supplied_reviewed_identity": true,
+    "digest_equality_is_not_cryptographic_origin_binding": true,
+    "deployment_provenance_must_be_verified_outside_this_verifier": true
+  },
+  "not_claimed": [
+    "browser execution by the packet verifier",
+    "screen-reader execution",
+    "WCAG conformance",
+    "cryptographic origin-to-RepoDigest binding",
+    "provider SLO health",
+    "Pages gate acceptance",
+    "Forum Wave admission",
+    "tenant rollout or promotion"
+  ],
+  "runner": "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs",
+  "runner_test": "scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs",
+  "source_verifier": "scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs"
+}
