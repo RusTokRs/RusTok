@@ -347,7 +347,7 @@ fn encode_image(
         ImageOutputFormat::Webp => {
             let encoded = webp::Encoder::from_rgba(rgba.as_raw(), width, height)
                 .encode_simple(false, f32::from(recipe.quality))
-                .map_err(|error| ImageProcessingError::Encoder(error.to_string()))?;
+                .map_err(|error| ImageProcessingError::Encoder(format!("{error:?}")))?;
             Ok(encoded.to_vec())
         }
         ImageOutputFormat::Avif => {
