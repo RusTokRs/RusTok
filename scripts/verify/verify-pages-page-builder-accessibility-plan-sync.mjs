@@ -68,13 +68,19 @@ const accessibilityPacketVerifierGuard = read(paths.accessibilityPacketVerifierG
 for (const marker of [
   "Date: 2026-08-12",
   "generic-editor-accessibility-source-ready",
+  "generic-accessibility-browser-packet-verifier-source-ready",
   "PR #3444",
+  "PR #3453",
+  "PR #3456",
+  "PR #3458",
   "Generic Page Builder editor accessibility: source-ready / execution-open",
-  "Generic editor control accessibility | Source-ready | Keyboard/focus/browser/screen-reader evidence pending",
+  "Generic editor control accessibility | Source-ready + SSR/browser/verifier source | Real browser/owner/screen-reader evidence pending",
   paths.accessibilityActualization,
   paths.actualization,
   "generic editor accessibility semantics is complete at this cursor",
   "verify-page-builder-admin-accessibility.mjs",
+  "verify-page-builder-accessibility-browser-evidence-harness.mjs",
+  "verify-page-builder-accessibility-browser-packet-verifier.mjs",
 ]) requireText(shared, marker, paths.shared);
 
 for (const marker of [
