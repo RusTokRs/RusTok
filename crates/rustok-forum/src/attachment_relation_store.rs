@@ -63,8 +63,7 @@ impl ForumAttachmentRelationStore {
         batch: &ForumMediaAdmittedAttachmentRelationBatch,
     ) -> ForumResult<ForumAttachmentRelationPersistenceOutcome> {
         let identity = DbAttachmentRevisionIdentity::from_source(batch.source())?;
-        let projection_fingerprint =
-            projection_fingerprint(batch.source(), batch.attachments());
+        let projection_fingerprint = projection_fingerprint(batch.source(), batch.attachments());
         let txn = self.db.begin().await?;
 
         let inserted_headers = forum_attachment_relation_revision::Entity::insert(
@@ -221,23 +220,15 @@ where
     C: sea_orm::ConnectionTrait,
 {
     forum_attachment_relation_revision::Entity::find()
+        .filter(forum_attachment_relation_revision::Column::TenantId.eq(identity.tenant_id))
         .filter(
-            forum_attachment_relation_revision::Column::TenantId.eq(identity.tenant_id),
+            forum_attachment_relation_revision::Column::TargetKind.eq(identity.target_kind.clone()),
         )
+        .filter(forum_attachment_relation_revision::Column::TargetId.eq(identity.target_id))
         .filter(
-            forum_attachment_relation_revision::Column::TargetKind
-                .eq(identity.target_kind.clone()),
+            forum_attachment_relation_revision::Column::SourceRevision.eq(identity.source_revision),
         )
-        .filter(
-            forum_attachment_relation_revision::Column::TargetId.eq(identity.target_id),
-        )
-        .filter(
-            forum_attachment_relation_revision::Column::SourceRevision
-                .eq(identity.source_revision),
-        )
-        .filter(
-            forum_attachment_relation_revision::Column::Locale.eq(identity.locale.clone()),
-        )
+        .filter(forum_attachment_relation_revision::Column::Locale.eq(identity.locale.clone()))
         .one(db)
         .await
 }
@@ -251,13 +242,9 @@ where
 {
     forum_attachment_relation::Entity::find()
         .filter(forum_attachment_relation::Column::TenantId.eq(identity.tenant_id))
-        .filter(
-            forum_attachment_relation::Column::TargetKind.eq(identity.target_kind.clone()),
-        )
+        .filter(forum_attachment_relation::Column::TargetKind.eq(identity.target_kind.clone()))
         .filter(forum_attachment_relation::Column::TargetId.eq(identity.target_id))
-        .filter(
-            forum_attachment_relation::Column::SourceRevision.eq(identity.source_revision),
-        )
+        .filter(forum_attachment_relation::Column::SourceRevision.eq(identity.source_revision))
         .filter(forum_attachment_relation::Column::Locale.eq(identity.locale.clone()))
         .order_by_asc(forum_attachment_relation::Column::Position)
         .all(db)
@@ -351,11 +338,7 @@ fn projection_fingerprint(
 }
 
 fn hash_len_prefixed(hasher: &mut Sha256, value: &[u8]) {
-    hasher.update(
-        u64::try_from(value.len())
-            .unwrap_or(u64::MAX)
-            .to_be_bytes(),
-    );
+    hasher.update(u64::try_from(value.len()).unwrap_or(u64::MAX).to_be_bytes());
     hasher.update(value);
 }
 
