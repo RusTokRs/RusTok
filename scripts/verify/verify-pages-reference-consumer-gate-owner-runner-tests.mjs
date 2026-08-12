@@ -206,9 +206,9 @@ for (const marker of [
   "nine synthetic fail-closed cases",
   files.test,
   files.workflow,
-  "live candidate and observed-health execution remain pending",
+  "Live candidate and observed-health execution remain pending",
   "Forum Wave remains unaccepted",
-  "does not mutate the source gate",
+  "mutate `pages-reference-consumer-gate-source.json`",
 ]) {
   need(sources.overlay, marker, "gate owner-runner actualization");
 }

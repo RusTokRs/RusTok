@@ -391,7 +391,7 @@ async fn receive_decode_failure(
         .map_err(|_| invalid_data("timed out waiting for a Forum Search raw poison delivery"))??
         .ok_or_else(|| invalid_data("Forum Search source cursor ended before a delivery"))?;
     match delivery {
-        PersistentContractDelivery::DecodeFailure(failure) => Ok(failure),
+        PersistentContractDelivery::DecodeFailure(failure) => Ok(*failure),
         PersistentContractDelivery::Event(_) => Err(invalid_data(
             "malformed Forum Search fixture unexpectedly decoded as a registered contract event",
         )

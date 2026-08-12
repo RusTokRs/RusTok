@@ -130,7 +130,7 @@ async fn receive_decode_failure(
         .ok_or_else(|| invalid_data("external Iggy source cursor ended before a delivery"))?;
 
     match delivery {
-        PersistentContractDelivery::DecodeFailure(failure) => Ok(failure),
+        PersistentContractDelivery::DecodeFailure(failure) => Ok(*failure),
         PersistentContractDelivery::Event(_) => Err(invalid_data(
             "malformed fixture unexpectedly decoded as a registered contract event",
         )

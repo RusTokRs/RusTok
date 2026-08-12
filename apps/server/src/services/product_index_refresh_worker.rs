@@ -300,6 +300,7 @@ async fn product_index_refresh_worker_loop(
         };
         match received {
             Ok(Some(PersistentContractDelivery::Event(consumed))) => {
+                let consumed = *consumed;
                 if !process_consumed_delivery(&runtime, &config, &mut stop_rx, consumed).await {
                     return;
                 }

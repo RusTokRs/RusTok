@@ -293,7 +293,7 @@ async fn receive_decode_failure(
         .map_err(|_| invalid_data("timed out waiting for a Social Graph raw poison delivery"))??
         .ok_or_else(|| invalid_data("Social Graph source cursor ended before a delivery"))?;
     match delivery {
-        PersistentContractDelivery::DecodeFailure(failure) => Ok(failure),
+        PersistentContractDelivery::DecodeFailure(failure) => Ok(*failure),
         PersistentContractDelivery::Event(_) => Err(invalid_data(
             "malformed ordering fixture unexpectedly decoded as a registered contract event",
         )

@@ -297,7 +297,7 @@ async fn receive_decode_failure(
             invalid_data("source cursor ended before publish/mark ambiguity delivery")
         })?;
     match delivery {
-        PersistentContractDelivery::DecodeFailure(failure) => Ok(failure),
+        PersistentContractDelivery::DecodeFailure(failure) => Ok(*failure),
         PersistentContractDelivery::Event(_) => Err(invalid_data(
             "malformed publish/mark ambiguity fixture unexpectedly decoded as a contract event",
         )

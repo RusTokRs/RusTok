@@ -2,7 +2,7 @@
 
 Status: `reference-consumer-gate-owner-runner-tested / synthetic-fail-closed-coverage-source-ready / focused-provider-health-gate-ci-source-ready / live-gate-execution-pending / forum-wave-unaccepted`.
 
-Base rechecked: `main@4d0172e6a702392d6bb872d0f1455f380a158fe2`.
+Base rechecked: `main@44e949f693dd199f12e62b891a409e4606f3abb8`.
 
 ## Why this continuation exists
 

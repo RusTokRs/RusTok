@@ -789,7 +789,7 @@ async fn receive_event(
         .map_err(|_| test_error("timed out waiting for a normal Forum Iggy delivery"))??
         .ok_or_else(|| test_error("Iggy consumer group ended before normal delivery"))?;
     match delivery {
-        PersistentContractDelivery::Event(consumed) => Ok(consumed),
+        PersistentContractDelivery::Event(consumed) => Ok(*consumed),
         PersistentContractDelivery::DecodeFailure(failure) => Err(test_error(format!(
             "normal Forum typed event decoded as poison: {}",
             failure.stable_error_code()

@@ -218,7 +218,7 @@ impl SocialGraphIndexConsumer {
         &self,
     ) -> Result<Option<ConsumedContractEvent>, SocialGraphIndexConsumerError> {
         match self.receive_delivery().await? {
-            Some(PersistentContractDelivery::Event(consumed)) => Ok(Some(consumed)),
+            Some(PersistentContractDelivery::Event(consumed)) => Ok(Some(*consumed)),
             Some(PersistentContractDelivery::DecodeFailure(failure)) => {
                 Err(SocialGraphIndexConsumerError::Transport(format!(
                     "contract delivery requires raw poison handling [{}]",
