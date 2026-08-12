@@ -1,0 +1,52 @@
+name: Pages Page Builder Parity
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/pages-page-builder-parity.yml"
+      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
+      - "docs/modules/page-builder-implementation-plan.md"
+      - "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md"
+      - "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md"
+      - "crates/rustok-page-builder/docs/implementation-plan.md"
+      - "crates/rustok-page-builder/admin/src/editor/**"
+      - "scripts/verify/verify-page-builder-admin-accessibility.mjs"
+      - "scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs"
+      - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/pages-page-builder-parity.yml"
+      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
+      - "docs/modules/page-builder-implementation-plan.md"
+      - "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md"
+      - "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md"
+      - "crates/rustok-page-builder/docs/implementation-plan.md"
+      - "crates/rustok-page-builder/admin/src/editor/**"
+      - "scripts/verify/verify-page-builder-admin-accessibility.mjs"
+      - "scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs"
+      - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-parity:
+    name: Source parity and accessibility guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify generic editor accessibility source
+        run: node scripts/verify/verify-page-builder-admin-accessibility.mjs
+      - name: Verify Pages and Page Builder plan parity
+        run: node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+      - name: Verify accessibility plan synchronization
+        run: node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs
