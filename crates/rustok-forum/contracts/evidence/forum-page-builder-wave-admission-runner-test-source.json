@@ -1,0 +1,57 @@
+{
+  "format": "forum_page_builder_wave_admission_runner_test_source_v1",
+  "status": "source_ready_synthetic_execution",
+  "module": "forum",
+  "wave": "1",
+  "production_runner": "scripts/evidence/admit-forum-page-builder-wave.mjs",
+  "test_runner": "scripts/evidence/admit-forum-page-builder-wave.test.mjs",
+  "source_verifier": "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs",
+  "purpose": "Exercise the production Forum Page Builder Wave admission CLI with exact-checkout synthetic predecessor packets without claiming live Pages gate, browser, runtime, deployed server-function, or observed Wave execution.",
+  "synthetic_cases": [
+    "valid_admission",
+    "gate_not_accepted",
+    "gate_promotion_overclaim",
+    "browser_digest_mismatch",
+    "browser_required_fact_missing",
+    "runtime_command_argv_drift",
+    "runtime_source_hash_tamper",
+    "serverfn_live_commit_unverified",
+    "serverfn_privacy_overclaim",
+    "serverfn_cryptographic_binding_overclaim"
+  ],
+  "fail_closed_requirements": {
+    "production_runner_must_be_invoked_as_child_process": true,
+    "source_hashes_must_be_derived_from_current_checkout": true,
+    "pages_gate_must_be_accepted_and_non_promoting": true,
+    "browser_repo_digest_must_match_pages_gate": true,
+    "browser_required_facts_must_pass": true,
+    "runtime_commands_must_match_execution_contract": true,
+    "serverfn_live_source_commit_must_be_verified": true,
+    "serverfn_privacy_and_non_cryptographic_binding_boundaries_must_hold": true,
+    "successful_output_must_keep_observed_wave_pending": true,
+    "successful_output_must_keep_forum_wave_unaccepted": true
+  },
+  "live_execution_boundary": {
+    "pages_gate_execution": "not_run_by_synthetic_test",
+    "forum_browser_execution": "not_run_by_synthetic_test",
+    "forum_runtime_authorization_execution": "not_run_by_synthetic_test",
+    "forum_serverfn_deployment_attestation": "not_run_by_synthetic_test",
+    "observed_control_plane_wave": "not_run_by_synthetic_test",
+    "forum_wave_acceptance": "not_claimed",
+    "ffa_fba_promotion": "not_claimed"
+  },
+  "required_source_files": [
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+    "scripts/evidence/admit-forum-page-builder-wave.mjs",
+    "scripts/verify/verify-forum-page-builder-wave-admission.mjs",
+    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json",
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json",
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json",
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json",
+    "scripts/evidence/admit-forum-page-builder-wave.test.mjs",
+    "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs",
+    "docs/modules/forum-page-builder-wave-admission-runner-tests-actualization-2026-08-12.md",
+    ".github/workflows/pages-page-builder-provider-health.yml"
+  ]
+}
