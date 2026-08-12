@@ -14,6 +14,10 @@ const paths = {
   actualization: "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md",
   accessibilityActualization: "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md",
   accessibilityGuard: "scripts/verify/verify-page-builder-admin-accessibility.mjs",
+  accessibilityBrowserGuard:
+    "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs",
+  accessibilityBrowserContract:
+    "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
 };
 
 const failures = [];
@@ -46,6 +50,8 @@ const local = read(paths.local);
 const actualization = read(paths.actualization);
 const accessibilityActualization = read(paths.accessibilityActualization);
 const accessibilityGuard = read(paths.accessibilityGuard);
+const accessibilityBrowserGuard = read(paths.accessibilityBrowserGuard);
+const accessibilityBrowserContract = read(paths.accessibilityBrowserContract);
 
 for (const marker of [
   "Date: 2026-08-12",
@@ -91,10 +97,16 @@ for (const marker of [
   "source-parity-rechecked",
   "generic-editor-accessibility-source-ready",
   "focused-ci-gate-ready",
+  "generic-accessibility-browser-harness-source-ready",
   "browser-accessibility-evidence-pending",
   "PR #3444",
+  "PR #3453",
   ".github/workflows/pages-page-builder-parity.yml",
-  "It does not establish WCAG conformance",
+  paths.accessibilityBrowserGuard,
+  paths.accessibilityBrowserContract,
+  "maintainer browser execution pending",
+  "screen-reader execution remains pending",
+  "WCAG conformance remains unclaimed",
 ]) requireText(actualization, marker, paths.actualization);
 
 for (const marker of [
@@ -108,6 +120,23 @@ for (const marker of [
   "aria-pressed=active.to_string()",
   "Page Builder admin accessibility source verified.",
 ]) requireText(accessibilityGuard, marker, paths.accessibilityGuard);
+
+for (const marker of [
+  paths.accessibilityBrowserContract,
+  "Page Builder generic accessibility browser evidence harness source: ok",
+  "screen_reader_execution_pending: true",
+  "wcag_conformance_not_claimed: true",
+]) requireText(accessibilityBrowserGuard, marker, paths.accessibilityBrowserGuard);
+
+for (const marker of [
+  '"status": "source_ready_maintainer_execution_pending"',
+  '"format": "page_builder_generic_accessibility_browser_execution_v1"',
+  '"profiles": [',
+  '"full"',
+  '"read_only"',
+  '"screen-reader execution"',
+  '"WCAG conformance"',
+]) requireText(accessibilityBrowserContract, marker, paths.accessibilityBrowserContract);
 
 if (failures.length > 0) {
   console.error("Pages/Page Builder accessibility plan sync verification failed:");
