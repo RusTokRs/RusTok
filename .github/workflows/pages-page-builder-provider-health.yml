@@ -20,6 +20,10 @@ on:
       - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json"
       - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json"
       - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json"
+      - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json"
+      - "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json"
+      - "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json"
+      - "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
@@ -29,10 +33,15 @@ on:
       - "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs"
       - "scripts/evidence/accept-pages-reference-consumer-gate.mjs"
       - "scripts/evidence/accept-pages-reference-consumer-gate.test.mjs"
+      - "scripts/evidence/admit-forum-page-builder-wave.mjs"
+      - "scripts/evidence/admit-forum-page-builder-wave.test.mjs"
       - "scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs"
       - "scripts/verify/verify-pages-reference-consumer-gate-owner-runner-tests.mjs"
+      - "scripts/verify/verify-forum-page-builder-wave-admission.mjs"
+      - "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs"
       - "docs/modules/pages-page-builder-provider-health-*-actualization-*.md"
       - "docs/modules/pages-page-builder-reference-consumer-gate-*-actualization-*.md"
+      - "docs/modules/forum-page-builder-wave-admission-*-actualization-*.md"
       - "docs/modules/pages-page-builder-parity-continuation-plan.md"
       - "docs/modules/page-builder-implementation-plan.md"
       - "crates/rustok-page-builder/docs/implementation-plan.md"
@@ -56,6 +65,10 @@ on:
       - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json"
       - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json"
       - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json"
+      - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json"
+      - "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json"
+      - "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json"
+      - "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
@@ -65,10 +78,15 @@ on:
       - "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs"
       - "scripts/evidence/accept-pages-reference-consumer-gate.mjs"
       - "scripts/evidence/accept-pages-reference-consumer-gate.test.mjs"
+      - "scripts/evidence/admit-forum-page-builder-wave.mjs"
+      - "scripts/evidence/admit-forum-page-builder-wave.test.mjs"
       - "scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs"
       - "scripts/verify/verify-pages-reference-consumer-gate-owner-runner-tests.mjs"
+      - "scripts/verify/verify-forum-page-builder-wave-admission.mjs"
+      - "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs"
       - "docs/modules/pages-page-builder-provider-health-*-actualization-*.md"
       - "docs/modules/pages-page-builder-reference-consumer-gate-*-actualization-*.md"
+      - "docs/modules/forum-page-builder-wave-admission-*-actualization-*.md"
       - "docs/modules/pages-page-builder-parity-continuation-plan.md"
       - "docs/modules/page-builder-implementation-plan.md"
       - "crates/rustok-page-builder/docs/implementation-plan.md"
@@ -84,7 +102,7 @@ concurrency:
 
 jobs:
   source-and-runner:
-    name: Provider-health and Pages gate source/owner-runner evidence
+    name: Provider-health, Pages gate and Forum admission source/runner evidence
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -122,6 +140,15 @@ jobs:
       - name: Pages gate owner acceptance runner synthetic tests
         if: ${{ !cancelled() }}
         run: node scripts/evidence/accept-pages-reference-consumer-gate.test.mjs
+      - name: Verify Forum Wave admission source
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-forum-page-builder-wave-admission.mjs
+      - name: Verify Forum Wave admission runner test source
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs
+      - name: Forum Wave admission runner synthetic tests
+        if: ${{ !cancelled() }}
+        run: node scripts/evidence/admit-forum-page-builder-wave.test.mjs
       - name: Verify Pages and Page Builder plan parity
         if: ${{ !cancelled() }}
         run: node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
