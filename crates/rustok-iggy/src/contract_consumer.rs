@@ -26,8 +26,8 @@ pub struct ConsumedContractEvent {
 /// chosen terminal poison result and then call `acknowledge_decode_failure` explicitly.
 #[derive(Debug, Clone)]
 pub enum PersistentContractDelivery {
-    Event(ConsumedContractEvent),
-    DecodeFailure(ConsumedContractDecodeFailure),
+    Event(Box<ConsumedContractEvent>),
+    DecodeFailure(Box<ConsumedContractDecodeFailure>),
 }
 
 /// Persistent consumer cursor for sealed typed event-family envelopes.
@@ -77,7 +77,7 @@ impl PersistentContractConsumerGroup {
         let envelope = match self.serializer.deserialize_contract(&raw_payload) {
             Ok(envelope) => envelope,
             Err(_) => {
-                return Ok(Some(PersistentContractDelivery::DecodeFailure(
+                return Ok(Some(PersistentContractDelivery::DecodeFailure(Box::new(
                     ConsumedContractDecodeFailure::new(
                         self.stream.clone(),
                         self.topic.clone(),
@@ -85,11 +85,11 @@ impl PersistentContractConsumerGroup {
                         raw_payload,
                         ContractDecodeFailureKind::Deserialize,
                     )?,
-                )));
+                ))));
             }
         };
         if envelope.validate_registered_schema().is_err() {
-            return Ok(Some(PersistentContractDelivery::DecodeFailure(
+            return Ok(Some(PersistentContractDelivery::DecodeFailure(Box::new(
                 ConsumedContractDecodeFailure::new(
                     self.stream.clone(),
                     self.topic.clone(),
@@ -97,10 +97,10 @@ impl PersistentContractConsumerGroup {
                     raw_payload,
                     ContractDecodeFailureKind::SchemaValidation,
                 )?,
-            )));
+            ))));
         }
 
-        Ok(Some(PersistentContractDelivery::Event(
+        Ok(Some(PersistentContractDelivery::Event(Box::new(
             ConsumedContractEvent {
                 stream: self.stream.clone(),
                 topic: self.topic.clone(),
@@ -109,7 +109,7 @@ impl PersistentContractConsumerGroup {
                 connector_metadata,
                 raw_payload,
             },
-        )))
+        ))))
     }
 
     /// Compatibility receive path for callers that have not yet adopted typed raw
@@ -118,7 +118,7 @@ impl PersistentContractConsumerGroup {
     /// [`Self::receive_delivery`].
     pub async fn receive(&self) -> Result<Option<ConsumedContractEvent>> {
         match self.receive_delivery().await? {
-            Some(PersistentContractDelivery::Event(consumed)) => Ok(Some(consumed)),
+            Some(PersistentContractDelivery::Event(consumed)) => Ok(Some(*consumed)),
             Some(PersistentContractDelivery::DecodeFailure(failure)) => {
                 Err(rustok_core::Error::Validation(format!(
                     "Persistent contract delivery rejected [{}]",

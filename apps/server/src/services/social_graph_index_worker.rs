@@ -248,6 +248,7 @@ async fn social_graph_index_worker_loop(
 
         match received {
             Ok(Some(PersistentContractDelivery::Event(consumed))) => {
+                let consumed = *consumed;
                 if !handle_event_delivery(&consumer, &config, &mut stop_rx, consumed).await {
                     return;
                 }

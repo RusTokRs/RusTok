@@ -92,10 +92,9 @@ impl ReactionSubjectAuthorization {
         if let Self::Allowed {
             canonical_subject, ..
         } = self
+            && canonical_subject != &request.subject
         {
-            if canonical_subject != &request.subject {
-                return Err(ReactionContractError::ProviderSubjectMismatch);
-            }
+            return Err(ReactionContractError::ProviderSubjectMismatch);
         }
         Ok(())
     }

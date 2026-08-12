@@ -381,7 +381,7 @@ async fn receive_event(
         .ok_or_else(|| invalid_data("Iggy consumer group ended before a delivery"))?;
 
     match delivery {
-        PersistentContractDelivery::Event(consumed) => Ok(consumed),
+        PersistentContractDelivery::Event(consumed) => Ok(*consumed),
         PersistentContractDelivery::DecodeFailure(failure) => Err(invalid_data(format!(
             "published Forum Search contract event decoded as poison: {}",
             failure.stable_error_code()

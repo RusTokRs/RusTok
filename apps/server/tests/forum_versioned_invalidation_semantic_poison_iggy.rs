@@ -580,7 +580,7 @@ async fn receive_event(
         .map_err(|_| invalid_data("timed out waiting for a Forum Search typed delivery"))??
         .ok_or_else(|| invalid_data("Forum Search source cursor ended before a delivery"))?;
     match delivery {
-        PersistentContractDelivery::Event(consumed) => Ok(consumed),
+        PersistentContractDelivery::Event(consumed) => Ok(*consumed),
         PersistentContractDelivery::DecodeFailure(failure) => Err(invalid_data(format!(
             "valid Forum Search semantic-poison fixture decoded as raw poison: {}",
             failure.stable_error_code()

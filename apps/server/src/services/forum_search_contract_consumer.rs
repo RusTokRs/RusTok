@@ -230,6 +230,7 @@ async fn forum_search_contract_consumer_loop(
 
         let keep_running = match received {
             Ok(Some(PersistentContractDelivery::Event(consumed))) => {
+                let consumed = *consumed;
                 process_contract_event(
                     &group,
                     &ingress,

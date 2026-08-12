@@ -28,8 +28,9 @@ use rustok_index::{
     IndexMutationEventAcknowledger, IndexReplayMutationOutcome, IndexSourceLoadRequest,
     IndexSourceRefreshEventProcessError, LocaleKey, ModuleName, PostgresMutationStore,
     PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion, SharedIndexMutationEventRegistry,
-    SharedIndexSchemaRegistry, SharedIndexSourceRegistry, materialize_index_mutation_event_registry,
-    materialize_index_source_registry, materialize_postgres_index_sources,
+    SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
+    materialize_index_mutation_event_registry, materialize_index_source_registry,
+    materialize_postgres_index_sources,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -277,10 +278,15 @@ async fn run_ack_failure_redelivery(
         let redelivered = receive_event(&restarted_group).await?;
         ensure_delivery_identity(&redelivered, locale_event_id)?;
         if required_offset(&redelivered)? != first_offset {
-            return Err(invalid_data("Product refresh restart did not resume the uncommitted offset").into());
+            return Err(invalid_data(
+                "Product refresh restart did not resume the uncommitted offset",
+            )
+            .into());
         }
         if redelivered.raw_payload() != first_raw.as_slice() {
-            return Err(invalid_data("Product refresh restart changed exact broker payload bytes").into());
+            return Err(
+                invalid_data("Product refresh restart changed exact broker payload bytes").into(),
+            );
         }
 
         let restarted_worker = ProductIndexRefreshDeliveryWorker::new(
@@ -308,7 +314,10 @@ async fn run_ack_failure_redelivery(
         ensure_delivery_identity(&variant, variant_event_id)?;
         let variant_offset = required_offset(&variant)?;
         if variant_offset <= first_offset {
-            return Err(invalid_data("successful Product acknowledgement did not advance the Iggy group").into());
+            return Err(invalid_data(
+                "successful Product acknowledgement did not advance the Iggy group",
+            )
+            .into());
         }
         let applied_variant = restarted_worker
             .process(
@@ -334,12 +343,8 @@ async fn run_ack_failure_redelivery(
             variant_version,
         )
         .await?;
-        assert_applied_inbox_once(
-            &database.mutation,
-            PRODUCT_VARIANT_SOURCE,
-            variant_event_id,
-        )
-        .await?;
+        assert_applied_inbox_once(&database.mutation, PRODUCT_VARIANT_SOURCE, variant_event_id)
+            .await?;
 
         restarted_transport.shutdown().await?;
         Ok::<(), Box<dyn Error + Send + Sync>>(())
@@ -359,9 +364,9 @@ async fn run_behind_source_redelivery(
         let runtime = build_runtime(&database).await?;
         let source = load_current_source_mutation(&runtime.sources, product_key()?).await?;
         let actual_version = source.source_version();
-        let required_version = actual_version
-            .checked_add(1)
-            .ok_or_else(|| invalid_data("Product source version cannot advance for behind-source proof"))?;
+        let required_version = actual_version.checked_add(1).ok_or_else(|| {
+            invalid_data("Product source version cannot advance for behind-source proof")
+        })?;
 
         let config = iggy.config("behind-source");
         let first_transport = IggyTransport::new(config.clone()).await?;
@@ -421,7 +426,10 @@ async fn run_behind_source_redelivery(
         let redelivered = receive_event(&restarted_group).await?;
         ensure_delivery_identity(&redelivered, event_id)?;
         if required_offset(&redelivered)? != first_offset {
-            return Err(invalid_data("behind-source restart did not return the same uncommitted offset").into());
+            return Err(invalid_data(
+                "behind-source restart did not return the same uncommitted offset",
+            )
+            .into());
         }
         if redelivered.raw_payload() != first_raw.as_slice() {
             return Err(invalid_data("behind-source restart changed broker payload bytes").into());
@@ -548,13 +556,15 @@ fn variant_envelope(event_id: Uuid, source_version: u64) -> TestResult<ContractE
     )?)
 }
 
-async fn receive_event(group: &PersistentContractConsumerGroup) -> TestResult<ConsumedContractEvent> {
+async fn receive_event(
+    group: &PersistentContractConsumerGroup,
+) -> TestResult<ConsumedContractEvent> {
     let delivery = timeout(RECEIVE_TIMEOUT, group.receive_delivery())
         .await
         .map_err(|_| invalid_data("timed out waiting for Product Index refresh Iggy delivery"))??
         .ok_or_else(|| invalid_data("Product Index refresh Iggy cursor ended before delivery"))?;
     match delivery {
-        PersistentContractDelivery::Event(consumed) => Ok(consumed),
+        PersistentContractDelivery::Event(consumed) => Ok(*consumed),
         PersistentContractDelivery::DecodeFailure(failure) => Err(invalid_data(format!(
             "canonical Product refresh decoded as poison: {}",
             failure.stable_error_code()
@@ -807,10 +817,9 @@ fn postgres_database_url() -> TestResult<Option<String>> {
         Ok(value) => {
             let value = bounded_env(DATABASE_ENV, value, 2048)?;
             if !value.starts_with("postgres://") && !value.starts_with("postgresql://") {
-                return Err(invalid_data(format!(
-                    "{DATABASE_ENV} must be a PostgreSQL URL"
-                ))
-                .into());
+                return Err(
+                    invalid_data(format!("{DATABASE_ENV} must be a PostgreSQL URL")).into(),
+                );
             }
             Ok(Some(value))
         }

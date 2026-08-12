@@ -319,14 +319,13 @@ fn read_only_connection_config(
     config: &IggyConfig,
 ) -> Result<ExternalConfig, IggyDlqDuplicateAlertObserverError> {
     let external = config.external.clone();
-    if config.mode == IggyMode::Bundled {
-        if external.protocol != "tcp"
+    if config.mode == IggyMode::Bundled
+        && (external.protocol != "tcp"
             || external.tls_enabled
             || external.addresses.len() != 1
-            || !is_bundled_loopback_address(&external.addresses[0], config.bundled.tcp_port)
-        {
-            return Err(IggyDlqDuplicateAlertObserverError::InvalidConfiguration);
-        }
+            || !is_bundled_loopback_address(&external.addresses[0], config.bundled.tcp_port))
+    {
+        return Err(IggyDlqDuplicateAlertObserverError::InvalidConfiguration);
     }
     Ok(external)
 }
