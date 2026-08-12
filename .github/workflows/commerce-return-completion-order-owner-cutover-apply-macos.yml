@@ -32,6 +32,8 @@ jobs:
         run: python3 scripts/tmp/fix-return-completion-owner-patcher.py
       - name: Apply source patch
         run: python3 scripts/tmp/apply-return-completion-order-owner-cutover.py
+      - name: Apply exhaustive Order error fix
+        run: python3 scripts/tmp/apply-return-completion-order-port-exhaustive-fix.py
       - name: Format Rust
         run: cargo fmt --all
       - name: Verify source cutover
@@ -46,6 +48,7 @@ jobs:
           git add \
             .github/workflows/ecommerce-hardening.yml \
             crates/rustok-commerce/docs/return-completion-order-owner-port-cutover-2026-08-12.md \
+            crates/rustok-commerce/src/controllers/admin/changes.rs \
             crates/rustok-commerce/src/controllers/admin/mod.rs \
             crates/rustok-commerce/src/controllers/admin/returns.rs \
             crates/rustok-commerce/src/controllers/return_completion_operations.rs \
