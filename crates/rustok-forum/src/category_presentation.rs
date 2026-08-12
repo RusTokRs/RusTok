@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rustok_api::{PortContext, PortError};
 use rustok_media::{MediaImageDescriptor, MediaPublicImageReadPort};
 use serde::{Deserialize, Serialize};
@@ -20,6 +22,26 @@ const CATEGORY_COVER_MIME_TYPES: &[&str] = &[
     "image/png",
     "image/webp",
 ];
+
+/// Host-selected Media owner used only for Forum category presentation.
+///
+/// The wrapper is consumer-specific so Forum can be composed independently of
+/// Profiles or any other Media consumer while still sharing the same underlying
+/// Media owner port selected by the host.
+#[derive(Clone)]
+pub struct ForumCategoryMediaProvider {
+    port: Arc<dyn MediaPublicImageReadPort>,
+}
+
+impl ForumCategoryMediaProvider {
+    pub fn new(port: Arc<dyn MediaPublicImageReadPort>) -> Self {
+        Self { port }
+    }
+
+    pub fn port(&self) -> Arc<dyn MediaPublicImageReadPort> {
+        self.port.clone()
+    }
+}
 
 /// Transport-neutral Media metadata required to evaluate a category cover.
 ///
