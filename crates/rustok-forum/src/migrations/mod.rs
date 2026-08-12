@@ -57,6 +57,7 @@ mod m20260805_000024_add_forum_topic_route_aliases;
 mod m20260806_000025_add_forum_topic_route_tombstone_visibility;
 mod m20260806_000026_add_forum_category_route_aliases;
 mod m20260807_000027_add_forum_moderation_subject_revisions;
+mod m20260812_000028_add_forum_attachment_relations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -128,14 +129,16 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260806_000025_add_forum_topic_route_tombstone_visibility::Migration),
         Box::new(m20260806_000026_add_forum_category_route_aliases::Migration),
         Box::new(m20260807_000027_add_forum_moderation_subject_revisions::Migration),
+        Box::new(m20260812_000028_add_forum_attachment_relations::Migration),
     ]
 }
 
 #[cfg(test)]
 pub(crate) fn relation_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(
-        m20260722_000004_add_forum_mention_quote_relations::Migration,
-    )]
+    vec![
+        Box::new(m20260722_000004_add_forum_mention_quote_relations::Migration),
+        Box::new(m20260812_000028_add_forum_attachment_relations::Migration),
+    ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {

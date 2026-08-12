@@ -1,5 +1,7 @@
 //! SeaORM entities for forum-owned persistence.
 
+pub mod forum_attachment_relation;
+pub mod forum_attachment_relation_revision;
 pub mod forum_audience_mention;
 pub mod forum_category;
 pub mod forum_category_audience_channel;
