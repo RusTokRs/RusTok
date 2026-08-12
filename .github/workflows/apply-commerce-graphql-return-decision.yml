@@ -1,0 +1,288 @@
+name: Apply Commerce GraphQL Return Decision
+
+on:
+  push:
+    branches:
+      - agent/commerce-graphql-return-decision-owner-ports-20260812
+    paths:
+      - .github/workflows/apply-commerce-graphql-return-decision.yml
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/commerce-graphql-return-decision-owner-ports-20260812
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Apply bounded owner-port cutover
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"{path}: expected exactly one replacement target, found {text.count(old)}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "crates/rustok-commerce/src/graphql_runtime.rs",
+              '''pub(crate) fn post_order_orchestration_from_context(
+              ctx: &Context<'_>,
+              db: DatabaseConnection,
+              event_bus: rustok_outbox::TransactionalEventBus,
+          ) -> crate::PostOrderOrchestrationService {
+              crate::PostOrderOrchestrationService::new(db, event_bus)
+                  .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
+          }
+          ''',
+              '''pub(crate) fn return_decision_owner_orchestration_from_context(
+              ctx: &Context<'_>,
+              db: DatabaseConnection,
+              event_bus: rustok_outbox::TransactionalEventBus,
+          ) -> crate::ReturnDecisionOwnerOrchestrationService {
+              let service = match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+                  Some(runtime) => crate::ReturnDecisionOwnerOrchestrationService::new(
+                      db,
+                      runtime.order_post_order_command_runtime().command_port(),
+                      runtime.payment_read_runtime().admin_read_port(),
+                  ),
+                  None => {
+                      let order_runtime =
+                          OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus);
+                      let payment_runtime = CommercePaymentReadRuntime::in_process(db.clone());
+                      crate::ReturnDecisionOwnerOrchestrationService::new(
+                          db,
+                          order_runtime.command_port(),
+                          payment_runtime.admin_read_port(),
+                      )
+                  }
+              };
+              service.with_payment_provider_registry(payment_provider_registry_from_context(ctx))
+          }
+          ''',
+          )
+
+          replace_once(
+              "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
+              '''use crate::graphql_runtime::{
+              order_admin_command_runtime_from_context, order_change_orchestration_from_context,
+              order_post_order_command_runtime_from_context, post_order_orchestration_from_context,
+              return_completion_orchestration_from_context,
+          };
+          use crate::{
+              OrderChangeOrchestrationError, PaymentOrchestrationError, PostOrderOrchestrationError,
+          };
+          ''',
+              '''use crate::graphql_runtime::{
+              order_admin_command_runtime_from_context, order_change_orchestration_from_context,
+              order_post_order_command_runtime_from_context, return_completion_orchestration_from_context,
+              return_decision_owner_orchestration_from_context,
+          };
+          use crate::{
+              OrderChangeOrchestrationError, PaymentOrchestrationError, PostOrderOrchestrationError,
+              ReturnDecisionOwnerOrchestrationError,
+          };
+          ''',
+          )
+
+          replace_once(
+              "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
+              '''fn order_owner_graphql_error(
+          ''',
+              '''fn payment_port_error_envelope(
+              error: &PortError,
+          ) -> (&'static str, &'static str, bool, &'static str) {
+              match &error.kind {
+                  PortErrorKind::Validation | PortErrorKind::Forbidden => (
+                      "Payment request is invalid",
+                      "PAYMENT_REQUEST_INVALID",
+                      false,
+                      "validation",
+                  ),
+                  PortErrorKind::NotFound => (
+                      "Payment resource was not found",
+                      "PAYMENT_RESOURCE_NOT_FOUND",
+                      false,
+                      "not_found",
+                  ),
+                  PortErrorKind::Conflict => (
+                      "Payment operation conflicts with the current state",
+                      "PAYMENT_STATE_CONFLICT",
+                      false,
+                      "state_conflict",
+                  ),
+                  PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                      "Payment service is temporarily unavailable",
+                      "PAYMENT_TEMPORARILY_UNAVAILABLE",
+                      true,
+                      "temporarily_unavailable",
+                  ),
+                  PortErrorKind::InvariantViolation => (
+                      "Payment operation could not be completed safely",
+                      "PAYMENT_OPERATION_FAILED",
+                      false,
+                      "invariant_violation",
+                  ),
+              }
+          }
+
+          fn payment_owner_graphql_error(
+              tenant_id: Uuid,
+              actor_id: Uuid,
+              resource_id: Uuid,
+              owner_operation: &'static str,
+              consumer_operation: &'static str,
+              context: &PortContext,
+              error: PortError,
+          ) -> async_graphql::Error {
+              let (message, code, retryable, error_kind) = payment_port_error_envelope(&error);
+              tracing::error!(
+                  owner = "rustok_payment.admin_read",
+                  tenant_id_non_nil = !tenant_id.is_nil(),
+                  actor_id_non_nil = !actor_id.is_nil(),
+                  resource_id_non_nil = !resource_id.is_nil(),
+                  owner_operation,
+                  consumer_operation,
+                  correlation_id = %context.correlation_id,
+                  owner_error_kind = ?error.kind,
+                  owner_code_length = error.code.chars().count(),
+                  error_kind,
+                  public_code = code,
+                  retryable,
+                  boundary = "commerce_graphql_payment_read",
+                  "commerce GraphQL Payment owner read failed with bounded diagnostics"
+              );
+              public_fulfillment_graphql_error(message, code, retryable)
+          }
+
+          fn order_owner_graphql_error(
+          ''',
+          )
+
+          replace_once(
+              "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
+              '''fn order_change_graphql_error(
+          ''',
+              '''fn return_decision_graphql_error(
+              tenant_id: Uuid,
+              actor_id: Uuid,
+              resource_id: Uuid,
+              context: &PortContext,
+              error: ReturnDecisionOwnerOrchestrationError,
+          ) -> async_graphql::Error {
+              match error {
+                  ReturnDecisionOwnerOrchestrationError::OrderCommand(source) => {
+                      post_order_owner_graphql_error(
+                          tenant_id,
+                          resource_id,
+                          "create_order_return_decision",
+                          context,
+                          source,
+                      )
+                  }
+                  ReturnDecisionOwnerOrchestrationError::PaymentRead(source) => {
+                      payment_owner_graphql_error(
+                          tenant_id,
+                          actor_id,
+                          resource_id,
+                          "list_payment_collection_projections",
+                          "create_order_return_decision",
+                          context,
+                          source,
+                      )
+                  }
+                  ReturnDecisionOwnerOrchestrationError::PostOrder(source) => post_order_graphql_error(
+                      tenant_id,
+                      resource_id,
+                      "create_order_return_decision",
+                      source,
+                  ),
+              }
+          }
+
+          fn order_change_graphql_error(
+          ''',
+          )
+
+          replace_once(
+              "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
+              '''        let decision = post_order_orchestration_from_context(ctx, db.clone(), event_bus.clone())
+              .create_return_decision(
+                  tenant_id,
+                  auth.user_id,
+                  order_id,
+                  build_create_return_decision_input(input)?,
+              )
+              .await
+              .map_err(|error| {
+                  post_order_graphql_error(tenant_id, order_id, "create_order_return_decision", error)
+              })?;
+          ''',
+              '''        let context = order_post_order_command_context(
+              ctx,
+              tenant_id,
+              order_id,
+              "create_order_return_decision",
+          )?;
+              let decision = return_decision_owner_orchestration_from_context(
+                  ctx,
+                  db.clone(),
+                  event_bus.clone(),
+              )
+              .create_return_decision(
+                  context.clone(),
+                  tenant_id,
+                  order_id,
+                  build_create_return_decision_input(input)?,
+              )
+              .await
+              .map_err(|error| {
+                  return_decision_graphql_error(
+                      tenant_id,
+                      auth.user_id,
+                      order_id,
+                      &context,
+                      error,
+                  )
+              })?;
+          ''',
+          )
+          PY
+      - name: Format Rust changes
+        run: cargo fmt --all
+      - name: Verify source boundary
+        run: node scripts/verify/verify-commerce-graphql-return-decision-owner-port-cutover.mjs
+      - name: Check focused Rust crates
+        run: >-
+          cargo check
+          -p rustok-order
+          -p rustok-commerce
+          -p rustok-order-storefront
+          -p rustok-tax
+          -p rustok-inventory
+          --all-features
+        env:
+          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+      - name: Commit bounded source change
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-commerce/src/graphql_runtime.rs \
+                  crates/rustok-commerce/src/graphql/mutations/fulfillment.rs
+          git commit -m "feat(commerce): route GraphQL return decision through owner ports"
+          git push origin HEAD:agent/commerce-graphql-return-decision-owner-ports-20260812
