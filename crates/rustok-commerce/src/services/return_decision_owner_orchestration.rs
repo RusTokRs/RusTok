@@ -356,9 +356,7 @@ fn command_context_for(
     };
     let mut context = base.clone();
     context.correlation_id = format!("{}:{operation}:{resource_id}", base.correlation_id);
-    context.idempotency_key = Some(format!(
-        "{root_idempotency_key}:{operation}:{resource_id}"
-    ));
+    context.idempotency_key = Some(format!("{root_idempotency_key}:{operation}:{resource_id}"));
     Ok(context)
 }
 
@@ -455,7 +453,9 @@ fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestratio
     }
 }
 
-fn return_items_amount(order_return: &OrderReturnResponse) -> PostOrderOrchestrationResult<Decimal> {
+fn return_items_amount(
+    order_return: &OrderReturnResponse,
+) -> PostOrderOrchestrationResult<Decimal> {
     order_return
         .items
         .iter()
