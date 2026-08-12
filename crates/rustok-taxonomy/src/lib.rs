@@ -7,6 +7,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+mod module_term_lookup;
 pub mod module_term_mutation;
 mod route_key_registry;
 pub mod services;

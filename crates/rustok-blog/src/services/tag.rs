@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait, TransactionTrait,
+    DatabaseTransaction, EntityTrait, JoinType, QueryFilter, QueryOrder, RelationTrait,
+    TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -17,7 +17,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyScopeType,
     TaxonomyService, TaxonomyTermKind, delete_module_term_in_tx,
-    entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
+    entities::{taxonomy_term, taxonomy_term_translation},
     update_module_term_in_tx,
 };
 
@@ -416,53 +416,27 @@ pub(crate) async fn find_post_ids_by_tag(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     tag: &str,
+    locale: &str,
+    fallback_locale: Option<&str>,
 ) -> BlogResult<Vec<Uuid>> {
-    let normalized_slug = normalize_tag_slug(tag);
-    if normalized_slug.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut tag_ids = taxonomy_term_translation::Entity::find()
-        .join(
-            JoinType::InnerJoin,
-            taxonomy_term_translation::Relation::Term.def(),
+    let Some(tag_id) = TaxonomyService::new(db.clone())
+        .resolve_active_term_id_for_module(
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+            locale,
+            fallback_locale,
+            tag,
         )
-        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term_translation::Column::Slug.eq(&normalized_slug))
-        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-        .filter(blog_tag_scope_condition())
-        .all(db)
         .await?
-        .into_iter()
-        .map(|translation| translation.term_id)
-        .collect::<Vec<_>>();
-
-    let alias_ids = taxonomy_term_alias::Entity::find()
-        .join(
-            JoinType::InnerJoin,
-            taxonomy_term_alias::Relation::Term.def(),
-        )
-        .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term_alias::Column::Slug.eq(&normalized_slug))
-        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-        .filter(blog_tag_scope_condition())
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|alias| alias.term_id)
-        .collect::<Vec<_>>();
-    tag_ids.extend(alias_ids);
-    tag_ids.sort();
-    tag_ids.dedup();
-
-    if tag_ids.is_empty() {
+    else {
         return Ok(Vec::new());
-    }
+    };
 
     let relations = blog_post_tag::Entity::find()
         .join(JoinType::InnerJoin, blog_post_tag::Relation::Post.def())
         .filter(blog_post::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_tag::Column::TagId.is_in(tag_ids))
+        .filter(blog_post_tag::Column::TagId.eq(tag_id))
         .all(db)
         .await?;
 
@@ -567,21 +541,6 @@ fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
 
 fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Locale cannot be empty"))
-}
-
-fn normalize_tag_slug(value: &str) -> String {
-    let mut normalized = String::with_capacity(value.len());
-    let mut previous_dash = false;
-    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
-        if ch.is_ascii_alphanumeric() {
-            normalized.push(ch);
-            previous_dash = false;
-        } else if !previous_dash {
-            normalized.push('-');
-            previous_dash = true;
-        }
-    }
-    normalized.trim_matches('-').to_string()
 }
 
 fn resolve_translation_with_fallback<'a>(
