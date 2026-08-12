@@ -22,6 +22,20 @@ This directory contains the detailed technical architecture documentation for `r
 3. **Derived and Sealed Cursor Boundaries**: Query keyset cursors are checksummed and scope-bound; owner source cursors use a separate authenticated, confidential, tenant/schema/source-bound codec plus a private server `SecretRef` keyring, sealed one-page service boundary, and bounded GraphQL transport. Drift discovery uses a separate exact-scope candidate contract, read-only PostgreSQL `txid` visibility fence, bounded two-phase keyset reader, double-observed owner/materialized confirmation, serializable idempotent finding persistence, authorization-gated lifecycle audit, durable targeted-repair reservations/receipts, concrete missing-entity and orphan-link repair paths through command-bound inbox identities, and an immutable authorization-gated recovery ledger for ambiguous `prepared` commands.
 4. **Durable Rebuilds & Persisted Readiness**: Fences stale checkpoint writers with advisory locks, deduplicates mutations via `index_inbox`, logs consistency findings (`index_consistency_findings`), and fail-closes authoritative cutover unless the explicit tenant schema set matches active persisted `index_schemas` contracts exactly.
 
+## Canonical Storage Tables
+
+The module-owned migration source keeps the generic Index storage vocabulary explicit:
+
+- `index_schemas` — versioned owner-published schema contracts;
+- `index_entities` — tenant-leading materialized entity envelopes and tombstones;
+- `index_links` — independently relational ordered links;
+- `index_inbox` — durable delivery deduplication and processing leases;
+- `index_jobs` — bounded schema/index/rebuild/reconciliation work;
+- `index_checkpoints` — ingestion and rebuild cursors;
+- `index_consistency_findings` — durable drift and repair diagnostics.
+
+These tables are a derived read model. Source modules remain authoritative and do not write this storage directly.
+
 ---
 
 ## Reference Documents
