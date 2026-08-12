@@ -34,6 +34,8 @@ jobs:
           node-version: 22
       - name: Verify mounted checkout cutover
         run: node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs
+      - name: Verify admin return-decision owner ports
+        run: node scripts/verify/verify-commerce-rest-admin-return-decision-order-owner-port-cutover.mjs
       - name: Verify ecommerce public port errors
         run: npm run verify:ecommerce:public-port-errors
       - name: Run public error negative fixtures
