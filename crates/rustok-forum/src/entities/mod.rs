@@ -7,6 +7,7 @@ pub mod forum_category_audience_group;
 pub mod forum_category_audience_policy;
 pub mod forum_category_audience_role;
 pub mod forum_category_audience_user;
+pub mod forum_category_cover;
 pub mod forum_category_lifecycle;
 pub mod forum_category_moderation_audience_channel;
 pub mod forum_category_moderation_audience_group;
@@ -68,6 +69,7 @@ pub mod forum_user_trust_state;
 
 pub use forum_category::Entity as ForumCategory;
 pub use forum_category_audience_policy::Entity as ForumCategoryAudiencePolicyEntity;
+pub use forum_category_cover::Entity as ForumCategoryCoverEntity;
 pub use forum_category_lifecycle::Entity as ForumCategoryLifecycle;
 pub use forum_category_moderation_audience_policy::Entity as ForumCategoryModerationAudiencePolicyEntity;
 pub use forum_category_policy::Entity as ForumCategoryPolicy;
