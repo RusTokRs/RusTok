@@ -16,6 +16,10 @@ use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_list
 use crate::services::rbac_invalidation_generation::start_rbac_invalidation_generation_watchdog;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
+#[cfg(feature = "mod-product")]
+#[path = "product_index_refresh_worker.rs"]
+mod product_index_refresh_worker;
+
 /// Runs host-independent startup validation and one-time initialization.
 pub async fn initialize_server_context(
     runtime_ctx: &ServerRuntimeContext,
@@ -178,6 +182,10 @@ pub async fn bootstrap_application_router(
         &runtime_ctx,
     )
     .await?;
+
+    #[cfg(feature = "mod-product")]
+    product_index_refresh_worker::start_product_index_refresh_worker_if_enabled(&runtime_ctx)
+        .await?;
 
     #[cfg(feature = "mod-social_graph")]
     crate::services::social_graph_index_worker::start_social_graph_index_worker_if_enabled(
