@@ -9,6 +9,7 @@ use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
 pub mod attachment_relation;
+pub mod attachment_relation_store;
 pub mod audience;
 pub mod category_presentation;
 pub mod category_read_transport;
@@ -51,6 +52,7 @@ pub mod topic_read_transport;
 pub mod visibility;
 
 pub use attachment_relation::*;
+pub use attachment_relation_store::*;
 pub use audience::{
     FORUM_AUDIENCE_FACTS_CAPABILITY, FORUM_AUDIENCE_FACTS_CAPABILITY_UNAVAILABLE,
     ForumAudienceConstraints, ForumAudienceDecision, ForumAudienceDecisionReason,
