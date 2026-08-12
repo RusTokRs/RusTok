@@ -10,7 +10,7 @@ mod product;
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
 mod query_admission;
 pub(crate) mod relation_admission;
-mod refresh_event;
+pub mod refresh_event;
 #[cfg(test)]
 mod storefront_budgeted_execution;
 #[cfg(test)]
