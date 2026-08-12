@@ -63,7 +63,7 @@ try {
     'refusing to overwrite',
   ], 'capture finalizer');
   requireMarkers(binary, [
-    'PartitionSnapshotConfig::from_env()',
+    'PartitionCaptureFinalizeConfig::from_env()',
     'finalize_partition_capture',
   ], 'capture finalizer binary');
   requireMarkers(cargo, [
