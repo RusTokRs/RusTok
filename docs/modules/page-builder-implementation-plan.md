@@ -16,15 +16,17 @@ status: active
 
 ## Current-source actualization
 
-This central plan is reconciled to current `main` through PR #3435 on 2026-08-10. The detailed
+This central plan is reconciled to current `main` through PR #3444 on 2026-08-12. The detailed
 source overlays under `docs/modules/page-builder-*-actualization-2026-08-07.md`, the 2026-08-08
-Pages/Page Builder parity packets and the 2026-08-09/10 provider-health, gate-acceptance, Forum
-Wave-admission and base-plan-reconciliation overlays remain authoritative where they are more
-specific. Older open checkboxes for Pages metadata contributions, immutable rollback, artifact
-audit/repair, reviewed static resource limits, authenticated real-DOM authoring, anonymous authoring
-exclusion, generated contribution-registry foundations, shared contribution metadata tooling, the
-Forum Fly adapter/owner-preview/property-editor source and the missing provider-health architecture
-cursor were stale and are corrected below.
+Pages/Page Builder parity packets, the 2026-08-09/10 provider-health, gate-acceptance, Forum
+Wave-admission and base-plan-reconciliation overlays, and
+`docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md` remain authoritative
+where they are more specific. Older open checkboxes for Pages metadata contributions, immutable
+rollback, artifact audit/repair, reviewed static resource limits, authenticated real-DOM authoring,
+anonymous authoring exclusion, generated contribution-registry foundations, shared contribution
+metadata tooling, the Forum Fly adapter/owner-preview/property-editor source, the missing
+provider-health architecture cursor, and generic editor source-level accessibility semantics were
+stale and are corrected below.
 
 Current source markers for this slice:
 
@@ -40,6 +42,8 @@ Forum Fly adapter/component registry: source-ready
 Forum owner preview transport/Pages host composition: source-ready
 Forum owner-backed property editing: source-ready
 Forum Wave admission: source-ready
+Generic editor control accessibility semantics: source-ready
+Generic editor executable accessibility evidence: pending
 ```
 
 Observed provider-health **execution** remains a maintainer-owned cursor, but the observation,
@@ -77,6 +81,13 @@ tenant-enabled and its manifest permission is effectively granted. The Page Buil
 has no Forum dependency. Browser/runtime/server-function evidence source remains unexecuted; the
 Forum Wave admission source now correlates those future packets with an accepted Pages gate before a
 separate observed control-plane Wave may start.
+
+PR #3444 closed the remaining generic-editor **source semantics** gap identified by the earlier plan:
+generic asset, property, style, responsive-style and trait controls now expose programmatic names,
+repeated actions use object-scoped accessible names, and page/layer selection exposes `aria-pressed`.
+`scripts/verify/verify-page-builder-admin-accessibility.mjs` source-locks this boundary. Keyboard/focus,
+built-surface accessibility-tree inspection, browser and screen-reader evidence remain open; static
+source markers do not establish WCAG conformance.
 
 ## Current-only policy
 
@@ -149,8 +160,9 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Geometry, viewport, hover, selection and overlay plumbing.
 - [x] Palette, command, DnD, resize, keyboard and browser-intent foundations.
 - [x] Authenticated real-DOM adapter and Pages inline consumer path are source-ready.
-- [ ] Complete accessibility, nested-scroll, race and accepted browser/resource
-  evidence remains open.
+- [x] Generic editor programmatic accessibility semantics and static anti-drift guard are source-ready.
+- [ ] Retain keyboard/focus, nested-scroll, race, resource-budget, accessibility-tree,
+  browser and screen-reader execution evidence.
 
 ### Page Builder provider
 
@@ -589,8 +601,8 @@ of the verification programme.
 - [x] Provider-health consumer narrowing source: validated accepted health reaches
   workspace, authoritative SSR, standalone browser-intent and capability preflight
   through the shared effective runtime flag policy.
-- [ ] Complete remaining generic typed asset/control surfaces and accessibility
-  evidence.
+- [x] Complete generic typed asset/control surfaces and programmatic accessibility semantics at source level.
+- [ ] Retain executable keyboard/focus/accessibility-tree/browser/screen-reader evidence for the built editor.
 - [ ] Retain executed observed provider-health/degraded browser evidence.
 
 ### Phase 8 — storefront
@@ -661,8 +673,8 @@ of the verification programme.
 5. Retain accepted Pages execution evidence for reviewed publish, rollback/repair,
    cache rotation/miss-refill, metadata isolation and authenticated/anonymous
    authoring boundaries.
-6. Complete remaining generic Page Builder asset/accessibility controls and their
-   executable browser evidence.
+6. Retain executable generic-editor keyboard/focus/accessible-name/state/browser and
+   screen-reader evidence; generic control accessibility semantics are already source-ready.
 7. Promote no new consumer or FFA/FBA wave until its ownership and retained
    execution evidence satisfy the same canonical composition boundary.
 
@@ -686,6 +698,8 @@ node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
 node scripts/verify/verify-fly-ui-contributions.mjs
 node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs
+node scripts/verify/verify-page-builder-admin-accessibility.mjs
+node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs
 node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
@@ -716,8 +730,9 @@ cargo deny check
 cargo audit
 ```
 
-These commands are execution cursors only. They were not run by the source-authoring
-workflow for this actualization.
+The focused source verifiers are executed by the Pages/Page Builder parity workflow. Browser,
+provider-health, rollout, database and other environment-bound commands remain execution cursors and
+must not be inferred from source inspection.
 
 Required evidence covers current GrapesJS/Fly round trips, iframe rejection and
 cleanup, DnD/keyboard/accessibility, metadata/body revision conflicts,
