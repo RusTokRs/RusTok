@@ -10,6 +10,7 @@ mod product;
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
 mod query_admission;
 pub(crate) mod relation_admission;
+mod refresh_event;
 #[cfg(test)]
 mod storefront_budgeted_execution;
 #[cfg(test)]
@@ -63,6 +64,7 @@ pub(crate) fn register(
 ) -> rustok_core::Result<()> {
     product::register(extensions)?;
     variant::register(extensions)?;
+    refresh_event::register(extensions)?;
     absence::register(extensions)?;
     query_admission::register(extensions)?;
     channel_relation_convergence::register(extensions)
