@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "module": "pages",
+  "packet": "pages-builder-provider-health-observed-acceptance-runner-test-source",
+  "status": "source_ready_ci_execution_pending",
+  "production_runner": "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
+  "test_runner": "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs",
+  "production_output_format": "pages_builder_provider_health_observed_acceptance_v1",
+  "cases": [
+    "valid accept decision produces gate-review-eligible retrospective evidence without accepting the Pages gate",
+    "valid reject decision produces a rejected packet that is not gate-review eligible",
+    "runtime source hash tamper fails closed",
+    "runtime generated after the admitted historical health lease deadline fails closed",
+    "runtime Pages gate acceptance overclaim fails closed",
+    "runtime privacy retention overclaim fails closed",
+    "binding owner-acceptance RepoDigest mismatch fails closed"
+  ],
+  "fixture_policy": {
+    "uses_current_checkout_head": true,
+    "recomputes_required_source_hashes_from_current_checkout": true,
+    "uses_synthetic_ready_health_snapshot": true,
+    "uses_synthetic_packet_files_under_repository_target": true,
+    "spawns_production_runner_as_child_process": true,
+    "does_not_import_or_reimplement_production_runner_decision_logic": true,
+    "cleans_test_packets_after_execution": true
+  },
+  "boundaries": {
+    "deployment_identity_capture_executed": false,
+    "prometheus_query_executed": false,
+    "deployment_evaluator_executed": false,
+    "server_binding_activated": false,
+    "graphql_or_http_executed": false,
+    "browser_executed": false,
+    "observed_runtime_evidence_from_live_deployment_claimed": false,
+    "owner_observed_health_decision_from_live_deployment_claimed": false,
+    "current_provider_health_asserted": false,
+    "pages_reference_consumer_gate_accepted": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "ci": {
+    "workflow": ".github/workflows/pages-page-builder-provider-health.yml",
+    "commands": [
+      "node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs",
+      "node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs",
+      "node scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs",
+      "node scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs",
+      "node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+    ]
+  },
+  "required_source_files": [
+    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json",
+    "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
+    "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs",
+    "scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs",
+    ".github/workflows/pages-page-builder-provider-health.yml",
+    "docs/modules/pages-page-builder-provider-health-owner-runner-tests-actualization-2026-08-12.md"
+  ],
+  "next_cursor": {
+    "observed_health_owner_acceptance_runner": "synthetic_fail_closed_ci_coverage_source_ready",
+    "live_identity_evaluator_binding_acceptance_runtime_evidence": "maintainer_execution_pending",
+    "observed_health_owner_acceptance": "maintainer_execution_pending",
+    "pages_reference_consumer_gate_acceptance": "blocked_on_retained_live_execution_and_owner_decision"
+  }
+}
