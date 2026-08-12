@@ -190,6 +190,47 @@ fn admin_order_port_error_policy(error: &PortError) -> AdminOrderReturnHttpPolic
     }
 }
 
+fn admin_payment_port_error_policy(error: &PortError) -> AdminOrderReturnHttpPolicy {
+    match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_payment_invalid",
+            "Payment request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_payment_state_conflict",
+            "Payment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_storage_unavailable",
+            "Payment storage is temporarily unavailable",
+            "temporarily_unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_payment_failed",
+            "Payment state could not be read safely",
+            "invariant_violation",
+        ),
+    }
+}
+
 fn admin_payment_error_policy(error: &PaymentError) -> AdminOrderReturnHttpPolicy {
     match error {
         PaymentError::PaymentCollectionNotFound(_)
@@ -308,6 +349,34 @@ fn map_admin_return_decision_order_port_error(
         status = %status,
         boundary = ADMIN_ORDER_RETURN_BOUNDARY,
         "commerce admin return-decision Order owner command failed with bounded diagnostics"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_admin_return_decision_payment_port_error(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_id: Uuid,
+    context: &PortContext,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = admin_payment_port_error_policy(&error);
+    tracing::error!(
+        owner = "rustok_payment.admin_read",
+        owner_operation = "list_payment_collection_projections",
+        consumer_operation = "create_return_decision",
+        correlation_id = %context.correlation_id,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        order_id_non_nil = !order_id.is_nil(),
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_ORDER_RETURN_BOUNDARY,
+        "commerce admin return-decision Payment owner read failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -452,6 +521,7 @@ pub async fn create_order_return_decision(
     let service = ReturnDecisionOwnerOrchestrationService::new(
         runtime.db_clone(),
         runtime.order_post_order_command_port(),
+        runtime.payment_admin_read_port(),
     )
     .with_payment_provider_registry(runtime.payment_provider_registry());
     let decision = service
@@ -460,6 +530,15 @@ pub async fn create_order_return_decision(
         .map_err(|error| match error {
             ReturnDecisionOwnerOrchestrationError::OrderCommand(error) => {
                 map_admin_return_decision_order_port_error(
+                    tenant.id,
+                    auth.user_id,
+                    id,
+                    &context,
+                    error,
+                )
+            }
+            ReturnDecisionOwnerOrchestrationError::PaymentRead(error) => {
+                map_admin_return_decision_payment_port_error(
                     tenant.id,
                     auth.user_id,
                     id,
