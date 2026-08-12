@@ -57,11 +57,17 @@ jobs:
           PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
   check:
-    name: Cargo Check
+    name: Cargo Check (${{ matrix.rust }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - "1.96.0"
+          - stable
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets --all-features
         env:
@@ -79,17 +85,6 @@ jobs:
       - run: cargo xtask module validate
       - name: Check Dependabot directories
         run: python scripts/ci/check-dependabot-directories.py
-
-  check-msrv:
-    name: Cargo Check (MSRV 1.96)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.96.0
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --all-targets --all-features
-        env:
-          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
   audit:
     name: Security Audit
@@ -430,7 +425,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [fmt, clippy, check, check-msrv, platform-contract, audit, deny, typos, doc, udeps, coverage, sbom, build-server, build-storefront, test, migration-smoke, doc-tests, next-apps, server-library-docs-snapshot, reference-artifacts]
+    needs: [fmt, clippy, check, platform-contract, audit, deny, typos, doc, udeps, coverage, sbom, build-server, build-storefront, test, migration-smoke, doc-tests, next-apps, server-library-docs-snapshot, reference-artifacts]
     if: always()
     steps:
       - name: Check all jobs
@@ -438,7 +433,6 @@ jobs:
           if [[ "${{ needs.fmt.result }}" != "success" ]] || \
              [[ "${{ needs.clippy.result }}" != "success" ]] || \
              [[ "${{ needs.check.result }}" != "success" ]] || \
-             [[ "${{ needs.check-msrv.result }}" != "success" ]] || \
              [[ "${{ needs.platform-contract.result }}" != "success" ]] || \
              [[ "${{ needs.audit.result }}" != "success" ]] || \
              [[ "${{ needs.deny.result }}" != "success" ]] || \
