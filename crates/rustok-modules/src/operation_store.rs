@@ -52,12 +52,20 @@ pub enum ModuleOperationStoreError {
     Database(String),
     #[error("module `{0}` is not enabled for this tenant")]
     ModuleNotEnabled(String),
-    #[error("module `{0}` settings changed since the expected snapshot")]
-    SettingsConflict(String),
     #[error("module operation idempotency key was reused for a different command")]
     IdempotencyConflict,
     #[error("module operation idempotency key is required")]
     MissingIdempotencyKey,
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum TenantModuleSettingsCompareAndSwapError {
+    #[error("module settings compare-and-swap database error: {0}")]
+    Database(String),
+    #[error("module `{0}` is not enabled for this tenant")]
+    ModuleNotEnabled(String),
+    #[error("module `{0}` settings changed since the expected snapshot")]
+    Conflict(String),
 }
 
 /// Owner-owned persistence for lifecycle operation journaling.
@@ -595,7 +603,7 @@ impl TenantModuleStateStore {
     pub(crate) async fn persist_settings_if_current<C: ConnectionTrait>(
         db: &C,
         request: TenantModuleSettingsCompareAndSwapRequest,
-    ) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
+    ) -> Result<TenantModuleSettingsRecord, TenantModuleSettingsCompareAndSwapError> {
         let backend = db.get_database_backend();
         let select = match backend {
             DbBackend::Postgres => {
@@ -612,13 +620,17 @@ impl TenantModuleStateStore {
                 vec![request.tenant_id.into(), request.module_slug.clone().into()],
             ))
             .await
-            .map_err(database_error)?
+            .map_err(|error| {
+                TenantModuleSettingsCompareAndSwapError::Database(error.to_string())
+            })?
         else {
-            return Err(ModuleOperationStoreError::ModuleNotEnabled(
+            return Err(TenantModuleSettingsCompareAndSwapError::ModuleNotEnabled(
                 request.module_slug,
             ));
         };
-        let id: Uuid = row.try_get("", "id").map_err(database_error)?;
+        let id: Uuid = row.try_get("", "id").map_err(|error| {
+            TenantModuleSettingsCompareAndSwapError::Database(error.to_string())
+        })?;
         let result = db
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -634,9 +646,11 @@ impl TenantModuleStateStore {
                 ],
             ))
             .await
-            .map_err(database_error)?;
+            .map_err(|error| {
+                TenantModuleSettingsCompareAndSwapError::Database(error.to_string())
+            })?;
         if result.rows_affected() != 1 {
-            return Err(ModuleOperationStoreError::SettingsConflict(
+            return Err(TenantModuleSettingsCompareAndSwapError::Conflict(
                 request.module_slug,
             ));
         }
@@ -865,7 +879,8 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ModuleOperationStoreError::SettingsConflict(module_slug)) if module_slug == "pages"
+            Err(TenantModuleSettingsCompareAndSwapError::Conflict(module_slug))
+                if module_slug == "pages"
         ));
         assert_eq!(stored_settings(&database, tenant_id, "pages").await, concurrent);
     }
@@ -913,7 +928,8 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ModuleOperationStoreError::SettingsConflict(module_slug)) if module_slug == "pages"
+            Err(TenantModuleSettingsCompareAndSwapError::Conflict(module_slug))
+                if module_slug == "pages"
         ));
         assert_eq!(stored_settings(&database, tenant_id, "pages").await, initial);
     }
