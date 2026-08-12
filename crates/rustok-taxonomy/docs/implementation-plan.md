@@ -20,6 +20,14 @@ The transaction-aware owner helper may still reuse an existing deprecated term
 identity; reactivation/replacement is an owner lifecycle decision rather than a
 public-route lookup side effect.
 
+Route resolution is fail-closed for legacy or concurrently-created ambiguity.
+For each locale candidate, translation and alias matches are deduplicated by
+term identity: zero distinct terms proceeds to the next locale, one resolves,
+and more than one returns a conflict instead of silently preferring one storage
+table. A translation slug and alias that both belong to the same term are not
+ambiguous. The owner transaction lookup applies the same distinct-term rule
+while retaining its broader lifecycle semantics.
+
 Category hierarchy is deliberately outside the shared dictionary contract.
 Parent/child category edges, ordering, cycle rules, and domain-specific category
 metadata belong to the module that owns the category aggregate and its public
@@ -58,21 +66,35 @@ not claim a global `translation.target.changed` event contract.
 2. **Expand kinds and lookup semantics only for demonstrated domain pressure.**
    Do not add speculative vocabulary kinds or polymorphic attachment storage.
    The current tag lookup baseline requires locale-aware slug/alias uniqueness,
-   module-before-global precedence, shared locale fallback, and active-only
-   public resolution. Category parent/child hierarchy remains owner-domain
-   state rather than an implicit taxonomy kind.
+   module-before-global precedence, shared locale fallback, active-only public
+   resolution, and fail-closed ambiguity handling. Category parent/child
+   hierarchy remains owner-domain state rather than an implicit taxonomy kind.
    **Depends on:** a concrete domain requirement and scope decision.
    **Done when:** canonical-key, alias/slug, tenant, module-scope, locale,
-   lifecycle, and any newly demonstrated kind semantics are defined and tested.
+   lifecycle, ambiguity, and any newly demonstrated kind semantics are defined
+   and tested.
 
-3. **Maintain dictionary operational guidance.** Add documentation and runbooks
+3. **Make the localized route namespace storage-atomic.** Service admission and
+   fail-closed lookup protect normal writes and reads, but translation slugs and
+   aliases still live in separate tables, so their cross-table uniqueness is
+   not yet one database-enforced invariant under concurrent writers. Introduce
+   one portable route-key reservation/registry authority rather than relying on
+   table-order precedence or backend-specific trigger tricks.
+   **Depends on:** an explicit migration/backfill contract for existing route
+   keys and PostgreSQL concurrency evidence.
+   **Done when:** one database unique key owns
+   `tenant + kind + scope + locale + route_key`, both translations and aliases
+   reserve/release it transactionally, conflicting legacy rows are detected
+   deterministically, and concurrent writers cannot create ambiguity.
+
+4. **Maintain dictionary operational guidance.** Add documentation and runbooks
    when a changed vocabulary contract introduces drift or integration recovery
    risk.
    **Depends on:** an actual runtime or consumer incident class.
    **Done when:** operators can reconcile terms, aliases, and owner attachments
    without inventing shared relation ownership.
 
-4. **Collect production target evidence.** Run the append-only Outbox and
+5. **Collect production target evidence.** Run the append-only Outbox and
    Taxonomy migrations plus PostgreSQL concurrent apply/change-cursor scenarios
    before enabling the `taxonomy/term` pilot in production.
    **Depends on:** a production-like PostgreSQL runtime.
@@ -84,7 +106,8 @@ not claim a global `translation.target.changed` event contract.
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
 - Targeted term CRUD, cross slug/alias collision, scope restriction, active-only
-  route resolution, locale fallback, and consumer-integration tests.
+  route resolution, fail-closed ambiguity, locale fallback, and
+  consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
 
 ## Change rules

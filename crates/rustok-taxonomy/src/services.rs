@@ -871,7 +871,7 @@ impl TaxonomyService {
         let locales = resolve_locale_candidates(lookup.locale, lookup.fallback_locale);
 
         for locale_candidate in locales {
-            if let Some(translation) = taxonomy_term_translation::Entity::find()
+            let translations = taxonomy_term_translation::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_translation::Relation::Term.def(),
@@ -883,13 +883,9 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
                 .filter(taxonomy_term::Column::Status.eq(TaxonomyTermStatus::Active))
-                .one(&self.db)
-                .await?
-            {
-                return Ok(Some(translation.term_id));
-            }
-
-            if let Some(alias) = taxonomy_term_alias::Entity::find()
+                .all(&self.db)
+                .await?;
+            let aliases = taxonomy_term_alias::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_alias::Relation::Term.def(),
@@ -901,10 +897,18 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
                 .filter(taxonomy_term::Column::Status.eq(TaxonomyTermStatus::Active))
-                .one(&self.db)
-                .await?
-            {
-                return Ok(Some(alias.term_id));
+                .all(&self.db)
+                .await?;
+
+            if let Some(term_id) = resolve_unique_localized_route_match(
+                lookup.slug,
+                &locale_candidate,
+                translations
+                    .into_iter()
+                    .map(|translation| translation.term_id),
+                aliases.into_iter().map(|alias| alias.term_id),
+            )? {
+                return Ok(Some(term_id));
             }
         }
 
@@ -1249,7 +1253,7 @@ impl TaxonomyService {
         let locales = resolve_locale_candidates(lookup.locale, lookup.fallback_locale);
 
         for locale_candidate in locales {
-            if let Some(translation) = taxonomy_term_translation::Entity::find()
+            let translations = taxonomy_term_translation::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_translation::Relation::Term.def(),
@@ -1260,13 +1264,9 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
                 .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
-                .one(txn)
-                .await?
-            {
-                return Ok(Some(translation.term_id));
-            }
-
-            if let Some(alias) = taxonomy_term_alias::Entity::find()
+                .all(txn)
+                .await?;
+            let aliases = taxonomy_term_alias::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_alias::Relation::Term.def(),
@@ -1277,14 +1277,42 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
                 .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
-                .one(txn)
-                .await?
-            {
-                return Ok(Some(alias.term_id));
+                .all(txn)
+                .await?;
+
+            if let Some(term_id) = resolve_unique_localized_route_match(
+                lookup.slug,
+                &locale_candidate,
+                translations
+                    .into_iter()
+                    .map(|translation| translation.term_id),
+                aliases.into_iter().map(|alias| alias.term_id),
+            )? {
+                return Ok(Some(term_id));
             }
         }
 
         Ok(None)
+    }
+}
+
+fn resolve_unique_localized_route_match(
+    slug: &str,
+    locale: &str,
+    translation_term_ids: impl IntoIterator<Item = Uuid>,
+    alias_term_ids: impl IntoIterator<Item = Uuid>,
+) -> TaxonomyResult<Option<Uuid>> {
+    let term_ids = translation_term_ids
+        .into_iter()
+        .chain(alias_term_ids)
+        .collect::<HashSet<_>>();
+
+    match term_ids.len() {
+        0 => Ok(None),
+        1 => Ok(term_ids.into_iter().next()),
+        _ => Err(TaxonomyError::conflict(format!(
+            "ambiguous localized taxonomy route key `{slug}` for locale `{locale}`",
+        ))),
     }
 }
 
