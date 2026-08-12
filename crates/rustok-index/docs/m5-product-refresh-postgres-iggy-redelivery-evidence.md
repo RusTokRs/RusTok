@@ -115,6 +115,20 @@ RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD='...' \
 
 The username/password pair may both be omitted when the disposable broker permits anonymous access.
 
+## Manual GitHub Actions runner
+
+The repository also provides a maintainer-owned manual runner:
+
+```text
+.github/workflows/index-product-refresh-redelivery-evidence.yml
+```
+
+The workflow is `workflow_dispatch` only. It requires the non-secret confirmation choice `execute`, reads only the evidence-scoped PostgreSQL/Iggy GitHub secrets named above, uses read-only repository permissions and `persist-credentials: false`, and never sets `RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED`.
+
+The runner performs a fail-fast preflight before invoking the harness. Missing PostgreSQL/Iggy endpoints, an incomplete username/password pair, or missing explicit confirmation makes the workflow fail before the test starts. This is intentionally different from a direct developer invocation, where absent settings can produce a source-friendly skip.
+
+The manual workflow source is not runtime evidence. A promotable runtime claim still requires a completed successful manual run of the exact reviewed workflow and source commit against operator-approved external services, followed by retained run metadata/evidence review.
+
 ## Non-claims
 
 Even after a successful external execution, this packet does not claim a distributed PostgreSQL/Iggy transaction, physical exactly-once broker delivery, Product-specific DLQ behavior, partition-wide replay, storefront cutover, multi-replica rebalance guarantees, or TLS/auth/failover coverage.
