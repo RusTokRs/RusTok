@@ -15,7 +15,7 @@ const paths = {
   overlay: "docs/modules/page-builder-provider-health-deployment-evaluator-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
   pagesGraphql: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  pagesFacade: "crates/rustok-pages/admin/src/builder.rs",
+  pagesFacade: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
 };
 
 function load(label) {
@@ -170,7 +170,7 @@ if (failures.length === 0) {
     "deployment-health-backend-evaluator-source-ready",
     "exact-target-source-admission-source-ready",
     "freshness-and-sample-floor-source-ready",
-    "identity capture must predate the **entire** query window",
+    "identity capture itself must predate the **entire** query window",
     "partial target success is rejected",
     "Prometheus `time()`",
     "preview terminal completions >= 20",
@@ -184,8 +184,8 @@ if (failures.length === 0) {
   for (const marker of [
     "deployment-health-evaluator-source-ready",
     "page-builder-provider-health-deployment-evaluator-actualization-2026-08-09.md",
-    "retained deployment health evaluator packet",
-    "Pages remains `unobserved`",
+    "deployment health backend evaluator [source-ready]",
+    "provider_health = unobserved",
   ]) need(sources.parity, marker, "parity actualization");
 
   need(sources.pagesGraphql, "provider_health_observed: false", "Pages GraphQL remains unobserved");
