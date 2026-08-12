@@ -14,9 +14,9 @@ use super::{
     variant::PRODUCT_VARIANT_INDEX_SOURCE,
 };
 
-pub(crate) const PRODUCT_INDEX_LOCALE_REFRESH_EVENT_DOMAIN: &str =
+pub const PRODUCT_INDEX_LOCALE_REFRESH_EVENT_DOMAIN: &str =
     "product.index.locale_refresh_requested";
-pub(crate) const PRODUCT_INDEX_VARIANT_REFRESH_EVENT_DOMAIN: &str =
+pub const PRODUCT_INDEX_VARIANT_REFRESH_EVENT_DOMAIN: &str =
     "product.index.variant_refresh_requested";
 
 const PRODUCT_OWNER_MODULE: &str = "product";
@@ -29,7 +29,7 @@ const PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2;
 /// acknowledgement token. This type owns the canonical Product/ProductVariant -> `EntityKey`
 /// projection; the generic Index worker still owns authoritative source loading, durable mutation
 /// application, replay deduplication and commit-before-ack ordering.
-pub(crate) enum ProductIndexRefreshDelivery<T> {
+pub enum ProductIndexRefreshDelivery<T> {
     Locale {
         event_id: Uuid,
         tenant_id: Uuid,
@@ -49,7 +49,7 @@ pub(crate) enum ProductIndexRefreshDelivery<T> {
 }
 
 impl<T> ProductIndexRefreshDelivery<T> {
-    pub(crate) fn locale(
+    pub fn locale(
         event_id: Uuid,
         tenant_id: Uuid,
         product_id: Uuid,
@@ -67,7 +67,7 @@ impl<T> ProductIndexRefreshDelivery<T> {
         }
     }
 
-    pub(crate) fn variant(
+    pub fn variant(
         event_id: Uuid,
         tenant_id: Uuid,
         product_id: Uuid,
@@ -85,7 +85,7 @@ impl<T> ProductIndexRefreshDelivery<T> {
         }
     }
 
-    pub(crate) fn into_index_delivery(
+    pub fn into_index_delivery(
         self,
     ) -> Result<IndexSourceRefreshEventDelivery<T>, ProductIndexRefreshDeliveryError> {
         match self {
@@ -141,7 +141,7 @@ impl<T> ProductIndexRefreshDelivery<T> {
 
 /// Thin production bridge that keeps Product-specific decoding out of `rustok-index` while reusing
 /// its fail-closed source-refresh orchestration unchanged.
-pub(crate) struct ProductIndexRefreshDeliveryWorker<M, A> {
+pub struct ProductIndexRefreshDeliveryWorker<M, A> {
     inner: IndexSourceRefreshEventWorker<M, A>,
 }
 
@@ -150,13 +150,13 @@ where
     M: IndexReplayMutationSink,
     A: IndexMutationEventAcknowledger,
 {
-    pub(crate) fn new(mutation_sink: M, acknowledger: A) -> Self {
+    pub fn new(mutation_sink: M, acknowledger: A) -> Self {
         Self {
             inner: IndexSourceRefreshEventWorker::new(mutation_sink, acknowledger),
         }
     }
 
-    pub(crate) async fn process(
+    pub async fn process(
         &self,
         schema_registry: &SchemaRegistry,
         source_registry: &SharedIndexSourceRegistry,
@@ -239,7 +239,7 @@ fn invalid_contract(error: DomainError) -> rustok_core::Error {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum ProductIndexRefreshDeliveryError {
+pub enum ProductIndexRefreshDeliveryError {
     #[error("Product Index refresh product UUID cannot be nil")]
     NilProductId,
     #[error("Product Index refresh target contract is invalid")]
@@ -249,7 +249,7 @@ pub(crate) enum ProductIndexRefreshDeliveryError {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum ProductIndexRefreshDeliveryProcessError {
+pub enum ProductIndexRefreshDeliveryProcessError {
     #[error("Product Index refresh delivery decoding failed")]
     Delivery(#[from] ProductIndexRefreshDeliveryError),
     #[error("Product Index refresh worker failed")]

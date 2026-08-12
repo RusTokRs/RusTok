@@ -11,9 +11,12 @@ on:
       - "crates/rustok-index/**"
       - "crates/rustok-distribution/src/product_index/**"
       - "crates/rustok-distribution/src/product_variant_index.rs"
+      - "apps/server/src/services/product_index_refresh_worker.rs"
+      - "apps/server/src/services/server_bootstrap.rs"
       - "scripts/verify/verify-event-contract-digest-admission.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
+      - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-contract-ci.yml"
@@ -29,9 +32,12 @@ on:
       - "crates/rustok-index/**"
       - "crates/rustok-distribution/src/product_index/**"
       - "crates/rustok-distribution/src/product_variant_index.rs"
+      - "apps/server/src/services/product_index_refresh_worker.rs"
+      - "apps/server/src/services/server_bootstrap.rs"
       - "scripts/verify/verify-event-contract-digest-admission.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
+      - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-contract-ci.yml"
@@ -68,6 +74,8 @@ jobs:
         run: node scripts/verify/verify-index-product-refresh-event-family.mjs
       - name: Verify Product Index refresh delivery
         run: node scripts/verify/verify-index-product-refresh-delivery.mjs
+      - name: Verify Product Index refresh host consumer
+        run: node scripts/verify/verify-index-product-refresh-host-consumer.mjs
 
   canonical-digest:
     name: Canonical event digest drift
@@ -107,12 +115,16 @@ jobs:
         run: cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
       - name: Check selected Product distribution bridge
         run: cargo check --locked -p rustok-distribution --features mod-product --lib
+      - name: Check Product refresh host consumer composition
+        run: cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
       - name: Verify canonical event contract test
         run: cargo test --locked -p rustok-events --test canonical_contracts
       - name: Verify generic source refresh commit-before-ack contract
         run: cargo test --locked -p rustok-index source_refresh_event --lib
       - name: Verify typed Product refresh delivery
         run: cargo test --locked -p rustok-distribution --features mod-product product_index::refresh_event::tests --lib
+      - name: Verify Product refresh host envelope projection and retry boundary
+        run: cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
 
   gate:
     name: Index Contract Gate
