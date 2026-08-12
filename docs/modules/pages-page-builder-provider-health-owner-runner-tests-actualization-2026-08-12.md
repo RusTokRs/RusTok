@@ -2,7 +2,7 @@
 
 Status: `provider-health-observed-acceptance-runner-tested / synthetic-fail-closed-coverage-source-ready / focused-provider-health-ci-source-ready / live-provider-health-execution-pending / pages-gate-unaccepted`.
 
-Base rechecked: `main@1c5eadab8d77695358bd5df304ec97cd4211d104`.
+Base rechecked: `main@b7be466e7c2b38eb16c5513cc4ab22fafcf75d94`.
 
 ## Why this continuation exists
 
