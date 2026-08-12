@@ -609,9 +609,7 @@ impl TenantModuleStateStore {
             DbBackend::Postgres => {
                 "SELECT id FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
-                "SELECT id FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
-            }
+            _ => "SELECT id FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
         };
         let Some(row) = db
             .query_one(Statement::from_sql_and_values(
@@ -830,7 +828,10 @@ mod tests {
         assert_eq!(updated.id, seeded.id);
         assert!(updated.enabled);
         assert_eq!(updated.settings, promoted);
-        assert_eq!(stored_settings(&database, tenant_id, "pages").await, promoted);
+        assert_eq!(
+            stored_settings(&database, tenant_id, "pages").await,
+            promoted
+        );
     }
 
     #[tokio::test]
@@ -882,7 +883,10 @@ mod tests {
             Err(TenantModuleSettingsCompareAndSwapError::Conflict(module_slug))
                 if module_slug == "pages"
         ));
-        assert_eq!(stored_settings(&database, tenant_id, "pages").await, concurrent);
+        assert_eq!(
+            stored_settings(&database, tenant_id, "pages").await,
+            concurrent
+        );
     }
 
     #[tokio::test]
@@ -931,6 +935,9 @@ mod tests {
             Err(TenantModuleSettingsCompareAndSwapError::Conflict(module_slug))
                 if module_slug == "pages"
         ));
-        assert_eq!(stored_settings(&database, tenant_id, "pages").await, initial);
+        assert_eq!(
+            stored_settings(&database, tenant_id, "pages").await,
+            initial
+        );
     }
 }
