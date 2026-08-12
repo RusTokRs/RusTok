@@ -7,6 +7,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
+use rustok_content::{available_locales_from, resolve_by_locale};
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -434,13 +435,15 @@ impl CategoryService {
                     .iter()
                     .filter(|translation| translation.category_id == category.id)
                     .collect();
-                let (translation, effective_locale) =
-                    resolve_category_translation(&translations, &locale);
+                let resolved = resolve_by_locale(&translations, &locale, |translation| {
+                    translation.locale.as_str()
+                });
+                let translation = resolved.item.copied();
 
                 CategoryListItem {
                     id: category.id,
                     locale: locale.clone(),
-                    effective_locale,
+                    effective_locale: resolved.effective_locale,
                     name: translation
                         .map(|translation| translation.name.clone())
                         .unwrap_or_default(),
@@ -788,47 +791,24 @@ fn normalize_slug_like(value: &str) -> String {
     normalized.trim_matches('-').to_string()
 }
 
-fn resolve_category_translation<'a>(
-    translations: &[&'a blog_category_translation::Model],
-    locale: &str,
-) -> (Option<&'a blog_category_translation::Model>, String) {
-    if let Some(translation) = translations
-        .iter()
-        .copied()
-        .find(|translation| translation.locale == locale)
-    {
-        return (Some(translation), locale.to_string());
-    }
-    if let Some(translation) = translations
-        .iter()
-        .copied()
-        .find(|translation| translation.locale == PLATFORM_FALLBACK_LOCALE)
-    {
-        return (Some(translation), PLATFORM_FALLBACK_LOCALE.to_string());
-    }
-    if let Some(translation) = translations.first().copied() {
-        return (Some(translation), translation.locale.clone());
-    }
-    (None, locale.to_string())
-}
-
 fn to_category_response(
     category: blog_category::Model,
     translations: Vec<blog_category_translation::Model>,
     locale: &str,
 ) -> CategoryResponse {
-    let translations_refs: Vec<&blog_category_translation::Model> = translations.iter().collect();
-    let (translation, effective_locale) = resolve_category_translation(&translations_refs, locale);
+    let resolved = resolve_by_locale(&translations, locale, |translation| {
+        translation.locale.as_str()
+    });
+    let available_locales =
+        available_locales_from(&translations, |translation| translation.locale.as_str());
+    let translation = resolved.item;
 
     CategoryResponse {
         id: category.id,
         tenant_id: category.tenant_id,
         locale: locale.to_string(),
-        effective_locale,
-        available_locales: translations
-            .iter()
-            .map(|item| item.locale.clone())
-            .collect(),
+        effective_locale: resolved.effective_locale,
+        available_locales,
         name: translation
             .map(|translation| translation.name.clone())
             .unwrap_or_default(),
@@ -841,5 +821,61 @@ fn to_category_response(
         settings: category.settings,
         created_at: category.created_at.into(),
         updated_at: category.updated_at.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn category_response_uses_deterministic_shared_locale_fallback() {
+        let tenant_id = Uuid::from_u128(1);
+        let category_id = Uuid::from_u128(2);
+        let now = Utc::now().fixed_offset();
+        let category = blog_category::Model {
+            id: category_id,
+            tenant_id,
+            parent_id: None,
+            position: 0,
+            depth: 0,
+            post_count: 0,
+            settings: json!({}),
+            revision: 1,
+            created_at: now,
+            updated_at: now,
+        };
+        let translations = vec![
+            blog_category_translation::Model {
+                id: Uuid::from_u128(3),
+                category_id,
+                tenant_id,
+                locale: "fr".to_string(),
+                name: "Français".to_string(),
+                slug: "francais".to_string(),
+                description: None,
+                revision: 1,
+            },
+            blog_category_translation::Model {
+                id: Uuid::from_u128(4),
+                category_id,
+                tenant_id,
+                locale: "de".to_string(),
+                name: "Deutsch".to_string(),
+                slug: "deutsch".to_string(),
+                description: None,
+                revision: 1,
+            },
+        ];
+
+        let response = to_category_response(category, translations, "ru");
+
+        assert_eq!(response.effective_locale, "de");
+        assert_eq!(response.name, "Deutsch");
+        assert_eq!(
+            response.available_locales,
+            vec!["de".to_string(), "fr".to_string()]
+        );
     }
 }
