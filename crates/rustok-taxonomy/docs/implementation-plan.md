@@ -20,13 +20,26 @@ The transaction-aware owner helper may still reuse an existing deprecated term
 identity; reactivation/replacement is an owner lifecycle decision rather than a
 public-route lookup side effect.
 
-Route resolution is fail-closed for legacy or concurrently-created ambiguity.
+Route resolution is fail-closed for legacy or externally-corrupted ambiguity.
 For each locale candidate, translation and alias matches are deduplicated by
 term identity: zero distinct terms proceeds to the next locale, one resolves,
 and more than one returns a conflict instead of silently preferring one storage
 table. A translation slug and alias that both belong to the same term are not
 ambiguous. The owner transaction lookup applies the same distinct-term rule
 while retaining its broader lifecycle semantics.
+
+New writes additionally use `taxonomy_term_route_keys` as the storage-level
+reservation authority. Its composite primary key is the complete localized
+route identity (`tenant + kind + scope_type + scope_value + locale + route_key`)
+and `term_id` is the owner. The migration preflights existing translation and
+alias rows before creating the registry: same-term duplicate representations
+are deduplicated, while a cross-term collision blocks migration with a
+deterministic diagnostic instead of choosing a winner. Runtime localized
+mutation finalization reconciles translation+alias rows with registry
+reservations in the same transaction. Missing reservations are inserted before
+stale reservations are released, so a concurrent claimant must win the single
+database key or roll its mutation back. Term deletion removes reservations via
+the composite tenant/term foreign-key cascade.
 
 Category hierarchy is deliberately outside the shared dictionary contract.
 Parent/child category edges, ordering, cycle rules, and domain-specific category
@@ -67,48 +80,43 @@ not claim a global `translation.target.changed` event contract.
    Do not add speculative vocabulary kinds or polymorphic attachment storage.
    The current tag lookup baseline requires locale-aware slug/alias uniqueness,
    module-before-global precedence, shared locale fallback, active-only public
-   resolution, and fail-closed ambiguity handling. Category parent/child
-   hierarchy remains owner-domain state rather than an implicit taxonomy kind.
+   resolution, fail-closed ambiguity handling, and storage-level route-key
+   reservation. Category parent/child hierarchy remains owner-domain state
+   rather than an implicit taxonomy kind.
    **Depends on:** a concrete domain requirement and scope decision.
    **Done when:** canonical-key, alias/slug, tenant, module-scope, locale,
    lifecycle, ambiguity, and any newly demonstrated kind semantics are defined
    and tested.
 
-3. **Make the localized route namespace storage-atomic.** Service admission and
-   fail-closed lookup protect normal writes and reads, but translation slugs and
-   aliases still live in separate tables, so their cross-table uniqueness is
-   not yet one database-enforced invariant under concurrent writers. Introduce
-   one portable route-key reservation/registry authority rather than relying on
-   table-order precedence or backend-specific trigger tricks.
-   **Depends on:** an explicit migration/backfill contract for existing route
-   keys and PostgreSQL concurrency evidence.
-   **Done when:** one database unique key owns
-   `tenant + kind + scope + locale + route_key`, both translations and aliases
-   reserve/release it transactionally, conflicting legacy rows are detected
-   deterministically, and concurrent writers cannot create ambiguity.
-
-4. **Maintain dictionary operational guidance.** Add documentation and runbooks
+3. **Maintain dictionary operational guidance.** Add documentation and runbooks
    when a changed vocabulary contract introduces drift or integration recovery
-   risk.
+   risk. Route-registry migration failures must be repaired by resolving the
+   reported cross-term owner collision, never by deleting an arbitrary winner.
    **Depends on:** an actual runtime or consumer incident class.
-   **Done when:** operators can reconcile terms, aliases, and owner attachments
-   without inventing shared relation ownership.
+   **Done when:** operators can reconcile terms, aliases, registry reservations,
+   and owner attachments without inventing shared relation ownership.
 
-5. **Collect production target evidence.** Run the append-only Outbox and
-   Taxonomy migrations plus PostgreSQL concurrent apply/change-cursor scenarios
-   before enabling the `taxonomy/term` pilot in production.
+4. **Collect production target and route-registry evidence.** Run the retained
+   Outbox and Taxonomy migrations plus PostgreSQL concurrent localized-write,
+   translation apply, and change-cursor scenarios before treating the route
+   registry and `taxonomy/term` target as production-proven under replicas.
    **Depends on:** a production-like PostgreSQL runtime.
-   **Done when:** retained migration, concurrent CAS, and cursor-recovery
-   evidence proves the registered provider under multi-replica conditions.
+   **Done when:** retained migration/backfill, two-writer route-key contention,
+   concurrent CAS, and cursor-recovery evidence prove that exactly one route
+   owner can commit and the registered provider remains correct under
+   multi-replica conditions.
 
 ## Verification
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
 - Targeted term CRUD, cross slug/alias collision, scope restriction, active-only
-  route resolution, fail-closed ambiguity, locale fallback, and
-  consumer-integration tests.
+  route resolution, fail-closed ambiguity, locale fallback, route-registry
+  reservation/release/cascade, migration preflight, and consumer-integration
+  tests.
 - `cargo test -p rustok-taxonomy --lib`
+- Production-like PostgreSQL two-writer route-key contention before declaring
+  storage concurrency evidence complete.
 
 ## Change rules
 
@@ -116,6 +124,9 @@ not claim a global `translation.target.changed` event contract.
 2. Keep parent/child category hierarchy, ordering, cycle validation, and
    domain-specific category metadata with the owning module unless an explicit
    shared-hierarchy ADR changes ownership.
-3. Update local docs, `rustok-module.toml`, and consumer docs with a taxonomy
+3. Keep localized route mutations and `taxonomy_term_route_keys` reservations
+   in one database transaction; never repair collisions by table-order
+   precedence or backend-specific trigger behavior.
+4. Update local docs, `rustok-module.toml`, and consumer docs with a taxonomy
    contract change.
-4. Update `docs/modules/registry.md` with any ownership or module-status change.
+5. Update `docs/modules/registry.md` with any ownership or module-status change.

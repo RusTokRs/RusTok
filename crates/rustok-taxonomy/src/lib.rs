@@ -8,6 +8,7 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod module_term_mutation;
+mod route_key_registry;
 pub mod services;
 mod translation_evidence;
 pub mod translation_target;
