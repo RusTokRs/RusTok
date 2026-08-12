@@ -593,7 +593,14 @@ impl PostService {
             blog_post::Entity::find().filter(blog_post::Column::TenantId.eq(tenant_id));
 
         if let Some(ref tag) = tag_filter {
-            let tagged_post_ids = find_post_ids_by_tag(&self.db, tenant_id, tag).await?;
+            let tagged_post_ids = find_post_ids_by_tag(
+                &self.db,
+                tenant_id,
+                tag,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await?;
             if tagged_post_ids.is_empty() {
                 return Ok(PostListResponse::new(Vec::new(), 0, &query));
             }
@@ -715,7 +722,14 @@ impl PostService {
             .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
 
         if let Some(ref tag) = tag_filter {
-            let tagged_post_ids = find_post_ids_by_tag(&self.db, tenant_id, tag).await?;
+            let tagged_post_ids = find_post_ids_by_tag(
+                &self.db,
+                tenant_id,
+                tag,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await?;
             if tagged_post_ids.is_empty() {
                 return Ok(PostListResponse::new(Vec::new(), 0, &query));
             }
