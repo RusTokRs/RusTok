@@ -9,7 +9,6 @@ pub struct Model {
     pub revision: i64,
     pub manifest_json: Json,
     pub manifest_hash: String,
-    pub active_release_id: Option<String>,
     pub updated_by: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

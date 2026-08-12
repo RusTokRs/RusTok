@@ -7,8 +7,8 @@ use rustok_forum::{
     MAX_FORUM_AUDIENCE_GROUPS, SharedForumAudienceFactsPort,
 };
 use rustok_groups::{
-    GroupMembershipEnforcementReadPort, GroupMembershipEnforcementService,
-    ReadGroupMembershipEnforcementRequest, SharedGroupMembershipEnforcementReadPort,
+    GroupMembershipEnforcementService, ReadGroupMembershipEnforcementRequest,
+    SharedGroupMembershipEnforcementReadPort,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;

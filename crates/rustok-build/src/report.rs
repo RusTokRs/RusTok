@@ -10,6 +10,4 @@ pub struct BuildExecutionReport {
     pub cargo_command: String,
     pub admin_command: Option<String>,
     pub storefront_command: Option<String>,
-    pub release_id: Option<String>,
-    pub release_status: Option<String>,
 }

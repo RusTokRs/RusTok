@@ -1708,6 +1708,14 @@ cache plus predecessor-preserving slots. A node path, symlink, tag, PID, or
 predecessor role bytes must be pre-staged and rehashed on every node that can
 lose predecessor capacity before automatic mode is admitted.
 
+The first durable native-rollout slice now records each exact
+`(node_id, role)` assignment, its candidate role digest, its operation-bound
+predecessor role digest when one exists, and role-scoped observation/idempotency
+receipts. Multiple roles may therefore converge on one portable instance
+without sharing a mutable node-level observation. The remaining recovery work
+must consume these retained predecessor digests through the same desired/
+observed reconciler; it must not queue a compiler build during an incident.
+
 For the default local/monolith installation, every physical plane is derived
 from one trusted operator-selected `<instance-root>` using the canonical
 relative layout in the cross-module plan. The path may be anywhere supported

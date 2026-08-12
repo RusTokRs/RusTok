@@ -245,8 +245,8 @@ impl SeaOrmModuleCompositionService {
                 backend,
                 format!(
                     "INSERT INTO platform_state (\
-                        id, revision, manifest_json, manifest_hash, active_release_id, updated_by, created_at, updated_at\
-                     ) VALUES ({}, 1, {}, {}, NULL, {}, {}, {}) ON CONFLICT DO NOTHING",
+                        id, revision, manifest_json, manifest_hash, updated_by, created_at, updated_at\
+                     ) VALUES ({}, 1, {}, {}, {}, {}, {}) ON CONFLICT DO NOTHING",
                     placeholders[0],
                     placeholders[1],
                     placeholders[2],
@@ -265,39 +265,6 @@ impl SeaOrmModuleCompositionService {
             .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         Self::active_snapshot_on(connection).await
     }
-
-    /// Records the release that is active for the durable platform composition.
-    ///
-    /// A release activation never bootstraps or rewrites composition state: the
-    /// active snapshot must already exist and a missing row fails closed.
-    pub async fn set_active_release(&self, release_id: &str) -> Result<(), ModuleCompositionError> {
-        if release_id.trim().is_empty() {
-            return Err(ModuleCompositionError::InvalidReleaseIdentity);
-        }
-        let backend = self.db.get_database_backend();
-        let result = self
-            .db
-            .execute(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "UPDATE platform_state SET active_release_id = {}, updated_at = {} \
-                     WHERE id = {}",
-                    placeholder(backend, 1),
-                    now_expression(backend),
-                    placeholder(backend, 2),
-                ),
-                vec![
-                    release_id.to_owned().into(),
-                    ACTIVE_MODULE_COMPOSITION_ID.into(),
-                ],
-            ))
-            .await
-            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
-        if result.rows_affected() != 1 {
-            return Err(ModuleCompositionError::MissingActiveComposition);
-        }
-        Ok(())
-    }
 }
 
 #[derive(Debug, Error)]
@@ -310,8 +277,6 @@ pub enum ModuleCompositionError {
     RevisionConflict { expected: i64, current: i64 },
     #[error("bootstrap actor identity is required")]
     InvalidBootstrapActor,
-    #[error("active release identity is required")]
-    InvalidReleaseIdentity,
     #[error("active module composition is unavailable")]
     MissingActiveComposition,
     #[error("module composition store error: {0}")]
@@ -366,66 +331,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_release_update_requires_existing_composition() {
-        let database = Database::connect("sqlite::memory:")
-            .await
-            .expect("database");
-        database
-            .execute(Statement::from_string(
-                DbBackend::Sqlite,
-                "CREATE TABLE platform_state (\
-                    id TEXT PRIMARY KEY,\
-                    revision INTEGER NOT NULL,\
-                    manifest_json TEXT NOT NULL,\
-                    manifest_hash TEXT NOT NULL,\
-                    active_release_id TEXT NULL,\
-                    updated_by TEXT NULL,\
-                    created_at TEXT NOT NULL,\
-                    updated_at TEXT NOT NULL\
-                 )"
-                .to_string(),
-            ))
-            .await
-            .expect("composition table");
-        let service = SeaOrmModuleCompositionService::new(database.clone());
-
-        assert!(matches!(
-            service.set_active_release("release-1").await,
-            Err(ModuleCompositionError::MissingActiveComposition)
-        ));
-
-        database
-            .execute(Statement::from_string(
-                DbBackend::Sqlite,
-                "INSERT INTO platform_state (\
-                    id, revision, manifest_json, manifest_hash, active_release_id, updated_by, created_at, updated_at\
-                 ) VALUES (\
-                    'active', 1, '{}', 'bootstrap', NULL, 'bootstrap', datetime('now'), datetime('now')\
-                 )"
-                    .to_string(),
-            ))
-            .await
-            .expect("active composition");
-        service
-            .set_active_release("release-1")
-            .await
-            .expect("active release");
-        let row = database
-            .query_one(Statement::from_string(
-                DbBackend::Sqlite,
-                "SELECT active_release_id FROM platform_state WHERE id = 'active'".to_string(),
-            ))
-            .await
-            .expect("query")
-            .expect("row");
-        assert_eq!(
-            row.try_get::<String>("", "active_release_id")
-                .expect("release id"),
-            "release-1"
-        );
-    }
-
-    #[tokio::test]
     async fn bootstrap_canonicalizes_and_reuses_the_active_snapshot() {
         let database = Database::connect("sqlite::memory:")
             .await
@@ -438,7 +343,6 @@ mod tests {
                     revision INTEGER NOT NULL,\
                     manifest_json TEXT NOT NULL,\
                     manifest_hash TEXT NOT NULL,\
-                    active_release_id TEXT NULL,\
                     updated_by TEXT NULL,\
                     created_at TEXT NOT NULL,\
                     updated_at TEXT NOT NULL\
@@ -477,7 +381,6 @@ mod tests {
                     revision INTEGER NOT NULL,\
                     manifest_json TEXT NOT NULL,\
                     manifest_hash TEXT NOT NULL,\
-                    active_release_id TEXT NULL,\
                     updated_by TEXT NULL,\
                     created_at TEXT NOT NULL,\
                     updated_at TEXT NOT NULL\
@@ -530,7 +433,6 @@ mod tests {
                     revision INTEGER NOT NULL,\
                     manifest_json TEXT NOT NULL,\
                     manifest_hash TEXT NOT NULL,\
-                    active_release_id TEXT NULL,\
                     updated_by TEXT NULL,\
                     created_at TEXT NOT NULL,\
                     updated_at TEXT NOT NULL\

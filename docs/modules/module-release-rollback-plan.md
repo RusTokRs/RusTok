@@ -174,6 +174,15 @@ N+1 digests. Placement/count or role/surface-shape changes run as separate
 topology/maintenance transitions rather than being combined with automatic
 code recovery.
 
+The durable rollout assignment key is `(node_id, role)`. It stores the exact
+candidate role digest and, for an update with an unchanged assignment domain,
+the owner-derived predecessor role digest. First installation stores no
+predecessor. This permits several role processes in one portable instance
+without conflating their observations and gives recovery an immutable retained
+byte identity without accepting a caller-selected path or digest.
+The predecessor is frozen from the then-observed serving rollout, never from a
+candidate that was only desired, failed preparation, or failed activation.
+
 Automatic static recovery must not compile on the incident critical path. The
 exact predecessor artifacts must already be retained and revalidated before
 candidate rollout begins. A rebuild remains release-admission and

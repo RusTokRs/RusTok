@@ -3,7 +3,7 @@ use rustok_ui_transport::UiTransportPath;
 
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
-    ReleaseInfo, TenantModule, ToggleModuleResult,
+    TenantModule, ToggleModuleResult,
 };
 use crate::shared::api::{ApiError, map_server_fn_error, request};
 
@@ -226,25 +226,6 @@ pub async fn fetch_active_build(
     }
 }
 
-pub async fn fetch_active_release(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Option<ReleaseInfo>, ApiError> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => active_release_native().await.map_err(map_server_fn_error),
-        UiTransportPath::Graphql => {
-            let response: ActiveReleaseResponse = request(
-                ACTIVE_RELEASE_QUERY,
-                serde_json::json!({}),
-                token,
-                tenant_slug,
-            )
-            .await?;
-            Ok(response.active_release)
-        }
-    }
-}
-
 pub async fn fetch_build_history(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -419,28 +400,6 @@ pub async fn upgrade_module(
     )
     .await?;
     Ok(response.upgrade_module)
-}
-
-pub async fn rollback_build(
-    build_id: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<BuildJob, ApiError> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => rollback_build_native(build_id)
-            .await
-            .map_err(map_server_fn_error),
-        UiTransportPath::Graphql => {
-            let response: RollbackBuildResponse = request(
-                ROLLBACK_BUILD_MUTATION,
-                RollbackBuildVariables { build_id },
-                token,
-                tenant_slug,
-            )
-            .await?;
-            Ok(response.rollback_build)
-        }
-    }
 }
 
 pub async fn validate_registry_publish_request(

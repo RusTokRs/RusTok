@@ -609,14 +609,6 @@ where
             .checked_add(1)
             .ok_or(ModuleStaticDistributionError::RevisionOverflow)?;
         let distribution_build_id = self.infrastructure.new_id();
-        if let Some(predecessor_build_id) = predecessor_build_id {
-            crate::distribution_release::cancel_pending_rollback_for_build(
-                &transaction,
-                predecessor_build_id,
-            )
-            .await
-            .map_err(|error| ModuleStaticDistributionError::Store(error.to_string()))?;
-        }
         insert_build(
             &transaction,
             BuildInsert {
@@ -845,14 +837,6 @@ where
         }
         let terminal = TerminalBuildFields::from_outcome(&command.outcome);
         complete_claim(&transaction, &command, &completion_digest, &terminal).await?;
-        if terminal.status != "succeeded" {
-            crate::distribution_release::cancel_pending_rollback_for_build(
-                &transaction,
-                command.distribution_build_id,
-            )
-            .await
-            .map_err(|error| ModuleStaticDistributionError::Store(error.to_string()))?;
-        }
         self.infrastructure
             .write_event(
                 &transaction,

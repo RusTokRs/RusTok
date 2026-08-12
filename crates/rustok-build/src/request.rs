@@ -23,14 +23,6 @@ pub struct BuildRequest {
     pub execution_plan: BuildExecutionPlan,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ReleaseArtifactBundle {
-    pub container_image: Option<String>,
-    pub server_artifact_url: Option<String>,
-    pub admin_artifact_url: Option<String>,
-    pub storefront_artifact_url: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleSpec {
     pub source: String,

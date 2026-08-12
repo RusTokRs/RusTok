@@ -199,26 +199,25 @@ pub use distribution_bootstrap::{
     VerifiedModuleStaticDistributionBootstrapReceipt,
 };
 pub use distribution_release::{
-    ModuleStaticDistributionActivationCommand, ModuleStaticDistributionActivationReceipt,
+    ModuleStaticDistributionAdmissionCommand, ModuleStaticDistributionAdmissionReceipt,
     ModuleStaticDistributionInstallBinding, ModuleStaticDistributionRelease,
     ModuleStaticDistributionReleaseAdmission, ModuleStaticDistributionReleaseAuthorizer,
     ModuleStaticDistributionReleaseError, ModuleStaticDistributionReleaseState,
     ModuleStaticDistributionReleaseStatus, ModuleStaticDistributionReleaseVerificationRequest,
     ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRevocationCommand,
-    ModuleStaticDistributionRevocationReceipt, ModuleStaticDistributionRollback,
-    ModuleStaticDistributionRollbackCommand, ModuleStaticDistributionRollbackReceipt,
-    ModuleStaticDistributionRollbackStatus, SeaOrmModuleStaticDistributionReleaseService,
+    ModuleStaticDistributionRevocationReceipt, SeaOrmModuleStaticDistributionReleaseService,
     resolve_static_distribution_install_binding,
 };
 pub use distribution_rollout::{
     ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentFailure,
     ModuleStaticDistributionAssignmentPhase, ModuleStaticDistributionAssignmentReport,
     ModuleStaticDistributionAssignmentReportReceipt, ModuleStaticDistributionHealthEvidence,
-    ModuleStaticDistributionRollout, ModuleStaticDistributionRolloutAssignment,
-    ModuleStaticDistributionRolloutAuthorizer, ModuleStaticDistributionRolloutError,
-    ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutRequest,
-    ModuleStaticDistributionRolloutState, ModuleStaticDistributionRolloutStatus,
-    ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionTopologySnapshot,
+    ModuleStaticDistributionRecoveryRequest, ModuleStaticDistributionRollout,
+    ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutAuthorizer,
+    ModuleStaticDistributionRolloutError, ModuleStaticDistributionRolloutReceipt,
+    ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutState,
+    ModuleStaticDistributionRolloutStatus, ModuleStaticDistributionTopologyResolver,
+    ModuleStaticDistributionTopologySnapshot, ModuleStaticDistributionTransitionKind,
     SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
 };
 pub use event_delivery::{

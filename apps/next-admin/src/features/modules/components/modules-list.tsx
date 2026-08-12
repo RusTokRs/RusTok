@@ -41,7 +41,6 @@ import {
 
 import {
   getActiveBuild,
-  getActiveRelease,
   getBuildHistory,
   getMarketplaceModule,
   installModule,
@@ -52,8 +51,6 @@ import {
   type MarketplaceModule,
   type MarketplaceRegistryFreshness,
   type ModuleInfo,
-  type ReleaseInfo,
-  rollbackBuild,
   toggleModule,
   uninstallModule,
   upgradeModule
@@ -69,7 +66,6 @@ interface ModulesListProps {
   marketplaceRegistryFreshness: MarketplaceRegistryFreshness[];
   installedModules: InstalledModule[];
   activeBuild: BuildJob | null;
-  activeRelease: ReleaseInfo | null;
   buildHistory: BuildJob[];
   loadErrors?: string[];
 }
@@ -192,7 +188,6 @@ export function ModulesList({
   marketplaceRegistryFreshness: initialMarketplaceRegistryFreshness,
   installedModules: initialInstalledModules,
   activeBuild: initialActiveBuild,
-  activeRelease: initialActiveRelease,
   buildHistory: initialBuildHistory,
   loadErrors = []
 }: ModulesListProps) {
@@ -207,7 +202,6 @@ export function ModulesList({
     initialInstalledModules
   );
   const [activeBuild, setActiveBuild] = useState(initialActiveBuild);
-  const [activeRelease, setActiveRelease] = useState(initialActiveRelease);
   const [buildHistory, setBuildHistory] = useState(initialBuildHistory);
   const [selectedModuleSlug, setSelectedModuleSlug] = useState<string | null>(
     null
@@ -237,7 +231,6 @@ export function ModulesList({
   );
   const [loading, setLoading] = useState<string | null>(null);
   const [platformLoading, setPlatformLoading] = useState<string | null>(null);
-  const [rollbackLoading, setRollbackLoading] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -405,13 +398,11 @@ export function ModulesList({
       const normalized = normalizeCatalogFilters(filters);
       const [
         nextActiveBuild,
-        nextActiveRelease,
         nextBuildHistory,
         nextMarketplaceCatalog,
         nextRegistryFreshness
       ] = await Promise.all([
         getActiveBuild(apiOpts),
-        getActiveRelease(apiOpts),
         getBuildHistory(10, 0, apiOpts),
         listMarketplaceModules(
           normalized.search,
@@ -425,7 +416,6 @@ export function ModulesList({
         listMarketplaceRegistryFreshness(apiOpts).catch(() => null)
       ]);
       setActiveBuild(nextActiveBuild);
-      setActiveRelease(nextActiveRelease);
       setBuildHistory(nextBuildHistory);
       setMarketplaceCatalog(nextMarketplaceCatalog);
       if (nextRegistryFreshness) {
@@ -468,13 +458,11 @@ export function ModulesList({
         const normalized = normalizeCatalogFilters(appliedCatalogFilters);
         const [
           nextActiveBuild,
-          nextActiveRelease,
           nextBuildHistory,
           nextMarketplaceCatalog,
           nextRegistryFreshness
         ] = await Promise.all([
           getActiveBuild(apiOpts),
-          getActiveRelease(apiOpts),
           getBuildHistory(10, 0, apiOpts),
           listMarketplaceModules(
             normalized.search,
@@ -493,7 +481,6 @@ export function ModulesList({
 
         startTransition(() => {
           setActiveBuild(nextActiveBuild);
-          setActiveRelease(nextActiveRelease);
           setBuildHistory(nextBuildHistory);
           setMarketplaceCatalog(nextMarketplaceCatalog);
           if (nextRegistryFreshness) {
@@ -629,24 +616,6 @@ export function ModulesList({
     }
   };
 
-  const handleRollback = async (buildId: string) => {
-    setRollbackLoading(buildId);
-    try {
-      const restoredBuild = await rollbackBuild(buildId, apiOpts);
-      setActiveBuild(null);
-      setBuildHistory((prev) => upsertBuildJob(prev, restoredBuild));
-      toast.success(`Rollback completed for ${buildId}`);
-      await refreshOrchestrationState();
-      router.refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : 'Failed to rollback build'
-      );
-    } finally {
-      setRollbackLoading(null);
-    }
-  };
-
   const handleInspect = async (slug: string) => {
     setSelectedModuleDetail(catalogMap.get(slug) ?? null);
     const nextParams = new URLSearchParams(searchParams.toString());
@@ -763,12 +732,6 @@ export function ModulesList({
                     <p className='text-muted-foreground text-xs'>
                       Updated {formatTimestamp(latestBuild.updatedAt)}
                     </p>
-                    {activeRelease && (
-                      <p className='text-muted-foreground text-xs'>
-                        Active release {activeRelease.id} in{' '}
-                        {activeRelease.environment}
-                      </p>
-                    )}
                   </div>
                   <span className='text-sm font-semibold'>
                     {latestBuild.progress}%
@@ -1045,14 +1008,6 @@ export function ModulesList({
                           </p>
                         )}
                         <div className='flex flex-wrap items-center gap-2 text-xs'>
-                          {build.releaseId && (
-                            <Badge variant='secondary'>
-                              Release {build.releaseId}
-                            </Badge>
-                          )}
-                          {activeRelease?.id === build.releaseId && (
-                            <Badge variant='outline'>Active release</Badge>
-                          )}
                           {build.logsUrl && (
                             <a
                               className='text-primary underline-offset-4 hover:underline'
@@ -1072,22 +1027,6 @@ export function ModulesList({
                         <p className='text-muted-foreground mt-1 text-xs'>
                           {formatTimestamp(build.createdAt)}
                         </p>
-                        {activeRelease?.id === build.releaseId &&
-                          activeRelease?.previousReleaseId && (
-                            <button
-                              type='button'
-                              className='text-primary text-xs font-medium underline-offset-4 hover:underline disabled:no-underline disabled:opacity-50'
-                              disabled={
-                                rollbackLoading === build.id ||
-                                Boolean(activeBuild)
-                              }
-                              onClick={() => handleRollback(build.id)}
-                            >
-                              {rollbackLoading === build.id
-                                ? 'Rolling back...'
-                                : 'Rollback'}
-                            </button>
-                          )}
                       </div>
                     </div>
                   ))

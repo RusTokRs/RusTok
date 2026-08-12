@@ -35,7 +35,6 @@ impl MigrationTrait for Migration {
                             .string_len(64)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(PlatformState::ActiveReleaseId).string_len(64))
                     .col(ColumnDef::new(PlatformState::UpdatedBy).string_len(255))
                     .col(
                         ColumnDef::new(PlatformState::CreatedAt)
@@ -148,32 +147,7 @@ impl MigrationTrait for Migration {
                         .to_owned(),
                 )
                 .await?;
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(Releases::Table)
-                        .add_column(
-                            ColumnDef::new(Releases::ManifestRevision)
-                                .big_integer()
-                                .not_null()
-                                .default(0),
-                        )
-                        .to_owned(),
-                )
-                .await?;
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(Releases::Table)
-                        .add_column(
-                            ColumnDef::new(Releases::ManifestSnapshot)
-                                .json_binary()
-                                .not_null()
-                                .default("{}"),
-                        )
-                        .to_owned(),
-                )
-                .await
+            Ok(())
         } else {
             manager
                 .alter_table(
@@ -195,46 +169,12 @@ impl MigrationTrait for Migration {
                 )
                 .await?;
 
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(Releases::Table)
-                        .add_column(
-                            ColumnDef::new(Releases::ManifestRevision)
-                                .big_integer()
-                                .not_null()
-                                .default(0),
-                        )
-                        .add_column(
-                            ColumnDef::new(Releases::ManifestSnapshot)
-                                .json_binary()
-                                .not_null()
-                                .default("{}"),
-                        )
-                        .to_owned(),
-                )
-                .await
+            Ok(())
         }
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         if manager.get_database_backend() == DatabaseBackend::Sqlite {
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(Releases::Table)
-                        .drop_column(Releases::ManifestSnapshot)
-                        .to_owned(),
-                )
-                .await?;
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(Releases::Table)
-                        .drop_column(Releases::ManifestRevision)
-                        .to_owned(),
-                )
-                .await?;
             manager
                 .alter_table(
                     Table::alter()
@@ -252,15 +192,6 @@ impl MigrationTrait for Migration {
                 )
                 .await?;
         } else {
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(Releases::Table)
-                        .drop_column(Releases::ManifestSnapshot)
-                        .drop_column(Releases::ManifestRevision)
-                        .to_owned(),
-                )
-                .await?;
             manager
                 .alter_table(
                     Table::alter()
@@ -287,7 +218,6 @@ enum PlatformState {
     Revision,
     ManifestJson,
     ManifestHash,
-    ActiveReleaseId,
     UpdatedBy,
     CreatedAt,
     UpdatedAt,
@@ -310,13 +240,6 @@ enum ModuleOperations {
 
 #[derive(Iden)]
 enum Builds {
-    Table,
-    ManifestRevision,
-    ManifestSnapshot,
-}
-
-#[derive(Iden)]
-enum Releases {
     Table,
     ManifestRevision,
     ManifestSnapshot,

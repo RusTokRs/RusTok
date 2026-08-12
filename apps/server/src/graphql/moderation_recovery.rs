@@ -350,9 +350,10 @@ fn rereview_step_context(
 fn normalize_rereview_reason(reason: String) -> Result<String> {
     let reason = reason.trim().to_string();
     if reason.is_empty() || reason.len() > MAX_REREVIEW_REASON_BYTES {
-        return Err(<FieldError as GraphQLError>::bad_user_input(format!(
-            "moderation rereview reason must contain 1 to {MAX_REREVIEW_REASON_BYTES} bytes",
-        )));
+        let message = format!(
+            "moderation rereview reason must contain 1 to {MAX_REREVIEW_REASON_BYTES} bytes"
+        );
+        return Err(<FieldError as GraphQLError>::bad_user_input(&message));
     }
     Ok(reason)
 }

@@ -3,7 +3,7 @@ use async_graphql::{
 };
 use rustok_api::{
     Permission, PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus,
-    PlatformDeploymentProfile, PlatformReleaseSnapshot, PlatformReleaseStatus,
+    PlatformDeploymentProfile,
 };
 use rustok_core::{UserRole, UserStatus};
 use sea_orm::DatabaseConnection;
@@ -549,7 +549,6 @@ pub enum GqlBuildEventKind {
     Started,
     Progress,
     Completed,
-    RolledBack,
     Cancelled,
     Failed,
 }
@@ -614,28 +613,6 @@ impl From<PlatformDeploymentProfile> for GqlDeploymentProfile {
     }
 }
 
-#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
-#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
-pub enum GqlReleaseStatus {
-    Pending,
-    Deploying,
-    Active,
-    RolledBack,
-    Failed,
-}
-
-impl From<PlatformReleaseStatus> for GqlReleaseStatus {
-    fn from(status: PlatformReleaseStatus) -> Self {
-        match status {
-            PlatformReleaseStatus::Pending => Self::Pending,
-            PlatformReleaseStatus::Deploying => Self::Deploying,
-            PlatformReleaseStatus::Active => Self::Active,
-            PlatformReleaseStatus::RolledBack => Self::RolledBack,
-            PlatformReleaseStatus::Failed => Self::Failed,
-        }
-    }
-}
-
 impl From<PlatformBuildStatus> for GqlBuildStatus {
     fn from(status: PlatformBuildStatus) -> Self {
         match status {
@@ -678,7 +655,6 @@ pub struct BuildJob {
     pub build_profile: Option<String>,
     pub requested_by: String,
     pub reason: Option<String>,
-    pub release_id: Option<String>,
     pub logs_url: Option<String>,
     pub error_message: Option<String>,
     pub started_at: Option<String>,
@@ -705,7 +681,6 @@ impl BuildJob {
             build_profile: snapshot.build_profile.clone(),
             requested_by: snapshot.requested_by.clone(),
             reason: snapshot.reason.clone(),
-            release_id: snapshot.release_id.clone(),
             logs_url: snapshot.logs_url.clone(),
             error_message: snapshot.error_message.clone(),
             started_at: snapshot.started_at.clone(),
@@ -723,11 +698,6 @@ pub struct BuildProgressEvent {
     pub status: GqlBuildStatus,
     pub stage: GqlBuildStage,
     pub progress: i32,
-    pub release_id: Option<String>,
-    pub restored_build_id: Option<String>,
-    pub from_release_id: Option<String>,
-    pub to_release_id: Option<String>,
-    pub actor_id: Option<Uuid>,
     pub error_message: Option<String>,
 }
 
@@ -740,11 +710,6 @@ impl BuildProgressEvent {
                 status: GqlBuildStatus::Queued,
                 stage: GqlBuildStage::Pending,
                 progress: 0,
-                release_id: None,
-                restored_build_id: None,
-                from_release_id: None,
-                to_release_id: None,
-                actor_id: None,
                 error_message: None,
             },
             BuildEvent::BuildStarted {
@@ -757,11 +722,6 @@ impl BuildProgressEvent {
                 status: GqlBuildStatus::Running,
                 stage: stage.into(),
                 progress,
-                release_id: None,
-                restored_build_id: None,
-                from_release_id: None,
-                to_release_id: None,
-                actor_id: None,
                 error_message: None,
             },
             BuildEvent::BuildProgress {
@@ -774,46 +734,14 @@ impl BuildProgressEvent {
                 status: GqlBuildStatus::Running,
                 stage: stage.into(),
                 progress,
-                release_id: None,
-                restored_build_id: None,
-                from_release_id: None,
-                to_release_id: None,
-                actor_id: None,
                 error_message: None,
             },
-            BuildEvent::BuildCompleted {
-                build_id,
-                release_id,
-            } => Self {
+            BuildEvent::BuildCompleted { build_id } => Self {
                 kind: GqlBuildEventKind::Completed,
                 build_id: build_id.to_string(),
                 status: GqlBuildStatus::Success,
                 stage: GqlBuildStage::Complete,
                 progress: 100,
-                release_id,
-                restored_build_id: None,
-                from_release_id: None,
-                to_release_id: None,
-                actor_id: None,
-                error_message: None,
-            },
-            BuildEvent::BuildRolledBack {
-                requested_build_id,
-                restored_build_id,
-                from_release_id,
-                to_release_id,
-                actor_id,
-            } => Self {
-                kind: GqlBuildEventKind::RolledBack,
-                build_id: requested_build_id.to_string(),
-                status: GqlBuildStatus::Success,
-                stage: GqlBuildStage::Complete,
-                progress: 100,
-                release_id: Some(to_release_id.clone()),
-                restored_build_id: Some(restored_build_id.to_string()),
-                from_release_id: Some(from_release_id),
-                to_release_id: Some(to_release_id),
-                actor_id: Some(actor_id),
                 error_message: None,
             },
             BuildEvent::BuildCancelled {
@@ -826,11 +754,6 @@ impl BuildProgressEvent {
                 status: GqlBuildStatus::Cancelled,
                 stage: stage.into(),
                 progress,
-                release_id: None,
-                restored_build_id: None,
-                from_release_id: None,
-                to_release_id: None,
-                actor_id: None,
                 error_message: None,
             },
             BuildEvent::BuildFailed {
@@ -844,91 +767,8 @@ impl BuildProgressEvent {
                 status: GqlBuildStatus::Failed,
                 stage: stage.into(),
                 progress,
-                release_id: None,
-                restored_build_id: None,
-                from_release_id: None,
-                to_release_id: None,
-                actor_id: None,
                 error_message: Some(error),
             },
-        }
-    }
-}
-
-#[cfg(test)]
-mod build_progress_event_tests {
-    use uuid::Uuid;
-
-    use super::{BuildProgressEvent, GqlBuildEventKind, GqlBuildStatus};
-    use rustok_build::BuildEvent;
-
-    #[test]
-    fn rollback_event_preserves_transition_and_actor_facts() {
-        let requested_build_id = Uuid::new_v4();
-        let restored_build_id = Uuid::new_v4();
-        let restored_build_id_text = restored_build_id.to_string();
-        let actor_id = Uuid::new_v4();
-        let event = BuildProgressEvent::from_event(BuildEvent::BuildRolledBack {
-            requested_build_id,
-            restored_build_id,
-            from_release_id: "release-current".to_string(),
-            to_release_id: "release-previous".to_string(),
-            actor_id,
-        });
-
-        assert_eq!(event.kind, GqlBuildEventKind::RolledBack);
-        assert_eq!(event.build_id, requested_build_id.to_string());
-        assert_eq!(event.status, GqlBuildStatus::Success);
-        assert_eq!(event.release_id.as_deref(), Some("release-previous"));
-        assert_eq!(
-            event.restored_build_id.as_deref(),
-            Some(restored_build_id_text.as_str())
-        );
-        assert_eq!(event.from_release_id.as_deref(), Some("release-current"));
-        assert_eq!(event.to_release_id.as_deref(), Some("release-previous"));
-        assert_eq!(event.actor_id, Some(actor_id));
-    }
-}
-
-#[derive(SimpleObject, Clone)]
-pub struct ReleaseInfo {
-    pub id: String,
-    pub build_id: String,
-    pub status: GqlReleaseStatus,
-    pub environment: String,
-    pub container_image: Option<String>,
-    pub server_artifact_url: Option<String>,
-    pub admin_artifact_url: Option<String>,
-    pub storefront_artifact_url: Option<String>,
-    pub manifest_hash: String,
-    pub manifest_revision: i64,
-    pub modules: Vec<String>,
-    pub previous_release_id: Option<String>,
-    pub deployed_at: Option<String>,
-    pub rolled_back_at: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-impl ReleaseInfo {
-    pub fn from_snapshot(snapshot: &PlatformReleaseSnapshot) -> Self {
-        Self {
-            id: snapshot.id.clone(),
-            build_id: snapshot.build_id.clone(),
-            status: snapshot.status.into(),
-            environment: snapshot.environment.clone(),
-            container_image: snapshot.container_image.clone(),
-            server_artifact_url: snapshot.server_artifact_url.clone(),
-            admin_artifact_url: snapshot.admin_artifact_url.clone(),
-            storefront_artifact_url: snapshot.storefront_artifact_url.clone(),
-            manifest_hash: snapshot.manifest_hash.clone(),
-            manifest_revision: snapshot.manifest_revision,
-            modules: snapshot.modules.clone(),
-            previous_release_id: snapshot.previous_release_id.clone(),
-            deployed_at: snapshot.deployed_at.clone(),
-            rolled_back_at: snapshot.rolled_back_at.clone(),
-            created_at: snapshot.created_at.clone(),
-            updated_at: snapshot.updated_at.clone(),
         }
     }
 }

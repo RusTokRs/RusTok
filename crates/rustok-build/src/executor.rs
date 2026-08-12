@@ -11,8 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     BuildCommandSpec, BuildEventPublisher, BuildExecutionReport, BuildService,
-    ReleaseActivationHook,
-    build::{BuildStage, BuildStatus, Model as Build},
+    build::{BuildStage, BuildStatus},
     build_manifest_snapshot_path, parse_execution_plan, run_build_command,
 };
 
@@ -25,11 +24,10 @@ impl BuildExecutionService {
     pub fn new(
         db: DatabaseConnection,
         event_publisher: Arc<dyn BuildEventPublisher>,
-        activation_hook: Arc<dyn ReleaseActivationHook>,
         workspace_root: PathBuf,
     ) -> Self {
         Self {
-            build_service: BuildService::with_runtime(db, event_publisher, activation_hook),
+            build_service: BuildService::with_runtime(db, event_publisher),
             workspace_root,
         }
     }
@@ -178,44 +176,6 @@ impl BuildExecutionService {
             }
         }
     }
-
-    pub async fn ensure_release_for_build(
-        &self,
-        build_id: Uuid,
-        environment: &str,
-        activate: bool,
-    ) -> anyhow::Result<crate::release::Model> {
-        let build = self
-            .build_service
-            .get_build(build_id)
-            .await?
-            .ok_or_else(|| anyhow!("Build not found"))?;
-        if build.status != BuildStatus::Success {
-            bail!(
-                "build {} must be successful before creating a release",
-                build.id
-            );
-        }
-
-        let release = if let Some(release_id) = &build.release_id {
-            self.build_service
-                .get_release(release_id)
-                .await?
-                .ok_or_else(|| anyhow!("release {release_id} referenced by build is missing"))?
-        } else {
-            self.build_service
-                .create_release(
-                    build.id,
-                    environment.to_string(),
-                    build_module_slugs(&build)?,
-                )
-                .await?
-        };
-        if activate && release.status != crate::ReleaseStatus::Active {
-            return self.build_service.activate_release(&release.id).await;
-        }
-        Ok(release)
-    }
 }
 
 fn report_for(
@@ -231,23 +191,7 @@ fn report_for(
         cargo_command: server.render(),
         admin_command: admin.map(BuildCommandSpec::render),
         storefront_command: storefront.map(BuildCommandSpec::render),
-        release_id: None,
-        release_status: None,
     }
-}
-
-fn build_module_slugs(build: &Build) -> anyhow::Result<Vec<String>> {
-    let value = build
-        .modules_delta
-        .as_ref()
-        .ok_or_else(|| anyhow!("build {} does not contain module metadata", build.id))?;
-    let modules = value
-        .get("modules")
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| anyhow!("build {} is missing modules metadata", build.id))?;
-    let mut slugs = modules.keys().cloned().collect::<Vec<_>>();
-    slugs.sort();
-    Ok(slugs)
 }
 
 async fn materialize_manifest_snapshot(

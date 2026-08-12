@@ -3,7 +3,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, TenantModule,
 };
 use crate::features::modules::components::ModulesList;
 use crate::features::modules::transport;
@@ -31,7 +31,6 @@ struct ModulesPageData {
     installed_modules: Vec<InstalledModule>,
     tenant_modules: Vec<TenantModule>,
     active_build: Option<BuildJob>,
-    active_release: Option<ReleaseInfo>,
     build_history: Vec<BuildJob>,
 }
 
@@ -80,10 +79,6 @@ pub fn Modules() -> impl IntoView {
                 transport::fetch_active_build(token_value.clone(), tenant_value.clone())
                     .await
                     .unwrap_or_default();
-            let active_release =
-                transport::fetch_active_release(token_value.clone(), tenant_value.clone())
-                    .await
-                    .unwrap_or_default();
             let build_history = transport::fetch_build_history(token_value, tenant_value, 10, 0)
                 .await
                 .unwrap_or_default();
@@ -95,7 +90,6 @@ pub fn Modules() -> impl IntoView {
                 installed_modules,
                 tenant_modules,
                 active_build,
-                active_release,
                 build_history,
             })
         },
@@ -143,7 +137,6 @@ pub fn Modules() -> impl IntoView {
                                         installed_modules=data.installed_modules
                                         tenant_modules=data.tenant_modules
                                         active_build=data.active_build
-                                        active_release=data.active_release
                                         build_history=data.build_history
                                     />
                                 }.into_any()

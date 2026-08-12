@@ -24,14 +24,6 @@ pub enum BuildEvent {
     },
     BuildCompleted {
         build_id: Uuid,
-        release_id: Option<String>,
-    },
-    BuildRolledBack {
-        requested_build_id: Uuid,
-        restored_build_id: Uuid,
-        from_release_id: String,
-        to_release_id: String,
-        actor_id: Uuid,
     },
     BuildCancelled {
         build_id: Uuid,
@@ -91,21 +83,6 @@ impl BuildEventPublisher for EventBusBuildEventPublisher {
                 rustok_events::DomainEvent::BuildRequested {
                     build_id,
                     requested_by,
-                },
-            ),
-            BuildEvent::BuildRolledBack {
-                requested_build_id,
-                restored_build_id,
-                from_release_id,
-                to_release_id,
-                actor_id,
-            } => (
-                Some(actor_id),
-                rustok_events::DomainEvent::BuildRolledBack {
-                    requested_build_id,
-                    restored_build_id,
-                    from_release_id,
-                    to_release_id,
                 },
             ),
             unsupported => {

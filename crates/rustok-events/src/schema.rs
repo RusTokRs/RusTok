@@ -580,7 +580,7 @@ const MODULE_STATIC_DISTRIBUTION_BUILD_COMPLETED_FIELDS: &[FieldSchema] = &[
     field!("role_set_digest", "string", optional),
     field!("completion_digest", "string"),
 ];
-const MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS: &[FieldSchema] = &[
+const MODULE_STATIC_DISTRIBUTION_RELEASE_ADMITTED_FIELDS: &[FieldSchema] = &[
     field!("distribution_release_id", "uuid"),
     field!("predecessor_release_id", "uuid", optional),
     field!("distribution_build_id", "uuid"),
@@ -591,14 +591,11 @@ const MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS: &[FieldSchema] = &[
     field!("role_set_digest", "string"),
     field!("policy_revision", "string"),
 ];
-const MODULE_STATIC_DISTRIBUTION_ROLLBACK_BUILD_QUEUED_FIELDS: &[FieldSchema] = &[
-    field!("rollback_id", "uuid"),
-    field!("from_release_id", "uuid"),
-    field!("target_release_id", "uuid"),
-    field!("distribution_build_id", "uuid"),
-    field!("composition_revision", "uint64"),
-    field!("composition_digest", "string"),
-    field!("policy_revision", "string"),
+const MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS: &[FieldSchema] = &[
+    field!("distribution_release_id", "uuid"),
+    field!("predecessor_release_id", "uuid", optional),
+    field!("rollout_id", "uuid"),
+    field!("release_state_revision", "uint64"),
 ];
 const MODULE_STATIC_DISTRIBUTION_RELEASE_REVOKED_FIELDS: &[FieldSchema] = &[
     field!("distribution_release_id", "uuid"),
@@ -626,11 +623,29 @@ const MODULE_STATIC_DISTRIBUTION_ASSIGNMENT_OBSERVED_FIELDS: &[FieldSchema] = &[
     field!("rollout_id", "uuid"),
     field!("node_id", "string"),
     field!("role", "string"),
-    field!("artifact_digest", "string"),
+    field!("candidate_artifact_digest", "string"),
     field!("reporter_id", "string"),
     field!("observation_revision", "uint64"),
     field!("phase", "string"),
     field!("report_digest", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_RECOVERY_REQUESTED_FIELDS: &[FieldSchema] = &[
+    field!("rollout_id", "uuid"),
+    field!("predecessor_rollout_id", "uuid"),
+    field!("from_release_id", "uuid"),
+    field!("target_release_id", "uuid"),
+    field!("rollout_revision", "uint64"),
+    field!("rollout_state_revision", "uint64"),
+    field!("topology_digest", "string"),
+    field!("policy_revision", "string"),
+    field!("reason", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_RECOVERY_CONVERGED_FIELDS: &[FieldSchema] = &[
+    field!("rollout_id", "uuid"),
+    field!("from_release_id", "uuid"),
+    field!("target_release_id", "uuid"),
+    field!("release_state_revision", "uint64"),
+    field!("rollout_state_revision", "uint64"),
 ];
 const MODULE_STATIC_DISTRIBUTION_ROLLOUT_STATUS_CHANGED_FIELDS: &[FieldSchema] = &[
     field!("rollout_id", "uuid"),
@@ -1122,16 +1137,16 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         fields: MODULE_STATIC_DISTRIBUTION_BUILD_COMPLETED_FIELDS,
     },
     EventSchema {
-        event_type: "module.static_distribution.release_activated",
+        event_type: "module.static_distribution.release_admitted",
         version: 1,
-        description: "A verified static distribution build became the current release head.",
-        fields: MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS,
+        description: "A verified static distribution build was admitted for rollout.",
+        fields: MODULE_STATIC_DISTRIBUTION_RELEASE_ADMITTED_FIELDS,
     },
     EventSchema {
-        event_type: "module.static_distribution.rollback_build_queued",
+        event_type: "module.static_distribution.release_activated",
         version: 1,
-        description: "A direct-predecessor rollback queued a new immutable distribution build.",
-        fields: MODULE_STATIC_DISTRIBUTION_ROLLBACK_BUILD_QUEUED_FIELDS,
+        description: "A converged static distribution rollout became the serving release head.",
+        fields: MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS,
     },
     EventSchema {
         event_type: "module.static_distribution.release_revoked",
@@ -1144,6 +1159,18 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "A topology-bound native distribution rollout became desired.",
         fields: MODULE_STATIC_DISTRIBUTION_ROLLOUT_REQUESTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.recovery_requested",
+        version: 1,
+        description: "A retained direct-predecessor distribution recovery became desired.",
+        fields: MODULE_STATIC_DISTRIBUTION_RECOVERY_REQUESTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.recovery_converged",
+        version: 1,
+        description: "A retained direct-predecessor distribution recovery became serving.",
+        fields: MODULE_STATIC_DISTRIBUTION_RECOVERY_CONVERGED_FIELDS,
     },
     EventSchema {
         event_type: "module.static_distribution.assignment_observed",

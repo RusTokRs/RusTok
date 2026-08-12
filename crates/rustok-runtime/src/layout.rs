@@ -668,7 +668,7 @@ fn reject_managed_links(root: &Path, path: &Path) -> Result<(), InstanceLayoutEr
     for component in relative.components() {
         current.push(component.as_os_str());
         match std::fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
+            Ok(metadata) if is_managed_link(&metadata) => {
                 return Err(InstanceLayoutError::UnsafeManagedLink {
                     path: current.display().to_string(),
                 });
@@ -679,6 +679,23 @@ fn reject_managed_links(root: &Path, path: &Path) -> Result<(), InstanceLayoutEr
         }
     }
     Ok(())
+}
+
+fn is_managed_link(metadata: &std::fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+
+        // Directory junctions are reparse points but are not guaranteed to be
+        // reported as symbolic links by every Windows filesystem/provider.
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+    }
+    #[cfg(not(windows))]
+    false
 }
 
 fn preparation(layout: &InstanceLayout, created: bool, resumed: bool) -> InstanceLayoutPreparation {

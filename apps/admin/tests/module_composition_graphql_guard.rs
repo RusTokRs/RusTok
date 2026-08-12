@@ -408,7 +408,6 @@ fn module_composition_helpers_do_not_parse_build_or_release_pipeline_contract() 
         "build_id",
         "build_status",
         "release",
-        "active_release_id",
         "manifest_hash",
         "manifest_snapshot",
         "modules_delta",
@@ -733,17 +732,6 @@ fn module_composition_helpers_reference_single_canonical_mutation_and_request_ca
 #[test]
 fn module_api_helpers_do_not_use_native_graphql_fallback_combiner() {
     let content = read_client_content();
-
-    let rollback_body = extract_function_block(&content, "pub async fn rollback_build(")
-        .expect("rollback_build helper signature not found");
-    assert!(
-        !rollback_body.contains("combine_native_and_graphql_error"),
-        "rollback_build must not compose native/graphql fallback errors"
-    );
-    assert!(
-        rollback_body.contains("rollback_build_native("),
-        "rollback_build must keep the native path as an explicit selected transport branch"
-    );
 
     for signature in [
         "pub async fn install_module(",

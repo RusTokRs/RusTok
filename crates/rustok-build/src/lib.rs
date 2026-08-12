@@ -7,15 +7,13 @@ pub mod execution;
 pub mod executor;
 pub mod module_manifest_contribution;
 pub mod plan;
-pub mod release;
 pub mod report;
 pub mod request;
-pub mod runtime;
 pub mod service;
 pub mod snapshot;
 
 pub use build::{BuildStage, BuildStatus, DeploymentProfile};
-pub use control::{BuildControl, BuildRollbackCommand, SharedBuildControl};
+pub use control::{BuildControl, SharedBuildControl};
 pub use events::{
     BuildEvent, BuildEventPublisher, EventBusBuildEventPublisher, NoopBuildEventPublisher,
 };
@@ -29,12 +27,7 @@ pub use plan::{
     BuildExecutionPlan, BuildRuntimeMode, FrontendArtifactKind, FrontendBuildPlan,
     FrontendBuildTool, RoleBuildPlan, parse_execution_plan,
 };
-pub use release::ReleaseStatus;
 pub use report::BuildExecutionReport;
-pub use request::{BuildRequest, ModuleSpec, ReleaseArtifactBundle};
-pub use runtime::{
-    DeploymentBackend, DeploymentSettings, DeploymentWorkspace, NoopReleaseActivationHook,
-    ReleaseActivationHook, ReleasePublishRequest, ReleasePublisherPort,
-};
+pub use request::{BuildRequest, ModuleSpec};
 pub use service::BuildService;
-pub use snapshot::{build_snapshot, release_snapshot};
+pub use snapshot::build_snapshot;

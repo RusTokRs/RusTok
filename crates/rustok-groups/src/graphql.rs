@@ -1,8 +1,6 @@
 use std::time::Duration;
 
-use async_graphql::{
-    Context, Enum, ErrorExtensions, FieldError, InputObject, Json, Object, Result, SimpleObject,
-};
+use async_graphql::{Context, Enum, FieldError, InputObject, Json, Object, Result, SimpleObject};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::request::RequestContext;
 use rustok_api::{
@@ -458,6 +456,17 @@ impl From<GroupRole> for GroupRoleGql {
     }
 }
 
+impl From<GroupRoleGql> for GroupRole {
+    fn from(value: GroupRoleGql) -> Self {
+        match value {
+            GroupRoleGql::Owner => Self::Owner,
+            GroupRoleGql::Admin => Self::Admin,
+            GroupRoleGql::Moderator => Self::Moderator,
+            GroupRoleGql::Member => Self::Member,
+        }
+    }
+}
+
 fn service(ctx: &Context<'_>) -> Result<GroupsService> {
     let runtime = ctx.data::<HostRuntimeContext>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Groups runtime is not registered")
@@ -568,4 +577,21 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
 
 fn empty_object() -> Value {
     serde_json::json!({})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GroupRoleGql;
+    use crate::GroupRole;
+
+    #[test]
+    fn group_role_graphql_input_maps_to_every_domain_role() {
+        assert_eq!(GroupRole::from(GroupRoleGql::Owner), GroupRole::Owner);
+        assert_eq!(GroupRole::from(GroupRoleGql::Admin), GroupRole::Admin);
+        assert_eq!(
+            GroupRole::from(GroupRoleGql::Moderator),
+            GroupRole::Moderator
+        );
+        assert_eq!(GroupRole::from(GroupRoleGql::Member), GroupRole::Member);
+    }
 }

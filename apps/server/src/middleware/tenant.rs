@@ -336,6 +336,9 @@ struct TenantCacheMetricsStore {
 
 impl TenantCacheMetricsStore {
     fn new(cache_service: &CacheService) -> Self {
+        #[cfg(not(feature = "redis-cache"))]
+        let _ = cache_service;
+
         Self {
             local_hits: Arc::new(AtomicU64::new(0)),
             local_misses: Arc::new(AtomicU64::new(0)),
@@ -349,6 +352,9 @@ impl TenantCacheMetricsStore {
     }
 
     async fn incr(&self, key: &str, local: &AtomicU64) {
+        #[cfg(not(feature = "redis-cache"))]
+        let _ = key;
+
         local.fetch_add(1, Ordering::Relaxed);
 
         #[cfg(feature = "redis-cache")]
@@ -400,6 +406,9 @@ impl TenantCacheMetricsStore {
     }
 
     async fn read_metric(&self, key: &str, local: &AtomicU64) -> u64 {
+        #[cfg(not(feature = "redis-cache"))]
+        let _ = key;
+
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
             if let Ok(mut conn) = tenant_cache_redis_timeout(

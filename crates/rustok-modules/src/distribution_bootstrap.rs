@@ -23,7 +23,7 @@ use crate::{
         module_static_distribution_composition_digest,
     },
     distribution_release::{
-        ModuleStaticDistributionReleaseError, advance_release_state, insert_admission,
+        ModuleStaticDistributionReleaseError, advance_release_state_optional, insert_admission,
         insert_release_from_parts, load_release_state, validate_admission,
     },
     promotion::{
@@ -367,7 +367,7 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
         )
         .await
         .map_err(distribution_error)?;
-        advance_release_state(&transaction, 0, 1, payload.distribution_release_id).await?;
+        advance_release_state_optional(&transaction, 0, 1, None).await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(ModuleStaticDistributionBootstrapImportReceipt {
             preparation_id: payload.preparation_id,
@@ -571,10 +571,19 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
         .await
         .map_err(distribution_error)?;
     if release_state.revision != 1
-        || release_state.active_release_id != Some(payload.distribution_release_id)
+        || release_state.active_release_id.is_some()
         || distribution_state.revision != payload.preparation.composition_revision
         || distribution_state.current_build_id != Some(payload.preparation_id)
     {
+        return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
+    }
+    let release = crate::distribution_release::load_release_record(
+        connection,
+        payload.distribution_release_id,
+        false,
+    )
+    .await?;
+    if release.status != crate::ModuleStaticDistributionReleaseStatus::Admitted {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
     Ok(Some(ModuleStaticDistributionBootstrapImportReceipt {
