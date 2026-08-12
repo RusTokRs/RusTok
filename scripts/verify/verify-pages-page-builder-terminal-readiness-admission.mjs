@@ -59,6 +59,8 @@ function countPendingExecutedEvidence(value, prefix = "$") {
 
 const contractPath =
   "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json";
+const inventorySourcePath =
+  "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json";
 const runnerPath = "scripts/evidence/admit-pages-page-builder-terminal-readiness.mjs";
 const testsPath = "scripts/evidence/admit-pages-page-builder-terminal-readiness.test.mjs";
 const verifierPath = "scripts/verify/verify-pages-page-builder-terminal-readiness-admission.mjs";
@@ -73,6 +75,7 @@ const fbaRegistryPath = "crates/rustok-page-builder/contracts/page-builder-fba-r
 const pagesPlanPath = "crates/rustok-pages/docs/implementation-plan.md";
 
 const contract = json(contractPath);
+const inventorySource = json(inventorySourcePath);
 const executionContract = json(executionContractPath);
 const accessibilityContract = json(accessibilityContractPath);
 const fbaRegistry = json(fbaRegistryPath);
@@ -165,8 +168,17 @@ requireValue(
       true &&
     inventoryGuard.complete_terminal_evidence_inventory_format ===
       "pages_page_builder_terminal_evidence_inventory_v1" &&
-    inventoryGuard.complete_terminal_evidence_inventory_source_defined === false,
+    inventoryGuard.complete_terminal_evidence_inventory_source === inventorySourcePath &&
+    inventoryGuard.complete_terminal_evidence_inventory_source_format ===
+      "pages_page_builder_terminal_evidence_inventory_source_v1" &&
+    inventoryGuard.complete_terminal_evidence_inventory_source_defined === true,
   `${contractPath}: terminal evidence inventory guard drifted`,
+);
+requireValue(
+  inventorySource.format === "pages_page_builder_terminal_evidence_inventory_source_v1" &&
+    inventorySource.status === "source_ready_maintainer_execution_pending" &&
+    inventorySource.output?.format === "pages_page_builder_terminal_evidence_inventory_v1",
+  `${inventorySourcePath}: inventory source identity drifted`,
 );
 const pendingEvidencePaths = countPendingExecutedEvidence(fbaRegistry);
 requireValue(
@@ -212,6 +224,8 @@ for (const marker of [
   "rollout_accessibility_prerequisites_admitted_terminal_inventory_pending",
   "terminal_evidence_inventory_complete: false",
   "owner_platform_review_ready: false",
+  "future_inventory_source_defined: true",
+  "future_inventory_source_path",
   "pages_ffa_promoted: false",
   "page_builder_fba_promoted: false",
   "screen_reader_execution_pending: true",
@@ -273,7 +287,14 @@ requireText(
   registryPath,
 );
 
-for (const required of [contractPath, runnerPath, testsPath, verifierPath, actualizationPath]) {
+for (const required of [
+  contractPath,
+  runnerPath,
+  testsPath,
+  verifierPath,
+  actualizationPath,
+  inventorySourcePath,
+]) {
   requireValue(
     Array.isArray(contract.required_source_files) && contract.required_source_files.includes(required),
     `${contractPath}: required_source_files is missing ${required}`,
@@ -282,7 +303,7 @@ for (const required of [contractPath, runnerPath, testsPath, verifierPath, actua
 requireValue(
   contract.next_cursor?.rollout_accessibility_prerequisite_admission ===
       "source_ready_blocked_on_successful_execution_and_accessibility_packets" &&
-    contract.next_cursor?.terminal_evidence_inventory === "source_definition_pending" &&
+    contract.next_cursor?.terminal_evidence_inventory === "source_ready_maintainer_execution_pending" &&
     contract.next_cursor?.owner_platform_readiness_review ===
       "blocked_on_complete_terminal_evidence_inventory" &&
     contract.next_cursor?.readiness_source_change ===
@@ -298,5 +319,5 @@ if (failures.length > 0) {
 
 console.log("[verify-pages-page-builder-terminal-readiness-admission] PASS");
 console.log(
-  `prerequisites=source_ready; page_builder_fba_pending=${pendingEvidencePaths.length}; terminal_inventory=pending; owner_platform_review=blocked; source_mutation=false`,
+  `prerequisites=source_ready; page_builder_fba_pending=${pendingEvidencePaths.length}; terminal_inventory_source=defined; owner_platform_review=blocked; source_mutation=false`,
 );
