@@ -1,12 +1,14 @@
 # `rustok-index` Current Implementation Plan — 2026-08-12
 
-Status: `m5_product_refresh_redelivery_manual_runner_source_ready`
+Status: `m5_product_refresh_redelivery_runtime_execution_pending`
 
 This document supersedes `implementation-plan-current-2026-08-09.md` as the active execution cursor for `rustok-index`.
 
 ## 1. Rechecked baseline
 
-The current execution baseline for this revision is `main@934069fb4a65d207aeba84bdde1e89f8444aaba8` on 2026-08-12. PR #3457 previously merged the source-ready Product refresh PostgreSQL/Iggy redelivery evidence packet. The intervening mainline delta is unrelated to this runner slice except that the `rustok-media` WebP compile break carried by the superseded draft is already fixed in current `main` by PR #3463, so this revision intentionally carries no Media change. PR #3465 then advanced `main` with Forum/Page Builder evidence only; those files do not overlap this Index runner slice.
+The current execution baseline for this cursor revision is `main@631513a44a5477596854ea1d23968aa5221c68c2` on 2026-08-12. PR #3466 squash-merged the reviewed `workflow_dispatch`-only Product refresh PostgreSQL/Iggy redelivery evidence runner into that exact mainline commit. The source revision had already passed complete PR `Index Contract CI` run `31630496801` before merge.
+
+The mainline delta that landed between the runner's source baseline and merge was Forum/Page Builder work only and did not overlap the seven Index/CI files carried by #3466. This cursor revision changes documentation state only: it does not alter the runner, Product refresh host consumer, event family, source adapters, replay mutation path or evidence harness.
 
 The completed Index foundation remains present and is not reopened:
 
@@ -79,7 +81,7 @@ The generic worker must return `SourceVersionBehind` before persistence or ackno
 
 Missing-source behavior remains pinned by the existing generic source-refresh tests.
 
-## 4. Evidence contract, source admission and manual execution runner
+## 4. Evidence contract, source admission and merged manual execution runner
 
 The machine-readable source contract is:
 
@@ -106,7 +108,7 @@ node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
 cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
 ```
 
-This revision adds a dedicated maintainer-owned manual runner:
+PR #3466 merged the dedicated maintainer-owned manual runner:
 
 ```text
 .github/workflows/index-product-refresh-redelivery-evidence.yml
@@ -127,13 +129,13 @@ The runner is intentionally stricter than a direct developer invocation:
 
 ## 5. Runtime evidence status and next M5 execution boundary
 
-The evidence status remains **runtime execution pending**. Adding a safe manual runner does not promote the claim.
+The evidence status remains **runtime execution pending**. The runner is now merged; source admission and merge are not runtime promotion.
 
-The next retained M5 boundary is now operational and concrete:
+At this cursor recheck, no retained execution of `Index Product Refresh Redelivery Evidence` exists. The remaining M5 boundary is operational rather than another source-code slice:
 
-1. merge the reviewed manual runner source;
+1. **complete:** merge the reviewed manual runner source (#3466 -> `main@631513a44a5477596854ea1d23968aa5221c68c2`);
 2. configure operator-approved evidence-scoped PostgreSQL/Iggy GitHub secrets;
-3. dispatch `Index Product Refresh Redelivery Evidence` with confirmation `execute` against the reviewed source commit;
+3. dispatch `Index Product Refresh Redelivery Evidence` with confirmation `execute` against a reviewed source commit;
 4. require the workflow to complete successfully without a skip;
 5. retain the exact run id, source SHA and result as reviewed runtime evidence;
 6. only then update the machine contract/plan from `runtime_execution_pending` to the appropriate runtime-proven state.
@@ -148,7 +150,7 @@ A promotable execution must demonstrate all of the following on one reviewed sou
 6. a behind-source delivery remains out of the inbox and redelivers at the same broker offset after restart;
 7. the default-off deployment flag is not automatically enabled by evidence tooling.
 
-Do not claim runtime completion from source verification, compilation, creation of the manual runner or an environment skip. Do not start partition-wide replay, storefront cutover or a Product-specific DLQ protocol as part of this boundary.
+Do not claim runtime completion from source verification, compilation, creation/merge of the manual runner or an environment skip. Do not start partition-wide replay, storefront cutover or a Product-specific DLQ protocol as part of this boundary.
 
 ## 6. M6/M7 gates remain unchanged
 
@@ -159,9 +161,11 @@ The following work remains gated:
 - Product graph/storefront cutover keeps the existing readiness, relation-admission and parity gates;
 - historical schema identities remain storage history only and must not become runtime fallback implementations.
 
-## 7. Merge admission for this revision
+## 7. Merge admission for this cursor revision
 
-Before merge, require all focused source/compile checks on the revision head and PR merge-ref:
+The runner source revision already passed complete PR `Index Contract CI` run `31630496801`. This cursor-only actualization changes no runtime source, but it must still preserve the same source/compile contract and pass the focused Index workflow before merge.
+
+The canonical source gate remains:
 
 ```text
 node scripts/verify/verify-index-contract-ci.mjs
@@ -182,4 +186,4 @@ cargo test --locked -p rustok-distribution --features mod-product product_index:
 cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
 ```
 
-The external runtime execution is deliberately separate from source-only admission. After this revision merges, the active cursor remains the operator-approved `workflow_dispatch` execution and retained run evidence described in section 5.
+The external runtime execution is deliberately separate from source-only admission. After this cursor revision merges, the active cursor remains the operator-approved `workflow_dispatch` execution and retained run evidence described in section 5.
