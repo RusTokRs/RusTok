@@ -299,6 +299,7 @@ pub mod module_event_dispatcher {
     }
 }
 pub mod module_lifecycle;
+pub mod module_rollout_promotion_settings;
 #[cfg(feature = "mod-notifications")]
 pub mod notification_candidate_worker;
 #[cfg(feature = "mod-notifications")]
