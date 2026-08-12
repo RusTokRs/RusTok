@@ -36,6 +36,15 @@ The module-owned migration source keeps the generic Index storage vocabulary exp
 
 These tables are a derived read model. Source modules remain authoritative and do not write this storage directly.
 
+## M3 Partition Evidence Status
+
+- M3 partition evidence packet tooling: `complete`
+- M3 partition evidence capture/assembly: `complete`
+
+The repository owner still executes and retains the PostgreSQL packet. Source-complete tooling and documentation do not authorize production partition cutover.
+
+- [M3 partition evidence runbook](./partition-evidence-runbook.md)
+
 ---
 
 ## Reference Documents
