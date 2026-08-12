@@ -38,6 +38,8 @@ The current baseline run `31593587184` exposed a separate canonical digest artif
 
 Therefore the digest update in this revision is a prerequisite repair, not a new compatibility contract.
 
+The first distribution-focused admission run for this revision also surfaced a pre-existing compile defect in an always-on `rustok-distribution` dependency: `rustok-auth` migration `m20260721_000009_move_oauth_app_copy_to_translations.rs` used `#[derive(DeriveIden)]` with the `#[iden = ...]` helper, while the supported migration pattern in the repository is `#[derive(Iden)]`. The revision repairs that one derive line before evaluating the Product bridge. No migration SQL, table identity or data transformation is changed by that prerequisite repair.
+
 ## 3. M5 boundary implemented by this revision
 
 ### 3.1 Exact Product refresh routes
