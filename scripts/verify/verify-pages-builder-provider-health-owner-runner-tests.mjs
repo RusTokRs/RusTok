@@ -168,7 +168,7 @@ for (const marker of [
   "seven synthetic fail-closed cases",
   files.test,
   files.workflow,
-  "live provider-health execution remains pending",
+  "Live provider-health execution remains pending",
   "Pages reference-consumer gate remains unaccepted",
 ]) {
   need(sources.overlay, marker, "runner-test actualization");
