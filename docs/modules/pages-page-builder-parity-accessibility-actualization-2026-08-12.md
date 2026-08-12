@@ -41,6 +41,19 @@ The workflow has `contents: read` only and does not build, publish, deploy, muta
 
 `verify-pages-page-builder-accessibility-plan-sync.mjs` prevents the three active plans from drifting back to the pre-#3444 source cursor and requires the dated accessibility actualization plus source guard to remain wired into the verification programme.
 
+## Rendered accessibility evidence continuation
+
+The next implementation slice adds `crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs` to the ordinary `rustok-page-builder-admin` unit-test target. Unlike the static source guard, these tests render the real Leptos `PageBuilderAdmin` with a concrete `AdminCanvasController` and assert facts in the generated HTML.
+
+The retained SSR evidence covers only a bounded subset of the open execution cursor:
+
+- the active and inactive page controls render explicit `aria-pressed="true"` / `aria-pressed="false"` state;
+- the new-page control renders a programmatic `Add page: Page name` name;
+- visible `Page name` and `Page id` labels survive the actual SSR render path;
+- denied `edit` and `properties` capability fieldsets render both native `disabled` semantics and `aria-disabled="true"`.
+
+This is executable rendered-DOM evidence, not a browser accessibility-tree, keyboard/focus or screen-reader result. WASM-only asset/property/style controls are also outside this native SSR subset. Therefore the shared Phase 9 checkbox remains open and browser/WCAG claims remain prohibited.
+
 ## Current execution cursor
 
 The broader parity cursor remains:
