@@ -68,6 +68,7 @@ for (const pathMarker of [
   '"scripts/verify/verify-index-product-refresh-host-consumer.mjs"',
   '"scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"',
   '"scripts/verify/verify-index-contract-ci.mjs"',
+  '".github/workflows/index-product-refresh-redelivery-evidence.yml"',
   '".github/workflows/index-contract-ci.yml"',
 ]) {
   if (!workflow.includes(pathMarker)) fail(`${workflowPath} does not trigger for ${pathMarker}`);

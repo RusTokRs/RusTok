@@ -6,6 +6,8 @@
   "execution_scope": "opt_in_external_iggy_postgresql_runtime_execution_pending",
   "test": "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs",
   "verifier": "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs",
+  "manual_workflow": ".github/workflows/index-product-refresh-redelivery-evidence.yml",
+  "manual_confirmation": "execute",
   "database_url_env": "RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL",
   "iggy_address_env": "RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS",
   "iggy_username_env": "RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME",
@@ -16,6 +18,16 @@
   "delivery_profile": "outbox_iggy",
   "runtime_flag": "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED",
   "runtime_flag_default": "off",
+  "manual_runner_invariants": [
+    "workflow_dispatch_only",
+    "contents_read_only",
+    "persist_credentials_false",
+    "explicit_execute_confirmation_required",
+    "database_and_iggy_endpoint_secrets_required",
+    "iggy_credentials_must_be_complete_pair_when_present",
+    "missing_configuration_fails_before_harness_instead_of_skipping",
+    "production_consumer_flag_not_enabled"
+  ],
   "commands": [
     {
       "program": "node",
@@ -78,6 +90,7 @@
     "no_partition_wide_replay_or_storefront_cutover",
     "no_multi_replica_rebalance_evidence",
     "no_tls_auth_or_failover_evidence",
+    "manual_runner_source_is_not_runtime_execution",
     "source_ready_is_not_runtime_execution"
   ],
   "evidence_status": "runtime_execution_pending"
