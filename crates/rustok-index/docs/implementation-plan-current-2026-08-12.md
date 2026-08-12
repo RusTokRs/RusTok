@@ -8,7 +8,9 @@ This document supersedes `implementation-plan-current-2026-08-09.md` as the acti
 
 The current execution baseline for this cursor revision is `main@631513a44a5477596854ea1d23968aa5221c68c2` on 2026-08-12. PR #3466 squash-merged the reviewed `workflow_dispatch`-only Product refresh PostgreSQL/Iggy redelivery evidence runner into that exact mainline commit. The source revision had already passed complete PR `Index Contract CI` run `31630496801` before merge.
 
-The mainline delta that landed between the runner's source baseline and merge was Forum/Page Builder work only and did not overlap the seven Index/CI files carried by #3466. This cursor revision changes documentation state only: it does not alter the runner, Product refresh host consumer, event family, source adapters, replay mutation path or evidence harness.
+The mainline delta that landed between the runner's source baseline and merge was Forum/Page Builder work only and did not overlap the seven Index/CI files carried by #3466.
+
+The exact post-merge main recheck also exposed one pre-existing Index core-boundary violation in `Index Storage Smoke Evidence` run `31633573608`: `rustok-index` still listed `rustok-api` as a production dependency because the reconciliation scheduler imported the generic `ModuleWork*` contract directly from the API crate. That scheduler was introduced by #2940, whose merge description explicitly recorded that tests, verifiers and CI were not run. This cursor revision therefore also repairs that boundary without weakening the verifier: `rustok-runtime` publicly exposes the `ModuleWork*` surface owned by its generic scheduler, the Index scheduler consumes that runtime surface, and the direct `rustok-api` production dependency is removed. No reconciliation SQL, state transition, lease/cursor behavior or work-item contract changes.
 
 The completed Index foundation remains present and is not reopened:
 
@@ -131,7 +133,7 @@ The runner is intentionally stricter than a direct developer invocation:
 
 The evidence status remains **runtime execution pending**. The runner is now merged; source admission and merge are not runtime promotion.
 
-At this cursor recheck, no retained execution of `Index Product Refresh Redelivery Evidence` exists. The remaining M5 boundary is operational rather than another source-code slice:
+At this cursor recheck, no retained execution of `Index Product Refresh Redelivery Evidence` exists. The remaining M5 boundary is operational rather than another Product refresh source-code slice:
 
 1. **complete:** merge the reviewed manual runner source (#3466 -> `main@631513a44a5477596854ea1d23968aa5221c68c2`);
 2. configure operator-approved evidence-scoped PostgreSQL/Iggy GitHub secrets;
@@ -161,9 +163,9 @@ The following work remains gated:
 - Product graph/storefront cutover keeps the existing readiness, relation-admission and parity gates;
 - historical schema identities remain storage history only and must not become runtime fallback implementations.
 
-## 7. Merge admission for this cursor revision
+## 7. Merge admission for this cursor and boundary repair
 
-The runner source revision already passed complete PR `Index Contract CI` run `31630496801`. This cursor-only actualization changes no runtime source, but it must still preserve the same source/compile contract and pass the focused Index workflow before merge.
+The runner source revision already passed complete PR `Index Contract CI` run `31630496801`. The exact merged main subsequently exposed the independent FBA dependency-boundary failure in `Index Storage Smoke Evidence` run `31633573608`; this revision must demonstrate that the storage boundary contract is restored while preserving the full focused Index compile/test contract.
 
 The canonical source gate remains:
 
@@ -176,6 +178,7 @@ node scripts/verify/verify-index-product-refresh-host-consumer.mjs
 node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
 cargo run --locked -p rustok-events --example event_contract_digests -- --write
 git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json
+cargo check --locked -p rustok-runtime --all-targets
 cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
 cargo check --locked -p rustok-distribution --features mod-product --lib
 cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
@@ -186,4 +189,4 @@ cargo test --locked -p rustok-distribution --features mod-product product_index:
 cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
 ```
 
-The external runtime execution is deliberately separate from source-only admission. After this cursor revision merges, the active cursor remains the operator-approved `workflow_dispatch` execution and retained run evidence described in section 5.
+In addition, `Index Storage Smoke Evidence` must pass its `Index boundary contract` step, including `verify-index-fba`, before merge. The external Product refresh runtime execution is deliberately separate from source-only admission. After this revision merges, the active cursor remains the operator-approved `workflow_dispatch` execution and retained run evidence described in section 5.
