@@ -1,7 +1,7 @@
 # Pages / Page Builder Parity Continuation Plan
 
-Date: 2026-08-10  
-Status: source-parity-current / pages-repeated-artifact-loss-recovery-source-ready / provider-degraded-controls-source-ready / provider-health-runtime-source-ready / provider-health-observed-acceptance-source-ready / contribution-registry-version-parity-source-ready / contribution-module-metadata-generation-source-ready / shared-contribution-tooling-source-ready / forum-runtime-composition-source-ready / forum-evidence-harness-source-ready / pages-reference-consumer-gate-source-ready / pages-reference-consumer-gate-acceptance-source-ready / forum-wave-admission-source-ready / execution-acceptance-pending
+Date: 2026-08-12  
+Status: source-parity-current / pages-repeated-artifact-loss-recovery-source-ready / provider-degraded-controls-source-ready / provider-health-runtime-source-ready / provider-health-observed-acceptance-source-ready / contribution-registry-version-parity-source-ready / contribution-module-metadata-generation-source-ready / shared-contribution-tooling-source-ready / forum-runtime-composition-source-ready / forum-evidence-harness-source-ready / pages-reference-consumer-gate-source-ready / pages-reference-consumer-gate-acceptance-source-ready / forum-wave-admission-source-ready / generic-editor-accessibility-source-ready / execution-acceptance-pending
 Scope: `rustok-pages` admin/storefront FFA and `rustok-page-builder` document, publication, artifact, routing, cache, authenticated inline-authoring and deterministic deployment boundaries
 
 ## Source-of-truth policy
@@ -26,7 +26,7 @@ Optional external event and delivery infrastructure remain outside the active Pa
 
 ## 2026-08-10 current source reconciliation
 
-This section overrides older source-state/cursor wording retained below for compatibility with historical static guards.
+This section overrides older source-state/cursor wording retained below for compatibility with historical static guards. It is current through the 2026-08-12 recheck; the heading date is intentionally retained because existing source guards use it as a stable section marker.
 
 The recheck includes all relevant merged source after the former PR #3063 cursor, especially:
 
@@ -48,7 +48,8 @@ The recheck includes all relevant merged source after the former PR #3063 cursor
 - PRs #3403, #3410, #3414, #3417 and #3420 added typed Pages provider-health transport, binding-owner acceptance with exact remaining `health_valid_until`, fail-closed server binding, health-aware workspace/SSR/browser-intent consumers and non-mutating capability preflight using shared effective runtime flags;
 - PRs #3424 and #3426 retained the exact-source observed-health runtime harness and explicit retrospective observed-evidence owner acceptance without executing them or asserting current provider health;
 - PR #3429 added explicit Pages reference-consumer gate acceptance source over the rollout-only candidate plus owner-accepted observed-health evidence, with separate owner and rollback decisions;
-- PR #3435 added Forum Wave admission source requiring an accepted Pages gate plus exact-source Forum browser/runtime/server-function evidence before the observed control-plane Wave may start.
+- PR #3435 added Forum Wave admission source requiring an accepted Pages gate plus exact-source Forum browser/runtime/server-function evidence before the observed control-plane Wave may start;
+- PR #3444 closed the generic Page Builder editor source-level accessibility gap with programmatic field names, scoped repeated-action names, selected-state semantics and `scripts/verify/verify-page-builder-admin-accessibility.mjs`. Keyboard/focus/browser/accessibility-tree/screen-reader evidence remains execution work.
 
 The current Forum contribution/runtime source boundary is complete without changing Forum persistence, visibility, widget validation or authorization ownership:
 
@@ -79,13 +80,17 @@ Rechecked Page Builder Phase 9/rollout source state:
 - [x] Implement provider-health observation, metrics/freshness, exact deployment identity, evaluator, Pages binding/consumer narrowing, runtime harness and observed-evidence owner-acceptance source.
 - [x] Define explicit Pages reference-consumer gate acceptance source over rollout candidate + accepted observed health with owner/rollback decision.
 - [x] Define Forum Wave admission source over accepted Pages gate + exact Forum evidence lineage.
+- [x] Complete generic typed editor control programmatic accessibility semantics and retain a source anti-drift guard.
+- [ ] Execute generic editor keyboard/focus/browser/accessibility-tree/screen-reader evidence.
 - [ ] Execute exact provider-health deployment/evidence/owner-decision packets.
 - [ ] Execute the rollout-only reference candidate and take the Pages gate owner + rollback decision.
 - [ ] Execute Forum browser/runtime/deployment evidence, run Forum Wave admission and then retain the separate observed control-plane Wave and owner review.
 
 No new provider-health, Pages gate or Forum-admission source architecture gap is identified by this reconciliation. The repository now has an authoritative **source architecture** for exact-target deployment-health observation/evaluation/binding and consumer narrowing. Current deployment health is still not asserted by source inspection: maintainers must execute the exact target chain, accepted health can expire, and missing/invalid/expired binding remains `unobserved`.
 
-Detailed evidence for the current contribution, provider-health, gate and Forum admission slices is retained in:
+The generic editor source accessibility gap is also closed. Remaining accessibility work is executable evidence; static source inspection does not establish WCAG conformance.
+
+Detailed evidence for the current contribution, provider-health, gate, Forum admission and editor-accessibility slices is retained in:
 
 - `docs/modules/pages-page-builder-contribution-parity-actualization-2026-08-08.md`;
 - `docs/modules/pages-page-builder-module-metadata-contribution-generation-2026-08-08.md`;
@@ -111,11 +116,13 @@ Detailed evidence for the current contribution, provider-health, gate and Forum 
 - `docs/modules/pages-page-builder-provider-health-observed-acceptance-actualization-2026-08-10.md`;
 - `docs/modules/pages-page-builder-reference-consumer-gate-acceptance-actualization-2026-08-10.md`;
 - `docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md`;
-- `docs/modules/pages-page-builder-base-plan-reconciliation-actualization-2026-08-10.md`.
+- `docs/modules/pages-page-builder-base-plan-reconciliation-actualization-2026-08-10.md`;
+- `docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md`;
+- `docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md`.
 
 ## Rechecked merged cursor
 
-The following #2955–#3063 list is a retained historical snapshot; the 2026-08-10 reconciliation above is authoritative for current source state.
+The following #2955–#3063 list is a retained historical snapshot; the current reconciliation above is authoritative for current source state.
 
 Current `main` through PR #3063 contains the retained Pages/Page Builder sequence:
 
@@ -135,7 +142,7 @@ Current `main` through PR #3063 contains the retained Pages/Page Builder sequenc
 
 The historical release-composition source slice adds one deterministic deployment composition owner and connects it to release build, release reproducibility and the production server Docker builder. It also aligns action pins with the existing allow-list, protects all inline-edit build owners behind `release-infra-approved`, and updates release readiness evidence requirements.
 
-No build, workflow, Docker, HTTP or browser execution is claimed.
+No build, workflow, Docker, HTTP or browser execution is claimed by source inspection.
 
 ## Retained source marker index
 
@@ -175,6 +182,7 @@ No build, workflow, Docker, HTTP or browser execution is claimed.
 - `pages-reference-consumer-gate-source-ready` — rollout-only blocker source is explicit and fail-closed; committed acceptance remains false.
 - `pages-reference-consumer-gate-acceptance-source-ready` — dual-input owner/rollback decision source exists over reference candidate + accepted observed health.
 - `forum-wave-admission-source-ready` — accepted Pages gate and exact Forum evidence correlation source exists before the observed control-plane Wave.
+- `generic-editor-accessibility-source-ready` — generic editor field/action naming and selected-state semantics are source-ready and guarded; keyboard/focus/browser/screen-reader evidence remains pending.
 
 ## Current parity state
 
@@ -323,6 +331,12 @@ Graph and built-artifact execution evidence remain pending.
 
 Pages keeps repair identity and latest accepted repair state per locale bounded. A previously rebuilt immutable artifact that is physically lost again can be reconstructed from the latest accepted repair lineage, and rollback continuity uses the same authority. This remains source-ready only until maintainer execution evidence is produced.
 
+### Generic Page Builder editor accessibility: source-ready / execution-open
+
+Generic asset/property/style/responsive-style/trait/page/palette/layer controls expose programmatic names and selected-state semantics at source level. Repeated actions are object-scoped rather than exposed only as generic `Use`, `Remove`, `Add` or `Drag` labels. The static guard rejects the previous placeholder-only and visual-only patterns.
+
+Keyboard navigation, focus behavior, built accessibility-tree inspection, browser and screen-reader evidence remain pending. No WCAG conformance is claimed by this source state.
+
 ### Provider degraded controls and deployment health: source-ready / execution-open
 
 Page Builder provider flags can only narrow an already authorized capability set. Invalid/disabled builder state is unavailable, configured rollout can disable individual capabilities, Degraded observed health suppresses publish, and Unavailable observed health fails builder capabilities closed. Pages exposes the same configured flags used by server composition and consumes only validated accepted provider health through the fail-closed binding.
@@ -352,6 +366,7 @@ Successful admission produces only `forum_page_builder_wave_admission_v1 / forum
 | Registered metadata and owner port | Complete | Browser/conflict execution pending |
 | Reviewed publish and immutable rollback | Complete | DB/runtime execution pending |
 | Repeated immutable-artifact loss recovery | Source-ready | Repair/rollback execution pending |
+| Generic editor control accessibility | Source-ready | Keyboard/focus/browser/screen-reader evidence pending |
 | Canonical contribution metadata generation | Source-ready (Pages + shared tooling) | Execution pending |
 | Forum contribution/runtime composition | Source-ready (metadata + Fly adapter + owner preview + owner properties) | Browser/runtime/deployment evidence pending |
 | Provider-health observation/evaluator/binding/consumer chain | Source-ready | Exact-target execution + owner decisions pending |
@@ -397,7 +412,7 @@ These exact phrases are retained only because earlier static guards consume the 
 
 ## Boundaries
 
-The historical deployment slice remains unchanged; the current reconciliation additionally restores contribution version parity, moves Pages contribution authority to canonical module metadata, centralizes metadata normalization in platform build tooling, completes the Forum second-consumer adapter/preview/property source path, completes the provider-health source chain through observed-evidence owner acceptance, defines explicit Pages gate acceptance source and defines Forum Wave admission source.
+The historical deployment slice remains unchanged; the current reconciliation additionally restores contribution version parity, moves Pages contribution authority to canonical module metadata, centralizes metadata normalization in platform build tooling, completes the Forum second-consumer adapter/preview/property source path, completes the provider-health source chain through observed-evidence owner acceptance, defines explicit Pages gate acceptance source, defines Forum Wave admission source and records the generic editor accessibility source closure.
 
 It does not:
 
@@ -416,28 +431,32 @@ It does not:
 - claim Forum browser/runtime/deployment harness or Wave-admission execution;
 - claim the observed Forum control-plane Wave or owner review;
 - claim the Pages reference-consumer gate is accepted;
-- claim verifier, Cargo, npm, Trunk, WASM, server, Docker, workflow, HTTP, browser or rollout execution;
+- claim browser or screen-reader accessibility conformance from static source;
+- claim verifier, Cargo, npm, Trunk, WASM, server, Docker, workflow, HTTP, browser or rollout execution unless an exact retained execution result exists;
 - promote FFA or FBA.
 
 ## Next cursor
 
-Source architecture for the Pages reference consumer, provider-health chain, Pages gate acceptance and Forum Wave admission is complete at this cursor. The next work is exact maintainer evidence/decision execution rather than another adapter or health architecture slice:
+Source architecture for the Pages reference consumer, provider-health chain, Pages gate acceptance, Forum Wave admission and generic editor accessibility semantics is complete at this cursor. The next work is exact evidence/decision execution rather than another adapter, health or generic-control architecture slice:
 
 1. Execute exact provider-health target identity/metrics/evaluator, binding-owner acceptance, live remaining-lease Pages binding, observed-health consumer harness and retrospective observed-evidence owner decision.
 2. Execute the rollout-only reference candidate and combine it with owner-accepted observed-health evidence for the explicit Pages gate owner + rollback decision.
 3. Execute Forum browser/runtime/server-function evidence on the same exact source/deployment boundary and run Forum Wave admission.
 4. Perform the separate observed control-plane Wave with audit trail, fallback profiles, metrics/traces, rollback decision, approvals and waivers, then retain Forum Wave owner review.
-5. Promote FFA/FBA only after the corresponding observed evidence is reviewed and accepted.
+5. Retain generic editor keyboard/focus/accessibility-tree/browser/screen-reader evidence on the built admin surface.
+6. Promote FFA/FBA only after the corresponding observed evidence is reviewed and accepted.
 
 Current provider health is not inferred by this plan. The fail-closed Pages binding returns `unobserved` when accepted health is absent, invalid or expired.
 
-Maintainer-owned execution evidence remains pending for the contribution/tooling, provider-health, Pages gate, Forum rollout, release, browser, database and recovery slices.
+Maintainer-owned execution evidence remains pending for the contribution/tooling, provider-health, Pages gate, Forum rollout, accessibility, release, browser, database and recovery slices.
 
 ## Maintainer validation
 
-Suggested commands, intentionally not run in this slice:
+Focused source verification is intended to run in CI for this cursor; environment-bound execution remains separate:
 
 ```bash
+node scripts/verify/verify-page-builder-admin-accessibility.mjs
+node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs
 node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
@@ -467,4 +486,4 @@ node scripts/verify/verify-release-readiness-contract.mjs
 bash scripts/build/build-pages-inline-edit-deployment.sh
 ```
 
-Execution evidence remains pending.
+Focused source guards may be executed by the parity workflow; exact browser/provider-health/rollout/build evidence remains pending until its dedicated execution packet is retained.
