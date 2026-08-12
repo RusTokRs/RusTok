@@ -62,7 +62,6 @@ struct TestDatabase {
     migration: DatabaseConnection,
     source: DatabaseConnection,
     mutation: DatabaseConnection,
-    database_url: String,
     schema_name: String,
 }
 
@@ -108,7 +107,6 @@ impl TestDatabase {
             migration,
             source: scoped_connection(database_url, &schema_name).await?,
             mutation: scoped_connection(database_url, &schema_name).await?,
-            database_url: database_url.to_owned(),
             schema_name,
         })
     }
@@ -320,9 +318,7 @@ async fn run_ack_failure_redelivery(
                 delivery_from_consumed(&variant)?,
             )
             .await?;
-        if applied_variant.mutation_outcome()
-            != IndexReplayMutationOutcome::Applied { source_version: variant_version }
-        {
+        if applied_variant.mutation_outcome() != IndexReplayMutationOutcome::Applied {
             return Err(invalid_data(format!(
                 "ProductVariant refresh did not apply current owner state: {:?}",
                 applied_variant.mutation_outcome()
