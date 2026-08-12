@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "module": "pages",
+  "packet": "pages-reference-consumer-gate-acceptance-runner-test-source",
+  "status": "source_ready_ci_execution_pending",
+  "production_runner": "scripts/evidence/accept-pages-reference-consumer-gate.mjs",
+  "test_runner": "scripts/evidence/accept-pages-reference-consumer-gate.test.mjs",
+  "production_output_format": "pages_reference_consumer_gate_acceptance_v1",
+  "cases": [
+    "valid accept decision retains accepted gate packet without mutating canonical source or accepting Forum Wave",
+    "valid reject decision retains rejected gate packet with explicit rollback disposition but no rollback execution",
+    "accepted gate paired with rollback disposition fails closed",
+    "reference candidate retained source hash tamper fails closed",
+    "reference candidate allowlisted command argv drift fails closed",
+    "reference candidate provider-health overclaim fails closed",
+    "observed-health RepoDigest mismatch against candidate fails closed",
+    "observed-health current-provider-health overclaim fails closed",
+    "observed-health gate-review eligibility revocation fails closed"
+  ],
+  "fixture_policy": {
+    "uses_current_checkout_head": true,
+    "recomputes_candidate_and_observed_source_hashes_from_current_checkout": true,
+    "uses_synthetic_candidate_and_retrospective_observed_health_packets": true,
+    "uses_synthetic_packet_files_under_repository_target": true,
+    "spawns_production_runner_as_child_process": true,
+    "does_not_import_or_reimplement_production_runner_decision_logic": true,
+    "cleans_test_packets_after_execution": true
+  },
+  "boundaries": {
+    "reference_candidate_live_execution_claimed": false,
+    "observed_health_live_execution_claimed": false,
+    "owner_gate_decision_from_live_evidence_claimed": false,
+    "rollback_action_executed": false,
+    "canonical_source_mutated": false,
+    "current_provider_health_asserted": false,
+    "pages_reference_consumer_gate_accepted_in_source": false,
+    "forum_wave_accepted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "ci": {
+    "workflow": ".github/workflows/pages-page-builder-provider-health.yml",
+    "commands": [
+      "node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs",
+      "node scripts/verify/verify-pages-reference-consumer-gate-owner-runner-tests.mjs",
+      "node scripts/evidence/accept-pages-reference-consumer-gate.test.mjs",
+      "node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+    ]
+  },
+  "required_source_files": [
+    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
+    "scripts/evidence/accept-pages-reference-consumer-gate.mjs",
+    "scripts/evidence/accept-pages-reference-consumer-gate.test.mjs",
+    "scripts/verify/verify-pages-reference-consumer-gate-owner-runner-tests.mjs",
+    ".github/workflows/pages-page-builder-provider-health.yml",
+    "docs/modules/pages-page-builder-reference-consumer-gate-owner-runner-tests-actualization-2026-08-12.md"
+  ],
+  "next_cursor": {
+    "reference_consumer_gate_acceptance_runner": "synthetic_fail_closed_ci_coverage_source_ready",
+    "candidate_and_observed_health_owner_accepted_packets": "maintainer_execution_pending",
+    "accepted_pages_gate_packet": "blocked_on_maintainer_execution_and_decision",
+    "forum_wave_admission": "source_ready_maintainer_execution_pending"
+  }
+}
