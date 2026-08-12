@@ -73,18 +73,26 @@ jobs:
         with:
           node-version: 22
       - name: Verify deployment identity evidence source
+        if: ${{ !cancelled() }}
         run: node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
       - name: Verify deployment evaluator evidence source
+        if: ${{ !cancelled() }}
         run: node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
       - name: Verify binding owner acceptance source
+        if: ${{ !cancelled() }}
         run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
       - name: Verify runtime evidence harness source
+        if: ${{ !cancelled() }}
         run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
       - name: Verify observed-health owner acceptance source
+        if: ${{ !cancelled() }}
         run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
       - name: Verify observed-health owner acceptance runner test source
+        if: ${{ !cancelled() }}
         run: node scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs
       - name: Observed-health owner acceptance runner synthetic tests
+        if: ${{ !cancelled() }}
         run: node scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs
       - name: Verify Pages and Page Builder plan parity
+        if: ${{ !cancelled() }}
         run: node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
