@@ -288,6 +288,7 @@ impl MigrationTrait for Migration {
 
 #[derive(Iden)]
 enum LedgerTransactions {
+    #[iden = "marketplace_ledger_transactions"]
     Table,
     Id,
     TenantId,
@@ -305,6 +306,7 @@ enum LedgerTransactions {
 
 #[derive(Iden)]
 enum LedgerEntries {
+    #[iden = "marketplace_ledger_entries"]
     Table,
     Id,
     TenantId,
@@ -324,6 +326,7 @@ enum LedgerEntries {
 
 #[derive(Iden)]
 enum LedgerReceipts {
+    #[iden = "marketplace_ledger_receipts"]
     Table,
     Id,
     TenantId,

@@ -251,10 +251,14 @@ impl ModuleControlPlane {
     /// Returns the sole-owner fresh-target bootstrap importer. It only admits
     /// one signed base preparation while both release and preparation heads are
     /// empty; later lifecycle always uses the normal release owner.
-    pub fn static_distribution_bootstrap(&self) -> SeaOrmModuleStaticDistributionBootstrapService {
+    pub fn static_distribution_bootstrap(
+        &self,
+        public_key_base64: String,
+    ) -> SeaOrmModuleStaticDistributionBootstrapService {
         SeaOrmModuleStaticDistributionBootstrapService::with_infrastructure(
             self.db.clone(),
             self.infrastructure.clone(),
+            public_key_base64,
         )
     }
 

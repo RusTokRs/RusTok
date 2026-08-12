@@ -125,7 +125,12 @@ pub mod module_event_dispatcher {
             runtime_ctx,
             auth_config,
         )?;
-        let mut extensions = base.as_ref().clone();
+        let mut extensions = Arc::try_unwrap(base).map_err(|_| {
+            Error::Message(
+                "module runtime extensions must remain uniquely owned during final host composition"
+                    .to_string(),
+            )
+        })?;
 
         #[cfg(feature = "mod-comments")]
         super::comments_provider_runtime::register_comments_provider_runtime(&mut extensions)

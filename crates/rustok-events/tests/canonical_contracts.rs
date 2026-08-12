@@ -437,12 +437,14 @@ fn sample_events() -> Vec<DomainEvent> {
             role_set_digest: digest('e'),
             topology_digest: digest('1'),
             policy_revision: "policy-static-1".to_string(),
-            target_nodes: 2,
+            target_assignments: 2,
             executor_mode: "static_native".to_string(),
         },
-        DomainEvent::ModuleStaticDistributionNodeObserved {
+        DomainEvent::ModuleStaticDistributionAssignmentObserved {
             rollout_id: id(1010),
             node_id: "node-1".to_string(),
+            role: "api".to_string(),
+            artifact_digest: digest('f'),
             reporter_id: "deployment-controller".to_string(),
             observation_revision: 1,
             phase: "healthy".to_string(),

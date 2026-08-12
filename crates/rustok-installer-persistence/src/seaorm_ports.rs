@@ -1,7 +1,7 @@
 use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
 use rustok_installer::{
     DatabaseEngine, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
-    InstallDatabasePort, InstallDatabaseReady, InstallDeploymentPort,
+    InstallBootstrapPort, InstallDatabasePort, InstallDatabaseReady, InstallDeploymentPort,
     InstallDistributionDeployment, InstallDistributionDeploymentRequest, InstallExecutionError,
     InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord, InstallSchemaPort,
     InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallState,
@@ -9,7 +9,6 @@ use rustok_installer::{
     SeedIdentityPort, SeedModulePort, SeedPrincipalPort, SeedProfile, SeedRolePort, SeedTenant,
     SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
 };
-use rustok_migrations::Migrator;
 use rustok_modules::ModuleControlPlane;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
@@ -19,7 +18,7 @@ use rustok_tenant::{
 use sea_orm::{
     ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait,
 };
-use sea_orm_migration::MigratorTrait;
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
@@ -27,6 +26,62 @@ use uuid::Uuid;
 use crate::{InstallerPersistenceService, entities::install_session};
 
 const DEFAULT_PG_ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/postgres";
+
+async fn import_base_distribution(
+    runtime: &DatabaseConnection,
+    plan: &InstallPlan,
+    public_key_base64: Option<&str>,
+) -> Result<
+    Option<rustok_modules::ModuleStaticDistributionBootstrapImportReceipt>,
+    InstallExecutionError,
+> {
+    let Some(distribution) = plan.topology.distribution.as_ref() else {
+        return Ok(None);
+    };
+    let Some(receipt) = distribution.bootstrap_receipt.as_deref() else {
+        // An already admitted owner-ledger release needs no bootstrap import.
+        return Ok(None);
+    };
+    let public_key_base64 = public_key_base64.ok_or_else(|| {
+        InstallExecutionError::new(
+            "signed base-distribution import requires a host-selected public key",
+        )
+    })?;
+    let actor_id = plan.placement.instance_id;
+    let idempotency_key =
+        deterministic_bootstrap_idempotency_key(actor_id, receipt.payload.distribution_release_id);
+    ModuleControlPlane::new(runtime.clone())
+        .static_distribution_bootstrap(public_key_base64.to_owned())
+        .import(
+            rustok_modules::ModuleStaticDistributionBootstrapImportCommand {
+                receipt: receipt.clone(),
+                actor_id,
+                idempotency_key,
+            },
+        )
+        .await
+        .map(Some)
+        .map_err(|error| {
+            InstallExecutionError::new(format!(
+                "failed to import signed base distribution into owner ledger: {error}"
+            ))
+        })
+}
+
+fn deterministic_bootstrap_idempotency_key(instance_id: Uuid, release_id: Uuid) -> Uuid {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustok:installer:bootstrap:");
+    hasher.update(instance_id.as_bytes());
+    hasher.update(release_id.as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    // Mark the deterministic identity as RFC 9562 custom version 8 rather
+    // than allowing random-looking bytes to escape into the operation ledger.
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(bytes)
+}
 
 /// SeaORM implementation of database, schema and durable installer-state ports.
 pub struct SeaOrmInstallerPorts;
@@ -61,11 +116,33 @@ impl InstallDatabasePort for SeaOrmInstallerApplyPorts<'_> {
 
 #[async_trait::async_trait]
 impl InstallSchemaPort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'_> {
-    async fn apply_schema(
+    async fn apply_owner_schema(
         &self,
         runtime: &DatabaseConnection,
     ) -> Result<(), InstallExecutionError> {
-        InstallSchemaPort::apply_schema(&SeaOrmInstallerPorts, runtime).await
+        InstallSchemaPort::apply_owner_schema(&SeaOrmInstallerPorts, runtime).await
+    }
+
+    async fn apply_remaining_schema(
+        &self,
+        runtime: &DatabaseConnection,
+    ) -> Result<(), InstallExecutionError> {
+        InstallSchemaPort::apply_remaining_schema(&SeaOrmInstallerPorts, runtime).await
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallBootstrapPort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'_> {
+    async fn import_base_distribution(
+        &self,
+        runtime: &DatabaseConnection,
+        plan: &InstallPlan,
+        public_key_base64: Option<&str>,
+    ) -> Result<
+        Option<rustok_modules::ModuleStaticDistributionBootstrapImportReceipt>,
+        InstallExecutionError,
+    > {
+        import_base_distribution(runtime, plan, public_key_base64).await
     }
 }
 
@@ -174,7 +251,7 @@ impl InstallVerificationPort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'
 
 #[async_trait::async_trait]
 impl InstallDeploymentPort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'_> {
-    fn supports_distributed_deployment(&self) -> bool {
+    fn supports_distribution_deployment(&self) -> bool {
         false
     }
 
@@ -184,7 +261,7 @@ impl InstallDeploymentPort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'_>
         _request: InstallDistributionDeploymentRequest,
     ) -> Result<InstallDistributionDeployment, InstallExecutionError> {
         Err(InstallExecutionError::new(
-            "standalone installer apply has no configured distributed deployment adapter",
+            "standalone installer apply has no configured distribution deployment adapter",
         ))
     }
 }
@@ -553,11 +630,37 @@ impl InstallDatabasePort for SeaOrmInstallerPorts {
 
 #[async_trait::async_trait]
 impl InstallSchemaPort<DatabaseConnection> for SeaOrmInstallerPorts {
-    async fn apply_schema(
+    async fn apply_owner_schema(
         &self,
         runtime: &DatabaseConnection,
     ) -> Result<(), InstallExecutionError> {
-        Migrator::up(runtime, None).await.map_err(database_error)
+        rustok_migrations::apply_installer_owner_schema(runtime)
+            .await
+            .map_err(database_error)
+    }
+
+    async fn apply_remaining_schema(
+        &self,
+        runtime: &DatabaseConnection,
+    ) -> Result<(), InstallExecutionError> {
+        rustok_migrations::apply_installer_remaining_schema(runtime)
+            .await
+            .map_err(database_error)
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallBootstrapPort<DatabaseConnection> for SeaOrmInstallerPorts {
+    async fn import_base_distribution(
+        &self,
+        runtime: &DatabaseConnection,
+        plan: &InstallPlan,
+        public_key_base64: Option<&str>,
+    ) -> Result<
+        Option<rustok_modules::ModuleStaticDistributionBootstrapImportReceipt>,
+        InstallExecutionError,
+    > {
+        import_base_distribution(runtime, plan, public_key_base64).await
     }
 }
 

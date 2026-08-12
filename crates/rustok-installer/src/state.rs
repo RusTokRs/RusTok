@@ -15,8 +15,8 @@ pub enum InstallState {
     Verified,
     Completed,
     Failed,
-    RolledBackFreshInstall,
-    RestoreRequired,
+    FreshInstallCleaned,
+    RecoveryRequired,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,15 +58,15 @@ impl InstallState {
                 | (Deploying, Verified)
                 | (Verified, Completed)
                 | (_, Failed)
-                | (Draft, RolledBackFreshInstall)
-                | (PreflightPassed, RolledBackFreshInstall)
-                | (ConfigPrepared, RolledBackFreshInstall)
-                | (DatabaseReady, RolledBackFreshInstall)
-                | (SchemaApplied, RestoreRequired)
-                | (SeedApplied, RestoreRequired)
-                | (AdminProvisioned, RestoreRequired)
-                | (Deploying, RestoreRequired)
-                | (Verified, RestoreRequired)
+                | (Draft, FreshInstallCleaned)
+                | (PreflightPassed, FreshInstallCleaned)
+                | (ConfigPrepared, FreshInstallCleaned)
+                | (DatabaseReady, FreshInstallCleaned)
+                | (SchemaApplied, RecoveryRequired)
+                | (SeedApplied, RecoveryRequired)
+                | (AdminProvisioned, RecoveryRequired)
+                | (Deploying, RecoveryRequired)
+                | (Verified, RecoveryRequired)
         )
     }
 
@@ -117,16 +117,16 @@ mod tests {
     }
 
     #[test]
-    fn schema_applied_rolls_forward_to_restore_required() {
+    fn schema_applied_requires_recovery_instead_of_claiming_rollback() {
         assert!(
             InstallState::SchemaApplied
-                .transition_to(InstallState::RestoreRequired)
+                .transition_to(InstallState::RecoveryRequired)
                 .is_ok()
         );
     }
 
     #[test]
-    fn distributed_deployment_must_run_before_verification() {
+    fn distribution_deployment_must_run_before_verification() {
         let state = InstallState::AdminProvisioned
             .transition_to(InstallState::Deploying)
             .unwrap()

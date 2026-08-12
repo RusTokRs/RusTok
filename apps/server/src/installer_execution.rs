@@ -1,9 +1,9 @@
 use eyre::{Result, bail, eyre};
 use rustok_installer::{
     InstallAdminOutcome, InstallAdminPort, InstallApplyOptions, InstallApplyOutput,
-    InstallDatabasePort, InstallDatabaseReady, InstallExecutionError, InstallExecutor,
-    InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord, InstallSchemaPort,
-    InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallState,
+    InstallBootstrapPort, InstallDatabasePort, InstallDatabaseReady, InstallExecutionError,
+    InstallExecutor, InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord,
+    InstallSchemaPort, InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallState,
     InstallVerificationOutcome, InstallVerificationPort,
 };
 use rustok_installer_persistence::{SeaOrmInstallerBootstrapPorts, SeaOrmInstallerPorts};
@@ -69,8 +69,8 @@ struct ServerInstallerPorts {
 
 #[async_trait::async_trait]
 impl rustok_installer::InstallDeploymentPort<DatabaseConnection> for ServerInstallerPorts {
-    fn supports_distributed_deployment(&self) -> bool {
-        rustok_installer::InstallDeploymentPort::supports_distributed_deployment(&self.deployment)
+    fn supports_distribution_deployment(&self) -> bool {
+        rustok_installer::InstallDeploymentPort::supports_distribution_deployment(&self.deployment)
     }
 
     async fn deploy_distribution(
@@ -105,11 +105,39 @@ impl InstallDatabasePort for ServerInstallerPorts {
 
 #[async_trait::async_trait]
 impl InstallSchemaPort<DatabaseConnection> for ServerInstallerPorts {
-    async fn apply_schema(
+    async fn apply_owner_schema(
         &self,
         runtime: &DatabaseConnection,
     ) -> std::result::Result<(), InstallExecutionError> {
-        InstallSchemaPort::apply_schema(&SeaOrmInstallerPorts, runtime).await
+        InstallSchemaPort::apply_owner_schema(&SeaOrmInstallerPorts, runtime).await
+    }
+
+    async fn apply_remaining_schema(
+        &self,
+        runtime: &DatabaseConnection,
+    ) -> std::result::Result<(), InstallExecutionError> {
+        InstallSchemaPort::apply_remaining_schema(&SeaOrmInstallerPorts, runtime).await
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallBootstrapPort<DatabaseConnection> for ServerInstallerPorts {
+    async fn import_base_distribution(
+        &self,
+        runtime: &DatabaseConnection,
+        plan: &InstallPlan,
+        public_key_base64: Option<&str>,
+    ) -> std::result::Result<
+        Option<rustok_modules::ModuleStaticDistributionBootstrapImportReceipt>,
+        InstallExecutionError,
+    > {
+        InstallBootstrapPort::import_base_distribution(
+            &SeaOrmInstallerPorts,
+            runtime,
+            plan,
+            public_key_base64,
+        )
+        .await
     }
 }
 

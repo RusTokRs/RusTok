@@ -166,8 +166,9 @@ publication receipt binds that root and its role digests to every exact SBOM,
 provenance, test, signature, and referrer payload/manifest identity; release
 admission verifies and retains the receipt. Nodes, traffic weights, secrets,
 and live configuration are rollout facts rather than bundle bytes. Changing
-node count or placement creates/revises a rollout; changing required roles or
-surfaces creates a new bundle/release. A first install has candidate-only
+node count, placement, or the selected assignment of roles already present in
+the bundle creates/revises a maintenance rollout; requiring a role artifact
+absent from the bundle creates a new bundle/release. A first install has candidate-only
 assignments and no recovery target. Automatic code update requires an identical
 node/failure-domain/role assignment domain carrying both candidate and
 predecessor digests; placement/count or role/surface-shape changes are separate

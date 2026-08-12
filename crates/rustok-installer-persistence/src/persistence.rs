@@ -175,8 +175,8 @@ fn install_state_value(state: InstallState) -> &'static str {
         InstallState::Verified => "verified",
         InstallState::Completed => "completed",
         InstallState::Failed => "failed",
-        InstallState::RolledBackFreshInstall => "rolled_back_fresh_install",
-        InstallState::RestoreRequired => "restore_required",
+        InstallState::FreshInstallCleaned => "fresh_install_cleaned",
+        InstallState::RecoveryRequired => "recovery_required",
     }
 }
 
@@ -184,8 +184,8 @@ fn final_state_values() -> Vec<&'static str> {
     vec![
         install_state_value(InstallState::Completed),
         install_state_value(InstallState::Failed),
-        install_state_value(InstallState::RolledBackFreshInstall),
-        install_state_value(InstallState::RestoreRequired),
+        install_state_value(InstallState::FreshInstallCleaned),
+        install_state_value(InstallState::RecoveryRequired),
     ]
 }
 

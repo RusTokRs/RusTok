@@ -163,7 +163,7 @@ pub async fn bootstrap_app_runtime(
             tracing::info!("Workflow cron scheduler disabled by runtime.background_workers config");
         }
 
-        init_alloy_runtime(&runtime_ctx).await?;
+        init_alloy_runtime(&runtime_ctx, &manifest).await?;
     }
 
     if settings.runtime.is_registry_only() {
@@ -201,6 +201,13 @@ async fn initialize_module_work_runtime(
     registry: &ModuleRegistry,
     extensions: &ModuleRuntimeExtensions,
 ) -> Result<()> {
+    let Some(registrations) = extensions.get::<rustok_runtime::ModuleWorkRegistrations>() else {
+        return Ok(());
+    };
+    if registrations.is_empty() || !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+
     let host = extensions.apply_to_host_runtime(
         rustok_api::HostRuntimeContext::new(ctx.db_clone())
             .with_shared_value(transactional_event_bus_from_context(ctx))
@@ -238,12 +245,6 @@ async fn initialize_module_work_runtime(
     } else {
         host
     };
-    let Some(registrations) = extensions.get::<rustok_runtime::ModuleWorkRegistrations>() else {
-        return Ok(());
-    };
-    if registrations.is_empty() || !ctx.settings().runtime.runs_background_workers() {
-        return Ok(());
-    }
     let scheduler = rustok_runtime::ModuleWorkScheduler::new();
     registrations
         .register_all(&host, &scheduler)
@@ -277,9 +278,9 @@ async fn init_storage(ctx: &ServerRuntimeContext) -> Result<()> {
 
     let settings = ctx.settings();
     let mut storage = settings.storage.clone();
-    let instance_root = rustok_runtime::resolve_instance_root_from_environment()
+    let layout = rustok_runtime::resolve_instance_layout_from_environment()
         .map_err(|error| Error::Message(error.to_string()))?;
-    storage.bind_local_base_dir(instance_root.join("storage"));
+    storage.bind_local_base_dir(layout.storage());
     let service = StorageRuntime::from_config(&storage)
         .await
         .map_err(|error| {
@@ -306,15 +307,21 @@ fn init_marketplace_catalog(ctx: &ServerRuntimeContext) {
     ctx.shared_insert(SharedMarketplaceCatalogService(marketplace_catalog));
 }
 
-async fn init_alloy_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
+async fn init_alloy_runtime(
+    ctx: &ServerRuntimeContext,
+    manifest: &crate::modules::ModulesManifest,
+) -> Result<()> {
     #[cfg(not(feature = "mod-alloy"))]
     {
-        let _ = ctx;
+        let _ = (ctx, manifest);
         Ok(())
     }
 
     #[cfg(feature = "mod-alloy")]
     {
+        if !manifest.modules.contains_key("alloy") {
+            return Ok(());
+        }
         if ctx.shared_get::<alloy::SharedAlloyRuntime>().is_none() {
             let rhai = crate::services::artifact_runtime::sandbox_rhai_executor(ctx).await?;
             let mut executors = rustok_sandbox::ExecutorRegistry::new();

@@ -37,7 +37,7 @@ The crate defines the common installer contract reused by:
   migration/object identity. Advanced adapters may map logical subtrees to
   external storage, OCI layers, volumes, logging, or runtime facilities.
 
-## Portable instance root (accepted target)
+## Portable instance root
 
 The local CLI selects the directory explicitly; it is not a compiled-in or
 Linux-specific default. Relative input is allowed and resolves from the CLI
@@ -67,6 +67,40 @@ installation. It never recursively deletes the selected directory or unrelated
 files; failed-attempt cleanup removes only create-only entries proven to belong
 to that attempt.
 
+Runtime processes inspect this layout without claiming it. When
+`state/instance.json` exists they reuse its durable `instance_id`; when it does
+not exist, path inspection remains non-authoritative and does not write a
+marker. Only installer bind/prepare may turn an empty root into an owned
+instance.
+
+The physical tree is deliberately small and predictable:
+
+```text
+<instance-root>/
+|-- config/                         instance configuration and secret references
+|-- operations/releases/sha256/    signed controller/agent packages
+|-- releases/platform/sha256/      immutable platform role bundles and browser assets
+|-- sources/objects/               media-typed source CAS (Rust/WASM/Rhai inputs)
+|-- sources/receipts/              source ownership and publication receipts
+|-- storage/                       local object-store mapping when external S3 is not selected
+|-- data/services/                 bundled PostgreSQL/Iggy/other service data, when used
+|-- state/deployment/{slots,journal}/ desired/observed rollout slots and restart journal
+|-- state/operations/{slots,journal}/ operations-tool slots and restart journal
+|-- state/instance.json            instance marker and identity
+|-- work/static-distribution/      disposable build/materialization workspace
+|-- cache/{deployment,module-runtime}/ rebuildable caches
+|-- logs/                          instance logs or forwarding spool
+`-- run/                           sockets, pid/lease files, and other ephemeral runtime state
+```
+
+WASM and Rhai are not copied beside the server executable. Their immutable
+source objects and receipts live under `sources/`; admitted runtime payloads
+and prepared-engine cache entries live under `storage/` and
+`cache/module-runtime/` according to their content digests. PostgreSQL remains
+the authority for which exact release is installed, enabled, serving, or
+retained for recovery. Next applications remain external/manual consumers and
+are not installed into or rolled back by this tree.
+
 ## Installation states
 
 Main happy path:
@@ -88,16 +122,15 @@ Error/operational states:
 
 ```text
 Failed
-RolledBackFreshInstall
-RestoreRequired
+FreshInstallCleaned
+RecoveryRequired
 ```
 
-The release-safety cutover replaces the misleading
-`RolledBackFreshInstall` name with `FreshInstallCleaned`, which is legal only
-before durable production state exists. Installer `RestoreRequired` is
-projected through the common operator terminal state `recovery_required` with
-`recovery_action = restore`; it is not a code rollback result. The target
-pipeline records bundle pre-stage and pre-install recovery-boundary readiness
+`FreshInstallCleaned` is legal only before durable production state exists.
+`RecoveryRequired` is the common operator terminal state; its receipt carries
+the exact typed recovery action such as restore, forward repair, or containment,
+and it is never reported as a code rollback result. The pipeline records bundle
+pre-stage and pre-install recovery-boundary readiness
 before `SchemaApplied`, then uses `Deploying` only for starting/switching the
 already pre-staged roles.
 
@@ -132,9 +165,10 @@ background job; the UI must not duplicate migration, seed, or admin logic.
 
 The topology contract distinguishes a one-role `monolith` from a distributed
 deployment descriptor. Trusted CLI and HTTP hosts bind the selected
-distribution revision/hash as a compatibility check and, before distributed
-apply becomes available, must also bind the exact
-`distribution_release_id`, OCI bundle-root digest, and role-set digest before
+distribution revision/hash as a compatibility check and, before any apply,
+must also bind the exact
+`distribution_release_id`, OCI bundle-root digest, role-set digest, and exact
+per-role artifact digests before
 preflight and apply; a wizard never supplies those identities. They resolve
 from the owner admission ledger or, only for a fresh target, a platform-signed
 base-distribution receipt that also binds its public `preparation_id`. A
@@ -173,9 +207,17 @@ file, strict Ed25519 signature, signer-key digest, validity interval, immutable
 bundle identity, and executable-composition match before binding the receipt
 to the checksummed plan. Configuring this pair together with
 `RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID` is rejected. The CLI accepts the same
-environment inputs or matching `--base-distribution-*` options. Owner-ledger
-import and the owner-controlled deployment adapter remain fail-closed
-implementation gaps. See the
+environment inputs or matching `--base-distribution-*` options. The shared
+executor now applies the minimal owner schema, imports the signed receipt
+transactionally into the empty `rustok-modules` ledger, and only then runs the
+remaining canonical migrations. HTTP and CLI keep the public key outside the
+transport plan; the owner verifies it again, and exact replay uses one
+deterministic instance/release idempotency key. The owner-controlled
+deployment stage is mandatory for monolith and distributed plans, so a
+successful apply always contains one deployment receipt rather than an
+optional shortcut. Its desired/observed adapter remains a fail-closed
+implementation gap.
+See the
 [implementation plan](implementation-plan.md) and the
 [release and rollback plan](../../../docs/modules/module-release-rollback-plan.md)
 for ownership and rollout.

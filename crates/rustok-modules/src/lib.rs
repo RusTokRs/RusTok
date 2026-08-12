@@ -211,15 +211,15 @@ pub use distribution_release::{
     resolve_static_distribution_install_binding,
 };
 pub use distribution_rollout::{
-    ModuleStaticDistributionHealthEvidence, ModuleStaticDistributionNodeFailure,
-    ModuleStaticDistributionNodePhase, ModuleStaticDistributionNodeReport,
-    ModuleStaticDistributionNodeReportReceipt, ModuleStaticDistributionRollout,
+    ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentFailure,
+    ModuleStaticDistributionAssignmentPhase, ModuleStaticDistributionAssignmentReport,
+    ModuleStaticDistributionAssignmentReportReceipt, ModuleStaticDistributionHealthEvidence,
+    ModuleStaticDistributionRollout, ModuleStaticDistributionRolloutAssignment,
     ModuleStaticDistributionRolloutAuthorizer, ModuleStaticDistributionRolloutError,
-    ModuleStaticDistributionRolloutNode, ModuleStaticDistributionRolloutReceipt,
-    ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutState,
-    ModuleStaticDistributionRolloutStatus, ModuleStaticDistributionTopologyResolver,
-    ModuleStaticDistributionTopologySnapshot, SeaOrmModuleStaticDistributionRolloutService,
-    module_static_distribution_topology_digest,
+    ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutRequest,
+    ModuleStaticDistributionRolloutState, ModuleStaticDistributionRolloutStatus,
+    ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionTopologySnapshot,
+    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
 };
 pub use event_delivery::{
     ARTIFACT_EVENT_DELIVERY_WORKER, ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig,

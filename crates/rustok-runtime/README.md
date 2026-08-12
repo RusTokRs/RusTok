@@ -11,8 +11,10 @@ adapters away from framework-specific runtime contexts.
 - Keep typed shared-handle lookup errors consistent across backend adapters.
 - Keep executable runtime helper code outside `rustok-api` as the API contract crate is
   reduced back to stable contracts.
-- Resolve the single portable `RUSTOK_INSTANCE_ROOT` and reject paths that
-  escape it when executable adapters derive local subtrees.
+- Own the single portable instance-layout contract used by installer, server,
+  CLI, deployment agents, workers, and runtime adapters.
+- Resolve `RUSTOK_INSTANCE_ROOT`, prepare the owned root restart-safely, and
+  reject paths that escape it when executable adapters derive local subtrees.
 
 ## Entry Points
 
@@ -22,6 +24,10 @@ adapters away from framework-specific runtime contexts.
   `DATABASE_URL`, optional `RUSTOK_SETTINGS_JSON`, and `RUSTOK_INSTANCE_ROOT`).
 - `RuntimeComposition::instance_root`, `RuntimeComposition::instance_path`, and
   `resolve_instance_root_from_environment`.
+- `InstancePlacement`, `InstanceLayout`, read-only
+  `inspect_instance_layout`, `bind_instance_placement`, and
+  `prepare_instance_layout`. Runtime inspection never claims an unprepared
+  directory; installer binding is the only ownership transition.
 - `db_clone`
 - `require_shared`
 - `RuntimeHandleError`

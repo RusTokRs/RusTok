@@ -58,6 +58,61 @@ mod rbac_system_role_repair_tests;
 
 pub struct Migrator;
 
+struct InstallerOwnerMigrator;
+
+#[async_trait::async_trait]
+impl MigratorTrait for InstallerOwnerMigrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        let static_owner = rustok_core::MigrationSource::migrations(&rustok_modules::ModulesModule)
+            .into_iter()
+            .find(|migration| migration.name() == "m20260722_000034_static_promotions")
+            .expect("static-distribution owner migration must exist");
+        vec![
+            Box::new(m20250101_000001_create_tenants::Migration),
+            Box::new(m20260403_000002_create_registry_publish_tables::Migration),
+            Box::new(m20260426_000001_create_install_sessions::Migration),
+            static_owner,
+        ]
+    }
+}
+
+/// Applies the canonical migration prefix required by the installer journal
+/// and the sole static-distribution owner. The prefix ends at the migration
+/// that creates the owner release ledger; no tenant seed, runtime traffic, or
+/// later module schema is mutated before the signed base distribution is
+/// imported.
+pub async fn apply_installer_owner_schema(
+    db: &sea_orm_migration::sea_orm::DatabaseConnection,
+) -> Result<(), DbErr> {
+    let owner_migration = "m20260722_000034_static_promotions";
+    let manager = SchemaManager::new(db);
+    let version_placeholder = match db.get_database_backend() {
+        sea_orm_migration::sea_orm::DbBackend::Postgres => "$1",
+        _ => "?",
+    };
+    if manager.has_table("seaql_migrations").await?
+        && db
+            .query_one(sea_orm_migration::sea_orm::Statement::from_sql_and_values(
+                db.get_database_backend(),
+                format!("SELECT 1 FROM seaql_migrations WHERE version = {version_placeholder}"),
+                [owner_migration.into()],
+            ))
+            .await?
+            .is_some()
+    {
+        return Ok(());
+    }
+    InstallerOwnerMigrator::up(db, None).await
+}
+
+/// Completes the same canonical migration sequence after the installer has
+/// imported or revalidated the exact base distribution in `rustok-modules`.
+pub async fn apply_installer_remaining_schema(
+    db: &sea_orm_migration::sea_orm::DatabaseConnection,
+) -> Result<(), DbErr> {
+    Migrator::up(db, None).await
+}
+
 // The compatibility gate freezes every merged migration plan as an immutable prefix.
 // New owner migrations extend this explicit release-order tail instead of relying on
 // lexical insertion, which could rewrite an already published plan.
@@ -110,6 +165,10 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
     ModuleMigrationSource {
         slug: "channel",
         source: &rustok_channel::ChannelModule,
+    },
+    ModuleMigrationSource {
+        slug: "navigation",
+        source: &rustok_navigation::NavigationModule,
     },
     ModuleMigrationSource {
         slug: "cart",
@@ -372,6 +431,7 @@ impl MigratorTrait for Migrator {
             &rustok_rbac::RbacModule,
         ));
         all.extend(rustok_channel::migrations::migrations());
+        all.extend(rustok_navigation::migrations::migrations());
         all.extend(rustok_cart::migrations::migrations());
         all.extend(rustok_customer::migrations::migrations());
         all.extend(rustok_product::migrations::migrations());
@@ -520,27 +580,18 @@ fn sort_migrations_by_dependencies(
     let mut remaining = std::mem::take(migrations);
 
     while !remaining.is_empty() {
-        let before = remaining.len();
-        let mut index = 0;
-        while index < remaining.len() {
-            let name = remaining[index].name().to_string();
-            let deps_satisfied = after_by_name
-                .get(&name)
+        let next = remaining.iter().position(|migration| {
+            after_by_name
+                .get(migration.name())
                 .into_iter()
                 .flatten()
                 .all(|dependency| {
                     sorted
                         .iter()
                         .any(|migration| migration.name() == dependency.as_str())
-                });
-            if deps_satisfied {
-                sorted.push(remaining.remove(index));
-            } else {
-                index += 1;
-            }
-        }
-
-        if remaining.len() == before {
+                })
+        });
+        let Some(next) = next else {
             let cycle = remaining
                 .iter()
                 .map(|migration| migration.name().to_string())
@@ -549,7 +600,8 @@ fn sort_migrations_by_dependencies(
             return Err(format!(
                 "migration dependency cycle or unsatisfied dependency: {cycle}"
             ));
-        }
+        };
+        sorted.push(remaining.remove(next));
     }
 
     *migrations = sorted;
@@ -563,6 +615,41 @@ mod tests {
     };
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;
+
+    #[tokio::test]
+    async fn installer_owner_schema_is_a_minimal_restart_safe_bootstrap() {
+        let db = setup_test_db().await;
+
+        super::apply_installer_owner_schema(&db)
+            .await
+            .expect("owner bootstrap applies");
+        super::apply_installer_owner_schema(&db)
+            .await
+            .expect("owner bootstrap replays exactly");
+
+        let manager = sea_orm_migration::SchemaManager::new(&db);
+        for table in [
+            "tenants",
+            "registry_publish_requests",
+            "registry_module_releases",
+            "install_sessions",
+            "module_static_distribution_builds",
+            "module_static_distribution_release_state",
+        ] {
+            assert!(manager.has_table(table).await.unwrap(), "missing {table}");
+        }
+        assert!(
+            !manager.has_table("users").await.unwrap(),
+            "tenant/runtime schema must remain untouched before owner import"
+        );
+        assert!(
+            !manager
+                .has_table("module_artifact_installations")
+                .await
+                .unwrap(),
+            "dynamic module schema must remain after the owner-import boundary"
+        );
+    }
 
     #[test]
     fn module_migration_sources_cover_server_module_crates() {
@@ -580,6 +667,7 @@ mod tests {
                 "auth",
                 "rbac",
                 "channel",
+                "navigation",
                 "cart",
                 "customer",
                 "product",
@@ -724,6 +812,36 @@ mod tests {
                 "m20250101_000001_create_tenants".to_string(),
             ],
             "sorting helper must not reorder migrations when no dependency metadata is provided"
+        );
+    }
+
+    #[test]
+    fn dependency_sort_reconsiders_earlier_migration_after_each_unlock() {
+        let mut migrations: Vec<Box<dyn sea_orm_migration::MigrationTrait>> = vec![
+            Box::new(super::m20250101_000002_create_users::Migration),
+            Box::new(super::m20250101_000003_create_tenant_modules::Migration),
+            Box::new(super::m20250101_000001_create_tenants::Migration),
+        ];
+        let descriptors = vec![MigrationDescriptor::new(
+            "m20250101_000002_create_users",
+            ["m20250101_000001_create_tenants"],
+        )];
+
+        sort_migrations_by_dependencies(&mut migrations, &descriptors)
+            .expect("dependency chain must sort");
+
+        let names = migrations
+            .iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "m20250101_000003_create_tenant_modules",
+                "m20250101_000001_create_tenants",
+                "m20250101_000002_create_users",
+            ],
+            "an earlier blocked migration must run immediately after its dependency becomes available"
         );
     }
 

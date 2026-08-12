@@ -619,12 +619,14 @@ const MODULE_STATIC_DISTRIBUTION_ROLLOUT_REQUESTED_FIELDS: &[FieldSchema] = &[
     field!("role_set_digest", "string"),
     field!("topology_digest", "string"),
     field!("policy_revision", "string"),
-    field!("target_nodes", "uint64"),
+    field!("target_assignments", "uint64"),
     field!("executor_mode", "string"),
 ];
-const MODULE_STATIC_DISTRIBUTION_NODE_OBSERVED_FIELDS: &[FieldSchema] = &[
+const MODULE_STATIC_DISTRIBUTION_ASSIGNMENT_OBSERVED_FIELDS: &[FieldSchema] = &[
     field!("rollout_id", "uuid"),
     field!("node_id", "string"),
+    field!("role", "string"),
+    field!("artifact_digest", "string"),
     field!("reporter_id", "string"),
     field!("observation_revision", "uint64"),
     field!("phase", "string"),
@@ -1144,10 +1146,10 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         fields: MODULE_STATIC_DISTRIBUTION_ROLLOUT_REQUESTED_FIELDS,
     },
     EventSchema {
-        event_type: "module.static_distribution.node_observed",
+        event_type: "module.static_distribution.assignment_observed",
         version: 1,
-        description: "A deployment node reported an exact native distribution observation.",
-        fields: MODULE_STATIC_DISTRIBUTION_NODE_OBSERVED_FIELDS,
+        description: "A deployment assignment reported an exact native distribution observation.",
+        fields: MODULE_STATIC_DISTRIBUTION_ASSIGNMENT_OBSERVED_FIELDS,
     },
     EventSchema {
         event_type: "module.static_distribution.rollout_status_changed",

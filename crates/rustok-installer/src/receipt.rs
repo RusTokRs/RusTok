@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use crate::{plan::InstallDistributionBinding, state::InstallStep};
 
+#[cfg(feature = "host-runtime")]
 const MAX_BASE_DISTRIBUTION_RECEIPT_BYTES: u64 = 256 * 1024;
 
 #[derive(Debug, Error)]
@@ -40,8 +41,10 @@ impl VerifiedInstallBaseDistributionReceipt {
         let binding = InstallDistributionBinding {
             preparation_id: payload.preparation_id,
             distribution_release_id: payload.distribution_release_id,
+            bundle_reference: payload.preparation.evidence.bundle_reference.clone(),
             bundle_root_digest: payload.preparation.evidence.bundle_root_digest.clone(),
             role_set_digest: payload.preparation.evidence.role_set_digest.clone(),
+            roles: payload.preparation.evidence.roles.clone(),
             bootstrap_receipt: Some(Box::new(self.receipt.into_receipt())),
         };
         binding
@@ -205,8 +208,16 @@ mod tests {
 
         assert_eq!(binding.preparation_id, Uuid::from_u128(1));
         assert_eq!(binding.distribution_release_id, Uuid::from_u128(2));
+        assert_eq!(
+            binding.bundle_reference,
+            format!("registry.example/rustok/base@{}", digest('b'))
+        );
         assert_eq!(binding.bundle_root_digest, digest('b'));
-        assert_eq!(binding.role_set_digest, digest('c'));
+        assert_eq!(
+            binding.role_set_digest,
+            rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&binding.roles)
+                .unwrap()
+        );
         assert!(binding.bootstrap_receipt.is_some());
     }
 
@@ -302,7 +313,7 @@ mod tests {
             build_target: "x86_64-unknown-linux-gnu".to_string(),
             items,
             evidence: rustok_modules::ModuleStaticDistributionBuildEvidence {
-                bundle_reference: "registry.example/rustok/base@sha256:bbbb".to_string(),
+                bundle_reference: format!("registry.example/rustok/base@{}", digest('b')),
                 bundle_root_digest: digest('b'),
                 role_set_digest,
                 roles,

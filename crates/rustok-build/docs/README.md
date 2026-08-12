@@ -6,7 +6,8 @@ including the typed `ReleasePublisherPort` hand-off and portable
 `DeploymentWorkspace` artifact/runtime paths. Runtime worker and
 concrete filesystem, HTTP, or container deployment adapters remain host
 responsibilities. The local filesystem adapter is physically contained under
-`<instance-root>/releases/platform`; `DeploymentSettings` cannot select a
+`<instance-root>/releases/platform/sha256` through the canonical
+`rustok-runtime::InstanceLayout`; `DeploymentSettings` cannot select a
 second local root.
 
 `BuildRuntimeMode` and `RoleBuildPlan` carry the selected host lifecycle with

@@ -46,6 +46,13 @@ impl MigrationTrait for Migration {
         manager.create_table(reversals_table()).await?;
         for index in [
             Index::create()
+                .name("uq_marketplace_ledger_reversal_tenant_id")
+                .table(LedgerReversals::Table)
+                .col(LedgerReversals::TenantId)
+                .col(LedgerReversals::Id)
+                .unique()
+                .to_owned(),
+            Index::create()
                 .name("uq_marketplace_ledger_reversal_transaction")
                 .table(LedgerReversals::Table)
                 .col(LedgerReversals::TenantId)
@@ -401,6 +408,7 @@ fn seller_balances_table() -> TableCreateStatement {
 
 #[derive(Iden)]
 enum LedgerEntries {
+    #[iden = "marketplace_ledger_entries"]
     Table,
     Id,
     TenantId,
@@ -412,6 +420,7 @@ enum LedgerEntries {
 
 #[derive(Iden)]
 enum LedgerTransactions {
+    #[iden = "marketplace_ledger_transactions"]
     Table,
     Id,
     TenantId,
@@ -419,6 +428,7 @@ enum LedgerTransactions {
 
 #[derive(Iden)]
 enum LedgerReversals {
+    #[iden = "marketplace_ledger_reversals"]
     Table,
     Id,
     TenantId,
@@ -436,6 +446,7 @@ enum LedgerReversals {
 
 #[derive(Iden)]
 enum LedgerReversalLines {
+    #[iden = "marketplace_ledger_reversal_lines"]
     Table,
     Id,
     TenantId,
@@ -455,6 +466,7 @@ enum LedgerReversalLines {
 
 #[derive(Iden)]
 enum SellerBalanceProjections {
+    #[iden = "marketplace_seller_balance_projections"]
     Table,
     Id,
     TenantId,

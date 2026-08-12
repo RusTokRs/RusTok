@@ -201,7 +201,12 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     auth_config: AuthConfig,
 ) -> Result<Arc<ModuleRuntimeExtensions>> {
     let base = build_shared_runtime_extensions(registry, settings)?;
-    let mut extensions = base.as_ref().clone();
+    let mut extensions = Arc::try_unwrap(base).map_err(|_| {
+        Error::Message(
+            "module runtime extensions must remain uniquely owned during host provider registration"
+                .to_string(),
+        )
+    })?;
     let db = runtime_ctx.db_clone();
 
     #[cfg(all(feature = "mod-seo", feature = "mod-media"))]

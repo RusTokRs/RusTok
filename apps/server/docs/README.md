@@ -281,7 +281,8 @@ base policy revision before the server accepts the final policy revision.
   the shared executor-port extraction rather than server code.
 - The HTTP adapter binds one portable instance root before preflight. Production
   requires host-selected `RUSTOK_INSTANCE_ROOT`; local storage and filesystem
-  release materialization derive `storage` and `releases/platform` beneath it.
+  release materialization derive `storage` and `releases/platform/sha256`
+  beneath it through `rustok-runtime::InstanceLayout`.
 - For distributed plans the HTTP adapter discards any client-supplied bundle
   identity. It accepts the locally configured
   `RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID`, resolves the exact preparation,

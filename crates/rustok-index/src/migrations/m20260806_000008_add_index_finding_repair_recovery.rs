@@ -272,7 +272,9 @@ async fn remove_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbEr
         }
         DbBackend::Sqlite => {
             connection
-                .execute_unprepared(&format!("DROP TRIGGER IF EXISTS {SQLITE_COMPLETION_TRIGGER}"))
+                .execute_unprepared(&format!(
+                    "DROP TRIGGER IF EXISTS {SQLITE_COMPLETION_TRIGGER}"
+                ))
                 .await?;
             Ok(())
         }
@@ -318,8 +320,9 @@ async fn remove_immutability_guards(manager: &SchemaManager<'_>) -> Result<(), D
     }
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum IndexFindingRepairRecoveryDecisions {
+    #[iden = "index_consistency_finding_repair_recovery_decisions"]
     Table,
     TenantId,
     CommandId,
@@ -336,8 +339,9 @@ enum IndexFindingRepairRecoveryDecisions {
     CreatedAt,
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum IndexFindingRepairCommands {
+    #[iden = "index_consistency_finding_repair_commands"]
     Table,
     TenantId,
     CommandId,

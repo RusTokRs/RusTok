@@ -19,13 +19,13 @@ use rustok_test_utils::{
     postgres_database_url as database_url_from_admin_url, unique_postgres_database_name,
 };
 use sea_orm_migration::{
+    MigrationTrait, SchemaManager,
     prelude::MigratorTrait,
     sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait},
-    MigrationTrait, SchemaManager,
 };
 use support::backfill_fixtures::{
-    apply_setup as apply_backfill_setup, assert_results as assert_backfill_results,
-    load_from_environment as load_backfill_fixtures, BackfillFixture,
+    BackfillFixture, apply_setup as apply_backfill_setup,
+    assert_results as assert_backfill_results, load_from_environment as load_backfill_fixtures,
 };
 
 #[tokio::test]
@@ -1298,12 +1298,15 @@ async fn assert_schema_contract(db: &DatabaseConnection) -> Result<(), Box<dyn s
         "inventory_items",
         "channels",
         "oauth_apps",
+        "oauth_app_translations",
         "blog_post_tags",
         "forum_topic_tags",
         "taxonomy_terms",
     ] {
         assert_table_exists(db, table).await?;
     }
+
+    assert_table_does_not_exist(db, "o_auth_app_translations").await?;
 
     for constraint in [
         "uq_product_translations_tenant_id",
@@ -1370,6 +1373,28 @@ async fn assert_table_exists(
         .map_err(|error| format!("table existence result for {table} must decode: {error}"))?;
     if !exists {
         return Err(format!("expected table {table} to exist after migrations").into());
+    }
+    Ok(())
+}
+
+async fn assert_table_does_not_exist(
+    db: &DatabaseConnection,
+    table: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT to_regclass($1) IS NOT NULL AS exists",
+            [format!("public.{table}").into()],
+        ))
+        .await
+        .map_err(|error| format!("table absence query for {table} must succeed: {error}"))?
+        .ok_or_else(|| format!("table absence query for {table} returned no row"))?;
+    let exists: bool = row
+        .try_get("", "exists")
+        .map_err(|error| format!("table absence result for {table} must decode: {error}"))?;
+    if exists {
+        return Err(format!("unexpected table {table} exists after migrations").into());
     }
     Ok(())
 }

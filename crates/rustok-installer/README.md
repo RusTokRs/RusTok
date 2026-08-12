@@ -29,8 +29,8 @@ bootstrap logic.
 - Define the canonical unversioned topology, trusted exact-bundle binding, and
   one neutral distribution deployment hand-off without build-provider
   dependencies or per-role release heads.
-- Under the accepted target, resolve one trusted operator-selected instance
-  root on any supported operating system and derive the complete portable
+- Resolve one trusted operator-selected instance root on any supported
+  operating system and derive the complete portable
   relative layout without making its physical path part of release identity.
 
 ## Interactions
@@ -56,15 +56,17 @@ bootstrap logic.
   `rustok-installer-persistence`; this foundation crate deliberately keeps no
   database adapter.
 - `rustok-distribution` supplies a composition revision/hash compatibility
-  check. The distributed target additionally requires the trusted host to bind
-  the exact public `preparation_id`, distribution release, OCI bundle root, and
-  role-set digest from owner admission or the signed fresh-bootstrap receipt.
+  check. Every monolith or distributed apply additionally requires the trusted host to bind
+  the exact public `preparation_id`, distribution release, digest-pinned OCI
+  bundle reference/root, and role-set digest from owner admission or the signed
+  fresh-bootstrap receipt.
   The HTTP host now resolves an exact locally selected release through the
   current admitted `rustok-modules` ledger. HTTP and CLI hosts now verify the
   bounded Ed25519 signature, signer-key digest, validity interval, immutable
   bundle identity, and executable-composition match of a fresh-bootstrap
-  receipt before mutation. Importing that verified receipt into the sole owner
-  ledger before the remaining schema is applied remains open.
+  receipt before mutation. The shared executor creates the minimal owner
+  schema, imports that receipt transactionally into the sole empty owner ledger,
+  and only then applies the remaining canonical migrations.
 - Under the accepted target, `rustok-build` constructs/validates the role plan,
   `rustok-static-distribution-worker` alone executes/publishes the complete
   bundle, and `rustok-modules` owns admission and desired/observed rollout. The
@@ -107,7 +109,7 @@ The current foundation API is exposed from the crate root:
 - `evaluate_preflight`
 - `InstallDistributionBinding`
 - `InstallDistributionDeploymentRequest`
-- `execute_distributed_deployment`
+- `execute_distribution_deployment`
 
 ## Verification
 

@@ -5,7 +5,7 @@ use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallApplyOptions, InstallEnvironment,
     InstallPlan, InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode,
     SecretRef, SecretValue, SeedExecutionRequest, SeedProfile, SeedTenantRequest, SeedUserRequest,
-    TenantBootstrap, bind_instance_placement, evaluate_preflight, execute_install_apply,
+    TenantBootstrap, bind_instance_placement, execute_install_apply,
     execute_seed_profile, load_base_distribution_receipt, redact_install_plan,
 };
 use rustok_installer_persistence::{
@@ -133,7 +133,7 @@ impl InstallerCommandProvider {
         dry_run: bool,
     ) -> CliCoreResult<CommandOutcome> {
         let plan = parse_install_plan(args)?;
-        let report = evaluate_preflight(&plan);
+        let report = rustok_installer::evaluate_preflight_with_deployment(&plan, false);
         if dry_run {
             return Ok(
                 CommandOutcome::success("Installer apply dry run completed").with_data(
@@ -203,7 +203,7 @@ fn install_plan_command(args: &serde_json::Value) -> CliCoreResult<CommandOutcom
 
 fn install_preflight_command(args: &serde_json::Value) -> CliCoreResult<CommandOutcome> {
     let plan = parse_install_plan(args)?;
-    let report = evaluate_preflight(&plan);
+    let report = rustok_installer::evaluate_preflight_with_deployment(&plan, false);
     let message = if report.passed() {
         "Installer preflight passed"
     } else {
@@ -238,6 +238,8 @@ fn parse_apply_options(args: &serde_json::Value) -> Result<InstallApplyOptions, 
             .unwrap_or_else(|| "rustok-cli install apply".to_string()),
         lock_ttl_secs,
         pg_admin_url: option(options, "pg_admin_url"),
+        bootstrap_public_key_base64: option(options, "base_distribution_public_key")
+            .or_else(|| environment("RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY")),
     })
 }
 
@@ -261,33 +263,30 @@ fn parse_install_plan(args: &serde_json::Value) -> Result<InstallPlan, CliCoreEr
     .map_err(|error| input(error.to_string()))?;
     let mut topology = InstallTopology::for_mode(topology_mode)
         .bind_composition(composition.revision.clone(), composition.hash.clone());
-    if topology_mode == InstallTopologyMode::Distributed {
-        let receipt_path = option(options, "base_distribution_receipt")
-            .or_else(|| environment("RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT"));
-        let receipt_public_key = option(options, "base_distribution_public_key")
-            .or_else(|| environment("RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY"));
-        let (Some(receipt_path), Some(receipt_public_key)) = (receipt_path, receipt_public_key)
-        else {
-            return Err(input(
-                "distributed install requires --base-distribution-receipt and --base-distribution-public-key",
-            ));
-        };
-        let receipt =
-            load_base_distribution_receipt(receipt_path, &receipt_public_key, chrono::Utc::now())
-                .map_err(|_| input("base-distribution receipt could not be verified"))?;
-        if receipt.payload().host_composition_revision != composition.revision
-            || receipt.payload().host_composition_hash != composition.hash
-        {
-            return Err(input(
-                "signed base-distribution receipt is not compatible with this installer executable",
-            ));
-        }
-        topology = topology.bind_distribution(
-            receipt
-                .into_binding()
-                .map_err(|_| input("base-distribution receipt could not be bound"))?,
-        );
+    let receipt_path = option(options, "base_distribution_receipt")
+        .or_else(|| environment("RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT"));
+    let receipt_public_key = option(options, "base_distribution_public_key")
+        .or_else(|| environment("RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY"));
+    let (Some(receipt_path), Some(receipt_public_key)) = (receipt_path, receipt_public_key) else {
+        return Err(input(
+            "install requires --base-distribution-receipt and --base-distribution-public-key",
+        ));
+    };
+    let receipt =
+        load_base_distribution_receipt(receipt_path, &receipt_public_key, chrono::Utc::now())
+            .map_err(|_| input("base-distribution receipt could not be verified"))?;
+    if receipt.payload().host_composition_revision != composition.revision
+        || receipt.payload().host_composition_hash != composition.hash
+    {
+        return Err(input(
+            "signed base-distribution receipt is not compatible with this installer executable",
+        ));
     }
+    topology = topology.bind_distribution(
+        receipt
+            .into_binding()
+            .map_err(|_| input("base-distribution receipt could not be bound"))?,
+    );
     Ok(InstallPlan {
         placement,
         environment: option(options, "environment")

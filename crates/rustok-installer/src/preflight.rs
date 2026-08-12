@@ -32,7 +32,7 @@ impl PreflightReport {
 }
 
 pub fn evaluate_preflight(plan: &InstallPlan) -> PreflightReport {
-    evaluate_preflight_with_deployment(plan, false)
+    evaluate_preflight_with_deployment(plan, true)
 }
 
 /// Evaluates installer policy with the deployment capability selected by a host.
@@ -42,7 +42,7 @@ pub fn evaluate_preflight(plan: &InstallPlan) -> PreflightReport {
 /// that capability explicitly.
 pub fn evaluate_preflight_with_deployment(
     plan: &InstallPlan,
-    distributed_deployment_available: bool,
+    distribution_deployment_available: bool,
 ) -> PreflightReport {
     let mut issues = Vec::new();
 
@@ -69,12 +69,10 @@ pub fn evaluate_preflight_with_deployment(
     if let Err(message) = plan.topology.validate() {
         issues.push(error("invalid_topology", &message));
     }
-    if plan.topology.mode == crate::InstallTopologyMode::Distributed
-        && !distributed_deployment_available
-    {
+    if !distribution_deployment_available {
         issues.push(error(
-            "distributed_topology_unavailable",
-            "Distributed topology requires the owner-controlled distribution rollout adapter and is not available for apply yet.",
+            "distribution_deployment_unavailable",
+            "Installation requires the owner-controlled distribution rollout adapter for the exact role bundle.",
         ));
     }
 
@@ -197,6 +195,7 @@ mod tests {
     fn bound_topology() -> InstallTopology {
         InstallTopology::for_mode(InstallTopologyMode::Monolith)
             .bind_composition("test".to_string(), "a".repeat(64))
+            .bind_distribution(distribution())
     }
 
     #[test]
@@ -264,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn distributed_topology_requires_a_deployment_adapter() {
+    fn every_topology_requires_a_deployment_adapter() {
         let mut plan = production_plan(
             DatabaseEngine::Postgres,
             SecretValue::Reference {
@@ -276,7 +275,7 @@ mod tests {
         );
         plan.topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
             .bind_composition("distribution@1".to_string(), "a".repeat(64))
-            .bind_distribution(distribution());
+            .bind_distribution(distributed_distribution());
 
         let report = evaluate_preflight(&plan);
 
@@ -285,19 +284,65 @@ mod tests {
             report
                 .issues
                 .iter()
-                .any(|issue| issue.code == "distributed_topology_unavailable")
+                .any(|issue| issue.code == "distribution_deployment_unavailable")
         );
 
         let adapter_report = evaluate_preflight_with_deployment(&plan, true);
         assert!(adapter_report.passed());
+
+        plan.topology = bound_topology();
+        let monolith_report = evaluate_preflight_with_deployment(&plan, false);
+        assert!(
+            monolith_report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "distribution_deployment_unavailable")
+        );
     }
 
     fn distribution() -> InstallDistributionBinding {
+        let roles = vec![rustok_modules::ModuleStaticDistributionRoleArtifact {
+            role: rustok_modules::ModuleStaticDistributionRole::Monolith,
+            artifact_digest: format!("sha256:{}", "d".repeat(64)),
+        }];
         InstallDistributionBinding {
             preparation_id: uuid::Uuid::from_u128(1),
             distribution_release_id: uuid::Uuid::from_u128(2),
+            bundle_reference: format!("registry.example/rustok/base@sha256:{}", "b".repeat(64)),
             bundle_root_digest: format!("sha256:{}", "b".repeat(64)),
-            role_set_digest: format!("sha256:{}", "c".repeat(64)),
+            role_set_digest:
+                rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+                    .unwrap(),
+            roles,
+            bootstrap_receipt: None,
+        }
+    }
+
+    fn distributed_distribution() -> InstallDistributionBinding {
+        let roles = [
+            rustok_modules::ModuleStaticDistributionRole::Api,
+            rustok_modules::ModuleStaticDistributionRole::AdminSsr,
+            rustok_modules::ModuleStaticDistributionRole::StorefrontSsr,
+            rustok_modules::ModuleStaticDistributionRole::Worker,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(
+            |(index, role)| rustok_modules::ModuleStaticDistributionRoleArtifact {
+                role,
+                artifact_digest: format!("sha256:{:064x}", index + 1),
+            },
+        )
+        .collect::<Vec<_>>();
+        InstallDistributionBinding {
+            preparation_id: uuid::Uuid::from_u128(1),
+            distribution_release_id: uuid::Uuid::from_u128(2),
+            bundle_reference: format!("registry.example/rustok/base@sha256:{}", "b".repeat(64)),
+            bundle_root_digest: format!("sha256:{}", "b".repeat(64)),
+            role_set_digest:
+                rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+                    .unwrap(),
+            roles,
             bootstrap_receipt: None,
         }
     }

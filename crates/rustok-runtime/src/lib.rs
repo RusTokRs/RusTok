@@ -1,12 +1,20 @@
 use sea_orm::DatabaseConnection;
 use std::collections::BTreeMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
 use rustok_api::{ModuleWorkError, ModuleWorkHandler, ModuleWorkOutcome, ModuleWorkSource};
+
+mod layout;
+
+pub use layout::{
+    INSTANCE_LAYOUT_REVISION, InstanceLayout, InstanceLayoutError, InstanceLayoutMarker,
+    InstanceLayoutPreparation, InstancePlacement, bind_instance_placement, inspect_instance_layout,
+    prepare_instance_layout,
+};
 
 pub use rustok_api::HostRuntimeContext;
 
@@ -107,18 +115,28 @@ impl RuntimeComposition {
         &self.instance_root
     }
 
+    /// Resolves the canonical physical-tree vocabulary for this runtime.
+    ///
+    /// Runtime composition does not claim or mutate the root. Installer or an
+    /// operations supervisor performs ownership preparation separately.
+    pub fn instance_layout(&self) -> Result<InstanceLayout, RuntimeCompositionError> {
+        inspect_instance_layout(
+            self.instance_root.display().to_string(),
+            &self.instance_root,
+        )
+        .map_err(|error| RuntimeCompositionError::InvalidInstanceRoot(error.to_string()))
+    }
+
     pub fn instance_path(&self, relative: impl AsRef<Path>) -> RuntimeHandleResult<PathBuf> {
         let relative = relative.as_ref();
-        if relative.is_absolute()
-            || relative
-                .components()
-                .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
-        {
-            return Err(RuntimeHandleError::InvalidInstanceRelativePath {
+        self.instance_layout()
+            .map_err(|_| RuntimeHandleError::InvalidInstanceRelativePath {
                 path: relative.display().to_string(),
-            });
-        }
-        Ok(self.instance_root.join(relative))
+            })?
+            .resolve_relative(relative)
+            .map_err(|_| RuntimeHandleError::InvalidInstanceRelativePath {
+                path: relative.display().to_string(),
+            })
     }
 }
 
@@ -127,49 +145,24 @@ pub fn resolve_instance_root_from_environment() -> Result<PathBuf, RuntimeCompos
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| ".".to_string());
-    if configured.contains('\0') {
-        return Err(RuntimeCompositionError::InvalidInstanceRoot(
-            "path contains a NUL character".to_string(),
-        ));
-    }
-    let path = PathBuf::from(configured.trim());
-    let absolute = if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir()
-            .map_err(|error| RuntimeCompositionError::InvalidInstanceRoot(error.to_string()))?
-            .join(path)
-    };
-    normalize_absolute_path(&absolute)
+    let invocation_dir = std::env::current_dir()
+        .map_err(|error| RuntimeCompositionError::InvalidInstanceRoot(error.to_string()))?;
+    InstanceLayout::resolve(InstancePlacement::new(configured), invocation_dir)
+        .map(|layout| layout.root().to_path_buf())
+        .map_err(|error| RuntimeCompositionError::InvalidInstanceRoot(error.to_string()))
+}
+
+/// Resolves the canonical layout and reuses the durable marker identity when
+/// the selected instance root has already been prepared.
+pub fn resolve_instance_layout_from_environment() -> Result<InstanceLayout, RuntimeCompositionError>
+{
+    let root = resolve_instance_root_from_environment()?;
+    inspect_instance_layout(root.display().to_string(), &root)
+        .map_err(|error| RuntimeCompositionError::InvalidInstanceRoot(error.to_string()))
 }
 
 fn default_instance_root() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-}
-
-fn normalize_absolute_path(path: &Path) -> Result<PathBuf, RuntimeCompositionError> {
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    return Err(RuntimeCompositionError::InvalidInstanceRoot(format!(
-                        "`{}` escapes its filesystem root",
-                        path.display()
-                    )));
-                }
-            }
-            other => normalized.push(other.as_os_str()),
-        }
-    }
-    if !normalized.is_absolute() {
-        return Err(RuntimeCompositionError::InvalidInstanceRoot(format!(
-            "`{}` did not resolve to an absolute path",
-            path.display()
-        )));
-    }
-    Ok(normalized)
 }
 
 pub fn db_clone(runtime: &HostRuntimeContext) -> DatabaseConnection {

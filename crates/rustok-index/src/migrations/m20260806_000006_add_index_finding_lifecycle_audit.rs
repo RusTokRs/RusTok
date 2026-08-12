@@ -205,8 +205,9 @@ async fn remove_update_guard(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     }
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum IndexFindingLifecycleEvents {
+    #[iden = "index_consistency_finding_lifecycle_events"]
     Table,
     TenantId,
     CommandId,

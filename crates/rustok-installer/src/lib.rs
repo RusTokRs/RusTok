@@ -6,7 +6,6 @@
 
 mod deployment;
 mod execution;
-mod layout;
 mod plan;
 mod preflight;
 mod receipt;
@@ -16,25 +15,20 @@ mod seed;
 mod state;
 
 pub use deployment::{
-    DistributedDeploymentOutput, InstallDeploymentPort, InstallDistributionDeployment,
+    DistributionDeploymentOutput, InstallDeploymentPort, InstallDistributionDeployment,
     InstallDistributionDeploymentReceipt, InstallDistributionDeploymentRequest,
-    InstallRoleDeploymentObservation, distributed_deployment_request,
-    execute_distributed_deployment,
+    InstallRoleDeploymentObservation, distribution_deployment_request,
+    execute_distribution_deployment,
 };
 #[cfg(feature = "host-runtime")]
 pub use execution::execute_install_apply;
 pub use execution::{
     InstallAdminOutcome, InstallAdminPort, InstallApplyOptions, InstallApplyOutput,
-    InstallDatabasePort, InstallDatabaseReady, InstallExecutionError, InstallExecutor,
-    InstallPersistencePort, InstallReceiptRecord, InstallSchemaPort, InstallSeedOutcome,
-    InstallSeedPort, InstallSessionRecord, InstallVerificationOutcome, InstallVerificationPort,
+    InstallBootstrapPort, InstallDatabasePort, InstallDatabaseReady, InstallExecutionError,
+    InstallExecutor, InstallPersistencePort, InstallReceiptRecord, InstallSchemaPort,
+    InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallVerificationOutcome,
+    InstallVerificationPort,
 };
-pub use layout::{
-    INSTANCE_LAYOUT_REVISION, InstanceLayout, InstanceLayoutError, InstanceLayoutMarker,
-    InstanceLayoutPreparation, InstancePlacement,
-};
-#[cfg(feature = "host-runtime")]
-pub use layout::{bind_instance_placement, prepare_instance_layout};
 pub use plan::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallComposition, InstallDistributionBinding,
     InstallEnvironment, InstallPlan, InstallProfile, InstallRole, InstallRoleAssignment,
@@ -51,6 +45,11 @@ pub use receipt::{
     InstallReceipt, ReceiptError, ReceiptOutcome, VerifiedInstallBaseDistributionReceipt,
     checksum_json,
 };
+pub use rustok_runtime::{
+    INSTANCE_LAYOUT_REVISION, InstanceLayout, InstanceLayoutError, InstanceLayoutMarker,
+    InstanceLayoutPreparation, InstancePlacement,
+};
+pub use rustok_runtime::{bind_instance_placement, prepare_instance_layout};
 pub use secrets::{
     SecretMode, SecretRef, SecretResolutionError, SecretValue, redact_install_plan, redact_secret,
     resolve_local_secret_value,

@@ -85,7 +85,7 @@ product contract:
    cross-scope conflict set for update, rollback, security, migration, restore,
    and retention operations and resumes them after process loss.
 8. The current filesystem publisher is now physically contained under
-   `<instance-root>/releases/platform/<release-id>` but does not define a production
+   `<instance-root>/releases/platform/sha256/<bundle-digest>` but does not define a production
    supervisor, role-aware node placement, side-by-side startup, traffic switch,
    predecessor pre-staging, or observed convergence. It must not remain a
    second production release authority.
@@ -165,8 +165,10 @@ the blast radius. Unchanged dependents remain compatibility evidence.
 Live node count/placement, controller authority, node observations, and
 deployment receipts belong to the rollout operation, not immutable release
 identity. A change to placement/count invalidates or revises the operation. A
-change to the required role or surface set changes the role bundle and requires
-a new static release. Automatic code update additionally requires an unchanged
+change that requires a role artifact absent from the admitted bundle changes
+the bundle and requires a new static release. Selecting another supported
+role/surface assignment from the same bundle is a topology maintenance
+transition, not a rebuild. Automatic code update additionally requires an unchanged
 assignment domain: the same node/failure-domain/role keys must carry both N and
 N+1 digests. Placement/count or role/surface-shape changes run as separate
 topology/maintenance transitions rather than being combined with automatic
@@ -194,6 +196,12 @@ control metadata, persistent data, and diagnostics. A runtime process never
 loads code from a source checkout, a build attempt, a mutable `current` module
 directory, or an external registry tag.
 
+Every static install/deployment binding carries both the digest-pinned OCI
+`bundle_reference` and its independently validated root/per-role digests. A
+digest without its owner-approved retrieval reference cannot authorize
+materialization, and a reference without matching digests cannot authorize
+execution.
+
 | Plane | Canonical content | Lifecycle |
 | --- | --- | --- |
 | source CAS | Globally deduplicated opaque source blob named by `source_digest`, plus an owner/RLS-scoped `source_receipt_id` over owner/preparation domain, source digest, media type, length, and source manifest | `rustok-modules` preparation owner is the sole logical writer through `SourceObjectStore`; workers mount blobs read-only, receipts never cross authorization domains, and blob collection waits for every receipt/hold |
@@ -214,6 +222,13 @@ fact needed for restart. The chosen path, drive, separator, symlink/junction
 spelling, and container mount never enter release identity, artifact manifests,
 migration identity, object keys, or cross-node operation identity. All
 in-product paths below are relative to that root.
+
+Protocol digests retain the canonical `sha256:<lowercase-hex>` form in
+PostgreSQL, OCI, receipts, and commands. Physical paths use only the validated
+64-character `<hex>` component because `:` is not a portable filename
+character. This conversion is owned by `rustok-runtime::InstanceLayout`; roles,
+targets, and relative paths are likewise validated centrally and may not
+contain separators or traversal.
 
 ```text
 <instance-root>/
@@ -328,7 +343,7 @@ inspector, materializer, and archive client of this port. Build workers mount
 source objects read-only; runtime nodes do not mount them. The static attempt
 root is worker-only.
 The instance root is not one shared permission boundary: the node agent alone
-writes `releases/platform`, `state/deployment`, and its control endpoint, while
+writes `releases/platform/sha256`, `state/deployment`, and its control endpoint, while
 assigned roles receive only the read-only materialization and writable data
 ports they require. Application/module processes cannot access the
 deployment-agent endpoint. Materialized release directories
@@ -1797,9 +1812,13 @@ backend preflight.
   admitted release through `rustok-modules` instead of trusting wizard input.
   HTTP and CLI hosts also verify a bounded strict-Ed25519 fresh-bootstrap
   receipt, signer-key digest, validity interval, exact bundle identity, and
-  executable composition before mutation. Owner-ledger import of its complete
-  publication/admission evidence, retained-byte materialization, and rollout
-  convergence remain required before this item is complete.
+  executable composition before mutation. The shared executor now creates the
+  minimal installer/release-owner schema, imports the complete signed
+  publication/admission evidence transactionally into an empty
+  `rustok-modules` ledger, and only then applies remaining migrations. The
+  owner rechecks the signature and deterministic replay identity. Retained-byte
+  materialization and rollout convergence remain required before this item is
+  complete.
 
 ### 2. Build the Readiness Inventory and Migration Contract
 
@@ -2137,7 +2156,7 @@ backend preflight.
 | recovery authorization | exact replay resumes the same reserved outside-candidate action; divergent replay or another operation cannot consume or create a second authorization |
 | build layering | only the static-distribution worker publishes one complete role bundle and canonical receipt; `rustok-build` cannot publish a competing static release |
 | static bundle | root OCI digest binds every selected role, actual Leptos/browser asset, and deterministic deployable metadata; the canonical receipt/admission binds that root to all evidence/referrer digests without circular identity; role/surface-set changes create a release while node count/placement changes only the rollout operation |
-| assignment domain | first install uses candidate-only assignments and offers no rollback; automatic update requires identical node/failure-domain/role keys with both digests, while placement/count or role/surface-shape changes are separate maintenance transitions |
+| assignment domain | first install uses candidate-only assignments and offers no rollback; automatic update requires identical node/failure-domain/role keys with both digests, while placement/count or supported role/surface assignment changes are separate maintenance transitions; a role artifact absent from the bundle requires a new release |
 | deployment isolation | all candidate application/UI processes may be down while the outside controller and node agents resume exact prepare/start/switch/recovery work; agents accept no arbitrary command, build, DDL, restore, or Next.js authority |
 | operations-tool lifecycle | bootstrap and every affected transition bind the exact signed controller/agent package and protocol revision; one durable owner maintenance operation holds the fleet/module-transition fence, drives exact host/component desired/observed assignments through narrow supervisors, proves old/new protocol interoperability, survives coordinator/supervisor loss, consumes at most one predecessor recovery, and releases the fence only after convergence |
 | release identity | changing topology/controller/observations creates or revises a rollout operation without changing immutable release identity |

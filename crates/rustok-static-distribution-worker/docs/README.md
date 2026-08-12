@@ -31,7 +31,8 @@ Startup requires the following fixed deployment configuration:
 - the `RUSTOK_STATIC_DISTRIBUTION_*` mTLS listener settings owned by
   `rustok-worker-transport`.
 
-The launcher and configuration are resolved beneath the selected instance root
+The launcher and configuration are resolved through the canonical
+`rustok-runtime::InstanceLayout` beneath the selected instance root
 and must be non-symlink regular files
 must match their lowercase SHA-256 digests at startup, readiness, and execution.
 The work root is always `<instance-root>/work/static-distribution` and must be

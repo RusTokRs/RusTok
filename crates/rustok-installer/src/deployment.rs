@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     InstallComposition, InstallDistributionBinding, InstallEnvironment, InstallExecutionError,
     InstallPersistencePort, InstallPlan, InstallReceipt, InstallRole, InstallRoleAssignment,
-    InstallSessionRecord, InstallState, InstallStep, InstallSurface, InstallTopologyMode,
+    InstallSessionRecord, InstallState, InstallStep, InstallSurface,
 };
 
 /// One immutable hand-off for the complete admitted distribution role bundle.
@@ -57,7 +57,7 @@ pub struct InstallDistributionDeploymentReceipt {
 
 /// Result of recording the complete distribution deployment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DistributedDeploymentOutput {
+pub struct DistributionDeploymentOutput {
     pub session: InstallSessionRecord,
     pub receipt: InstallDistributionDeploymentReceipt,
 }
@@ -69,7 +69,7 @@ pub struct DistributedDeploymentOutput {
 /// release head, or substitute another bundle identity.
 #[async_trait::async_trait]
 pub trait InstallDeploymentPort<R>: Send + Sync {
-    fn supports_distributed_deployment(&self) -> bool;
+    fn supports_distribution_deployment(&self) -> bool;
 
     async fn deploy_distribution(
         &self,
@@ -78,27 +78,25 @@ pub trait InstallDeploymentPort<R>: Send + Sync {
     ) -> Result<InstallDistributionDeployment, InstallExecutionError>;
 }
 
-/// Creates the single deterministic deployment request for a distributed plan.
-pub fn distributed_deployment_request(
+/// Creates the single deterministic deployment request for any install plan.
+///
+/// Monolith and distributed installations differ only in the role assignments
+/// inside the immutable bundle. Both use this owner-controlled deployment path.
+pub fn distribution_deployment_request(
     plan: &InstallPlan,
     session_id: Uuid,
     tenant_id: Uuid,
 ) -> Result<InstallDistributionDeploymentRequest, InstallExecutionError> {
-    if plan.topology.mode != InstallTopologyMode::Distributed {
-        return Err(InstallExecutionError::new(
-            "distribution deployment requires a distributed install topology",
-        ));
-    }
     plan.topology
         .validate()
         .map_err(InstallExecutionError::new)?;
-    let composition = plan.topology.composition.clone().ok_or_else(|| {
-        InstallExecutionError::new("distributed install topology requires a composition")
-    })?;
+    let composition = plan
+        .topology
+        .composition
+        .clone()
+        .ok_or_else(|| InstallExecutionError::new("install topology requires a composition"))?;
     let distribution = plan.topology.distribution.clone().ok_or_else(|| {
-        InstallExecutionError::new(
-            "distributed install topology requires an admitted distribution bundle",
-        )
+        InstallExecutionError::new("install topology requires an admitted distribution bundle")
     })?;
     let mut roles = plan.topology.roles.clone();
     roles.sort_by_key(|assignment| role_sort_key(assignment.role));
@@ -119,18 +117,18 @@ pub fn distributed_deployment_request(
 }
 
 /// Reconciles one complete role bundle and records one bound deployment receipt.
-pub async fn execute_distributed_deployment<P, R>(
+pub async fn execute_distribution_deployment<P, R>(
     ports: &P,
     runtime: &R,
     plan: &InstallPlan,
     session: InstallSessionRecord,
     tenant_id: Uuid,
-) -> Result<DistributedDeploymentOutput, InstallExecutionError>
+) -> Result<DistributionDeploymentOutput, InstallExecutionError>
 where
     P: InstallPersistencePort<R> + InstallDeploymentPort<R>,
     R: Send + Sync,
 {
-    let request = distributed_deployment_request(plan, session.id, tenant_id)?;
+    let request = distribution_deployment_request(plan, session.id, tenant_id)?;
     let session = ports
         .set_state(runtime, session.id, InstallState::Deploying)
         .await?;
@@ -151,7 +149,7 @@ where
     .map_err(|error| InstallExecutionError::new(error.to_string()))?;
     let recorded = ports.record_receipt(runtime, &receipt).await?;
 
-    Ok(DistributedDeploymentOutput {
+    Ok(DistributionDeploymentOutput {
         session,
         receipt: InstallDistributionDeploymentReceipt {
             deployment,
@@ -207,9 +205,25 @@ fn validate_deployment(
                 "deployment adapter returned an observation for a different role assignment",
             ));
         }
+        let expected_role = assignment.role.static_distribution_role();
+        let Some(expected_artifact) = request
+            .distribution
+            .roles
+            .iter()
+            .find(|artifact| artifact.role == expected_role)
+        else {
+            return Err(InstallExecutionError::new(
+                "deployment request role is absent from the admitted bundle",
+            ));
+        };
         if !valid_sha256_digest(&observation.artifact_digest) {
             return Err(InstallExecutionError::new(
                 "deployment role observation requires a canonical artifact digest",
+            ));
+        }
+        if observation.artifact_digest != expected_artifact.artifact_digest {
+            return Err(InstallExecutionError::new(
+                "deployment role observation has a different artifact digest",
             ));
         }
         if observation.health_evidence_reference.trim().is_empty() {
@@ -266,7 +280,7 @@ mod tests {
     };
 
     use super::{
-        distributed_deployment_request, execute_distributed_deployment, validate_deployment,
+        distribution_deployment_request, execute_distribution_deployment, validate_deployment,
     };
 
     #[derive(Default)]
@@ -336,7 +350,7 @@ mod tests {
 
     #[async_trait]
     impl InstallDeploymentPort<()> for FakePorts {
-        fn supports_distributed_deployment(&self) -> bool {
+        fn supports_distribution_deployment(&self) -> bool {
             true
         }
 
@@ -350,11 +364,11 @@ mod tests {
     }
 
     #[test]
-    fn distributed_request_contains_one_sorted_complete_bundle() {
+    fn distribution_request_contains_one_sorted_complete_bundle() {
         let mut plan = sample_plan();
         plan.topology.roles.reverse();
 
-        let request = distributed_deployment_request(&plan, Uuid::nil(), Uuid::nil()).unwrap();
+        let request = distribution_deployment_request(&plan, Uuid::nil(), Uuid::nil()).unwrap();
 
         assert_eq!(request.roles.len(), 4);
         assert_eq!(request.roles[0].role, InstallRole::Api);
@@ -363,9 +377,23 @@ mod tests {
     }
 
     #[test]
+    fn monolith_request_uses_the_same_distribution_deployment_contract() {
+        let mut plan = sample_plan();
+        plan.topology = InstallTopology::for_mode(InstallTopologyMode::Monolith)
+            .bind_composition("distribution@1".to_string(), "a".repeat(64))
+            .bind_distribution(monolith_distribution());
+
+        let request = distribution_deployment_request(&plan, Uuid::nil(), Uuid::nil()).unwrap();
+
+        assert_eq!(request.roles.len(), 1);
+        assert_eq!(request.roles[0].role, InstallRole::Monolith);
+        assert_eq!(request.distribution, monolith_distribution());
+    }
+
+    #[test]
     fn deployment_must_match_bundle_and_complete_role_set() {
         let request =
-            distributed_deployment_request(&sample_plan(), Uuid::nil(), Uuid::nil()).unwrap();
+            distribution_deployment_request(&sample_plan(), Uuid::nil(), Uuid::nil()).unwrap();
         let mut invalid = successful_deployment(&request);
         invalid.distribution.bundle_root_digest = format!("sha256:{}", "f".repeat(64));
         assert!(validate_deployment(&request, &invalid).is_err());
@@ -373,6 +401,10 @@ mod tests {
         let mut incomplete = successful_deployment(&request);
         incomplete.observations.pop();
         assert!(validate_deployment(&request, &incomplete).is_err());
+
+        let mut wrong_role_bytes = successful_deployment(&request);
+        wrong_role_bytes.observations[0].artifact_digest = format!("sha256:{}", "e".repeat(64));
+        assert!(validate_deployment(&request, &wrong_role_bytes).is_err());
     }
 
     #[tokio::test]
@@ -380,7 +412,7 @@ mod tests {
         let ports = FakePorts::default();
 
         let output =
-            execute_distributed_deployment(&ports, &(), &sample_plan(), session(), Uuid::nil())
+            execute_distribution_deployment(&ports, &(), &sample_plan(), session(), Uuid::nil())
                 .await
                 .unwrap();
 
@@ -406,7 +438,16 @@ mod tests {
                 .map(|assignment| InstallRoleDeploymentObservation {
                     role: assignment.role,
                     surfaces: assignment.surfaces.clone(),
-                    artifact_digest: format!("sha256:{}", "c".repeat(64)),
+                    artifact_digest: request
+                        .distribution
+                        .roles
+                        .iter()
+                        .find(|artifact| {
+                            artifact.role == assignment.role.static_distribution_role()
+                        })
+                        .expect("sample bundle contains every assigned role")
+                        .artifact_digest
+                        .clone(),
                     health_evidence_reference: format!("health://{}", assignment.role.as_str()),
                 })
                 .collect(),
@@ -414,11 +455,48 @@ mod tests {
     }
 
     fn distribution() -> InstallDistributionBinding {
+        let roles = [
+            rustok_modules::ModuleStaticDistributionRole::Api,
+            rustok_modules::ModuleStaticDistributionRole::AdminSsr,
+            rustok_modules::ModuleStaticDistributionRole::StorefrontSsr,
+            rustok_modules::ModuleStaticDistributionRole::Worker,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(
+            |(index, role)| rustok_modules::ModuleStaticDistributionRoleArtifact {
+                role,
+                artifact_digest: format!("sha256:{:064x}", index + 1),
+            },
+        )
+        .collect::<Vec<_>>();
         InstallDistributionBinding {
             preparation_id: Uuid::from_u128(1),
             distribution_release_id: Uuid::from_u128(2),
+            bundle_reference: format!("registry.example/rustok/base@sha256:{}", "a".repeat(64)),
             bundle_root_digest: format!("sha256:{}", "a".repeat(64)),
-            role_set_digest: format!("sha256:{}", "b".repeat(64)),
+            role_set_digest:
+                rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+                    .unwrap(),
+            roles,
+            bootstrap_receipt: None,
+        }
+    }
+
+    fn monolith_distribution() -> InstallDistributionBinding {
+        let roles = vec![rustok_modules::ModuleStaticDistributionRoleArtifact {
+            role: rustok_modules::ModuleStaticDistributionRole::Monolith,
+            artifact_digest: format!("sha256:{}", "f".repeat(64)),
+        }];
+        InstallDistributionBinding {
+            preparation_id: Uuid::from_u128(1),
+            distribution_release_id: Uuid::from_u128(2),
+            bundle_reference: format!("registry.example/rustok/base@sha256:{}", "a".repeat(64)),
+            bundle_root_digest: format!("sha256:{}", "a".repeat(64)),
+            role_set_digest:
+                rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+                    .unwrap(),
+            roles,
             bootstrap_receipt: None,
         }
     }
@@ -458,6 +536,7 @@ mod tests {
                 revision: "distribution@1".to_string(),
                 hash: "a".repeat(64),
             },
+            distribution(),
         );
         plan.topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
             .bind_composition("distribution@1".to_string(), "a".repeat(64))

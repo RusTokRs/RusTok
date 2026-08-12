@@ -24,7 +24,9 @@ canonical SHA-256 hash over module slug, version, kind, and dependencies. This
 is a host compatibility check, not deployable identity: it does not bind the
 toolchain, target, role artifacts, browser assets, or publication evidence.
 
-The trusted local installer also resolves one operator-selected
+`rustok-runtime::InstanceLayout` owns the physical-tree vocabulary for every
+executable consumer; installer re-exports it but does not maintain another
+layout. The trusted local installer resolves one operator-selected
 `<instance-root>` on any supported operating system. Relative input is resolved
 against the installer invocation directory; the normalized result is retained
 only as host-local placement and restart evidence. The instance layout is one
@@ -53,13 +55,15 @@ surfaces and their role ownership. A topology may arrive unbound from a
 transport client. The CLI and HTTP host replace its composition identity with
 their own selected distribution before preflight, receipt creation, or apply.
 The trusted owner/host also resolves and binds the exact admitted
-`distribution_release_id`, OCI bundle-root digest, and role-set digest before
-preflight. A wizard cannot supply those identities. On a fresh standalone
+`distribution_release_id`, OCI bundle-root digest, role-set digest, and the
+canonical per-role artifact digest list before
+preflight for both the one-role monolith and multi-role distributed topology.
+A wizard cannot supply those identities. On a fresh standalone
 target with no release ledger, the host verifies a platform-signed
 base-distribution receipt binding a platform-public `preparation_id`, those
 identities, and migration/data/evidence digests, then imports the same receipt
-into `rustok-modules` as soon
-as its minimal owner schema exists. That bounded bootstrap handoff is not a
+into `rustok-modules` as soon as its minimal owner schema exists and before the
+remaining canonical migrations run. That bounded bootstrap handoff is not a
 second release owner. Installer checksum, deployment request, observations, and
 terminal receipt all bind the exact bundle identity.
 The core validates that every selected surface has exactly one role owner.
@@ -72,8 +76,14 @@ runtime without background workers; the worker mode starts them while exposing
 only health and metrics HTTP surfaces, and `registry_only` owns only the
 registry surface.
 
-The installer binds the full required role and surface set into one immutable
-distribution request. Production apply consumes an owner-admitted base bundle
+The admitted bundle binds the complete set of role artifacts it can execute.
+The installer binds the selected assignment set into one immutable deployment
+request and may select only roles present in that bundle. A universal bundle
+may therefore back either a monolith or a multi-process instance without
+rebuilding identical bytes; the topology snapshot, not the release, records
+which supported roles are assigned. Adding a role artifact not already present
+still requires a new release, while changing assignment/placement uses a
+separate maintenance rollout. Production apply consumes an owner-admitted base bundle
 or, only for fresh bootstrap, the exact platform-signed receipt described
 above; source/build/publication preparation is a separate operation and is not
 an `install apply` dependency. `rustok-modules` owns the single role-bundle
@@ -109,14 +119,17 @@ layout. The deployment controller and a future standalone CLI control adapter
 use the same owner lifecycle without importing `apps/server` and cannot invoke
 the publisher from install apply.
 
-Distributed topology fails preflight when its host has no typed deployment
-adapter. No host may silently treat a distributed request as a monolith
-installation.
+Every topology fails preflight when its host has no typed distribution
+deployment adapter. A monolith is one role in the same bundle lifecycle, not a
+shortcut that may skip desired/observed deployment; no host may silently treat
+a distributed request as a monolith installation.
 
 ## Consequences
 
 - Installer receipts and plan checksums contain a deterministic distribution
-  identity, exact distribution release, bundle root, and role-set digest.
+  identity, exact distribution release, digest-pinned OCI bundle reference,
+  bundle root, role-set digest, and
+  per-role artifact digests.
 - Installer placement receipts bind the trusted selected instance root for
   local restart without folding its platform-specific path into distribution,
   module, migration, object, or cross-node operation identity.
@@ -125,7 +138,8 @@ installation.
   optional adapter mappings rather than separate lifecycle contracts.
 - The wizard remains a thin client and never imports distribution internals.
 - Every deployment adapter consumes the topology descriptor as one role-bundle
-  request and records per-role observations under one deployment receipt; it
+  assignment request, rejects roles absent from the admitted bundle, and
+  records per-role observations under one deployment receipt; it
   may not redefine the composition identity or create per-role release heads.
 - Installer preflight verifies a signed, digest-pinned operations-tool release
   and protocol revision that is installed independently of the candidate role

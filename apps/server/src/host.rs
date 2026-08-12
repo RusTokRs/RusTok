@@ -322,7 +322,7 @@ async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
 #[cfg(test)]
 mod tests {
     use super::{
-        application_router, resolve_database_uri, validate_auth_deployment,
+        HostConfig, application_router, resolve_database_uri, validate_auth_deployment,
         validate_https_deployment,
     };
     use crate::common::settings::RuntimeHostMode;
@@ -335,6 +335,14 @@ mod tests {
     #[test]
     fn worker_router_is_composable_without_http_application_surfaces() {
         let _ = application_router(RuntimeHostMode::Worker);
+    }
+
+    #[test]
+    fn development_config_enables_canonical_startup_migrations() {
+        let config: HostConfig = serde_yaml::from_str(include_str!("../config/development.yaml"))
+            .expect("development host configuration must deserialize");
+
+        assert!(config.database.auto_migrate);
     }
 
     #[test]

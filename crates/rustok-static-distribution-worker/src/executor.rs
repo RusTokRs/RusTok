@@ -83,15 +83,15 @@ pub struct StaticDistributionWorker {
 impl StaticDistributionWorker {
     pub fn from_env(execution_timeout: Duration) -> Result<Self, String> {
         required_text("RUSTOK_INSTANCE_ROOT", 4_096)?;
-        let instance_root = rustok_runtime::resolve_instance_root_from_environment()
+        let layout = rustok_runtime::resolve_instance_layout_from_environment()
             .map_err(|error| error.to_string())?;
         let launcher_path =
-            required_instance_path(&instance_root, "RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER")?;
+            required_instance_path(&layout, "RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER")?;
         let launcher_digest = required_digest("RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER_DIGEST")?;
         let job_config_path =
-            required_instance_path(&instance_root, "RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG")?;
+            required_instance_path(&layout, "RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG")?;
         let job_config_digest = required_digest("RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG_DIGEST")?;
-        let work_root = instance_root.join("work/static-distribution");
+        let work_root = layout.static_distribution_work();
         let toolchain_digest = required_digest("RUSTOK_STATIC_DISTRIBUTION_TOOLCHAIN_DIGEST")?;
         let build_target = required_text("RUSTOK_STATIC_DISTRIBUTION_BUILD_TARGET", 128)?;
         Self::new(
@@ -495,7 +495,10 @@ fn path_entry_exists(path: &Path) -> Result<bool, String> {
     }
 }
 
-fn required_instance_path(instance_root: &Path, name: &str) -> Result<PathBuf, String> {
+fn required_instance_path(
+    layout: &rustok_runtime::InstanceLayout,
+    name: &str,
+) -> Result<PathBuf, String> {
     let path =
         PathBuf::from(std::env::var(name).map_err(|_| format!("{name} must be configured"))?);
     if path.is_absolute()
@@ -507,7 +510,9 @@ fn required_instance_path(instance_root: &Path, name: &str) -> Result<PathBuf, S
             "{name} must be a path relative to RUSTOK_INSTANCE_ROOT"
         ));
     }
-    Ok(instance_root.join(path))
+    layout
+        .resolve_relative(path)
+        .map_err(|error| error.to_string())
 }
 
 fn required_digest(name: &str) -> Result<String, String> {

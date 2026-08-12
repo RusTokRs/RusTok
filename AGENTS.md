@@ -48,6 +48,24 @@ When changing **architecture, API, events, modules, tenancy, routing, UI contrac
 
 Do not create a new document if a suitable one already exists — extend the existing one.
 
+## Ideal platform implementation standard
+
+Treat every change as work on an ideal, long-lived, production-grade platform.
+Deliver the ideal coherent target design, not merely the smallest patch that
+makes the immediate symptom or test pass.
+
+- Prefer clear, maintainable, secure, and observable designs that fit the
+  platform architecture and established contracts.
+- Investigate and address the root cause. Do not introduce shortcuts, hidden
+  coupling, special-case branches, fragile workarounds, or technical debt in
+  place of a proper implementation.
+- Choose the scope required for a complete solution. A small diff is valuable
+  only when it fully preserves the intended design; it must not leave known
+  inconsistencies, incomplete integration, or avoidable follow-up work.
+- Keep code, tests, schemas, callers, configuration, and documentation
+  consistent with the resulting contract. Verify observable behavior at the
+  appropriate boundary before considering the work complete.
+
 ## Initial implementation and zero-legacy policy
 
 RusToK is a pre-release initial implementation. Internal repository code has no

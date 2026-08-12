@@ -127,15 +127,17 @@ bootstrap logic in the UI:
 `POST /api/install/plan` and `POST /api/install/preflight` accept an
 `InstallPlan` JSON body. `POST /api/install/apply` accepts
 `{ "plan": <InstallPlan>, "lock_owner": "operator", "lock_ttl_secs": 900 }`.
-An HTTP `InstallPlan` includes a versioned `topology` shape. The wizard may
+An HTTP `InstallPlan` includes the canonical `topology` shape. The wizard may
 submit it with `composition: null`; the server replaces that field with the
 selected distribution revision and deterministic hash before preflight or
-apply. Distributed HTTP apply is available when `rustok.build.enabled=true`:
-the server builds and activates every selected role before completing the
-installer session. A CLI still reports distributed topology unavailable until
-it is given a deployment adapter.
-It records redacted receipts for preflight, config, database, migration, seed,
-admin, each distributed role deployment, verify, and finalize stages.
+apply. The trusted host also replaces any client-supplied bundle identity with
+an exact owner-admitted release or a verified signed fresh-bootstrap receipt.
+Monolith and distributed apply both require the same owner-controlled
+desired/observed deployment adapter; current HTTP and CLI apply fail closed
+until it is composed. Build and publication are separate operations and are
+never triggered by install apply. A successful future apply records one
+redacted deployment receipt for the complete role bundle, plus preflight,
+config, database, migration, seed, admin, verify, and finalize receipts.
 
 For mutating HTTP install requests, configure a setup token:
 

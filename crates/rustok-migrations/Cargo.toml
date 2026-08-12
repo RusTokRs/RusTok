@@ -25,6 +25,7 @@ alloy.workspace = true
 rustok-auth.workspace = true
 rustok-rbac.workspace = true
 rustok-channel.workspace = true
+rustok-navigation.workspace = true
 rustok-cart.workspace = true
 rustok-customer.workspace = true
 rustok-product.workspace = true

@@ -8,8 +8,8 @@ use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use rustok_installer::{
     InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
-    InstallExecutor, InstallPlan, InstallTopologyMode, bind_instance_placement,
-    evaluate_preflight_with_deployment, load_base_distribution_receipt, redact_install_plan,
+    InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
+    load_base_distribution_receipt, redact_install_plan,
 };
 use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
 use rustok_web::HttpError;
@@ -177,6 +177,9 @@ async fn apply(
             .unwrap_or_else(|| "http".to_string()),
         lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
         pg_admin_url: request.pg_admin_url,
+        bootstrap_public_key_base64: configured_value(
+            "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
+        ),
     };
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
@@ -250,10 +253,8 @@ async fn bind_host_install_plan(
     );
     // Bundle identity is release-owner authority, never wizard input.
     plan.topology.distribution = None;
-    if plan.topology.mode == InstallTopologyMode::Distributed {
-        plan.topology.distribution =
-            Some(resolve_host_distribution_binding(ctx, &host_composition).await?);
-    }
+    plan.topology.distribution =
+        Some(resolve_host_distribution_binding(ctx, &host_composition).await?);
     let configured_root = std::env::var("RUSTOK_INSTANCE_ROOT")
         .ok()
         .filter(|value| !value.trim().is_empty());
@@ -307,8 +308,10 @@ async fn resolve_host_distribution_binding(
             Ok(InstallDistributionBinding {
                 preparation_id: binding.preparation_id,
                 distribution_release_id: binding.distribution_release_id,
+                bundle_reference: binding.bundle_reference,
                 bundle_root_digest: binding.bundle_root_digest,
                 role_set_digest: binding.role_set_digest,
+                roles: binding.roles,
                 bootstrap_receipt: None,
             })
         }
@@ -334,7 +337,7 @@ async fn resolve_host_distribution_binding(
             })
         }
         (None, None, None) => Err(bad_request_error(
-            "distributed installation requires an owner-ledger release or a signed base-distribution receipt",
+            "installation requires an owner-ledger release or a signed base-distribution receipt",
         )),
         (None, _, _) => Err(bad_request_error(
             "signed base-distribution installation requires both RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT and RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",

@@ -402,6 +402,7 @@ impl MigrationTrait for Migration {
 
 #[derive(Iden)]
 enum LedgerTransactions {
+    #[iden = "marketplace_ledger_transactions"]
     Table,
     Id,
     TenantId,
@@ -409,6 +410,7 @@ enum LedgerTransactions {
 
 #[derive(Iden)]
 enum LedgerEntries {
+    #[iden = "marketplace_ledger_entries"]
     Table,
     Id,
     TenantId,
@@ -416,6 +418,7 @@ enum LedgerEntries {
 
 #[derive(Iden)]
 enum EntryBalanceBuckets {
+    #[iden = "marketplace_ledger_entry_balance_buckets"]
     Table,
     Id,
     TenantId,
@@ -429,6 +432,7 @@ enum EntryBalanceBuckets {
 
 #[derive(Iden)]
 enum SellerBalanceTransfers {
+    #[iden = "marketplace_seller_balance_transfers"]
     Table,
     Id,
     TenantId,
@@ -447,6 +451,7 @@ enum SellerBalanceTransfers {
 
 #[derive(Iden)]
 enum SellerBalanceTransferLines {
+    #[iden = "marketplace_seller_balance_transfer_lines"]
     Table,
     Id,
     TenantId,

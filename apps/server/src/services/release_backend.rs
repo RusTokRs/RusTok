@@ -427,9 +427,9 @@ struct RemoteReleasePublishResponse {
 }
 
 fn resolve_artifact_root() -> anyhow::Result<PathBuf> {
-    Ok(rustok_runtime::resolve_instance_root_from_environment()
-        .map_err(|error| anyhow!(error.to_string()))?
-        .join("releases/platform"))
+    let layout = rustok_runtime::resolve_instance_layout_from_environment()
+        .map_err(|error| anyhow!(error.to_string()))?;
+    Ok(layout.platform_releases())
 }
 
 fn server_deployment_workspace() -> DeploymentWorkspace {
@@ -952,7 +952,9 @@ mod tests {
 
     #[test]
     fn externalized_path_uses_public_base_url_when_present() {
-        let path = PathBuf::from("C:/instance/releases/platform/rel_1/artifacts/rustok-server.exe");
+        let path = PathBuf::from(
+            "C:/instance/releases/platform/sha256/aaaaaaaa/artifacts/rustok-server.exe",
+        );
         let url = externalized_path(&path, Some("https://artifacts.example.com/releases"));
         assert_eq!(
             url,

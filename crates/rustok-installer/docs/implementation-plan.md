@@ -8,8 +8,9 @@ secret-reference, receipt, checksum, and seed-workflow contracts. Its
 `hybrid_admin`, and `headless_leptos`) and is not deployment
 authority. `InstallTopology` records the selected role-to-surface assignment
 and an optional host-only `InstallDistributionBinding` containing the exact
-public preparation ID, distribution release ID, bundle-root digest, and
-role-set digest. Distributed topology is invalid without that binding.
+public preparation ID, distribution release ID, bundle-root digest, role-set
+digest, and the exact role-to-artifact digest list. Every topology is invalid without that binding: a monolith is
+the same role-bundle contract with one role, not a deployment shortcut.
 
 Next.js is optional, external, and manually deployed, so it is not installer
 topology or apply state. The former Next-specific profile and compatibility
@@ -23,18 +24,19 @@ adapters. The
 platform CLI has `install plan`, `install preflight`, `install apply`,
 `install status`, and seed providers. The CLI uses the same state machine with
 a shared SeaORM adapter; this is monolith bootstrap plumbing, not evidence
-that distributed installation is implemented.
+that production bundle deployment is implemented.
 
 The independent Axum-to-`rustok-build` per-role activation adapter has been
 removed with all repository-owned callers. The shared executor creates one
 complete distribution deployment request and accepts one receipt containing
 exact per-role observations. The server HTTP adapter now resolves a
-host-selected release through the current admitted `rustok-modules` ledger;
-it still reports distributed deployment unavailable until the
-desired/observed rollout controller is composed. The standalone CLI also
-remains unavailable until it receives the same trusted owner resolver.
+host-selected release through the current admitted `rustok-modules` ledger.
+Both monolith and distributed apply now report distribution deployment
+unavailable until the desired/observed rollout controller is composed. The
+standalone CLI fails closed at the same boundary.
 
-The current plan contains one canonical instance placement. It accepts one trusted
+The current plan consumes the one canonical instance placement owned by
+`rustok-runtime`. It accepts one trusted
 operator-selected instance root on any supported operating system, resolves a
 relative input against the installer invocation directory, and derives one
 portable relative layout. Its normalized physical path is restart/placement
@@ -82,8 +84,8 @@ observed rollout, and recovery. Production installer apply consumes one
 owner-admitted complete bundle or the platform-signed base-distribution receipt
 used only to bootstrap a fresh owner ledger; build/publication is a separate
 preparation operation and cannot become an apply-time dependency. The trusted
-host binds exact distribution release ID, OCI bundle-root digest, and role-set
-digest before preflight; compile-time composition identity is only a
+host binds exact distribution release ID, digest-pinned OCI bundle reference
+and root digest, and role-set digest before preflight; compile-time composition identity is only a
 compatibility check. `rustok-installer` requests one complete distribution
 deployment through a typed port; it must not invoke Cargo, compose host routers,
 embed deployment-provider logic, or activate a release.
@@ -112,24 +114,25 @@ performed afterwards.
    External Next.js deployment is never represented as an installer role,
    surface, readiness check, or completion gate.
    Extend the canonical unversioned install plan in place so the trusted host
-   binds the exact public `preparation_id`, owner distribution release, OCI
-   bundle root, and role-set digest from owner admission or a signed
+   binds the exact public `preparation_id`, owner distribution release,
+   digest-pinned OCI bundle reference and root, and role-set digest from owner admission or a signed
    fresh-bootstrap receipt. Include
    them in preflight, checksum, deployment request, observations, and terminal
    receipt; a wizard-supplied value is ignored/rejected.
    The placement, descriptor, and trusted selected-distribution revision/hash
    binding are implemented. A plan represents monolith and distributed
    topology, serializes deterministically, and rejects duplicated/missing role
-   ownership. The canonical exact-bundle type and distributed validation are
+   ownership. The canonical exact-bundle type and role-set validation are
    implemented. HTTP clears any client-supplied binding and now resolves a
    host-selected release ID through the current admitted `rustok-modules`
-   ledger, which returns the exact preparation, bundle-root, and role-set
+   ledger, which returns the exact preparation, digest-pinned bundle reference,
+   bundle-root, and role-set
    identity. Strict signed fresh-bootstrap receipt resolution is implemented
    for HTTP and CLI hosts: the signature, signer-key digest, validity interval,
    exact bundle identity, and host composition are checked before mutation,
    and ambiguous owner-ledger/receipt configuration is rejected. Import into
-   the owner ledger, distributed apply, and bounded failed-install cleanup
-   remain open; failed layout preparation currently preserves its exact marker
+   the owner ledger is implemented. Role-bundle deployment convergence and
+   bounded failed-install cleanup remain open; failed layout preparation currently preserves its exact marker
    for safe resume and never deletes the selected root.
    **Done when:** a trusted local plan can select any supported instance root,
    derive the same logical layout, represent monolith and distributed
@@ -188,30 +191,33 @@ performed afterwards.
    `operations_tool_maintenance` class in the same canonical `rustok-modules`
    operation ledger and fleet fence; the host supervisor is only its narrow
    executor and retains the predecessor tools.
+   The typed executor, HTTP adapter, CLI adapter, minimal owner migrator, and
+   transactionally idempotent signed-receipt import are implemented. The
+   remaining work in this item is pre-staging/recovery evidence, the durable
+   desired/observed deployment hand-off, and crash-injection verification.
    **Done when:** a resumed apply is idempotent, verifies the observed bundle,
    uses bounded cleanup only before durable state, and otherwise reports the
    common recovery-required outcome with its restore action.
-   Replace `RolledBackFreshInstall` with `FreshInstallCleaned` and map the
-   installer restore terminal to common `recovery_required` plus
-   `recovery_action = restore`; update every caller, fixture, and document in
-   the same cutover.
+   `FreshInstallCleaned` is limited to pre-durable cleanup. Every failure after
+   durable state uses `RecoveryRequired` plus an exact typed recovery action;
+   no adapter may translate it into a successful rollback.
    **Verification:** targeted PostgreSQL monolith fixture plus crash injection
    before/after recovery-point, schema, seed, role start, and traffic switch;
    signed-tool digest/protocol mismatch denial; and a candidate-server-down
    resume using the independently installed controller/agent package.
 
-5. **Add distributed topology to the shared installation pipeline.**
+5. **Complete multi-role topology in the shared installation pipeline.**
    The independent per-role build/release hand-off has been removed. The
    shared contract produces one immutable deployment descriptor for the exact
    admitted or fresh-bootstrap role bundle and waits for the owner-controlled
    desired/observed rollout to converge. It records one durable deployment
    receipt with per-role observations and validates exact role/surface coverage,
-   artifact digests, and health references. The owner-controlled resolver,
-   controller, and per-node convergence remain open. Do not
+   artifact digests against the admitted per-role list, and health references. The exact owner release resolver
+   is implemented; the controller and per-node convergence remain open. Do not
    expose an independent active-release mutation or release head through
    `rustok-build`, `apps/server`, HTTP, GraphQL, native, or CLI adapters.
    The schema, tenant seed, and admin provisioning stages run once for the
-   shared database; node and role retries must not repeat them. Distributed
+   shared database; node and role retries must not repeat them. Multi-role
    topology validation rejects a role claiming another role's surface. Static
    build inputs retain exact role runtime modes, generated registries, selected
    Leptos artifacts, and browser asset manifests. Standalone CLI remains

@@ -156,8 +156,10 @@ pub struct InstallComposition {
 pub struct InstallDistributionBinding {
     pub preparation_id: Uuid,
     pub distribution_release_id: Uuid,
+    pub bundle_reference: String,
     pub bundle_root_digest: String,
     pub role_set_digest: String,
+    pub roles: Vec<rustok_modules::ModuleStaticDistributionRoleArtifact>,
     /// Present only for a fresh target whose trusted host verified the signed
     /// base receipt before the owner schema existed. Owner-ledger resolution
     /// leaves this empty.
@@ -182,12 +184,31 @@ impl InstallDistributionBinding {
                 ));
             }
         }
+        if self.bundle_reference.trim().is_empty()
+            || self.bundle_reference.len() > 512
+            || !self
+                .bundle_reference
+                .ends_with(&format!("@{}", self.bundle_root_digest))
+        {
+            return Err(
+                "distribution bundle reference must be digest-pinned to its exact root".to_string(),
+            );
+        }
+        if self.roles.is_empty()
+            || rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&self.roles)
+                .map_err(|_| "distribution role artifacts are invalid".to_string())?
+                != self.role_set_digest
+        {
+            return Err("distribution role artifacts do not match the role-set digest".to_string());
+        }
         if let Some(receipt) = &self.bootstrap_receipt {
             if receipt.payload.preparation_id != self.preparation_id
                 || receipt.payload.distribution_release_id != self.distribution_release_id
+                || receipt.payload.preparation.evidence.bundle_reference != self.bundle_reference
                 || receipt.payload.preparation.evidence.bundle_root_digest
                     != self.bundle_root_digest
                 || receipt.payload.preparation.evidence.role_set_digest != self.role_set_digest
+                || receipt.payload.preparation.evidence.roles != self.roles
             {
                 return Err(
                     "distribution binding does not match its signed bootstrap receipt".to_string(),
@@ -279,6 +300,17 @@ impl InstallRole {
             Self::Registry => "registry",
         }
     }
+
+    pub const fn static_distribution_role(self) -> rustok_modules::ModuleStaticDistributionRole {
+        match self {
+            Self::Monolith => rustok_modules::ModuleStaticDistributionRole::Monolith,
+            Self::Api => rustok_modules::ModuleStaticDistributionRole::Api,
+            Self::AdminSsr => rustok_modules::ModuleStaticDistributionRole::AdminSsr,
+            Self::StorefrontSsr => rustok_modules::ModuleStaticDistributionRole::StorefrontSsr,
+            Self::Worker => rustok_modules::ModuleStaticDistributionRole::Worker,
+            Self::Registry => rustok_modules::ModuleStaticDistributionRole::Registry,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -362,12 +394,6 @@ impl InstallTopology {
                 "install topology composition hash must be a SHA-256 hex value".to_string(),
             );
         }
-        if self.mode == InstallTopologyMode::Monolith && self.distribution.is_some() {
-            return Err(
-                "monolith install topology must not contain a distributed bundle binding"
-                    .to_string(),
-            );
-        }
         if let Some(distribution) = &self.distribution {
             distribution.validate()?;
             if let Some(receipt) = &distribution.bootstrap_receipt
@@ -379,10 +405,9 @@ impl InstallTopology {
                         .to_string(),
                 );
             }
-        } else if self.mode == InstallTopologyMode::Distributed {
+        } else {
             return Err(
-                "distributed install topology is not bound to an admitted distribution bundle"
-                    .to_string(),
+                "install topology is not bound to an admitted distribution bundle".to_string(),
             );
         }
         let mut selected_surfaces = std::collections::BTreeSet::new();
@@ -440,6 +465,25 @@ impl InstallTopology {
                 "install topology leaves a selected surface without exactly one owner".to_string(),
             );
         }
+        let distribution_roles = self
+            .distribution
+            .as_ref()
+            .expect("validated distribution binding must exist")
+            .roles
+            .iter()
+            .map(|artifact| artifact.role)
+            .collect::<std::collections::HashSet<_>>();
+        let topology_roles = self
+            .roles
+            .iter()
+            .map(|assignment| assignment.role.static_distribution_role())
+            .collect::<std::collections::HashSet<_>>();
+        if !topology_roles.is_subset(&distribution_roles) {
+            return Err(
+                "install topology requests a role absent from the admitted distribution bundle"
+                    .to_string(),
+            );
+        }
         Ok(())
     }
 }
@@ -481,6 +525,7 @@ impl InstallPlan {
         tenant: TenantBootstrap,
         admin: AdminBootstrap,
         composition: InstallComposition,
+        distribution: InstallDistributionBinding,
     ) -> Self {
         Self {
             placement,
@@ -495,7 +540,8 @@ impl InstallPlan {
             admin,
             modules: ModuleSelection::default(),
             topology: InstallTopology::for_mode(InstallTopologyMode::Monolith)
-                .bind_composition(composition.revision, composition.hash),
+                .bind_composition(composition.revision, composition.hash)
+                .bind_distribution(distribution),
             seed_profile: SeedProfile::Minimal,
             secrets_mode: SecretMode::ExternalSecret,
         }
@@ -555,30 +601,27 @@ mod tests {
 
         let distributed = InstallTopology::for_mode(InstallTopologyMode::Distributed)
             .bind_composition("distribution@1".to_string(), "a".repeat(64))
-            .bind_distribution(distribution());
+            .bind_distribution(distributed_distribution());
         assert!(distributed.validate().is_ok());
 
         let missing_bundle = InstallTopology::for_mode(InstallTopologyMode::Distributed)
             .bind_composition("distribution@1".to_string(), "a".repeat(64));
         assert_eq!(
             missing_bundle.validate().unwrap_err(),
-            "distributed install topology is not bound to an admitted distribution bundle"
+            "install topology is not bound to an admitted distribution bundle"
         );
 
         let monolith_with_bundle = InstallTopology::for_mode(InstallTopologyMode::Monolith)
             .bind_composition("distribution@1".to_string(), "a".repeat(64))
             .bind_distribution(distribution());
-        assert_eq!(
-            monolith_with_bundle.validate().unwrap_err(),
-            "monolith install topology must not contain a distributed bundle binding"
-        );
+        assert!(monolith_with_bundle.validate().is_ok());
     }
 
     #[test]
     fn distributed_topology_rejects_a_role_owning_another_roles_surface() {
         let mut topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
             .bind_composition("distribution@1".to_string(), "a".repeat(64))
-            .bind_distribution(distribution());
+            .bind_distribution(distributed_distribution());
         let api = topology
             .roles
             .iter_mut()
@@ -607,14 +650,101 @@ mod tests {
             binding.validate().unwrap_err(),
             "distribution bundle root digest must use canonical sha256:<lowercase-hex> form"
         );
+
+        let mut binding = distribution();
+        binding.roles[0].artifact_digest = format!("sha256:{}", "e".repeat(64));
+        assert_eq!(
+            binding.validate().unwrap_err(),
+            "distribution role artifacts do not match the role-set digest"
+        );
     }
 
-    fn distribution() -> InstallDistributionBinding {
+    #[test]
+    fn one_universal_bundle_supports_monolith_or_distributed_assignments() {
+        let mut monolith = InstallTopology::for_mode(InstallTopologyMode::Monolith)
+            .bind_composition("distribution@1".to_string(), "a".repeat(64));
+        monolith.distribution = Some(universal_distribution());
+        monolith.validate().unwrap();
+
+        let mut distributed = InstallTopology::for_mode(InstallTopologyMode::Distributed)
+            .bind_composition("distribution@1".to_string(), "a".repeat(64));
+        distributed.distribution = Some(universal_distribution());
+        distributed.validate().unwrap();
+    }
+
+    fn universal_distribution() -> InstallDistributionBinding {
+        let roles = [
+            rustok_modules::ModuleStaticDistributionRole::Monolith,
+            rustok_modules::ModuleStaticDistributionRole::Api,
+            rustok_modules::ModuleStaticDistributionRole::AdminSsr,
+            rustok_modules::ModuleStaticDistributionRole::StorefrontSsr,
+            rustok_modules::ModuleStaticDistributionRole::Worker,
+            rustok_modules::ModuleStaticDistributionRole::Registry,
+        ]
+        .into_iter()
+        .map(
+            |role| rustok_modules::ModuleStaticDistributionRoleArtifact {
+                role,
+                artifact_digest: format!("sha256:{}", "d".repeat(64)),
+            },
+        )
+        .collect::<Vec<_>>();
         InstallDistributionBinding {
             preparation_id: uuid::Uuid::from_u128(1),
             distribution_release_id: uuid::Uuid::from_u128(2),
+            bundle_reference: format!("registry.example/rustok/base@sha256:{}", "b".repeat(64)),
             bundle_root_digest: format!("sha256:{}", "b".repeat(64)),
-            role_set_digest: format!("sha256:{}", "c".repeat(64)),
+            role_set_digest:
+                rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+                    .unwrap(),
+            roles,
+            bootstrap_receipt: None,
+        }
+    }
+
+    fn distribution() -> InstallDistributionBinding {
+        let roles = vec![rustok_modules::ModuleStaticDistributionRoleArtifact {
+            role: rustok_modules::ModuleStaticDistributionRole::Monolith,
+            artifact_digest: format!("sha256:{}", "d".repeat(64)),
+        }];
+        InstallDistributionBinding {
+            preparation_id: uuid::Uuid::from_u128(1),
+            distribution_release_id: uuid::Uuid::from_u128(2),
+            bundle_reference: format!("registry.example/rustok/base@sha256:{}", "b".repeat(64)),
+            bundle_root_digest: format!("sha256:{}", "b".repeat(64)),
+            role_set_digest:
+                rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+                    .unwrap(),
+            roles,
+            bootstrap_receipt: None,
+        }
+    }
+
+    fn distributed_distribution() -> InstallDistributionBinding {
+        let roles = [
+            rustok_modules::ModuleStaticDistributionRole::Api,
+            rustok_modules::ModuleStaticDistributionRole::AdminSsr,
+            rustok_modules::ModuleStaticDistributionRole::StorefrontSsr,
+            rustok_modules::ModuleStaticDistributionRole::Worker,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(
+            |(index, role)| rustok_modules::ModuleStaticDistributionRoleArtifact {
+                role,
+                artifact_digest: format!("sha256:{:064x}", index + 1),
+            },
+        )
+        .collect::<Vec<_>>();
+        InstallDistributionBinding {
+            preparation_id: uuid::Uuid::from_u128(1),
+            distribution_release_id: uuid::Uuid::from_u128(2),
+            bundle_reference: format!("registry.example/rustok/base@sha256:{}", "b".repeat(64)),
+            bundle_root_digest: format!("sha256:{}", "b".repeat(64)),
+            role_set_digest:
+                rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+                    .unwrap(),
+            roles,
             bootstrap_receipt: None,
         }
     }

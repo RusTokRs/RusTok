@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{InstallPlan, InstallReceipt, InstallState, InstallStep};
+#[cfg(feature = "host-runtime")]
+use crate::InstallStep;
+use crate::{InstallPlan, InstallReceipt, InstallState};
 
 /// Host-selected execution options for one install apply operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,6 +15,12 @@ pub struct InstallApplyOptions {
     pub lock_owner: String,
     pub lock_ttl_secs: i64,
     pub pg_admin_url: Option<String>,
+    /// Host-selected Ed25519 authority for a signed fresh-target distribution
+    /// receipt. This value is deliberately skipped by transport
+    /// serialization: HTTP adapters must resolve it from host configuration,
+    /// while a local CLI may bind its explicitly selected key.
+    #[serde(skip)]
+    pub bootstrap_public_key_base64: Option<String>,
 }
 
 impl Default for InstallApplyOptions {
@@ -21,6 +29,7 @@ impl Default for InstallApplyOptions {
             lock_owner: "installer".to_string(),
             lock_ttl_secs: 900,
             pg_admin_url: None,
+            bootstrap_public_key_base64: None,
         }
     }
 }
@@ -49,7 +58,7 @@ pub struct InstallApplyOutput {
     pub verify_receipt_checksum: String,
     pub finalize_receipt_id: Uuid,
     pub finalize_receipt_checksum: String,
-    pub deployment_receipt: Option<crate::InstallDistributionDeploymentReceipt>,
+    pub deployment_receipt: crate::InstallDistributionDeploymentReceipt,
     pub next: Option<String>,
 }
 
@@ -130,7 +139,26 @@ pub trait InstallDatabasePort: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait InstallSchemaPort<R>: Send + Sync {
-    async fn apply_schema(&self, runtime: &R) -> Result<(), InstallExecutionError>;
+    /// Applies only the installer and release-owner schema required to create
+    /// the durable operation and import a signed base distribution.
+    async fn apply_owner_schema(&self, runtime: &R) -> Result<(), InstallExecutionError>;
+
+    /// Applies the remaining canonical schema after the base distribution is
+    /// durably owned by `rustok-modules`.
+    async fn apply_remaining_schema(&self, runtime: &R) -> Result<(), InstallExecutionError>;
+}
+
+#[async_trait::async_trait]
+pub trait InstallBootstrapPort<R>: Send + Sync {
+    async fn import_base_distribution(
+        &self,
+        runtime: &R,
+        plan: &InstallPlan,
+        public_key_base64: Option<&str>,
+    ) -> Result<
+        Option<rustok_modules::ModuleStaticDistributionBootstrapImportReceipt>,
+        InstallExecutionError,
+    >;
 }
 
 #[async_trait::async_trait]
@@ -208,6 +236,7 @@ pub async fn execute_install_apply<P>(
 where
     P: InstallDatabasePort
         + InstallSchemaPort<P::Runtime>
+        + InstallBootstrapPort<P::Runtime>
         + InstallPersistencePort<P::Runtime>
         + InstallSeedPort<P::Runtime>
         + InstallAdminPort<P::Runtime>
@@ -216,7 +245,7 @@ where
 {
     let report = crate::evaluate_preflight_with_deployment(
         &plan,
-        crate::InstallDeploymentPort::supports_distributed_deployment(ports),
+        crate::InstallDeploymentPort::supports_distribution_deployment(ports),
     );
     if !report.passed() {
         return Err(InstallExecutionError::new("installer preflight failed"));
@@ -235,7 +264,7 @@ where
     let database = ports
         .prepare_database(&plan, &database_url, &options)
         .await?;
-    ports.apply_schema(&database.runtime).await?;
+    ports.apply_owner_schema(&database.runtime).await?;
     let snapshot = crate::redact_install_plan(&plan);
     let mut session = ports.create_session(&database.runtime, &plan).await?;
     session = ports
@@ -246,6 +275,14 @@ where
             options.lock_ttl_secs.max(1),
         )
         .await?;
+    let bootstrap_import = ports
+        .import_base_distribution(
+            &database.runtime,
+            &plan,
+            options.bootstrap_public_key_base64.as_deref(),
+        )
+        .await?;
+    ports.apply_remaining_schema(&database.runtime).await?;
 
     let preflight = record_success(
         ports,
@@ -256,7 +293,8 @@ where
         serde_json::json!({
             "report": report,
             "mode": "apply",
-            "note": "preflight receipt recorded after database and schema bootstrap"
+            "note": "preflight receipt recorded after owner-schema bootstrap and base-distribution import",
+            "base_distribution_import": bootstrap_import
         }),
     )
     .await?;
@@ -307,7 +345,7 @@ where
         serde_json::json!({
             "migrator": "rustok-migrations::Migrator",
             "limit": null,
-            "applied": "up_to_latest"
+            "applied": "owner_schema_then_base_distribution_import_then_remaining_schema"
         }),
     )
     .await?;
@@ -365,20 +403,16 @@ where
             InstallState::AdminProvisioned,
         )
         .await?;
-    let deployment_receipt = if plan.topology.mode == crate::InstallTopologyMode::Distributed {
-        let output = crate::execute_distributed_deployment(
-            ports,
-            &database.runtime,
-            &plan,
-            session,
-            seed_outcome.tenant_id,
-        )
-        .await?;
-        session = output.session;
-        Some(output.receipt)
-    } else {
-        None
-    };
+    let output = crate::execute_distribution_deployment(
+        ports,
+        &database.runtime,
+        &plan,
+        session,
+        seed_outcome.tenant_id,
+    )
+    .await?;
+    session = output.session;
+    let deployment_receipt = output.receipt;
     let verify_outcome = ports
         .verify_installation(&database.runtime, &plan, seed_outcome.tenant_id)
         .await?;

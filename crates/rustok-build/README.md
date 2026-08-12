@@ -34,6 +34,7 @@ backend configuration and artifact/runtime paths portable while
 `ReleasePublisherPort` leaves filesystem, HTTP, and container rollout execution
 in a host adapter consumed by installer/CLI orchestration. The local filesystem
 adapter has no independent publication root; its host derives
-`<instance-root>/releases/platform` from `RUSTOK_INSTANCE_ROOT`.
+`<instance-root>/releases/platform/sha256` from the canonical
+`rustok-runtime::InstanceLayout` resolved from `RUSTOK_INSTANCE_ROOT`.
 
 See [docs](docs/README.md).

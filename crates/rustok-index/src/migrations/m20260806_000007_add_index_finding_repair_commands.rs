@@ -267,8 +267,9 @@ async fn remove_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbEr
     }
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum IndexFindingRepairCommands {
+    #[iden = "index_consistency_finding_repair_commands"]
     Table,
     TenantId,
     CommandId,

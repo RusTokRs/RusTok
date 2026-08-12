@@ -27,7 +27,8 @@ It has no HTTP server dependency and does not use a server-local background
 task. Configure `RUSTOK_INSTANCE_ROOT`, its database connection, storage driver
 JSON, worker ID, and polling delay through the
 `RUSTOK_REGISTRY_VALIDATION_*` environment variables. The local driver always
-uses `<instance-root>/storage`; its JSON does not select another physical root.
+uses `rustok-runtime::InstanceLayout::storage()` at
+`<instance-root>/storage`; its JSON does not select another physical root.
 
 Production platform-build evidence additionally requires:
 

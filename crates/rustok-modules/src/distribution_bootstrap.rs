@@ -82,7 +82,6 @@ pub struct VerifiedModuleStaticDistributionBootstrapReceipt {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleStaticDistributionBootstrapImportCommand {
     pub receipt: ModuleStaticDistributionBootstrapReceipt,
-    pub public_key_base64: String,
     pub actor_id: Uuid,
     pub idempotency_key: Uuid,
 }
@@ -100,6 +99,7 @@ pub struct ModuleStaticDistributionBootstrapImportReceipt {
 pub struct SeaOrmModuleStaticDistributionBootstrapService {
     db: DatabaseConnection,
     infrastructure: ControlPlaneInfrastructure,
+    public_key_base64: String,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -259,8 +259,13 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
     pub(crate) fn with_infrastructure(
         db: DatabaseConnection,
         infrastructure: ControlPlaneInfrastructure,
+        public_key_base64: String,
     ) -> Self {
-        Self { db, infrastructure }
+        Self {
+            db,
+            infrastructure,
+            public_key_base64,
+        }
     }
 
     /// Imports exactly one platform-signed base preparation into an empty
@@ -273,13 +278,14 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
     {
         if command.actor_id.is_nil()
             || command.idempotency_key.is_nil()
-            || command.public_key_base64.trim().is_empty()
+            || self.public_key_base64.trim().is_empty()
+            || self.public_key_base64.trim() != self.public_key_base64
         {
             return Err(ModuleStaticDistributionReleaseError::InvalidCommand);
         }
         command
             .receipt
-            .verify(&command.public_key_base64, self.infrastructure.now())
+            .verify(&self.public_key_base64, self.infrastructure.now())
             .map_err(|_| ModuleStaticDistributionReleaseError::VerificationDenied)?;
         let receipt_digest = command
             .receipt
@@ -287,7 +293,7 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
             .map_err(|_| ModuleStaticDistributionReleaseError::VerificationDenied)?;
         let request_digest = bootstrap_import_request_digest(
             &receipt_digest,
-            &command.public_key_base64,
+            &self.public_key_base64,
             command.actor_id,
         )?;
         if let Some(replay) = load_bootstrap_import_operation(

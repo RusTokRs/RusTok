@@ -1,6 +1,6 @@
 use std::{
     env,
-    path::{Component, Path, PathBuf},
+    path::{Component, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -23,8 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "RUSTOK_REGISTRY_VALIDATION_STORAGE_CONFIG_JSON",
     )?)?;
     required_env("RUSTOK_INSTANCE_ROOT")?;
-    let instance_root = rustok_runtime::resolve_instance_root_from_environment()?;
-    storage_config.bind_local_base_dir(instance_root.join("storage"));
+    let layout = rustok_runtime::resolve_instance_layout_from_environment()?;
+    storage_config.bind_local_base_dir(layout.storage());
     let actor_id = required_env("RUSTOK_REGISTRY_VALIDATION_WORKER_ID")?;
     let poll_delay = Duration::from_millis(optional_u64(
         "RUSTOK_REGISTRY_VALIDATION_POLL_DELAY_MS",
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     verifier.check_readiness().await?;
     let credential_broker = Arc::new(CommandRegistryCredentialBroker::new(
         required_instance_path(
-            &instance_root,
+            &layout,
             "RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER",
         )?,
         required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER_DIGEST")?,
@@ -107,7 +107,10 @@ fn required_env(name: &str) -> Result<String, String> {
     env::var(name).map_err(|_| format!("{name} must be configured"))
 }
 
-fn required_instance_path(instance_root: &Path, name: &str) -> Result<PathBuf, String> {
+fn required_instance_path(
+    layout: &rustok_runtime::InstanceLayout,
+    name: &str,
+) -> Result<PathBuf, String> {
     let path = PathBuf::from(required_env(name)?);
     if path.is_absolute()
         || path
@@ -118,7 +121,9 @@ fn required_instance_path(instance_root: &Path, name: &str) -> Result<PathBuf, S
             "{name} must be a path relative to RUSTOK_INSTANCE_ROOT"
         ));
     }
-    Ok(instance_root.join(path))
+    layout
+        .resolve_relative(path)
+        .map_err(|error| error.to_string())
 }
 
 fn optional_u64(name: &str, default: u64) -> Result<u64, String> {

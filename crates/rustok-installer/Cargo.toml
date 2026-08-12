@@ -21,10 +21,12 @@ thiserror.workspace = true
 uuid.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-modules.workspace = true
+rustok-runtime.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
 ed25519-dalek.workspace = true
+rustok-api.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 

@@ -25,6 +25,14 @@ Current entry points:
   dependency.
 - The normalized `RUSTOK_INSTANCE_ROOT` plus bounded instance-relative path
   resolution for executable storage, source, work, cache, and release adapters.
+- `InstancePlacement`, read-only `inspect_instance_layout`, and
+  `InstanceLayout` as the one physical-tree vocabulary for installer, server,
+  CLI, deployment agents, workers, and runtime adapters;
+  `bind_instance_placement` and `prepare_instance_layout` provide restart-safe
+  ownership markers and managed directory creation.
+- Typed digest paths convert protocol `sha256:<hex>` identities to portable
+  `<hex>` directory segments, validate role/target segments, and cannot escape
+  the selected root.
 - `db_clone` for explicit DB handle cloning from host runtime context.
 - `require_shared` and `RuntimeHandleError` for typed shared-handle lookup.
 

@@ -178,8 +178,10 @@ pub struct ModuleStaticDistributionRelease {
 pub struct ModuleStaticDistributionInstallBinding {
     pub preparation_id: Uuid,
     pub distribution_release_id: Uuid,
+    pub bundle_reference: String,
     pub bundle_root_digest: String,
     pub role_set_digest: String,
+    pub roles: Vec<crate::ModuleStaticDistributionRoleArtifact>,
 }
 
 /// Resolves one installer binding from the sole static-distribution owner.
@@ -208,8 +210,10 @@ pub async fn resolve_static_distribution_install_binding(
     let binding = ModuleStaticDistributionInstallBinding {
         preparation_id: release.distribution_build_id,
         distribution_release_id: release.distribution_release_id,
+        bundle_reference: release.evidence.bundle_reference,
         bundle_root_digest: release.evidence.bundle_root_digest,
         role_set_digest: release.evidence.role_set_digest,
+        roles: release.evidence.roles,
     };
     transaction.commit().await.map_err(store_error)?;
     Ok(binding)

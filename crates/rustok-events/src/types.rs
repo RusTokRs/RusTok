@@ -817,12 +817,14 @@ pub enum DomainEvent {
         role_set_digest: String,
         topology_digest: String,
         policy_revision: String,
-        target_nodes: u32,
+        target_assignments: u32,
         executor_mode: String,
     },
-    ModuleStaticDistributionNodeObserved {
+    ModuleStaticDistributionAssignmentObserved {
         rollout_id: Uuid,
         node_id: String,
+        role: String,
+        artifact_digest: String,
         reporter_id: String,
         observation_revision: u64,
         phase: String,
@@ -955,7 +957,7 @@ impl DomainEvent {
                 | Self::ModuleStaticDistributionRollbackBuildQueued { .. }
                 | Self::ModuleStaticDistributionReleaseRevoked { .. }
                 | Self::ModuleStaticDistributionRolloutRequested { .. }
-                | Self::ModuleStaticDistributionNodeObserved { .. }
+                | Self::ModuleStaticDistributionAssignmentObserved { .. }
                 | Self::ModuleStaticDistributionRolloutStatusChanged { .. }
                 | Self::ModuleArtifactSecurityStateChanged { .. }
         )
@@ -1119,8 +1121,8 @@ impl DomainEvent {
             Self::ModuleStaticDistributionRolloutRequested { .. } => {
                 "module.static_distribution.rollout_requested"
             }
-            Self::ModuleStaticDistributionNodeObserved { .. } => {
-                "module.static_distribution.node_observed"
+            Self::ModuleStaticDistributionAssignmentObserved { .. } => {
+                "module.static_distribution.assignment_observed"
             }
             Self::ModuleStaticDistributionRolloutStatusChanged { .. } => {
                 "module.static_distribution.rollout_status_changed"
@@ -1297,7 +1299,7 @@ impl DomainEvent {
             Self::ModuleStaticDistributionRollbackBuildQueued { .. } => 1,
             Self::ModuleStaticDistributionReleaseRevoked { .. } => 1,
             Self::ModuleStaticDistributionRolloutRequested { .. } => 1,
-            Self::ModuleStaticDistributionNodeObserved { .. } => 1,
+            Self::ModuleStaticDistributionAssignmentObserved { .. } => 1,
             Self::ModuleStaticDistributionRolloutStatusChanged { .. } => 1,
             Self::ModuleArtifactSecurityStateChanged { .. } => 1,
             Self::ModuleEffectivePolicyRevisionChanged { .. } => 1,
@@ -2750,7 +2752,7 @@ impl ValidateEvent for DomainEvent {
                 role_set_digest,
                 topology_digest,
                 policy_revision,
-                target_nodes,
+                target_assignments,
                 executor_mode,
             } => {
                 validators::validate_not_nil_uuid("rollout_id", rollout_id)?;
@@ -2763,8 +2765,8 @@ impl ValidateEvent for DomainEvent {
                     || *rollout_revision == 0
                     || *rollout_state_revision == 0
                     || *composition_revision == 0
-                    || *target_nodes == 0
-                    || *target_nodes > 1024
+                    || *target_assignments == 0
+                    || *target_assignments > 1024
                     || executor_mode != "static_native"
                 {
                     return Err(EventValidationError::InvalidValue(
@@ -2779,9 +2781,11 @@ impl ValidateEvent for DomainEvent {
                 validate_sha256_digest("role_set_digest", role_set_digest)?;
                 validate_sha256_digest("topology_digest", topology_digest)
             }
-            Self::ModuleStaticDistributionNodeObserved {
+            Self::ModuleStaticDistributionAssignmentObserved {
                 rollout_id,
                 node_id,
+                role,
+                artifact_digest,
                 reporter_id,
                 observation_revision,
                 phase,
@@ -2790,21 +2794,27 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("rollout_id", rollout_id)?;
                 validators::validate_not_empty("node_id", node_id)?;
                 validators::validate_max_length("node_id", node_id, 128)?;
+                validators::validate_not_empty("role", role)?;
                 validators::validate_not_empty("reporter_id", reporter_id)?;
                 validators::validate_max_length("reporter_id", reporter_id, 128)?;
                 if *observation_revision == 0
                     || node_id.trim() != node_id
                     || node_id.chars().any(char::is_control)
+                    || !matches!(
+                        role.as_str(),
+                        "monolith" | "api" | "admin_ssr" | "storefront_ssr" | "worker" | "registry"
+                    )
                     || reporter_id.trim() != reporter_id
                     || reporter_id.chars().any(char::is_control)
                     || !matches!(phase.as_str(), "prepared" | "healthy" | "active" | "failed")
                 {
                     return Err(EventValidationError::InvalidValue(
-                        "static distribution node observation",
-                        "must contain a positive revision, canonical node, and supported phase"
+                        "static distribution assignment observation",
+                        "must contain a positive revision, canonical node and role, and supported phase"
                             .to_string(),
                     ));
                 }
+                validate_sha256_digest("artifact_digest", artifact_digest)?;
                 validate_sha256_digest("report_digest", report_digest)
             }
             Self::ModuleStaticDistributionRolloutStatusChanged {

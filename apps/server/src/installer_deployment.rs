@@ -16,7 +16,7 @@ pub struct ServerInstallerDeploymentAdapter;
 
 #[async_trait::async_trait]
 impl InstallDeploymentPort<DatabaseConnection> for ServerInstallerDeploymentAdapter {
-    fn supports_distributed_deployment(&self) -> bool {
+    fn supports_distribution_deployment(&self) -> bool {
         false
     }
 
@@ -26,7 +26,7 @@ impl InstallDeploymentPort<DatabaseConnection> for ServerInstallerDeploymentAdap
         _request: InstallDistributionDeploymentRequest,
     ) -> Result<InstallDistributionDeployment, InstallExecutionError> {
         Err(InstallExecutionError::new(
-            "distributed installer apply requires the owner-controlled distribution rollout adapter",
+            "installer apply requires the owner-controlled distribution rollout adapter",
         ))
     }
 }
@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn unsafe_per_role_build_deployment_is_not_advertised() {
         assert!(
-            !InstallDeploymentPort::<sea_orm::DatabaseConnection>::supports_distributed_deployment(
+            !InstallDeploymentPort::<sea_orm::DatabaseConnection>::supports_distribution_deployment(
                 &ServerInstallerDeploymentAdapter,
             )
         );

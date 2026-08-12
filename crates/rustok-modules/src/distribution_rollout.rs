@@ -17,6 +17,7 @@ use rustok_events::DomainEvent;
 use crate::{
     ControlPlaneInfrastructure, ModuleStaticDistributionExecutorMode,
     ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseStatus,
+    ModuleStaticDistributionRole,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     distribution_release::{load_release_record, load_release_state},
     promotion::{digest_json, valid_digest, valid_reference},
@@ -24,7 +25,7 @@ use crate::{
 
 const ROLLOUT_STATE_ID: &str = "current";
 const TOPOLOGY_DIGEST_CONTRACT: &str = "rustok.static_distribution.topology";
-const MAX_TARGET_NODES: usize = 1024;
+const MAX_TARGET_ASSIGNMENTS: usize = 1024;
 const MAX_NODE_ID_BYTES: usize = 128;
 const MAX_REFERENCE_BYTES: usize = 512;
 const MAX_POLICY_REVISION_BYTES: usize = 128;
@@ -71,7 +72,7 @@ impl ModuleStaticDistributionRolloutStatus {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ModuleStaticDistributionNodePhase {
+pub enum ModuleStaticDistributionAssignmentPhase {
     Pending,
     Prepared,
     Healthy,
@@ -79,7 +80,7 @@ pub enum ModuleStaticDistributionNodePhase {
     Failed,
 }
 
-impl ModuleStaticDistributionNodePhase {
+impl ModuleStaticDistributionAssignmentPhase {
     const fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
@@ -98,7 +99,7 @@ impl ModuleStaticDistributionNodePhase {
             "active" => Ok(Self::Active),
             "failed" => Ok(Self::Failed),
             _ => Err(ModuleStaticDistributionRolloutError::Store(
-                "static distribution node phase is invalid".to_string(),
+                "static distribution assignment phase is invalid".to_string(),
             )),
         }
     }
@@ -109,7 +110,15 @@ impl ModuleStaticDistributionNodePhase {
 pub struct ModuleStaticDistributionTopologySnapshot {
     pub topology_reference: String,
     pub topology_digest: String,
-    pub node_ids: Vec<String>,
+    pub assignments: Vec<ModuleStaticDistributionAssignment>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleStaticDistributionAssignment {
+    pub node_id: String,
+    pub role: ModuleStaticDistributionRole,
+    pub artifact_digest: String,
 }
 
 #[async_trait]
@@ -141,18 +150,20 @@ pub struct ModuleStaticDistributionHealthEvidence {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModuleStaticDistributionNodeFailure {
+pub struct ModuleStaticDistributionAssignmentFailure {
     pub code: String,
     pub detail: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModuleStaticDistributionNodeReport {
+pub struct ModuleStaticDistributionAssignmentReport {
     pub rollout_id: Uuid,
     pub node_id: String,
+    pub role: ModuleStaticDistributionRole,
+    pub artifact_digest: String,
     pub expected_observation_revision: u64,
-    pub phase: ModuleStaticDistributionNodePhase,
+    pub phase: ModuleStaticDistributionAssignmentPhase,
     pub distribution_release_id: Uuid,
     pub distribution_release_revision: u64,
     pub composition_revision: u64,
@@ -162,7 +173,7 @@ pub struct ModuleStaticDistributionNodeReport {
     pub policy_revision: String,
     pub executor_mode: ModuleStaticDistributionExecutorMode,
     pub health_evidence: Option<ModuleStaticDistributionHealthEvidence>,
-    pub failure: Option<ModuleStaticDistributionNodeFailure>,
+    pub failure: Option<ModuleStaticDistributionAssignmentFailure>,
     pub reporter_id: String,
     pub idempotency_key: Uuid,
 }
@@ -176,7 +187,7 @@ pub trait ModuleStaticDistributionRolloutAuthorizer: Send + Sync {
 
     async fn authorize_report(
         &self,
-        command: &ModuleStaticDistributionNodeReport,
+        command: &ModuleStaticDistributionAssignmentReport,
     ) -> Result<(), ModuleStaticDistributionRolloutError>;
 }
 
@@ -188,13 +199,15 @@ pub struct ModuleStaticDistributionRolloutState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleStaticDistributionRolloutNode {
+pub struct ModuleStaticDistributionRolloutAssignment {
     pub node_id: String,
+    pub role: ModuleStaticDistributionRole,
+    pub artifact_digest: String,
     pub ordinal: u16,
     pub observation_revision: u64,
-    pub phase: ModuleStaticDistributionNodePhase,
+    pub phase: ModuleStaticDistributionAssignmentPhase,
     pub health_evidence: Option<ModuleStaticDistributionHealthEvidence>,
-    pub failure: Option<ModuleStaticDistributionNodeFailure>,
+    pub failure: Option<ModuleStaticDistributionAssignmentFailure>,
     pub reported_by: Option<String>,
     pub last_report_digest: Option<String>,
 }
@@ -215,11 +228,11 @@ pub struct ModuleStaticDistributionRollout {
     pub topology_reference: String,
     pub topology_digest: String,
     pub policy_revision: String,
-    pub target_node_count: u16,
+    pub target_assignment_count: u16,
     pub status: ModuleStaticDistributionRolloutStatus,
     pub requested_by: Uuid,
-    pub failure: Option<ModuleStaticDistributionNodeFailure>,
-    pub nodes: Vec<ModuleStaticDistributionRolloutNode>,
+    pub failure: Option<ModuleStaticDistributionAssignmentFailure>,
+    pub assignments: Vec<ModuleStaticDistributionRolloutAssignment>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,14 +245,15 @@ pub struct ModuleStaticDistributionRolloutReceipt {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleStaticDistributionNodeReportReceipt {
+pub struct ModuleStaticDistributionAssignmentReportReceipt {
     pub rollout_id: Uuid,
     pub rollout_revision: u64,
     pub rollout_state_revision: u64,
     pub rollout_status: ModuleStaticDistributionRolloutStatus,
     pub node_id: String,
+    pub role: ModuleStaticDistributionRole,
     pub observation_revision: u64,
-    pub phase: ModuleStaticDistributionNodePhase,
+    pub phase: ModuleStaticDistributionAssignmentPhase,
     pub created: bool,
 }
 
@@ -384,7 +398,7 @@ where
             &command,
         )
         .await?;
-        insert_rollout_nodes(&transaction, rollout_id, &topology.node_ids).await?;
+        insert_rollout_assignments(&transaction, rollout_id, &topology.assignments).await?;
         advance_rollout_state(
             &transaction,
             state.revision,
@@ -419,7 +433,7 @@ where
                         role_set_digest: release.evidence.role_set_digest,
                         topology_digest: topology.topology_digest,
                         policy_revision: command.policy_revision,
-                        target_nodes: u32::try_from(topology.node_ids.len())
+                        target_assignments: u32::try_from(topology.assignments.len())
                             .map_err(|_| ModuleStaticDistributionRolloutError::InvalidTopology)?,
                         executor_mode: "static_native".to_string(),
                     },
@@ -433,8 +447,8 @@ where
 
     pub async fn report(
         &self,
-        command: ModuleStaticDistributionNodeReport,
-    ) -> Result<ModuleStaticDistributionNodeReportReceipt, ModuleStaticDistributionRolloutError>
+        command: ModuleStaticDistributionAssignmentReport,
+    ) -> Result<ModuleStaticDistributionAssignmentReportReceipt, ModuleStaticDistributionRolloutError>
     {
         validate_report(&command)?;
         self.authorizer.authorize_report(&command).await?;
@@ -486,22 +500,31 @@ where
             return Err(ModuleStaticDistributionRolloutError::StaleRollout);
         }
         validate_report_identity(&command, &rollout)?;
-        let node =
-            load_rollout_node(&transaction, command.rollout_id, &command.node_id, true).await?;
-        if node.observation_revision != command.expected_observation_revision {
+        let assignment = load_rollout_assignment(
+            &transaction,
+            command.rollout_id,
+            &command.node_id,
+            command.role,
+            true,
+        )
+        .await?;
+        if assignment.observation_revision != command.expected_observation_revision {
             return Err(
                 ModuleStaticDistributionRolloutError::ObservationRevisionConflict {
                     expected: command.expected_observation_revision,
-                    current: node.observation_revision,
+                    current: assignment.observation_revision,
                 },
             );
         }
-        validate_transition(node.phase, command.phase, rollout.status)?;
-        let observation_revision = node
+        if assignment.artifact_digest != command.artifact_digest {
+            return Err(ModuleStaticDistributionRolloutError::ObservationIdentityMismatch);
+        }
+        validate_transition(assignment.phase, command.phase, rollout.status)?;
+        let observation_revision = assignment
             .observation_revision
             .checked_add(1)
             .ok_or(ModuleStaticDistributionRolloutError::RevisionOverflow)?;
-        update_rollout_node(
+        update_rollout_assignment(
             &transaction,
             &command,
             observation_revision,
@@ -510,12 +533,12 @@ where
         .await?;
 
         let phase_counts = load_phase_counts(&transaction, command.rollout_id).await?;
-        let target_nodes = usize::from(rollout.target_node_count);
+        let target_assignments = usize::from(rollout.target_assignment_count);
         let mut next_status = rollout.status;
         let mut state_revision = state.revision;
         let mut observed_rollout_id = state.observed_rollout_id;
         let mut status_failure = None;
-        if command.phase == ModuleStaticDistributionNodePhase::Failed {
+        if command.phase == ModuleStaticDistributionAssignmentPhase::Failed {
             status_failure = command.failure.clone();
             next_status = if rollout.status == ModuleStaticDistributionRolloutStatus::Converged {
                 observed_rollout_id = None;
@@ -527,11 +550,11 @@ where
             rollout.status,
             ModuleStaticDistributionRolloutStatus::Preparing
                 | ModuleStaticDistributionRolloutStatus::Degraded
-        ) && phase_counts.ready_for_activation() == target_nodes
+        ) && phase_counts.ready_for_activation() == target_assignments
         {
             next_status = ModuleStaticDistributionRolloutStatus::Activating;
         } else if rollout.status == ModuleStaticDistributionRolloutStatus::Activating
-            && phase_counts.active == target_nodes
+            && phase_counts.active == target_assignments
         {
             next_status = ModuleStaticDistributionRolloutStatus::Converged;
             observed_rollout_id = Some(rollout.rollout_id);
@@ -567,12 +590,13 @@ where
             .await?;
         }
 
-        let receipt = ModuleStaticDistributionNodeReportReceipt {
+        let receipt = ModuleStaticDistributionAssignmentReportReceipt {
             rollout_id: rollout.rollout_id,
             rollout_revision: rollout.rollout_revision,
             rollout_state_revision: state_revision,
             rollout_status: next_status,
             node_id: command.node_id.clone(),
+            role: command.role,
             observation_revision,
             phase: command.phase,
             created: true,
@@ -584,9 +608,11 @@ where
                 self.infrastructure.event_envelope(
                     None,
                     None,
-                    DomainEvent::ModuleStaticDistributionNodeObserved {
+                    DomainEvent::ModuleStaticDistributionAssignmentObserved {
                         rollout_id: rollout.rollout_id,
                         node_id: command.node_id,
+                        role: role_name(command.role).to_string(),
+                        artifact_digest: command.artifact_digest,
                         reporter_id: command.reporter_id,
                         observation_revision,
                         phase: command.phase.as_str().to_string(),
@@ -684,7 +710,7 @@ pub(crate) async fn revoke_rollouts_for_release(
             }
             _ => continue,
         };
-        let failure = ModuleStaticDistributionNodeFailure {
+        let failure = ModuleStaticDistributionAssignmentFailure {
             code: "release_revoked".to_string(),
             detail: format!("distribution release was revoked under policy `{policy_revision}`"),
         };
@@ -751,8 +777,9 @@ struct OperationRecord {
     rollout_state_revision: Option<u64>,
     rollout_status: Option<ModuleStaticDistributionRolloutStatus>,
     node_id: Option<String>,
+    role: Option<ModuleStaticDistributionRole>,
     observation_revision: Option<u64>,
-    node_phase: Option<ModuleStaticDistributionNodePhase>,
+    assignment_phase: Option<ModuleStaticDistributionAssignmentPhase>,
     completed: bool,
 }
 
@@ -788,7 +815,7 @@ pub enum ModuleStaticDistributionRolloutError {
     )]
     RevisionConflict { expected: u64, current: u64 },
     #[error(
-        "static distribution node observation revision conflict: expected {expected}, current {current}"
+        "static distribution assignment observation revision conflict: expected {expected}, current {current}"
     )]
     ObservationRevisionConflict { expected: u64, current: u64 },
     #[error("a static distribution rollout is already preparing or activating")]
@@ -801,11 +828,11 @@ pub enum ModuleStaticDistributionRolloutError {
     TerminalRollout,
     #[error("static distribution rollout was not found")]
     RolloutNotFound,
-    #[error("static distribution rollout node was not found")]
-    NodeNotFound,
-    #[error("static distribution node report identity does not match the desired rollout")]
+    #[error("static distribution rollout assignment was not found")]
+    AssignmentNotFound,
+    #[error("static distribution assignment report identity does not match the desired rollout")]
     ObservationIdentityMismatch,
-    #[error("static distribution node phase transition is invalid")]
+    #[error("static distribution assignment phase transition is invalid")]
     InvalidTransition,
     #[error("static distribution rollout idempotency key conflicts with another command")]
     IdempotencyConflict,
@@ -852,17 +879,17 @@ fn validate_release(
 struct TopologyDigestInput<'a> {
     contract: &'static str,
     topology_reference: &'a str,
-    node_ids: &'a [String],
+    assignments: &'a [ModuleStaticDistributionAssignment],
 }
 
 pub fn module_static_distribution_topology_digest(
     topology_reference: &str,
-    node_ids: &[String],
+    assignments: &[ModuleStaticDistributionAssignment],
 ) -> Result<String, ModuleStaticDistributionRolloutError> {
     digest_json(&TopologyDigestInput {
         contract: TOPOLOGY_DIGEST_CONTRACT,
         topology_reference,
-        node_ids,
+        assignments,
     })
     .map_err(promotion_error)
 }
@@ -873,22 +900,21 @@ fn validate_topology(
     if !valid_reference(&topology.topology_reference)
         || topology.topology_reference.len() > MAX_REFERENCE_BYTES
         || !valid_digest(&topology.topology_digest)
-        || topology.node_ids.is_empty()
-        || topology.node_ids.len() > MAX_TARGET_NODES
-        || topology
-            .node_ids
-            .iter()
-            .any(|node_id| !valid_text(node_id, MAX_NODE_ID_BYTES))
-        || topology
-            .node_ids
-            .windows(2)
-            .any(|nodes| nodes[0] >= nodes[1])
+        || topology.assignments.is_empty()
+        || topology.assignments.len() > MAX_TARGET_ASSIGNMENTS
+        || topology.assignments.iter().any(|assignment| {
+            !valid_text(&assignment.node_id, MAX_NODE_ID_BYTES)
+                || !valid_digest(&assignment.artifact_digest)
+        })
+        || topology.assignments.windows(2).any(|assignments| {
+            assignment_sort_key(&assignments[0]) >= assignment_sort_key(&assignments[1])
+        })
     {
         return Err(ModuleStaticDistributionRolloutError::InvalidTopology);
     }
     let expected_digest = module_static_distribution_topology_digest(
         &topology.topology_reference,
-        &topology.node_ids,
+        &topology.assignments,
     )?;
     if topology.topology_digest != expected_digest {
         return Err(ModuleStaticDistributionRolloutError::InvalidTopology);
@@ -896,8 +922,54 @@ fn validate_topology(
     Ok(())
 }
 
+fn assignment_sort_key(assignment: &ModuleStaticDistributionAssignment) -> (&str, u8, &str) {
+    (
+        assignment.node_id.as_str(),
+        role_ordinal(assignment.role),
+        assignment.artifact_digest.as_str(),
+    )
+}
+
+const fn role_ordinal(role: ModuleStaticDistributionRole) -> u8 {
+    match role {
+        ModuleStaticDistributionRole::Monolith => 0,
+        ModuleStaticDistributionRole::Api => 1,
+        ModuleStaticDistributionRole::AdminSsr => 2,
+        ModuleStaticDistributionRole::StorefrontSsr => 3,
+        ModuleStaticDistributionRole::Worker => 4,
+        ModuleStaticDistributionRole::Registry => 5,
+    }
+}
+
+const fn role_name(role: ModuleStaticDistributionRole) -> &'static str {
+    match role {
+        ModuleStaticDistributionRole::Monolith => "monolith",
+        ModuleStaticDistributionRole::Api => "api",
+        ModuleStaticDistributionRole::AdminSsr => "admin_ssr",
+        ModuleStaticDistributionRole::StorefrontSsr => "storefront_ssr",
+        ModuleStaticDistributionRole::Worker => "worker",
+        ModuleStaticDistributionRole::Registry => "registry",
+    }
+}
+
+fn parse_role(
+    value: &str,
+) -> Result<ModuleStaticDistributionRole, ModuleStaticDistributionRolloutError> {
+    match value {
+        "monolith" => Ok(ModuleStaticDistributionRole::Monolith),
+        "api" => Ok(ModuleStaticDistributionRole::Api),
+        "admin_ssr" => Ok(ModuleStaticDistributionRole::AdminSsr),
+        "storefront_ssr" => Ok(ModuleStaticDistributionRole::StorefrontSsr),
+        "worker" => Ok(ModuleStaticDistributionRole::Worker),
+        "registry" => Ok(ModuleStaticDistributionRole::Registry),
+        _ => Err(ModuleStaticDistributionRolloutError::Store(
+            "static distribution assignment role is invalid".to_string(),
+        )),
+    }
+}
+
 fn validate_report(
-    command: &ModuleStaticDistributionNodeReport,
+    command: &ModuleStaticDistributionAssignmentReport,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let health_valid = command.health_evidence.as_ref().is_some_and(|evidence| {
         valid_reference(&evidence.reference)
@@ -909,19 +981,21 @@ fn validate_report(
             && valid_text(&failure.detail, MAX_FAILURE_DETAIL_BYTES)
     });
     let phase_payload_valid = match command.phase {
-        ModuleStaticDistributionNodePhase::Prepared => {
+        ModuleStaticDistributionAssignmentPhase::Prepared => {
             command.health_evidence.is_none() && command.failure.is_none()
         }
-        ModuleStaticDistributionNodePhase::Healthy | ModuleStaticDistributionNodePhase::Active => {
+        ModuleStaticDistributionAssignmentPhase::Healthy
+        | ModuleStaticDistributionAssignmentPhase::Active => {
             health_valid && command.failure.is_none()
         }
-        ModuleStaticDistributionNodePhase::Failed => {
+        ModuleStaticDistributionAssignmentPhase::Failed => {
             command.health_evidence.is_none() && failure_valid
         }
-        ModuleStaticDistributionNodePhase::Pending => false,
+        ModuleStaticDistributionAssignmentPhase::Pending => false,
     };
     if command.rollout_id.is_nil()
         || !valid_text(&command.node_id, MAX_NODE_ID_BYTES)
+        || !valid_digest(&command.artifact_digest)
         || command.distribution_release_id.is_nil()
         || command.distribution_release_revision == 0
         || command.composition_revision == 0
@@ -940,7 +1014,7 @@ fn validate_report(
 }
 
 fn validate_report_identity(
-    command: &ModuleStaticDistributionNodeReport,
+    command: &ModuleStaticDistributionAssignmentReport,
     rollout: &ModuleStaticDistributionRollout,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     if command.distribution_release_id != rollout.distribution_release_id
@@ -958,30 +1032,32 @@ fn validate_report_identity(
 }
 
 fn validate_transition(
-    current: ModuleStaticDistributionNodePhase,
-    next: ModuleStaticDistributionNodePhase,
+    current: ModuleStaticDistributionAssignmentPhase,
+    next: ModuleStaticDistributionAssignmentPhase,
     rollout_status: ModuleStaticDistributionRolloutStatus,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let valid = matches!(
         (current, next),
         (
-            ModuleStaticDistributionNodePhase::Pending,
-            ModuleStaticDistributionNodePhase::Prepared | ModuleStaticDistributionNodePhase::Failed
+            ModuleStaticDistributionAssignmentPhase::Pending,
+            ModuleStaticDistributionAssignmentPhase::Prepared
+                | ModuleStaticDistributionAssignmentPhase::Failed
         ) | (
-            ModuleStaticDistributionNodePhase::Prepared,
-            ModuleStaticDistributionNodePhase::Healthy | ModuleStaticDistributionNodePhase::Failed
+            ModuleStaticDistributionAssignmentPhase::Prepared,
+            ModuleStaticDistributionAssignmentPhase::Healthy
+                | ModuleStaticDistributionAssignmentPhase::Failed
         ) | (
-            ModuleStaticDistributionNodePhase::Healthy,
-            ModuleStaticDistributionNodePhase::Failed
+            ModuleStaticDistributionAssignmentPhase::Healthy,
+            ModuleStaticDistributionAssignmentPhase::Failed
         ) | (
-            ModuleStaticDistributionNodePhase::Active,
-            ModuleStaticDistributionNodePhase::Failed
+            ModuleStaticDistributionAssignmentPhase::Active,
+            ModuleStaticDistributionAssignmentPhase::Failed
         )
-    ) || (current == ModuleStaticDistributionNodePhase::Healthy
-        && next == ModuleStaticDistributionNodePhase::Active
+    ) || (current == ModuleStaticDistributionAssignmentPhase::Healthy
+        && next == ModuleStaticDistributionAssignmentPhase::Active
         && rollout_status == ModuleStaticDistributionRolloutStatus::Activating)
-        || (current == ModuleStaticDistributionNodePhase::Failed
-            && next == ModuleStaticDistributionNodePhase::Prepared
+        || (current == ModuleStaticDistributionAssignmentPhase::Failed
+            && next == ModuleStaticDistributionAssignmentPhase::Prepared
             && rollout_status == ModuleStaticDistributionRolloutStatus::Degraded);
     if !valid {
         return Err(ModuleStaticDistributionRolloutError::InvalidTransition);
@@ -1007,7 +1083,7 @@ async fn insert_rollout(
                  (rollout_id, predecessor_rollout_id, distribution_release_id,
                   rollout_revision, distribution_release_revision, composition_revision,
                   composition_digest, bundle_reference, bundle_root_digest, role_set_digest, executor_mode,
-                  topology_reference, topology_digest, policy_revision, target_node_count,
+                  topology_reference, topology_digest, policy_revision, target_assignment_count,
                   status, requested_by, requested_at, status_changed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'static_native', {}, {}, {}, {},
                          'preparing', {}, {}, {})",
@@ -1043,7 +1119,7 @@ async fn insert_rollout(
                 topology.topology_reference.clone().into(),
                 topology.topology_digest.clone().into(),
                 command.policy_revision.clone().into(),
-                i64::try_from(topology.node_ids.len())
+                i64::try_from(topology.assignments.len())
                     .map_err(|_| ModuleStaticDistributionRolloutError::InvalidTopology)?
                     .into(),
                 uuid_value(command.actor_id, backend),
@@ -1054,27 +1130,31 @@ async fn insert_rollout(
     Ok(())
 }
 
-async fn insert_rollout_nodes(
+async fn insert_rollout_assignments(
     transaction: &DatabaseTransaction,
     rollout_id: Uuid,
-    node_ids: &[String],
+    assignments: &[ModuleStaticDistributionAssignment],
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
-    for (ordinal, node_id) in node_ids.iter().enumerate() {
+    for (ordinal, assignment) in assignments.iter().enumerate() {
         transaction
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO module_static_distribution_rollout_nodes
-                     (rollout_id, node_id, ordinal, observation_revision, phase)
-                     VALUES ({}, {}, {}, 0, 'pending')",
+                    "INSERT INTO module_static_distribution_rollout_assignments
+                     (rollout_id, node_id, role, artifact_digest, ordinal, observation_revision, phase)
+                     VALUES ({}, {}, {}, {}, {}, 0, 'pending')",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
                 ),
                 vec![
                     uuid_value(rollout_id, backend),
-                    node_id.clone().into(),
+                    assignment.node_id.clone().into(),
+                    role_name(assignment.role).to_string().into(),
+                    assignment.artifact_digest.clone().into(),
                     i64::try_from(ordinal)
                         .map_err(|_| ModuleStaticDistributionRolloutError::InvalidTopology)?
                         .into(),
@@ -1086,9 +1166,9 @@ async fn insert_rollout_nodes(
     Ok(())
 }
 
-async fn update_rollout_node(
+async fn update_rollout_assignment(
     transaction: &DatabaseTransaction,
-    command: &ModuleStaticDistributionNodeReport,
+    command: &ModuleStaticDistributionAssignmentReport,
     observation_revision: u64,
     report_digest: &str,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
@@ -1110,7 +1190,7 @@ async fn update_rollout_node(
         .execute(Statement::from_sql_and_values(
             backend,
             format!(
-                "UPDATE module_static_distribution_rollout_nodes
+                "UPDATE module_static_distribution_rollout_assignments
                  SET observation_revision = {}, phase = {}, observed_release_id = {},
                      observed_release_revision = {}, observed_composition_revision = {},
                      observed_composition_digest = {}, observed_bundle_root_digest = {},
@@ -1120,7 +1200,7 @@ async fn update_rollout_node(
                      failure_code = {}, failure_detail = {}, reported_by = {},
                      last_report_digest = {}, first_reported_at = COALESCE(first_reported_at, {}),
                      last_reported_at = {}
-                 WHERE rollout_id = {} AND node_id = {} AND observation_revision = {}",
+                 WHERE rollout_id = {} AND node_id = {} AND role = {} AND observation_revision = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -1141,6 +1221,7 @@ async fn update_rollout_node(
                 placeholder(backend, 16),
                 placeholder(backend, 17),
                 placeholder(backend, 18),
+                placeholder(backend, 19),
             ),
             vec![
                 revision_value(observation_revision)?,
@@ -1160,6 +1241,7 @@ async fn update_rollout_node(
                 report_digest.to_owned().into(),
                 uuid_value(command.rollout_id, backend),
                 command.node_id.clone().into(),
+                role_name(command.role).to_string().into(),
                 revision_value_allow_zero(command.expected_observation_revision)?,
             ],
         ))
@@ -1181,7 +1263,7 @@ async fn update_rollout_status(
     rollout_id: Uuid,
     expected_status: ModuleStaticDistributionRolloutStatus,
     next_status: ModuleStaticDistributionRolloutStatus,
-    failure: Option<&ModuleStaticDistributionNodeFailure>,
+    failure: Option<&ModuleStaticDistributionAssignmentFailure>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let (converged_at, failed_at) = match next_status {
@@ -1260,7 +1342,7 @@ async fn load_phase_counts(
             backend,
             format!(
                 "SELECT phase, COUNT(*) AS count
-                 FROM module_static_distribution_rollout_nodes
+                 FROM module_static_distribution_rollout_assignments
                  WHERE rollout_id = {} GROUP BY phase",
                 placeholder(backend, 1),
             ),
@@ -1274,15 +1356,15 @@ async fn load_phase_counts(
         let count: i64 = row.try_get("", "count").map_err(store_error)?;
         let count = usize::try_from(count).map_err(|_| {
             ModuleStaticDistributionRolloutError::Store(
-                "static distribution node count is invalid".to_string(),
+                "static distribution assignment count is invalid".to_string(),
             )
         })?;
-        match ModuleStaticDistributionNodePhase::parse(&phase)? {
-            ModuleStaticDistributionNodePhase::Pending => counts.pending = count,
-            ModuleStaticDistributionNodePhase::Prepared => counts.prepared = count,
-            ModuleStaticDistributionNodePhase::Healthy => counts.healthy = count,
-            ModuleStaticDistributionNodePhase::Active => counts.active = count,
-            ModuleStaticDistributionNodePhase::Failed => counts.failed = count,
+        match ModuleStaticDistributionAssignmentPhase::parse(&phase)? {
+            ModuleStaticDistributionAssignmentPhase::Pending => counts.pending = count,
+            ModuleStaticDistributionAssignmentPhase::Prepared => counts.prepared = count,
+            ModuleStaticDistributionAssignmentPhase::Healthy => counts.healthy = count,
+            ModuleStaticDistributionAssignmentPhase::Active => counts.active = count,
+            ModuleStaticDistributionAssignmentPhase::Failed => counts.failed = count,
         }
     }
     Ok(counts)
@@ -1385,7 +1467,7 @@ async fn load_rollout<C: ConnectionTrait>(
                         rollout_revision, distribution_release_revision, composition_revision,
                         composition_digest, bundle_reference, bundle_root_digest, role_set_digest,
                         executor_mode,
-                        topology_reference, topology_digest, policy_revision, target_node_count,
+                        topology_reference, topology_digest, policy_revision, target_assignment_count,
                         status, requested_by, failure_code, failure_detail
                  FROM module_static_distribution_rollouts WHERE rollout_id = {}{lock}",
                 placeholder(backend, 1),
@@ -1395,14 +1477,14 @@ async fn load_rollout<C: ConnectionTrait>(
         .await
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionRolloutError::RolloutNotFound)?;
-    let node_rows = connection
+    let assignment_rows = connection
         .query_all(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT node_id, ordinal, observation_revision, phase,
+                "SELECT node_id, role, artifact_digest, ordinal, observation_revision, phase,
                         health_evidence_reference, health_evidence_digest,
                         failure_code, failure_detail, reported_by, last_report_digest
-                 FROM module_static_distribution_rollout_nodes
+                 FROM module_static_distribution_rollout_assignments
                  WHERE rollout_id = {} ORDER BY ordinal",
                 placeholder(backend, 1),
             ),
@@ -1410,17 +1492,19 @@ async fn load_rollout<C: ConnectionTrait>(
         ))
         .await
         .map_err(store_error)?;
-    let nodes = node_rows
+    let assignments = assignment_rows
         .iter()
-        .map(node_from_row)
+        .map(assignment_from_row)
         .collect::<Result<Vec<_>, _>>()?;
-    let target_node_count: i64 = row.try_get("", "target_node_count").map_err(store_error)?;
-    let target_node_count = u16::try_from(target_node_count).map_err(|_| {
+    let target_assignment_count: i64 = row
+        .try_get("", "target_assignment_count")
+        .map_err(store_error)?;
+    let target_assignment_count = u16::try_from(target_assignment_count).map_err(|_| {
         ModuleStaticDistributionRolloutError::Store(
-            "static distribution target-node count is invalid".to_string(),
+            "static distribution target-assignment count is invalid".to_string(),
         )
     })?;
-    if usize::from(target_node_count) != nodes.len() {
+    if usize::from(target_assignment_count) != assignments.len() {
         return Err(ModuleStaticDistributionRolloutError::Store(
             "static distribution rollout topology is incomplete".to_string(),
         ));
@@ -1434,7 +1518,9 @@ async fn load_rollout<C: ConnectionTrait>(
     let failure_code: Option<String> = row.try_get("", "failure_code").map_err(store_error)?;
     let failure_detail: Option<String> = row.try_get("", "failure_detail").map_err(store_error)?;
     let failure = match (failure_code, failure_detail) {
-        (Some(code), Some(detail)) => Some(ModuleStaticDistributionNodeFailure { code, detail }),
+        (Some(code), Some(detail)) => {
+            Some(ModuleStaticDistributionAssignmentFailure { code, detail })
+        }
         (None, None) => None,
         _ => {
             return Err(ModuleStaticDistributionRolloutError::Store(
@@ -1462,22 +1548,23 @@ async fn load_rollout<C: ConnectionTrait>(
         topology_reference: row.try_get("", "topology_reference").map_err(store_error)?,
         topology_digest: row.try_get("", "topology_digest").map_err(store_error)?,
         policy_revision: row.try_get("", "policy_revision").map_err(store_error)?,
-        target_node_count,
+        target_assignment_count,
         status: ModuleStaticDistributionRolloutStatus::parse(
             &row.try_get::<String>("", "status").map_err(store_error)?,
         )?,
         requested_by: uuid_from_row(&row, "requested_by", backend).map_err(store_error)?,
         failure,
-        nodes,
+        assignments,
     })
 }
 
-async fn load_rollout_node<C: ConnectionTrait>(
+async fn load_rollout_assignment<C: ConnectionTrait>(
     connection: &C,
     rollout_id: Uuid,
     node_id: &str,
+    role: ModuleStaticDistributionRole,
     lock_row: bool,
-) -> Result<ModuleStaticDistributionRolloutNode, ModuleStaticDistributionRolloutError> {
+) -> Result<ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutError> {
     let backend = connection.get_database_backend();
     let lock = if lock_row && backend == DbBackend::Postgres {
         " FOR UPDATE"
@@ -1488,25 +1575,30 @@ async fn load_rollout_node<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT node_id, ordinal, observation_revision, phase,
+                "SELECT node_id, role, artifact_digest, ordinal, observation_revision, phase,
                         health_evidence_reference, health_evidence_digest,
                         failure_code, failure_detail, reported_by, last_report_digest
-                 FROM module_static_distribution_rollout_nodes
-                 WHERE rollout_id = {} AND node_id = {}{lock}",
+                 FROM module_static_distribution_rollout_assignments
+                 WHERE rollout_id = {} AND node_id = {} AND role = {}{lock}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
+                placeholder(backend, 3),
             ),
-            vec![uuid_value(rollout_id, backend), node_id.to_owned().into()],
+            vec![
+                uuid_value(rollout_id, backend),
+                node_id.to_owned().into(),
+                role_name(role).to_string().into(),
+            ],
         ))
         .await
         .map_err(store_error)?
-        .ok_or(ModuleStaticDistributionRolloutError::NodeNotFound)?;
-    node_from_row(&row)
+        .ok_or(ModuleStaticDistributionRolloutError::AssignmentNotFound)?;
+    assignment_from_row(&row)
 }
 
-fn node_from_row(
+fn assignment_from_row(
     row: &QueryResult,
-) -> Result<ModuleStaticDistributionRolloutNode, ModuleStaticDistributionRolloutError> {
+) -> Result<ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutError> {
     let ordinal: i64 = row.try_get("", "ordinal").map_err(store_error)?;
     let health_reference: Option<String> = row
         .try_get("", "health_evidence_reference")
@@ -1521,30 +1613,34 @@ fn node_from_row(
         (None, None) => None,
         _ => {
             return Err(ModuleStaticDistributionRolloutError::Store(
-                "static distribution node health evidence is incomplete".to_string(),
+                "static distribution assignment health evidence is incomplete".to_string(),
             ));
         }
     };
     let failure_code: Option<String> = row.try_get("", "failure_code").map_err(store_error)?;
     let failure_detail: Option<String> = row.try_get("", "failure_detail").map_err(store_error)?;
     let failure = match (failure_code, failure_detail) {
-        (Some(code), Some(detail)) => Some(ModuleStaticDistributionNodeFailure { code, detail }),
+        (Some(code), Some(detail)) => {
+            Some(ModuleStaticDistributionAssignmentFailure { code, detail })
+        }
         (None, None) => None,
         _ => {
             return Err(ModuleStaticDistributionRolloutError::Store(
-                "static distribution node failure is incomplete".to_string(),
+                "static distribution assignment failure is incomplete".to_string(),
             ));
         }
     };
-    Ok(ModuleStaticDistributionRolloutNode {
+    Ok(ModuleStaticDistributionRolloutAssignment {
         node_id: row.try_get("", "node_id").map_err(store_error)?,
+        role: parse_role(&row.try_get::<String>("", "role").map_err(store_error)?)?,
+        artifact_digest: row.try_get("", "artifact_digest").map_err(store_error)?,
         ordinal: u16::try_from(ordinal).map_err(|_| {
             ModuleStaticDistributionRolloutError::Store(
-                "static distribution node ordinal is invalid".to_string(),
+                "static distribution assignment ordinal is invalid".to_string(),
             )
         })?,
         observation_revision: revision_from_row(row, "observation_revision", true)?,
-        phase: ModuleStaticDistributionNodePhase::parse(
+        phase: ModuleStaticDistributionAssignmentPhase::parse(
             &row.try_get::<String>("", "phase").map_err(store_error)?,
         )?,
         health_evidence,
@@ -1611,7 +1707,7 @@ async fn load_operation<C: ConnectionTrait>(
             format!(
                 "SELECT operation_kind, request_digest, principal_id, rollout_id,
                         rollout_revision, rollout_state_revision, rollout_status,
-                        node_id, observation_revision, node_phase,
+                        node_id, role, observation_revision, assignment_phase,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_distribution_rollout_operations
                  WHERE idempotency_key = {}",
@@ -1638,12 +1734,18 @@ async fn load_operation<C: ConnectionTrait>(
             .map(ModuleStaticDistributionRolloutStatus::parse)
             .transpose()?,
         node_id: row.try_get("", "node_id").map_err(store_error)?,
-        observation_revision: optional_revision_from_row(&row, "observation_revision")?,
-        node_phase: row
-            .try_get::<Option<String>>("", "node_phase")
+        role: row
+            .try_get::<Option<String>>("", "role")
             .map_err(store_error)?
             .as_deref()
-            .map(ModuleStaticDistributionNodePhase::parse)
+            .map(parse_role)
+            .transpose()?,
+        observation_revision: optional_revision_from_row(&row, "observation_revision")?,
+        assignment_phase: row
+            .try_get::<Option<String>>("", "assignment_phase")
+            .map_err(store_error)?
+            .as_deref()
+            .map(ModuleStaticDistributionAssignmentPhase::parse)
             .transpose()?,
         completed: row.try_get::<i64>("", "completed").map_err(store_error)? == 1,
     };
@@ -1671,6 +1773,7 @@ async fn complete_request_operation(
         None,
         None,
         None,
+        None,
     )
     .await
 }
@@ -1678,7 +1781,7 @@ async fn complete_request_operation(
 async fn complete_report_operation(
     transaction: &DatabaseTransaction,
     idempotency_key: Uuid,
-    receipt: &ModuleStaticDistributionNodeReportReceipt,
+    receipt: &ModuleStaticDistributionAssignmentReportReceipt,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     complete_operation(
         transaction,
@@ -1688,6 +1791,7 @@ async fn complete_report_operation(
         receipt.rollout_state_revision,
         receipt.rollout_status,
         Some(&receipt.node_id),
+        Some(receipt.role),
         Some(receipt.observation_revision),
         Some(receipt.phase),
     )
@@ -1703,8 +1807,9 @@ async fn complete_operation(
     rollout_state_revision: u64,
     rollout_status: ModuleStaticDistributionRolloutStatus,
     node_id: Option<&str>,
+    role: Option<ModuleStaticDistributionRole>,
     observation_revision: Option<u64>,
-    node_phase: Option<ModuleStaticDistributionNodePhase>,
+    assignment_phase: Option<ModuleStaticDistributionAssignmentPhase>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
@@ -1713,8 +1818,8 @@ async fn complete_operation(
             format!(
                 "UPDATE module_static_distribution_rollout_operations
                  SET rollout_id = {}, rollout_revision = {}, rollout_state_revision = {},
-                     rollout_status = {}, node_id = {}, observation_revision = {},
-                     node_phase = {}, completed_at = {}
+                     rollout_status = {}, node_id = {}, role = {}, observation_revision = {},
+                     assignment_phase = {}, completed_at = {}
                  WHERE idempotency_key = {} AND completed_at IS NULL",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -1723,8 +1828,9 @@ async fn complete_operation(
                 placeholder(backend, 5),
                 placeholder(backend, 6),
                 placeholder(backend, 7),
-                now_expression(backend),
                 placeholder(backend, 8),
+                now_expression(backend),
+                placeholder(backend, 9),
             ),
             vec![
                 uuid_value(rollout_id, backend),
@@ -1732,8 +1838,11 @@ async fn complete_operation(
                 revision_value(rollout_state_revision)?,
                 rollout_status.as_str().into(),
                 node_id.map(str::to_owned).into(),
+                role.map(|value| role_name(value).to_string()).into(),
                 optional_revision_value(observation_revision)?,
-                node_phase.map(|phase| phase.as_str().to_string()).into(),
+                assignment_phase
+                    .map(|phase| phase.as_str().to_string())
+                    .into(),
                 uuid_value(idempotency_key, backend),
             ],
         ))
@@ -1751,8 +1860,9 @@ fn replay_request(
     if !operation.completed
         || operation.operation_kind != "request"
         || operation.node_id.is_some()
+        || operation.role.is_some()
         || operation.observation_revision.is_some()
-        || operation.node_phase.is_some()
+        || operation.assignment_phase.is_some()
     {
         return Err(ModuleStaticDistributionRolloutError::IdempotencyConflict);
     }
@@ -1775,11 +1885,11 @@ fn replay_request(
 
 fn replay_report(
     operation: &OperationRecord,
-) -> Result<ModuleStaticDistributionNodeReportReceipt, ModuleStaticDistributionRolloutError> {
+) -> Result<ModuleStaticDistributionAssignmentReportReceipt, ModuleStaticDistributionRolloutError> {
     if !operation.completed || operation.operation_kind != "report" {
         return Err(ModuleStaticDistributionRolloutError::IdempotencyConflict);
     }
-    Ok(ModuleStaticDistributionNodeReportReceipt {
+    Ok(ModuleStaticDistributionAssignmentReportReceipt {
         rollout_id: operation
             .rollout_id
             .ok_or(ModuleStaticDistributionRolloutError::IdempotencyConflict)?,
@@ -1796,11 +1906,14 @@ fn replay_report(
             .node_id
             .clone()
             .ok_or(ModuleStaticDistributionRolloutError::IdempotencyConflict)?,
+        role: operation
+            .role
+            .ok_or(ModuleStaticDistributionRolloutError::IdempotencyConflict)?,
         observation_revision: operation
             .observation_revision
             .ok_or(ModuleStaticDistributionRolloutError::IdempotencyConflict)?,
         phase: operation
-            .node_phase
+            .assignment_phase
             .ok_or(ModuleStaticDistributionRolloutError::IdempotencyConflict)?,
         created: false,
     })
