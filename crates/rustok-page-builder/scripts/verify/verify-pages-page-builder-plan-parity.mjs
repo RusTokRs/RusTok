@@ -45,12 +45,20 @@ function parseJson(source, relativePath) {
   }
 }
 
+function normalizeText(source) {
+  return source.replace(/\s+/g, " ").trim();
+}
+
 function requireText(source, marker, label) {
-  if (!source.includes(marker)) failures.push(`${label}: missing marker '${marker}'`);
+  if (!source.includes(marker) && !normalizeText(source).includes(normalizeText(marker))) {
+    failures.push(`${label}: missing marker '${marker}'`);
+  }
 }
 
 function forbidText(source, marker, label) {
-  if (source.includes(marker)) failures.push(`${label}: stale marker remains '${marker}'`);
+  if (source.includes(marker) || normalizeText(source).includes(normalizeText(marker))) {
+    failures.push(`${label}: stale marker remains '${marker}'`);
+  }
 }
 
 function section(source, startMarker, endMarker) {
