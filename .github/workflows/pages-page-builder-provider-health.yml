@@ -24,6 +24,8 @@ on:
       - "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json"
       - "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json"
       - "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json"
+      - "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json"
+      - "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
@@ -39,9 +41,14 @@ on:
       - "scripts/verify/verify-pages-reference-consumer-gate-owner-runner-tests.mjs"
       - "scripts/verify/verify-forum-page-builder-wave-admission.mjs"
       - "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs"
+      - "scripts/verify/verify-forum-wave-evidence-freshness.mjs"
+      - "scripts/verify/verify-forum-wave-evidence-freshness.test.mjs"
+      - "scripts/verify/verify-forum-wave-admission-lineage.mjs"
+      - "scripts/verify/verify-forum-wave-admission-lineage.test.mjs"
       - "docs/modules/pages-page-builder-provider-health-*-actualization-*.md"
       - "docs/modules/pages-page-builder-reference-consumer-gate-*-actualization-*.md"
       - "docs/modules/forum-page-builder-wave-admission-*-actualization-*.md"
+      - "docs/modules/forum-page-builder-wave-live-admission-lineage-actualization-*.md"
       - "docs/modules/pages-page-builder-parity-continuation-plan.md"
       - "docs/modules/page-builder-implementation-plan.md"
       - "crates/rustok-page-builder/docs/implementation-plan.md"
@@ -69,6 +76,8 @@ on:
       - "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json"
       - "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json"
       - "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json"
+      - "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json"
+      - "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
@@ -84,9 +93,14 @@ on:
       - "scripts/verify/verify-pages-reference-consumer-gate-owner-runner-tests.mjs"
       - "scripts/verify/verify-forum-page-builder-wave-admission.mjs"
       - "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs"
+      - "scripts/verify/verify-forum-wave-evidence-freshness.mjs"
+      - "scripts/verify/verify-forum-wave-evidence-freshness.test.mjs"
+      - "scripts/verify/verify-forum-wave-admission-lineage.mjs"
+      - "scripts/verify/verify-forum-wave-admission-lineage.test.mjs"
       - "docs/modules/pages-page-builder-provider-health-*-actualization-*.md"
       - "docs/modules/pages-page-builder-reference-consumer-gate-*-actualization-*.md"
       - "docs/modules/forum-page-builder-wave-admission-*-actualization-*.md"
+      - "docs/modules/forum-page-builder-wave-live-admission-lineage-actualization-*.md"
       - "docs/modules/pages-page-builder-parity-continuation-plan.md"
       - "docs/modules/page-builder-implementation-plan.md"
       - "crates/rustok-page-builder/docs/implementation-plan.md"
@@ -102,7 +116,7 @@ concurrency:
 
 jobs:
   source-and-runner:
-    name: Provider-health, Pages gate and Forum admission source/runner evidence
+    name: Provider-health, Pages gate and Forum admission/source evidence
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -149,6 +163,15 @@ jobs:
       - name: Forum Wave admission runner synthetic tests
         if: ${{ !cancelled() }}
         run: node scripts/evidence/admit-forum-page-builder-wave.test.mjs
+      - name: Verify Forum Wave evidence freshness source-ready packet
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-forum-wave-evidence-freshness.mjs
+      - name: Verify Forum Wave live admission lineage source-ready packet
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-forum-wave-admission-lineage.mjs
+      - name: Forum Wave live admission lineage synthetic tests
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-forum-wave-admission-lineage.test.mjs
       - name: Verify Pages and Page Builder plan parity
         if: ${{ !cancelled() }}
         run: node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
