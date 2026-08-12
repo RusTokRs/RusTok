@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "module": "page-builder",
+  "packet": "generic_editor_accessibility_browser_evidence",
+  "status": "source_ready_maintainer_execution_pending",
+  "runner": "apps/next-admin/tests/page-builder-accessibility/browser-evidence.spec.ts",
+  "config": "apps/next-admin/playwright.page-builder-accessibility.config.ts",
+  "global_setup": "apps/next-admin/tests/page-builder-accessibility/global-setup.ts",
+  "output": {
+    "environment": "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_BROWSER_EVIDENCE_OUTPUT",
+    "default_path": "target/page-builder-accessibility-browser-evidence.json",
+    "format": "page_builder_generic_accessibility_browser_execution_v1",
+    "status": "browser_keyboard_accessibility_tree_passed_screen_reader_pending"
+  },
+  "environment": {
+    "source_commit": "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_SOURCE_COMMIT",
+    "deployment_digest": "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_DEPLOYMENT_DIGEST",
+    "editor_storage_state": "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_EDITOR_STORAGE_STATE",
+    "full_url": "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_FULL_URL",
+    "read_only_url": "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_READ_ONLY_URL"
+  },
+  "deployment_identity": {
+    "source_commit_verified_against_checkout_head": true,
+    "deployment_digest_is_maintainer_supplied_reviewed_identity": true,
+    "browser_independent_digest_to_deployment_attestation": false,
+    "deployment_provenance_must_be_verified_outside_this_browser_packet": true
+  },
+  "fixture_requirements": {
+    "minimum_page_count": 2,
+    "full_profile_edit_enabled": true,
+    "full_profile_properties_enabled": true,
+    "read_only_profile_edit_disabled": true,
+    "read_only_profile_properties_disabled": true
+  },
+  "profiles": [
+    "full",
+    "read_only"
+  ],
+  "proofs": [
+    "sequential keyboard focus between adjacent page buttons",
+    "keyboard activation updates browser-observed pressed state",
+    "add-page textbox and button participate in sequential focus order",
+    "browser accessibility tree exposes pressed page state",
+    "browser accessibility tree exposes Add page: Page name textbox name",
+    "browser role lookup resolves Page name and Page id labels",
+    "read-only edit and properties fieldsets are natively disabled and aria-disabled",
+    "read-only mutation controls are browser-disabled"
+  ],
+  "required_source_files": [
+    "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
+    "apps/next-admin/playwright.page-builder-accessibility.config.ts",
+    "apps/next-admin/tests/page-builder-accessibility/global-setup.ts",
+    "apps/next-admin/tests/page-builder-accessibility/browser-evidence.spec.ts",
+    "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+    "crates/rustok-page-builder/admin/src/editor/page_manager.rs",
+    "crates/rustok-page-builder/admin/src/editor/capability_controls.rs",
+    "crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
+  ],
+  "retained_data": [
+    "exact source commit",
+    "maintainer-supplied reviewed immutable deployment RepoDigest",
+    "source-file SHA-256 hashes",
+    "storage-state file SHA-256 hash and byte size",
+    "profile URL SHA-256 hashes",
+    "bounded boolean/count observations"
+  ],
+  "forbidden_retained_data": [
+    "raw profile URLs",
+    "cookies",
+    "authorization headers",
+    "storage-state contents",
+    "raw DOM or HTML",
+    "ARIA snapshot text",
+    "page names or page ids",
+    "tenant or actor identifiers"
+  ],
+  "not_claimed": [
+    "browser execution before a retained passing packet exists",
+    "screen-reader execution",
+    "WCAG conformance",
+    "browser-independent digest-to-deployment attestation",
+    "provider SLO health",
+    "Pages gate acceptance",
+    "Forum Wave admission"
+  ]
+}
