@@ -15,7 +15,7 @@ const files = {
   overlay: "docs/modules/page-builder-provider-health-deployment-identity-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
   pagesGraphql: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  pagesFacade: "crates/rustok-pages/admin/src/builder.rs",
+  pagesFacade: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
@@ -169,7 +169,7 @@ for (const marker of [
   "expected-target-inventory-contract-source-ready",
   "page-builder-provider-health-deployment-identity-actualization-2026-08-09.md",
   "exact source/deployment identity",
-  "Pages remains `unobserved`",
+  "the rollout-only reference candidate continues to retain `provider_health = unobserved`",
 ]) need(sources.parity, marker, "plan parity actualization");
 
 need(sources.pagesGraphql, "provider_health_observed: false", "Pages GraphQL remains unobserved");
